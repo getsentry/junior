@@ -15,10 +15,9 @@ contracts.
 
 This spec describes the intended V1 memory plugin shape. Generic plugin prompt
 hooks and plugin prompt session state are available through
-`../plugin-prompt-hooks.md`. Passive learning uses the implemented
-`observeTurn` hook and the memory-owned internal extraction agent. Plugin
-background task handlers remain a future scaling option, not the current V1
-contract.
+`../plugin-prompt-hooks.md`. Passive learning uses a typed
+`session.completed` plugin task that loads a bounded completed agent-run
+session projection and invokes the memory-owned internal extraction agent.
 
 V1 stores only public/shareable memory content. Scope controls who can see a
 record; it is not a content sensitivity model. Private, sensitive, secret, or
@@ -37,7 +36,7 @@ Explicit tools also support user-directed memory management.
 - Plugin-owned SQL storage, retrieval indexes, embeddings, and model-provider
   boundaries.
 - Automatic recall through `userPrompt` when the memory plugin is enabled.
-- Passive learning through `observeTurn`.
+- Passive learning through the memory plugin's `session.completed` task.
 - Explicit `createMemory`, `removeMemory`, `listMemories`, and
   `searchMemories` tools.
 - Scope, attribution, lifecycle, tool, model, public-content, and secret
@@ -142,9 +141,11 @@ The V1 runtime plugin interface is:
 ```ts
 defineJuniorPlugin({
   manifest,
+  tasks: {
+    processSession,
+  },
   hooks: {
     userPrompt,
-    observeTurn,
     tools,
   },
 });
@@ -152,9 +153,9 @@ defineJuniorPlugin({
 
 The exact hook names are owned by their generic plugin specs. The memory plugin
 needs these broad V1 surfaces: automatic recall when the plugin is enabled,
-completed-turn observation, model-visible memory tools, SQL access, and
-host-owned model and embedding-provider access. A future admin CLI surface is
-specified separately in [`./admin.md`](./admin.md).
+completed-session background processing, model-visible memory tools, SQL
+access, and host-owned model and embedding-provider access. A future admin CLI
+surface is specified separately in [`./admin.md`](./admin.md).
 
 Installations that do not want memory should disable the memory plugin rather
 than split recall from the plugin. Future install-level memory policy may narrow
@@ -176,7 +177,7 @@ The plugin owns:
 - a small memory store module around `ctx.db`
 - extraction and retrieval policy
 - memory policy guidance inside the memory agent
-- passive extraction through `observeTurn`
+- passive extraction through a typed `session.completed` plugin task
 - memory tool definitions
 - future memory admin command definitions
 
@@ -222,13 +223,14 @@ V1 supports two visibility scopes:
 | Scope          | Stored authority                                 | Visible to                                   |
 | -------------- | ------------------------------------------------ | -------------------------------------------- |
 | `personal`     | current requester actor                          | same requester in compatible runtime context |
-| `conversation` | current source/destination conversation identity | later turns in the same conversation         |
+| `conversation` | current source/destination conversation identity | later requests in the same conversation      |
 
 Rules:
 
 1. Scope is derived from runtime context. Model-visible tool arguments never
    provide requester ids, team ids, channel ids, thread ids, or conversation ids.
-2. Personal memory is the default for first-person facts in interactive turns.
+2. Personal memory is the default for first-person facts in interactive
+   requests.
    The current author/requester must be the subject of any personal-scoped
    identity, preference, or relationship fact. For example, `I am on the
 billing team` may become a personal memory for that requester, while `David
@@ -315,7 +317,7 @@ be exported as part of Junior core.
 
 The V1 contract has these implementation dependencies:
 
-1. Core plugin hook surfaces needed by this spec: `userPrompt`, `observeTurn`,
+1. Core plugin surfaces needed by this spec: `userPrompt`, typed plugin tasks,
    `tools`, `ctx.db`, host model access, and host embedding provider access.
 2. Memory plugin package with manifest, schema, migrations, store, and
    memory agent policy guidance.
@@ -326,7 +328,7 @@ The V1 contract has these implementation dependencies:
 4. Automatic recall from stored memories through `userPrompt`, using lexical
    ranking before embeddings are available.
 5. Embedding provider integration and vector storage.
-6. `observeTurn` passive extraction over completed turns.
+6. `session.completed` passive extraction over completed agent-run sessions.
 7. Deduplication, TTL archival, and conservative supersession.
 8. Optional vector index tuning and hybrid ranking improvements.
 9. Admin CLI inspection and repair commands after redaction and access

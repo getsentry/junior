@@ -1,4 +1,4 @@
-# Plugin Prompt Hooks Spec
+# Plugin Prompt Hooks And Tasks Spec
 
 ## Metadata
 
@@ -7,22 +7,24 @@
 
 ## Purpose
 
-Define the generic plugin hooks that let runtime hook plugins contribute prompt
-text and observe completed turns without exposing raw Junior internals or
-creating memory-specific plugin APIs.
+Define the generic plugin hooks and background tasks that let runtime hook
+plugins contribute prompt text and process completed agent-run sessions without
+exposing raw Junior internals or creating memory-specific plugin APIs.
 
 ## Implementation Status
 
 Plugin prompt hooks are implemented in Junior core and
-`@sentry/junior-plugin-api`. Turn observation hooks are implemented as
-post-delivery best-effort hooks. Plugin background task handlers remain target
-design for a later implementation slice.
+`@sentry/junior-plugin-api`. The typed plugin task surface described here is
+the target contract for background work. The previous post-run observation hook
+shape is superseded by `session.completed` plugin tasks and should be removed
+when the task runner lands.
 
 ## Scope
 
 - Plugin-provided system prompt and user prompt contributions.
 - Prompt hook context.
-- Post-turn observation hook contract for passive extraction workflows.
+- Typed plugin background task registration.
+- Completed agent-run session task contract for passive extraction workflows.
 - Security and rendering boundaries for prompt contributions.
 - V1 memory plugin usage of these generic hooks.
 
@@ -38,11 +40,17 @@ design for a later implementation slice.
 
 ## Contracts
 
-### Hook Surface
+### Registration Surface
 
-Runtime hook plugins may provide prompt and observation hooks:
+Runtime hook plugins may provide prompt hooks and typed background tasks:
 
 ```ts
+interface PluginRegistrationInput {
+  manifest: PluginManifest;
+  hooks?: PluginHooks;
+  tasks?: PluginTasks;
+}
+
 interface PluginHooks {
   systemPrompt?(
     ctx: SystemPromptContext,
@@ -51,14 +59,14 @@ interface PluginHooks {
   userPrompt?(
     ctx: UserPromptContext,
   ): PromptMessage[] | undefined | Promise<PromptMessage[] | undefined>;
-
-  observeTurn?(ctx: TurnObservationContext): void | Promise<void>;
 }
+
+type PluginTasks = Record<string, PluginTaskDefinition<ZodTypeAny>>;
 ```
 
 These hooks are app-code plugin hooks registered through
-`defineJuniorPlugin({ manifest, hooks })`. Declarative `plugin.yaml` manifests
-must not register prompt or observation hooks.
+`defineJuniorPlugin({ manifest, hooks, tasks })`. Declarative `plugin.yaml`
+manifests must not register prompt hooks or task handlers.
 
 ### Prompt Messages
 
@@ -151,9 +159,9 @@ interface UserPromptContext {
 }
 ```
 
-`Source` is a runtime-normalized origin for the current turn. Slack sources use
-the same address fields as Slack destinations plus source visibility and inbound
-message metadata:
+`Source` is a runtime-normalized origin for the current request or completed
+agent-run session. Slack sources use the same address fields as Slack
+destinations plus source visibility and inbound message metadata:
 
 ```ts
 type SourceType = "pub" | "priv";
@@ -189,107 +197,124 @@ The context must not expose:
 - cross-plugin state
 - model messages outside the safe hook-specific context
 
-### Turn Observation Hook
-
-`observeTurn(ctx)` lets plugins inspect a completed turn and perform bounded
-post-turn work such as passive memory extraction.
-
-Core invokes observation hooks only after final turn state is committed far
-enough that the hook cannot affect whether the user-visible turn succeeds.
-
-Observation context should include:
-
-- requester, source, destination, and conversation id
-- bounded user-visible turn text needed by the plugin: user text and assistant
-  text
-- safe metadata about tool use
-- plugin-scoped durable state and logger
-- plugin-scoped model and embedding helpers
-
-The bounded observation payload is a runtime-owned projection, not a raw
-transcript. Core may expose the same projection directly to `observeTurn(ctx)`
-and later through `PluginTaskContext.observation.load()` for
-observation-backed tasks.
-
-Observation hooks must not receive provider credentials, raw authorization URLs,
-raw Slack clients, or unrestricted transcript history. For private
-conversations, observation payloads must follow the same raw-payload restrictions
-as runtime code: a plugin may receive private turn text only when it is an
-explicitly enabled trusted host plugin whose contract requires that payload.
-
-Observation hooks must be best effort. A thrown observation error must be logged
-with safe metadata and must not fail the already-completed user turn.
-
 ### Plugin Background Tasks
 
-Future observation hooks may enqueue plugin-owned background tasks through a
-core-owned task capability:
+Plugin tasks let plugins perform durable post-run work without blocking visible
+reply delivery. Core owns when tasks are scheduled, how they are queued, how
+they are retried, and how task params are persisted.
 
 ```ts
-interface PluginTaskEnqueueOptions {
-  idempotencyKey: string;
-  name: string;
-  payload?: unknown;
+interface PluginTaskDefinition<TSchema extends ZodTypeAny> {
+  trigger?: PluginTaskTrigger;
+  paramsSchema: TSchema;
+  run(ctx: PluginTaskContext<z.output<TSchema>>): Promise<void> | void;
 }
 
-interface PluginTaskEnqueueResult {
-  id: string;
-  status: "created" | "already_exists";
-}
+type PluginTaskTrigger = "session.completed";
 
-interface PluginTaskQueue {
-  enqueue(options: PluginTaskEnqueueOptions): Promise<PluginTaskEnqueueResult>;
-}
-
-interface PluginTaskContext extends PluginContext {
+interface PluginTaskContext<TParams> extends PluginContext {
   id: string;
   name: string;
-  payload?: unknown;
-  observation?: {
-    load(): Promise<TurnObservationPayload | undefined>;
-  };
+  params: TParams;
+  embedder: PluginEmbedder;
+  model: PluginModel;
+  state: PluginState;
+  session: PluginSessionReader;
 }
 
-type PluginTaskHandler = (ctx: PluginTaskContext) => Promise<void> | void;
+interface PluginSessionReader {
+  load(): Promise<PluginSessionContext | undefined>;
+}
+
+interface PluginSessionContext {
+  completedAtMs: number;
+  conversationId: string;
+  destination: Destination;
+  messages: PluginSessionMessage[];
+  requester?: Requester;
+  sessionId: string;
+  source: Source;
+  successfulToolCalls: string[];
+}
+
+interface PluginSessionMessage {
+  createdAtMs?: number;
+  role: "user" | "assistant";
+  text: string;
+}
+
+function definePluginTask<TSchema extends ZodTypeAny>(
+  task: PluginTaskDefinition<TSchema>,
+): PluginTaskDefinition<TSchema>;
 ```
 
-This task surface is not implemented yet. The exact host implementation is not
-part of the plugin API. Core may run
-plugin tasks with the existing queue infrastructure, a signed internal callback,
-a future dedicated task worker, or a local in-process test worker. Plugin code
-must observe the same contract in all cases.
+Task params are schema-validated before persistence and again before execution.
+They must contain stable references such as `conversationId`, `sessionId`, or
+run/session ids. They must not contain raw conversation text, raw assistant
+text, raw tool payloads, credentials, authorization URLs, OAuth tokens, Slack
+tokens, or provider credentials.
+
+The queue payload is a core-owned delivery envelope containing only a durable
+task id. The durable task record carries plugin name, task name, parsed params,
+status, attempt count, lease state, and timestamps. Plugins never receive raw
+queue clients, queue topics, callback routes, message metadata, or delivery
+acknowledgement controls.
+
+`session.load()` returns a bounded core-owned projection reconstructed from the
+completed session record and transcript/session-log storage. It must not expose
+raw Pi internals, full transcript history, private tool arguments/results, or
+provider credentials. Core applies source privacy rules before returning raw
+message text to a plugin task. Unknown or private source visibility fails
+closed unless a future explicit privacy contract allows that task.
 
 Task rules:
 
 1. Task names are resolved only inside the owning plugin.
-2. Idempotency is scoped to plugin name and task name.
-3. Task payloads must be bounded JSON-serializable data.
-4. Task payloads should contain stable references and safe metadata, not raw
-   private prompt text, raw tool payloads, credentials, or tokens.
-5. Task handlers run with plugin-scoped `ctx.db`, `ctx.state`, logger, and the
-   runtime-owned context needed by that task type.
-6. Observation-backed tasks receive an `observation.load()` helper when core can
-   reconstruct a bounded observation payload from durable runtime state.
-7. Task handlers must be idempotent because delivery is at least once.
-8. Core owns queue acknowledgement, retry, redelivery, worker leases, callback
+2. Task params are bounded JSON-serializable data parsed by the task's
+   `paramsSchema`.
+3. Task handlers run with plugin-scoped `ctx.db`, `ctx.state`, logger, host
+   model access, host embedding access, and task-specific readers.
+4. Task handlers must be idempotent because delivery is at least once.
+5. Core owns queue acknowledgement, retry, redelivery, worker leases, callback
    signing, and provider-specific visibility timeouts.
-9. Plugins must not depend on task execution happening in the same process or
-   same request as `observeTurn`.
+6. Plugins must not depend on task execution happening in the same process or
+   same request that completed the agent run.
 
-For future queued memory extraction, the observation hook should enqueue a task with stable
-conversation/session/message references. The task worker reloads the bounded
-observation payload from durable runtime state before invoking the plugin task
-handler. Queue payloads must not become the authority for private conversation
-text.
+### `session.completed` Tasks
+
+Core schedules `session.completed` tasks after a successful user-visible agent
+run has been delivered and the completed session record has been durably
+committed. The task params should be the minimum stable references needed to
+reload the completed run/session, such as:
+
+```ts
+const sessionCompletedParamsSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    sessionId: z.string().min(1),
+  })
+  .strict();
+```
+
+If the historical session id is not the stable run identity for a path, core may
+include a separate run/session record id. The params should not duplicate
+`source`, `destination`, `requester`, messages, or tool-call data when those can
+be loaded from completed runtime storage.
+
+The task idempotency key is derived from plugin name, task name, trigger name,
+and the completed session reference. Duplicate queue delivery or duplicate
+scheduling of the same completed session must run the plugin task at most once
+successfully.
 
 ### Memory Plugin V1 Usage
 
-The memory plugin should use the generic hooks as follows:
+The memory plugin should use the generic hooks and task surface as follows:
 
 1. `userPrompt(ctx)` retrieves memories visible to the current requester and
    source, then returns a concise memory block for the run's triggering prompt.
-2. `observeTurn(ctx)` runs the memory-owned structured extraction agent over the
-   completed turn and writes accepted facts idempotently.
+2. `tasks.processSession` handles the `session.completed` trigger, loads the
+   completed session projection, runs the memory-owned structured extraction
+   agent, and writes accepted facts idempotently.
 3. `tools(ctx)` may expose explicit memory tools such as `createMemory`,
    `removeMemory`, `listMemories`, and `searchMemories`.
 
@@ -318,7 +343,7 @@ V1 memory tools are context-bound:
 Core owns prompt rendering:
 
 1. Core calls plugins in deterministic plugin-name order.
-2. Core wraps user prompt contributions inside the existing turn-context/user
+2. Core wraps user prompt contributions inside the existing run-context/user
    prompt structure owned by `buildTurnContextPrompt(...)`.
 3. Core applies per-contribution and total prompt extension size limits.
 4. Core omits empty contributions.
@@ -333,8 +358,8 @@ Core owns prompt rendering:
    and continue unless startup validation can catch the problem earlier.
 2. Oversized contribution: truncate only if the contribution contract supports
    deterministic truncation; otherwise omit and log safe metadata.
-3. Observation hook failure: log safe metadata and do not change the completed
-   turn result.
+3. Plugin task failure: log safe metadata, retry according to the core task
+   policy, and do not change the completed visible run result.
 
 ## Observability
 
@@ -367,10 +392,16 @@ Use integration tests for:
   checkpoint
 - private conversation prompt contribution payloads are redacted from logs,
   traces, and dashboard APIs
+- plugin task params are schema-validated before persistence and execution
+- `session.completed` plugin tasks load bounded completed-session projections
+  without exposing raw private payloads
+- duplicate scheduling or queue delivery does not run a completed plugin task
+  more than once successfully
 
 Use unit tests for:
 
 - hook return-shape validation
+- task schema validation and plugin-local task name validation
 - deterministic plugin ordering
 - memory tool schema rejection of model-supplied actor or destination fields
 

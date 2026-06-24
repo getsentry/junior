@@ -66,7 +66,7 @@ store-or-reject decision and canonical rewrite.
 
 The outer agent should not call `createMemory` for ordinary organic statements
 that merely reveal a durable preference or fact. Those are passive-learning
-candidates handled by completed-turn observation, not explicit memory-tool
+candidates handled by completed-session processing, not explicit memory-tool
 requests.
 
 The explicit tool path uses runtime context for source and idempotency. It must

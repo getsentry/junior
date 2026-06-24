@@ -25,10 +25,10 @@ requirements.
 6. `userPrompt` retrieval failure: omit memory contribution, log safe metadata,
    and continue unless the failure indicates a broken required migration.
 7. Prompt message validation failure: omit the prompt message.
-8. `observeTurn` extraction failure: log safe metadata and do not fail the
-   completed turn.
-9. Duplicate post-turn observation: source idempotency suppresses duplicate
-   stored memories.
+8. `session.completed` extraction task failure: log safe metadata, retry under
+   core plugin-task policy, and do not fail the completed visible run.
+9. Duplicate session task delivery: source/session idempotency suppresses
+   duplicate stored memories.
 10. Secret detection match: reject the write with a model-visible tool input
     error for explicit tools or drop the passive fact with safe logging.
 11. Visibility mismatch: fail closed and omit the memory.
@@ -98,14 +98,15 @@ Use integration tests for:
 - embedding failures leave memories listable and lexically recallable
 - private conversation memory content is absent from logs, traces, and
   dashboard reporting payloads
-- passive `observeTurn` extracts from organic completed turns without failing
-  delivery
-- passive extraction skips turns where explicit `createMemory` was already
-  called
+- passive `session.completed` processing extracts from organic completed
+  sessions without failing delivery
+- passive extraction skips completed sessions where explicit `createMemory` was
+  already called
 - memory agent review rejects extracted candidates that violate workplace
   guidance
 - malformed or failed memory agent review fails closed for passive extraction
-- duplicate observation of the same turn stores accepted memories once
+- duplicate processing of the same completed session stores accepted memories
+  once
 
 When the future admin CLI is implemented, use integration tests for:
 
@@ -139,7 +140,8 @@ Use evals for:
 - refusal to remember secrets
 - explicit create rejection for policy-disallowed workplace-sensitive facts
 - refusal or policy rejection for workplace-sensitive facts
-- passive extraction quality for organic conversation
+- passive extraction quality for organic conversation after queued plugin tasks
+  are drained
 - model use of current user corrections over stale memories
 
 ## Related Specs

@@ -7,8 +7,8 @@
 
 ## Purpose
 
-Define passive memory learning through completed-turn observation and the
-memory-owned internal extraction agent.
+Define passive memory learning through completed agent-run session processing
+and the memory-owned internal extraction agent.
 
 ## What Belongs In Memory
 
@@ -21,7 +21,8 @@ A candidate may be stored only when all of these are true:
 2. It is a public/shareable concrete fact, preference, relationship, durable
    project fact, durable workflow preference, or explicit user request to
    remember something.
-3. It is useful beyond the current turn or has an explicit expiration.
+3. It is useful beyond the current request/session or has an explicit
+   expiration.
 4. It is understandable without unresolved pronouns or hidden conversation
    context.
 5. It has a runtime-derived source actor and source conversation.
@@ -60,45 +61,56 @@ Examples that must not be stored:
 
 ## Passive Learning
 
-The memory plugin observes completed turns through `observeTurn(ctx)`.
+The memory plugin processes completed agent-run sessions through a typed
+`session.completed` plugin task. Conceptually this is a memory compaction pass:
+the task loads a bounded completed-session projection and asks the memory-owned
+extraction agent which durable public/shareable facts, if any, should survive
+as long-term memory.
 
-The observation hook must:
+The `processSession` task must:
 
-1. Run only after the user-visible turn is durably committed enough that
-   observation failure cannot fail delivery.
-2. Invoke the memory-owned extraction agent with bounded user-authored turn
-   text.
-3. Provide visible existing memories as dedupe context only, not as source
-   evidence for new memories.
-4. Ignore assistant-authored claims as memory sources.
-5. Skip passive extraction for unsupported sources. V1 supports local CLI
-   observations and `pub` sources with a stable source key. Non-local `priv`
+1. Run only after the user-visible agent run is delivered and the completed
+   session record is durably committed enough that task failure cannot fail
+   delivery.
+2. Receive task params that contain stable references only, such as
+   `conversationId` and `sessionId`. Params must not duplicate raw messages,
+   source, destination, requester, tool payloads, or model output.
+3. Load a bounded core-owned session projection from transcript/session storage.
+   The projection may include user-authored messages, assistant reply text, and
+   successful tool-call names, but not raw Pi internals, full transcript
+   history, private tool arguments/results, provider credentials, or unrelated
+   conversation context.
+4. Skip passive extraction for unsupported sources. V1 supports local CLI
+   sessions and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
    extraction.
-6. Skip passive extraction when the completed turn already called an explicit
-   memory mutation tool (`createMemory` or `removeMemory`). Recall tools
-   (`listMemories` and `searchMemories`) must not suppress passive extraction.
-7. Extract candidate facts with a structured model output contract.
-8. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
+5. Skip passive extraction when the completed session already called an
+   explicit memory mutation tool (`createMemory` or `removeMemory`). Recall
+   tools (`listMemories` and `searchMemories`) must not suppress passive
+   extraction.
+6. Provide visible existing memories as dedupe context only, not as source
+   evidence for new memories.
+7. Ignore assistant-authored claims as memory sources.
+8. Extract candidate facts with a structured model output contract.
+9. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
    non-durable facts.
-9. Assign requester or conversation target from memory-agent output, while
-   deriving all authority-bearing ids from runtime context.
-10. Insert accepted memories idempotently with a stable key derived through the
-    runtime source helper, turn id, and extracted fact position.
-11. Generate embeddings for accepted rows when the host embedder is configured.
-12. Avoid storing raw extraction prompt, raw model output, or raw turn text
+10. Assign requester or conversation target from memory-agent output, while
+    deriving all authority-bearing ids from runtime context.
+11. Insert accepted memories idempotently with a stable key derived through the
+    runtime source helper, completed session reference, and extracted fact
+    position.
+12. Generate embeddings for accepted rows when the host embedder is configured.
+13. Avoid storing raw extraction prompt, raw model output, or raw session text
     beyond the accepted memory records.
 
-Observation hooks are best effort. If extraction or storage fails, Junior logs
-safe metadata and the completed user-visible turn remains successful.
-
-Queued extraction can be added later as a scaling option. If added, queue
-payloads must contain stable references and safe metadata only; they must not
-become the authority for private conversation text.
+Plugin tasks are best effort and at least once. If extraction or storage fails,
+Junior logs safe metadata, retries according to core task policy, and the
+completed user-visible run remains successful. Duplicate task delivery must not
+create duplicate memories.
 
 ## Extraction Rules
 
-Extraction must follow these rules:
+Passive session extraction must follow these rules:
 
 1. Extract only from user-authored text.
 2. Prefer explicit `createMemory` tool writes over inferred passive learning.
@@ -143,25 +155,25 @@ belong to the memory agent rather than a caller-provided policy hook.
 The default V1 passive-extraction shape is:
 
 1. The memory agent proposes structured candidate memories from the bounded
-   observation payload.
+   completed-session projection.
 2. The memory agent accepts only candidates that satisfy public/shareable memory
    guidance.
 3. Deterministic validation applies only hard structural rules, such as schema
    shape, runtime-owned authority, source visibility, lifecycle bounds,
    idempotency, and storage constraints before storage.
 
-Memory agent review should receive only the candidate memory or completed
-user-authored text, the minimum source context needed to judge it, and
+Memory agent review should receive only the candidate memory or bounded
+completed-session text, the minimum source context needed to judge it, and
 public/shareable memory guidance. It should not receive unrestricted transcript
 history, raw tool
 payloads, provider credentials, or unrelated conversation context unless those
 fields are part of the bounded extraction input. Prompt inputs should use the
-same structured context-block style as Junior's turn context, with separate
+same structured context-block style as Junior's run context, with separate
 `<runtime>` and source blocks. Explicit `createMemory` review uses a singular
 `<candidate>` block and the current user-authored message as bounded source
-context. Passive extraction uses the completed turn's user-authored text plus
-visible existing memories for dedupe. Existing memories must not be used as
-source evidence for new facts.
+context. Passive extraction uses the completed session's bounded user-authored
+messages plus visible existing memories for dedupe. Existing memories must not
+be used as source evidence for new facts.
 
 The memory agent model is host-owned but selected by the memory plugin. An
 explicit `createMemoryPlugin({ modelId })` option wins, then `AI_MEMORY_MODEL`,
@@ -228,7 +240,7 @@ a model-visible rejection, not storage with a special classification.
 Duplicate prevention is required before insertion where the relevant signal is
 available:
 
-- same source, turn id, and extracted fact index
+- same source, completed session reference, and extracted fact index
 - high lexical or embedding similarity to an active memory in the same scope
 
 V1 storage enforces source/fact idempotency. Exact normalized-content equality

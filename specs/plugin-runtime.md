@@ -83,8 +83,8 @@ Install-wide config defaults use `createApp({ configDefaults })` and must refere
 ## MCP Activation
 
 - MCP tools are not sandbox dependencies and are not registered globally at startup.
-- At turn setup, the runtime restores providers from durable session-log
-  `mcp_provider_connected` events. Fresh turns discover providers through
+- At agent-run setup, the runtime restores providers from durable session-log
+  `mcp_provider_connected` events. Fresh runs discover providers through
   `searchMcpTools` and connect lazily when the model first accesses one.
 - Runtime must infer restored plugin skill and MCP activation state from the
   session log, not side metadata. Successful `loadSkill` tool results identify
@@ -97,13 +97,13 @@ Install-wide config defaults use `createApp({ configDefaults })` and must refere
   by `searchMcpTools({ provider })`, `callMcpTool`, resume restoration, or
   another explicit provider-access path.
 - Remote MCP catalogs are authoritative only after connection and `listTools`.
-- Mid-turn MCP activation updates the host-managed MCP registry, but Junior does not mutate the Pi native tool list during the turn.
+- Mid-run MCP activation updates the host-managed MCP registry, but Junior does not mutate the Pi native tool list during the run.
 - `searchMcpTools` and `callMcpTool` search and execute active-provider tools. Both lazily connect a provider when given one that is configured but not active.
 - `loadSkill` may return provider guidance, but full tool descriptors come from
   `searchMcpTools` after provider connection.
 - `searchMcpTools` returns focused descriptors including canonical `tool_name`, upstream `mcp_tool_name`, schemas, and annotations.
 - Resumed skills recover runtime handles from the session log. They must not re-embed skill bodies or provider summaries into the prompt when those facts are already visible in Pi history.
-- MCP OAuth uses `/api/oauth/callback/mcp/<plugin>` and resumes the paused turn after authorization.
+- MCP OAuth uses `/api/oauth/callback/mcp/<plugin>` and resumes the paused agent run after authorization.
 - Canonical MCP tool names remain `mcp__<plugin>__<tool>`.
 
 ## Plugin Skills
@@ -181,7 +181,7 @@ Plugins may also provide `slackConversationLink` to replace the finalized Slack 
 - Registry load order is deterministic.
 - Manifest validation fails before partial registration.
 - Plugin-backed skill loading rejects forged plugin metadata.
-- No MCP connections are made at turn start unless restoring providers from session-log connection events.
+- No MCP connections are made at agent-run start unless restoring providers from session-log connection events.
 - `searchMcpTools` and `callMcpTool` cannot reach tools from providers that are not configured or failed activation.
 
 ## Related Specs

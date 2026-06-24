@@ -202,7 +202,7 @@ For V1, passive extraction should store conversation-scoped operational
 knowledge by default. Passive personal memory from public conversations requires
 clear first-person source evidence from the user and must still be visible only
 to that requester. Explicit memory-management tool calls suppress passive
-extraction for the same completed turn so the tool path owns its effect.
+extraction for the same completed session so the tool path owns its effect.
 
 ## Automatic Injection Policy
 
