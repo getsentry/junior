@@ -1753,7 +1753,7 @@ export function buildTurnFailureResponse(eventId: string): string {
 // Gen-AI attribute serialization
 // ---------------------------------------------------------------------------
 
-const GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS = 12_000;
+const GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS = 100_000;
 const GEN_AI_MAX_ARRAY_ITEMS = 50;
 const GEN_AI_MAX_OBJECT_KEYS = 50;
 
