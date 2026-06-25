@@ -100,8 +100,8 @@ reported, exported, retained, or exposed under weaker rules than memory content.
 
 ## Task Payloads
 
-Future plugin background task payloads must contain stable references and
-bounded safe metadata only.
+Plugin background task params and queue payloads must contain stable references
+and bounded safe metadata only.
 
 They must not contain:
 
