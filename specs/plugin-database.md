@@ -264,12 +264,11 @@ The V1 runtime surface is the shared Junior Drizzle database connection. Hook
 contexts expose this as `ctx.db`, not `ctx.database`, a nested `ctx.db.db`, or a
 custom plugin database facade.
 
-The public plugin API treats `ctx.db` as an opaque `object`. It does not
-re-export Drizzle database types, wrap Drizzle methods, or try to compose every
-installed plugin schema into one global type. A TypeScript plugin that wants
-typed queries should locally type `ctx.db` against its own Drizzle schema at
-the plugin boundary, then pass that typed connection into its plugin-owned
-store.
+The public plugin API exposes `ctx.db` as `unknown`. Core does not wrap Drizzle
+methods, publish a partial database facade, or try to compose every installed
+plugin schema into one global type. A TypeScript plugin that wants typed
+queries should locally type `ctx.db` against its own Drizzle schema at the
+plugin boundary, then pass that typed connection into its plugin-owned store.
 
 `ctx.db` is not model-visible and must not be exposed to sandbox tools, skill
 text, MCP tools, or tool input schemas.
@@ -302,7 +301,7 @@ V1 does not support:
 - auto-importing `src/db/schema.ts` by convention
 - `ctx.db.query.<pluginTable>` relation helpers for plugin tables
 - a public type that represents every installed plugin table
-- raw SQL helpers on `ctx.db` as a plugin-facing abstraction
+- custom raw SQL helpers on `ctx.db` as a plugin-facing abstraction
 
 If a future plugin needs globally composed Drizzle schema typing, that must be
 added through an explicit code registration contract, not filesystem

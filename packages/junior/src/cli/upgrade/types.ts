@@ -1,5 +1,4 @@
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
-import type { PluginDatabase } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import type { JuniorPluginSet } from "@/plugins";
@@ -10,7 +9,7 @@ export interface UpgradeIo {
 }
 
 export interface MigrationContext {
-  db?: PluginDatabase;
+  db?: unknown;
   io: UpgradeIo;
   pluginCatalogConfig?: PluginCatalogConfig;
   pluginSet?: JuniorPluginSet;

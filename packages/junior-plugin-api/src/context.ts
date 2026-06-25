@@ -36,19 +36,6 @@ export interface PluginLogger {
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
 
-/** Shared Drizzle database surface available to plugin runtime code. */
-export interface PluginDatabase<TSchema = unknown> {
-  readonly _: {
-    readonly fullSchema: TSchema;
-  };
-  readonly delete: unknown;
-  readonly execute: unknown;
-  readonly insert: unknown;
-  readonly select: unknown;
-  readonly transaction: unknown;
-  readonly update: unknown;
-}
-
 export interface PluginModel {
   /** Run a host-owned structured model call without exposing provider credentials. */
   completeObject<TSchema extends ZodTypeAny>(input: {
@@ -71,7 +58,7 @@ export interface PluginEmbedder {
 
 export interface PluginContext {
   /** Shared Drizzle database connection for plugin runtime code. */
-  db: PluginDatabase;
+  db: unknown;
   log: PluginLogger;
   plugin: PluginMetadata;
 }

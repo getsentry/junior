@@ -829,6 +829,7 @@ describe("mcp oauth callback slack integration", () => {
       },
       sessionId,
       text: "list mcp data",
+      threadTs: "1700000000.007",
     });
 
     const authProvider = await createPendingAuthSession({

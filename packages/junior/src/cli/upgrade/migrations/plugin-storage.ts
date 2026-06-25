@@ -1,7 +1,4 @@
-import type {
-  PluginDatabase,
-  StorageMigrationResult,
-} from "@sentry/junior-plugin-api";
+import type { StorageMigrationResult } from "@sentry/junior-plugin-api";
 import { pluginRuntimeRegistrationsFromPluginSet } from "@/plugins";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -36,10 +33,7 @@ function addResult(
   };
 }
 
-function dbForPlugin(
-  context: MigrationContext,
-  sqlUrlDb: PluginDatabase | undefined,
-): PluginDatabase {
+function dbForPlugin(context: MigrationContext, sqlUrlDb: unknown): unknown {
   return context.db ?? sqlUrlDb ?? getDb();
 }
 

@@ -1,7 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type {
-  PluginDatabase,
   PluginStoredTokens,
   SandboxPrepareHookContext,
 } from "@sentry/junior-plugin-api";
@@ -13,7 +12,7 @@ import { mswServer } from "../../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };
 
-const db = {} as PluginDatabase;
+const db = {};
 
 function beforeToolContext(requester: {
   email?: string;

@@ -83,7 +83,7 @@ Rules:
 
 ```ts
 interface SystemPromptContext {
-  db: PluginDatabase;
+  db: unknown;
   log: PluginLogger;
   platform: Platform;
   plugin: PluginMetadata;
@@ -135,7 +135,7 @@ Rules:
 ```ts
 interface UserPromptContext {
   conversationId?: string;
-  db: PluginDatabase;
+  db: unknown;
   destination?: Destination;
   embedder: PluginEmbedder;
   log: PluginLogger;
