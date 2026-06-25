@@ -381,7 +381,7 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("rejects direct plugin sets with runtime registrations because they need a runtime import", () => {
+  it("rejects direct plugin sets with runtime code because they need a runtime import", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -442,7 +442,7 @@ describe("juniorNitro plugin modules", () => {
             },
             tasks: {
               processSession: {
-                run: async () => {},
+                run() {},
               },
             },
           }),
