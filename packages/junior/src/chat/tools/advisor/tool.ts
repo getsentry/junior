@@ -227,9 +227,9 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             );
           }
 
-          const hasGatewayCredential = Boolean(getPiGatewayApiKey());
+          const apiKeyOverride = getPiGatewayApiKey();
           const advisorAgent = new Agent({
-            ...(hasGatewayCredential ? { getApiKey: getPiGatewayApiKey } : {}),
+            ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
             initialState: {
               systemPrompt: ADVISOR_SYSTEM_PROMPT,
               model: resolveGatewayModel(context.config.modelId),

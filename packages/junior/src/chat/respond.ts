@@ -1434,9 +1434,9 @@ export async function generateAssistantReply(
       throw cooperativeYieldError;
     };
 
-    const hasGatewayCredential = Boolean(getPiGatewayApiKey());
+    const apiKeyOverride = getPiGatewayApiKey();
     agent = new Agent({
-      ...(hasGatewayCredential ? { getApiKey: getPiGatewayApiKey } : {}),
+      ...(apiKeyOverride ? { getApiKey: () => apiKeyOverride } : {}),
       streamFn: createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       prepareNextTurn: async () => {
