@@ -123,7 +123,7 @@ function slackSourceType(input: {
     return "priv";
   }
   if (input.channelId.startsWith("C")) {
-    return "priv";
+    return "pub";
   }
   throw new Error(`Unsupported Slack channel ID prefix: ${input.channelId}`);
 }

@@ -7,6 +7,8 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
+  createLocalSource,
+  createSlackSource,
   PluginToolInputError,
   type PluginLogger,
   type PluginModel,
@@ -120,13 +122,12 @@ function slackContext(
       teamId,
       userId: overrides.userId ?? "U123",
     },
-    source: {
-      platform: "slack" as const,
+    source: createSlackSource({
       teamId,
       channelId,
       messageTs: threadTs,
       threadTs,
-    },
+    }),
   };
 }
 
@@ -140,10 +141,7 @@ function localContext(
       platform: "local" as const,
       userId: overrides.userId ?? "local-user",
     },
-    source: {
-      platform: "local" as const,
-      conversationId,
-    },
+    source: createLocalSource(conversationId),
   };
 }
 
@@ -609,6 +607,7 @@ ORDER BY created_at_ms ASC
           },
           source: {
             platform: "slack",
+            type: "pub",
             teamId: "T123",
             channelId: "C123",
             messageTs: "1718800000.000000",
