@@ -606,6 +606,9 @@ async function refreshUserTokensWithLock(tokenSlot, scope, options) {
       };
     }
     const refreshedTokens = {
+      ...(latest.refreshTokenExpiresAt
+        ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
+        : {}),
       ...refreshed,
       ...(latest.account ? { account: latest.account } : {}),
     };

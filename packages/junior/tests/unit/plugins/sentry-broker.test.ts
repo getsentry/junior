@@ -188,11 +188,13 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
   it("refreshes tokens that are near expiry", async () => {
     process.env.SENTRY_CLIENT_ID = "client-id";
     process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    const refreshTokenExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
 
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
         accessToken: "old-access-token",
         refreshToken: "old-refresh-token",
+        refreshTokenExpiresAt,
         expiresAt: Date.now() + 2 * 60 * 1000,
         scope: SENTRY_SCOPE,
       },
@@ -204,7 +206,6 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         access_token: "new-access-token",
         refresh_token: "new-refresh-token",
         expires_in: 3600,
-        refresh_token_expires_in: 7200,
       }),
     })) as unknown as typeof fetch;
 
@@ -228,7 +229,45 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const stored = await tokenStore.get("U123", "sentry");
     expect(stored?.accessToken).toBe("new-access-token");
     expect(stored?.refreshToken).toBe("new-refresh-token");
-    expect(stored?.refreshTokenExpiresAt).toBeGreaterThan(Date.now());
+    expect(stored?.refreshTokenExpiresAt).toBe(refreshTokenExpiresAt);
+  });
+
+  it("uses the refreshed token expiry when the provider returns one", async () => {
+    const now = new Date("2026-06-01T12:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(now);
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    const oldRefreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+        refreshTokenExpiresAt: oldRefreshTokenExpiresAt,
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "new-access-token",
+        refresh_token: "new-refresh-token",
+        expires_in: 3600,
+        refresh_token_expires_in: 7200,
+      }),
+    })) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
+      reason: "test:refresh",
+    });
+
+    const stored = await tokenStore.get("U123", "sentry");
+    expect(stored?.refreshTokenExpiresAt).toBe(now.getTime() + 7200_000);
   });
 
   it("uses tokens refreshed by another request before refreshing a stale token", async () => {

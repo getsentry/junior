@@ -231,6 +231,9 @@ export function createOAuthBearerBroker(
                     );
                   }
                   const refreshedTokens = {
+                    ...(latest.refreshTokenExpiresAt
+                      ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
+                      : {}),
                     ...refreshed,
                     ...(latest.account ? { account: latest.account } : {}),
                   };

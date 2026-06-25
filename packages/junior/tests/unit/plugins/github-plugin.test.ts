@@ -959,6 +959,7 @@ describe("github plugin", () => {
 
   it("serializes concurrent refresh requests and reuses the rotated token", async () => {
     const now = new Date("2026-06-01T12:00:00Z");
+    const refreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(now);
     process.env.GITHUB_APP_CLIENT_ID = "client-id";
@@ -967,7 +968,6 @@ describe("github plugin", () => {
       access_token: "fresh-token",
       expires_in: 3600,
       refresh_token: "fresh-refresh-token",
-      refresh_token_expires_in: 7200,
     });
     const state = createMemoryState();
     await state.connect();
@@ -981,6 +981,7 @@ describe("github plugin", () => {
       accessToken: "stale-token",
       expiresAt: Date.now() + 60_000,
       refreshToken: "stale-refresh-token",
+      refreshTokenExpiresAt,
       scope: "repo",
     };
     await store.set("U123", "github", storedToken);
@@ -1033,6 +1034,70 @@ describe("github plugin", () => {
           },
         });
       }
+      await expect(store.get("U123", "github")).resolves.toMatchObject({
+        refreshToken: "fresh-refresh-token",
+        refreshTokenExpiresAt,
+      });
+    } finally {
+      await state.disconnect();
+    }
+  });
+
+  it("uses the refreshed token expiry when GitHub returns one", async () => {
+    const now = new Date("2026-06-01T12:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(now);
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    const oldRefreshTokenExpiresAt = now.getTime() + 30 * 24 * 60 * 60 * 1000;
+    mockGitHubRefresh(200, {
+      access_token: "fresh-token",
+      expires_in: 3600,
+      refresh_token: "fresh-refresh-token",
+      refresh_token_expires_in: 7200,
+    });
+
+    const state = createMemoryState();
+    await state.connect();
+    const store = new StateAdapterTokenStore(state);
+    const storedToken: PluginStoredTokens = {
+      account: {
+        id: "12345",
+        label: "requester",
+        url: "https://github.com/requester",
+      },
+      accessToken: "stale-token",
+      expiresAt: Date.now() + 60_000,
+      refreshToken: "stale-refresh-token",
+      refreshTokenExpiresAt: oldRefreshTokenExpiresAt,
+      scope: "repo",
+    };
+    await store.set("U123", "github", storedToken);
+    const currentUser = {
+      userId: "U123",
+      get: vi.fn(async () => await store.get("U123", "github")),
+      set: vi.fn(async (tokens) => {
+        await store.set("U123", "github", tokens);
+      }),
+      withRefresh: async <T>(callback: () => Promise<T>) =>
+        await store.withRefresh("U123", "github", callback),
+    };
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    try {
+      const result = await plugin.hooks?.issueCredential?.({
+        actor: { type: "user" as const, userId: "U123" },
+        grant: {
+          name: "user-write",
+          access: "write",
+          reason: "github.issue-create",
+        },
+        db,
+        log: pluginLog,
+        plugin: { name: "github" },
+        tokens: { currentUser },
+      });
+
+      expect(result?.type).toBe("lease");
       await expect(store.get("U123", "github")).resolves.toMatchObject({
         refreshToken: "fresh-refresh-token",
         refreshTokenExpiresAt: now.getTime() + 7200_000,
