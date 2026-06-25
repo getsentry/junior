@@ -59,6 +59,10 @@ export interface AgentContinueRunnerOptions {
   generateReply?: typeof generateAssistantReply;
   resumeTurn?: typeof resumeSlackTurn;
   scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
+  scheduleSessionCompletedPluginTasks?: (params: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<void>;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -217,6 +221,8 @@ export async function continueSlackAgentRun(
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
     generateReply: options.generateReply,
+    scheduleSessionCompletedPluginTasks:
+      options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
       let sessionRecord: AgentTurnSessionRecord | undefined;
       try {
@@ -266,6 +272,15 @@ export async function continueSlackAgentRun(
           teamId: destination.teamId,
           userId: userMessage.author.userId,
         });
+        if (!activeSessionRecord.source) {
+          await failAgentTurnSessionRecord({
+            conversationId: payload.conversationId,
+            expectedVersion: activeSessionRecord.version,
+            sessionId: payload.sessionId,
+            errorMessage: "Stored Slack source missing for continuation",
+          });
+          return false;
+        }
 
         return {
           messageText: userMessage.text,
@@ -279,6 +294,7 @@ export async function continueSlackAgentRun(
             },
             requester,
             destination: payload.destination,
+            source: activeSessionRecord.source,
             correlation: {
               conversationId: payload.conversationId,
               turnId: payload.sessionId,

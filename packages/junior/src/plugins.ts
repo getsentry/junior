@@ -186,9 +186,12 @@ export function pluginCatalogConfigFromEnv(
   return packages ? { packages } : undefined;
 }
 
-/** Return registrations that expose in-process runtime hooks. */
-export function pluginHookRegistrationsFromPluginSet(
+/** Return registrations that expose in-process runtime code. */
+export function pluginRuntimeRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,
 ): PluginRegistration[] {
-  return pluginSet?.registrations.filter((plugin) => plugin.hooks) ?? [];
+  return (
+    pluginSet?.registrations.filter((plugin) => plugin.hooks || plugin.tasks) ??
+    []
+  );
 }

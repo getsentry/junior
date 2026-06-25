@@ -23,6 +23,7 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 - Provider credential issuance; see [Credential Injection Spec](./credential-injection.md).
 - Plugin prompt, background task, database, CLI, heartbeat, and dispatch hooks; see
   [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md),
+  [Plugin Background Tasks Spec](./plugin-tasks.md),
   [Plugin Database Spec](./plugin-database.md),
   [Plugin CLI Spec](./plugin-cli.md),
   [Plugin Heartbeat Spec](./plugin-heartbeat.md), and
@@ -130,11 +131,11 @@ and validates that every registration has a matching manifest. Hook
 factories carry their manifest inline, so runtime code is not declared from
 `plugin.yaml`.
 
-Hook contexts expose host capabilities to trusted plugin code. Prefer direct
-standard capabilities over bespoke restricting facades; add a wrapper only when
-it represents a real model-visible, sandbox, credential, external-system,
-lifecycle, or migration boundary. Do not add a facade merely to stop trusted
-plugins from seeing core schemas or ordinary host objects.
+Hook contexts expose host capabilities to plugin code. Prefer direct standard
+capabilities over bespoke restricting facades; add a wrapper only when it
+represents a real model-visible, sandbox, credential, external-system,
+lifecycle, or migration boundary. Do not add a facade merely to stop plugins
+from seeing core schemas or ordinary host objects.
 Tool registration contexts receive `ctx.model`, a host-owned structured
 completion capability for plugin-owned semantic review before tool execution.
 `ctx.model` accepts a strict schema plus prompt text and uses Junior's
@@ -144,14 +145,16 @@ also receive `ctx.embedder`, the separate host-owned embedding capability for
 derived retrieval indexes. Current hook contracts are defined in
 [Plugin Database Spec](./plugin-database.md), [Plugin CLI Spec](./plugin-cli.md),
 [Plugin Heartbeat Spec](./plugin-heartbeat.md), [Plugin Dispatch
-Spec](./plugin-dispatch.md), and [Plugin Prompt Hooks
+Spec](./plugin-dispatch.md), [Plugin Background Tasks
+Spec](./plugin-tasks.md), and [Plugin Prompt Hooks
 Spec](./plugin-prompt-hooks.md). User prompt contexts receive only the narrow
 embedding capability needed for retrieval-oriented prompt contributions; they
 do not receive structured completion. Prompt hooks are exported by
-`@sentry/junior-plugin-api` and invoked by Junior core; observation and
-background-task hooks remain future work. Plugin `migrateStorage` hooks are
-limited to `junior upgrade` storage backfills after SQL schema migration; they
-are not request-time runtime hooks and must not dispatch agent work.
+`@sentry/junior-plugin-api` and invoked by Junior core. Plugin tasks are
+registered as top-level app-code task definitions and run through the
+core-owned background task queue. Plugin `migrateStorage` hooks are limited to
+`junior upgrade` storage backfills after SQL schema migration; they are not
+request-time runtime hooks and must not dispatch agent work.
 
 Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
 
@@ -186,6 +189,7 @@ Plugins may also provide `slackConversationLink` to replace the finalized Slack 
 - `./credential-injection.md`
 - `./agent-prompt.md`
 - `./plugin-prompt-hooks.md`
+- `./plugin-tasks.md`
 - `./plugin-database.md`
 - `./plugin-cli.md`
 - `./plugin-heartbeat.md`

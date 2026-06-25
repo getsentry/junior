@@ -1,6 +1,5 @@
 import {
   handleCallback,
-  QueueClient,
   registerDevConsumer,
   type MessageMetadata,
   type RetryDirective,
@@ -9,6 +8,7 @@ import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination } from "@/chat/destination";
 import { logWarn } from "@/chat/logging";
+import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
@@ -188,7 +188,7 @@ export function registerVercelConversationWorkDevConsumer(
   }
 
   return registerDevConsumer({
-    client: new QueueClient(),
+    client: createVercelQueueClient(),
     consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
     handler: (message: unknown, metadata: MessageMetadata) =>
       handleConversationQueueMessage(message, metadata, options),

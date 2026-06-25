@@ -157,7 +157,8 @@ async function configureLocalChatPlugins(): Promise<void> {
     import("@/chat/db"),
   ]);
   const pluginSet = await loadLocalPluginSet();
-  const plugins = pluginsModule.pluginHookRegistrationsFromPluginSet(pluginSet);
+  const plugins =
+    pluginsModule.pluginRuntimeRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginSet
     ? pluginsModule.pluginCatalogConfigFromPluginSet(pluginSet)
     : pluginsModule.pluginCatalogConfigFromEnv();

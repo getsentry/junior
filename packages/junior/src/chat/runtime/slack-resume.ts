@@ -5,6 +5,8 @@ import {
   type AssistantReply,
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
+import type { Source } from "@sentry/junior-plugin-api";
+import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
   logException,
@@ -116,6 +118,10 @@ interface ResumeSlackTurnArgs {
   lockKey?: string;
   initialText?: string;
   generateReply?: typeof generateAssistantReply;
+  scheduleSessionCompletedPluginTasks?: (params: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
@@ -124,6 +130,10 @@ interface ResumeSlackTurnArgs {
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
 }
+
+type ResumeReplyContext = AssistantReplyRequestContext & {
+  source: Source;
+};
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;
@@ -201,11 +211,15 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-): AssistantReplyRequestContext {
+): ResumeReplyContext {
   const replyContext = args.replyContext;
   if (!replyContext) {
     throw new TypeError("Slack resume requires a reply context");
   }
+  if (!replyContext.source) {
+    throw new TypeError("Slack resume requires a reply context source");
+  }
+  const source = replyContext.source;
   if (replyContext.destination.platform !== "slack") {
     throw new TypeError("Slack resume requires a Slack destination");
   }
@@ -220,6 +234,7 @@ function createResumeReplyContext(
 
   return {
     ...replyContext,
+    source,
     turnDeadlineAtMs:
       replyContext.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
     correlation: {
@@ -365,6 +380,31 @@ export async function resumeSlackTurn(
     });
     finalReplyDelivered = true;
     await runArgs.onSuccess?.(reply);
+    if (
+      reply.diagnostics.outcome === "success" &&
+      replyContext.correlation?.conversationId &&
+      replyContext.correlation.turnId
+    ) {
+      try {
+        const params = {
+          conversationId: replyContext.correlation.conversationId,
+          sessionId: replyContext.correlation.turnId,
+        };
+        if (runArgs.scheduleSessionCompletedPluginTasks) {
+          await runArgs.scheduleSessionCompletedPluginTasks(params);
+        } else {
+          await scheduleSessionCompletedPluginTasks(params);
+        }
+      } catch (scheduleError) {
+        logException(
+          scheduleError,
+          "plugin_session_completed_task_schedule_failed",
+          getResumeLogContext(runArgs, lockKey),
+          {},
+          "Plugin session.completed task scheduling failed",
+        );
+      }
+    }
   } catch (error) {
     await status.stop();
 

@@ -1,10 +1,12 @@
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
+import type { PluginTasks } from "./tasks";
 
 export type PluginRegistrationInput = {
   hooks?: PluginHooks;
   manifest: PluginManifest;
   packageName?: string;
+  tasks?: PluginTasks;
 };
 
 export interface PluginRegistration extends PluginRegistrationInput {}

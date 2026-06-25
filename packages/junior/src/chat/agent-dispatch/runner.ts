@@ -43,6 +43,7 @@ import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
+import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { scheduleDispatchCallback } from "./signing";
 import {
@@ -62,6 +63,7 @@ const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 export interface AgentDispatchRunnerDeps {
   generateAssistantReply?: typeof generateAssistantReplyImpl;
   scheduleCallback?: typeof scheduleDispatchCallback;
+  scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
@@ -173,6 +175,9 @@ export async function runAgentDispatchSlice(
   const generateAssistantReply =
     deps.generateAssistantReply ?? generateAssistantReplyImpl;
   const scheduleCallback = deps.scheduleCallback ?? scheduleDispatchCallback;
+  const scheduleCompletedTasks =
+    deps.scheduleSessionCompletedPluginTasks ??
+    scheduleSessionCompletedPluginTasks;
   const nowMs = Date.now();
   const claimedDispatch = await withDispatchLock(callback.id, async (state) => {
     const current = parseDispatchRecord(
@@ -405,6 +410,30 @@ export async function runAgentDispatchSlice(
       ...(failure ? { errorMessage: failure } : {}),
       resultMessageTs,
     });
+    if (!failure) {
+      try {
+        await scheduleCompletedTasks({
+          conversationId,
+          sessionId: getDispatchTurnId(dispatch.id),
+        });
+      } catch (error) {
+        logException(
+          error,
+          "plugin_session_completed_task_schedule_failed",
+          {
+            conversationId,
+            slackThreadId: conversationId,
+            slackChannelId: dispatch.destination.channelId,
+            runId: dispatch.id,
+            actorType: dispatch.actor.type,
+            actorId: dispatch.actor.id,
+            assistantUserName: botConfig.userName,
+          },
+          {},
+          "Plugin session.completed task scheduling failed",
+        );
+      }
+    }
   } catch (error) {
     if (error instanceof AuthorizationFlowDisabledError) {
       await markDispatch({

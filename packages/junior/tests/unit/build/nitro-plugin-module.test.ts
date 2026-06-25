@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
+  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -110,6 +112,15 @@ describe("juniorNitro plugin modules", () => {
         },
       ],
     });
+    expect(vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
+        },
+      ],
+    });
   });
 
   it("preserves existing Vercel route function settings", () => {
@@ -147,6 +158,15 @@ describe("juniorNitro plugin modules", () => {
                 },
               ],
             },
+            [JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]: {
+              memory: 1024,
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
+                },
+              ],
+            },
           },
         },
         virtual,
@@ -175,6 +195,16 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
+        },
+      ],
+    });
+    expect(vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 120,
+      memory: 1024,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
         },
       ],
     });
@@ -212,6 +242,36 @@ describe("juniorNitro plugin modules", () => {
     ]);
   });
 
+  it("uses a custom Vercel plugin task queue topic", () => {
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: "/tmp/junior-output",
+        },
+        rootDir: "/tmp/junior-app",
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({ pluginTaskQueueTopic: "custom_tasks" }).nitro.setup(nitro);
+    const vercel = getVercelOptions(nitro);
+
+    expect(
+      vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]
+        ?.experimentalTriggers,
+    ).toEqual([
+      {
+        type: "queue/v2beta",
+        topic: "custom_tasks",
+      },
+    ]);
+  });
+
   it("replaces a stale queue trigger when the topic changes", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
@@ -233,13 +293,24 @@ describe("juniorNitro plugin modules", () => {
                 },
               ],
             },
+            [JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]: {
+              experimentalTriggers: [
+                {
+                  type: "queue/v2beta",
+                  topic: "old_tasks",
+                },
+              ],
+            },
           },
         },
         virtual,
       },
     };
 
-    juniorNitro({ conversationWorkQueueTopic: "new_topic" }).nitro.setup(nitro);
+    juniorNitro({
+      conversationWorkQueueTopic: "new_topic",
+      pluginTaskQueueTopic: "new_tasks",
+    }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(
@@ -249,6 +320,15 @@ describe("juniorNitro plugin modules", () => {
       {
         type: "queue/v2beta",
         topic: "new_topic",
+      },
+    ]);
+    expect(
+      vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]
+        ?.experimentalTriggers,
+    ).toEqual([
+      {
+        type: "queue/v2beta",
+        topic: "new_tasks",
       },
     ]);
   });
@@ -279,6 +359,9 @@ describe("juniorNitro plugin modules", () => {
     expect(
       vercel.functionRules?.[JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE]
         ?.maxDuration,
+    ).toBe("max");
+    expect(
+      vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]?.maxDuration,
     ).toBe("max");
   });
 
@@ -329,7 +412,7 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
-  it("rejects direct plugin sets with hooks because hooks need a runtime import", () => {
+  it("rejects direct plugin sets with runtime registrations because they need a runtime import", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -359,7 +442,45 @@ describe("juniorNitro plugin modules", () => {
         ]),
       }).nitro.setup(nitro),
     ).toThrow(
-      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime hook registration(s): hooked. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.',
+      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime plugin registration(s): hooked. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same registrations at runtime.',
+    );
+  });
+
+  it("rejects direct plugin sets with tasks because tasks need a runtime import", () => {
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook() {},
+      },
+      options: {
+        output: {
+          serverDir: "/tmp/junior-output",
+        },
+        rootDir: "/tmp/junior-app",
+        vercel: {},
+        virtual,
+      },
+    };
+
+    expect(() =>
+      juniorNitro({
+        plugins: defineJuniorPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "tasked",
+              displayName: "Tasked",
+              description: "Runtime plugin",
+            },
+            tasks: {
+              processSession: {
+                run: async () => {},
+              },
+            },
+          }),
+        ]),
+      }).nitro.setup(nitro),
+    ).toThrow(
+      'juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime plugin registration(s): tasked. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same registrations at runtime.',
     );
   });
 

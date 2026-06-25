@@ -15,8 +15,8 @@ contracts.
 
 This spec describes the intended V1 memory plugin shape. Generic plugin prompt
 hooks and plugin prompt session state are available through
-`../plugin-prompt-hooks.md`. Passive learning still depends on future
-`observeTurn` and plugin background task handler surfaces.
+`../plugin-prompt-hooks.md`. Passive learning runs through plugin background
+tasks defined in `../plugin-tasks.md`.
 
 V1 stores only public/shareable memory content. Scope controls who can see a
 record; it is not a content sensitivity model. Private, sensitive, secret, or
@@ -35,7 +35,7 @@ Explicit tools also support user-directed memory management.
 - Plugin-owned SQL storage, retrieval indexes, embeddings, and model-provider
   boundaries.
 - Automatic recall through `userPrompt` when the memory plugin is enabled.
-- Passive learning through `observeTurn` plus a plugin background task handler.
+- Passive learning through a plugin background task handler.
 - Explicit `createMemory`, `removeMemory`, `listMemories`, and
   `searchMemories` tools.
 - Scope, attribution, lifecycle, tool, model, public-content, and secret
@@ -126,8 +126,8 @@ External storage and retrieval assumptions are based on primary documentation:
 
 ## Plugin Shape
 
-The V1 memory implementation is a trusted host plugin registered through
-`defineJuniorPlugin({ manifest, hooks })`.
+The V1 memory implementation is a plugin registered through
+`defineJuniorPlugin({ manifest, hooks, tasks })`.
 
 The plugin uses the package name and plugin name `memory`. Plugin database
 tables use the prefix:
@@ -143,12 +143,11 @@ defineJuniorPlugin({
   manifest,
   hooks: {
     userPrompt,
-    observeTurn,
-    tasks: {
-      extractMemories,
-      embedMemories,
-    },
     tools,
+  },
+  tasks: {
+    extractMemories,
+    embedMemories,
   },
 });
 ```
@@ -325,7 +324,7 @@ be exported as part of Junior core.
 
 The V1 contract has these implementation dependencies:
 
-1. Core plugin hook surfaces needed by this spec: `userPrompt`, `observeTurn`,
+1. Core plugin surfaces needed by this spec: `userPrompt`,
    plugin background tasks, `tools`, `ctx.db`, host embedding provider access,
    and plugin config/policy access. The explicit memory tool path also needs
    the tool-hook `ctx.model` review capability.
@@ -338,7 +337,7 @@ The V1 contract has these implementation dependencies:
 4. Automatic recall from stored memories through `userPrompt`, using lexical
    ranking before embeddings are available.
 5. Embedding provider integration, vector storage, and embedding repair tasks.
-6. `observeTurn` task enqueueing and `extractMemories` task execution.
+6. `session.completed` task scheduling and `extractMemories` task execution.
 7. Deduplication, TTL archival, and conservative supersession.
 8. Optional vector index tuning and hybrid ranking improvements.
 9. Admin CLI inspection and repair commands after redaction and access

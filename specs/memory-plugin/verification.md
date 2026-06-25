@@ -25,13 +25,13 @@ requirements.
 6. `userPrompt` retrieval failure: omit memory contribution, log safe metadata,
    and continue unless the failure indicates a broken required migration.
 7. Prompt message validation failure: omit the prompt message.
-8. `observeTurn` enqueue failure: log safe metadata and do not fail the
+8. Passive task scheduling failure: log safe metadata and do not fail the
    completed turn.
 9. Task delivery failure: core retries according to the task runner policy.
-10. Task retry bound exceeded or observation payload expired: mark or drop the
+10. Task retry bound exceeded or session projection expired: mark or drop the
     task with safe metadata; do not fail the completed user turn.
-11. Duplicate post-turn observation or duplicate task delivery: task
-    idempotency and source idempotency suppress duplicate stored memories.
+11. Duplicate scheduling or duplicate task delivery: task idempotency and
+    source idempotency suppress duplicate stored memories.
 12. Secret detection match: reject the write with a model-visible tool input
     error for explicit tools or drop the passive fact with safe logging.
 13. Visibility mismatch: fail closed and omit the memory.
@@ -106,13 +106,13 @@ Use integration tests for:
 - embedding failures leave memories listable and lexically recallable
 - private conversation memory content is absent from logs, traces, and
   dashboard reporting payloads
-- passive `observeTurn` enqueues an extraction task without failing delivery
-- extraction task payloads contain references rather than raw private text
+- passive session completion schedules an extraction task without failing delivery
+- extraction task params contain references rather than raw private text
 - extraction task handlers can run in a separate worker invocation
 - memory agent review rejects extracted candidates that violate installed
   workplace policy
 - malformed or failed memory agent review fails closed for passive extraction
-- duplicate observation or task delivery of the same turn stores accepted
+- duplicate scheduling or task delivery of the same turn stores accepted
   memories once
 
 When the future admin CLI is implemented, use integration tests for:

@@ -30,7 +30,7 @@ import type {
 import {
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
-  pluginHookRegistrationsFromPluginSet,
+  pluginRuntimeRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "./plugins";
 import { GET as healthGET } from "@/handlers/health";
@@ -40,11 +40,16 @@ import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
 import { POST as slackWebhookPOST } from "@/handlers/slack-webhook";
+import { JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE } from "@/deployment";
 import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
 } from "@/chat/task-execution/vercel-callback";
+import {
+  createVercelPluginTaskCallback,
+  registerVercelPluginTaskDevConsumer,
+} from "@/chat/plugins/task-callback";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
@@ -88,7 +93,7 @@ export interface JuniorAppOptions {
 interface JuniorVirtualConfig {
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
-  pluginHookRegistrations: string[];
+  pluginRuntimeRegistrations: string[];
 }
 
 /** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
@@ -116,12 +121,12 @@ async function resolveVirtualConfig(): Promise<
     const mod: {
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
-      pluginHookRegistrations?: string[];
+      pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
     return {
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
-      pluginHookRegistrations: mod.pluginHookRegistrations ?? [],
+      pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
     };
   } catch (error) {
     if (!isMissingVirtualConfig(error)) {
@@ -181,19 +186,20 @@ function validateBuildIncludesPluginPackages(
   );
 }
 
-function validateBuildIncludesPluginHookRegistrations(
-  hookRegistrations: PluginRegistration[],
+function validateBuildIncludesPluginRuntimeRegistrations(
+  runtimeRegistrations: PluginRegistration[],
   virtualConfig: JuniorVirtualConfig | undefined,
 ): void {
-  const bundledHookRegistrations = virtualConfig?.pluginHookRegistrations ?? [];
-  if (bundledHookRegistrations.length === 0) {
+  const bundledRuntimeRegistrations =
+    virtualConfig?.pluginRuntimeRegistrations ?? [];
+  if (bundledRuntimeRegistrations.length === 0) {
     return;
   }
 
   const registered = new Set(
-    hookRegistrations.map((plugin) => plugin.manifest.name),
+    runtimeRegistrations.map((plugin) => plugin.manifest.name),
   );
-  const missing = bundledHookRegistrations.filter(
+  const missing = bundledRuntimeRegistrations.filter(
     (pluginName) => !registered.has(pluginName),
   );
   if (missing.length === 0) {
@@ -201,7 +207,7 @@ function validateBuildIncludesPluginHookRegistrations(
   }
 
   throw new Error(
-    `createApp() is missing plugin registration(s) with runtime hooks bundled by juniorNitro(): ${missing.join(", ")}. Pass a runtime-safe plugin module to juniorNitro({ plugins: "./plugins" }) or pass the same defineJuniorPlugins(...) set to createApp({ plugins }).`,
+    `createApp() is missing plugin registration(s) with runtime code bundled by juniorNitro(): ${missing.join(", ")}. Pass a runtime-safe plugin module to juniorNitro({ plugins: "./plugins" }) or pass the same defineJuniorPlugins(...) set to createApp({ plugins }).`,
   );
 }
 
@@ -228,14 +234,14 @@ function mountPluginRoutes(app: Hono, routes: PluginRouteRegistration[]): void {
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
-  const plugins = pluginHookRegistrationsFromPluginSet(configuredPlugins);
+  const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
     ? pluginCatalogConfigFromPluginSet(configuredPlugins)
     : (virtualConfig?.plugins ?? pluginCatalogConfigFromEnv());
   if (configuredPlugins) {
     validateBuildIncludesPluginPackages(pluginConfig, virtualConfig);
   }
-  validateBuildIncludesPluginHookRegistrations(plugins, virtualConfig);
+  validateBuildIncludesPluginRuntimeRegistrations(plugins, virtualConfig);
   validatePlugins(plugins);
   getDb();
   const shouldValidatePluginCatalog =
@@ -330,6 +336,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let agentContinuePOST:
     | ReturnType<typeof createVercelConversationWorkCallback>
     | undefined;
+  let pluginTaskPOST:
+    | ReturnType<typeof createVercelPluginTaskCallback>
+    | undefined;
   let conversationWorkOptions:
     | VercelConversationWorkCallbackOptions
     | undefined;
@@ -343,12 +352,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   };
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
+    registerVercelPluginTaskDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
     );
     return agentContinuePOST(c.req.raw);
+  });
+  app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
+    pluginTaskPOST ??= createVercelPluginTaskCallback();
+    return pluginTaskPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {

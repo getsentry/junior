@@ -1,5 +1,5 @@
-import { QueueClient } from "@vercel/queue";
 import type { SendOptions, SendResult } from "@vercel/queue";
+import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -57,7 +57,7 @@ export function createVercelConversationWorkQueue(
   options: VercelConversationWorkQueueOptions = {},
 ): ConversationWorkQueue {
   const topic = resolveConversationWorkQueueTopic(options);
-  const client = options.client ?? new QueueClient();
+  const client = options.client ?? createVercelQueueClient();
 
   return {
     async send(

@@ -10,7 +10,16 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
-import { createLocalSource } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  localDestinationSchema,
+  type LocalDestination,
+} from "@sentry/junior-plugin-api";
+import { logException } from "@/chat/logging";
+import {
+  processPluginTask,
+  scheduleSessionCompletedPluginTasks,
+} from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
@@ -34,10 +43,6 @@ import {
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
-import {
-  localDestinationSchema,
-  type LocalDestination,
-} from "@sentry/junior-plugin-api";
 
 const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
 
@@ -329,6 +334,31 @@ export async function runLocalAgentTurn(
       messages: reply.piMessages,
       ttlMs: THREAD_STATE_TTL_MS,
     });
+  }
+  if (reply.diagnostics.outcome === "success") {
+    try {
+      const records = await scheduleSessionCompletedPluginTasks(
+        {
+          conversationId: input.conversationId,
+          sessionId: turnId,
+        },
+        { enqueue: false },
+      );
+      await Promise.all(
+        records.map((record) => processPluginTask(record.message)),
+      );
+    } catch (error) {
+      logException(
+        error,
+        "local_plugin_session_completed_task_failed",
+        {},
+        {
+          conversationId: input.conversationId,
+          turnId,
+        },
+        "Local plugin session.completed task failed after reply delivery",
+      );
+    }
   }
 
   return {

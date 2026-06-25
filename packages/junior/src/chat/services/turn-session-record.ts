@@ -5,7 +5,7 @@ import {
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
 import type { StoredSlackRequester } from "@/chat/requester";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -129,6 +129,7 @@ export async function persistRunningSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   destination?: Destination;
+  source?: Source;
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
@@ -156,6 +157,9 @@ export async function persistRunningSessionRecord(args: {
       cumulativeUsage: latestSessionRecord?.cumulativeUsage,
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.source ?? latestSessionRecord?.source)
+        ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
@@ -204,6 +208,7 @@ export async function persistCompletedSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
@@ -233,6 +238,9 @@ export async function persistCompletedSessionRecord(args: {
       ),
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.source ?? latestSessionRecord?.source)
+        ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
       sessionId: args.sessionId,
       sliceId: args.sliceId,
@@ -284,6 +292,7 @@ export async function persistAuthPauseSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -319,6 +328,9 @@ export async function persistAuthPauseSessionRecord(args: {
       ),
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.source ?? latestSessionRecord?.source)
+        ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
@@ -367,6 +379,7 @@ export async function persistTimeoutSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -411,6 +424,9 @@ export async function persistTimeoutSessionRecord(args: {
               destination: args.destination ?? latestSessionRecord?.destination,
             }
           : {}),
+        ...((args.source ?? latestSessionRecord?.source)
+          ? { source: args.source ?? latestSessionRecord?.source }
+          : {}),
         sessionId: args.sessionId,
         sliceId: args.currentSliceId,
         state: "failed",
@@ -441,6 +457,9 @@ export async function persistTimeoutSessionRecord(args: {
       cumulativeUsage,
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.source ?? latestSessionRecord?.source)
+        ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
       sessionId: args.sessionId,
       sliceId: nextSliceId,
@@ -488,6 +507,7 @@ export async function persistYieldSessionRecord(args: {
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
   errorMessage: string;
@@ -522,6 +542,9 @@ export async function persistYieldSessionRecord(args: {
       ),
       ...((args.destination ?? latestSessionRecord?.destination)
         ? { destination: args.destination ?? latestSessionRecord?.destination }
+        : {}),
+      ...((args.source ?? latestSessionRecord?.source)
+        ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
       sessionId: args.sessionId,
       sliceId: args.currentSliceId,

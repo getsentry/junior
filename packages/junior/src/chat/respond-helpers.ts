@@ -239,6 +239,15 @@ export function isToolResultError(result: unknown): boolean {
   return Boolean((result as { isError?: unknown }).isError);
 }
 
+/** Extract tool names that completed successfully from raw Pi messages. */
+export function getSuccessfulToolCalls(messages: readonly unknown[]): string[] {
+  return messages
+    .filter(isToolResultMessage)
+    .filter((result) => !isToolResultError(result))
+    .map((result) => normalizeToolNameFromResult(result))
+    .filter((value): value is string => Boolean(value));
+}
+
 /** Type guard for Pi SDK assistant messages. */
 export function isAssistantMessage(value: unknown): value is AssistantMessage {
   return (

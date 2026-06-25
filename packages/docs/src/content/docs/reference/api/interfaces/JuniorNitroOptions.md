@@ -54,4 +54,4 @@ Defined in: [junior/src/nitro.ts:41](https://github.com/getsentry/junior/blob/ma
 
 Defined in: [junior/src/nitro.ts:45](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L45)
 
-Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime hooks.
+Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code.

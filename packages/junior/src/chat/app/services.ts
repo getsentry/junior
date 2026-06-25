@@ -8,6 +8,7 @@ import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue,
 } from "@/chat/services/agent-continue";
+import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   createConversationMemoryService,
   type ConversationMemoryDeps,
@@ -106,6 +107,11 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
       scheduleAgentContinue:
         overrides.replyExecutor?.scheduleAgentContinue ?? scheduleAgentContinue,
+      scheduleSessionCompletedPluginTasks:
+        overrides.replyExecutor?.scheduleSessionCompletedPluginTasks ??
+        (async (params) => {
+          await scheduleSessionCompletedPluginTasks(params);
+        }),
       generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({

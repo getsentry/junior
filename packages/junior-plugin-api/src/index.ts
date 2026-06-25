@@ -14,3 +14,4 @@ export * from "./credentials";
 export * from "./hooks";
 export * from "./manifest";
 export * from "./registration";
+export * from "./tasks";

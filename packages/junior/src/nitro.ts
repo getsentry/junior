@@ -10,14 +10,16 @@ import {
   type RuntimePluginModule,
 } from "@/build/virtual-config";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { resolvePluginTaskQueueTopic } from "@/chat/plugins/task-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
+  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
   pluginCatalogConfigFromPluginSet,
-  pluginHookRegistrationsFromPluginSet,
+  pluginRuntimeRegistrationsFromPluginSet,
   type JuniorPluginSet,
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
@@ -39,7 +41,9 @@ export interface JuniorNitroOptions {
   maxDuration?: number;
   /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
   conversationWorkQueueTopic?: string;
-  /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime hooks. */
+  /** Vercel Queue topic for plugin background tasks. Must match the runtime queue producer topic. */
+  pluginTaskQueueTopic?: string;
+  /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code. */
   plugins?: JuniorNitroPluginSource;
   /**
    * Extra file patterns to copy into the server output for files that the
@@ -74,15 +78,15 @@ function isPluginSet(
 }
 
 function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
-  const pluginHookNames = pluginHookRegistrationsFromPluginSet(pluginSet).map(
-    (plugin) => plugin.manifest.name,
-  );
-  if (pluginHookNames.length === 0) {
+  const pluginRuntimeNames = pluginRuntimeRegistrationsFromPluginSet(
+    pluginSet,
+  ).map((plugin) => plugin.manifest.name);
+  if (pluginRuntimeNames.length === 0) {
     return;
   }
 
   throw new Error(
-    `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime hook registration(s): ${pluginHookNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same hooks at runtime.`,
+    `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime plugin registration(s): ${pluginRuntimeNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same registrations at runtime.`,
   );
 }
 
@@ -133,6 +137,9 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const queueTopic = resolveConversationWorkQueueTopic({
     topic: options.conversationWorkQueueTopic,
   });
+  const pluginTaskQueueTopic = resolvePluginTaskQueueTopic({
+    topic: options.pluginTaskQueueTopic,
+  });
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
@@ -177,6 +184,29 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
         },
       ],
     };
+
+  const existingPluginTaskRule =
+    nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] ?? {};
+  const existingPluginTaskTriggers = Array.isArray(
+    existingPluginTaskRule.experimentalTriggers,
+  )
+    ? existingPluginTaskRule.experimentalTriggers
+    : [];
+  const otherPluginTaskTriggers = existingPluginTaskTriggers.filter(
+    (trigger) => trigger.type !== VERCEL_QUEUE_TRIGGER_TYPE,
+  );
+
+  nitro.options.vercel.functionRules[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE] = {
+    maxDuration: callbackMaxDuration,
+    ...existingPluginTaskRule,
+    experimentalTriggers: [
+      ...otherPluginTaskTriggers,
+      {
+        type: VERCEL_QUEUE_TRIGGER_TYPE,
+        topic: pluginTaskQueueTopic,
+      },
+    ],
+  };
 }
 
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
@@ -213,9 +243,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         };
         const pluginCatalogConfig =
           pluginCatalogConfigFromPluginSet(directPluginSet);
-        const pluginHookRegistrations = pluginHookRegistrationsFromPluginSet(
-          directPluginSet,
-        ).map((plugin) => plugin.manifest.name);
+        const pluginRuntimeRegistrations =
+          pluginRuntimeRegistrationsFromPluginSet(directPluginSet).map(
+            (plugin) => plugin.manifest.name,
+          );
         injectVirtualConfig(nitro, {
           ...(pluginModule
             ? {
@@ -225,7 +256,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
               }
             : {}),
           plugins: pluginCatalogConfig,
-          pluginHookRegistrations,
+          pluginRuntimeRegistrations,
         });
 
         const copyBuildContent = async () => {

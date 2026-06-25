@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Define the future shape for trusted plugins to contribute host CLI commands
+Define the future shape for plugins to contribute host CLI commands
 without making those commands model-visible tools or sandbox commands.
 
 ## Scope
@@ -30,7 +30,7 @@ without making those commands model-visible tools or sandbox commands.
 
 ### Command Ownership
 
-Plugin CLI commands are trusted host code registered through app-code plugin
+Plugin CLI commands are app-owned runtime code registered through app-code plugin
 registration, not declarative `plugin.yaml`.
 
 The rough plugin shape is:

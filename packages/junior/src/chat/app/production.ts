@@ -114,6 +114,9 @@ export function createProductionConversationWorkOptions(options?: {
             generateAssistantReply,
             options?.services?.sandbox?.tracePropagation,
           ),
+          scheduleSessionCompletedPluginTasks:
+            options?.services?.replyExecutor
+              ?.scheduleSessionCompletedPluginTasks,
         }),
       runtime,
     }),

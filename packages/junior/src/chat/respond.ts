@@ -647,6 +647,7 @@ export async function generateAssistantReply(
   const requester = requesterFromContext(context);
   const actorRequester = actorRequesterFromContext(context);
   const surface = surfaceFromContext(context);
+  const runSource = toolInvocationSource(context);
   const credentialActor = context.credentialContext?.actor;
   const credentialActorLogContext = credentialActor
     ? {
@@ -1081,7 +1082,7 @@ export async function generateAssistantReply(
         streamFn: createTracedStreamFn({ conversationPrivacy }),
       },
     };
-    const toolSource = toolInvocationSource(context);
+    const toolSource = runSource;
     const toolDestination = toolInvocationDestination(context);
     let toolRuntimeContext: ToolRuntimeContext;
     if (toolSource.platform === "slack") {
@@ -1358,6 +1359,7 @@ export async function generateAssistantReply(
         channelName: context.correlation?.channelName,
         conversationId: sessionConversationId,
         destination: context.destination,
+        source: runSource,
         sessionId,
         sliceId: currentSliceId,
         messages,
@@ -1732,6 +1734,7 @@ export async function generateAssistantReply(
         currentDurationMs: Date.now() - replyStartedAtMs,
         currentUsage: turnUsage,
         destination: context.destination,
+        source: runSource,
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
@@ -1780,6 +1783,7 @@ export async function generateAssistantReply(
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
         destination: context.destination,
+        source: runSource,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,
@@ -1808,6 +1812,7 @@ export async function generateAssistantReply(
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
         destination: context.destination,
+        source: runSource,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,
@@ -1859,6 +1864,7 @@ export async function generateAssistantReply(
         channelName: context.correlation?.channelName,
         conversationId: timeoutResumeConversationId,
         destination: context.destination,
+        source: runSource,
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         currentDurationMs: Date.now() - replyStartedAtMs,

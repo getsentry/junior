@@ -8,7 +8,7 @@
  */
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
@@ -234,6 +234,10 @@ export interface ReplyExecutorServices {
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
+  scheduleSessionCompletedPluginTasks: (params: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<void>;
 }
 
 interface ReplyExecutorDeps {
@@ -291,10 +295,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const channelName = channelId
       ? await resolveChannelName(thread)
       : undefined;
+    const slackChannelType = resolveSlackChannelTypeFromMessage(message);
     const slackConversation = resolveSlackConversationContext({
       channelId,
       channelName,
-      channelType: resolveSlackChannelTypeFromMessage(message),
+      channelType: slackChannelType,
     });
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
@@ -304,6 +309,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       "Slack reply execution",
     );
     const teamId = destination.teamId;
+    const source = createSlackSource({
+      channelId: channelId ?? destination.channelId,
+      channelType: slackChannelType,
+      messageTs,
+      teamId,
+      threadTs,
+    });
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 
@@ -546,6 +558,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             surface: "slack",
             requester,
             destination,
+            source,
             traceId: getActiveTraceId(),
           }).catch((error) => {
             logException(
@@ -1051,6 +1064,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               state: "completed",
               requester,
               destination,
+              source,
               traceId: getActiveTraceId(),
             });
           }
@@ -1069,6 +1083,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           await options.onTurnCompleted?.();
+          if (reply.diagnostics.outcome === "success" && conversationId) {
+            try {
+              await deps.services.scheduleSessionCompletedPluginTasks({
+                conversationId,
+                sessionId: turnId,
+              });
+            } catch (error) {
+              logException(
+                error,
+                "plugin_session_completed_task_schedule_failed",
+                turnTraceContext,
+                {},
+                "Plugin session.completed task scheduling failed",
+              );
+            }
+          }
         } catch (error) {
           if (isCooperativeTurnYieldError(error)) {
             shouldPersistFailureState = false;

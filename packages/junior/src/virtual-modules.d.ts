@@ -5,5 +5,5 @@ declare module "#junior/config" {
 
   export const pluginSet: JuniorPluginSet | undefined;
   export const plugins: PluginCatalogConfig;
-  export const pluginHookRegistrations: string[];
+  export const pluginRuntimeRegistrations: string[];
 }

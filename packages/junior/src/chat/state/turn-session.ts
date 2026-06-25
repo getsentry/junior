@@ -7,7 +7,11 @@
  * the exact continuable boundary without duplicating the log.
  */
 import { THREAD_STATE_TTL_MS } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import {
+  sourceSchema,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -45,6 +49,7 @@ export interface AgentTurnSessionRecord {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   errorMessage?: string;
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
@@ -168,6 +173,11 @@ function parseAgentTurnSurface(value: unknown): AgentTurnSurface | undefined {
     : undefined;
 }
 
+function parseSource(value: unknown): Source | undefined {
+  const result = sourceSchema.safeParse(value);
+  return result.success ? result.data : undefined;
+}
+
 function parseAgentTurnSessionFields(
   parsed: Record<string, unknown>,
 ): ParsedAgentTurnSessionFields | undefined {
@@ -201,13 +211,16 @@ function parseAgentTurnSessionFields(
     parsed.destination === undefined
       ? undefined
       : parseDestination(parsed.destination);
+  const source =
+    parsed.source === undefined ? undefined : parseSource(parsed.source);
   if (
     typeof conversationId !== "string" ||
     typeof sessionId !== "string" ||
     sliceId === undefined ||
     version === undefined ||
     updatedAtMs === undefined ||
-    (parsed.destination !== undefined && !destination)
+    (parsed.destination !== undefined && !destination) ||
+    (parsed.source !== undefined && !source)
   ) {
     return undefined;
   }
@@ -226,6 +239,7 @@ function parseAgentTurnSessionFields(
     ...(logSessionId ? { logSessionId } : {}),
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     ...(destination ? { destination } : {}),
+    ...(source ? { source } : {}),
     ...(requester ? { requester } : {}),
     ...(Array.isArray(parsed.loadedSkillNames)
       ? {
@@ -391,6 +405,7 @@ function materializeAgentTurnSessionRecord(
     piMessages,
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
+    ...(stored.source ? { source: stored.source } : {}),
     ...(stored.cumulativeUsage
       ? { cumulativeUsage: stored.cumulativeUsage }
       : {}),
@@ -466,6 +481,7 @@ function buildStoredRecord(args: {
   cumulativeDurationMs: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   committedMessageCount: number;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
@@ -499,6 +515,7 @@ function buildStoredRecord(args: {
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
     ...(args.destination ? { destination: args.destination } : {}),
+    ...(args.source ? { source: args.source } : {}),
     ...(args.requester ? { requester: args.requester } : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
@@ -588,6 +605,7 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.destination
         ? { destination: args.existing.destination }
         : {}),
+      ...(args.existing.source ? { source: args.existing.source } : {}),
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
@@ -619,6 +637,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   conversationStore?: ConversationStore;
@@ -678,6 +697,9 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...((args.destination ?? existingRecord?.destination)
         ? { destination: args.destination ?? existingRecord?.destination }
         : {}),
+      ...((args.source ?? existingRecord?.source)
+        ? { source: args.source ?? existingRecord?.source }
+        : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
@@ -714,6 +736,7 @@ export async function recordAgentTurnSessionSummary(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   conversationStore?: ConversationStore;
@@ -754,6 +777,9 @@ export async function recordAgentTurnSessionSummary(args: {
       : {}),
     ...((args.destination ?? existing?.destination)
       ? { destination: args.destination ?? existing?.destination }
+      : {}),
+    ...((args.source ?? existing?.source)
+      ? { source: args.source ?? existing?.source }
       : {}),
     ...((args.requester ?? existing?.requester)
       ? { requester: args.requester ?? existing?.requester }

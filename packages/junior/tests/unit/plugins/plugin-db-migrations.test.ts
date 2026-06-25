@@ -146,7 +146,7 @@ describe("plugin DB migrations", () => {
     }
   });
 
-  it("accepts trusted plugin SQL without inspecting object ownership", () => {
+  it("accepts plugin SQL without inspecting object ownership", () => {
     const root = mkdtempSync(path.join(tmpdir(), "junior-plugin-migrations-"));
     const migrationsDir = path.join(root, "migrations");
     mkdirSync(migrationsDir);

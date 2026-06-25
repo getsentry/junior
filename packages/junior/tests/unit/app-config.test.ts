@@ -594,7 +594,7 @@ describe("createApp plugin config", () => {
           },
         ],
       },
-      pluginHookRegistrations: ["hooked"],
+      pluginRuntimeRegistrations: ["hooked"],
     }));
 
     await createApp({

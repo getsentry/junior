@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Define the plugin model for provider integrations. Plugins package declarative runtime configuration, optional skills, optional MCP tool sources, and optional runtime hooks without letting skill prose own runtime setup or credentials.
+Define the plugin model for provider integrations. Plugins package declarative runtime configuration, optional skills, optional MCP tool sources, optional runtime hooks, and optional background tasks without letting skill prose own runtime setup or credentials.
 
 ## Scope
 
@@ -25,20 +25,21 @@ Define the plugin model for provider integrations. Plugins package declarative r
 
 ## Core Model
 
-1. A plugin is either a local `plugins/<name>/plugin.yaml` directory, an explicitly declared manifest package, or a JavaScript registration returned by `defineJuniorPlugin({ manifest, hooks })`.
+1. A plugin is either a local `plugins/<name>/plugin.yaml` directory, an explicitly declared manifest package, or a JavaScript registration returned by `defineJuniorPlugin({ manifest, hooks, tasks })`.
 2. Plugin discovery is explicit. Runtime must not scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to find plugins.
 3. `plugin.yaml` owns runtime setup: provider domains, credentials, API headers, command env, runtime dependencies, postinstall commands, OAuth, MCP endpoints, config keys, and skill roots.
 4. Skills consume plugin-provided runtime surfaces. They must not tell the agent to install CLIs, bootstrap package managers, configure credentials, repair sandbox packages, or create MCP server config.
 5. Credential delivery is host-owned and credential-context-bound. Real provider secrets never enter sandbox env vars, files, command args, skill text, model-visible tool args, or logs.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded or the model explicitly requests that provider through the MCP bridge tools.
 7. Runtime-hook behavior is app-code registration, not manifest registration. Apps export one runtime-safe `defineJuniorPlugins(...)` set and point `juniorNitro({ plugins: "./plugins" })` at it; `createApp()` reads the same set from Nitro's virtual module.
-8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for plugins with runtime hooks. Do not split one plugin definition across both.
+8. A package uses one definition source: `plugin.yaml` for declarative plugins, or a JavaScript factory with an inline manifest for plugins with runtime code. Do not split one plugin definition across both.
 9. Core prompt text must stay plugin-agnostic. Plugin-specific behavior reaches the model through skill descriptions/bodies, tool descriptions, schemas, `promptSnippet`, `promptGuidelines`, and searched MCP descriptors.
-10. JavaScript plugin registrations are trusted host code. Core should prevent
-    obvious registration and boundary mistakes, but must not add restrictive
-    facades solely to hide core schemas, internals, or capabilities from those
-    plugins. Use direct host capabilities unless there is a real model-visible,
-    sandbox, credential, external-system, lifecycle, or migration boundary.
+10. JavaScript plugin registrations are app-owned runtime code. Core should
+    prevent obvious registration and boundary mistakes, but must not add
+    restrictive facades solely to hide core schemas, internals, or capabilities
+    from plugins. Use direct host capabilities unless there is a real
+    model-visible, sandbox, credential, external-system, lifecycle, or migration
+    boundary.
 
 ## File Shape
 
@@ -57,10 +58,11 @@ plugins/sentry/
 - [Credential Injection Spec](./credential-injection.md): credential-context-bound provider leases and sandbox egress auth.
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and agent continuation behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
-- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): implemented prompt hook contributions plus future turn observation and plugin background task contracts.
+- [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): implemented prompt hook contributions.
+- [Plugin Background Tasks Spec](./plugin-tasks.md): plugin-owned durable background task registration, queue dispatch, and session projection.
 - [Plugin Database Spec](./plugin-database.md): packaged SQL migrations and `ctx.db` access for plugin hooks.
 - [Plugin CLI Spec](./plugin-cli.md): future plugin-contributed host CLI commands for operator/admin workflows.
-- [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, observation, background task, database, and tool hooks.
+- [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, background task, database, and tool hooks.
 - [Plugin Heartbeat Spec](./plugin-heartbeat.md): heartbeat and tool hooks.
 - [Plugin Dispatch Spec](./plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
 
@@ -92,6 +94,7 @@ plugins/sentry/
 - `./plugin-runtime.md`
 - `./credential-injection.md`
 - `./plugin-prompt-hooks.md`
+- `./plugin-tasks.md`
 - `./plugin-database.md`
 - `./plugin-cli.md`
 - `./memory-plugin/index.md`

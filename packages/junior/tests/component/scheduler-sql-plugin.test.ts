@@ -662,7 +662,7 @@ INSERT INTO junior_scheduler_runs (
         manifest: {
           name: "stateless",
           displayName: "Stateless",
-          description: "Storage migration with trusted database access",
+          description: "Storage migration with database access",
         },
         hooks: {
           migrateStorage(ctx) {
