@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
+
+const SLACK_SOURCE = createSlackSource({
+  teamId: SLACK_DESTINATION.teamId,
+  channelId: SLACK_DESTINATION.channelId,
+  channelType: "channel",
+  threadTs: "1712345.0005",
+});
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
@@ -44,6 +52,7 @@ describe("agent continuation runner callbacks", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
       resumeReason: "timeout",
       requester: {
         slackUserId: "U123",

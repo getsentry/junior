@@ -346,6 +346,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           requester,
           destination,
+          source: lockedSessionRecord.source,
           correlation: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,

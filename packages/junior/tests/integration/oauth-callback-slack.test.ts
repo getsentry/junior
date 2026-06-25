@@ -8,6 +8,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -27,6 +28,14 @@ const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } as const;
+
+function slackSource(threadTs: string) {
+  return createSlackSource({
+    teamId: SLACK_DESTINATION.teamId,
+    channelId: SLACK_DESTINATION.channelId,
+    threadTs,
+  });
+}
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule =
@@ -184,6 +193,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.009"),
       piMessages: [
         {
           role: "user",
@@ -380,6 +390,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.012"),
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -544,6 +555,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.011"),
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -631,6 +643,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.012"),
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -641,6 +654,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.012"),
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
@@ -738,6 +752,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "abandoned",
       destination: SLACK_DESTINATION,
+      source: slackSource("1700000000.010"),
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,

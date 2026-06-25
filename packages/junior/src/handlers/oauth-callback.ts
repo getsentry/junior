@@ -67,6 +67,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import { requireSlackDestination } from "@/chat/destination";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 interface OAuthCallbackOptions {
   generateReply?: typeof generateAssistantReply;
@@ -376,6 +377,7 @@ async function resumeOAuthSessionRecordTurn(
           },
           requester,
           destination,
+          source: lockedSessionRecord.source,
           correlation: {
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,
@@ -497,11 +499,12 @@ async function resumePendingOAuthMessage(
     destination.teamId,
     stored.userId,
   );
+  const messageTs = getTurnUserSlackMessageTs(latestUserMessage);
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
-    messageTs: getTurnUserSlackMessageTs(latestUserMessage),
+    messageTs,
     connectedText: "",
     generateReply: options.generateReply,
     replyContext: {
@@ -510,6 +513,12 @@ async function resumePendingOAuthMessage(
       },
       requester,
       destination: stored.destination,
+      source: createSlackSource({
+        teamId: destination.teamId,
+        channelId: stored.channelId,
+        threadTs: stored.threadTs,
+        ...(messageTs ? { messageTs } : {}),
+      }),
       correlation: {
         conversationId: threadId,
         channelId: stored.channelId,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const { logExceptionMock, postMessageMock, setStatusMock } = vi.hoisted(() => ({
   logExceptionMock: vi.fn(),
@@ -64,6 +65,15 @@ const TEST_SLACK_DESTINATION = {
   channelId: "C-test",
 } as const;
 
+function testSlackSource(threadTs: string) {
+  return createSlackSource({
+    teamId: TEST_SLACK_DESTINATION.teamId,
+    channelId: TEST_SLACK_DESTINATION.channelId,
+    channelType: "channel",
+    threadTs,
+  });
+}
+
 describe("resumeAuthorizedRequest", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -94,6 +104,7 @@ describe("resumeAuthorizedRequest", () => {
           actor: { type: "user", userId: "U-test" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.0001"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: () => new Promise<never>(() => {}),
@@ -131,6 +142,7 @@ describe("resumeAuthorizedRequest", () => {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0004"),
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => {
@@ -173,6 +185,7 @@ describe("resumeAuthorizedRequest", () => {
             actor: { type: "user", userId: "U-test" },
           },
           destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0005"),
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         generateReply: async () => ({
@@ -236,6 +249,7 @@ describe("resumeAuthorizedRequest", () => {
           actor: { type: "user", userId: "U-test" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.0002"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {
@@ -265,6 +279,7 @@ describe("resumeAuthorizedRequest", () => {
           actor: { type: "user", userId: "U-test" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.0003"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       generateReply: async () => {

@@ -7,10 +7,19 @@ import {
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const generateAssistantReplyMock = vi.fn();
 
 const ORIGINAL_ENV = { ...process.env };
+
+function slackSource(threadTs: string) {
+  return createSlackSource({
+    teamId: SLACK_DESTINATION.teamId,
+    channelId: SLACK_DESTINATION.channelId,
+    threadTs,
+  });
+}
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type ThreadStateModule = typeof import("@/chat/runtime/thread-state");
@@ -102,6 +111,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 2,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0001"),
         piMessages: [
           {
             role: "user",
@@ -258,6 +268,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 5,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0002"),
         piMessages: [
           {
             role: "user",
@@ -358,6 +369,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 2,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0007"),
         piMessages: [
           {
             role: "user",
@@ -432,6 +444,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 2,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0006"),
         piMessages: [
           {
             role: "user",
@@ -526,6 +539,7 @@ describe("agent continuation Slack integration", () => {
         sliceId: 2,
         state: "awaiting_resume",
         destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0003"),
         piMessages: [
           {
             role: "user",

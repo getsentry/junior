@@ -4,6 +4,7 @@ import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
 } from "@/chat/slack/output";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getCapturedSlackApiCalls,
@@ -33,6 +34,15 @@ const TEST_SLACK_DESTINATION = {
   channelId: "C123",
 } as const;
 
+function testSlackSource(threadTs: string) {
+  return createSlackSource({
+    teamId: TEST_SLACK_DESTINATION.teamId,
+    channelId: TEST_SLACK_DESTINATION.channelId,
+    channelType: "channel",
+    threadTs,
+  });
+}
+
 describe("oauth resume slack integration", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -59,6 +69,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.001"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
@@ -155,6 +166,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.007"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-1",
@@ -217,6 +229,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.002"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
@@ -256,6 +269,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.003"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
@@ -292,6 +306,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.006"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
@@ -329,6 +344,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.004"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
@@ -387,6 +403,7 @@ describe("oauth resume slack integration", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.005"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
