@@ -17,6 +17,8 @@ export type LocalRequester = z.output<typeof localRequesterSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
+export type SourceType = Source["type"];
+export type SlackChannelType = "channel" | "group" | "im" | "mpim";
 
 export type Destination = z.output<typeof destinationSchema>;
 
@@ -86,6 +88,59 @@ export interface LocalInvocationContext extends BaseInvocationContext {
 }
 
 export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
+
+/** Build a normalized Slack source from runtime-owned Slack coordinates. */
+export function createSlackSource(input: {
+  channelId: string;
+  channelType?: SlackChannelType;
+  messageTs?: string;
+  teamId: string;
+  threadTs?: string;
+}): SlackSource {
+  return {
+    platform: "slack",
+    type: slackSourceType(input),
+    teamId: input.teamId,
+    channelId: input.channelId,
+    ...(input.messageTs ? { messageTs: input.messageTs } : {}),
+    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+  };
+}
+
+function slackSourceType(input: {
+  channelId: string;
+  channelType?: SlackChannelType;
+}): SourceType {
+  if (input.channelType === "channel") return "pub";
+  if (
+    input.channelType === "group" ||
+    input.channelType === "im" ||
+    input.channelType === "mpim"
+  ) {
+    return "priv";
+  }
+  if (input.channelId.startsWith("D") || input.channelId.startsWith("G")) {
+    return "priv";
+  }
+  if (input.channelId.startsWith("C")) {
+    return "priv";
+  }
+  throw new Error(`Unsupported Slack channel ID prefix: ${input.channelId}`);
+}
+
+/** Build a normalized local source from a local conversation id. */
+export function createLocalSource(conversationId: string): LocalSource {
+  return {
+    platform: "local",
+    type: "priv",
+    conversationId,
+  };
+}
+
+/** Return whether a source is private to a person or restricted group. */
+export function isPrivateSource(source: Source): boolean {
+  return source.type === "priv";
+}
 
 /** Narrow a runtime destination to the Slack-specific address shape. */
 export function isSlackDestination(

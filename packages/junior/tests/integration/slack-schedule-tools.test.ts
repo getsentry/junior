@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   PluginToolInputError,
   type PluginToolDefinition,
@@ -67,11 +68,11 @@ function createContext(
   delete contextOverrides.channelId;
   delete contextOverrides.teamId;
   const context: SchedulerToolContext = {
-    source: {
-      platform: "slack",
+    source: createSlackSource({
       teamId,
       channelId,
-    },
+      channelType: channelId.startsWith("C") ? "channel" : "im",
+    }),
     requester: {
       platform: "slack",
       teamId,
@@ -321,25 +322,26 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
-  it("rejects non-canonical Slack source context before creating a task", async () => {
-    const rejected = createTask(
+  it("accepts Slack source message context and stores canonical task destinations", async () => {
+    const result = await createTask(
       createContext({
-        source: {
-          platform: "slack",
+        source: createSlackSource({
           teamId: TEST_TEAM_ID,
           channelId: "C123",
+          channelType: "channel",
           threadTs: "1700000000.000",
-        } as SchedulerToolContext["source"],
+        }),
       }),
     );
 
-    await expect(rejected).rejects.toThrow(PluginToolInputError);
-    await expect(rejected).rejects.toThrow(
-      "Active Slack conversation must not include unknown fields.",
-    );
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    const taskId = (result as { task: { id: string } }).task.id;
+    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+      destination: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        channelId: "C123",
+      },
+    });
   });
 
   it("rejects invalid Slack credential subject context before creating a task", async () => {
@@ -884,7 +886,11 @@ describe("Slack schedule tools", () => {
         {
           ...context,
           source: {
-            platform: "slack",
+            ...createSlackSource({
+              teamId: TEST_TEAM_ID,
+              channelId: "D123",
+              channelType: "im",
+            }),
             teamId: TEST_TEAM_ID,
             channelId: "slack:D123:1700000000.000",
           },
@@ -1213,11 +1219,11 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const tools = getPluginTools({
-        source: {
-          platform: "slack",
+        source: createSlackSource({
           teamId: TEAM_ID,
           channelId: "DDM",
-        },
+          channelType: "im",
+        }),
         destination: {
           platform: "slack",
           teamId: TEAM_ID,

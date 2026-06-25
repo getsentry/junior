@@ -8,7 +8,12 @@
  * should stay outside this file.
  */
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  createSlackSource,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -412,10 +417,9 @@ function toolInvocationSource(context: ReplyRequestContext): Source {
     return context.source;
   }
   if (context.destination.platform !== "slack") {
-    return context.destination;
+    return createLocalSource(context.destination.conversationId);
   }
-  return {
-    platform: "slack",
+  return createSlackSource({
     teamId: context.destination.teamId,
     channelId: context.destination.channelId,
     ...(context.correlation?.messageTs
@@ -424,7 +428,7 @@ function toolInvocationSource(context: ReplyRequestContext): Source {
     ...(context.correlation?.threadTs
       ? { threadTs: context.correlation.threadTs }
       : {}),
-  };
+  });
 }
 
 function toolInvocationDestination(context: ReplyRequestContext): Destination {

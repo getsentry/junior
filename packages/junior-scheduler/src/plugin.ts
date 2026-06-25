@@ -1,5 +1,6 @@
 import {
   defineJuniorPlugin,
+  createSlackSource,
   type Dispatch,
   type PluginToolDefinition,
   type PluginOperationalReportContent,
@@ -76,11 +77,10 @@ function buildScheduledTaskDispatchMetadata(args: {
 }
 
 function scheduledTaskDispatchSource(task: ScheduledTask): Source {
-  return {
-    platform: "slack",
+  return createSlackSource({
     teamId: task.destination.teamId,
     channelId: task.destination.channelId,
-  };
+  });
 }
 
 function schedulerStore(ctx: { db: unknown }): SchedulerStore {
@@ -117,14 +117,7 @@ function createSchedulerToolContext(
 ): SchedulerToolContext {
   return {
     credentialSubject: ctx.slack?.credentialSubject,
-    source:
-      ctx.source.platform === "slack"
-        ? {
-            platform: "slack",
-            teamId: ctx.source.teamId,
-            channelId: ctx.source.channelId,
-          }
-        : undefined,
+    source: ctx.source.platform === "slack" ? ctx.source : undefined,
     requester: ctx.requester?.platform === "slack" ? ctx.requester : undefined,
     store: schedulerStore(ctx),
     userText: ctx.userText,

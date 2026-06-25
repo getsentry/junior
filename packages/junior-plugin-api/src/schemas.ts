@@ -19,14 +19,19 @@ export const nonBlankStringSchema = z
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);
 
-/** Runtime-owned Slack address for routing future work or side effects. */
-export const slackDestinationSchema = z
+/** Runtime source visibility visible to plugins. */
+export const sourceTypeSchema = z.enum(["pub", "priv"]);
+
+const slackAddressSchema = z
   .object({
     platform: z.literal("slack"),
     teamId: slackTeamIdSchema,
     channelId: slackConversationIdSchema,
   })
   .strict();
+
+/** Runtime-owned Slack address for routing future work or side effects. */
+export const slackDestinationSchema = slackAddressSchema;
 
 /** Runtime-owned local CLI conversation address. */
 export const localDestinationSchema = z
@@ -43,18 +48,22 @@ export const destinationSchema = z.discriminatedUnion("platform", [
 ]);
 
 /** Runtime-owned Slack coordinates for the inbound invocation. */
-export const slackSourceSchema = z
-  .object({
-    platform: z.literal("slack"),
-    teamId: slackTeamIdSchema,
-    channelId: slackConversationIdSchema,
+export const slackSourceSchema = slackAddressSchema
+  .extend({
+    type: sourceTypeSchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
   })
   .strict();
 
 /** Runtime-owned local CLI coordinates for the inbound invocation. */
-export const localSourceSchema = localDestinationSchema;
+export const localSourceSchema = z
+  .object({
+    platform: z.literal("local"),
+    type: z.literal("priv"),
+    conversationId: localConversationIdSchema,
+  })
+  .strict();
 
 /** Runtime-owned provider-neutral coordinates for the inbound invocation. */
 export const sourceSchema = z.discriminatedUnion("platform", [

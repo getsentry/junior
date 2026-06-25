@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
@@ -47,12 +48,12 @@ function createContext(
       teamId: "T123",
       channelId: destinationChannelId,
     },
-    source: {
-      platform: "slack",
+    source: createSlackSource({
       teamId: "T123",
       channelId: sourceChannelId,
+      channelType: sourceChannelId.startsWith("C") ? "channel" : "im",
       messageTs: "1700000000.321",
-    },
+    }),
     destinationChannelId,
     messageTs: "1700000000.321",
     sourceChannelId,

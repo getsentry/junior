@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
@@ -16,10 +20,7 @@ function ctx(channelId?: string): ToolRuntimeContext {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
       },
-      source: {
-        platform: "local" as const,
-        conversationId: "local:test:tool-registration",
-      },
+      source: createLocalSource("local:test:tool-registration"),
       sandbox: noopSandbox,
     };
   }
@@ -30,11 +31,11 @@ function ctx(channelId?: string): ToolRuntimeContext {
       teamId: "T123",
       channelId,
     },
-    source: {
-      platform: "slack" as const,
+    source: createSlackSource({
       teamId: "T123",
       channelId,
-    },
+      channelType: channelId.startsWith("C") ? "channel" : "im",
+    }),
     sandbox: noopSandbox,
   };
 }
@@ -165,10 +166,7 @@ describe("Slack tool registration", () => {
           platform: "local",
           conversationId: "local:test:run-test",
         },
-        source: {
-          platform: "local",
-          conversationId: "local:test:run-test",
-        },
+        source: createLocalSource("local:test:run-test"),
         sandbox: noopSandbox,
       },
     );

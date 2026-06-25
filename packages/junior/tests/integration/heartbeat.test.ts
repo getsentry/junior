@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createSlackSource,
   defineJuniorPlugin,
   type Destination,
   type Source,
@@ -46,11 +47,19 @@ const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
-const SLACK_SOURCE = {
-  platform: "slack",
+const SLACK_SOURCE = createSlackSource({
   teamId: "T123",
   channelId: "C123",
-} satisfies Source;
+  channelType: "channel",
+}) satisfies Source;
+
+function slackDmSource(channelId = "D123"): Source {
+  return createSlackSource({
+    teamId: "T123",
+    channelId,
+    channelType: "im",
+  });
+}
 
 let schedulerDb: SchedulerDb | undefined;
 
@@ -584,11 +593,7 @@ describe("plugin heartbeat", () => {
           channelId: "D123",
         },
         input: "Run the scheduled task.",
-        source: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "D123",
-        },
+        source: slackDmSource(),
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -611,11 +616,7 @@ describe("plugin heartbeat", () => {
         channelId: "D123",
       },
       input: "Run the scheduled task.",
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "D123",
-      },
+      source: slackDmSource(),
     });
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
@@ -846,7 +847,12 @@ describe("plugin heartbeat", () => {
       "Post a digest. Summarize the latest state.",
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
-    expect(dispatchRecord?.source).toEqual(SLACK_SOURCE);
+    expect(dispatchRecord?.source).toEqual(
+      createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+      }),
+    );
     expect(dispatchRecord?.metadata).toMatchObject({
       creatorSlackUserId: "U039RR91S",
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,

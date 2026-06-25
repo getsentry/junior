@@ -3,12 +3,12 @@ import { Type } from "@sinclair/typebox";
 import {
   PluginToolInputError,
   pluginCredentialSubjectSchema,
-  destinationSchema,
-  isSlackDestination,
+  sourceSchema,
   type PluginCredentialSubject,
   type PluginToolDefinition,
   type SlackDestination,
   type SlackRequester,
+  type SlackSource,
 } from "@sentry/junior-plugin-api";
 import { buildCalendarRecurrence, parseScheduleTimestamp } from "./cadence";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
@@ -26,7 +26,7 @@ import type {
 export interface SchedulerToolContext {
   credentialSubject?: PluginCredentialSubject;
   requester?: SlackRequester;
-  source?: SlackDestination;
+  source?: SlackSource;
   store: SchedulerStore;
   userText?: string;
 }
@@ -47,9 +47,9 @@ function throwToolInputError(error: string): never {
 function requireActiveConversation(
   context: SchedulerToolContext,
 ): SlackDestination {
-  const parsed = destinationSchema.safeParse(context.source);
+  const parsed = sourceSchema.safeParse(context.source);
   if (!parsed.success) {
-    const source = context.source as Partial<SlackDestination> | undefined;
+    const source = context.source as Partial<SlackSource> | undefined;
     const issues = parsed.error.issues as readonly SchemaIssue[];
     if (!source || source.platform !== "slack") {
       throwToolInputError("No active Slack conversation is available.");
@@ -68,11 +68,15 @@ function requireActiveConversation(
     throwToolInputError("No active Slack conversation is available.");
   }
 
-  if (!isSlackDestination(parsed.data)) {
+  if (parsed.data.platform !== "slack") {
     throwToolInputError("No active Slack conversation is available.");
   }
 
-  return parsed.data;
+  return {
+    platform: "slack",
+    teamId: parsed.data.teamId,
+    channelId: parsed.data.channelId,
+  };
 }
 
 function requireRequester(

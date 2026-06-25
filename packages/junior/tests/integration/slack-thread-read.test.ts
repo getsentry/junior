@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
@@ -20,11 +21,13 @@ function createContext(
       teamId: "T123",
       channelId: destinationChannelId,
     },
-    source: overrides.source ?? {
-      platform: "slack",
-      teamId: "T123",
-      channelId: sourceChannelId,
-    },
+    source:
+      overrides.source ??
+      createSlackSource({
+        teamId: "T123",
+        channelId: sourceChannelId,
+        channelType: sourceChannelId.startsWith("C") ? "channel" : "im",
+      }),
     destinationChannelId,
     sourceChannelId,
     teamId: "T123",

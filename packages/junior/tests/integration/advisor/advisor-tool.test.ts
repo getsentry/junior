@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -19,6 +20,7 @@ const LOCAL_DESTINATION = {
   platform: "local",
   conversationId: "local:test:advisor",
 } as const;
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 const config: AdvisorConfig = {
   modelId: "openai/gpt-5.5",
@@ -94,7 +96,7 @@ describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
       destination: LOCAL_DESTINATION,
-      source: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       sandbox: {} as any,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
@@ -189,7 +191,7 @@ describe("advisor tool", () => {
         {},
         {
           destination: LOCAL_DESTINATION,
-          source: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
           sandbox: {} as any,
         },
       ),

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 
@@ -14,12 +15,12 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
     teamId: "T123",
     channelId: "C123",
   },
-  source: {
-    platform: "slack",
+  source: createSlackSource({
     teamId: "T123",
     channelId: "C123",
+    channelType: "channel",
     messageTs: "1700000000.100",
-  },
+  }),
   destinationChannelId: "C123",
   messageTs: "1700000000.100",
   sourceChannelId: "C123",

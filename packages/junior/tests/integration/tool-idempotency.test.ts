@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack/canvas-tools";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
@@ -56,11 +57,11 @@ function slackContext(channelId: string): SlackToolContext {
       teamId: "T123",
       channelId,
     },
-    source: {
-      platform: "slack" as const,
+    source: createSlackSource({
       teamId: "T123",
       channelId,
-    },
+      channelType: channelId.startsWith("C") ? "channel" : "im",
+    }),
     destinationChannelId: channelId,
     sourceChannelId: channelId,
     teamId: "T123",

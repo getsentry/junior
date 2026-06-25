@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -17,11 +18,11 @@ const validOptions = {
     channelId: "C123",
   },
   input: "Run the scheduled task.",
-  source: {
-    platform: "slack" as const,
+  source: createSlackSource({
     teamId: "T123",
     channelId: "C123",
-  },
+    channelType: "channel",
+  }),
 };
 
 function createPluginCredentialSubject(
@@ -201,7 +202,7 @@ describe("agent dispatch validation", () => {
     ).toBeUndefined();
   });
 
-  it("backfills legacy persisted dispatch source from destination", () => {
+  it("rejects persisted dispatch records without source", () => {
     const legacyRecord = {
       actor: { type: "system", id: "scheduler" },
       attempt: 0,
@@ -217,20 +218,7 @@ describe("agent dispatch validation", () => {
       version: 1,
     };
 
-    expect(parseDispatchRecord(legacyRecord)).toMatchObject({
-      id: "dispatch_legacy",
-      source: validOptions.source,
-    });
-
-    expect(
-      parseDispatchRecord({
-        ...legacyRecord,
-        destination: {
-          ...validOptions.destination,
-          threadTs: "1700000000.000",
-        },
-      }),
-    ).toBeUndefined();
+    expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
   });
 
   it("bounds durable idempotency and metadata keys", () => {

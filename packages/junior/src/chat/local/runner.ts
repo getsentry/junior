@@ -10,6 +10,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
@@ -228,6 +229,7 @@ export async function runLocalAgentTurn(
         actor: { type: "system", id: "local-cli" },
       },
       destination,
+      source: createLocalSource(destination.conversationId),
       requester: {
         fullName: "Local CLI",
         platform: "local",

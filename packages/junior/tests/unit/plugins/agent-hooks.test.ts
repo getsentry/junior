@@ -1,4 +1,6 @@
 import {
+  createLocalSource,
+  createSlackSource,
   defineJuniorPlugin,
   type PluginConversations,
   type ToolRegistrationHookContext,
@@ -30,6 +32,7 @@ const LOCAL_DESTINATION = {
   platform: "local",
   conversationId: "local:test:agent-hooks",
 } as const;
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 const EMPTY_CONVERSATIONS: PluginConversations = {
   async listRecent() {
@@ -42,6 +45,19 @@ const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "DDM",
 } as const;
+const SLACK_SOURCE = createSlackSource({
+  teamId: SLACK_DESTINATION.teamId,
+  channelId: SLACK_DESTINATION.channelId,
+  channelType: "im",
+});
+
+function slackSource(channelId: string) {
+  return createSlackSource({
+    teamId: "T123",
+    channelId,
+    channelType: channelId.startsWith("C") ? "channel" : "im",
+  });
+}
 
 function fakeSandbox(
   writes: Array<{ content: string | Uint8Array; path: string }>,
@@ -125,7 +141,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_DESTINATION),
+        getPluginSystemPromptContributions(LOCAL_SOURCE),
       ).resolves.toEqual([
         { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
         { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
@@ -152,7 +168,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_DESTINATION),
+        getPluginSystemPromptContributions(LOCAL_SOURCE),
       ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);
@@ -170,7 +186,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           async userPrompt(ctx) {
             expect(ctx.requester).toBeUndefined();
-            expect(ctx.source).toEqual(LOCAL_DESTINATION);
+            expect(ctx.source).toEqual(LOCAL_SOURCE);
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
             expect(ctx).not.toHaveProperty("model");
@@ -184,7 +200,7 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
+            source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "remember this",
           },
@@ -221,7 +237,7 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
+            source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
@@ -252,7 +268,7 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
+            source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
@@ -295,7 +311,7 @@ describe("agent plugin hooks", () => {
         getPluginUserPromptContributions({
           context: {
             conversationId: "conversation-1",
-            source: LOCAL_DESTINATION,
+            source: LOCAL_SOURCE,
             destination: LOCAL_DESTINATION,
             userText: "hello",
           },
@@ -343,7 +359,7 @@ describe("agent plugin hooks", () => {
       const tools = getPluginTools({
         destination: SLACK_DESTINATION,
         requester: TEST_REQUESTER,
-        source: SLACK_DESTINATION,
+        source: SLACK_SOURCE,
         sandbox: {} as any,
       });
 
@@ -378,7 +394,7 @@ describe("agent plugin hooks", () => {
       expect(() =>
         getPluginTools({
           destination: LOCAL_DESTINATION,
-          source: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
           sandbox: {} as any,
         }),
       ).toThrow("must be a camelCase identifier");
@@ -415,7 +431,7 @@ describe("agent plugin hooks", () => {
           {},
           {
             destination: LOCAL_DESTINATION,
-            source: LOCAL_DESTINATION,
+            source: LOCAL_SOURCE,
             sandbox: {} as any,
           },
         ),
@@ -810,7 +826,7 @@ describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
       destination: LOCAL_DESTINATION,
-      source: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
       sandbox: {} as any,
     },
   ) {
@@ -839,12 +855,9 @@ describe("getPluginTools channel resolution", () => {
   }
 
   it("passes runtime-owned destination directly to plugin hooks", () => {
+    const source = slackSource("DDM");
     const ctx = capturePluginContext({
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "DDM",
-      },
+      source,
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -852,11 +865,7 @@ describe("getPluginTools channel resolution", () => {
       },
       sandbox: {} as any,
     });
-    expect(ctx.source).toEqual({
-      platform: "slack",
-      teamId: "T123",
-      channelId: "DDM",
-    });
+    expect(ctx.source).toEqual(source);
     expect(ctx.destination).toEqual({
       platform: "slack",
       teamId: "T123",
@@ -867,11 +876,7 @@ describe("getPluginTools channel resolution", () => {
   it("computes channelCapabilities from source channelId", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "DDM",
-      },
+      source: slackSource("DDM"),
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -886,11 +891,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "DDM",
-      },
+      source: slackSource("DDM"),
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -909,11 +910,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "CSOURCE",
-      },
+      source: slackSource("CSOURCE"),
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -930,7 +927,7 @@ describe("getPluginTools channel resolution", () => {
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1780479160.406339",
       destination: SLACK_DESTINATION,
-      source: SLACK_DESTINATION,
+      source: SLACK_SOURCE,
       sandbox: {} as any,
     });
 
@@ -946,7 +943,7 @@ describe("getPluginTools channel resolution", () => {
   it("does not synthesize Slack context from local destinations", () => {
     const ctx = capturePluginContext();
     expect(ctx.destination).toEqual(LOCAL_DESTINATION);
-    expect(ctx.source).toEqual(LOCAL_DESTINATION);
+    expect(ctx.source).toEqual(LOCAL_SOURCE);
     expect(ctx.slack).toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   createOrGetDispatch,
   getDispatchConversationId,
@@ -78,6 +79,14 @@ function slackAddress(channelId = "C123") {
   };
 }
 
+function slackSource(channelId = "C123") {
+  return createSlackSource({
+    teamId: "T123",
+    channelId,
+    channelType: channelId.startsWith("C") ? "channel" : "im",
+  });
+}
+
 describe("agent dispatch runner", () => {
   beforeEach(async () => {
     process.env.JUNIOR_SECRET = "dispatch-runner-secret";
@@ -104,7 +113,7 @@ describe("agent dispatch runner", () => {
         destination: slackAddress(),
         input: "Run the scheduled task.",
         metadata: { runId: "run-1" },
-        source: slackAddress(),
+        source: slackSource(),
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
@@ -112,7 +121,7 @@ describe("agent dispatch runner", () => {
       expect(context.requester).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
       expect(context.surface).toBe("api");
-      expect(context.source).toEqual(slackAddress());
+      expect(context.source).toEqual(slackSource());
       expect(context.dispatch).toEqual({
         actor: { type: "system", id: "scheduler" },
         metadata: { runId: "run-1" },
@@ -214,7 +223,7 @@ describe("agent dispatch runner", () => {
         destination: slackAddress(),
         input: "Run the scheduled task.",
         metadata: { runId: "run-isolated-context" },
-        source: slackAddress(),
+        source: slackSource(),
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
@@ -263,7 +272,7 @@ describe("agent dispatch runner", () => {
         idempotencyKey: "run-timeout",
         destination: slackAddress(),
         input: "Run the scheduled task.",
-        source: slackAddress(),
+        source: slackSource(),
       },
     });
     const scheduleCallback = vi.fn(async () => undefined);
@@ -306,7 +315,7 @@ describe("agent dispatch runner", () => {
         credentialSubject: createCredentialSubject(),
         destination: slackAddress("D123"),
         input: "Run the scheduled task.",
-        source: slackAddress("D123"),
+        source: slackSource("D123"),
       },
     });
     const generateAssistantReply = vi.fn(async (_input, context) => {
@@ -351,7 +360,7 @@ describe("agent dispatch runner", () => {
         idempotencyKey: "run-busy",
         destination: slackAddress(),
         input: "Run the scheduled task.",
-        source: slackAddress(),
+        source: slackSource(),
       },
     });
     const state = getStateAdapter();

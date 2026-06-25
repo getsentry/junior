@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
@@ -342,11 +343,11 @@ describe("slackUserLookup", () => {
         [],
         {},
         {
-          source: {
-            platform: "slack",
+          source: createSlackSource({
             teamId: "T_TEST",
             channelId: "C_TEST",
-          },
+            channelType: "channel",
+          }),
           destination: {
             platform: "slack",
             teamId: "T_TEST",

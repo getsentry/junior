@@ -6,7 +6,10 @@ import {
   createMemoryStore,
   type MemoryDb,
 } from "@sentry/junior-memory";
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  createSlackSource,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
@@ -120,13 +123,13 @@ WHERE table_name = 'junior_memory_memories'
         teamId: "T123",
         userId: "U123",
       };
-      const source = {
-        platform: "slack" as const,
+      const source = createSlackSource({
         teamId: "T123",
         channelId: "C123",
+        channelType: "channel",
         messageTs: "1718800000.000000",
         threadTs: "1718800000.000000",
-      };
+      });
       const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
         conversationId,
         requester,

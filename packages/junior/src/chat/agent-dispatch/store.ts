@@ -159,18 +159,7 @@ function buildDispatchId(plugin: string, idempotencyKey: string): string {
 export function parseDispatchRecord(
   value: unknown,
 ): DispatchRecord | undefined {
-  const candidate =
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    !("source" in value) &&
-    "destination" in value
-      ? {
-          ...(value as Record<string, unknown>),
-          source: (value as { destination: unknown }).destination,
-        }
-      : value;
-  const parsed = dispatchRecordSchema.safeParse(candidate);
+  const parsed = dispatchRecordSchema.safeParse(value);
   return parsed.success ? (parsed.data as DispatchRecord) : undefined;
 }
 

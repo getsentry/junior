@@ -1,33 +1,34 @@
 import { describe, expect, it } from "vitest";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
   it("returns a byte-stable static system prompt", () => {
-    const source = {
-      platform: "slack" as const,
+    const source = createSlackSource({
       teamId: "T123",
       channelId: "C123",
-    };
+      channelType: "channel",
+    });
     const systemPrompt = buildSystemPrompt({ source });
 
     expect(buildSystemPrompt({ source })).toBe(systemPrompt);
   });
 
   it("returns a byte-stable local system prompt variant", () => {
-    const source = {
-      platform: "local" as const,
-      conversationId: "local:test:run-test",
-    };
+    const source = createLocalSource("local:test:run-test");
     const systemPrompt = buildSystemPrompt({ source });
 
     expect(buildSystemPrompt({ source })).toBe(systemPrompt);
     expect(systemPrompt).not.toBe(
       buildSystemPrompt({
-        source: {
-          platform: "slack",
+        source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
-        },
+          channelType: "channel",
+        }),
       }),
     );
   });
@@ -73,11 +74,11 @@ describe("prompt builders", () => {
       dispatch: {
         actor: { type: "system", id: "scheduler" },
         plugin: "scheduler",
-        source: {
-          platform: "slack",
+        source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
-        },
+          channelType: "channel",
+        }),
         destination: {
           platform: "slack",
           teamId: "T123",
