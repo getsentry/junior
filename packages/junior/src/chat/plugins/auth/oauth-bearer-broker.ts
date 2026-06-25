@@ -22,6 +22,7 @@ import type { OAuthBearerCredentials, PluginManifest } from "../types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const TOKEN_REFRESH_TIMEOUT_MS = 20_000;
 
 class OAuthRefreshRejectedError extends Error {
   constructor(message: string) {
@@ -80,6 +81,7 @@ async function refreshAccessToken(
     method: "POST",
     headers: request.headers,
     body: request.body,
+    signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
   });
 
   if (!response.ok) {

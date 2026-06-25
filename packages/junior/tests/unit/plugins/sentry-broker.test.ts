@@ -230,6 +230,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(stored?.accessToken).toBe("new-access-token");
     expect(stored?.refreshToken).toBe("new-refresh-token");
     expect(stored?.refreshTokenExpiresAt).toBe(refreshTokenExpiresAt);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://sentry.io/oauth/token/",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("uses the refreshed token expiry when the provider returns one", async () => {
