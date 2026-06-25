@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+const originalPluginTaskQueueTopic = process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(async () => {
@@ -13,13 +14,134 @@ afterEach(async () => {
   } else {
     process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
   }
+  if (originalPluginTaskQueueTopic === undefined) {
+    delete process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC;
+  } else {
+    process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC = originalPluginTaskQueueTopic;
+  }
   if (originalJuniorSecret === undefined) {
     delete process.env.JUNIOR_SECRET;
   } else {
     process.env.JUNIOR_SECRET = originalJuniorSecret;
   }
   vi.doUnmock("@vercel/queue");
+  vi.doUnmock("@/chat/plugins/task-runner");
   vi.resetModules();
+});
+
+describe("plugin task Vercel queue integration", () => {
+  it("passes parsed plugin task payloads through the Vercel callback", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(() => routeHandler);
+    const processPluginTask = vi.fn(async () => undefined);
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer: vi.fn(),
+    }));
+    vi.doMock("@/chat/plugins/task-runner", () => ({
+      processPluginTask,
+    }));
+
+    const { createVercelPluginTaskCallback } =
+      await import("@/chat/plugins/task-callback");
+
+    expect(createVercelPluginTaskCallback()).toBe(routeHandler);
+
+    type TestQueueMetadata = {
+      consumerGroup: string;
+      createdAt: Date;
+      deliveryCount: number;
+      expiresAt: Date;
+      messageId: string;
+      region: string;
+      topicName: string;
+    };
+    const metadata: TestQueueMetadata = {
+      consumerGroup: "consumer",
+      createdAt: new Date(1_000),
+      deliveryCount: 1,
+      expiresAt: new Date(2_000),
+      messageId: "msg_1",
+      region: "iad1",
+      topicName: "topic",
+    };
+    const call = handleCallback.mock.calls[0] as unknown as
+      | [
+          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
+          {
+            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
+          },
+        ]
+      | undefined;
+    const handler = call?.[0];
+    const retry = call?.[1].retry;
+    expect(handler).toEqual(expect.any(Function));
+    expect(retry).toEqual(expect.any(Function));
+    if (!handler || !retry) {
+      throw new Error("Expected plugin task queue handler and retry hook");
+    }
+
+    await expect(
+      handler({ malformed: true }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processPluginTask).not.toHaveBeenCalled();
+
+    const message = {
+      name: "extractMemories",
+      params: {
+        conversationId: "local:test:plugin-callback",
+        sessionId: "turn-1",
+      },
+      plugin: "memory",
+      trigger: "session.completed" as const,
+    };
+    await expect(handler(message, metadata)).resolves.toBeUndefined();
+    expect(processPluginTask).toHaveBeenCalledWith(message);
+
+    processPluginTask.mockRejectedValueOnce(new Error("task failed"));
+    await expect(handler(message, metadata)).rejects.toThrow("task failed");
+    expect(retry(new Error("still failing"), metadata)).toBeUndefined();
+    expect(
+      retry(new Error("still failing"), { ...metadata, deliveryCount: 5 }),
+    ).toEqual({ acknowledge: true });
+  });
+
+  it("sends plugin task messages with the derived idempotency key", async () => {
+    const send = vi.fn(async () => ({ messageId: "msg_1" }));
+    const QueueClient = vi.fn(function QueueClientMock() {
+      return { send };
+    });
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient,
+      handleCallback: vi.fn(),
+      registerDevConsumer: vi.fn(),
+    }));
+
+    process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC = "plugin_tasks";
+
+    const [{ getVercelPluginTaskQueue }, { pluginTaskId }] = await Promise.all([
+      import("@/chat/plugins/task-queue"),
+      import("@/chat/plugins/task-message"),
+    ]);
+    const message = {
+      name: "extractMemories",
+      params: {
+        conversationId: "local:test:plugin-send",
+        sessionId: "turn-1",
+      },
+      plugin: "memory",
+      trigger: "session.completed" as const,
+    };
+
+    await getVercelPluginTaskQueue().send(message);
+
+    expect(send).toHaveBeenCalledWith("plugin_tasks", message, {
+      idempotencyKey: pluginTaskId(message),
+    });
+  });
 });
 
 describe("registerVercelConversationWorkDevConsumer", () => {

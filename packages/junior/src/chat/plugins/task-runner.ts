@@ -3,7 +3,7 @@
  *
  * Core schedules tasks from completed sessions and exposes plugins only a
  * bounded session projection rather than live runtime internals or queue
- * envelopes.
+ * payloads.
  */
 import type {
   PluginRegistration,
@@ -29,10 +29,7 @@ import {
 } from "@/chat/respond-helpers";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getPlugins } from "./agent-hooks";
-import {
-  createPluginTaskQueueMessage,
-  type PluginTaskQueueMessage,
-} from "./task-queue-signing";
+import { pluginTaskId, type PluginTaskQueueMessage } from "./task-message";
 import { getVercelPluginTaskQueue, type PluginTaskQueue } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
@@ -41,13 +38,7 @@ type SessionCompletedTaskParams = PluginTaskParams;
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export interface ScheduleSessionCompletedPluginTasksOptions {
-  enqueue?: boolean;
   queue?: PluginTaskQueue;
-}
-
-export interface ScheduledPluginTask {
-  id: string;
-  message: PluginTaskQueueMessage;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,7 +103,7 @@ function requesterForSession(
     requester: record.requester,
     teamId: record.requester.teamId,
     userId: record.requester.slackUserId,
-  }) as Requester;
+  });
 }
 
 async function withPluginTaskLock<T>(
@@ -182,7 +173,7 @@ function taskPluginContext(
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
   return {
     db: getDb(),
-    id: message.id,
+    id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     name: message.name,
     params: sessionParams,
@@ -200,38 +191,19 @@ function findPluginTask(message: PluginTaskQueueMessage) {
   const plugin = getPlugins().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
-  const task = plugin?.tasks?.[message.name];
-  if (!plugin || !task) {
+  if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
     return undefined;
   }
+  const task = plugin.tasks[message.name];
   return { plugin, task };
-}
-
-async function assertCompletedSessionAvailable(
-  params: SessionCompletedTaskParams,
-): Promise<void> {
-  const record = await getAgentTurnSessionRecord(
-    params.conversationId,
-    params.sessionId,
-  );
-  if (
-    !record ||
-    record.state !== "completed" ||
-    !record.source ||
-    !record.destination
-  ) {
-    throw new Error(
-      "Plugin session.completed tasks require a completed session record",
-    );
-  }
 }
 
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
   params: SessionCompletedTaskParams,
   options: ScheduleSessionCompletedPluginTasksOptions = {},
-): Promise<ScheduledPluginTask[]> {
-  const scheduled: ScheduledPluginTask[] = [];
+): Promise<PluginTaskQueueMessage[]> {
+  const scheduled: PluginTaskQueueMessage[] = [];
   const coreParams = pluginTaskParamsSchema.parse(params);
   const taskRegistrations = getPlugins().flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
@@ -239,31 +211,25 @@ export async function scheduleSessionCompletedPluginTasks(
   if (taskRegistrations.length === 0) {
     return scheduled;
   }
-  await assertCompletedSessionAvailable(coreParams);
-  const shouldEnqueue = options.enqueue !== false;
-  const queue = shouldEnqueue
-    ? (options.queue ?? getVercelPluginTaskQueue())
-    : undefined;
+  const queue = options.queue ?? getVercelPluginTaskQueue();
   for (const { name, plugin } of taskRegistrations) {
-    const message = createPluginTaskQueueMessage({
+    const message: PluginTaskQueueMessage = {
       name,
       params: coreParams,
       plugin: plugin.manifest.name,
       trigger: "session.completed",
-    });
-    scheduled.push({ id: message.id, message });
-    if (queue) {
-      await queue.send(message);
-    }
+    };
+    scheduled.push(message);
+    await queue.send(message);
   }
   return scheduled;
 }
 
-/** Execute one verified plugin task request. */
+/** Execute one parsed plugin task request. */
 export async function processPluginTask(
   message: PluginTaskQueueMessage,
 ): Promise<void> {
-  await withPluginTaskLock(message.id, async () => {
+  await withPluginTaskLock(pluginTaskId(message), async () => {
     const resolved = findPluginTask(message);
     if (!resolved) {
       throw new Error(

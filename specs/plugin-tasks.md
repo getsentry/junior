@@ -18,7 +18,7 @@ an in-process background worker surviving a serverless request.
 - App-code plugin task registration through `defineJuniorPlugin(...)`.
 - The public task definition and task context exposed by
   `@sentry/junior-plugin-api`.
-- Core-owned queue envelopes, Vercel Queue dispatch, retries, and callback
+- Core-owned queue payloads, Vercel Queue dispatch, retries, and callback
   routing.
 - The `session.completed` trigger and completed-session projection.
 - Local development execution for plugin tasks.
@@ -35,7 +35,7 @@ an in-process background worker surviving a serverless request.
 - Replacing durable conversation execution; see `./task-execution.md`.
 - Exactly-once delivery from the queue provider.
 - Storing raw conversation transcripts, raw tool payloads, credentials, or
-  provider secrets in task params or queue envelopes.
+  provider secrets in task params or queue payloads.
 
 ## Contracts
 
@@ -125,14 +125,12 @@ The task context must not expose raw queue messages, queue clients, queue
 topics, route URLs, retry acknowledgement controls, raw HTTP requests, provider
 credentials, raw Slack clients, or cross-plugin state.
 
-### Queue Envelope
+### Queue Payload
 
-The queue payload is a signed core-owned envelope containing the bounded task
-request:
+The queue payload is a core-owned bounded task request:
 
 ```ts
 interface PluginTaskQueueMessage {
-  id: string;
   plugin: string;
   name: string;
   trigger: "session.completed";
@@ -140,9 +138,9 @@ interface PluginTaskQueueMessage {
 }
 ```
 
-Core owns signing, verification, routing, queue topic selection, and callback
-registration. Queue messages must not include raw transcript text, raw tool
-payloads, credentials, tokens, or unbounded session data.
+Core owns parsing, routing, queue topic selection, and callback registration.
+Queue messages must not include raw transcript text, raw tool payloads,
+credentials, tokens, or unbounded session data.
 
 The task id is derived from the plugin name, task name, core trigger, and
 parsed params. When sending to Vercel Queues, core must use that id as the queue
@@ -154,7 +152,7 @@ idempotent because Vercel Queues are at least once.
 
 Core executes a task by:
 
-1. Verifying the queue envelope when invoked through the queue callback.
+1. Parsing the queue payload when invoked through the queue callback.
 2. Resolving the current plugin task registration.
 3. Re-parsing task params with the core task params schema.
 4. Building the task context.
@@ -222,12 +220,11 @@ source visibility logic.
    registration.
 2. Invalid task params at scheduling time: scheduling fails before queue
    dispatch.
-3. Invalid signed queue envelope or params at callback time: reject the
+3. Invalid queue payload or params at callback time: reject the
    callback without running plugin code or retrying.
 4. Missing task registration at execution time: the task attempt fails and
    follows Vercel Queue retry policy.
-5. Queue callback signature failure: reject the callback without running a
-   task.
+5. Malformed queue callback payload: reject the callback without running a task.
 6. Duplicate queue delivery: handler idempotency and downstream storage
    uniqueness make duplicate delivery safe; core also serializes concurrent
    attempts for the same task id with a durable lock.
@@ -258,23 +255,23 @@ tokens, authorization URLs, or cross-plugin state.
 Use component or integration tests for:
 
 - params parsed before queue dispatch and again before execution
-- `session.completed` scheduling sends one signed queue message per plugin task
+- `session.completed` scheduling sends one queue message per plugin task
 - duplicate scheduling derives the same idempotency id
 - task execution loads a bounded completed-session projection from durable
   session storage
 - failed task attempts bubble to the queue retry boundary
-- queue callback verification rejects invalid signatures
+- queue callback parsing rejects malformed payloads
 - local CLI task processing uses the same task runner path
 
 Use unit tests for:
 
 - startup-local task name validation and internal trigger validation
 - task id derivation from parsed params
-- queue envelope signing and parsing when kept as local deterministic logic
+- queue payload parsing when kept as local deterministic logic
 
 Use evals only for model-dependent behavior performed by a plugin task, such as
 memory extraction quality. Do not use evals to prove deterministic task storage,
-queue signing, or retry mechanics.
+queue payload parsing, or retry mechanics.
 
 ## Related Specs
 

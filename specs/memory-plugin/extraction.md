@@ -60,24 +60,18 @@ Examples that must not be stored:
 
 ## Passive Learning
 
-The memory plugin learns passively from `session.completed` plugin background
-tasks scheduled by Junior core after successful completed sessions.
+The memory plugin learns passively from its `extractMemories`
+`session.completed` plugin background task. Junior core schedules registered
+plugin tasks after successful completed sessions; the memory plugin owns the
+memory-specific decision about whether that completed session is learnable.
 
 Core scheduling must:
 
 1. Run only after the user-visible turn is durably committed enough that
    scheduling failure cannot fail delivery.
-2. Enqueue one `extractMemories` plugin background task for the completed
-   session.
-3. Ignore assistant-authored claims as memory sources.
-4. Skip task scheduling when the source is not allowed to expose private turn
-   text to the memory plugin.
-5. Skip task scheduling when install policy disables passive extraction for the
-   current source, scope, or requester.
-6. Skip task scheduling unless the source conversation is classified as
-   `public` by Junior's existing conversation privacy/destination visibility
-   contracts.
-7. Use a stable task id derived from the plugin, task name, trigger, and
+2. Enqueue the registered `extractMemories` plugin background task for the
+   completed session.
+3. Use a stable task id derived from the plugin, task name, trigger, and
    completed-session reference.
 
 The task params must contain stable references and safe metadata only. They must
@@ -96,11 +90,14 @@ The memory plugin's `extractMemories` task handler must:
 1. Reload the bounded completed-session projection through
    `ctx.session.load()`.
 2. Reload current install-level memory policy.
-3. Process only that completed turn.
-4. Extract candidate facts with a structured model output contract.
-5. Ignore assistant-authored claims as memory sources.
-6. Skip extraction when the bounded session projection is unavailable,
-   expired, malformed, or no longer visible to the plugin.
+3. Skip extraction when passive extraction is disabled, the source is not
+   learnable, the source is private, the source conversation is not classified
+   as public by Junior's existing conversation privacy/destination visibility
+   contracts, or the bounded session projection is unavailable, expired,
+   malformed, or no longer visible to the plugin.
+4. Process only that completed turn.
+5. Extract candidate facts with a structured model output contract.
+6. Ignore assistant-authored claims as memory sources.
 7. Run memory agent review for extracted candidates.
 8. Reject malformed, low-confidence, incoherent, semantically duplicative,
    unsafe, or out-of-scope facts.

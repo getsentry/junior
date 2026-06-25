@@ -1,8 +1,8 @@
 /**
  * Vercel Queue callback for plugin background tasks.
  *
- * The queue payload is a signed bounded task request. Vercel retries thrown
- * task failures, while malformed envelopes are acknowledged without executing
+ * The queue payload is a bounded task request. Vercel retries thrown
+ * task failures, while malformed payloads are acknowledged without executing
  * plugin code.
  */
 import {
@@ -16,13 +16,13 @@ import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import { processPluginTask } from "./task-runner";
 import { resolvePluginTaskQueueTopic } from "./task-queue";
-import { verifyPluginTaskQueueMessage } from "./task-queue-signing";
+import { parsePluginTaskQueueMessage } from "./task-message";
 
 export const PLUGIN_TASK_DEV_CONSUMER_GROUP = "junior_plugin_tasks_dev";
 const PLUGIN_TASK_MAX_DELIVERIES = 5;
 
 function logPluginTaskQueueMessageRejected(
-  reason: "expired" | "malformed" | "signature_mismatch" | "id_mismatch",
+  reason: "malformed",
   metadata: MessageMetadata,
 ): void {
   logWarn(
@@ -39,24 +39,17 @@ function logPluginTaskQueueMessageRejected(
   );
 }
 
-/** Verify the signed task envelope and run only the referenced durable task. */
+/** Parse the queue payload and run only the referenced durable task. */
 async function handlePluginTaskQueueMessage(
   message: unknown,
   metadata: MessageMetadata,
 ): Promise<void> {
-  const verification = verifyPluginTaskQueueMessage(message);
-  if (verification.status === "rejected") {
-    logPluginTaskQueueMessageRejected(verification.reason, metadata);
+  const parsed = parsePluginTaskQueueMessage(message);
+  if (!parsed) {
+    logPluginTaskQueueMessageRejected("malformed", metadata);
     return;
   }
-  if (verification.status === "unavailable") {
-    throw new Error(
-      `Plugin task queue message verification unavailable: ${verification.reason}`,
-    );
-  }
-  await runWithTurnRequestDeadline(() =>
-    processPluginTask(verification.message),
-  );
+  await runWithTurnRequestDeadline(() => processPluginTask(parsed));
 }
 
 /** Bound poison-message retries while preserving normal transient retries. */

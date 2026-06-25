@@ -4,6 +4,10 @@ import type {
   generateAssistantReply,
   ReplyRequestContext,
 } from "@/chat/respond";
+import {
+  defineJuniorPlugin,
+  type PluginSessionContext,
+} from "@sentry/junior-plugin-api";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import {
   runLocalAgentTurn,
@@ -186,6 +190,86 @@ describe("local agent runner", () => {
         params: { content: "The requester prefers short updates." },
         result: { ok: true },
       },
+    ]);
+  });
+
+  it("runs plugin tasks inline after completed local turns", async () => {
+    const conversationId = normalizeLocalConversationId({
+      alias: "plugin-task",
+      cwd: "/tmp/local-agent-runner-plugin-task",
+    });
+    expect(conversationId).toBeDefined();
+
+    const loadedSessions: PluginSessionContext[] = [];
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "local-task-demo",
+          displayName: "Local Task Demo",
+          description: "Local task demo",
+        },
+        tasks: {
+          captureSession: {
+            async run(ctx) {
+              loadedSessions.push(await ctx.session.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    try {
+      await runLocalAgentTurn(
+        {
+          conversationId: conversationId!,
+          message: "capture this local turn",
+        },
+        {
+          deliverReply: async () => undefined,
+          generateAssistantReply: async () =>
+            successReply("captured", {
+              piMessages: [
+                {
+                  role: "user",
+                  content: "capture this local turn",
+                },
+                {
+                  role: "assistant",
+                  content: "captured",
+                },
+              ] as PiMessage[],
+            }),
+        },
+      );
+    } finally {
+      setPlugins([]);
+    }
+
+    expect(loadedSessions).toEqual([
+      expect.objectContaining({
+        conversationId,
+        destination: {
+          platform: "local",
+          conversationId,
+        },
+        messages: [
+          {
+            role: "user",
+            text: "capture this local turn",
+          },
+          {
+            role: "assistant",
+            text: "captured",
+          },
+        ],
+        sessionId: "local-turn-1",
+        source: {
+          platform: "local",
+          type: "priv",
+          conversationId,
+        },
+      }),
     ]);
   });
 

@@ -147,18 +147,17 @@ defineJuniorPlugin({
   },
   tasks: {
     extractMemories,
-    embedMemories,
   },
 });
 ```
 
-`embedMemories` may be implemented as the same internal handler as extraction
-backfill, but it is named separately so embedding repair can be queued without
-pretending a completed turn needs to be re-extracted.
+Embedding generation and repair are part of the memory store/extraction path in
+V1. A separately queued embedding repair task should wait until the plugin task
+contract supports a real non-session trigger.
 
 The exact hook and task type names are owned by their generic plugin specs. The
 memory plugin needs these broad V1 surfaces: automatic recall when the plugin is
-enabled, completed-turn observation, background task handling, model-visible
+enabled, completed-session background task handling, model-visible
 memory tools, SQL access, and host-owned embedding-provider access. A future
 admin CLI surface is specified separately in [`./admin.md`](./admin.md).
 
@@ -184,7 +183,8 @@ The plugin owns:
 - a small memory store module around `ctx.db`
 - extraction and retrieval policy
 - install-level memory policy evaluation
-- the `extractMemories` and embedding repair task handlers
+- the `extractMemories` task handler and embedding repair inside the memory
+  store/extraction path
 - memory tool definitions
 - future memory admin command definitions
 

@@ -1,28 +1,13 @@
 /**
  * Vercel Queue wakeup transport for plugin background tasks.
  *
- * Core signs the bounded task request here. Vercel Queues own pending delivery;
- * plugins receive only the task context after the callback verifies it.
+ * Vercel Queues own pending delivery; plugins receive only the task context
+ * after the callback parses the bounded task request.
  */
-import type { SendOptions, SendResult } from "@vercel/queue";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
-import {
-  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS,
-  signPluginTaskQueueMessage,
-  type PluginTaskQueueMessage,
-} from "./task-queue-signing";
+import { pluginTaskId, type PluginTaskQueueMessage } from "./task-message";
 
 export const DEFAULT_PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
-export const PLUGIN_TASK_QUEUE_RETENTION_SECONDS =
-  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
-
-interface QueueSender {
-  send<T = unknown>(
-    topicName: string,
-    payload: T,
-    options?: SendOptions,
-  ): Promise<SendResult>;
-}
 
 export interface PluginTaskQueue {
   send(message: PluginTaskQueueMessage): Promise<void>;
@@ -44,12 +29,11 @@ export function resolvePluginTaskQueueTopic(
 
 function createVercelPluginTaskQueue(): PluginTaskQueue {
   const topic = resolvePluginTaskQueueTopic();
-  const client: QueueSender = createVercelQueueClient();
+  const client = createVercelQueueClient();
   return {
     async send(message) {
-      await client.send(topic, signPluginTaskQueueMessage(message), {
-        idempotencyKey: message.id,
-        retentionSeconds: PLUGIN_TASK_QUEUE_RETENTION_SECONDS,
+      await client.send(topic, message, {
+        idempotencyKey: pluginTaskId(message),
       });
     },
   };

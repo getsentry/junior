@@ -23,8 +23,8 @@ class PluginTaskQueueTestAdapter implements PluginTaskQueue {
     this.#messages.push(message);
   }
 
-  queuedTaskIds(): string[] {
-    return this.#messages.map((message) => message.id);
+  queuedMessages(): Parameters<PluginTaskQueue["send"]>[0][] {
+    return [...this.#messages];
   }
 }
 
@@ -155,14 +155,14 @@ describe("plugin background tasks", () => {
       await getAgentTurnSessionRecord(runConversationId, runSessionId),
     ).toBeDefined();
 
-    const records = await scheduleSessionCompletedPluginTasks(
+    const messages = await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
       { queue },
     );
-    expect(records).toHaveLength(1);
-    expect(queue.queuedTaskIds()).toEqual([records[0]!.id]);
+    expect(messages).toHaveLength(1);
+    expect(queue.queuedMessages()).toEqual([messages[0]]);
 
-    await processPluginTask(records[0]!.message);
+    await processPluginTask(messages[0]!);
 
     expect(loadedSessions).toEqual([
       expect.objectContaining({
@@ -191,6 +191,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
+    const { pluginTaskId } = await import("@/chat/plugins/task-message");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -219,50 +220,15 @@ describe("plugin background tasks", () => {
       { queue },
     );
 
-    expect(first[0]!.id).toBe(second[0]!.id);
-    expect(queue.queuedTaskIds()).toEqual([first[0]!.id, second[0]!.id]);
-  });
-
-  it("rejects tampered signed task queue messages", async () => {
-    process.env.JUNIOR_SECRET = "plugin-task-test-secret";
-    const {
-      createPluginTaskQueueMessage,
-      signPluginTaskQueueMessage,
-      verifyPluginTaskQueueMessage,
-    } = await import("@/chat/plugins/task-queue-signing");
-    const message = createPluginTaskQueueMessage({
-      name: "processSession",
-      params: {
-        conversationId: "local:test:signed",
-        sessionId: "turn-1",
-      },
-      plugin: "task-signing-demo",
-      trigger: "session.completed",
-    });
-    const signed = signPluginTaskQueueMessage(message, 1000);
-
-    expect(verifyPluginTaskQueueMessage(signed, 1000)).toEqual({
-      status: "verified",
-      message,
-    });
-    expect(
-      verifyPluginTaskQueueMessage(
-        {
-          ...signed,
-          signature: "tampered",
-        },
-        1000,
-      ),
-    ).toEqual({
-      status: "rejected",
-      reason: "signature_mismatch",
-    });
+    expect(pluginTaskId(first[0]!)).toBe(pluginTaskId(second[0]!));
+    expect(queue.queuedMessages()).toEqual([first[0]!, second[0]!]);
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
+    const queue = new PluginTaskQueueTestAdapter();
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -284,12 +250,12 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    const records = await scheduleSessionCompletedPluginTasks(
+    const messages = await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
-      { enqueue: false },
+      { queue },
     );
 
-    await expect(processPluginTask(records[0]!.message)).rejects.toThrow(
+    await expect(processPluginTask(messages[0]!)).rejects.toThrow(
       "task failure marker",
     );
   });
@@ -298,6 +264,7 @@ describe("plugin background tasks", () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
+    const queue = new PluginTaskQueueTestAdapter();
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -317,14 +284,47 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    const records = await scheduleSessionCompletedPluginTasks(
+    const messages = await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
-      { enqueue: false },
+      { queue },
     );
     setPlugins([]);
 
-    await expect(processPluginTask(records[0]!.message)).rejects.toThrow(
+    await expect(processPluginTask(messages[0]!)).rejects.toThrow(
       'Plugin task "task-registration-demo.processSession" is not registered',
+    );
+  });
+
+  it("uses only registered own task names from queue payloads", async () => {
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-own-key-demo",
+          displayName: "Task Own Key Demo",
+          description: "Task own key demo",
+        },
+        tasks: {
+          processSession: {
+            run() {},
+          },
+        },
+      }),
+    ]);
+
+    await expect(
+      processPluginTask({
+        name: "__proto__",
+        params: {
+          conversationId: "local:test:own-key",
+          sessionId: "turn-1",
+        },
+        plugin: "task-own-key-demo",
+        trigger: "session.completed",
+      }),
+    ).rejects.toThrow(
+      'Plugin task "task-own-key-demo.__proto__" is not registered',
     );
   });
 });

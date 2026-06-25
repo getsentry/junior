@@ -20,6 +20,8 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
+import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
@@ -174,6 +176,7 @@ export async function runLocalAgentTurn(
     throw new Error("Local reply delivery is required");
   }
   const destination = localDestination(input.conversationId);
+  const source = createLocalSource(destination.conversationId);
 
   const generateAssistantReply =
     deps.generateAssistantReply ?? generateAssistantReplyImpl;
@@ -234,7 +237,7 @@ export async function runLocalAgentTurn(
         actor: { type: "system", id: "local-cli" },
       },
       destination,
-      source: createLocalSource(destination.conversationId),
+      source,
       requester: {
         fullName: "Local CLI",
         platform: "local",
@@ -337,15 +340,31 @@ export async function runLocalAgentTurn(
   }
   if (reply.diagnostics.outcome === "success") {
     try {
-      const records = await scheduleSessionCompletedPluginTasks(
+      await persistCompletedSessionRecord({
+        conversationId: input.conversationId,
+        currentDurationMs: reply.diagnostics.durationMs,
+        currentUsage: reply.diagnostics.usage,
+        destination,
+        source,
+        sessionId: turnId,
+        sliceId: 1,
+        allMessages: reply.piMessages ?? piMessagesBeforeRun ?? [],
+        logContext: {
+          runId: turnId,
+          modelId: reply.diagnostics.modelId,
+        },
+        surface: "internal",
+        turnStartMessageIndex: piMessagesBeforeRun?.length ?? 0,
+      });
+      const inlineQueue: PluginTaskQueue = {
+        send: processPluginTask,
+      };
+      await scheduleSessionCompletedPluginTasks(
         {
           conversationId: input.conversationId,
           sessionId: turnId,
         },
-        { enqueue: false },
-      );
-      await Promise.all(
-        records.map((record) => processPluginTask(record.message)),
+        { queue: inlineQueue },
       );
     } catch (error) {
       logException(
