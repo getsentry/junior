@@ -417,7 +417,7 @@ vi.mock("@/chat/pi/client", () => ({
     },
   }),
   getGatewayApiKey: () => "test-gateway-key",
-  getPiGatewayApiKeyOverride: () => "test-gateway-key",
+  getPiGatewayApiKey: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
 }));
 

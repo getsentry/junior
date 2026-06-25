@@ -75,7 +75,7 @@ import {
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
   completeObject,
-  getPiGatewayApiKeyOverride,
+  getPiGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -1448,8 +1448,9 @@ export async function generateAssistantReply(
       throw cooperativeYieldError;
     };
 
+    const hasGatewayCredential = Boolean(getPiGatewayApiKey());
     agent = new Agent({
-      getApiKey: () => getPiGatewayApiKeyOverride(),
+      ...(hasGatewayCredential ? { getApiKey: getPiGatewayApiKey } : {}),
       streamFn: createTracedStreamFn({ conversationPrivacy }),
       steeringMode: "all",
       prepareNextTurn: async () => {

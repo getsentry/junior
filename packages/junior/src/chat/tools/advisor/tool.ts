@@ -22,7 +22,7 @@ import {
   GEN_AI_PROVIDER_NAME,
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
-  getPiGatewayApiKeyOverride,
+  getPiGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -227,8 +227,9 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             );
           }
 
+          const hasGatewayCredential = Boolean(getPiGatewayApiKey());
           const advisorAgent = new Agent({
-            getApiKey: () => getPiGatewayApiKeyOverride(),
+            ...(hasGatewayCredential ? { getApiKey: getPiGatewayApiKey } : {}),
             initialState: {
               systemPrompt: ADVISOR_SYSTEM_PROMPT,
               model: resolveGatewayModel(context.config.modelId),

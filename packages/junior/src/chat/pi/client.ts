@@ -67,14 +67,9 @@ export function getGatewayApiKey(): string | undefined {
   );
 }
 
-/**
- * Let pi-ai read AI_GATEWAY_API_KEY from env itself and only override the
- * token when auth comes from VERCEL_OIDC_TOKEN.
- */
-export function getPiGatewayApiKeyOverride(): string | undefined {
-  // pi-ai already reads AI_GATEWAY_API_KEY from env, so only pass the token
-  // ourselves when auth comes from VERCEL_OIDC_TOKEN.
-  return toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN);
+/** Return the Gateway credential shape expected by Pi Agent getApiKey hooks. */
+export function getPiGatewayApiKey(): string | undefined {
+  return getGatewayApiKey();
 }
 
 function extractText(message: {
@@ -115,7 +110,12 @@ export async function completeText(params: {
   metadata?: Record<string, unknown>;
 }) {
   const model = resolveGatewayModel(params.modelId);
-  const apiKey = getPiGatewayApiKeyOverride();
+  const apiKey = getPiGatewayApiKey();
+  const authMode = toOptionalTrimmed(process.env.AI_GATEWAY_API_KEY)
+    ? "api_key"
+    : toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
+      ? "oidc"
+      : "api_key";
   const privacy = resolveConversationPrivacy({
     channelId:
       typeof params.metadata?.channelId === "string"
@@ -168,7 +168,7 @@ export async function completeText(params: {
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
-    "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
+    "app.ai.auth_mode": authMode,
   };
   return withSpan(
     `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,

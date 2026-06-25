@@ -44,7 +44,7 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
   GEN_AI_SERVER_ADDRESS: "ai-gateway.vercel.sh",
   GEN_AI_SERVER_PORT: 443,
-  getPiGatewayApiKeyOverride: vi.fn(() => undefined),
+  getPiGatewayApiKey: vi.fn(() => undefined),
   resolveGatewayModel: vi.fn((modelId: string) => ({ id: modelId })),
 }));
 

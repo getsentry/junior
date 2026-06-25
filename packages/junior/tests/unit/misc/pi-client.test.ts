@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getGatewayApiKey, getPiGatewayApiKeyOverride } from "@/chat/pi/client";
+import { getGatewayApiKey, getPiGatewayApiKey } from "@/chat/pi/client";
 
 const ORIGINAL_ENV = {
   AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
@@ -36,23 +36,30 @@ describe("getGatewayApiKey", () => {
   });
 });
 
-describe("getPiGatewayApiKeyOverride", () => {
+describe("getPiGatewayApiKey", () => {
   afterEach(() => {
     restoreEnvVar("AI_GATEWAY_API_KEY");
     restoreEnvVar("VERCEL_OIDC_TOKEN");
   });
 
-  it("only overrides pi-ai auth when VERCEL_OIDC_TOKEN is present", () => {
+  it("prefers explicit API key when both Gateway credentials are present", () => {
     process.env.AI_GATEWAY_API_KEY = "api-key";
     process.env.VERCEL_OIDC_TOKEN = "oidc-token";
 
-    expect(getPiGatewayApiKeyOverride()).toBe("oidc-token");
+    expect(getPiGatewayApiKey()).toBe("api-key");
   });
 
-  it("returns undefined when pi-ai should keep using its own env lookup", () => {
+  it("returns the Gateway API key for Pi Agent auth hooks", () => {
     process.env.AI_GATEWAY_API_KEY = "api-key";
     delete process.env.VERCEL_OIDC_TOKEN;
 
-    expect(getPiGatewayApiKeyOverride()).toBeUndefined();
+    expect(getPiGatewayApiKey()).toBe("api-key");
+  });
+
+  it("uses Vercel OIDC when no explicit API key is configured", () => {
+    delete process.env.AI_GATEWAY_API_KEY;
+    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
+
+    expect(getPiGatewayApiKey()).toBe("oidc-token");
   });
 });
