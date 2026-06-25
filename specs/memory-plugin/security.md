@@ -36,7 +36,7 @@ The store must derive authority-bearing fields from Junior runtime context:
 - tenant/workspace/org boundary when available
 - destination or conversation identity
 - source actor
-- source event or observation id
+- source event or completed-session id
 
 The model may request memory operations, but it cannot choose authority fields.
 Tool arguments can express content, query text, limit, or expiration. They

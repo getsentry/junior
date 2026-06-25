@@ -39,8 +39,6 @@ export interface PluginModel {
   /** Run a host-owned structured model call without exposing provider credentials. */
   completeObject<TSchema extends ZodTypeAny>(input: {
     maxTokens?: number;
-    /** Optional host model id override for plugin-owned structured calls. */
-    modelId?: string;
     prompt: string;
     schema: TSchema;
     system?: string;

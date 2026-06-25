@@ -145,9 +145,9 @@ tools and heartbeat behavior, and the GitHub plugin installs a sandbox Git
 hook, configures global Git defaults, and injects commit attribution env before
 bash commands run.
 
-Runtime hooks are explicit app code because the app imports the plugin factory
+Runtime surfaces are explicit app code because the app imports the plugin factory
 into `plugins.ts`. A package should use either `plugin.yaml` or
-`defineJuniorPlugin({ manifest, hooks })`, not both. Use
+`defineJuniorPlugin({ manifest, hooks, tasks })`, not both. Use
 [Build a Plugin](/extend/build-a-plugin/) for the package authoring contract.
 
 ## Local skills vs plugin skills

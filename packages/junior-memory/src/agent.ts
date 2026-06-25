@@ -153,10 +153,6 @@ export interface MemoryAgent {
   ): Promise<MemoryReview> | MemoryReview;
 }
 
-export interface MemoryAgentOptions {
-  modelId?: string;
-}
-
 const MEMORY_REVIEW_SYSTEM = [
   "You are Junior's memory review agent.",
   "Review one memory candidate and return one structured review decision.",
@@ -339,15 +335,11 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
 }
 
 /** Create the memory-owned agent that reviews and extracts memory candidates. */
-export function createMemoryAgent(
-  model: PluginModel,
-  options: MemoryAgentOptions = {},
-): MemoryAgent {
+export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
     async extractSessionMemories(rawRequest) {
       const request = extractSessionRequestSchema.parse(rawRequest);
       const result = await model.completeObject({
-        ...(options.modelId ? { modelId: options.modelId } : {}),
         schema: extractMemoriesResponseSchema,
         system: MEMORY_EXTRACTION_SYSTEM,
         prompt: sessionExtractionPrompt(request),
@@ -360,7 +352,6 @@ export function createMemoryAgent(
     async reviewCreateRequest(rawRequest) {
       const request = parseCreateMemoryRequest(rawRequest);
       const result = await model.completeObject({
-        ...(options.modelId ? { modelId: options.modelId } : {}),
         schema: memoryReviewResponseSchema,
         system: MEMORY_REVIEW_SYSTEM,
         prompt: reviewPrompt(request),

@@ -1,39 +1,77 @@
+import { createHash } from "node:crypto";
 import {
   getSourceKey,
   isPrivateSource,
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import {
   createMemoryStore,
   type CreateMemoryInput,
   type MemoryDb,
 } from "./store";
-import {
-  createMemoryAgent,
-  type ExtractedMemory,
-  type MemoryAgentOptions,
-} from "./agent";
+import { createMemoryAgent, type ExtractedMemory } from "./agent";
 import { memoryRuntimeContextSchema } from "./types";
 
 const MEMORY_MUTATION_TOOL_NAMES = new Set(["createMemory", "removeMemory"]);
+const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const extractedMemoryCacheSchema = z.array(
+  z
+    .object({
+      content: z.string().min(1),
+      expiresAtMs: z.number().finite().nullable(),
+      target: z.enum(["requester", "conversation"]),
+    })
+    .strict(),
+);
+
+function memoryIdempotencySuffix(memory: ExtractedMemory): string {
+  return createHash("sha256")
+    .update(memory.target)
+    .update("\0")
+    .update(memory.content)
+    .update("\0")
+    .update(memory.expiresAtMs === null ? "never" : String(memory.expiresAtMs))
+    .digest("hex")
+    .slice(0, 32);
+}
 
 function passiveInput(
   sessionId: string,
   memory: ExtractedMemory,
-  index: number,
   sourceKey: string,
 ): CreateMemoryInput {
   return {
     content: memory.content,
-    idempotencyKey: `session:${sourceKey}:${sessionId}:${index}`,
+    idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory)}`,
     ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
   };
 }
 
-/** Extract and store memories from a completed session plugin task. */
+async function getTaskMemories(
+  context: PluginTaskContext,
+  extract: () => Promise<ExtractedMemory[]>,
+): Promise<ExtractedMemory[]> {
+  const cacheKey = `memory-extraction:${context.id}`;
+  const cached = await context.state.get(cacheKey);
+  if (cached !== undefined) {
+    return extractedMemoryCacheSchema.parse(cached);
+  }
+  const memories = await extract();
+  await context.state.set(cacheKey, memories, MEMORY_TASK_STATE_TTL_MS);
+  return memories;
+}
+
+/**
+ * Extract and store memories from a completed session plugin task.
+ *
+ * Memory owns post-session extraction and consumes only the bounded plugin task
+ * projection. Explicit memory tools and private non-local sources remain hard
+ * boundaries so background retries cannot reinterpret user-directed mutations
+ * or private conversations.
+ */
 export async function processMemorySession(
   context: PluginTaskContext,
-  options: MemoryAgentOptions = {},
 ): Promise<void> {
   const session = await context.session.load();
   // Explicit memory mutation tools already own the user's memory-management intent.
@@ -76,20 +114,22 @@ export async function processMemorySession(
     limit: 10,
     query: userText,
   });
-  const agent = createMemoryAgent(context.model, options);
-  const memories = await agent.extractSessionMemories({
-    existingMemories: existingMemories.map((memory) => ({
-      content: memory.content,
-    })),
-    messages,
-    runtimeContext,
+  const memories = await getTaskMemories(context, async () => {
+    const agent = createMemoryAgent(context.model);
+    return await agent.extractSessionMemories({
+      existingMemories: existingMemories.map((memory) => ({
+        content: memory.content,
+      })),
+      messages,
+      runtimeContext,
+    });
   });
   if (memories.length === 0) {
     return;
   }
 
-  for (const [index, memory] of memories.entries()) {
-    const input = passiveInput(session.sessionId, memory, index, sourceKey);
+  for (const memory of memories) {
+    const input = passiveInput(session.sessionId, memory, sourceKey);
     if (memory.target === "conversation") {
       await store.createConversationMemory(input);
       continue;

@@ -413,7 +413,7 @@ export function getPluginTools(
         source: context.source,
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
-        model: createPluginModel(pluginName),
+        model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };
     } else {
@@ -433,7 +433,7 @@ export function getPluginTools(
         source: context.source,
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
-        model: createPluginModel(pluginName),
+        model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };
     }

@@ -54,7 +54,7 @@ Required conceptual fields:
 - subject type
 - runtime-derived subject key when the subject is a user or conversation
 - runtime-derived source attribution
-- observation or tool idempotency marker
+- completed-session or tool idempotency marker
 - observed timestamp
 - created timestamp
 - optional expiration timestamp
@@ -128,10 +128,9 @@ The store must be able to filter active visible records by:
 
 ### Idempotency And Duplicates
 
-Passive extraction must be idempotent across repeated observations, queue
-redelivery, and task retry. The store needs a stable source marker for a
-completed observation and the extracted fact's position or stable fact id inside
-that observation.
+Passive extraction must be idempotent across repeated completed-session task
+scheduling, queue redelivery, and task retry. The store needs a stable source
+marker for a completed session and each extracted fact.
 
 Semantic duplicate suppression needs extractor and retrieval context. It runs
 before insertion in memory creation paths that have memory agent review, but V1

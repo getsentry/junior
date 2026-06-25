@@ -51,13 +51,13 @@ function memoryToolContext(ctx: {
 /** Create Junior's long-term memory plugin registration. */
 export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
   const modelId = memoryModelId(options);
-  const agentOptions = modelId ? { modelId } : {};
   return defineJuniorPlugin({
     manifest: {
       name: "memory",
       displayName: "Memory",
       description: "Long-term Junior memory storage and recall",
     },
+    ...(modelId ? { model: { structuredModelId: modelId } } : {}),
     packageName: "@sentry/junior-memory",
     cli: {
       commands: [createMemoryCliCommand()],
@@ -65,7 +65,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
     tasks: {
       processSession: {
         async run(ctx) {
-          await processMemorySession(ctx, agentOptions);
+          await processMemorySession(ctx);
         },
       },
     },
@@ -73,7 +73,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
       tools(ctx) {
         const context = memoryToolContext({
           ...ctx,
-          agent: createMemoryAgent(ctx.model, agentOptions),
+          agent: createMemoryAgent(ctx.model),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });

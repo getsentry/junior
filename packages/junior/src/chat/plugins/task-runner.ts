@@ -177,7 +177,7 @@ function taskPluginContext(
     embedder: createPluginEmbedder(pluginName),
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
-    model: createPluginModel(pluginName),
+    model: createPluginModel(pluginName, plugin.model),
     name: message.name,
     plugin: { name: pluginName },
     session: {

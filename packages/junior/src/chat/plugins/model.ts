@@ -3,11 +3,14 @@ import { botConfig } from "@/chat/config";
 import { completeObject, embedTexts } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
-export function createPluginModel(pluginName: string): PluginModel {
+export function createPluginModel(
+  pluginName: string,
+  options: { structuredModelId?: string } = {},
+): PluginModel {
   return {
     async completeObject(input) {
       const result = await completeObject({
-        modelId: input.modelId ?? botConfig.fastModelId,
+        modelId: options.structuredModelId ?? botConfig.fastModelId,
         schema: input.schema,
         prompt: input.prompt,
         ...(input.system !== undefined ? { system: input.system } : {}),

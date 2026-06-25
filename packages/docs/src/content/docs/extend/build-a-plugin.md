@@ -172,16 +172,17 @@ export const plugins = defineJuniorPlugins([myProviderPlugin()]);
 Use `ctx.decision.replaceInput(...)` only with object-shaped tool input. Junior
 rejects non-object replacements before the tool runs.
 
-### Hook surfaces
+### Runtime surfaces
 
-Use the smallest hook that matches the deterministic boundary your plugin needs:
+Use the smallest surface that matches the deterministic boundary your plugin needs:
 
-| Hook                     | Purpose                                                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                  |
-| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                               |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be camelCase and cannot shadow core tools. |
-| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                        |
+| Surface                  | Purpose                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                           |
+| `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                        |
+| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be camelCase and cannot shadow core tools.          |
+| `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                 |
+| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded context with `ctx.session.load()`. |
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`.
 Return tool definitions keyed by the public tool names your plugin owns:

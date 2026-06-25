@@ -98,7 +98,7 @@ The `processSession` task must:
     deriving all authority-bearing ids from runtime context.
 11. Insert accepted memories idempotently with a stable key derived through the
     runtime source helper, completed session reference, and extracted fact
-    position.
+    content.
 12. Generate embeddings for accepted rows when the host embedder is configured.
 13. Avoid storing raw extraction prompt, raw model output, or raw session text
     beyond the accepted memory records.

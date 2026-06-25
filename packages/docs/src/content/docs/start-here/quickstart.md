@@ -18,7 +18,7 @@ Use the same baseline that the scaffolded CI workflow uses:
 
 - Node.js 24
 - pnpm
-- A Redis URL for queue and state storage
+- A Redis URL for runtime state, locks, and durable task records
 
 Slack credentials are needed before the bot can reply in Slack. You can scaffold and verify the local health route first, then finish [Slack App Setup](/start-here/slack-app-setup/).
 
@@ -60,7 +60,7 @@ Set these values before running real turns:
 | ------------------------- | ---------------------- | -------------------------------------------------------------- |
 | `SLACK_SIGNING_SECRET`    | Yes, for Slack traffic | Verifies Slack requests.                                       |
 | `SLACK_BOT_TOKEN`         | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                     |
-| `REDIS_URL`               | Yes                    | Queue and runtime state storage.                               |
+| `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background task records.     |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox requester context. |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                       |
 | `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                   |

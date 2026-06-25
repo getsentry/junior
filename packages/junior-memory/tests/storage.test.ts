@@ -61,6 +61,31 @@ const memoryState: PluginState = {
   },
 };
 
+function createMemoryState(): PluginState {
+  const values = new Map<string, unknown>();
+  return {
+    async delete(key) {
+      values.delete(key);
+    },
+    async get<T = unknown>(key: string): Promise<T | undefined> {
+      return values.get(key) as T | undefined;
+    },
+    async set(key, value) {
+      values.set(key, value);
+    },
+    async setIfNotExists(key, value) {
+      if (values.has(key)) {
+        return false;
+      }
+      values.set(key, value);
+      return true;
+    },
+    async withLock(_key, _ttlMs, callback) {
+      return await callback();
+    },
+  };
+}
+
 const defaultEmbedding = unitEmbedding(0);
 
 function memoryDb(fixture: MemoryFixture): MemoryDb {
@@ -386,57 +411,14 @@ describe("memory plugin storage", () => {
     expect(calls[0]?.schema).toBeDefined();
   });
 
-  it("passes configured model id to memory agent structured calls", async () => {
-    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
-    let callIndex = 0;
-    const model: PluginModel = {
-      async completeObject(input) {
-        calls.push(input);
-        callIndex += 1;
-        if (callIndex === 1) {
-          return {
-            object: {
-              memories: [],
-            },
-          };
-        }
-        return {
-          object: {
-            decision: "reject",
-            target: null,
-            canonicalFact: null,
-            reason: "not_durable",
-            expiresAtMs: null,
-          },
-        };
-      },
-    };
-    const agent = createMemoryAgent(model, {
+  it("registers explicit model id as memory plugin model configuration", () => {
+    const plugin = createMemoryPlugin({
       modelId: "anthropic/claude-sonnet-4.6",
     });
 
-    await agent.extractSessionMemories({
-      messages: [
-        {
-          role: "user",
-          text: "I prefer terse PR summaries.",
-        },
-        {
-          role: "assistant",
-          text: "Got it.",
-        },
-      ],
-      runtimeContext: localContext(),
+    expect(plugin.model).toEqual({
+      structuredModelId: "anthropic/claude-sonnet-4.6",
     });
-    await agent.reviewCreateRequest({
-      content: "I prefer terse PR summaries.",
-      runtimeContext: localContext(),
-    });
-
-    expect(calls.map((call) => call.modelId)).toEqual([
-      "anthropic/claude-sonnet-4.6",
-      "anthropic/claude-sonnet-4.6",
-    ]);
   });
 
   it("parses canonical requester extraction into stored memory text", async () => {
@@ -484,33 +466,13 @@ describe("memory plugin storage", () => {
   it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
     const previousModel = process.env.AI_MEMORY_MODEL;
     process.env.AI_MEMORY_MODEL = "anthropic/claude-sonnet-4.6";
-    const fixture = await createMemoryFixture();
-    const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
-    const model: PluginModel = {
-      async completeObject(input) {
-        calls.push(input);
-        return {
-          object: {
-            memories: [],
-          },
-        };
-      },
-    };
 
     try {
       const plugin = createMemoryPlugin();
-      await plugin.tasks?.processSession?.run(
-        processSessionContext({
-          db: memoryDb(fixture),
-          model,
-        }),
-      );
-
-      expect(calls.map((call) => call.modelId)).toEqual([
-        "anthropic/claude-sonnet-4.6",
-      ]);
+      expect(plugin.model).toEqual({
+        structuredModelId: "anthropic/claude-sonnet-4.6",
+      });
     } finally {
-      await fixture.close();
       if (previousModel === undefined) {
         delete process.env.AI_MEMORY_MODEL;
       } else {
@@ -611,6 +573,65 @@ describe("memory plugin storage", () => {
         ],
         ["Prefers QA notes that mention database row checks."],
         ["Deploy runbooks live in Notion."],
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("reuses cached extraction output across task retries", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const state = createMemoryState();
+      const { model, calls } = extractionModel([
+        {
+          content: "Prefers retry-safe memory extraction.",
+          target: "requester",
+        },
+      ]);
+      const session = {
+        async load() {
+          return completedSession({
+            messages: [
+              {
+                role: "user",
+                text: "I prefer retry-safe memory extraction.",
+              },
+            ],
+          });
+        },
+      };
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          session,
+          state,
+        }),
+      );
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model: {
+            async completeObject() {
+              throw new Error("model should not run on cached retry");
+            },
+          },
+          session,
+          state,
+        }),
+      );
+
+      expect(calls).toHaveLength(1);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Prefers retry-safe memory extraction.",
+          scope: "personal",
+        }),
       ]);
     } finally {
       await fixture.close();
