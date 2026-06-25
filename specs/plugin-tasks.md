@@ -109,8 +109,6 @@ interface PluginTaskContext extends PluginContext {
   id: string;
   name: string;
   params: PluginTaskParams;
-  embedder: PluginEmbedder;
-  model: PluginModel;
   state: PluginState;
   session: PluginSessionReader;
 }
@@ -120,9 +118,8 @@ interface PluginSessionReader {
 }
 ```
 
-`ctx.db`, `ctx.state`, `ctx.model`, and `ctx.embedder` are direct host
-capabilities. Core must not add extra database facades or schema-hiding layers
-solely to restrict plugins.
+`ctx.db` and `ctx.state` are direct host capabilities. Core must not add extra
+database facades or schema-hiding layers solely to restrict plugins.
 
 The task context must not expose raw queue messages, queue clients, queue
 topics, route URLs, retry acknowledgement controls, raw HTTP requests, provider
@@ -225,17 +222,19 @@ source visibility logic.
    registration.
 2. Invalid task params at scheduling time: scheduling fails before queue
    dispatch.
-3. Invalid queue params at execution time: the task attempt fails and follows
-   Vercel Queue retry policy.
+3. Invalid signed queue envelope or params at callback time: reject the
+   callback without running plugin code or retrying.
 4. Missing task registration at execution time: the task attempt fails and
    follows Vercel Queue retry policy.
 5. Queue callback signature failure: reject the callback without running a
    task.
 6. Duplicate queue delivery: handler idempotency and downstream storage
-   uniqueness make duplicate delivery safe.
+   uniqueness make duplicate delivery safe; core also serializes concurrent
+   attempts for the same task id with a durable lock.
 7. Handler failure: let the error propagate so Vercel Queues can retry the
    message according to queue policy.
-8. Exhausted queue retries: do not change the completed visible run result.
+8. Exhausted queue retries: acknowledge the poison message and do not change
+   the completed visible run result.
 9. Local inline task failure: log safe metadata and keep the already delivered
    visible reply successful.
 

@@ -16,6 +16,8 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
 import * as schedulerSqlSchema from "./db/schema";
@@ -1706,5 +1708,3 @@ export async function migrateSchedulerStateToSql(args: {
     scanned: ids.length + runs.length,
   };
 }
-import type { PgDatabase } from "drizzle-orm/pg-core";
-import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";

@@ -177,7 +177,7 @@ belong to the memory agent rather than a caller-provided policy hook.
 The default V1 passive-extraction shape is:
 
 1. The memory agent proposes structured candidate memories from the bounded
-   observation payload.
+   completed-session task projection.
 2. The memory agent reviews each candidate against the installed memory policy
    and workplace guidance.
 3. Deterministic validation applies only hard structural rules, such as schema

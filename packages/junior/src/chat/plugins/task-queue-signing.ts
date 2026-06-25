@@ -57,7 +57,7 @@ function stableParams(params: Record<string, unknown>): string {
 }
 
 /** Build the stable task id used for queue idempotency and tracing. */
-export function getPluginTaskId(args: {
+function getPluginTaskId(args: {
   name: string;
   params: z.output<typeof pluginTaskParamsSchema>;
   plugin: string;

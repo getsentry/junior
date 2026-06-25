@@ -5,8 +5,7 @@
  * scheduling, queue delivery, retries, and the bounded session projection.
  */
 import { z } from "zod";
-import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
-import type { Requester } from "./context";
+import type { PluginContext } from "./context";
 import { destinationSchema, requesterSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
 
@@ -51,9 +50,7 @@ export interface PluginSessionReader {
 }
 
 export interface PluginTaskContext extends PluginContext {
-  embedder: PluginEmbedder;
   id: string;
-  model: PluginModel;
   name: string;
   params: PluginTaskParams;
   session: PluginSessionReader;

@@ -477,6 +477,21 @@ describe("agent plugin hooks", () => {
           }),
         ]),
       ).toThrow('Plugin task "bad-task"');
+
+      expect(() =>
+        setPlugins([
+          defineJuniorPlugin({
+            manifest: {
+              name: "agent-demo",
+              displayName: "Agent Demo",
+              description: "Agent demo",
+            },
+            tasks: {
+              processSession: {} as any,
+            },
+          }),
+        ]),
+      ).toThrow('Plugin task "processSession"');
     } finally {
       setPlugins(previous);
     }

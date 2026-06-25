@@ -11,6 +11,10 @@ import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
 const ORIGINAL_ENV = { ...process.env };
 const conversationId = "local:test:plugin-tasks";
 const sessionId = "task-session-1";
+const destination = {
+  platform: "local",
+  conversationId,
+} as const;
 
 class PluginTaskQueueTestAdapter implements PluginTaskQueue {
   #messages: Parameters<PluginTaskQueue["send"]>[0][] = [];
@@ -22,6 +26,36 @@ class PluginTaskQueueTestAdapter implements PluginTaskQueue {
   queuedTaskIds(): string[] {
     return this.#messages.map((message) => message.id);
   }
+}
+
+async function recordCompletedSession(args: {
+  conversationId: string;
+  sessionId: string;
+}): Promise<void> {
+  const { upsertAgentTurnSessionRecord } =
+    await import("@/chat/state/turn-session");
+  await upsertAgentTurnSessionRecord({
+    conversationId: args.conversationId,
+    destination: {
+      ...destination,
+      conversationId: args.conversationId,
+    },
+    piMessages: [
+      {
+        role: "user",
+        content: "Run a completed session task.",
+      },
+      {
+        role: "assistant",
+        content: "Done.",
+      },
+    ] as PiMessage[],
+    sessionId: args.sessionId,
+    sliceId: 1,
+    source: createLocalSource(args.conversationId),
+    state: "completed",
+    surface: "internal",
+  });
 }
 
 beforeEach(async () => {
@@ -47,9 +81,9 @@ describe("plugin background tasks", () => {
     const runConversationId = `${conversationId}-${runId}`;
     const runSessionId = `${sessionId}:${runId}`;
     const runDestination = {
-      platform: "local",
+      ...destination,
       conversationId: runConversationId,
-    } as const;
+    };
     const runSource = createLocalSource(runConversationId);
     const queue = new PluginTaskQueueTestAdapter();
     const loadedSessions: PluginSessionContext[] = [];
@@ -144,17 +178,12 @@ describe("plugin background tasks", () => {
             text: "Understood.",
           },
         ],
-        requester: {
-          platform: "local",
-          userId: "local-cli",
-          userName: "local",
-          fullName: "Local CLI",
-        },
         sessionId: runSessionId,
         source: runSource,
         toolCalls: [],
       }),
     ]);
+    expect(loadedSessions[0]).not.toHaveProperty("requester");
   });
 
   it("uses stable ids for duplicate scheduling", async () => {
@@ -176,6 +205,10 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+    await recordCompletedSession({
+      conversationId: "local:test:duplicate",
+      sessionId: "turn-1",
+    });
 
     const first = await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:duplicate", sessionId: "turn-1" },
@@ -188,6 +221,42 @@ describe("plugin background tasks", () => {
 
     expect(first[0]!.id).toBe(second[0]!.id);
     expect(queue.queuedTaskIds()).toEqual([first[0]!.id, second[0]!.id]);
+  });
+
+  it("rejects tampered signed task queue messages", async () => {
+    process.env.JUNIOR_SECRET = "plugin-task-test-secret";
+    const {
+      createPluginTaskQueueMessage,
+      signPluginTaskQueueMessage,
+      verifyPluginTaskQueueMessage,
+    } = await import("@/chat/plugins/task-queue-signing");
+    const message = createPluginTaskQueueMessage({
+      name: "processSession",
+      params: {
+        conversationId: "local:test:signed",
+        sessionId: "turn-1",
+      },
+      plugin: "task-signing-demo",
+      trigger: "session.completed",
+    });
+    const signed = signPluginTaskQueueMessage(message, 1000);
+
+    expect(verifyPluginTaskQueueMessage(signed, 1000)).toEqual({
+      status: "verified",
+      message,
+    });
+    expect(
+      verifyPluginTaskQueueMessage(
+        {
+          ...signed,
+          signature: "tampered",
+        },
+        1000,
+      ),
+    ).toEqual({
+      status: "rejected",
+      reason: "signature_mismatch",
+    });
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
@@ -210,6 +279,10 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+    await recordCompletedSession({
+      conversationId: "local:test:failure",
+      sessionId: "turn-1",
+    });
 
     const records = await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
@@ -239,6 +312,10 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+    await recordCompletedSession({
+      conversationId: "local:test:missing",
+      sessionId: "turn-1",
+    });
 
     const records = await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },

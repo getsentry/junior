@@ -38,7 +38,7 @@ in [Plugin Background Tasks Spec](./plugin-tasks.md).
 
 ### Hook Surface
 
-Runtime hook plugins may provide prompt and observation hooks:
+Runtime hook plugins may provide prompt hooks:
 
 ```ts
 interface PluginHooks {
@@ -54,7 +54,7 @@ interface PluginHooks {
 
 These hooks are app-code plugin hooks registered through
 `defineJuniorPlugin({ manifest, hooks })`. Declarative `plugin.yaml` manifests
-must not register prompt or observation hooks.
+must not register prompt hooks.
 
 ### Prompt Messages
 
@@ -209,8 +209,6 @@ Core owns prompt rendering:
    and continue unless startup validation can catch the problem earlier.
 2. Oversized contribution: truncate only if the contribution contract supports
    deterministic truncation; otherwise omit and log safe metadata.
-3. Observation hook failure: log safe metadata and do not change the completed
-   turn result.
 
 ## Observability
 

@@ -16,19 +16,10 @@ import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import { processPluginTask } from "./task-runner";
 import { resolvePluginTaskQueueTopic } from "./task-queue";
-import {
-  verifyPluginTaskQueueMessage,
-  type PluginTaskQueueMessage,
-} from "./task-queue-signing";
+import { verifyPluginTaskQueueMessage } from "./task-queue-signing";
 
 export const PLUGIN_TASK_DEV_CONSUMER_GROUP = "junior_plugin_tasks_dev";
-
-export interface VercelPluginTaskCallbackOptions {
-  /** Task runner port used by callback tests and local dev wiring. */
-  processTask?: (message: PluginTaskQueueMessage) => Promise<void> | void;
-  topic?: string;
-  visibilityTimeoutSeconds?: number;
-}
+const PLUGIN_TASK_MAX_DELIVERIES = 5;
 
 function logPluginTaskQueueMessageRejected(
   reason: "expired" | "malformed" | "signature_mismatch" | "id_mismatch",
@@ -52,9 +43,6 @@ function logPluginTaskQueueMessageRejected(
 async function handlePluginTaskQueueMessage(
   message: unknown,
   metadata: MessageMetadata,
-  processTask: (
-    message: PluginTaskQueueMessage,
-  ) => Promise<void> | void = processPluginTask,
 ): Promise<void> {
   const verification = verifyPluginTaskQueueMessage(message);
   if (verification.status === "rejected") {
@@ -66,32 +54,38 @@ async function handlePluginTaskQueueMessage(
       `Plugin task queue message verification unavailable: ${verification.reason}`,
     );
   }
-  await runWithTurnRequestDeadline(() => processTask(verification.message));
+  await runWithTurnRequestDeadline(() =>
+    processPluginTask(verification.message),
+  );
 }
 
-/** Let Vercel retry thrown task failures; rejected envelopes are acked above. */
-function handlePluginTaskQueueRetry(): RetryDirective | undefined {
+/** Bound poison-message retries while preserving normal transient retries. */
+function handlePluginTaskQueueRetry(
+  _error: unknown,
+  metadata: MessageMetadata,
+): RetryDirective | undefined {
+  if (metadata.deliveryCount >= PLUGIN_TASK_MAX_DELIVERIES) {
+    return { acknowledge: true };
+  }
   return undefined;
 }
 
 /** Create the Vercel Queue push callback for plugin background tasks. */
-export function createVercelPluginTaskCallback(
-  options: VercelPluginTaskCallbackOptions = {},
-): (request: Request) => Promise<Response> {
+export function createVercelPluginTaskCallback(): (
+  request: Request,
+) => Promise<Response> {
   return handleCallback(
-    (message, metadata) =>
-      handlePluginTaskQueueMessage(message, metadata, options.processTask),
+    (message, metadata) => handlePluginTaskQueueMessage(message, metadata),
     {
       retry: handlePluginTaskQueueRetry,
-      visibilityTimeoutSeconds: options.visibilityTimeoutSeconds,
     },
   );
 }
 
 /** Register the Vercel Queue local-dev consumer for plugin background tasks. */
-export function registerVercelPluginTaskDevConsumer(
-  options: VercelPluginTaskCallbackOptions = {},
-): (() => void) | undefined {
+export function registerVercelPluginTaskDevConsumer():
+  | (() => void)
+  | undefined {
   if (process.env.NODE_ENV !== "development") {
     return undefined;
   }
@@ -99,9 +93,8 @@ export function registerVercelPluginTaskDevConsumer(
     client: createVercelQueueClient(),
     consumerGroup: PLUGIN_TASK_DEV_CONSUMER_GROUP,
     handler: (message, metadata) =>
-      handlePluginTaskQueueMessage(message, metadata, options.processTask),
+      handlePluginTaskQueueMessage(message, metadata),
     retry: handlePluginTaskQueueRetry,
-    topic: resolvePluginTaskQueueTopic(options),
-    visibilityTimeoutSeconds: options.visibilityTimeoutSeconds,
+    topic: resolvePluginTaskQueueTopic(),
   });
 }

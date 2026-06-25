@@ -361,8 +361,7 @@ interfaces and must not be passed as `ctx.db`.
 5. Plugin storage migration hook failure: upgrade fails after schema migration and
    before the new runtime serves traffic.
 6. Plugin database query failure during a hook: the hook fails according to its
-   owning hook spec; prompt and observation hooks must fail closed with safe
-   logging.
+   owning hook spec; prompt hooks must fail closed with safe logging.
 
 ## Observability
 

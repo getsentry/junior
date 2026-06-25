@@ -18,10 +18,9 @@ import {
   pluginTaskParamsSchema,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
-import { createRequester } from "@/chat/requester";
+import { createRequesterFromStoredSlackRequester } from "@/chat/requester";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
@@ -35,8 +34,11 @@ import {
   type PluginTaskQueueMessage,
 } from "./task-queue-signing";
 import { getVercelPluginTaskQueue, type PluginTaskQueue } from "./task-queue";
+import { getStateAdapter } from "@/chat/state/adapter";
+import type { Lock } from "chat";
 
 type SessionCompletedTaskParams = PluginTaskParams;
+const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export interface ScheduleSessionCompletedPluginTasksOptions {
   enqueue?: boolean;
@@ -103,32 +105,35 @@ function sessionMessage(message: PiMessage): PluginSessionMessage | undefined {
 function requesterForSession(
   record: Awaited<ReturnType<typeof getAgentTurnSessionRecord>>,
 ): Requester | undefined {
-  if (!record?.source) {
+  if (!record?.requester?.teamId || !record.requester.slackUserId) {
     return undefined;
   }
-  if (record.source.platform === "local") {
-    return {
-      platform: "local",
-      userId: "local-cli",
-      userName: "local",
-      fullName: "Local CLI",
-    };
+  return createRequesterFromStoredSlackRequester({
+    requester: record.requester,
+    teamId: record.requester.teamId,
+    userId: record.requester.slackUserId,
+  }) as Requester;
+}
+
+async function withPluginTaskLock<T>(
+  taskId: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const state = getStateAdapter();
+  await state.connect();
+  const lock: Lock | null = await state.acquireLock(
+    `plugin:task:${taskId}`,
+    PLUGIN_TASK_LOCK_TTL_MS,
+  );
+  if (!lock) {
+    throw new Error(`Could not acquire plugin task lock for ${taskId}`);
   }
-  return createRequester(
-    {
-      email: record.requester?.email,
-      fullName: record.requester?.fullName,
-      platform: "slack",
-      teamId: record.requester?.teamId ?? record.source.teamId,
-      userId: record.requester?.slackUserId,
-      userName: record.requester?.slackUserName,
-    },
-    {
-      platform: "slack",
-      teamId: record.source.teamId,
-      userId: record.requester?.slackUserId,
-    },
-  ) as Requester | undefined;
+
+  try {
+    return await callback();
+  } finally {
+    await state.releaseLock(lock);
+  }
 }
 
 /** Load the bounded completed-session projection exposed to plugin tasks. */
@@ -177,10 +182,8 @@ function taskPluginContext(
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
   return {
     db: getDb(),
-    embedder: createPluginEmbedder(pluginName),
     id: message.id,
     log: createPluginLogger(pluginName),
-    model: createPluginModel(pluginName),
     name: message.name,
     params: sessionParams,
     plugin: { name: pluginName },
@@ -204,6 +207,25 @@ function findPluginTask(message: PluginTaskQueueMessage) {
   return { plugin, task };
 }
 
+async function assertCompletedSessionAvailable(
+  params: SessionCompletedTaskParams,
+): Promise<void> {
+  const record = await getAgentTurnSessionRecord(
+    params.conversationId,
+    params.sessionId,
+  );
+  if (
+    !record ||
+    record.state !== "completed" ||
+    !record.source ||
+    !record.destination
+  ) {
+    throw new Error(
+      "Plugin session.completed tasks require a completed session record",
+    );
+  }
+}
+
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
   params: SessionCompletedTaskParams,
@@ -211,22 +233,27 @@ export async function scheduleSessionCompletedPluginTasks(
 ): Promise<ScheduledPluginTask[]> {
   const scheduled: ScheduledPluginTask[] = [];
   const coreParams = pluginTaskParamsSchema.parse(params);
+  const taskRegistrations = getPlugins().flatMap((plugin) =>
+    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
+  );
+  if (taskRegistrations.length === 0) {
+    return scheduled;
+  }
+  await assertCompletedSessionAvailable(coreParams);
   const shouldEnqueue = options.enqueue !== false;
   const queue = shouldEnqueue
     ? (options.queue ?? getVercelPluginTaskQueue())
     : undefined;
-  for (const plugin of getPlugins()) {
-    for (const name of Object.keys(plugin.tasks ?? {})) {
-      const message = createPluginTaskQueueMessage({
-        name,
-        params: coreParams,
-        plugin: plugin.manifest.name,
-        trigger: "session.completed",
-      });
-      scheduled.push({ id: message.id, message });
-      if (queue) {
-        await queue.send(message);
-      }
+  for (const { name, plugin } of taskRegistrations) {
+    const message = createPluginTaskQueueMessage({
+      name,
+      params: coreParams,
+      plugin: plugin.manifest.name,
+      trigger: "session.completed",
+    });
+    scheduled.push({ id: message.id, message });
+    if (queue) {
+      await queue.send(message);
     }
   }
   return scheduled;
@@ -236,11 +263,13 @@ export async function scheduleSessionCompletedPluginTasks(
 export async function processPluginTask(
   message: PluginTaskQueueMessage,
 ): Promise<void> {
-  const resolved = findPluginTask(message);
-  if (!resolved) {
-    throw new Error(
-      `Plugin task "${message.plugin}.${message.name}" is not registered`,
-    );
-  }
-  await resolved.task.run(taskPluginContext(resolved.plugin, message));
+  await withPluginTaskLock(message.id, async () => {
+    const resolved = findPluginTask(message);
+    if (!resolved) {
+      throw new Error(
+        `Plugin task "${message.plugin}.${message.name}" is not registered`,
+      );
+    }
+    await resolved.task.run(taskPluginContext(resolved.plugin, message));
+  });
 }

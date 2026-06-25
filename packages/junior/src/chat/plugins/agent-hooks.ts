@@ -185,10 +185,15 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     if (seen.has(name)) {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
-    for (const taskName of Object.keys(plugin.tasks ?? {})) {
+    for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
       if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must be a camelCase identifier`,
+        );
+      }
+      if (typeof task.run !== "function") {
+        throw new Error(
+          `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
         );
       }
     }

@@ -116,8 +116,8 @@ They must not contain:
 - memory content unless the task exists specifically to repair a memory id that
   can be reloaded from storage
 
-Observation-backed tasks should reload bounded observation payloads through the
-core-provided observation helper.
+Completed-session tasks should reload bounded task projections through
+`ctx.session.load()`.
 
 ## Logging And Reporting
 

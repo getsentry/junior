@@ -28,17 +28,11 @@ export interface PluginTaskQueue {
   send(message: PluginTaskQueueMessage): Promise<void>;
 }
 
-export interface VercelPluginTaskQueueOptions {
-  client?: QueueSender;
-  retentionSeconds?: number;
-  topic?: string;
-}
-
 let defaultQueue: PluginTaskQueue | undefined;
 
 /** Resolve the Vercel Queue topic used for plugin background tasks. */
 export function resolvePluginTaskQueueTopic(
-  options: Pick<VercelPluginTaskQueueOptions, "topic"> = {},
+  options: { topic?: string } = {},
 ): string {
   const topic = options.topic?.trim();
   return (
@@ -48,18 +42,14 @@ export function resolvePluginTaskQueueTopic(
   );
 }
 
-/** Create the Vercel Queue implementation for plugin background task wakeups. */
-export function createVercelPluginTaskQueue(
-  options: VercelPluginTaskQueueOptions = {},
-): PluginTaskQueue {
-  const topic = resolvePluginTaskQueueTopic(options);
-  const client = options.client ?? createVercelQueueClient();
+function createVercelPluginTaskQueue(): PluginTaskQueue {
+  const topic = resolvePluginTaskQueueTopic();
+  const client: QueueSender = createVercelQueueClient();
   return {
     async send(message) {
       await client.send(topic, signPluginTaskQueueMessage(message), {
         idempotencyKey: message.id,
-        retentionSeconds:
-          options.retentionSeconds ?? PLUGIN_TASK_QUEUE_RETENTION_SECONDS,
+        retentionSeconds: PLUGIN_TASK_QUEUE_RETENTION_SECONDS,
       });
     },
   };
