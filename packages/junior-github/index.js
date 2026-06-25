@@ -13,6 +13,7 @@ const GITHUB_AUTH_TOKEN_ENV = "GITHUB_TOKEN";
 const GITHUB_AUTH_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+const USER_REFRESH_TIMEOUT_MS = 20_000;
 const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
@@ -333,20 +334,30 @@ function parseOAuthTokenResponse(data, requestedScope) {
     refreshToken: data.refresh_token,
     ...(scope ? { scope } : {}),
   };
-  if (data.expires_in === undefined) {
-    return result;
+  if (data.expires_in !== undefined) {
+    if (
+      typeof data.expires_in !== "number" ||
+      !Number.isFinite(data.expires_in) ||
+      data.expires_in <= 0
+    ) {
+      throw new Error("OAuth token response returned invalid expires_in");
+    }
+    result.expiresAt = Date.now() + data.expires_in * 1000;
   }
-  if (
-    typeof data.expires_in !== "number" ||
-    !Number.isFinite(data.expires_in) ||
-    data.expires_in <= 0
-  ) {
-    throw new Error("OAuth token response returned invalid expires_in");
+  if (data.refresh_token_expires_in !== undefined) {
+    if (
+      typeof data.refresh_token_expires_in !== "number" ||
+      !Number.isFinite(data.refresh_token_expires_in) ||
+      data.refresh_token_expires_in <= 0
+    ) {
+      throw new Error(
+        "OAuth token response returned invalid refresh_token_expires_in",
+      );
+    }
+    result.refreshTokenExpiresAt =
+      Date.now() + data.refresh_token_expires_in * 1000;
   }
-  return {
-    ...result,
-    expiresAt: Date.now() + data.expires_in * 1000,
-  };
+  return result;
 }
 
 async function refreshUserAccessToken(input) {
@@ -364,6 +375,7 @@ async function refreshUserAccessToken(input) {
     method: "POST",
     headers: request.headers,
     body: request.body,
+    signal: AbortSignal.timeout(USER_REFRESH_TIMEOUT_MS),
   });
   const responseText = await response.text();
   const responseData = parseOAuthResponseJson(responseText);
@@ -528,6 +540,80 @@ async function tokensWithAccount(tokenSlot, stored, scope) {
   return { ok: true, tokens: updated };
 }
 
+function shouldRefreshUserToken(stored, now = Date.now()) {
+  return (
+    stored.expiresAt !== undefined && stored.expiresAt - now < REFRESH_BUFFER_MS
+  );
+}
+
+function canUseStoredUserToken(stored) {
+  return (
+    stored.expiresAt === undefined ||
+    (stored.expiresAt > Date.now() && !shouldRefreshUserToken(stored))
+  );
+}
+
+/** Re-read under the token-slot refresh gate so concurrent callers reuse the winner's rotated tokens. */
+async function refreshUserTokensWithLock(tokenSlot, scope, options) {
+  return await tokenSlot.withRefresh(async () => {
+    const latest = await tokenSlot.get();
+    if (!latest) {
+      return {
+        ok: false,
+        result: credentialNeeded("Connect your GitHub account.", scope),
+      };
+    }
+    if (!hasRequiredOAuthScope(latest.scope, scope)) {
+      return {
+        ok: false,
+        result: credentialNeeded(
+          "Your GitHub authorization needs to be refreshed.",
+          scope,
+        ),
+      };
+    }
+    if (canUseStoredUserToken(latest)) {
+      return { ok: true, tokens: latest };
+    }
+
+    let refreshed;
+    try {
+      refreshed = await refreshUserAccessToken({
+        clientIdEnv: options.clientIdEnv,
+        clientSecretEnv: options.clientSecretEnv,
+        refreshToken: latest.refreshToken,
+        requestedScope: latest.scope ?? scope,
+      });
+    } catch (error) {
+      if (!(error instanceof GitHubUserRefreshRejectedError)) {
+        throw error;
+      }
+      return {
+        ok: false,
+        result: credentialNeeded(
+          "Your GitHub authorization has expired.",
+          scope,
+        ),
+      };
+    }
+    if (!hasRequiredOAuthScope(refreshed.scope, scope)) {
+      return {
+        ok: false,
+        result: credentialNeeded(
+          "Your GitHub authorization needs to be refreshed.",
+          scope,
+        ),
+      };
+    }
+    const refreshedTokens = {
+      ...refreshed,
+      ...(latest.account ? { account: latest.account } : {}),
+    };
+    await tokenSlot.set(refreshedTokens);
+    return { ok: true, tokens: refreshedTokens };
+  });
+}
+
 async function issueUserCredential(ctx, options) {
   const scope = options.userScope;
   const tokenSlot = ctx.tokens.currentUser ?? ctx.tokens.credentialSubject;
@@ -558,34 +644,17 @@ async function issueUserCredential(ctx, options) {
     stored.expiresAt !== undefined &&
     stored.expiresAt - now < REFRESH_BUFFER_MS
   ) {
-    let refreshed;
-    try {
-      refreshed = await refreshUserAccessToken({
-        clientIdEnv: options.clientIdEnv,
-        clientSecretEnv: options.clientSecretEnv,
-        refreshToken: stored.refreshToken,
-        requestedScope: stored.scope ?? scope,
-      });
-    } catch (error) {
-      if (!(error instanceof GitHubUserRefreshRejectedError)) {
-        throw error;
-      }
-      return credentialNeeded("Your GitHub authorization has expired.", scope);
+    const refreshResult = await refreshUserTokensWithLock(
+      tokenSlot,
+      scope,
+      options,
+    );
+    if (!refreshResult.ok) {
+      return refreshResult.result;
     }
-    if (!hasRequiredOAuthScope(refreshed.scope, scope)) {
-      return credentialNeeded(
-        "Your GitHub authorization needs to be refreshed.",
-        scope,
-      );
-    }
-    const refreshedTokens = {
-      ...refreshed,
-      ...(stored.account ? { account: stored.account } : {}),
-    };
-    await tokenSlot.set(refreshedTokens);
     const withAccount = await tokensWithAccount(
       tokenSlot,
-      refreshedTokens,
+      refreshResult.tokens,
       scope,
     );
     if (!withAccount.ok) {

@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createEnvFileLoader } from "../../src/env/files";
+import {
+  createDefaultEnvFileLoader,
+  createEnvFileLoader,
+} from "../../src/env/files";
 
 const ENV_FILES = [".env", ".env.local", ".env.test", ".env.test.local"];
 
@@ -13,6 +16,7 @@ export interface JuniorTestEnvOptions {
  * Load Junior's test environment with apps/example defaults before local overrides.
  */
 export function loadJuniorTestEnvFiles(options: JuniorTestEnvOptions): void {
+  const applyDefaultEnvFile = createDefaultEnvFileLoader();
   const applyEnvFile = createEnvFileLoader();
   const roots = [
     path.resolve(options.workspaceRoot, "apps/example"),
@@ -27,6 +31,11 @@ export function loadJuniorTestEnvFiles(options: JuniorTestEnvOptions): void {
       continue;
     }
     seen.add(absoluteRoot);
+
+    const examplePath = path.resolve(absoluteRoot, ".env.example");
+    if (fs.existsSync(examplePath)) {
+      applyDefaultEnvFile(examplePath);
+    }
 
     for (const envFile of ENV_FILES) {
       const absolutePath = path.resolve(absoluteRoot, envFile);

@@ -58,6 +58,7 @@ function createMockTokenStore(
     delete: async (userId: string, provider: string) => {
       store.delete(`${userId}:${provider}`);
     },
+    withRefresh: async (_userId, _provider, callback) => callback(),
   };
 }
 
@@ -203,6 +204,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         access_token: "new-access-token",
         refresh_token: "new-refresh-token",
         expires_in: 3600,
+        refresh_token_expires_in: 7200,
       }),
     })) as unknown as typeof fetch;
 
@@ -226,6 +228,57 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const stored = await tokenStore.get("U123", "sentry");
     expect(stored?.accessToken).toBe("new-access-token");
     expect(stored?.refreshToken).toBe("new-refresh-token");
+    expect(stored?.refreshTokenExpiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it("uses tokens refreshed by another request before refreshing a stale token", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    const staleToken: StoredTokens = {
+      accessToken: "old-access-token",
+      refreshToken: "old-refresh-token",
+      expiresAt: Date.now() + 2 * 60 * 1000,
+      scope: SENTRY_SCOPE,
+    };
+    const freshToken: StoredTokens = {
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      scope: SENTRY_SCOPE,
+    };
+    const get = vi
+      .fn<UserTokenStore["get"]>()
+      .mockResolvedValueOnce(staleToken)
+      .mockResolvedValueOnce(freshToken);
+    const withRefresh = vi.fn(async (_userId, _provider, callback) =>
+      callback(),
+    );
+    const tokenStore: UserTokenStore = {
+      get,
+      set: vi.fn(),
+      delete: vi.fn(),
+      withRefresh,
+    };
+    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+    const lease = await broker.issue({
+      context: USER_CREDENTIAL_CONTEXT,
+      reason: "test:refresh-race",
+    });
+
+    expect(withRefresh).toHaveBeenCalledOnce();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer new-access-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer new-access-token" },
+      },
+    ]);
   });
 
   it("does not issue a stale lease when token refresh is rejected", async () => {

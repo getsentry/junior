@@ -1,7 +1,12 @@
 import { generateKeyPairSync } from "node:crypto";
-import type { SandboxPrepareHookContext } from "@sentry/junior-plugin-api";
+import { createMemoryState } from "@chat-adapter/state-memory";
+import type {
+  PluginStoredTokens,
+  SandboxPrepareHookContext,
+} from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { githubPlugin } from "../../../../junior-github/index.js";
 import { mswServer } from "../../msw/server";
 
@@ -180,6 +185,7 @@ function githubIssueCredentialContext(input: {
     accessToken: string;
     expiresAt?: number;
     refreshToken: string;
+    refreshTokenExpiresAt?: number;
     scope?: string;
   };
   grant: { access: "read" | "write"; name: string; reason?: string };
@@ -188,18 +194,37 @@ function githubIssueCredentialContext(input: {
     accessToken: string;
     expiresAt?: number;
     refreshToken: string;
+    refreshTokenExpiresAt?: number;
     scope?: string;
   };
+  currentUserTokenReads?: Array<
+    | {
+        account?: { id: string; label?: string; url?: string };
+        accessToken: string;
+        expiresAt?: number;
+        refreshToken: string;
+        refreshTokenExpiresAt?: number;
+        scope?: string;
+      }
+    | undefined
+  >;
 }) {
+  const currentUserReads = [...(input.currentUserTokenReads ?? [])];
   const currentUser = {
     userId: "U123",
-    get: vi.fn(async () => input.currentUserToken),
+    get: vi.fn(async () =>
+      currentUserReads.length
+        ? currentUserReads.shift()
+        : input.currentUserToken,
+    ),
     set: vi.fn(),
+    withRefresh: vi.fn(async (callback) => await callback()),
   };
   const credentialSubject = {
     userId: "U456",
     get: vi.fn(async () => input.credentialSubjectToken),
     set: vi.fn(),
+    withRefresh: vi.fn(async (callback) => await callback()),
   };
   return {
     actor: input.actor ?? { type: "user" as const, userId: "U123" },
@@ -219,6 +244,7 @@ function githubIssueCredentialContext(input: {
 
 describe("github plugin", () => {
   afterEach(() => {
+    vi.useRealTimers();
     process.env = { ...ORIGINAL_ENV };
   });
 
@@ -874,6 +900,146 @@ describe("github plugin", () => {
         scope: "repo",
       },
     });
+  });
+
+  it("uses tokens refreshed by another request before refreshing a stale token", async () => {
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+
+    const staleToken = {
+      accessToken: "stale-token",
+      expiresAt: Date.now() + 60_000,
+      refreshToken: "stale-refresh-token",
+      scope: "repo",
+    };
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    const result = await plugin.hooks?.issueCredential?.(
+      githubIssueCredentialContext({
+        grant: {
+          name: "user-write",
+          access: "write",
+          reason: "github.issue-create",
+        },
+        currentUserToken: staleToken,
+        currentUserTokenReads: [
+          staleToken,
+          {
+            account: {
+              id: "12345",
+              label: "requester",
+              url: "https://github.com/requester",
+            },
+            accessToken: "fresh-token",
+            expiresAt: Date.now() + 60 * 60_000,
+            refreshToken: "fresh-refresh-token",
+            scope: "repo",
+          },
+        ],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      type: "lease",
+      lease: {
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: { Authorization: "Bearer fresh-token" },
+          },
+          {
+            domain: "github.com",
+            headers: {
+              Authorization: expect.stringMatching(/^Basic /),
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("serializes concurrent refresh requests and reuses the rotated token", async () => {
+    const now = new Date("2026-06-01T12:00:00Z");
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(now);
+    process.env.GITHUB_APP_CLIENT_ID = "client-id";
+    process.env.GITHUB_APP_CLIENT_SECRET = "client-secret";
+    const refreshRequests = mockGitHubRefresh(200, {
+      access_token: "fresh-token",
+      expires_in: 3600,
+      refresh_token: "fresh-refresh-token",
+      refresh_token_expires_in: 7200,
+    });
+    const state = createMemoryState();
+    await state.connect();
+    const store = new StateAdapterTokenStore(state);
+    const storedToken: PluginStoredTokens = {
+      account: {
+        id: "12345",
+        label: "requester",
+        url: "https://github.com/requester",
+      },
+      accessToken: "stale-token",
+      expiresAt: Date.now() + 60_000,
+      refreshToken: "stale-refresh-token",
+      scope: "repo",
+    };
+    await store.set("U123", "github", storedToken);
+    const currentUser = {
+      userId: "U123",
+      get: vi.fn(async () => await store.get("U123", "github")),
+      set: vi.fn(async (tokens) => {
+        await store.set("U123", "github", tokens);
+      }),
+      withRefresh: async <T>(callback: () => Promise<T>) =>
+        await store.withRefresh("U123", "github", callback),
+    };
+    const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
+    const context = {
+      actor: { type: "user" as const, userId: "U123" },
+      grant: {
+        name: "user-write",
+        access: "write" as const,
+        reason: "github.issue-create",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: { currentUser },
+    };
+
+    try {
+      const [first, second] = await Promise.all([
+        plugin.hooks?.issueCredential?.(context),
+        plugin.hooks?.issueCredential?.(context),
+      ]);
+
+      expect(refreshRequests).toHaveLength(1);
+      for (const result of [first, second]) {
+        expect(result).toMatchObject({
+          type: "lease",
+          lease: {
+            headerTransforms: [
+              {
+                domain: "api.github.com",
+                headers: { Authorization: "Bearer fresh-token" },
+              },
+              {
+                domain: "github.com",
+                headers: {
+                  Authorization: expect.stringMatching(/^Basic /),
+                },
+              },
+            ],
+          },
+        });
+      }
+      await expect(store.get("U123", "github")).resolves.toMatchObject({
+        refreshToken: "fresh-refresh-token",
+        refreshTokenExpiresAt: now.getTime() + 7200_000,
+      });
+    } finally {
+      await state.disconnect();
+    }
   });
 
   it.each(["bad_refresh_token", "invalid_grant"])(

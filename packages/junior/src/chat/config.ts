@@ -236,7 +236,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
 
   return {
-    userName: env.JUNIOR_BOT_NAME ?? "junior",
+    userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     modelId: validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID,
     modelContextWindowTokens: parseOptionalPositiveInteger(
       "AI_MODEL_CONTEXT_WINDOW_TOKENS",

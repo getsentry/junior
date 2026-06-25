@@ -35,13 +35,6 @@ export interface SubscribedDecisionResult {
   reasonDetail?: string;
 }
 
-interface ClassifierResult {
-  should_reply: boolean;
-  should_unsubscribe?: boolean;
-  confidence: number;
-  reason?: string;
-}
-
 interface TranscriptMessage {
   author: string;
   role: "assistant" | "system" | "user";
@@ -59,23 +52,24 @@ interface RouterSignals {
   recentMessages: TranscriptMessage[];
 }
 
-const replyDecisionSchema = z.object({
-  should_reply: z
-    .boolean()
-    .describe("Whether Junior should respond to this thread message."),
-  should_unsubscribe: z
-    .boolean()
-    .optional()
-    .describe(
-      "Whether Junior should unsubscribe from this thread because the user clearly asked it to stop participating.",
-    ),
-  confidence: z
-    .number()
-    .min(0)
-    .max(1)
-    .describe("Classifier confidence from 0 to 1."),
-  reason: z.string().optional().describe("Short reason for the decision."),
-});
+const replyDecisionSchema = z
+  .object({
+    should_reply: z
+      .boolean()
+      .describe("Whether Junior should respond to this thread message."),
+    should_unsubscribe: z
+      .boolean()
+      .describe(
+        "Whether Junior should unsubscribe from this thread because the user clearly asked it to stop participating.",
+      ),
+    confidence: z
+      .number()
+      .min(0)
+      .max(1)
+      .describe("Classifier confidence from 0 to 1."),
+    reason: z.string().optional().describe("Short reason for the decision."),
+  })
+  .strict();
 
 const ROUTER_CONFIDENCE_THRESHOLD = 0.8;
 const ROUTER_CLASSIFIER_MAX_TOKENS = 240;
@@ -481,7 +475,7 @@ export async function decideSubscribedThreadReply(args: {
       },
     });
 
-    const parsed = replyDecisionSchema.parse(result.object) as ClassifierResult;
+    const parsed = replyDecisionSchema.parse(result.object);
     const reason = parsed.reason?.trim() || "classifier";
     const replyConfidenceThreshold = getReplyConfidenceThreshold(signals);
     if (parsed.should_unsubscribe) {

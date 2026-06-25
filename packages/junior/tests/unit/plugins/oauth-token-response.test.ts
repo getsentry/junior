@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseOAuthTokenResponse } from "@/chat/plugins/auth/oauth-request";
 
 describe("parseOAuthTokenResponse", () => {
@@ -52,5 +52,26 @@ describe("parseOAuthTokenResponse", () => {
       { treatEmptyScopeAsUnreported: true },
     );
     expect(result.scope).toBe("gist repo");
+  });
+
+  it("records refresh token expiry separately from access token expiry", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-24T00:00:00Z"));
+
+    try {
+      const result = parseOAuthTokenResponse({
+        access_token: "access",
+        expires_in: 28_800,
+        refresh_token: "refresh",
+        refresh_token_expires_in: 15_897_600,
+      });
+
+      expect(result.expiresAt).toBe(new Date("2026-06-24T08:00:00Z").getTime());
+      expect(result.refreshTokenExpiresAt).toBe(
+        new Date("2026-12-25T00:00:00Z").getTime(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -108,6 +108,7 @@ describe("decideSubscribedThreadReply", () => {
     const completeObject = vi.fn(async () => ({
       object: {
         should_reply: false,
+        should_unsubscribe: false,
         confidence: 0.95,
         reason: "attachment acknowledgment",
       },
@@ -281,6 +282,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: false,
+          should_unsubscribe: false,
           confidence: 0.95,
           reason: "passive attachment",
         },
@@ -355,6 +357,7 @@ describe("decideSubscribedThreadReply", () => {
     const completeObject = vi.fn(async () => ({
       object: {
         should_reply: true,
+        should_unsubscribe: false,
         confidence: 0.95,
         reason: "attachment follow-up",
       },
@@ -428,6 +431,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
+          should_unsubscribe: false,
           confidence: 0.85,
           reason: "maybe follow-up",
         },
@@ -459,6 +463,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
+          should_unsubscribe: false,
           confidence: 0.85,
           reason: "maybe follow-up",
         },
@@ -481,6 +486,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: false,
+          should_unsubscribe: false,
           confidence: 0.95,
           reason: "status chatter",
         },
@@ -530,6 +536,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: false,
+          should_unsubscribe: false,
           confidence: 0.95,
           reason: longReason,
         },
@@ -550,6 +557,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
+          should_unsubscribe: false,
           confidence: 0.75,
           reason: "maybe follow-up",
         },
@@ -569,6 +577,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
+          should_unsubscribe: false,
           confidence: 0.95,
           reason: "direct question",
         },

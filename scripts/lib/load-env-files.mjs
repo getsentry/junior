@@ -18,6 +18,21 @@ export function loadEnvFiles(roots, options = {}) {
   const protectedKeys = new Set(Object.keys(env));
   const loadedKeys = new Set();
 
+  for (const root of roots) {
+    const absolutePath = path.join(root, ".env.example");
+    if (!fs.existsSync(absolutePath)) {
+      continue;
+    }
+
+    const values = parseEnv(fs.readFileSync(absolutePath, "utf8"));
+    for (const [name, value] of Object.entries(values)) {
+      if (env[name] !== undefined) {
+        continue;
+      }
+      env[name] = value;
+    }
+  }
+
   // Shell env wins; later env files override earlier loaded files.
   for (const root of roots) {
     for (const relativePath of envFileNames(nodeEnv)) {

@@ -153,8 +153,10 @@ Purpose:
 ### User tokens
 
 - Key pattern: `oauth-token:<userId>:<provider>`
-- Value: `{ accessToken, refreshToken, expiresAt?, scope? }`
-- TTL: derived from expiry when known, otherwise long-lived host storage
+- Value:
+  `{ accessToken, refreshToken, expiresAt?, refreshTokenExpiresAt?, scope? }`
+- TTL: derived from `refreshTokenExpiresAt` when known, otherwise from
+  `expiresAt` when known, otherwise long-lived host storage
 - Storage: `StateAdapterTokenStore`
 
 ### MCP auth sessions and credentials

@@ -1,5 +1,13 @@
 import path from "node:path";
 import { configDefaults, defineConfig } from "vitest/config";
+import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
+
+const workspaceRoot = path.resolve(import.meta.dirname, "../..");
+
+loadJuniorTestEnvFiles({
+  packageRoots: [import.meta.dirname],
+  workspaceRoot,
+});
 
 export default defineConfig({
   resolve: {

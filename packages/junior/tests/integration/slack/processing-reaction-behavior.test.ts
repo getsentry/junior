@@ -133,10 +133,11 @@ describe("Slack behavior: processing reaction", () => {
             return {
               object: {
                 should_reply: true,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "direct follow-up",
               },
-              text: '{"should_reply":true,"confidence":1,"reason":"direct follow-up"}',
+              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"direct follow-up"}',
             } as never;
           },
         },

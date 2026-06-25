@@ -2201,10 +2201,11 @@ describe("bot handlers (integration)", () => {
             ({
               object: {
                 should_reply: true,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "follow-up",
               },
-              text: '{"should_reply":true,"confidence":1,"reason":"follow-up"}',
+              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"follow-up"}',
             }) as any,
         },
         replyExecutor: {

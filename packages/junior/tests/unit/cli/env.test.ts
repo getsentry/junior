@@ -10,6 +10,7 @@ const TEST_ENV_KEYS = [
   "CLI_ENV_PRIORITY",
   "CLI_ENV_EXISTING",
   "CLI_ENV_MODE",
+  "CLI_ENV_DEFAULT",
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
@@ -96,5 +97,26 @@ describe("loadCliEnvFiles", () => {
     loadCliEnvFiles(tempRoot);
 
     expect(process.env.CLI_ENV_MODE).toBe("test-local");
+  });
+
+  it("loads example env files as last-resort defaults", () => {
+    clearTestEnv();
+    delete mutableEnv.NODE_ENV;
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-cli-env-"));
+    writeFile(path.join(tempRoot, "package.json"), "{}\n");
+    writeFile(
+      path.join(tempRoot, ".env.example"),
+      ["CLI_ENV_DEFAULT=example", "CLI_ENV_PRIORITY=example", ""].join("\n"),
+    );
+    writeFile(
+      path.join(tempRoot, ".env"),
+      ["CLI_ENV_PRIORITY=local", ""].join("\n"),
+    );
+
+    loadCliEnvFiles(tempRoot);
+
+    expect(process.env.CLI_ENV_DEFAULT).toBe("example");
+    expect(process.env.CLI_ENV_PRIORITY).toBe("local");
   });
 });

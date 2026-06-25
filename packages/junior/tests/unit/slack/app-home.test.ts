@@ -75,6 +75,7 @@ function createMockTokenStore(
     get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
     set: vi.fn(async () => {}),
     delete: vi.fn(async () => {}),
+    withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
   };
 }
 

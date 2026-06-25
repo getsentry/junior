@@ -37,6 +37,7 @@ function tokenStore(): UserTokenStore {
     get: vi.fn(),
     set: vi.fn(),
     delete: vi.fn(),
+    withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
   };
 }
 

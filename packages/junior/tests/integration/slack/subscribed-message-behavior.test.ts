@@ -138,10 +138,11 @@ describe("Slack behavior: subscribed messages", () => {
             return {
               object: {
                 should_reply: true,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "explicit ask",
               },
-              text: '{"should_reply":true,"confidence":1,"reason":"explicit ask"}',
+              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"explicit ask"}',
             } as never;
           },
         },

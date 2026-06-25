@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { normalizeOAuthScope } from "@/chat/credentials/oauth-scope";
 
 const DEFAULT_TOKEN_CONTENT_TYPE = "application/x-www-form-urlencoded";
@@ -20,6 +21,27 @@ function requireNonEmptyTokenField(
   }
   return value;
 }
+
+function requireTokenResponseObject(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("OAuth token response must be an object");
+  }
+  return data as Record<string, unknown>;
+}
+
+const parsedOAuthTokenResponseSchema = z
+  .object({
+    accessToken: z.string().min(1),
+    refreshToken: z.string().min(1),
+    expiresAt: z.number().positive().optional(),
+    refreshTokenExpiresAt: z.number().positive().optional(),
+    scope: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type OAuthTokenResponse = z.output<
+  typeof parsedOAuthTokenResponseSchema
+>;
 
 function contentTypeToBody(
   contentType: string,
@@ -70,19 +92,16 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
 }
 
 export function parseOAuthTokenResponse(
-  data: Record<string, unknown>,
+  data: unknown,
   requestedScope?: string,
   options?: { treatEmptyScopeAsUnreported?: boolean },
-): {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt?: number;
-  scope?: string;
-} {
-  const accessToken = requireNonEmptyTokenField(data, "access_token");
-  const refreshToken = requireNonEmptyTokenField(data, "refresh_token");
-  const expiresIn = data.expires_in;
-  const responseScope = data.scope;
+): OAuthTokenResponse {
+  const response = requireTokenResponseObject(data);
+  const accessToken = requireNonEmptyTokenField(response, "access_token");
+  const refreshToken = requireNonEmptyTokenField(response, "refresh_token");
+  const expiresIn = response.expires_in;
+  const refreshTokenExpiresIn = response.refresh_token_expires_in;
+  const responseScope = response.scope;
   let scope: string | undefined;
 
   if (responseScope !== undefined) {
@@ -101,21 +120,37 @@ export function parseOAuthTokenResponse(
     scope = normalizeOAuthScope(requestedScope);
   }
 
-  if (expiresIn === undefined) {
-    return { accessToken, refreshToken, ...(scope ? { scope } : {}) };
-  }
-  if (
-    typeof expiresIn !== "number" ||
-    !Number.isFinite(expiresIn) ||
-    expiresIn <= 0
-  ) {
-    throw new Error("OAuth token response returned invalid expires_in");
+  const result: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt?: number;
+    refreshTokenExpiresAt?: number;
+    scope?: string;
+  } = { accessToken, refreshToken, ...(scope ? { scope } : {}) };
+
+  if (expiresIn !== undefined) {
+    if (
+      typeof expiresIn !== "number" ||
+      !Number.isFinite(expiresIn) ||
+      expiresIn <= 0
+    ) {
+      throw new Error("OAuth token response returned invalid expires_in");
+    }
+    result.expiresAt = Date.now() + expiresIn * 1000;
   }
 
-  return {
-    accessToken,
-    refreshToken,
-    expiresAt: Date.now() + expiresIn * 1000,
-    ...(scope ? { scope } : {}),
-  };
+  if (refreshTokenExpiresIn !== undefined) {
+    if (
+      typeof refreshTokenExpiresIn !== "number" ||
+      !Number.isFinite(refreshTokenExpiresIn) ||
+      refreshTokenExpiresIn <= 0
+    ) {
+      throw new Error(
+        "OAuth token response returned invalid refresh_token_expires_in",
+      );
+    }
+    result.refreshTokenExpiresAt = Date.now() + refreshTokenExpiresIn * 1000;
+  }
+
+  return parsedOAuthTokenResponseSchema.parse(result);
 }

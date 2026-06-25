@@ -262,6 +262,12 @@ export async function issuePluginCredential(
                   tokens,
                 );
               },
+              withRefresh: async (callback) =>
+                await input.userTokenStore.withRefresh(
+                  currentUserId,
+                  plugin.manifest.name,
+                  callback,
+                ),
             },
           }
         : {}),
@@ -281,6 +287,12 @@ export async function issuePluginCredential(
                   tokens,
                 );
               },
+              withRefresh: async (callback) =>
+                await input.userTokenStore.withRefresh(
+                  credentialSubjectUserId,
+                  plugin.manifest.name,
+                  callback,
+                ),
             },
           }
         : {}),

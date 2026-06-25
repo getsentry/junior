@@ -27,6 +27,18 @@ export const pluginProviderAccountSchema = z
   })
   .strict();
 
+/** Runtime schema for OAuth tokens stored by the host for plugin credentials. */
+export const pluginStoredTokensSchema = z
+  .object({
+    account: pluginProviderAccountSchema.optional(),
+    accessToken: nonBlankStringSchema,
+    expiresAt: z.number().finite().optional(),
+    refreshToken: nonBlankStringSchema,
+    refreshTokenExpiresAt: z.number().finite().optional(),
+    scope: nonBlankStringSchema.optional(),
+  })
+  .strict();
+
 /** Runtime schema for a plugin-defined outbound credential grant. */
 export const pluginGrantSchema = z
   .object({
@@ -169,17 +181,13 @@ export interface PluginResolvedCredentialUser {
   userId: string;
 }
 
-export interface PluginStoredTokens {
-  account?: PluginProviderAccount;
-  accessToken: string;
-  expiresAt?: number;
-  refreshToken: string;
-  scope?: string;
-}
+export type PluginStoredTokens = z.output<typeof pluginStoredTokensSchema>;
 
 export interface PluginUserTokenSlot {
   get(): Promise<PluginStoredTokens | undefined>;
   set(tokens: PluginStoredTokens): Promise<void>;
+  /** Run token refresh work after the host has serialized this user/provider slot, or throw after a bounded wait. */
+  withRefresh<T>(callback: () => Promise<T>): Promise<T>;
   userId: string;
 }
 

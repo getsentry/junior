@@ -578,10 +578,11 @@ describe("mcp auth runtime slack integration", () => {
             ({
               object: {
                 should_reply: true,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "requires thread follow-up",
               },
-              text: '{"should_reply":true,"confidence":1,"reason":"requires thread follow-up"}',
+              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"requires thread follow-up"}',
             }) as never,
         },
         visionContext: {

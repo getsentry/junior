@@ -7,6 +7,7 @@ function envFileNames(nodeEnv: string): string[] {
     ...(nodeEnv === "test" ? [] : [".env.local"]),
     `.env.${nodeEnv}`,
     ".env",
+    ".env.example",
   ];
 }
 

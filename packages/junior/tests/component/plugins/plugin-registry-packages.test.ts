@@ -674,6 +674,7 @@ describe("plugin registry package discovery", () => {
           get: async () => undefined,
           set: async () => {},
           delete: async () => {},
+          withRefresh: async (_userId, _provider, callback) => callback(),
         },
       }),
     ).toThrow('Provider "demo" has no credentials or API headers configured');

@@ -23,3 +23,18 @@ export function createEnvFileLoader(
     }
   };
 }
+
+/** Create an env-file loader for checked-in defaults that never override. */
+export function createDefaultEnvFileLoader(
+  targetEnv: NodeJS.ProcessEnv = process.env,
+): (absolutePath: string) => void {
+  return (absolutePath: string) => {
+    const values = parseEnv(fs.readFileSync(absolutePath, "utf8"));
+    for (const [name, value] of Object.entries(values)) {
+      if (targetEnv[name] !== undefined) {
+        continue;
+      }
+      targetEnv[name] = value;
+    }
+  };
+}

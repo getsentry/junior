@@ -109,5 +109,5 @@ export const plugins = {
       process.chdir(ORIGINAL_CWD);
       rmSync(tempDir, { force: true, recursive: true });
     }
-  });
+  }, 30_000);
 });

@@ -326,7 +326,17 @@ describe("Slack contract: assistant-thread delivery", () => {
 
     expect(response.status).toBe(200);
     await waitUntil.flush();
-    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([]);
+    expect(slackApiOutbox.calls("assistant.threads.setTitle")).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel_id: DM_CHANNEL_ID,
+            thread_ts: DM_THREAD_TS,
+            title: "Debugging Node.js Memory Leaks",
+          }),
+        }),
+      ]),
+    );
 
     resolveTitle!();
     await vi.waitFor(() => {

@@ -54,6 +54,7 @@ function createTokenStore(
     get: vi.fn(async () => undefined),
     set: vi.fn(async () => undefined),
     delete: vi.fn(async () => undefined),
+    withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
     ...overrides,
   };
 }

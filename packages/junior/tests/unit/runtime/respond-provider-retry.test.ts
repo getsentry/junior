@@ -183,6 +183,11 @@ vi.mock("@/chat/capabilities/factory", () => ({
     get: async () => undefined,
     set: async () => undefined,
     delete: async () => undefined,
+    withRefresh: async <T>(
+      _userId: string,
+      _provider: string,
+      callback: () => Promise<T>,
+    ) => callback(),
   }),
 }));
 

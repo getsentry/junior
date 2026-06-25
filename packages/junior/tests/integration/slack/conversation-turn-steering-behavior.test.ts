@@ -125,6 +125,7 @@ function createTurnHarness(args: {
           args.completeObject ??
           completeObjectWithDecision(() => ({
             should_reply: true,
+            should_unsubscribe: false,
             confidence: 1,
             reason: "steering follow-up",
           })),
@@ -277,11 +278,13 @@ describe("Slack behavior: durable turn steering", () => {
           prompt.includes("<latest-message>thanks folks</latest-message>")
             ? {
                 should_reply: false,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "passive side conversation",
               }
             : {
                 should_reply: true,
+                should_unsubscribe: false,
                 confidence: 1,
                 reason: "active steering follow-up",
               },
@@ -426,6 +429,7 @@ describe("Slack behavior: durable turn steering", () => {
       createTurnHarness({
         completeObject: completeObjectWithDecision(() => ({
           should_reply: false,
+          should_unsubscribe: false,
           confidence: 1,
           reason: "side conversation",
         })),
@@ -518,6 +522,7 @@ describe("Slack behavior: durable turn steering", () => {
             }
           : {
               should_reply: true,
+              should_unsubscribe: false,
               confidence: 1,
               reason: "active steering follow-up",
             },
