@@ -4,6 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import {
@@ -37,7 +38,13 @@ import {
   getPluginOAuthConfig,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
+import {
+  processPluginTask,
+  scheduleSessionCompletedPluginTasks,
+} from "@/chat/plugins/task-runner";
 import { generateAssistantReply } from "@/chat/respond";
+import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
+import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import {
   createSchedulerSqlStore,
   schedulerPlugin,
@@ -65,6 +72,10 @@ import {
   type TestThread,
 } from "@junior-tests/fixtures/slack-harness";
 import {
+  createConversationWorkQueueTestAdapter,
+  type ConversationWorkQueueTestAdapter,
+} from "@junior-tests/fixtures/conversation-work";
+import {
   EVAL_OAUTH_CODE,
   EVAL_OAUTH_PROVIDER,
 } from "@junior-tests/msw/handlers/eval-oauth";
@@ -79,6 +90,8 @@ import {
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
 import { createSlackDestination } from "@/chat/destination";
+import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
+import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 
@@ -1366,6 +1379,7 @@ function buildRuntimeServices(
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
   observations: RuntimeObservations,
+  conversationWorkQueue: ConversationWorkQueueTestAdapter,
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -1520,6 +1534,20 @@ function buildRuntimeServices(
           }
         }
       },
+      scheduleAgentContinue: async (request) => {
+        await scheduleAgentContinue(request, {
+          queue: conversationWorkQueue,
+          state: env.stateAdapter,
+        });
+      },
+      scheduleSessionCompletedPluginTasks: async (params) => {
+        const records = await scheduleSessionCompletedPluginTasks(params, {
+          enqueue: false,
+        });
+        await Promise.all(
+          records.map((record) => processPluginTask(record.message)),
+        );
+      },
     },
     visionContext: {
       listThreadReplies: async ({ channelId, threadTs, targetMessageTs }) => {
@@ -1552,6 +1580,8 @@ async function processEvents(args: {
   scenario: EvalScenario;
   env: HarnessEnvironment;
   generateAssistantReply: typeof generateAssistantReply;
+  getSlackAdapter: () => FakeSlackAdapter;
+  conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
   readyQueueDeliveries: QueueDelivery[];
@@ -1560,6 +1590,8 @@ async function processEvents(args: {
     scenario,
     env,
     generateAssistantReply,
+    getSlackAdapter,
+    conversationWorkQueue,
     slackRuntime,
     getThreadRecord,
     readyQueueDeliveries,
@@ -1606,6 +1638,48 @@ async function processEvents(args: {
       );
     }
     return true;
+  };
+
+  const drainQueuedConversationWork = async (): Promise<void> => {
+    let processed = 0;
+    while (conversationWorkQueue.hasQueuedMessages()) {
+      processed += 1;
+      if (processed > 10) {
+        throw new Error("Eval conversation work queue did not drain");
+      }
+      await processConversationQueueMessage(
+        conversationWorkQueue.takeMessage(),
+        {
+          queue: conversationWorkQueue,
+          run: createSlackConversationWorker({
+            getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
+            resumeAwaitingContinuation: async (conversationId) =>
+              await resumeAwaitingSlackContinuation(conversationId, {
+                generateReply: generateAssistantReply,
+                scheduleAgentContinue: async (request) => {
+                  await scheduleAgentContinue(request, {
+                    queue: conversationWorkQueue,
+                    state: env.stateAdapter,
+                  });
+                },
+                scheduleSessionCompletedPluginTasks: async (params) => {
+                  const records = await scheduleSessionCompletedPluginTasks(
+                    params,
+                    { enqueue: false },
+                  );
+                  await Promise.all(
+                    records.map((record) => processPluginTask(record.message)),
+                  );
+                },
+              }),
+            runtime: slackRuntime,
+            state: env.stateAdapter,
+          }),
+          state: env.stateAdapter,
+        },
+      );
+      await maybeAutoCompleteAuth();
+    }
   };
 
   const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
@@ -1754,6 +1828,7 @@ async function processEvents(args: {
     await maybeAutoCompleteAuth();
     if (await processNextDelivery()) {
       await maybeAutoCompleteAuth();
+      await drainQueuedConversationWork();
     }
   }
 
@@ -1763,6 +1838,7 @@ async function processEvents(args: {
       break;
     }
     await maybeAutoCompleteAuth();
+    await drainQueuedConversationWork();
   }
 }
 
@@ -1884,11 +1960,13 @@ export async function runEvalScenario(
       return record;
     };
 
+    const conversationWorkQueue = createConversationWorkQueueTestAdapter();
     const services = buildRuntimeServices(
       scenario,
       env,
       threadRecordsById,
       observations,
+      conversationWorkQueue,
     );
     const generateEvalAssistantReply =
       services.replyExecutor?.generateAssistantReply;
@@ -1905,6 +1983,8 @@ export async function runEvalScenario(
       scenario,
       env,
       generateAssistantReply: generateEvalAssistantReply,
+      getSlackAdapter: () => slackAdapter,
+      conversationWorkQueue,
       slackRuntime,
       getThreadRecord,
       readyQueueDeliveries,

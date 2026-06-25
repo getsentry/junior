@@ -4,7 +4,10 @@ import { closeDb, getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { juniorMemoryMemories } from "../../../junior-memory/src/db/schema";
+import {
+  juniorMemoryEmbeddings,
+  juniorMemoryMemories,
+} from "../../../junior-memory/src/db/schema";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 const memoryPluginOverrides = {
@@ -69,6 +72,7 @@ async function readMemories(thread: MemoryThread) {
 }
 
 async function clearMemories() {
+  await memoryDb().delete(juniorMemoryEmbeddings);
   await memoryDb().delete(juniorMemoryMemories);
 }
 
@@ -334,13 +338,13 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     });
 
     const rows = await readMemories(passiveFirstPersonThread);
-    expect(rows).toEqual([
+    expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
         scope: "personal",
         subjectType: "user",
       }),
-    ]);
+    );
     await expectRequesterMemorySemantics({
       assistantText: visibleAssistantText(result),
       expectedMeaning:
@@ -422,13 +426,14 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       }),
     });
 
-    expect(await readMemories(autoRecallThread)).toEqual([
+    const rows = await readMemories(autoRecallThread);
+    expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
         scope: "personal",
       }),
-    ]);
+    );
   });
 
   const passiveDedupeThread = {

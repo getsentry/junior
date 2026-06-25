@@ -110,11 +110,11 @@ export async function processMemorySession(
   const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
     embedder: context.embedder,
   });
-  const existingMemories = await store.searchMemories({
-    limit: 10,
-    query: userText,
-  });
   const memories = await getTaskMemories(context, async () => {
+    const existingMemories = await store.searchMemories({
+      limit: 10,
+      query: userText,
+    });
     const agent = createMemoryAgent(context.model);
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
