@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { loadCliEnvFiles } from "./env";
 import { runCli } from "./run";
+import type { JuniorPluginSet } from "../plugins";
 
 const SENTRY_FLUSH_TIMEOUT_MS = 2_000;
 
@@ -29,14 +30,17 @@ async function runCheck(dir?: string): Promise<void> {
   await mod.runCheck(dir);
 }
 
-async function runUpgrade(): Promise<void> {
+async function runUpgrade(pluginSet?: JuniorPluginSet | null): Promise<void> {
   const mod = await import("./upgrade");
-  await mod.runUpgrade();
+  await mod.runUpgrade(undefined, { pluginSet });
 }
 
-async function runChat(argv: string[]): Promise<number> {
+async function runChat(
+  argv: string[],
+  pluginSet?: JuniorPluginSet | null,
+): Promise<number> {
   const mod = await import("./chat");
-  return await mod.runChat(argv);
+  return await mod.runChat(argv, undefined, { pluginSet });
 }
 
 function topLevelCommand(argv: string[]): string | undefined {
@@ -55,16 +59,20 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  const pluginCommands =
-    command && command !== "init"
-      ? await import("./plugins").then((mod) => mod.loadCliPluginCommands())
-      : undefined;
+  const cliPluginsModule =
+    command && command !== "init" ? await import("./plugins") : undefined;
+  const pluginSet = cliPluginsModule
+    ? ((await cliPluginsModule.loadCliPluginSet()) ?? null)
+    : undefined;
+  const pluginCommands = cliPluginsModule
+    ? await cliPluginsModule.loadCliPluginCommands(pluginSet)
+    : undefined;
   const exitCode = await runCli(argv, {
-    runChat,
+    runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
     runSnapshotCreate,
     runCheck,
-    runUpgrade,
+    runUpgrade: async () => await runUpgrade(pluginSet),
     ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : {}),
   });
   if (instrument) {

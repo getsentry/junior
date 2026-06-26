@@ -142,7 +142,9 @@ async function loadLocalPluginSet(): Promise<JuniorPluginSet | undefined> {
 }
 
 /** Configure plugin hooks after local chat has selected its state adapter. */
-async function configureLocalChatPlugins(): Promise<void> {
+async function configureLocalChatPlugins(
+  pluginSet?: JuniorPluginSet | null,
+): Promise<void> {
   const [
     pluginsModule,
     agentHooksModule,
@@ -156,14 +158,17 @@ async function configureLocalChatPlugins(): Promise<void> {
     import("@/chat/plugins/validation"),
     import("@/chat/db"),
   ]);
-  const pluginSet = await loadLocalPluginSet();
+  const resolvedPluginSet =
+    pluginSet === undefined
+      ? await loadLocalPluginSet()
+      : (pluginSet ?? undefined);
   const plugins =
-    pluginsModule.pluginRuntimeRegistrationsFromPluginSet(pluginSet);
-  const pluginConfig = pluginSet
-    ? pluginsModule.pluginCatalogConfigFromPluginSet(pluginSet)
+    pluginsModule.pluginRuntimeRegistrationsFromPluginSet(resolvedPluginSet);
+  const pluginConfig = resolvedPluginSet
+    ? pluginsModule.pluginCatalogConfigFromPluginSet(resolvedPluginSet)
     : pluginsModule.pluginCatalogConfigFromEnv();
   const shouldValidatePluginCatalog =
-    Boolean(pluginConfig) || Boolean(pluginSet?.registrations.length);
+    Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
   agentHooksModule.validatePlugins(plugins);
   const previousPluginCatalogConfig =
     registryModule.setPluginCatalogConfig(pluginConfig);
@@ -171,10 +176,10 @@ async function configureLocalChatPlugins(): Promise<void> {
     if (shouldValidatePluginCatalog) {
       registryModule.getPluginCatalogSignature();
       validationModule.validatePluginRegistrations(
-        pluginSet?.registrations ?? [],
+        resolvedPluginSet?.registrations ?? [],
       );
       validationModule.validatePluginEgressCredentialHooks(
-        pluginSet?.registrations ?? [],
+        resolvedPluginSet?.registrations ?? [],
       );
     }
     databaseModule.getDb();
@@ -226,9 +231,10 @@ function newRunConversationId(): string {
 async function runPrompt(
   options: Extract<ChatCommandOptions, { mode: "prompt" }>,
   io: ChatIo,
+  pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
   defaultStateAdapterForLocalChat();
-  await configureLocalChatPlugins();
+  await configureLocalChatPlugins(pluginSet);
   const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
@@ -252,9 +258,12 @@ async function runPrompt(
   return result.outcome === "success" ? 0 : 1;
 }
 
-async function runInteractive(io: ChatIo): Promise<void> {
+async function runInteractive(
+  io: ChatIo,
+  pluginSet: JuniorPluginSet | null | undefined,
+): Promise<void> {
   defaultStateAdapterForLocalChat();
-  await configureLocalChatPlugins();
+  await configureLocalChatPlugins(pluginSet);
   const conversationId = newRunConversationId();
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
@@ -306,6 +315,7 @@ async function runInteractive(io: ChatIo): Promise<void> {
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
+  deps: { pluginSet?: JuniorPluginSet | null } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {
@@ -315,9 +325,9 @@ export async function runChat(
 
   try {
     if (options.mode === "prompt") {
-      return await runPrompt(options, io);
+      return await runPrompt(options, io, deps.pluginSet);
     }
-    await runInteractive(io);
+    await runInteractive(io, deps.pluginSet);
     return 0;
   } catch (error) {
     await io.error(errorMessage(error));

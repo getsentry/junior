@@ -99,11 +99,17 @@ export async function runUpgradeMigrations(
 }
 
 /** Run one-shot Junior upgrade migrations against the configured state store. */
-export async function runUpgrade(io: UpgradeIo = DEFAULT_IO): Promise<void> {
+export async function runUpgrade(
+  io: UpgradeIo = DEFAULT_IO,
+  options: { pluginSet?: JuniorPluginSet | null } = {},
+): Promise<void> {
   try {
     const { redisStateAdapter, stateAdapter } =
       await getConnectedStateContext();
-    const pluginSet = await resolveUpgradePluginSet();
+    const pluginSet =
+      options.pluginSet === undefined
+        ? await resolveUpgradePluginSet()
+        : (options.pluginSet ?? undefined);
     io.info("Running Junior upgrade migrations...");
     await runUpgradeMigrations({
       io,

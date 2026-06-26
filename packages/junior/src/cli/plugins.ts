@@ -22,6 +22,7 @@ import {
 } from "@/chat/plugins/validation";
 import { loadAppPluginSet } from "@/plugin-module";
 import {
+  pluginCliRegistrationsFromPluginSet,
   pluginCatalogConfigFromPluginSet,
   pluginRuntimeRegistrationsFromPluginSet,
   type JuniorPluginSet,
@@ -37,6 +38,7 @@ const CORE_COMMAND_NAMES = new Set([
   "snapshot",
   "upgrade",
 ]);
+const PLUGIN_COMMAND_NAME_RE = /^[a-z][a-z0-9-]*$/;
 
 const DEFAULT_IO: PluginCommandIo = {
   writeError: (text) => writeStream(defaultStderr, text),
@@ -67,7 +69,8 @@ function writeStream(
   });
 }
 
-async function loadPluginSet(): Promise<JuniorPluginSet | undefined> {
+/** Load the app plugin set once for one CLI process. */
+export async function loadCliPluginSet(): Promise<JuniorPluginSet | undefined> {
   return await loadAppPluginSet(process.cwd(), async (moduleRef) =>
     pluginCliLoader.import<Record<string, unknown>>(moduleRef.importPath),
   );
@@ -176,6 +179,11 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
     for (const definition of plugin.cli?.commands ?? []) {
       const pluginName = plugin.manifest.name;
       const existingOwner = ownerByName.get(definition.name);
+      if (!PLUGIN_COMMAND_NAME_RE.test(definition.name)) {
+        throw new Error(
+          `Plugin CLI command "${definition.name}" from plugin "${pluginName}" must be a lowercase command identifier`,
+        );
+      }
       if (CORE_COMMAND_NAMES.has(definition.name)) {
         throw new Error(
           `Plugin CLI command "${definition.name}" from plugin "${pluginName}" conflicts with a core command`,
@@ -187,6 +195,11 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
         );
       }
       ownerByName.set(definition.name, pluginName);
+      if (typeof definition.configure !== "function") {
+        throw new Error(
+          `Plugin CLI command "${definition.name}" from plugin "${pluginName}" must define a configure function`,
+        );
+      }
       let exitCode = 0;
       validateConfiguredPluginCommand({
         command: createPluginCommanderCommand({
@@ -205,24 +218,29 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
   }
 }
 
-async function loadRuntimePlugins(args: {
+async function loadPluginRegistrations(args: {
+  pluginSet?: JuniorPluginSet;
   validateConfiguredCommands?: (plugins: PluginRegistration[]) => void;
-}): Promise<PluginRegistration[]> {
-  const pluginSet = await loadPluginSet();
+}): Promise<{
+  cliPlugins: PluginRegistration[];
+  runtimePlugins: PluginRegistration[];
+}> {
+  const pluginSet = args.pluginSet;
   if (!pluginSet) {
-    return [];
+    return { cliPlugins: [], runtimePlugins: [] };
   }
 
-  const plugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
+  const cliPlugins = pluginCliRegistrationsFromPluginSet(pluginSet);
+  const runtimePlugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginCatalogConfigFromPluginSet(pluginSet);
-  validatePlugins(plugins);
+  validatePlugins(runtimePlugins);
   const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
   try {
     validatePluginRegistrations(pluginSet.registrations);
     validatePluginEgressCredentialHooks(pluginSet.registrations);
-    args.validateConfiguredCommands?.(plugins);
-    setPlugins(plugins);
-    return plugins;
+    args.validateConfiguredCommands?.(cliPlugins);
+    setPlugins(runtimePlugins);
+    return { cliPlugins, runtimePlugins };
   } catch (error) {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     throw error;
@@ -230,18 +248,25 @@ async function loadRuntimePlugins(args: {
 }
 
 /** Import configured app plugins and build the plugin CLI command dispatcher. */
-export async function loadCliPluginCommands(): Promise<CliPluginCommandDispatcher> {
-  const plugins = await loadRuntimePlugins({
+export async function loadCliPluginCommands(
+  pluginSet?: JuniorPluginSet | null,
+): Promise<CliPluginCommandDispatcher> {
+  const resolvedPluginSet =
+    pluginSet === undefined
+      ? await loadCliPluginSet()
+      : (pluginSet ?? undefined);
+  const { cliPlugins } = await loadPluginRegistrations({
+    pluginSet: resolvedPluginSet,
     validateConfiguredCommands: validateConfiguredPluginCommands,
   });
-  const commandNames = plugins.flatMap((plugin) =>
+  const commandNames = cliPlugins.flatMap((plugin) =>
     (plugin.cli?.commands ?? []).map((command) => command.name),
   );
 
   return {
     commandNames,
     async run(commandName, argv, io = DEFAULT_IO) {
-      const resolved = findPluginCommand(plugins, commandName);
+      const resolved = findPluginCommand(cliPlugins, commandName);
       if (!resolved) {
         return undefined;
       }

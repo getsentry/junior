@@ -89,9 +89,9 @@ junior memory ...
 
 Subcommands below that namespace are plugin-owned. Plugin CLI commands should
 use subcommands rather than adding many top-level verbs. A top-level plugin
-command may not be renamed during configuration, and root-level aliases are part
-of the global namespace and must not conflict with core or plugin commands.
-Junior validates the declared command name before attaching it to the root CLI.
+command may not be renamed during configuration, and top-level aliases are not
+allowed because they occupy the host-owned root namespace. Junior validates the
+declared command name before attaching it to the root CLI.
 
 ### CLI Framework
 

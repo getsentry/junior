@@ -191,8 +191,14 @@ export function pluginRuntimeRegistrationsFromPluginSet(
   pluginSet: JuniorPluginSet | undefined,
 ): PluginRegistration[] {
   return (
-    pluginSet?.registrations.filter(
-      (plugin) => plugin.cli || plugin.hooks || plugin.tasks,
-    ) ?? []
+    pluginSet?.registrations.filter((plugin) => plugin.hooks || plugin.tasks) ??
+    []
   );
+}
+
+/** Return registrations that expose host CLI commands. */
+export function pluginCliRegistrationsFromPluginSet(
+  pluginSet: JuniorPluginSet | undefined,
+): PluginRegistration[] {
+  return pluginSet?.registrations.filter((plugin) => plugin.cli) ?? [];
 }

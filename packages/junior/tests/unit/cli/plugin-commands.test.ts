@@ -189,6 +189,58 @@ describe("plugin CLI commands", () => {
     );
   });
 
+  it("rejects plugin commands with invalid names", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "invalid",
+          displayName: "Invalid",
+          description: "Invalid plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "Memory",
+              summary: "Invalid memory",
+              configure(command) {
+                command.command("search");
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "Memory" from plugin "invalid" must be a lowercase command identifier',
+    );
+  });
+
+  it("rejects plugin commands without a configure function", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "broken",
+          displayName: "Broken",
+          description: "Broken plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "broken",
+              summary: "Broken command",
+              configure: undefined,
+            } as never,
+          ],
+        },
+      }),
+    ]);
+
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "broken" from plugin "broken" must define a configure function',
+    );
+  });
+
   it("rejects duplicate plugin command names", async () => {
     pluginSetRef.current = defineJuniorPlugins([
       defineJuniorPlugin({
