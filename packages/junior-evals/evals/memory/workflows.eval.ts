@@ -1,5 +1,5 @@
 import { afterEach, expect } from "vitest";
-import { assistantMessages, describeEval } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { closeDb, getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
@@ -338,6 +338,13 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     });
 
     const rows = await readMemories(passiveFirstPersonThread);
+    expect(toolCalls(result.session)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "createMemory",
+        }),
+      ]),
+    );
     expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
