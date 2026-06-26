@@ -62,6 +62,8 @@ jobs:
       - run: pnpm test:ci
       - run: pnpm test:e2e:dashboard
       - run: pnpm --filter @sentry/junior-example build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
       - run: pnpm docs:check
 
       - name: Upload coverage and test results
