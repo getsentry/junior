@@ -62,6 +62,7 @@ async function persistCompletedSessionForFakeReply(
   await persistCompletedSessionRecord({
     conversationId,
     destination: context.destination,
+    requester: context.requester,
     source: context.source,
     sessionId,
     sliceId: 1,
@@ -294,6 +295,10 @@ describe("local agent runner", () => {
           },
         ],
         sessionId: "local-turn-1",
+        requester: expect.objectContaining({
+          platform: "local",
+          userId: "local-cli",
+        }),
         source: {
           platform: "local",
           type: "priv",
