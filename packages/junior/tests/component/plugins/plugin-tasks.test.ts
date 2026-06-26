@@ -40,6 +40,12 @@ async function recordCompletedSession(args: {
       ...destination,
       conversationId: args.conversationId,
     },
+    requester: {
+      fullName: "Local CLI",
+      platform: "local",
+      userId: "local-cli",
+      userName: "local",
+    },
     piMessages: [
       {
         role: "user",
@@ -143,6 +149,12 @@ describe("plugin background tasks", () => {
       sessionId: runSessionId,
       sliceId: 1,
       source: runSource,
+      requester: {
+        fullName: "Local CLI",
+        platform: "local",
+        userId: "local-cli",
+        userName: "local",
+      },
       state: "completed",
       surface: "internal",
       turnStartMessageIndex: 2,
@@ -174,12 +186,17 @@ describe("plugin background tasks", () => {
             text: "Understood.",
           },
         ],
+        requester: {
+          fullName: "Local CLI",
+          platform: "local",
+          userId: "local-cli",
+          userName: "local",
+        },
         sessionId: runSessionId,
         source: runSource,
         toolCalls: [],
       }),
     ]);
-    expect(loadedSessions[0]).not.toHaveProperty("requester");
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
@@ -250,6 +267,11 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+
+    await recordCompletedSession({
+      conversationId: "local:test:send-failure",
+      sessionId: "turn-1",
+    });
 
     await expect(
       scheduleSessionCompletedPluginTasks(

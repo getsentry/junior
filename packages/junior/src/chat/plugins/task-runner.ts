@@ -10,14 +10,12 @@ import type {
   PluginSessionContext,
   PluginSessionMessage,
   PluginTaskContext,
-  Requester,
 } from "@sentry/junior-plugin-api";
 import { pluginSessionContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
-import { createRequesterFromStoredSlackRequester } from "@/chat/requester";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
@@ -94,19 +92,6 @@ function sessionMessage(message: PiMessage): PluginSessionMessage | undefined {
   return { role, text };
 }
 
-function requesterForSession(
-  record: Awaited<ReturnType<typeof getAgentTurnSessionRecord>>,
-): Requester | undefined {
-  if (!record?.requester?.teamId || !record.requester.slackUserId) {
-    return undefined;
-  }
-  return createRequesterFromStoredSlackRequester({
-    requester: record.requester,
-    teamId: record.requester.teamId,
-    userId: record.requester.slackUserId,
-  });
-}
-
 async function withPluginTaskLock<T>(
   taskId: string,
   callback: () => Promise<T>,
@@ -147,7 +132,11 @@ async function loadPluginSession(
       "Completed plugin task session record is missing source or destination",
     );
   }
-  const requester = requesterForSession(record);
+  if (!record.requester) {
+    throw new Error(
+      "Completed plugin task session record is missing requester",
+    );
+  }
   const sessionMessages = stripRuntimeTurnContext(
     record.piMessages.slice(record.turnStartMessageIndex ?? 0),
   );
@@ -158,7 +147,7 @@ async function loadPluginSession(
     messages: sessionMessages
       .map(sessionMessage)
       .filter((message): message is PluginSessionMessage => Boolean(message)),
-    ...(requester ? { requester } : {}),
+    requester: record.requester,
     sessionId: record.sessionId,
     source: record.source,
     toolCalls: getSuccessfulToolCalls(sessionMessages),
@@ -211,6 +200,13 @@ export async function scheduleSessionCompletedPluginTasks(
   );
   if (taskRegistrations.length === 0) {
     return;
+  }
+  const record = await getAgentTurnSessionRecord(
+    coreParams.conversationId,
+    coreParams.sessionId,
+  );
+  if (!record || record.state !== "completed") {
+    throw new Error("Completed plugin task session record is not ready");
   }
   const send = options.send ?? sendVercelPluginTask;
   const messages = taskRegistrations.map(({ name, plugin }) => ({

@@ -16,8 +16,9 @@ import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  parseStoredSlackRequester,
-  type StoredSlackRequester,
+  parseRequester,
+  toStoredSlackRequester,
+  type Requester,
 } from "@/chat/requester";
 import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -54,7 +55,7 @@ export interface AgentTurnSessionRecord {
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
   piMessages: PiMessage[];
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
@@ -178,6 +179,14 @@ function parseSource(value: unknown): Source | undefined {
   return result.success ? result.data : undefined;
 }
 
+function sessionLogRequester(
+  requester: Requester | undefined,
+): ReturnType<typeof toStoredSlackRequester> | undefined {
+  return requester?.platform === "slack"
+    ? toStoredSlackRequester(requester)
+    : undefined;
+}
+
 function parseAgentTurnSessionFields(
   parsed: Record<string, unknown>,
 ): ParsedAgentTurnSessionFields | undefined {
@@ -201,7 +210,10 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
-  const requester = parseStoredSlackRequester(parsed.requester);
+  const requester =
+    parsed.requester === undefined
+      ? undefined
+      : parseRequester(parsed.requester);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
   const turnStartMessageIndex = toNonNegativeInteger(
@@ -220,7 +232,8 @@ function parseAgentTurnSessionFields(
     version === undefined ||
     updatedAtMs === undefined ||
     (parsed.destination !== undefined && !destination) ||
-    (parsed.source !== undefined && !source)
+    (parsed.source !== undefined && !source) ||
+    (parsed.requester !== undefined && !requester)
   ) {
     return undefined;
   }
@@ -344,7 +357,7 @@ async function recordConversationActivityMetadata(args: {
       conversationId: args.summary.conversationId,
       destination: args.summary.destination,
       nowMs: args.nowMs,
-      requester: args.summary.requester,
+      requester: sessionLogRequester(args.summary.requester),
       source,
     });
   } catch (error) {
@@ -487,7 +500,7 @@ function buildStoredRecord(args: {
   loadedSkillNames?: string[];
   logSessionId?: string;
   previousVersion?: number;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -646,7 +659,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -662,7 +675,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
-    requester: args.requester ?? existingRecord?.requester,
+    requester: sessionLogRequester(args.requester ?? existingRecord?.requester),
     ttlMs,
   });
 
@@ -740,7 +753,7 @@ export async function recordAgentTurnSessionSummary(args: {
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   conversationStore?: ConversationStore;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   resumeReason?: AgentTurnResumeReason;
   sessionId: string;
   sliceId: number;

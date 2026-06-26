@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   createRequester,
-  createRequesterFromStoredSlackRequester,
   createSlackRequester,
   isActorUserId,
   parseActorUserId,
@@ -136,86 +135,6 @@ describe("requester", () => {
     expect(() => createSlackRequester("", "U039RR91S", null)).toThrow(
       "Slack requester requires team and user ids",
     );
-  });
-
-  it("uses stored Slack requester fields only for the same Slack actor", () => {
-    expect(
-      createRequesterFromStoredSlackRequester({
-        teamId: "T123",
-        userId: "U039RR91S",
-        requester: {
-          email: "david@example.com",
-          fullName: "David Cramer",
-          platform: "slack",
-          slackUserId: "U039RR91S",
-          slackUserName: "dcramer",
-          teamId: "T123",
-        },
-      }),
-    ).toEqual({
-      email: "david@example.com",
-      fullName: "David Cramer",
-      platform: "slack",
-      teamId: "T123",
-      userId: "U039RR91S",
-      userName: "dcramer",
-    });
-
-    expect(() =>
-      createRequesterFromStoredSlackRequester({
-        teamId: "T123",
-        userId: "U039RR91S",
-        requester: {
-          platform: "slack",
-          slackUserId: "U_OTHER",
-          teamId: "T123",
-        },
-      }),
-    ).toThrow("Stored Slack requester must match actor user id");
-    expect(() =>
-      createRequesterFromStoredSlackRequester({
-        teamId: "T123",
-        userId: "U039RR91S",
-        requester: {
-          platform: "slack",
-          slackUserId: " U039RR91S ",
-          teamId: "T123",
-        },
-      }),
-    ).toThrow("Stored Slack requester requires a user id");
-    expect(() =>
-      createRequesterFromStoredSlackRequester({
-        teamId: "T123",
-        userId: "U039RR91S",
-        requester: {
-          platform: "slack",
-          slackUserId: "U039RR91S",
-          teamId: "T999",
-        },
-      }),
-    ).toThrow("Stored Slack requester must match actor team id");
-  });
-
-  it("preserves legacy stored Slack requester profile fields without stored team id", () => {
-    expect(
-      createRequesterFromStoredSlackRequester({
-        teamId: "T123",
-        userId: "U039RR91S",
-        requester: {
-          email: "david@example.com",
-          fullName: "David Cramer",
-          slackUserId: "U039RR91S",
-          slackUserName: "dcramer",
-        },
-      }),
-    ).toEqual({
-      email: "david@example.com",
-      fullName: "David Cramer",
-      platform: "slack",
-      teamId: "T123",
-      userId: "U039RR91S",
-      userName: "dcramer",
-    });
   });
 
   it("parses canonical serialized Slack requesters without repair", () => {

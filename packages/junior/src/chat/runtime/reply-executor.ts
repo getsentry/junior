@@ -356,12 +356,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ),
           ),
         );
-        const requesterIdentity = await ensureSlackMessageActorIdentity(
+        const requester = await ensureSlackMessageActorIdentity(
           message,
           teamId,
           deps.services.lookupSlackUser,
         );
-        const requester = turnRequester(requesterIdentity);
+        const storedRequester = turnRequester(requester);
 
         const preparedState =
           options.preparedState ??
@@ -571,7 +571,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           void initConversationContext(conversationId, {
             channelName,
             originSurface: "slack",
-            originRequester: requester,
+            originRequester: storedRequester,
             startedAtMs: turnStartedAtMs,
           }).catch((error) => {
             logException(
@@ -626,16 +626,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (message.author.userId) {
           setSentryUser({
             id: message.author.userId,
-            ...(requesterIdentity.userName
-              ? { username: requesterIdentity.userName }
-              : {}),
-            ...(requesterIdentity.email
-              ? { email: requesterIdentity.email }
-              : {}),
+            ...(requester.userName ? { username: requester.userName } : {}),
+            ...(requester.email ? { email: requester.email } : {}),
           });
         }
-        if (requesterIdentity.userName) {
-          setTags({ slackUserName: requesterIdentity.userName });
+        if (requester.userName) {
+          setTags({ slackUserName: requester.userName });
         }
         const turnAttachments = collectTurnAttachments(
           message,
@@ -850,7 +846,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               credentialContext: {
                 actor: { type: "user", userId: message.author.userId },
               },
-              requester: requesterIdentity,
+              requester,
               conversationContext: preparedState.conversationContext,
               artifactState: preparedState.artifacts,
               piMessages,

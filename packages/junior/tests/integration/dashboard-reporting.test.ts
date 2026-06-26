@@ -16,6 +16,15 @@ const SYSTEM_MESSAGE = {
 const ORIGINAL_ENV = { ...process.env };
 const USE_POSTGRES_HARNESS = Boolean(process.env.DATABASE_URL);
 
+function slackRequester(fullName: string, userId = "U1") {
+  return {
+    fullName,
+    platform: "slack" as const,
+    teamId: "T1",
+    userId,
+  };
+}
+
 async function createStateReportingReader() {
   const { createStateConversationStore } =
     await import("@/chat/conversations/state");
@@ -351,7 +360,7 @@ describe("dashboard reporting", () => {
         channelName: "proj-alpha",
         conversationId: `slack:C1:${index}`,
         cumulativeDurationMs: index + 1,
-        requester: { fullName: "Avery" },
+        requester: slackRequester("Avery"),
         sessionId: `turn-${index}`,
         sliceId: 1,
         startedAtMs: Date.now() - index * 1000,
@@ -392,7 +401,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C2:300",
       cumulativeDurationMs: 8_000,
       cumulativeUsage: { totalTokens: 500 },
-      requester: { fullName: "Casey" },
+      requester: slackRequester("Casey"),
       sessionId: "old-turn",
       sliceId: 1,
       startedAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
@@ -404,7 +413,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:100",
       cumulativeDurationMs: 1_000,
       cumulativeUsage: { inputTokens: 10, outputTokens: 5 },
-      requester: { fullName: "Avery" },
+      requester: slackRequester("Avery"),
       sessionId: "turn-1",
       sliceId: 1,
       startedAtMs: Date.parse("2026-06-01T10:00:00.000Z"),
@@ -416,7 +425,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:100",
       cumulativeDurationMs: 2_000,
       cumulativeUsage: { totalTokens: 20 },
-      requester: { fullName: "Blake" },
+      requester: slackRequester("Blake"),
       sessionId: "turn-2",
       sliceId: 1,
       startedAtMs: Date.parse("2026-06-01T10:03:00.000Z"),
@@ -426,7 +435,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "slack:D1:200",
       cumulativeDurationMs: 3_000,
-      requester: { fullName: "Avery" },
+      requester: slackRequester("Avery"),
       sessionId: "turn-3",
       sliceId: 1,
       startedAtMs: Date.parse("2026-06-04T11:00:00.000Z"),
@@ -496,7 +505,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:100",
       cumulativeDurationMs: 1_000,
-      requester: { fullName: "Later Requester" },
+      requester: slackRequester("Later Requester"),
       sessionId: "turn-1",
       sliceId: 1,
       startedAtMs: Date.parse("2026-06-04T10:05:00.000Z"),
@@ -531,7 +540,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_scheduler",
       cumulativeDurationMs: 2_000,
-      requester: { fullName: "Scheduler" },
+      requester: slackRequester("Scheduler"),
       sessionId: "dispatch:scheduler",
       sliceId: 1,
       state: "completed",
@@ -540,7 +549,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_api",
       cumulativeDurationMs: 1_000,
-      requester: { fullName: "API" },
+      requester: slackRequester("API"),
       sessionId: "dispatch:api",
       sliceId: 1,
       state: "completed",
@@ -568,7 +577,7 @@ describe("dashboard reporting", () => {
       conversationStore,
       conversationId: "slack:C1:baseline",
       cumulativeDurationMs: 1_000,
-      requester: { fullName: "Avery" },
+      requester: slackRequester("Avery"),
       sessionId: "turn-baseline",
       sliceId: 1,
       startedAtMs,
@@ -580,7 +589,7 @@ describe("dashboard reporting", () => {
         conversationStore,
         conversationId: `slack:C_FILL:${index}`,
         cumulativeDurationMs: 1,
-        requester: { fullName: "Filler" },
+        requester: slackRequester("Filler"),
         sessionId: `turn-${index}`,
         sliceId: 1,
         state: "completed",
@@ -591,7 +600,7 @@ describe("dashboard reporting", () => {
       conversationStore,
       conversationId: "slack:C1:baseline",
       cumulativeDurationMs: 1_500,
-      requester: { fullName: "Blake" },
+      requester: slackRequester("Blake"),
       sessionId: "turn-latest",
       sliceId: 1,
       state: "completed",
@@ -1006,7 +1015,9 @@ describe("dashboard reporting", () => {
       channelName: "secret-dm-name",
       requester: {
         email: "david@sentry.io",
-        slackUserId: "U1",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U1",
       },
       piMessages: [
         {

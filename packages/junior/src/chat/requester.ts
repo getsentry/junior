@@ -2,10 +2,10 @@
  * Canonical requester identity.
  *
  * Runtime requesters are platform-scoped actors. Stored Slack requester parsing
- * remains explicit so legacy durable records can resume without repairing
- * malformed team or user ids.
+ * remains explicit so durable conversation metadata is not repaired on read.
  */
 import { z } from "zod";
+import { requesterSchema } from "@sentry/junior-plugin-api";
 import { isSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -52,6 +52,12 @@ export interface SlackRequesterProfile {
 }
 
 export type StoredSlackRequester = z.output<typeof storedSlackRequesterSchema>;
+
+/** Parse a serialized runtime requester that crossed a durable boundary. */
+export function parseRequester(value: unknown): Requester | undefined {
+  const result = requesterSchema.safeParse(value);
+  return result.success ? result.data : undefined;
+}
 
 interface RequesterInput {
   email?: string;
@@ -258,47 +264,29 @@ export function toStoredSlackRequester(
   };
 }
 
-/** Rebuild a runtime requester from durable Slack requester state. */
-export function createRequesterFromStoredSlackRequester(args: {
-  requester?: StoredSlackRequester;
+/** Resolve a Slack resume requester from stored runtime identity and the active actor. */
+export function createSlackResumeRequester(args: {
+  requester?: Requester;
   teamId: string;
   userId: string;
 }): SlackRequester {
-  const actorUserId = parseActorUserId(args.userId);
-  const actorTeamId = parseSlackTeamId(args.teamId);
-  if (!actorTeamId || !actorUserId) {
+  if (!args.requester) {
+    throw new Error("Stored Slack requester is required for resume");
+  }
+  if (
+    args.requester.platform !== "slack" ||
+    args.requester.teamId !== args.teamId ||
+    args.requester.userId !== args.userId
+  ) {
+    throw new Error("Stored Slack requester did not match resume actor");
+  }
+  const requester = createRequester(args.requester, {
+    platform: "slack",
+    teamId: args.teamId,
+    userId: args.userId,
+  });
+  if (!requester || requester.platform !== "slack") {
     throw new Error("Slack requester requires team and user ids");
   }
-  const storedUserId =
-    args.requester?.slackUserId === undefined
-      ? undefined
-      : parseActorUserId(args.requester.slackUserId);
-  const storedTeamId =
-    args.requester?.teamId === undefined
-      ? undefined
-      : parseSlackTeamId(args.requester.teamId);
-  if (args.requester?.slackUserId !== undefined && !storedUserId) {
-    throw new Error("Stored Slack requester requires a user id");
-  }
-  if (args.requester?.teamId !== undefined && !storedTeamId) {
-    throw new Error("Stored Slack requester requires a team id");
-  }
-  if (storedUserId && storedUserId !== actorUserId) {
-    throw new Error("Stored Slack requester must match actor user id");
-  }
-  if (storedTeamId && storedTeamId !== actorTeamId) {
-    throw new Error("Stored Slack requester must match actor team id");
-  }
-  const canUseStoredProfile = Boolean(storedUserId);
-  return createSlackRequester(
-    actorTeamId,
-    actorUserId,
-    canUseStoredProfile
-      ? {
-          email: args.requester?.email,
-          fullName: args.requester?.fullName,
-          userName: args.requester?.slackUserName,
-        }
-      : undefined,
-  );
+  return requester;
 }

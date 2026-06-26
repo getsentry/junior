@@ -220,8 +220,8 @@ describe("oauth callback slack integration", () => {
       requester: {
         platform: "slack",
         teamId: "T123",
-        slackUserId: "U123",
-        slackUserName: "stored-user",
+        userId: "U123",
+        userName: "stored-user",
         fullName: "Stored User",
         email: "stored@example.com",
       },
@@ -343,7 +343,7 @@ describe("oauth callback slack integration", () => {
     };
     expect(resumeContext.source).toEqual({
       ...slackSource("1700000000.009"),
-      messageTs: "1700000000.010",
+      messageTs: "1700000000.session-source",
     });
     expect(resumeContext.conversationContext).not.toContain(
       "list my sentry issues",
@@ -418,7 +418,7 @@ describe("oauth callback slack integration", () => {
       requester: {
         platform: "slack",
         teamId: "T999",
-        slackUserId: "U123",
+        userId: "U123",
       },
     });
     await stateAdapterModule
@@ -581,7 +581,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
     });
     await stateAdapterModule
       .getStateAdapter()
@@ -670,6 +670,12 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
+      requester: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "dcramer",
+      },
     });
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
@@ -681,6 +687,12 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
+      requester: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "dcramer",
+      },
     });
 
     await stateAdapterModule
@@ -780,7 +792,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: { slackUserId: "U123" },
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
     });
 
     await stateAdapterModule

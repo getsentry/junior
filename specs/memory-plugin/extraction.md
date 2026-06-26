@@ -240,7 +240,8 @@ a model-visible rejection, not storage with a special classification.
 Duplicate prevention is required before insertion where the relevant signal is
 available:
 
-- same source, completed session reference, and extracted fact index
+- same source, completed session reference, target, normalized content, and
+  expiration marker
 - high lexical or embedding similarity to an active memory in the same scope
 
 V1 storage enforces source/fact idempotency. Exact normalized-content equality

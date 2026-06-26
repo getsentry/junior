@@ -814,6 +814,57 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("stores requester memories from local completed sessions", async () => {
+    const fixture = await createMemoryFixture();
+    const { model } = extractionModel([
+      {
+        target: "requester",
+        content: "Prefers local passive memory QA.",
+      },
+    ]);
+    const runtime = localContext();
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          session: {
+            async load() {
+              return completedSession({
+                conversationId: runtime.conversationId,
+                destination: {
+                  platform: "local",
+                  conversationId: runtime.conversationId,
+                },
+                messages: [
+                  {
+                    role: "user",
+                    text: "I prefer local passive memory QA.",
+                  },
+                ],
+                requester: runtime.requester,
+                source: runtime.source,
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toMatchObject([
+        {
+          content: "Prefers local passive memory QA.",
+          scope: "personal",
+          subjectKey: "local:local-user",
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists, recalls, and archives visible memories", async () => {
     const fixture = await createMemoryFixture();
 

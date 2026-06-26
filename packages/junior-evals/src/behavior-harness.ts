@@ -1541,12 +1541,11 @@ function buildRuntimeServices(
         });
       },
       scheduleSessionCompletedPluginTasks: async (params) => {
-        const records = await scheduleSessionCompletedPluginTasks(params, {
-          enqueue: false,
+        await scheduleSessionCompletedPluginTasks(params, {
+          send: async (message) => {
+            await processPluginTask(message);
+          },
         });
-        await Promise.all(
-          records.map((record) => processPluginTask(record.message)),
-        );
       },
     },
     visionContext: {
@@ -1663,13 +1662,11 @@ async function processEvents(args: {
                   });
                 },
                 scheduleSessionCompletedPluginTasks: async (params) => {
-                  const records = await scheduleSessionCompletedPluginTasks(
-                    params,
-                    { enqueue: false },
-                  );
-                  await Promise.all(
-                    records.map((record) => processPluginTask(record.message)),
-                  );
+                  await scheduleSessionCompletedPluginTasks(params, {
+                    send: async (message) => {
+                      await processPluginTask(message);
+                    },
+                  });
                 },
               }),
             runtime: slackRuntime,

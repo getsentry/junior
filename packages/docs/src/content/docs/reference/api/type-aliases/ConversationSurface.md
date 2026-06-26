@@ -7,4 +7,4 @@ title: "ConversationSurface"
 
 > **ConversationSurface** = `"api"` \| `"internal"` \| `"scheduler"` \| `"slack"`
 
-Defined in: [junior/src/reporting/conversations.ts:84](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L84)
+Defined in: [junior/src/reporting/conversations.ts:83](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L83)

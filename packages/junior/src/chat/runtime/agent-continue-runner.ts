@@ -6,7 +6,6 @@
  * durably record success, failure, auth pause, or another safe pause boundary.
  */
 import { logException, logWarn } from "@/chat/logging";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   ResumeTurnBusyError,
   resumeSlackTurn,
@@ -44,7 +43,7 @@ import {
   type AgentContinueRequest,
 } from "@/chat/services/agent-continue";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { createRequesterFromStoredSlackRequester } from "@/chat/requester";
+import { createSlackResumeRequester } from "@/chat/requester";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -268,7 +267,7 @@ export async function continueSlackAgentRun(
           payload.destination,
           "Slack continuation",
         );
-        const requester = createRequesterFromStoredSlackRequester({
+        const requester = createSlackResumeRequester({
           requester: activeSessionRecord.requester,
           teamId: destination.teamId,
           userId: userMessage.author.userId,

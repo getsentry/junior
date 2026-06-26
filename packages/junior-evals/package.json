@@ -9,6 +9,7 @@
     "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.config.ts"
   },
   "devDependencies": {
+    "@chat-adapter/slack": "4.29.0",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",

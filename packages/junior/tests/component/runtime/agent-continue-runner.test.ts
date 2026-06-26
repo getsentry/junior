@@ -54,8 +54,10 @@ describe("agent continuation runner callbacks", () => {
       source: SLACK_SOURCE,
       resumeReason: "timeout",
       requester: {
-        slackUserId: "U123",
-        slackUserName: "stored-user",
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "stored-user",
         fullName: "Stored User",
         email: "stored@example.com",
       },
@@ -148,7 +150,7 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("derives Slack source for continuation records missing source", async () => {
+  it("fails before continuing when a continuation record is missing source", async () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -159,8 +161,10 @@ describe("agent continuation runner callbacks", () => {
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       requester: {
-        slackUserId: "U123",
-        slackUserName: "stored-user",
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "stored-user",
       },
       piMessages: [
         {
@@ -216,21 +220,20 @@ describe("agent continuation runner callbacks", () => {
         {
           resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
-            if (!prepared || !prepared.replyContext) {
-              throw new Error("Expected prepared continuation reply context");
+            if (prepared !== false) {
+              throw new Error("Expected continuation preparation to fail");
             }
-            expect(prepared.replyContext.source).toEqual(
-              createSlackSource({
-                teamId: SLACK_DESTINATION.teamId,
-                channelId: SLACK_DESTINATION.channelId,
-                threadTs: "1712345.0007",
-              }),
-            );
             return true;
           },
         },
       ),
     ).resolves.toBe(true);
+    await expect(
+      getAgentTurnSessionRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: "Stored Slack source missing for continuation",
+    });
   });
 
   it("fails before continuing when stored requester and message author differ", async () => {
@@ -244,8 +247,10 @@ describe("agent continuation runner callbacks", () => {
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
       requester: {
-        slackUserId: "U999",
-        slackUserName: "wrong-user",
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U999",
+        userName: "wrong-user",
       },
       piMessages: [
         {
@@ -305,7 +310,7 @@ describe("agent continuation runner callbacks", () => {
           },
         },
       ),
-    ).rejects.toThrow("Stored Slack requester must match actor user id");
+    ).rejects.toThrow("Stored Slack requester did not match resume actor");
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({

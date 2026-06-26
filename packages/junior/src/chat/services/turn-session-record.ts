@@ -4,8 +4,7 @@ import {
   type AgentTurnSessionRecord,
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
-import type { StoredSlackRequester } from "@/chat/requester";
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Destination, Requester, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -135,7 +134,7 @@ export async function persistRunningSessionRecord(args: {
   messages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
@@ -214,7 +213,7 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
@@ -297,7 +296,7 @@ export async function persistAuthPauseSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -384,7 +383,7 @@ export async function persistTimeoutSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -512,7 +511,7 @@ export async function persistYieldSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: StoredSlackRequester;
+  requester?: Requester;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {

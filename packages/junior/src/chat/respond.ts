@@ -144,12 +144,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import {
-  createRequester,
-  toStoredSlackRequester,
-  type Requester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+import { createRequester, type Requester } from "@/chat/requester";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -337,11 +332,8 @@ function extractSliceUsage(
 
 function requesterFromContext(
   context: ReplyRequestContext,
-): StoredSlackRequester | undefined {
-  const identity = actorRequesterFromContext(context);
-  return identity?.platform === "slack"
-    ? toStoredSlackRequester(identity)
-    : undefined;
+): Requester | undefined {
+  return actorRequesterFromContext(context);
 }
 
 /** Reject requester identities that do not belong to the active destination. */

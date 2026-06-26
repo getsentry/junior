@@ -1,6 +1,10 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource, type Source } from "@sentry/junior-plugin-api";
+import {
+  createSlackSource,
+  type Requester,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
@@ -101,14 +105,7 @@ async function createPendingAuthSession(args: {
 
 async function createAwaitingMcpTurnRecord(args: {
   conversationId: string;
-  requester?: {
-    email?: string;
-    fullName?: string;
-    platform?: "slack";
-    slackUserId?: string;
-    slackUserName?: string;
-    teamId?: string;
-  };
+  requester?: Requester;
   includeSource?: boolean;
   sessionId: string;
   source?: Source;
@@ -131,7 +128,12 @@ async function createAwaitingMcpTurnRecord(args: {
         timestamp: 1,
       },
     ],
-    ...(args.requester ? { requester: args.requester } : {}),
+    requester: args.requester ?? {
+      platform: "slack",
+      teamId: SLACK_DESTINATION.teamId,
+      userId: "U123",
+      userName: "dcramer",
+    },
     resumeReason: "auth",
     resumedFromSliceId: 1,
   });
@@ -256,8 +258,8 @@ describe("mcp oauth callback slack integration", () => {
       requester: {
         platform: "slack",
         teamId: "T123",
-        slackUserId: "U123",
-        slackUserName: "stored-user",
+        userId: "U123",
+        userName: "stored-user",
         fullName: "Stored User",
         email: "stored@example.com",
       },
@@ -477,7 +479,7 @@ describe("mcp oauth callback slack integration", () => {
       requester: {
         platform: "slack",
         teamId: "T999",
-        slackUserId: "U123",
+        userId: "U123",
       },
       sessionId,
       source: slackSource("1700000000.006"),
@@ -607,7 +609,6 @@ describe("mcp oauth callback slack integration", () => {
     });
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
-      includeSource: false,
       sessionId,
       source: slackSource("1700000000.005"),
       text: "what did i say about the budget?",
@@ -655,10 +656,7 @@ describe("mcp oauth callback slack integration", () => {
       conversationContext?: string;
       source?: unknown;
     };
-    expect(resumeContext.source).toEqual({
-      ...slackSource("1700000000.005"),
-      messageTs: "1700000000.0052",
-    });
+    expect(resumeContext.source).toEqual(slackSource("1700000000.005"));
     expect(resumeContext.conversationContext).not.toContain(
       "Old MCP context that should not be used.",
     );
@@ -848,8 +846,10 @@ describe("mcp oauth callback slack integration", () => {
     await createAwaitingMcpTurnRecord({
       conversationId: "conversation-mismatched-requester",
       requester: {
-        slackUserId: "U999",
-        slackUserName: "wrong-user",
+        platform: "slack",
+        teamId: "T123",
+        userId: "U999",
+        userName: "wrong-user",
       },
       sessionId,
       source: slackSource("1700000000.007"),

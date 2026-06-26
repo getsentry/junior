@@ -1,6 +1,7 @@
 import { Type, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
+  getSourceKey,
   PluginToolInputError,
   type PluginToolDefinition,
   type Source,
@@ -289,14 +290,11 @@ function parseToolInput<T>(schema: TSchema, input: unknown): T {
 }
 
 function sourceIdempotencyKey(context: MemoryToolContext): string {
-  if (context.source.platform === "local") {
-    return context.source.conversationId;
-  }
-  const threadKey = context.source.threadTs ?? context.source.messageTs;
-  if (!threadKey) {
+  const sourceKey = getSourceKey(context.source);
+  if (!sourceKey) {
     throwToolInputError("Memory creation requires source message context.");
   }
-  return `slack:${context.source.teamId}:${context.source.channelId}:${threadKey}`;
+  return sourceKey;
 }
 
 function createInput(

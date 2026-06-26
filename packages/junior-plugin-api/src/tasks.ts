@@ -24,7 +24,7 @@ export const pluginSessionContextSchema = z
     conversationId: z.string().min(1),
     destination: destinationSchema,
     messages: z.array(pluginSessionMessageSchema),
-    requester: requesterSchema.optional(),
+    requester: requesterSchema,
     sessionId: z.string().min(1),
     source: sourceSchema,
     toolCalls: z.array(z.string().min(1)),
