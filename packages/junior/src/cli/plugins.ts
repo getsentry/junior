@@ -202,7 +202,9 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
   }
 }
 
-async function loadRuntimePlugins(): Promise<PluginRegistration[]> {
+async function loadRuntimePlugins(args: {
+  validateConfiguredCommands?: (plugins: PluginRegistration[]) => void;
+}): Promise<PluginRegistration[]> {
   const pluginSet = await loadPluginSet();
   if (!pluginSet) {
     return [];
@@ -215,6 +217,7 @@ async function loadRuntimePlugins(): Promise<PluginRegistration[]> {
   try {
     validatePluginRegistrations(pluginSet.registrations);
     validatePluginEgressCredentialHooks(pluginSet.registrations);
+    args.validateConfiguredCommands?.(plugins);
     setPlugins(plugins);
     return plugins;
   } catch (error) {
@@ -225,8 +228,9 @@ async function loadRuntimePlugins(): Promise<PluginRegistration[]> {
 
 /** Import configured app plugins and build the plugin CLI command dispatcher. */
 export async function loadCliPluginCommands(): Promise<CliPluginCommandDispatcher> {
-  const plugins = await loadRuntimePlugins();
-  validateConfiguredPluginCommands(plugins);
+  const plugins = await loadRuntimePlugins({
+    validateConfiguredCommands: validateConfiguredPluginCommands,
+  });
   const commandNames = plugins.flatMap((plugin) =>
     (plugin.cli?.commands ?? []).map((command) => command.name),
   );

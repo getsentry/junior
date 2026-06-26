@@ -133,4 +133,59 @@ describe("plugin CLI commands", () => {
       'Plugin CLI command "memory" from plugin "memory" must not rename its top-level command',
     );
   });
+
+  it("can load valid plugin commands after configured command validation fails", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "broken",
+          displayName: "Broken",
+          description: "Broken plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "broken",
+              summary: "Broken command",
+              configure() {},
+            },
+          ],
+        },
+      }),
+    ]);
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "broken" from plugin "broken" must define at least one subcommand',
+    );
+
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "valid",
+          displayName: "Valid",
+          description: "Valid plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "valid",
+              summary: "Valid command",
+              configure(command, junior) {
+                command.command("run").action(
+                  junior.action(async (ctx) => {
+                    await ctx.io.writeOutput(`${ctx.plugin.name}\n`);
+                  }),
+                );
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    const dispatcher = await loadCliPluginCommands();
+    const { io, stdout } = fakeIo();
+
+    await expect(dispatcher.run("valid", ["run"], io)).resolves.toBe(0);
+
+    expect(stdout.join("")).toBe("valid\n");
+  });
 });
