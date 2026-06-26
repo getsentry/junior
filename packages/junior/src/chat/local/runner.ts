@@ -21,7 +21,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
@@ -340,22 +339,6 @@ export async function runLocalAgentTurn(
   }
   if (reply.diagnostics.outcome === "success") {
     try {
-      await persistCompletedSessionRecord({
-        conversationId: input.conversationId,
-        currentDurationMs: reply.diagnostics.durationMs,
-        currentUsage: reply.diagnostics.usage,
-        destination,
-        source,
-        sessionId: turnId,
-        sliceId: 1,
-        allMessages: reply.piMessages ?? piMessagesBeforeRun ?? [],
-        logContext: {
-          runId: turnId,
-          modelId: reply.diagnostics.modelId,
-        },
-        surface: "internal",
-        turnStartMessageIndex: piMessagesBeforeRun?.length ?? 0,
-      });
       const inlineQueue: PluginTaskQueue = {
         send: processPluginTask,
       };
