@@ -6,6 +6,7 @@
  * durably record success, failure, auth pause, or another safe pause boundary.
  */
 import { logException, logWarn } from "@/chat/logging";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   ResumeTurnBusyError,
   resumeSlackTurn,
@@ -272,15 +273,15 @@ export async function continueSlackAgentRun(
           teamId: destination.teamId,
           userId: userMessage.author.userId,
         });
-        if (!activeSessionRecord.source) {
-          await failAgentTurnSessionRecord({
-            conversationId: payload.conversationId,
-            expectedVersion: activeSessionRecord.version,
-            sessionId: payload.sessionId,
-            errorMessage: "Stored Slack source missing for continuation",
+        // TODO(v0.76.0): Remove once pre-source awaiting_resume Slack records have drained.
+        const source =
+          activeSessionRecord.source ??
+          createSlackSource({
+            channelId: destination.channelId,
+            messageTs: getTurnUserSlackMessageTs(userMessage),
+            teamId: destination.teamId,
+            threadTs: thread.threadTs,
           });
-          return false;
-        }
 
         return {
           messageText: userMessage.text,
@@ -294,7 +295,7 @@ export async function continueSlackAgentRun(
             },
             requester,
             destination: payload.destination,
-            source: activeSessionRecord.source,
+            source,
             correlation: {
               conversationId: payload.conversationId,
               turnId: payload.sessionId,
