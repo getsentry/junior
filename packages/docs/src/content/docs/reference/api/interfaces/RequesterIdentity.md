@@ -5,7 +5,7 @@ prev: false
 title: "RequesterIdentity"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:89](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L89)
+Defined in: [junior/src/reporting/conversations.ts:94](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L94)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:89](https://github.com/getsen
 
 > `optional` **email?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L90)
+Defined in: [junior/src/reporting/conversations.ts:95](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L95)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:90](https://github.com/getsen
 
 > `optional` **fullName?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:91](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L91)
+Defined in: [junior/src/reporting/conversations.ts:96](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L96)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:91](https://github.com/getsen
 
 > `optional` **slackUserId?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:92](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L92)
+Defined in: [junior/src/reporting/conversations.ts:97](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L97)
 
 ---
 
@@ -37,4 +37,4 @@ Defined in: [junior/src/reporting/conversations.ts:92](https://github.com/getsen
 
 > `optional` **slackUserName?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:93](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L93)
+Defined in: [junior/src/reporting/conversations.ts:98](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L98)

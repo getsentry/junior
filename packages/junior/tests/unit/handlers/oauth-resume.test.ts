@@ -226,6 +226,46 @@ describe("resumeAuthorizedRequest", () => {
     );
   });
 
+  it("schedules plugin tasks after a successful resumed turn", async () => {
+    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      channelId: "C-test",
+      threadTs: "1700000000.0006",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U-test" },
+        },
+        correlation: {
+          conversationId: "slack:T-test:C-test:1700000000.0006",
+          turnId: "turn_1700000000_0006",
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.0006"),
+        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+      },
+      generateReply: async () => ({
+        text: "Final resumed answer",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "fake-agent-model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+      scheduleSessionCompletedPluginTasks,
+    });
+
+    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
+      conversationId: "slack:T-test:C-test:1700000000.0006",
+      sessionId: "turn_1700000000_0006",
+    });
+  });
+
   it("releases the thread lock before scheduling another timeout slice", async () => {
     const onTimeoutPause = vi.fn(async () => {
       const stateAdapter = getStateAdapter();

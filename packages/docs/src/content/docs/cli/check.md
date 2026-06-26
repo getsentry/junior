@@ -66,7 +66,7 @@ When the target already contains Junior app markers such as `app/SOUL.md`, `app/
 
 If a skill file has frontmatter but no instructions after it, the command emits a warning instead of failing.
 
-For Nitro/Vercel apps, the command checks deployment wiring when it sees Junior markers such as `@sentry/junior`, `juniorNitro()`, or app content files. It fails when `nitro.config.ts` omits `juniorNitro()`, because that module emits Junior's heartbeat cron and Vercel Queue trigger into the Nitro build output. It also fails when root `vercel.json` still targets `functions["api/internal/agent/continue.ts"]`; Nitro does not deploy that source file as a Vercel function.
+For Nitro/Vercel apps, the command checks deployment wiring when it sees Junior markers such as `@sentry/junior`, `juniorNitro()`, or app content files. It fails when `nitro.config.ts` omits `juniorNitro()`, because that module emits Junior's heartbeat cron and Vercel Queue triggers into the Nitro build output. It also fails when root `vercel.json` still targets `functions["api/internal/agent/continue.ts"]`; Nitro does not deploy that source file as a Vercel function.
 
 Root `vercel.json` heartbeat crons emit a warning. `juniorNitro()` now emits `/api/internal/heartbeat` into `.vercel/output/config.json`, so keeping the root cron can drift from the deployed Nitro config.
 

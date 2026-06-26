@@ -66,7 +66,7 @@ Keep that Vercel build command unless you have an older install without Junior's
 
 ## Enable Junior's Nitro deployment module
 
-Junior uses a one-minute internal heartbeat to run plugin heartbeats and recover stale agent dispatches. Durable agent work is also resumed by a Vercel Queue consumer. Both pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
+Junior uses a one-minute internal heartbeat to run plugin heartbeats and recover stale agent dispatches. Durable agent work and plugin background tasks are also resumed by Vercel Queue consumers. These pieces are emitted by `juniorNitro()` into Nitro's Vercel Build Output config, which is the config Vercel deploys for Nitro apps.
 
 Keep `juniorNitro()` installed in `nitro.config.ts`:
 
@@ -83,7 +83,7 @@ export default defineConfig({
 });
 ```
 
-Do not configure `functions["api/internal/agent/continue.ts"]` in root `vercel.json`; Nitro does not deploy that source file as a Vercel function. `juniorNitro()` attaches the queue trigger to `/api/internal/agent/continue` with Nitro `vercel.functionRules`, and emits the `/api/internal/heartbeat` cron into `.vercel/output/config.json`.
+Do not configure `functions["api/internal/agent/continue.ts"]` in root `vercel.json`; Nitro does not deploy that source file as a Vercel function. `juniorNitro()` attaches queue triggers to `/api/internal/agent/continue` and `/api/internal/plugin/tasks` with Nitro `vercel.functionRules`, and emits the `/api/internal/heartbeat` cron into `.vercel/output/config.json`.
 
 The heartbeat endpoint returns `401` unless the incoming Vercel Cron request has a bearer token that matches `CRON_SECRET`.
 
@@ -144,7 +144,7 @@ Run these checks after deployment:
 1. `GET https://<your-domain>/health` returns `status: "ok"`.
 2. `junior check` passes without deployment config errors.
 3. The Vercel deployment has a cron entry for `/api/internal/heartbeat`.
-4. The Vercel deployment has a Queue trigger for `/api/internal/agent/continue`.
+4. The Vercel deployment has Queue triggers for `/api/internal/agent/continue` and `/api/internal/plugin/tasks`.
 5. A Slack mention produces a thread reply in the expected workspace.
 6. App Home opens without an error.
 7. Queue callback and agent-run logs show successful processing.

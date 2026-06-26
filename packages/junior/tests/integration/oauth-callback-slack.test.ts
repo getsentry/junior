@@ -193,7 +193,6 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
-      source: slackSource("1700000000.009"),
       piMessages: [
         {
           role: "user",
@@ -323,7 +322,12 @@ describe("oauth callback slack integration", () => {
     );
     const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
       conversationContext?: string;
+      source?: unknown;
     };
+    expect(resumeContext.source).toEqual({
+      ...slackSource("1700000000.009"),
+      messageTs: "1700000000.010",
+    });
     expect(resumeContext.conversationContext).not.toContain(
       "list my sentry issues",
     );

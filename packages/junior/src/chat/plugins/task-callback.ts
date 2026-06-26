@@ -16,13 +16,16 @@ import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import { processPluginTask } from "./task-runner";
 import { resolvePluginTaskQueueTopic } from "./task-queue";
-import { parsePluginTaskQueueMessage } from "./task-message";
+import {
+  verifyPluginTaskQueueMessage,
+  type PluginTaskQueueRejectReason,
+} from "./task-signing";
 
 export const PLUGIN_TASK_DEV_CONSUMER_GROUP = "junior_plugin_tasks_dev";
 const PLUGIN_TASK_MAX_DELIVERIES = 5;
 
 function logPluginTaskQueueMessageRejected(
-  reason: "malformed",
+  reason: PluginTaskQueueRejectReason,
   metadata: MessageMetadata,
 ): void {
   logWarn(
@@ -44,12 +47,19 @@ async function handlePluginTaskQueueMessage(
   message: unknown,
   metadata: MessageMetadata,
 ): Promise<void> {
-  const parsed = parsePluginTaskQueueMessage(message);
-  if (!parsed) {
-    logPluginTaskQueueMessageRejected("malformed", metadata);
+  const verification = verifyPluginTaskQueueMessage(message);
+  if (verification.status === "rejected") {
+    logPluginTaskQueueMessageRejected(verification.reason, metadata);
     return;
   }
-  await runWithTurnRequestDeadline(() => processPluginTask(parsed));
+  if (verification.status === "unavailable") {
+    throw new Error(
+      `Plugin task queue message verification unavailable: ${verification.reason}`,
+    );
+  }
+  await runWithTurnRequestDeadline(() =>
+    processPluginTask(verification.message),
+  );
 }
 
 /** Bound poison-message retries while preserving normal transient retries. */

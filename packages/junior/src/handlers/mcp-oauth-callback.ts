@@ -57,6 +57,7 @@ import {
   type Requester,
 } from "@/chat/requester";
 import { requireSlackDestination } from "@/chat/destination";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -337,16 +338,24 @@ async function resumeAuthorizedMcpTurn(args: {
         ttlMs: THREAD_STATE_TTL_MS,
       });
 
+      const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);
       return {
         messageText: lockedUserMessage.text,
-        messageTs: getTurnUserSlackMessageTs(lockedUserMessage),
+        messageTs: lockedMessageTs,
         replyContext: {
           credentialContext: {
             actor: { type: "user", userId: requester.userId },
           },
           requester,
           destination,
-          source: lockedSessionRecord.source,
+          source:
+            lockedSessionRecord.source ??
+            createSlackSource({
+              teamId: destination.teamId,
+              channelId: authSession.channelId!,
+              threadTs: authSession.threadTs!,
+              ...(lockedMessageTs ? { messageTs: lockedMessageTs } : {}),
+            }),
           correlation: {
             conversationId: authSession.conversationId,
             turnId: lockedSessionId,

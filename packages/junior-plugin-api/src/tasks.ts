@@ -35,30 +35,20 @@ export type PluginSessionMessage = z.output<typeof pluginSessionMessageSchema>;
 
 export type PluginSessionContext = z.output<typeof pluginSessionContextSchema>;
 
-/** Core-owned reference params for the completed session a task should process. */
-export const pluginTaskParamsSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    sessionId: z.string().min(1),
-  })
-  .strict();
-
-export type PluginTaskParams = z.output<typeof pluginTaskParamsSchema>;
-
-export interface PluginSessionReader {
-  load(): Promise<PluginSessionContext>;
-}
-
+/** Runtime context passed to a plugin-owned background task. */
 export interface PluginTaskContext extends PluginContext {
   id: string;
   name: string;
-  params: PluginTaskParams;
-  session: PluginSessionReader;
+  session: {
+    load(): Promise<PluginSessionContext>;
+  };
   state: PluginState;
 }
 
+/** Plugin task handler registered by name in a plugin manifest module. */
 export interface PluginTaskDefinition {
   run(ctx: PluginTaskContext): Promise<void> | void;
 }
 
+/** Task handlers keyed by the plugin-owned task name. */
 export type PluginTasks = Record<string, PluginTaskDefinition>;

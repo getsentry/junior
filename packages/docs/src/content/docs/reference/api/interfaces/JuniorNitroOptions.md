@@ -31,7 +31,7 @@ Defined in: [junior/src/nitro.ts:40](https://github.com/getsentry/junior/blob/ma
 
 > `optional` **includeFiles?**: `string`[]
 
-Defined in: [junior/src/nitro.ts:52](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L52)
+Defined in: [junior/src/nitro.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L54)
 
 Extra file patterns to copy into the server output for files that the
 bundler cannot trace (e.g. dynamically imported providers).

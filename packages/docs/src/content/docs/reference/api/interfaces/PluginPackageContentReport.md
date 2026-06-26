@@ -5,7 +5,7 @@ prev: false
 title: "PluginPackageContentReport"
 ---
 
-Defined in: [junior/src/reporting.ts:74](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L74)
+Defined in: [junior/src/reporting.ts:75](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L75)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:74](https://github.com/getsentry/junior/blo
 
 > **manifestRoots**: `string`[]
 
-Defined in: [junior/src/reporting.ts:77](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L77)
+Defined in: [junior/src/reporting.ts:78](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L78)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:77](https://github.com/getsentry/junior/blo
 
 > **packageNames**: `string`[]
 
-Defined in: [junior/src/reporting.ts:75](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L75)
+Defined in: [junior/src/reporting.ts:76](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L76)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting.ts:75](https://github.com/getsentry/junior/blo
 
 > **packages**: [`PluginPackageContentItemReport`](/reference/api/interfaces/pluginpackagecontentitemreport/)[]
 
-Defined in: [junior/src/reporting.ts:76](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L76)
+Defined in: [junior/src/reporting.ts:77](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L77)
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting.ts:76](https://github.com/getsentry/junior/blo
 
 > **skillRoots**: `string`[]
 
-Defined in: [junior/src/reporting.ts:78](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L78)
+Defined in: [junior/src/reporting.ts:79](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L79)
 
 ---
 
@@ -45,4 +45,4 @@ Defined in: [junior/src/reporting.ts:78](https://github.com/getsentry/junior/blo
 
 > **tracingIncludes**: `string`[]
 
-Defined in: [junior/src/reporting.ts:79](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L79)
+Defined in: [junior/src/reporting.ts:80](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L80)

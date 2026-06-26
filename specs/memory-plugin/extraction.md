@@ -71,7 +71,7 @@ Core scheduling must:
    scheduling failure cannot fail delivery.
 2. Enqueue the registered `extractMemories` plugin background task for the
    completed session.
-3. Use a stable task id derived from the plugin, task name, trigger, and
+3. Use a stable task id derived from the plugin, task name, and
    completed-session reference.
 
 The task params must contain stable references and safe metadata only. They must

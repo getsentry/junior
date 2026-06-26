@@ -5,7 +5,7 @@ prev: false
 title: "PluginOperationalReport"
 ---
 
-Defined in: junior-plugin-api/src/operations.ts:74
+Defined in: [junior-plugin-api/src/operations.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L86)
 
 ## Extends
 
@@ -17,7 +17,7 @@ Defined in: junior-plugin-api/src/operations.ts:74
 
 > `optional` **generatedAt?**: `string`
 
-Defined in: junior-plugin-api/src/operations.ts:68
+Defined in: [junior-plugin-api/src/operations.ts:80](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L80)
 
 #### Inherited from
 
@@ -29,7 +29,7 @@ Defined in: junior-plugin-api/src/operations.ts:68
 
 > `optional` **metrics?**: `PluginOperationalMetric`[]
 
-Defined in: junior-plugin-api/src/operations.ts:69
+Defined in: [junior-plugin-api/src/operations.ts:81](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L81)
 
 #### Inherited from
 
@@ -41,7 +41,7 @@ Defined in: junior-plugin-api/src/operations.ts:69
 
 > **pluginName**: `string`
 
-Defined in: junior-plugin-api/src/operations.ts:75
+Defined in: [junior-plugin-api/src/operations.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L87)
 
 ---
 
@@ -49,7 +49,7 @@ Defined in: junior-plugin-api/src/operations.ts:75
 
 > `optional` **recordSets?**: `PluginOperationalRecordSet`[]
 
-Defined in: junior-plugin-api/src/operations.ts:70
+Defined in: [junior-plugin-api/src/operations.ts:82](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L82)
 
 #### Inherited from
 
@@ -61,7 +61,7 @@ Defined in: junior-plugin-api/src/operations.ts:70
 
 > `optional` **title?**: `string`
 
-Defined in: junior-plugin-api/src/operations.ts:71
+Defined in: [junior-plugin-api/src/operations.ts:83](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L83)
 
 #### Inherited from
 

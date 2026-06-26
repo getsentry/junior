@@ -9,6 +9,17 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+export type {
+  PluginSessionContext,
+  PluginSessionMessage,
+  PluginTaskContext,
+  PluginTaskDefinition,
+  PluginTasks,
+} from "@sentry/junior-plugin-api";
+export {
+  pluginSessionContextSchema,
+  pluginSessionMessageSchema,
+} from "@sentry/junior-plugin-api";
 export { createJuniorReporting } from "./reporting";
 export type {
   PluginConversationStatus,

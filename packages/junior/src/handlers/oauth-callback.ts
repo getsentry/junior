@@ -363,11 +363,12 @@ async function resumeOAuthSessionRecordTurn(
         ttlMs: THREAD_STATE_TTL_MS,
       });
 
+      const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);
       return {
         messageText: lockedPendingAuth
           ? lockedUserMessage.text
           : (stored.pendingMessage ?? lockedUserMessage.text),
-        messageTs: getTurnUserSlackMessageTs(lockedUserMessage),
+        messageTs: lockedMessageTs,
         replyContext: {
           credentialContext: {
             actor: {
@@ -377,7 +378,14 @@ async function resumeOAuthSessionRecordTurn(
           },
           requester,
           destination,
-          source: lockedSessionRecord.source,
+          source:
+            lockedSessionRecord.source ??
+            createSlackSource({
+              teamId: destination.teamId,
+              channelId: stored.channelId!,
+              threadTs: stored.threadTs!,
+              ...(lockedMessageTs ? { messageTs: lockedMessageTs } : {}),
+            }),
           correlation: {
             conversationId: stored.resumeConversationId!,
             turnId: lockedSessionId,

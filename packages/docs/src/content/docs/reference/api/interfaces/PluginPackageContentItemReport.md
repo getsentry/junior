@@ -17,16 +17,24 @@ Defined in: [junior/src/reporting.ts:69](https://github.com/getsentry/junior/blo
 
 ---
 
-### hasSkillsDir
+### hasMigrationsDir
 
-> **hasSkillsDir**: `boolean`
+> **hasMigrationsDir**: `boolean`
 
 Defined in: [junior/src/reporting.ts:70](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L70)
 
 ---
 
-### name
+### hasSkillsDir
 
-> **name**: `string`
+> **hasSkillsDir**: `boolean`
 
 Defined in: [junior/src/reporting.ts:71](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L71)
+
+---
+
+### packageName
+
+> **packageName**: `string`
+
+Defined in: [junior/src/reporting.ts:72](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L72)

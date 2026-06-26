@@ -10,13 +10,9 @@ import type {
   PluginSessionContext,
   PluginSessionMessage,
   PluginTaskContext,
-  PluginTaskParams,
   Requester,
 } from "@sentry/junior-plugin-api";
-import {
-  pluginSessionContextSchema,
-  pluginTaskParamsSchema,
-} from "@sentry/junior-plugin-api";
+import { pluginSessionContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
@@ -29,16 +25,20 @@ import {
 } from "@/chat/respond-helpers";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getPlugins } from "./agent-hooks";
-import { pluginTaskId, type PluginTaskQueueMessage } from "./task-message";
-import { getVercelPluginTaskQueue, type PluginTaskQueue } from "./task-queue";
+import {
+  pluginTaskId,
+  pluginTaskParamsSchema,
+  type PluginTaskParams,
+  type PluginTaskQueueMessage,
+} from "./task-message";
+import { sendVercelPluginTask } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
-type SessionCompletedTaskParams = PluginTaskParams;
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export interface ScheduleSessionCompletedPluginTasksOptions {
-  queue?: PluginTaskQueue;
+  send?: (message: PluginTaskQueueMessage) => Promise<void>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -129,7 +129,7 @@ async function withPluginTaskLock<T>(
 
 /** Load the bounded completed-session projection exposed to plugin tasks. */
 async function loadPluginSession(
-  params: SessionCompletedTaskParams,
+  params: PluginTaskParams,
 ): Promise<PluginSessionContext> {
   const record = await getAgentTurnSessionRecord(
     params.conversationId,
@@ -176,7 +176,6 @@ function taskPluginContext(
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     name: message.name,
-    params: sessionParams,
     plugin: { name: pluginName },
     session: {
       async load() {
@@ -200,29 +199,28 @@ function findPluginTask(message: PluginTaskQueueMessage) {
 
 /** Schedule all plugin tasks interested in a completed agent-run session. */
 export async function scheduleSessionCompletedPluginTasks(
-  params: SessionCompletedTaskParams,
+  params: PluginTaskParams,
   options: ScheduleSessionCompletedPluginTasksOptions = {},
-): Promise<PluginTaskQueueMessage[]> {
-  const scheduled: PluginTaskQueueMessage[] = [];
+): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
   const taskRegistrations = getPlugins().flatMap((plugin) =>
     Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
   if (taskRegistrations.length === 0) {
-    return scheduled;
+    return;
   }
-  const queue = options.queue ?? getVercelPluginTaskQueue();
   for (const { name, plugin } of taskRegistrations) {
     const message: PluginTaskQueueMessage = {
       name,
       params: coreParams,
       plugin: plugin.manifest.name,
-      trigger: "session.completed",
     };
-    scheduled.push(message);
-    await queue.send(message);
+    if (options.send) {
+      await options.send(message);
+    } else {
+      await sendVercelPluginTask(message);
+    }
   }
-  return scheduled;
 }
 
 /** Execute one parsed plugin task request. */

@@ -46,6 +46,8 @@ describe("plugin task Vercel queue integration", () => {
 
     const { createVercelPluginTaskCallback } =
       await import("@/chat/plugins/task-callback");
+    const { signPluginTaskQueueMessage } =
+      await import("@/chat/plugins/task-signing");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
@@ -95,13 +97,19 @@ describe("plugin task Vercel queue integration", () => {
         sessionId: "turn-1",
       },
       plugin: "memory",
-      trigger: "session.completed" as const,
     };
     await expect(handler(message, metadata)).resolves.toBeUndefined();
+    expect(processPluginTask).not.toHaveBeenCalled();
+
+    process.env.JUNIOR_SECRET = "plugin-task-secret";
+    const signedMessage = signPluginTaskQueueMessage(message);
+    await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
     expect(processPluginTask).toHaveBeenCalledWith(message);
 
     processPluginTask.mockRejectedValueOnce(new Error("task failed"));
-    await expect(handler(message, metadata)).rejects.toThrow("task failed");
+    await expect(handler(signedMessage, metadata)).rejects.toThrow(
+      "task failed",
+    );
     expect(retry(new Error("still failing"), metadata)).toBeUndefined();
     expect(
       retry(new Error("still failing"), { ...metadata, deliveryCount: 5 }),
@@ -121,8 +129,9 @@ describe("plugin task Vercel queue integration", () => {
     }));
 
     process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC = "plugin_tasks";
+    process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const [{ getVercelPluginTaskQueue }, { pluginTaskId }] = await Promise.all([
+    const [{ sendVercelPluginTask }, { pluginTaskId }] = await Promise.all([
       import("@/chat/plugins/task-queue"),
       import("@/chat/plugins/task-message"),
     ]);
@@ -133,14 +142,23 @@ describe("plugin task Vercel queue integration", () => {
         sessionId: "turn-1",
       },
       plugin: "memory",
-      trigger: "session.completed" as const,
     };
 
-    await getVercelPluginTaskQueue().send(message);
+    await sendVercelPluginTask(message);
 
-    expect(send).toHaveBeenCalledWith("plugin_tasks", message, {
-      idempotencyKey: pluginTaskId(message),
-    });
+    expect(send).toHaveBeenCalledWith(
+      "plugin_tasks",
+      {
+        ...message,
+        signedAtMs: expect.any(Number),
+        signatureVersion: "v1",
+        signature: expect.any(String),
+      },
+      {
+        idempotencyKey: pluginTaskId(message),
+        retentionSeconds: 3600,
+      },
+    );
   });
 });
 

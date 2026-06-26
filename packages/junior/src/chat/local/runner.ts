@@ -20,7 +20,6 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
-import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
 import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
@@ -339,15 +338,31 @@ export async function runLocalAgentTurn(
   }
   if (reply.diagnostics.outcome === "success") {
     try {
-      const inlineQueue: PluginTaskQueue = {
-        send: processPluginTask,
-      };
       await scheduleSessionCompletedPluginTasks(
         {
           conversationId: input.conversationId,
           sessionId: turnId,
         },
-        { queue: inlineQueue },
+        {
+          send: async (message) => {
+            try {
+              await processPluginTask(message);
+            } catch (error) {
+              logException(
+                error,
+                "local_plugin_session_completed_task_failed",
+                {},
+                {
+                  conversationId: input.conversationId,
+                  pluginName: message.plugin,
+                  taskName: message.name,
+                  turnId,
+                },
+                "Local plugin session.completed task failed after reply delivery",
+              );
+            }
+          },
+        },
       );
     } catch (error) {
       logException(

@@ -5,7 +5,7 @@ prev: false
 title: "PluginOperationalReportFeed"
 ---
 
-Defined in: [junior/src/reporting.ts:84](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L84)
+Defined in: [junior/src/reporting.ts:85](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L85)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:84](https://github.com/getsentry/junior/blo
 
 > **generatedAt**: `string`
 
-Defined in: [junior/src/reporting.ts:85](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L85)
+Defined in: [junior/src/reporting.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L86)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:85](https://github.com/getsentry/junior/blo
 
 > **reports**: [`PluginOperationalReport`](/reference/api/interfaces/pluginoperationalreport/)[]
 
-Defined in: [junior/src/reporting.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L86)
+Defined in: [junior/src/reporting.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L87)
 
 ---
 
@@ -29,4 +29,4 @@ Defined in: [junior/src/reporting.ts:86](https://github.com/getsentry/junior/blo
 
 > **source**: `"plugins"`
 
-Defined in: [junior/src/reporting.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L87)
+Defined in: [junior/src/reporting.ts:88](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L88)

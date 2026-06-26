@@ -28,6 +28,8 @@ title: "@sentry/junior"
 - [PluginPackageContentItemReport](/reference/api/interfaces/pluginpackagecontentitemreport/)
 - [PluginPackageContentReport](/reference/api/interfaces/pluginpackagecontentreport/)
 - [PluginReport](/reference/api/interfaces/pluginreport/)
+- [PluginTaskContext](/reference/api/interfaces/plugintaskcontext/)
+- [PluginTaskDefinition](/reference/api/interfaces/plugintaskdefinition/)
 - [RequesterIdentity](/reference/api/interfaces/requesteridentity/)
 - [RuntimeInfoReport](/reference/api/interfaces/runtimeinforeport/)
 - [SkillReport](/reference/api/interfaces/skillreport/)
@@ -40,8 +42,16 @@ title: "@sentry/junior"
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
 - [JuniorPluginInput](/reference/api/type-aliases/juniorplugininput/)
 - [PluginConversationStatus](/reference/api/type-aliases/pluginconversationstatus/)
+- [PluginSessionContext](/reference/api/type-aliases/pluginsessioncontext/)
+- [PluginSessionMessage](/reference/api/type-aliases/pluginsessionmessage/)
+- [PluginTasks](/reference/api/type-aliases/plugintasks/)
 - [TranscriptPartType](/reference/api/type-aliases/transcriptparttype/)
 - [TranscriptRole](/reference/api/type-aliases/transcriptrole/)
+
+## Variables
+
+- [pluginSessionContextSchema](/reference/api/variables/pluginsessioncontextschema/)
+- [pluginSessionMessageSchema](/reference/api/variables/pluginsessionmessageschema/)
 
 ## Functions
 

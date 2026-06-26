@@ -27,12 +27,14 @@ Handled `POST` routes:
 
 - `/api/internal/agent-dispatch`
 - `/api/internal/agent/continue`
+- `/api/internal/plugin/tasks`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
 ## Expected behavior
 
 - Unknown routes return `404`.
-- Queue callback validates queue topic and processes conversation work.
+- Queue callbacks validate queue topics and process conversation work or plugin
+  background tasks.
 - Webhook handler logs and surfaces non-success behavior for operators.
 
 ## Next step

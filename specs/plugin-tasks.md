@@ -20,7 +20,7 @@ an in-process background worker surviving a serverless request.
   `@sentry/junior-plugin-api`.
 - Core-owned queue payloads, Vercel Queue dispatch, retries, and callback
   routing.
-- The `session.completed` trigger and completed-session projection.
+- Completed-session scheduling and the completed-session projection.
 - Local development execution for plugin tasks.
 - Verification requirements for task scheduling, execution, and idempotency.
 
@@ -62,9 +62,9 @@ Rules:
    Declarative plugin manifests must not register executable task handlers.
 2. Task names are scoped to the owning plugin and must be stable camel-case
    identifiers.
-3. All V1 plugin tasks run on the core-owned `session.completed` trigger. The
-   public task definition does not expose trigger selection until another
-   trigger has a real implementation need.
+3. The public task definition does not expose scheduling controls. Core decides
+   when to enqueue registered tasks; V1 includes completed-session scheduling as
+   the first scheduling point with a real implementation need.
 4. A task handler must be idempotent. Queue delivery is at least once and
    callback invocations may be duplicated.
 
@@ -108,13 +108,10 @@ Task handlers receive a narrow plugin task context:
 interface PluginTaskContext extends PluginContext {
   id: string;
   name: string;
-  params: PluginTaskParams;
   state: PluginState;
-  session: PluginSessionReader;
-}
-
-interface PluginSessionReader {
-  load(): Promise<PluginSessionContext>;
+  session: {
+    load(): Promise<PluginSessionContext>;
+  };
 }
 ```
 
@@ -133,7 +130,6 @@ The queue payload is a core-owned bounded task request:
 interface PluginTaskQueueMessage {
   plugin: string;
   name: string;
-  trigger: "session.completed";
   params: PluginTaskParams;
 }
 ```
@@ -142,11 +138,11 @@ Core owns parsing, routing, queue topic selection, and callback registration.
 Queue messages must not include raw transcript text, raw tool payloads,
 credentials, tokens, or unbounded session data.
 
-The task id is derived from the plugin name, task name, core trigger, and
-parsed params. When sending to Vercel Queues, core must use that id as the queue
-`idempotencyKey` so duplicate wakeups for the same logical task collapse at the
-provider layer when Vercel can dedupe them. Plugin task handlers still must be
-idempotent because Vercel Queues are at least once.
+The task id is derived from the plugin name, task name, and parsed params. When
+sending to Vercel Queues, core must use that id as the queue `idempotencyKey` so
+duplicate wakeups for the same logical task collapse at the provider layer when
+Vercel can dedupe them. Plugin task handlers still must be idempotent because
+Vercel Queues are at least once.
 
 ### Execution
 
@@ -163,17 +159,18 @@ Task execution may happen in a different process and request than the agent run
 that scheduled it. Plugins must not depend on in-memory state from the original
 request.
 
-### `session.completed` Trigger
+### Completed-Session Scheduling
 
-Core schedules `session.completed` tasks after:
+Core schedules completed-session tasks after:
 
 1. The agent run reached a successful completed state.
 2. The user-visible final response was delivered.
 3. The completed session record is durable enough for task execution to reload
    it.
 
-The trigger is best effort relative to visible delivery. If scheduling fails,
-Junior must log safe metadata and keep the visible run successful.
+Completed-session task scheduling is best effort relative to visible delivery.
+If scheduling fails, Junior must log safe metadata and keep the visible run
+successful.
 
 For local CLI development, core may process scheduled tasks inline after
 visible delivery, but the inline path must still use the same task message and
@@ -241,7 +238,6 @@ Plugin task logs and spans may include:
 
 - plugin name
 - task name
-- core trigger name
 - task id
 - safe error message
 - duration
@@ -265,7 +261,7 @@ Use component or integration tests for:
 
 Use unit tests for:
 
-- startup-local task name validation and internal trigger validation
+- startup-local task name validation
 - task id derivation from parsed params
 - queue payload parsing when kept as local deterministic logic
 

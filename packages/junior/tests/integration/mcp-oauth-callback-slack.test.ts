@@ -108,6 +108,7 @@ async function createAwaitingMcpTurnRecord(args: {
     slackUserName?: string;
     teamId?: string;
   };
+  includeSource?: boolean;
   sessionId: string;
   text: string;
   threadTs: string;
@@ -118,7 +119,9 @@ async function createAwaitingMcpTurnRecord(args: {
     sliceId: 2,
     state: "awaiting_resume",
     destination: SLACK_DESTINATION,
-    source: slackSource(args.threadTs),
+    ...(args.includeSource === false
+      ? {}
+      : { source: slackSource(args.threadTs) }),
     piMessages: [
       {
         role: "user",
@@ -590,6 +593,7 @@ describe("mcp oauth callback slack integration", () => {
     });
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
+      includeSource: false,
       sessionId,
       text: "what did i say about the budget?",
       threadTs: "1700000000.005",
@@ -634,7 +638,12 @@ describe("mcp oauth callback slack integration", () => {
     );
     const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
       conversationContext?: string;
+      source?: unknown;
     };
+    expect(resumeContext.source).toEqual({
+      ...slackSource("1700000000.005"),
+      messageTs: "1700000000.0052",
+    });
     expect(resumeContext.conversationContext).not.toContain(
       "Old MCP context that should not be used.",
     );

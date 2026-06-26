@@ -7,7 +7,7 @@ title: "defineJuniorPlugins"
 
 > **defineJuniorPlugins**(`inputs`, `options?`): [`JuniorPluginSet`](/reference/api/interfaces/juniorpluginset/)
 
-Defined in: [junior/src/plugins.ts:100](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L100)
+Defined in: [junior/src/plugins.ts:101](https://github.com/getsentry/junior/blob/main/packages/junior/src/plugins.ts#L101)
 
 Define package-name plugins and JS plugin definitions for one app.
 

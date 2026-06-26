@@ -70,7 +70,7 @@ Read these files as one canonical spec:
   model/tool boundaries, task payload safety, and redaction rules.
 - [retrieval.md](./retrieval.md): automatic recall, tool-mediated recall,
   hybrid ranking, automatic injection mechanics, and performance strategy.
-- [extraction.md](./extraction.md): passive observation, background extraction,
+- [extraction.md](./extraction.md): passive completed-session extraction,
   storable-fact policy, semantic duplicate detection, and supersession.
 - [tools.md](./tools.md): model-visible memory management and recall tools.
 - [admin.md](./admin.md): future operator/admin CLI command shape for memory

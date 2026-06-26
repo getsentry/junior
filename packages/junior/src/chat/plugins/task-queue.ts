@@ -6,14 +6,14 @@
  */
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import { pluginTaskId, type PluginTaskQueueMessage } from "./task-message";
+import {
+  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS,
+  signPluginTaskQueueMessage,
+} from "./task-signing";
 
 export const DEFAULT_PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
-
-export interface PluginTaskQueue {
-  send(message: PluginTaskQueueMessage): Promise<void>;
-}
-
-let defaultQueue: PluginTaskQueue | undefined;
+export const PLUGIN_TASK_QUEUE_RETENTION_SECONDS =
+  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
 
 /** Resolve the Vercel Queue topic used for plugin background tasks. */
 export function resolvePluginTaskQueueTopic(
@@ -27,20 +27,14 @@ export function resolvePluginTaskQueueTopic(
   );
 }
 
-function createVercelPluginTaskQueue(): PluginTaskQueue {
+/** Send one plugin task wakeup through Vercel Queues. */
+export async function sendVercelPluginTask(
+  message: PluginTaskQueueMessage,
+): Promise<void> {
   const topic = resolvePluginTaskQueueTopic();
   const client = createVercelQueueClient();
-  return {
-    async send(message) {
-      await client.send(topic, message, {
-        idempotencyKey: pluginTaskId(message),
-      });
-    },
-  };
-}
-
-/** Return the default production plugin task queue. */
-export function getVercelPluginTaskQueue(): PluginTaskQueue {
-  defaultQueue ??= createVercelPluginTaskQueue();
-  return defaultQueue;
+  await client.send(topic, signPluginTaskQueueMessage(message), {
+    idempotencyKey: pluginTaskId(message),
+    retentionSeconds: PLUGIN_TASK_QUEUE_RETENTION_SECONDS,
+  });
 }

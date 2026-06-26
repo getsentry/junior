@@ -152,6 +152,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("handleNewMention: posts reply from generateAssistantReply", async () => {
+    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -167,6 +168,7 @@ describe("bot handlers (integration)", () => {
               usedPrimaryText: true,
             },
           }),
+          scheduleSessionCompletedPluginTasks,
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -202,6 +204,10 @@ describe("bot handlers (integration)", () => {
       return false;
     });
     expect(hasReply).toBe(true);
+    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
+      conversationId: "slack:C_INT:1700000000.000",
+      sessionId: "turn_msg-new-mention",
+    });
   });
 
   it("does not replay a message that already has a delivered reply", async () => {

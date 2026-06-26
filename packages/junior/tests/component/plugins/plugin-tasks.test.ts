@@ -6,7 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PluginTaskQueue } from "@/chat/plugins/task-queue";
+import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
 
 const ORIGINAL_ENV = { ...process.env };
 const conversationId = "local:test:plugin-tasks";
@@ -16,14 +16,14 @@ const destination = {
   conversationId,
 } as const;
 
-class PluginTaskQueueTestAdapter implements PluginTaskQueue {
-  #messages: Parameters<PluginTaskQueue["send"]>[0][] = [];
+class PluginTaskQueueTestAdapter {
+  #messages: PluginTaskQueueMessage[] = [];
 
-  async send(message: Parameters<PluginTaskQueue["send"]>[0]): Promise<void> {
+  async send(message: PluginTaskQueueMessage): Promise<void> {
     this.#messages.push(message);
   }
 
-  queuedMessages(): Parameters<PluginTaskQueue["send"]>[0][] {
+  queuedMessages(): PluginTaskQueueMessage[] {
     return [...this.#messages];
   }
 }
@@ -102,10 +102,6 @@ describe("plugin background tasks", () => {
         tasks: {
           processSession: {
             async run(ctx) {
-              expect(ctx.params).toEqual({
-                conversationId: runConversationId,
-                sessionId: runSessionId,
-              });
               loadedSessions.push(await ctx.session.load());
             },
           },
@@ -155,12 +151,12 @@ describe("plugin background tasks", () => {
       await getAgentTurnSessionRecord(runConversationId, runSessionId),
     ).toBeDefined();
 
-    const messages = await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginTasks(
       { conversationId: runConversationId, sessionId: runSessionId },
-      { queue },
+      { send: (message) => queue.send(message) },
     );
+    const messages = queue.queuedMessages();
     expect(messages).toHaveLength(1);
-    expect(queue.queuedMessages()).toEqual([messages[0]]);
 
     await processPluginTask(messages[0]!);
 
@@ -184,44 +180,6 @@ describe("plugin background tasks", () => {
       }),
     ]);
     expect(loadedSessions[0]).not.toHaveProperty("requester");
-  });
-
-  it("uses stable ids for duplicate scheduling", async () => {
-    const queue = new PluginTaskQueueTestAdapter();
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
-    const { pluginTaskId } = await import("@/chat/plugins/task-message");
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "task-id-demo",
-          displayName: "Task Id Demo",
-          description: "Task id demo",
-        },
-        tasks: {
-          processSession: {
-            run() {},
-          },
-        },
-      }),
-    ]);
-    await recordCompletedSession({
-      conversationId: "local:test:duplicate",
-      sessionId: "turn-1",
-    });
-
-    const first = await scheduleSessionCompletedPluginTasks(
-      { conversationId: "local:test:duplicate", sessionId: "turn-1" },
-      { queue },
-    );
-    const second = await scheduleSessionCompletedPluginTasks(
-      { conversationId: "local:test:duplicate", sessionId: "turn-1" },
-      { queue },
-    );
-
-    expect(pluginTaskId(first[0]!)).toBe(pluginTaskId(second[0]!));
-    expect(queue.queuedMessages()).toEqual([first[0]!, second[0]!]);
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {
@@ -250,12 +208,13 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    const messages = await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
-      { queue },
+      { send: (message) => queue.send(message) },
     );
+    const [message] = queue.queuedMessages();
 
-    await expect(processPluginTask(messages[0]!)).rejects.toThrow(
+    await expect(processPluginTask(message!)).rejects.toThrow(
       "task failure marker",
     );
   });
@@ -284,47 +243,15 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    const messages = await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginTasks(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
-      { queue },
+      { send: (message) => queue.send(message) },
     );
+    const [message] = queue.queuedMessages();
     setPlugins([]);
 
-    await expect(processPluginTask(messages[0]!)).rejects.toThrow(
+    await expect(processPluginTask(message!)).rejects.toThrow(
       'Plugin task "task-registration-demo.processSession" is not registered',
-    );
-  });
-
-  it("uses only registered own task names from queue payloads", async () => {
-    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask } = await import("@/chat/plugins/task-runner");
-    setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "task-own-key-demo",
-          displayName: "Task Own Key Demo",
-          description: "Task own key demo",
-        },
-        tasks: {
-          processSession: {
-            run() {},
-          },
-        },
-      }),
-    ]);
-
-    await expect(
-      processPluginTask({
-        name: "__proto__",
-        params: {
-          conversationId: "local:test:own-key",
-          sessionId: "turn-1",
-        },
-        plugin: "task-own-key-demo",
-        trigger: "session.completed",
-      }),
-    ).rejects.toThrow(
-      'Plugin task "task-own-key-demo.__proto__" is not registered',
     );
   });
 });

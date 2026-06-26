@@ -141,6 +141,7 @@ describe("agent dispatch runner", () => {
       });
       return createReply();
     });
+    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
     await runAgentDispatchSlice(
       {
@@ -149,6 +150,7 @@ describe("agent dispatch runner", () => {
       },
       {
         generateAssistantReply,
+        scheduleSessionCompletedPluginTasks,
         tracePropagation: { domains: ["*.sentry.io"] },
       },
     );
@@ -186,6 +188,10 @@ describe("agent dispatch runner", () => {
           }),
         ]),
       },
+    });
+    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
+      conversationId: dispatchConversationId,
+      sessionId: `dispatch:${created.record.id}`,
     });
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},

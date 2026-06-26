@@ -863,6 +863,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               userAttachments,
               slackConversation,
               destination,
+              source,
               surface: "slack",
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
