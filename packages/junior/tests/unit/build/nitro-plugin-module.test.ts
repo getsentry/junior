@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -117,7 +117,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
+          topic: PLUGIN_TASK_QUEUE_TOPIC,
         },
       ],
     });
@@ -163,7 +163,7 @@ describe("juniorNitro plugin modules", () => {
               experimentalTriggers: [
                 {
                   type: "queue/v2beta",
-                  topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
+                  topic: PLUGIN_TASK_QUEUE_TOPIC,
                 },
               ],
             },
@@ -204,7 +204,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: DEFAULT_PLUGIN_TASK_QUEUE_TOPIC,
+          topic: PLUGIN_TASK_QUEUE_TOPIC,
         },
       ],
     });
@@ -238,36 +238,6 @@ describe("juniorNitro plugin modules", () => {
       {
         type: "queue/v2beta",
         topic: "custom_work",
-      },
-    ]);
-  });
-
-  it("uses a custom Vercel plugin task queue topic", () => {
-    const virtual: Record<string, (() => Promise<string>) | string> = {};
-    const nitro = {
-      hooks: {
-        hook() {},
-      },
-      options: {
-        output: {
-          serverDir: "/tmp/junior-output",
-        },
-        rootDir: "/tmp/junior-app",
-        vercel: {},
-        virtual,
-      },
-    };
-
-    juniorNitro({ pluginTaskQueueTopic: "custom_tasks" }).nitro.setup(nitro);
-    const vercel = getVercelOptions(nitro);
-
-    expect(
-      vercel.functionRules?.[JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE]
-        ?.experimentalTriggers,
-    ).toEqual([
-      {
-        type: "queue/v2beta",
-        topic: "custom_tasks",
       },
     ]);
   });
@@ -309,7 +279,6 @@ describe("juniorNitro plugin modules", () => {
 
     juniorNitro({
       conversationWorkQueueTopic: "new_topic",
-      pluginTaskQueueTopic: "new_tasks",
     }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
@@ -328,7 +297,7 @@ describe("juniorNitro plugin modules", () => {
     ).toEqual([
       {
         type: "queue/v2beta",
-        topic: "new_tasks",
+        topic: PLUGIN_TASK_QUEUE_TOPIC,
       },
     ]);
   });

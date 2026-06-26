@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
-const originalPluginTaskQueueTopic = process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(async () => {
@@ -13,11 +12,6 @@ afterEach(async () => {
     delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
   } else {
     process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
-  }
-  if (originalPluginTaskQueueTopic === undefined) {
-    delete process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC;
-  } else {
-    process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC = originalPluginTaskQueueTopic;
   }
   if (originalJuniorSecret === undefined) {
     delete process.env.JUNIOR_SECRET;
@@ -128,10 +122,12 @@ describe("plugin task Vercel queue integration", () => {
       registerDevConsumer: vi.fn(),
     }));
 
-    process.env.JUNIOR_PLUGIN_TASK_QUEUE_TOPIC = "plugin_tasks";
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const [{ sendVercelPluginTask }, { pluginTaskId }] = await Promise.all([
+    const [
+      { PLUGIN_TASK_QUEUE_TOPIC, sendVercelPluginTask },
+      { pluginTaskId },
+    ] = await Promise.all([
       import("@/chat/plugins/task-queue"),
       import("@/chat/plugins/task-message"),
     ]);
@@ -147,7 +143,7 @@ describe("plugin task Vercel queue integration", () => {
     await sendVercelPluginTask(message);
 
     expect(send).toHaveBeenCalledWith(
-      "plugin_tasks",
+      PLUGIN_TASK_QUEUE_TOPIC,
       {
         ...message,
         signedAtMs: expect.any(Number),

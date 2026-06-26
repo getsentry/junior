@@ -15,7 +15,7 @@ import { logWarn } from "@/chat/logging";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
 import { processPluginTask } from "./task-runner";
-import { resolvePluginTaskQueueTopic } from "./task-queue";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "./task-queue";
 import {
   verifyPluginTaskQueueMessage,
   type PluginTaskQueueRejectReason,
@@ -98,6 +98,6 @@ export function registerVercelPluginTaskDevConsumer():
     handler: (message, metadata) =>
       handlePluginTaskQueueMessage(message, metadata),
     retry: handlePluginTaskQueueRetry,
-    topic: resolvePluginTaskQueueTopic(),
+    topic: PLUGIN_TASK_QUEUE_TOPIC,
   });
 }

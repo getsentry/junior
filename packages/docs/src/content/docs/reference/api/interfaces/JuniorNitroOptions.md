@@ -31,7 +31,7 @@ Defined in: [junior/src/nitro.ts:40](https://github.com/getsentry/junior/blob/ma
 
 > `optional` **includeFiles?**: `string`[]
 
-Defined in: [junior/src/nitro.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L54)
+Defined in: [junior/src/nitro.ts:52](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L52)
 
 Extra file patterns to copy into the server output for files that the
 bundler cannot trace (e.g. dynamically imported providers).
@@ -52,16 +52,6 @@ Defined in: [junior/src/nitro.ts:41](https://github.com/getsentry/junior/blob/ma
 
 > `optional` **plugins?**: `JuniorNitroPluginSource`
 
-Defined in: [junior/src/nitro.ts:47](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L47)
-
-Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code.
-
----
-
-### pluginTaskQueueTopic?
-
-> `optional` **pluginTaskQueueTopic?**: `string`
-
 Defined in: [junior/src/nitro.ts:45](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L45)
 
-Vercel Queue topic for plugin background tasks. Must match the runtime queue producer topic.
+Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code.

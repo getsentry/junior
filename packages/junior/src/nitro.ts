@@ -9,8 +9,8 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
-import { resolvePluginTaskQueueTopic } from "@/chat/plugins/task-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
@@ -41,8 +41,6 @@ export interface JuniorNitroOptions {
   maxDuration?: number;
   /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
   conversationWorkQueueTopic?: string;
-  /** Vercel Queue topic for plugin background tasks. Must match the runtime queue producer topic. */
-  pluginTaskQueueTopic?: string;
   /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code. */
   plugins?: JuniorNitroPluginSource;
   /**
@@ -137,9 +135,6 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
   const queueTopic = resolveConversationWorkQueueTopic({
     topic: options.conversationWorkQueueTopic,
   });
-  const pluginTaskQueueTopic = resolvePluginTaskQueueTopic({
-    topic: options.pluginTaskQueueTopic,
-  });
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
@@ -203,7 +198,7 @@ function configureVercelDeployment(nitro: Nitro, options: JuniorNitroOptions) {
       ...otherPluginTaskTriggers,
       {
         type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: pluginTaskQueueTopic,
+        topic: PLUGIN_TASK_QUEUE_TOPIC,
       },
     ],
   };
