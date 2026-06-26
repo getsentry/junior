@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
-import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AdvisorConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createTools } from "@/chat/tools";

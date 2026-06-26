@@ -1,7 +1,6 @@
 import {
   createSlackSource,
   defineJuniorPlugin,
-  createSlackSource,
   type Dispatch,
   type PluginToolDefinition,
   type PluginOperationalReportContent,
