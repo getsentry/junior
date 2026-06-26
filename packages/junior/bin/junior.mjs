@@ -20,75 +20,13 @@ async function loadCliFunction(moduleName, exportName, unavailableMessage) {
   return loadedModule[exportName];
 }
 
-async function loadCliEnvFiles() {
-  const loadCliEnvFilesFn = await loadCliFunction(
-    "env",
-    "loadCliEnvFiles",
-    "CLI env loader is unavailable; reinstall @sentry/junior and retry.",
-  );
-  loadCliEnvFilesFn(process.cwd());
-}
-
-async function runSnapshotCreate() {
-  const runSnapshotCreateFn = await loadCliFunction(
-    "snapshot-warmup",
-    "runSnapshotCreate",
-    "Snapshot create module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  await runSnapshotCreateFn();
-}
-
-async function runInit(dir) {
-  const runInitFn = await loadCliFunction(
-    "init",
-    "runInit",
-    "Init module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  await runInitFn(dir);
-}
-
-async function runCheck(dir) {
-  const runCheckFn = await loadCliFunction(
-    "check",
-    "runCheck",
-    "Check module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  await runCheckFn(dir);
-}
-
-async function runUpgrade() {
-  const runUpgradeFn = await loadCliFunction(
-    "upgrade",
-    "runUpgrade",
-    "Upgrade module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  await runUpgradeFn();
-}
-
-async function runChat(argv) {
-  const runChatFn = await loadCliFunction(
-    "chat",
-    "runChat",
-    "Chat module is unavailable; reinstall @sentry/junior and retry.",
-  );
-  return await runChatFn(argv);
-}
-
 async function main() {
-  await loadCliEnvFiles();
-  const runCli = await loadCliFunction(
-    "run",
-    "runCli",
+  const runMain = await loadCliFunction(
+    "main",
+    "runMain",
     "CLI dispatcher module is unavailable; reinstall @sentry/junior and retry.",
   );
-  const exitCode = await runCli(process.argv.slice(2), {
-    runChat,
-    runInit,
-    runSnapshotCreate,
-    runCheck,
-    runUpgrade,
-  });
-  process.exit(exitCode);
+  await runMain(process.argv.slice(2), { instrument: false });
 }
 
 main().catch((error) => {

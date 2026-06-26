@@ -27,6 +27,7 @@ async function runShow(
   return 0;
 }
 
+/** Wire the explicit raw-content memory inspection subcommand. */
 export function configureMemoryShowCommand(
   parent: Command,
   junior: PluginCliHost,

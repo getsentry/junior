@@ -134,6 +134,106 @@ describe("plugin CLI commands", () => {
     );
   });
 
+  it("rejects plugin commands that add top-level aliases", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "memory",
+          displayName: "Memory",
+          description: "Memory plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "memory",
+              summary: "Memory command",
+              configure(command) {
+                command.alias("mem");
+                command.command("search");
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "memory" from plugin "memory" must not define top-level aliases',
+    );
+  });
+
+  it("rejects plugin commands that conflict with core commands", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "shadow",
+          displayName: "Shadow",
+          description: "Shadow plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "chat",
+              summary: "Shadow chat",
+              configure(command) {
+                command.command("run");
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "chat" from plugin "shadow" conflicts with a core command',
+    );
+  });
+
+  it("rejects duplicate plugin command names", async () => {
+    pluginSetRef.current = defineJuniorPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "first",
+          displayName: "First",
+          description: "First plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "memory",
+              summary: "First memory",
+              configure(command) {
+                command.command("search");
+              },
+            },
+          ],
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "second",
+          displayName: "Second",
+          description: "Second plugin",
+        },
+        cli: {
+          commands: [
+            {
+              name: "memory",
+              summary: "Second memory",
+              configure(command) {
+                command.command("show");
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    await expect(loadCliPluginCommands()).rejects.toThrow(
+      'Plugin CLI command "memory" from plugin "second" conflicts with plugin "first"',
+    );
+  });
+
   it("can load valid plugin commands after configured command validation fails", async () => {
     pluginSetRef.current = defineJuniorPlugins([
       defineJuniorPlugin({

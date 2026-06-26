@@ -4,6 +4,8 @@ export default defineConfig({
   entry: {
     app: "src/app.ts",
     "cli/env": "src/cli/env.ts",
+    "cli/main": "src/cli/main.ts",
+    "cli/plugins": "src/cli/plugins.ts",
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
     "cli/chat": "src/cli/chat.ts",
@@ -40,6 +42,7 @@ export default defineConfig({
     "ai",
     "bash-tool",
     "chat",
+    "commander",
     "just-bash",
     "node-html-markdown",
     "yaml",

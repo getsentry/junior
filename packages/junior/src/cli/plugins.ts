@@ -1,3 +1,8 @@
+/**
+ * Plugin CLI bootstrap for the local/package command line.
+ * This module imports app plugins, validates top-level namespaces before
+ * installing runtime plugin state, and dispatches only plugin-owned subcommands.
+ */
 import { stderr as defaultStderr, stdout as defaultStdout } from "node:process";
 import { createJiti } from "jiti";
 import { Command, CommanderError } from "commander";
@@ -25,10 +30,15 @@ import {
 export type PluginCommandIo = PluginCliIo;
 
 const pluginCliLoader = createJiti(import.meta.url, { moduleCache: false });
+const CORE_COMMAND_NAMES = new Set([
+  "chat",
+  "check",
+  "init",
+  "snapshot",
+  "upgrade",
+]);
 
 const DEFAULT_IO: PluginCommandIo = {
-  stderr: defaultStderr,
-  stdout: defaultStdout,
   writeError: (text) => writeStream(defaultStderr, text),
   writeOutput: (text) => writeStream(defaultStdout, text),
 };
@@ -93,6 +103,10 @@ function createPluginCliHost(args: {
         const result = await handler(
           {
             db: getDb(),
+            command: {
+              name: args.command.name,
+              summary: args.command.summary,
+            },
             io: args.io,
             log: createPluginLogger(pluginName),
             plugin: { name: pluginName },
@@ -118,10 +132,10 @@ function createPluginCommanderCommand(args: {
     .showSuggestionAfterError()
     .configureOutput({
       writeOut: (text) => {
-        args.io.stdout.write(text);
+        void args.io.writeOutput(text);
       },
       writeErr: (text) => {
-        args.io.stderr.write(text);
+        void args.io.writeError(text);
       },
       outputError: (text, write) => {
         write(text);
@@ -135,9 +149,7 @@ function createPluginCommanderCommand(args: {
 function validateConfiguredPluginCommand(args: {
   command: Command;
   definition: PluginCliCommandDefinition;
-  ownerByName: Map<string, string>;
   plugin: PluginRegistration;
-  seenAliases: Map<string, string>;
 }): void {
   const pluginName = args.plugin.manifest.name;
   if (args.command.name() !== args.definition.name) {
@@ -150,38 +162,31 @@ function validateConfiguredPluginCommand(args: {
       `Plugin CLI command "${args.definition.name}" from plugin "${pluginName}" must define at least one subcommand`,
     );
   }
-  for (const alias of args.command.aliases()) {
-    const existingOwner = args.ownerByName.get(alias);
-    if (existingOwner) {
-      throw new Error(
-        `Plugin CLI command alias "${alias}" from plugin "${pluginName}" conflicts with ${existingOwner}`,
-      );
-    }
-    const aliasOwner = args.seenAliases.get(alias);
-    if (aliasOwner) {
-      throw new Error(
-        `Plugin CLI command alias "${alias}" from plugin "${pluginName}" conflicts with plugin "${aliasOwner}"`,
-      );
-    }
-    args.seenAliases.set(alias, pluginName);
+  if (args.command.aliases().length > 0) {
+    throw new Error(
+      `Plugin CLI command "${args.definition.name}" from plugin "${pluginName}" must not define top-level aliases`,
+    );
   }
 }
 
 function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
   const ownerByName = new Map<string, string>();
-  for (const plugin of plugins) {
-    for (const command of plugin.cli?.commands ?? []) {
-      ownerByName.set(command.name, `plugin "${plugin.manifest.name}"`);
-    }
-  }
-  for (const coreCommand of ["chat", "check", "init", "snapshot", "upgrade"]) {
-    ownerByName.set(coreCommand, "a core command");
-  }
-
-  const seenAliases = new Map<string, string>();
   const validationIo = DEFAULT_IO;
   for (const plugin of plugins) {
     for (const definition of plugin.cli?.commands ?? []) {
+      const pluginName = plugin.manifest.name;
+      const existingOwner = ownerByName.get(definition.name);
+      if (CORE_COMMAND_NAMES.has(definition.name)) {
+        throw new Error(
+          `Plugin CLI command "${definition.name}" from plugin "${pluginName}" conflicts with a core command`,
+        );
+      }
+      if (existingOwner) {
+        throw new Error(
+          `Plugin CLI command "${definition.name}" from plugin "${pluginName}" conflicts with plugin "${existingOwner}"`,
+        );
+      }
+      ownerByName.set(definition.name, pluginName);
       let exitCode = 0;
       validateConfiguredPluginCommand({
         command: createPluginCommanderCommand({
@@ -193,9 +198,7 @@ function validateConfiguredPluginCommands(plugins: PluginRegistration[]): void {
           },
         }),
         definition,
-        ownerByName,
         plugin,
-        seenAliases,
       });
       void exitCode;
     }

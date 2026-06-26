@@ -104,6 +104,10 @@ async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
       return async (...args) => {
         const result = await handler(
           {
+            command: {
+              name: definition.name,
+              summary: definition.summary,
+            },
             db: memoryDb(fixture),
             io,
             log: noopLogger,
@@ -464,6 +468,25 @@ WHERE id = '${superseded.memory.id}'
         "error: required option '--scope <scope>' not specified",
       );
 
+      const invalidLimit = await runMemoryCli(fixture, [
+        "search",
+        "memory",
+        "--scope",
+        "personal",
+        "--scope-key",
+        "local:cli-user",
+        "--limit",
+        "many",
+      ]);
+      expect(invalidLimit).toMatchObject({
+        exitCode: 1,
+        stdout: "",
+      });
+      expect(invalidLimit.stderr).toContain("Usage: memory search");
+      expect(invalidLimit.stderr).toContain(
+        "error: option '--limit <n>' argument 'many' is invalid. --limit must be a number",
+      );
+
       const search = await runMemoryCli(fixture, [
         "search",
         "scoped search",
@@ -475,10 +498,26 @@ WHERE id = '${superseded.memory.id}'
       expect(search.exitCode).toBe(0);
       expect(search.stderr).toBe("");
       expect(search.stdout).toContain(`id=${created.memory.id}`);
-      expect(search.stdout).toContain(
-        "preview=Prefers CLI memory QA with scoped search.",
+      expect(search.stdout).not.toContain(
+        "Prefers CLI memory QA with scoped search.",
       );
       expect(search.stdout).not.toContain("content=");
+
+      const searchWithContent = await runMemoryCli(fixture, [
+        "search",
+        "scoped search",
+        "--scope",
+        "personal",
+        "--scope-key",
+        "local:cli-user",
+        "--show-content",
+      ]);
+      expect(searchWithContent.exitCode).toBe(0);
+      expect(searchWithContent.stderr).toBe("");
+      expect(searchWithContent.stdout).toContain(`id=${created.memory.id}`);
+      expect(searchWithContent.stdout).toContain(
+        "content=Prefers CLI memory QA with scoped search.",
+      );
 
       const scopedList = await runMemoryCli(fixture, [
         "search",

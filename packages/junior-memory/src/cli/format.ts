@@ -1,17 +1,10 @@
 import type { juniorMemoryMemories } from "../db/schema";
 
-function preview(content: string): string {
-  const compact = content.replace(/\s+/g, " ").trim();
-  if (compact.length <= 120) {
-    return compact;
-  }
-  return `${compact.slice(0, 117)}...`;
-}
-
 function formatDate(ms: number | null): string {
   return ms === null ? "-" : new Date(ms).toISOString();
 }
 
+/** Format a memory row as an operator-safe CLI projection. */
 export function formatMemory(
   row: typeof juniorMemoryMemories.$inferSelect,
   args: {
@@ -32,8 +25,6 @@ export function formatMemory(
   ];
   if (args.showContent) {
     lines.push(`content=${row.content}`);
-  } else {
-    lines.push(`preview=${preview(row.content)}`);
   }
   return lines.join("\n");
 }

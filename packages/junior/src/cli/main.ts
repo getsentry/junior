@@ -1,9 +1,18 @@
-import { flush } from "@/chat/sentry";
-import { initSentry } from "@/instrumentation";
+import { pathToFileURL } from "node:url";
 import { loadCliEnvFiles } from "./env";
 import { runCli } from "./run";
 
 const SENTRY_FLUSH_TIMEOUT_MS = 2_000;
+
+async function flushSentry(): Promise<void> {
+  const mod = await import("../chat/sentry");
+  await mod.flush(SENTRY_FLUSH_TIMEOUT_MS);
+}
+
+async function initSentry(): Promise<void> {
+  const mod = await import("../instrumentation");
+  mod.initSentry();
+}
 
 async function runInit(dir: string): Promise<void> {
   const mod = await import("./init");
@@ -35,9 +44,16 @@ function topLevelCommand(argv: string[]): string | undefined {
   return normalized[0];
 }
 
-async function main(argv: string[]): Promise<void> {
+/** Run the packaged CLI entrypoint with plugin command bootstrap enabled. */
+export async function runMain(
+  argv: string[],
+  options: { instrument?: boolean } = {},
+): Promise<void> {
   loadCliEnvFiles();
-  initSentry();
+  const instrument = options.instrument ?? true;
+  if (instrument) {
+    await initSentry();
+  }
   const command = topLevelCommand(argv);
   const pluginCommands =
     command && command !== "init"
@@ -51,15 +67,25 @@ async function main(argv: string[]): Promise<void> {
     runUpgrade,
     ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : {}),
   });
-  await flush(SENTRY_FLUSH_TIMEOUT_MS);
+  if (instrument) {
+    await flushSentry();
+  }
   process.exit(exitCode);
 }
 
-main(process.argv.slice(2)).catch((error) => {
-  void (async () => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`junior command failed: ${message}`);
-    await flush(SENTRY_FLUSH_TIMEOUT_MS);
-    process.exit(1);
-  })();
-});
+function isDirectCliEntry(): boolean {
+  return Boolean(
+    process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href,
+  );
+}
+
+if (isDirectCliEntry()) {
+  runMain(process.argv.slice(2)).catch((error) => {
+    void (async () => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`junior command failed: ${message}`);
+      await flushSentry();
+      process.exit(1);
+    })();
+  });
+}

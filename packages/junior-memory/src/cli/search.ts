@@ -1,4 +1,4 @@
-import { Option, type Command } from "commander";
+import { InvalidArgumentError, Option, type Command } from "commander";
 import { and, desc, eq, gt, ilike, isNull, or, type SQL } from "drizzle-orm";
 import type {
   PluginCliActionContext,
@@ -10,19 +10,16 @@ import { MEMORY_SCOPES, type MemoryScope } from "../types";
 import { formatMemory } from "./format";
 
 interface SearchOptions {
-  limit?: string;
+  limit: number;
   scope: MemoryScope;
   scopeKey: string;
   showContent?: boolean;
 }
 
-function parseLimit(value: string | undefined): number {
-  if (!value) {
-    return 20;
-  }
+function parseLimit(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
-    throw new Error("--limit must be a number");
+    throw new InvalidArgumentError("--limit must be a number");
   }
   return Math.min(100, Math.max(1, Math.floor(parsed)));
 }
@@ -32,7 +29,6 @@ async function runSearch(
   queryParts: string[] | undefined,
   options: SearchOptions,
 ): Promise<number> {
-  const limit = parseLimit(options.limit);
   const query = (queryParts ?? []).join(" ").trim();
   const nowMs = Date.now();
   const terms = [
@@ -73,7 +69,7 @@ async function runSearch(
     .from(juniorMemoryMemories)
     .where(and(...predicates))
     .orderBy(desc(juniorMemoryMemories.createdAtMs))
-    .limit(limit);
+    .limit(options.limit);
 
   if (rows.length === 0) {
     await ctx.io.writeOutput("No memories matched.\n");
@@ -90,6 +86,7 @@ async function runSearch(
   return 0;
 }
 
+/** Wire the memory search admin subcommand under the plugin namespace. */
 export function configureMemorySearchCommand(
   parent: Command,
   junior: PluginCliHost,
@@ -104,7 +101,11 @@ export function configureMemorySearchCommand(
         .makeOptionMandatory(),
     )
     .requiredOption("--scope-key <key>", "Scope key")
-    .option("--limit <n>", "Maximum rows", "20")
+    .addOption(
+      new Option("--limit <n>", "Maximum rows")
+        .argParser(parseLimit)
+        .default(20),
+    )
     .option("--show-content", "Print raw memory content")
     .action(
       junior.action(async (ctx, queryParts, options) => {

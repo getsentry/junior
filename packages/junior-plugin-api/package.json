@@ -22,7 +22,7 @@
     "src"
   ],
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^14.0.3",
     "zod": "catalog:"
   },
   "scripts": {
