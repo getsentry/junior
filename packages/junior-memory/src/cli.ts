@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNull, or, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, isNull, or, type SQL } from "drizzle-orm";
 import type {
   PluginCliCommandContext,
   PluginCliCommandDefinition,
@@ -130,6 +130,7 @@ function formatMemory(
 
 async function runSearch(ctx: PluginCliCommandContext, argv: string[]) {
   const options = parseSearchArgs(argv);
+  const nowMs = Date.now();
   const terms = [
     ...new Set(
       (options.query ?? "")
@@ -141,11 +142,20 @@ async function runSearch(ctx: PluginCliCommandContext, argv: string[]) {
   ];
 
   const db = ctx.db as MemoryDb;
+  const activeExpirationPredicate = or(
+    isNull(juniorMemoryMemories.expiresAtMs),
+    gt(juniorMemoryMemories.expiresAtMs, nowMs),
+  );
   const predicates: SQL[] = [
     eq(juniorMemoryMemories.scope, options.scope),
     eq(juniorMemoryMemories.scopeKey, options.scopeKey),
     isNull(juniorMemoryMemories.archivedAtMs),
+    isNull(juniorMemoryMemories.supersededAtMs),
+    isNull(juniorMemoryMemories.supersededById),
   ];
+  if (activeExpirationPredicate) {
+    predicates.push(activeExpirationPredicate);
+  }
   if (terms.length > 0) {
     const termPredicate = or(
       ...terms.map((term) => ilike(juniorMemoryMemories.content, `%${term}%`)),

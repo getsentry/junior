@@ -392,6 +392,22 @@ ORDER BY created_at_ms ASC
         content: "Prefers CLI memory QA with scoped search.",
         idempotencyKey: "memory-test:cli-search",
       });
+      const expired = await store.createMemory({
+        content: "Prefers expired CLI memory rows to stay hidden.",
+        expiresAtMs: Date.now() - 1,
+        idempotencyKey: "memory-test:cli-search-expired",
+      });
+      const superseded = await store.createMemory({
+        content: "Prefers superseded CLI memory rows to stay hidden.",
+        idempotencyKey: "memory-test:cli-search-superseded",
+      });
+      await fixture.execute(
+        `
+UPDATE junior_memory_memories
+SET superseded_at_ms = ${TEST_NOW_MS + 1}
+WHERE id = '${superseded.memory.id}'
+`,
+      );
 
       const missingScope = await runMemoryCli(fixture, ["search", "memory"]);
       expect(missingScope).toMatchObject({
@@ -428,6 +444,8 @@ ORDER BY created_at_ms ASC
       expect(scopedList.exitCode).toBe(0);
       expect(scopedList.stderr).toBe("");
       expect(scopedList.stdout).toContain(`id=${created.memory.id}`);
+      expect(scopedList.stdout).not.toContain(`id=${expired.memory.id}`);
+      expect(scopedList.stdout).not.toContain(`id=${superseded.memory.id}`);
 
       const show = await runMemoryCli(fixture, ["show", created.memory.id]);
       expect(show.exitCode).toBe(0);
