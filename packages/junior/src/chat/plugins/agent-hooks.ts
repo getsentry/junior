@@ -223,9 +223,9 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
           `Plugin CLI command "${command.name}" from plugin "${name}" conflicts with plugin "${existingOwner}"`,
         );
       }
-      if (typeof command.run !== "function") {
+      if (typeof command.configure !== "function") {
         throw new Error(
-          `Plugin CLI command "${command.name}" from plugin "${name}" must define a run function`,
+          `Plugin CLI command "${command.name}" from plugin "${name}" must define a configure function`,
         );
       }
       cliCommands.set(command.name, name);

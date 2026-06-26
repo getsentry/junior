@@ -125,7 +125,7 @@ describe("agent plugin hooks", () => {
               {
                 name: "chat",
                 summary: "Conflicting chat command",
-                run() {},
+                configure() {},
               },
             ],
           },
@@ -148,7 +148,7 @@ describe("agent plugin hooks", () => {
               {
                 name: "memory",
                 summary: "First memory command",
-                run() {},
+                configure() {},
               },
             ],
           },
@@ -164,7 +164,7 @@ describe("agent plugin hooks", () => {
               {
                 name: "memory",
                 summary: "Second memory command",
-                run() {},
+                configure() {},
               },
             ],
           },

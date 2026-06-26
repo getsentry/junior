@@ -14,6 +14,7 @@ import {
   type PluginModel,
   type PluginState,
 } from "@sentry/junior-plugin-api";
+import { Command, CommanderError } from "commander";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
@@ -66,20 +67,64 @@ function memoryDb(fixture: MemoryFixture): MemoryDb {
 async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
   const stdout: string[] = [];
   const stderr: string[] = [];
-  const command = createMemoryCliCommand();
-  const exitCode =
-    (await command.run({
-      argv,
-      db: memoryDb(fixture),
-      io: {
-        stderr: process.stderr,
-        stdout: process.stdout,
-        writeError: (text) => stderr.push(text),
-        writeOutput: (text) => stdout.push(text),
+  const definition = createMemoryCliCommand();
+  let exitCode = 0;
+  const io = {
+    stderr: {
+      write(text: string) {
+        stderr.push(text);
       },
-      log: noopLogger,
-      plugin: { name: "memory" },
-    })) ?? 0;
+    },
+    stdout: {
+      write(text: string) {
+        stdout.push(text);
+      },
+    },
+    writeError: (text: string) => stderr.push(text),
+    writeOutput: (text: string) => stdout.push(text),
+  };
+  const command = new Command(definition.name)
+    .description(definition.summary)
+    .exitOverride()
+    .showHelpAfterError()
+    .showSuggestionAfterError()
+    .configureOutput({
+      writeOut: (text) => {
+        stdout.push(text);
+      },
+      writeErr: (text) => {
+        stderr.push(text);
+      },
+      outputError: (text, write) => {
+        write(text);
+      },
+    });
+  definition.configure(command, {
+    action(handler) {
+      return async (...args) => {
+        const result = await handler(
+          {
+            db: memoryDb(fixture),
+            io,
+            log: noopLogger,
+            plugin: { name: "memory" },
+          },
+          ...args,
+        );
+        exitCode = result ?? 0;
+      };
+    },
+  });
+
+  try {
+    await command.parseAsync(argv, { from: "user" });
+  } catch (error) {
+    if (error instanceof CommanderError) {
+      exitCode = error.exitCode;
+    } else {
+      throw error;
+    }
+  }
 
   return {
     exitCode,
@@ -414,8 +459,9 @@ WHERE id = '${superseded.memory.id}'
         exitCode: 1,
         stdout: "",
       });
+      expect(missingScope.stderr).toContain("Usage: memory search");
       expect(missingScope.stderr).toContain(
-        "memory search requires --scope and --scope-key",
+        "error: required option '--scope <scope>' not specified",
       );
 
       const search = await runMemoryCli(fixture, [
@@ -454,6 +500,13 @@ WHERE id = '${superseded.memory.id}'
       expect(show.stdout).toContain(
         "content=Prefers CLI memory QA with scoped search.",
       );
+
+      const details = await runMemoryCli(fixture, [
+        "details",
+        created.memory.id,
+      ]);
+      expect(details.exitCode).toBe(1);
+      expect(details.stderr).toContain("error: unknown command 'details'");
     } finally {
       await fixture.close();
     }

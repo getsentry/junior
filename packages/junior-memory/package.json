@@ -34,6 +34,7 @@
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
     "@sinclair/typebox": "^0.34.49",
+    "commander": "^15.0.0",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },
