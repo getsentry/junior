@@ -30,15 +30,26 @@ async function runChat(argv: string[]): Promise<number> {
   return await mod.runChat(argv);
 }
 
+function topLevelCommand(argv: string[]): string | undefined {
+  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
+  return normalized[0];
+}
+
 async function main(argv: string[]): Promise<void> {
   loadCliEnvFiles();
   initSentry();
+  const command = topLevelCommand(argv);
+  const pluginCommands =
+    command && command !== "init"
+      ? await import("./plugins").then((mod) => mod.loadCliPluginCommands())
+      : undefined;
   const exitCode = await runCli(argv, {
     runChat,
     runInit,
     runSnapshotCreate,
     runCheck,
     runUpgrade,
+    ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : {}),
   });
   await flush(SENTRY_FLUSH_TIMEOUT_MS);
   process.exit(exitCode);

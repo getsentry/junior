@@ -1,77 +1,86 @@
 ---
 name: junior-qa
-description: QA Junior changes through the local chat CLI and apps/example without Slack. Use when validating Junior agent behavior, runtime/tool/prompt/plugin changes, local-vs-Slack regressions, or PR readiness with real `junior chat -p` probes.
+description: Validate Junior changes by running the local Junior CLI from apps/example. Use for local client or agent QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...` or `pnpm cli -- <command> ...`.
 ---
 
-Use the local Junior chat CLI as a real agent QA surface before relying on Slack. The goal is to prove the shared agent/runtime path works from `apps/example`, then add narrower tests or evals for the exact contract that changed.
+Use the local Junior CLI to exercise behavior the test suite does not prove well.
+The goal is to run the same app-facing path a developer or operator would use
+from `apps/example`, inspect the result, and report concrete evidence.
 
-## Step 1: Classify the Change
+Start by reading `specs/local-agent.md`. Read the relevant feature spec too when
+the changed behavior is owned by one.
 
-| Change area                                                                 | Local QA probe                                                                     |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Core reply generation, prompt, source/requester context, or local CLI       | Exact-output `chat -p` smoke plus one targeted scenario prompt                     |
-| Skills or plugin discovery                                                  | `/example-local` and `/example-bundle-help` probes from `apps/example`             |
-| Tool runtime context or provider-neutral tools                              | Targeted natural-language prompt plus focused integration tests                    |
-| Credentialed provider, MCP, sandbox, scheduler, or durable state behavior   | Local CLI as a non-Slack smoke, then targeted integration tests or evals           |
-| Slack-specific formatting, delivery, mentions, files, reactions, or retries | Local CLI is insufficient; use Slack MSW/integration coverage from the Slack specs |
+## Running the Local CLI
 
-Read `specs/local-agent.md` first, then read the relevant feature spec for the changed behavior. If tests are added or changed, read `specs/testing.md` before choosing the layer.
-
-## Step 2: Run Local Preflight
-
-Use `apps/example` through the repo CLI:
+Use the repo wrapper so the command runs from `apps/example` with root and app
+env loaded:
 
 ```sh
 pnpm cli -- chat -p "Say exactly: junior qa smoke ok"
 ```
 
-For ordinary local QA, expect the CLI to default to memory state. Set `JUNIOR_STATE_ADAPTER=redis` only when durable Redis state is the behavior under test.
-
-Treat startup logs as useful evidence. A healthy `apps/example` run should load `SOUL.md`, `WORLD.md`, the `example-bundle` plugin, and discover both `example-local` and `example-bundle-help`.
-
-## Step 3: Exercise the Example App
-
-Run these probes when validating local agent or plugin/skill behavior:
-
-```sh
-pnpm cli -- chat -p "/example-local confirm local QA discovery"
-```
-
-Expect the answer to follow the `example-local` skill from `apps/example/app/skills` and confirm local skill discovery.
-
-```sh
-pnpm cli -- chat -p "/example-bundle-help"
-```
-
-Expect the answer to explain that the skill is discovered from `app/plugins/example-bundle/skills`, is bundled with `example-bundle`, has no credential configuration, and does not support `jr-rpc issue-credential`.
-
-## Step 4: Add a Targeted Scenario
-
-Craft one small prompt that exercises the changed behavior in user terms. Keep the assertion narrow enough to inspect from the final CLI answer:
+For agent behavior, prompts, skills, tools, and model-facing plugin behavior,
+use `chat -p` or interactive `chat` with a prompt that naturally exercises the
+change:
 
 ```sh
 pnpm cli -- chat -p "<targeted prompt>"
 ```
 
-Prefer exact-output prompts for low-level routing or prompt-context checks. Prefer integration tests or evals when the behavior depends on tool wiring, model judgment, continuity, natural-language routing, or provider credentials.
+For host or plugin CLI behavior, call the command directly through the same
+wrapper:
 
-## Step 5: Verify the Contract
+```sh
+pnpm cli -- memory search --scope personal --scope-key local:local-cli --limit 5
+```
 
-Local QA supplements, but does not replace, repo validation:
+Use example app discovery probes when the change touches skill or plugin
+discovery:
 
-1. Run package typechecks for code changes, such as `pnpm --filter @sentry/junior typecheck`.
-2. Run focused tests for deterministic product/runtime behavior.
-3. Run evals for model-facing behavior, prompt interpretation, routing, continuity, or reply quality.
-4. Run Slack-specific tests when the change touches Slack-only behavior.
+```sh
+pnpm cli -- chat -p "/example-local confirm local QA discovery"
+pnpm cli -- chat -p "/example-bundle-help"
+```
+
+Healthy startup usually logs `SOUL.md`, `WORLD.md`, loaded plugins, and
+discovered skills. Treat those logs as useful evidence that the example app path
+was exercised.
+
+## Choosing a Probe
+
+Pick the smallest local CLI run that demonstrates the changed behavior:
+
+- Use exact-output prompts for simple agent routing or prompt-context checks.
+- Use natural-language prompts when the behavior is an agent/tool workflow.
+- Use direct plugin commands when the behavior is an operator CLI surface.
+- Use interactive `pnpm cli -- chat` when continuity across turns matters.
+- Do not use local CLI to claim Slack-only behavior, such as Slack formatting,
+  delivery retries, reactions, files, or OAuth UI.
+
+Automated tests, typechecks, linters, and evals are separate validation. They do
+not replace local QA evidence from running the client or agent.
 
 ## Failure Handling
 
-If local CLI output shows Redis DNS errors or hangs while connecting to Redis, check whether `JUNIOR_STATE_ADAPTER=redis` was set explicitly. Ordinary local chat should default to memory even when `.env.local` contains `REDIS_URL`.
+If local chat fails because credentials are missing or expired, refresh the
+environment when appropriate with `pnpm dev:env`, then rerun the same command.
+If Redis errors appear during ordinary local QA, check whether
+`JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
+state.
 
-If the run fails with a model gateway connection error, rerun with host network access when available. If credentials are missing or expired and the check requires real providers, refresh with `pnpm dev:env` before retrying.
+If the model answer is too loose to prove the behavior, use a narrower prompt,
+an exact-output prompt, interactive mode, or a direct plugin CLI command. If the
+behavior cannot be exercised through the local client/agent, say local QA is
+insufficient and name the runtime surface that still needs manual coverage.
 
-If a model answer is too loose to prove the behavior, replace it with an exact-output prompt or move the assertion into an integration test or eval.
+## Reporting
 
-## Report Results
+Report:
 
-Summarize the exact commands run, the final output or assertion that passed, whether local QA was sufficient or only supplemental, and any remaining tests/evals. Do not claim Slack behavior is proven by local CLI unless the changed behavior is platform-neutral and already covered at the shared runtime boundary.
+- the exact `pnpm cli -- ...` commands run
+- exit status and the key output that proves the behavior
+- whether `apps/example` loaded the expected app/plugin/skill path
+- whether local QA was sufficient, or what remains unproven locally
+
+Keep any automated test/lint/typecheck/eval results in a separate validation
+section so they are not confused with local QA.

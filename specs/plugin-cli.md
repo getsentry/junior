@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-13
+- Last Edited: 2026-06-26
 
 ## Purpose
 
@@ -19,7 +19,6 @@ without making those commands model-visible tools or sandbox commands.
 
 ## Non-Goals
 
-- Implementing plugin CLI commands in V1.
 - Letting `plugin.yaml` register executable CLI code.
 - Exposing plugin CLI commands to the model.
 - Running plugin CLI commands inside the agent sandbox.
@@ -33,7 +32,7 @@ without making those commands model-visible tools or sandbox commands.
 Plugin CLI commands are app-owned runtime code registered through app-code plugin
 registration, not declarative `plugin.yaml`.
 
-The rough plugin shape is:
+The plugin shape is:
 
 ```ts
 defineJuniorPlugin({
@@ -50,9 +49,14 @@ defineJuniorPlugin({
 });
 ```
 
-The exact API may change before implementation. The required contract is that
-commands are explicitly registered by enabled plugins and run with a narrow
-host-provided context.
+Commands are explicitly registered by enabled code plugins and run with a
+narrow host-provided context.
+
+CLI bootstrap imports the configured app-code plugin module before dispatching
+app-scoped commands, validates all plugin CLI command names against core command
+names and other enabled plugins, and then dispatches matching plugin commands.
+`junior init` remains independent because it can run before an app plugin module
+exists.
 
 ### Command Namespace
 

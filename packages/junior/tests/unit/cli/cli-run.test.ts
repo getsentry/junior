@@ -8,6 +8,12 @@ describe("cli command dispatch", () => {
       runInit: vi.fn(async () => undefined),
       runSnapshotCreate: vi.fn(async () => undefined),
       runCheck: vi.fn(async () => undefined),
+      runPluginCommand: vi.fn(
+        async (
+          _command: string,
+          _argv: string[],
+        ): Promise<number | undefined> => undefined,
+      ),
       runUpgrade: vi.fn(async () => undefined),
     };
   }
@@ -22,6 +28,7 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runInit).toHaveBeenCalledWith("my-bot");
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
   });
 
@@ -34,6 +41,7 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runSnapshotCreate).toHaveBeenCalledTimes(1);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
   });
 
@@ -49,6 +57,7 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runCheck).toHaveBeenNthCalledWith(2, undefined);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
   });
 
@@ -62,6 +71,7 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
   });
 
   it("runs chat with its remaining arguments", async () => {
@@ -75,6 +85,7 @@ describe("cli command dispatch", () => {
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
   });
 
@@ -86,6 +97,29 @@ describe("cli command dispatch", () => {
     expect(exitCode).toBe(0);
     expect(cliHandlers.runChat).toHaveBeenCalledWith(["-p", "hello"]);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).not.toHaveBeenCalled();
+    expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
+    expect(cliHandlers.runCheck).not.toHaveBeenCalled();
+    expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
+  });
+
+  it("runs a preloaded plugin command with its remaining arguments", async () => {
+    const cliHandlers = handlers();
+    cliHandlers.runPluginCommand.mockResolvedValue(0);
+
+    const exitCode = await runCli(
+      ["memory", "search", "runbooks"],
+      cliHandlers,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(cliHandlers.runPluginCommand).toHaveBeenCalledWith("memory", [
+      "search",
+      "runbooks",
+    ]);
+    expect(cliHandlers.runInit).not.toHaveBeenCalled();
+    expect(cliHandlers.runChat).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).toHaveBeenCalledTimes(1);
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();
@@ -140,6 +174,8 @@ describe("cli command dispatch", () => {
     ]);
     expect(cliHandlers.runInit).not.toHaveBeenCalled();
     expect(cliHandlers.runChat).not.toHaveBeenCalled();
+    expect(cliHandlers.runPluginCommand).toHaveBeenCalledTimes(1);
+    expect(cliHandlers.runPluginCommand).toHaveBeenCalledWith("whoami", []);
     expect(cliHandlers.runSnapshotCreate).not.toHaveBeenCalled();
     expect(cliHandlers.runCheck).not.toHaveBeenCalled();
     expect(cliHandlers.runUpgrade).not.toHaveBeenCalled();

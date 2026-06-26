@@ -1,5 +1,6 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createMemoryAgent, type MemoryAgent } from "./agent";
+import { createMemoryCliCommand } from "./cli";
 import {
   createMemoryCreateTool,
   createMemoryListTool,
@@ -39,6 +40,9 @@ export function createMemoryPlugin() {
       description: "Long-term Junior memory storage and recall",
     },
     packageName: "@sentry/junior-memory",
+    cli: {
+      commands: [createMemoryCliCommand()],
+    },
     hooks: {
       tools(ctx) {
         const context = memoryToolContext({

@@ -21,6 +21,7 @@ import {
   type CreateMemoryRequest,
   type MemoryAgent,
 } from "../src/agent";
+import { createMemoryCliCommand } from "../src/cli";
 import { createMemoryPlugin } from "../src/plugin";
 import {
   createMemoryCreateTool,
@@ -60,6 +61,31 @@ const defaultEmbedding = unitEmbedding(0);
 
 function memoryDb(fixture: MemoryFixture): MemoryDb {
   return fixture.db();
+}
+
+async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const command = createMemoryCliCommand();
+  const exitCode =
+    (await command.run({
+      argv,
+      db: memoryDb(fixture),
+      io: {
+        stderr: process.stderr,
+        stdout: process.stdout,
+        writeError: (text) => stderr.push(text),
+        writeOutput: (text) => stdout.push(text),
+      },
+      log: noopLogger,
+      plugin: { name: "memory" },
+    })) ?? 0;
+
+  return {
+    exitCode,
+    stderr: stderr.join(""),
+    stdout: stdout.join(""),
+  };
 }
 
 async function createMemoryFixture(): Promise<MemoryFixture> {
@@ -349,6 +375,67 @@ ORDER BY created_at_ms ASC
       await expect(
         store.searchMemories({ query: "summaries" }),
       ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("exposes scoped search and explicit show through the plugin CLI command", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const context = localContext({ userId: "cli-user" });
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => TEST_NOW_MS,
+      });
+      const created = await store.createMemory({
+        content: "Prefers CLI memory QA with scoped search.",
+        idempotencyKey: "memory-test:cli-search",
+      });
+
+      const missingScope = await runMemoryCli(fixture, ["search", "memory"]);
+      expect(missingScope).toMatchObject({
+        exitCode: 1,
+        stdout: "",
+      });
+      expect(missingScope.stderr).toContain(
+        "memory search requires --scope and --scope-key",
+      );
+
+      const search = await runMemoryCli(fixture, [
+        "search",
+        "scoped search",
+        "--scope",
+        "personal",
+        "--scope-key",
+        "local:cli-user",
+      ]);
+      expect(search.exitCode).toBe(0);
+      expect(search.stderr).toBe("");
+      expect(search.stdout).toContain(`id=${created.memory.id}`);
+      expect(search.stdout).toContain(
+        "preview=Prefers CLI memory QA with scoped search.",
+      );
+      expect(search.stdout).not.toContain("content=");
+
+      const scopedList = await runMemoryCli(fixture, [
+        "search",
+        "--scope",
+        "personal",
+        "--scope-key",
+        "local:cli-user",
+      ]);
+      expect(scopedList.exitCode).toBe(0);
+      expect(scopedList.stderr).toBe("");
+      expect(scopedList.stdout).toContain(`id=${created.memory.id}`);
+
+      const show = await runMemoryCli(fixture, ["show", created.memory.id]);
+      expect(show.exitCode).toBe(0);
+      expect(show.stderr).toBe("");
+      expect(show.stdout).toContain(`id=${created.memory.id}`);
+      expect(show.stdout).toContain(
+        "content=Prefers CLI memory QA with scoped search.",
+      );
     } finally {
       await fixture.close();
     }

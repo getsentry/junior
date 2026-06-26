@@ -605,7 +605,7 @@ export function createMemoryStore(
       throw new Error("Memory content exceeds the maximum length.");
     }
 
-    const id = `mem_${randomUUID()}`;
+    const id = randomUUID();
     const rows = await db
       .insert(juniorMemoryMemories)
       .values({

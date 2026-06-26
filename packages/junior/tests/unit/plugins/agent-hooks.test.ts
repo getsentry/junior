@@ -15,6 +15,7 @@ import {
   getPluginSlackConversationLink,
   getPluginTools,
   setPlugins,
+  validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
 import { tool } from "@/chat/tools/definition";
@@ -110,6 +111,70 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
+  it("rejects plugin CLI command conflicts before registration", () => {
+    expect(() =>
+      validatePlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "chat-plugin",
+            displayName: "Chat Plugin",
+            description: "Chat plugin",
+          },
+          cli: {
+            commands: [
+              {
+                name: "chat",
+                summary: "Conflicting chat command",
+                run() {},
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toThrow(
+      'Plugin CLI command "chat" from plugin "chat-plugin" conflicts with a core command',
+    );
+
+    expect(() =>
+      validatePlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "first-plugin",
+            displayName: "First Plugin",
+            description: "First plugin",
+          },
+          cli: {
+            commands: [
+              {
+                name: "memory",
+                summary: "First memory command",
+                run() {},
+              },
+            ],
+          },
+        }),
+        defineJuniorPlugin({
+          manifest: {
+            name: "second-plugin",
+            displayName: "Second Plugin",
+            description: "Second plugin",
+          },
+          cli: {
+            commands: [
+              {
+                name: "memory",
+                summary: "Second memory command",
+                run() {},
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toThrow(
+      'Plugin CLI command "memory" from plugin "second-plugin" conflicts with plugin "first-plugin"',
+    );
+  });
+
   it("collects system prompt contributions from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({

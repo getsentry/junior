@@ -61,7 +61,15 @@ export interface PluginHookRunner {
 
 let registeredPlugins: PluginRegistration[] = [];
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const PLUGIN_CLI_COMMAND_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const PLUGIN_TOOL_NAME_RE = /^[a-z][A-Za-z0-9]*$/;
+const CORE_CLI_COMMANDS = new Set([
+  "chat",
+  "check",
+  "init",
+  "snapshot",
+  "upgrade",
+]);
 const OPERATIONAL_REPORT_MAX_METRICS = 8;
 const OPERATIONAL_REPORT_MAX_RECORD_SETS = 8;
 const OPERATIONAL_REPORT_MAX_FIELDS = 8;
@@ -175,6 +183,7 @@ function logInvalidPromptContributions(args: {
 /** Validate plugin identity before it can affect process-wide hooks. */
 export function validatePlugins(plugins: PluginRegistration[]): void {
   const seen = new Set<string>();
+  const cliCommands = new Map<string, string>();
   for (const plugin of plugins) {
     const name = plugin.manifest.name;
     if (!PLUGIN_NAME_RE.test(name)) {
@@ -196,6 +205,30 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
           `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
         );
       }
+    }
+    for (const command of plugin.cli?.commands ?? []) {
+      if (!PLUGIN_CLI_COMMAND_NAME_RE.test(command.name)) {
+        throw new Error(
+          `Plugin CLI command "${command.name}" from plugin "${name}" must be a lowercase command identifier`,
+        );
+      }
+      if (CORE_CLI_COMMANDS.has(command.name)) {
+        throw new Error(
+          `Plugin CLI command "${command.name}" from plugin "${name}" conflicts with a core command`,
+        );
+      }
+      const existingOwner = cliCommands.get(command.name);
+      if (existingOwner) {
+        throw new Error(
+          `Plugin CLI command "${command.name}" from plugin "${name}" conflicts with plugin "${existingOwner}"`,
+        );
+      }
+      if (typeof command.run !== "function") {
+        throw new Error(
+          `Plugin CLI command "${command.name}" from plugin "${name}" must define a run function`,
+        );
+      }
+      cliCommands.set(command.name, name);
     }
     seen.add(name);
   }

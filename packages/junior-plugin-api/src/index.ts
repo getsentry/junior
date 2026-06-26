@@ -12,6 +12,7 @@ export * from "./tools";
 export * from "./operations";
 export * from "./credentials";
 export * from "./hooks";
+export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
 export * from "./tasks";

@@ -1,8 +1,10 @@
+import type { PluginCliDefinition } from "./cli";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
 
 export type PluginRegistrationInput = {
+  cli?: PluginCliDefinition;
   hooks?: PluginHooks;
   manifest: PluginManifest;
   packageName?: string;

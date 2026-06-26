@@ -7,6 +7,10 @@ interface CliHandlers {
   runSnapshotCreate: () => Promise<void>;
   runCheck: (dir?: string) => Promise<void>;
   runUpgrade: () => Promise<void>;
+  runPluginCommand?: (
+    command: string,
+    argv: string[],
+  ) => Promise<number | undefined>;
 }
 
 interface CliIo {
@@ -70,6 +74,16 @@ export async function runCli(
     }
     await handlers.runUpgrade();
     return 0;
+  }
+
+  if (command && handlers.runPluginCommand) {
+    const exitCode = await handlers.runPluginCommand(
+      command,
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+    if (exitCode !== undefined) {
+      return exitCode;
+    }
   }
 
   io.error(CLI_USAGE);
