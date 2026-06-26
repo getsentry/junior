@@ -209,18 +209,17 @@ export async function scheduleSessionCompletedPluginTasks(
   if (taskRegistrations.length === 0) {
     return;
   }
-  for (const { name, plugin } of taskRegistrations) {
-    const message: PluginTaskQueueMessage = {
-      name,
-      params: coreParams,
-      plugin: plugin.manifest.name,
-    };
-    if (options.send) {
-      await options.send(message);
-    } else {
-      await sendVercelPluginTask(message);
-    }
-  }
+  const send = options.send ?? sendVercelPluginTask;
+  const messages = taskRegistrations.map(({ name, plugin }) => ({
+    name,
+    params: coreParams,
+    plugin: plugin.manifest.name,
+  }));
+  await Promise.all(
+    messages.map(async (message) => {
+      await send(message);
+    }),
+  );
 }
 
 /** Execute one parsed plugin task request. */

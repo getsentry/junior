@@ -219,6 +219,58 @@ describe("plugin background tasks", () => {
     );
   });
 
+  it("attempts every plugin task send when one enqueue fails", async () => {
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const attempted: PluginTaskQueueMessage[] = [];
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-send-failure-demo",
+          displayName: "Task Send Failure Demo",
+          description: "Task send failure demo",
+        },
+        tasks: {
+          processSession: {
+            run() {},
+          },
+        },
+      }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-send-success-demo",
+          displayName: "Task Send Success Demo",
+          description: "Task send success demo",
+        },
+        tasks: {
+          processSession: {
+            run() {},
+          },
+        },
+      }),
+    ]);
+
+    await expect(
+      scheduleSessionCompletedPluginTasks(
+        { conversationId: "local:test:send-failure", sessionId: "turn-1" },
+        {
+          async send(message) {
+            attempted.push(message);
+            if (message.plugin === "task-send-failure-demo") {
+              throw new Error("enqueue failure marker");
+            }
+          },
+        },
+      ),
+    ).rejects.toThrow("enqueue failure marker");
+
+    expect(attempted.map((message) => message.plugin)).toEqual([
+      "task-send-failure-demo",
+      "task-send-success-demo",
+    ]);
+  });
+
   it("rejects task messages for unregistered plugin tasks", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
