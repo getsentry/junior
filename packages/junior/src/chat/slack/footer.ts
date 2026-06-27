@@ -52,7 +52,7 @@ function escapeSlackLinkUrl(url: string): string {
 }
 
 /**
- * Build the compact conversation footer for the finalized Slack reply.
+ * Build the compact conversation footer for visible Slack reply surfaces.
  *
  * Detailed turn metrics stay in the dashboard instead of Slack-visible copy.
  */

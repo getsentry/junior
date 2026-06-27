@@ -76,6 +76,14 @@ function hasPriorBudgetContext(messages: unknown[]): boolean {
   );
 }
 
+function expectBlocksIncludeConversationId(
+  params: Record<string, unknown>,
+  conversationId: string,
+): void {
+  expect(params.blocks).toBeDefined();
+  expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
 vi.mock("@/chat/services/turn-thinking-level", async () => {
   const actual = await vi.importActual<
     typeof import("@/chat/services/turn-thinking-level")
@@ -401,14 +409,20 @@ describe("mcp auth runtime slack integration", () => {
         }),
       }),
     ]);
-    expect(thread.posts).toEqual([
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
-        ),
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.001",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        }),
       }),
     ]);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "slack:C123:1700000000.001",
+    );
     expectProcessingReactionLifecycles({
       channel: "C123",
       timestamp: "1700000000.002",
@@ -555,6 +569,13 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.001",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.001",
           text: assistantReplyWithContext,
         }),
       }),
@@ -640,13 +661,20 @@ describe("mcp auth runtime slack integration", () => {
 
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(0);
-    expect(thread.posts).toEqual([
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
-        ),
+        params: expect.objectContaining({
+          channel: "C124",
+          thread_ts: "1700000000.002",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        }),
       }),
     ]);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "slack:C124:1700000000.002",
+    );
 
     const pendingCheckpoint =
       await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId);
@@ -785,9 +813,20 @@ describe("mcp auth runtime slack integration", () => {
         params: expect.objectContaining({
           channel: "C125",
           thread_ts: "1700000000.003",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C125",
+          thread_ts: "1700000000.003",
           text: assistantReplyWithContext,
         }),
       }),
     ]);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "slack:C125:1700000000.003",
+    );
   });
 });

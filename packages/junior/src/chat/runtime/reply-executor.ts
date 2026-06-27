@@ -403,16 +403,29 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const postAuthPauseNotice = async (
           providerDisplayName: string,
         ): Promise<void> => {
+          const text = buildAuthPauseResponse(
+            message.author.userId,
+            providerDisplayName,
+          );
+          const footer = buildSlackReplyFooter({ conversationId });
           try {
-            await beforeFirstResponsePost();
-            await thread.post(
-              buildSlackOutputMessage(
-                buildAuthPauseResponse(
-                  message.author.userId,
-                  providerDisplayName,
-                ),
-              ),
-            );
+            if (channelId && threadTs) {
+              await postSlackApiReplyPosts({
+                beforePost: beforeFirstResponsePost,
+                channelId,
+                threadTs,
+                posts: [
+                  {
+                    text,
+                    stage: "thread_reply",
+                  },
+                ],
+                footer,
+              });
+            } else {
+              await beforeFirstResponsePost();
+              await thread.post(buildSlackOutputMessage(text));
+            }
           } catch (error) {
             logException(
               error,

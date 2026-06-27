@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-06-08
+- Last Edited: 2026-06-27
 
 ## Purpose
 
@@ -93,7 +93,7 @@ Current contract:
 9. Assistant status is best effort and must not sit on the critical path for model/tool execution. Starting a turn or updating mid-turn status may queue Slack writes, but must not wait for Slack round-trips before assistant work continues.
 10. When Junior has an explicit `reportProgress` update, it must replace the generic `loading_messages` rotation for that status update. Explicit progress owns the loading surface until another status update replaces it or the turn ends.
 11. While a turn is active, Junior uses a stable generic `status` string for Slack's assistant loading state and changes the user-visible progress copy through `loading_messages`.
-12. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to the finalized reply artifact.
+12. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to finalized reply artifacts and explicit auth-pause acknowledgements.
 13. If automatic pre-turn compaction is needed, Junior must show explicit compaction progress before the compaction LLM call and return to normal turn status before agent execution begins.
 
 Status is the only in-flight progress surface required by the contract. Visible assistant reply text is posted only after the turn result is finalized and delivery has been planned.
@@ -216,12 +216,12 @@ Current rules:
 3. Continuation success is defined by final visible Slack delivery, not only by successful assistant generation.
 4. Persisted thread state is updated only after the final reply has been delivered to Slack.
 5. Because live turns do not publish provisional assistant text, timeout continuation remains eligible until final reply delivery starts.
-6. When a turn blocks on OAuth/MCP auth, Junior must privately deliver the auth link, post a brief visible thread acknowledgement that authorization is needed, clear `activeTurnId`, and persist thread-local pending-auth state. The visible acknowledgement must not include the auth URL or other secret-bearing state.
+6. When a turn blocks on OAuth/MCP auth, Junior must privately deliver the auth link, post a brief visible thread acknowledgement that authorization is needed, clear `activeTurnId`, and persist thread-local pending-auth state. The visible acknowledgement must not include the auth URL or other secret-bearing state, but it should include the same conversation footer metadata used by finalized Slack replies so users can identify the paused conversation.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already replaced the blocked request, Junior stores the credentials but does not post a stale resumed answer.
 9. Routine cooperative continuation must not post a visible "continuing in the background" thread acknowledgement. User-visible progress belongs to assistant status and `reportProgress`; final answers still use the finalized reply path.
 10. If an active request arrives while a turn is active, Junior should fold it into the active conversation at the next safe execution boundary instead of creating a second visible turn. Explicit mentions, DMs, and active assistant-thread user messages interrupt the active turn through Pi steering. Passive subscribed-thread messages that the reply policy accepts defer until the active turn completes and delivers its answer, then run as ordinary queued subscribed-message work. Passive no-reply messages and opt-out decisions are consumed through existing skipped-message handling without agent injection or automatic processing reactions. Mailbox and worker mechanics belong to `./task-execution.md`.
-11. Any explicit pause acknowledgement that remains for auth or exceptional failure handling is not a final assistant reply. It does not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
+11. Any explicit pause acknowledgement that remains for auth or exceptional failure handling is not a final assistant reply. It does not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path. Footer metadata on an auth-pause acknowledgement is only a conversation identifier affordance, not assistant progress or completion.
 
 ### 12. Testing Contract
 

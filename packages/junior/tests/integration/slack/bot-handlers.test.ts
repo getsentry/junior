@@ -40,6 +40,14 @@ function postIncludes(thread: { posts: unknown[] }, text: string): boolean {
   });
 }
 
+function expectBlocksIncludeConversationId(
+  params: Record<string, unknown>,
+  conversationId: string,
+): void {
+  expect(params.blocks).toBeDefined();
+  expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
 function createRuntime(
   args: {
     services?: JuniorRuntimeServiceOverrides;
@@ -624,13 +632,20 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toEqual([
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "<@U-test> I'll need you to authorize Notion. I sent you a link.",
-        ),
+        params: expect.objectContaining({
+          channel: "C_AUTH",
+          thread_ts: "1700000000.000",
+          text: "<@U-test> I'll need you to authorize Notion. I sent you a link.",
+        }),
       }),
     ]);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "slack:C_AUTH:1700000000.000",
+    );
     const state = thread.getState();
     const conversation = (
       state as {
@@ -702,13 +717,20 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toEqual([
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "<@U-test> I'll need you to authorize GitHub. I sent you a link.",
-        ),
+        params: expect.objectContaining({
+          channel: "C_PLUGIN_AUTH",
+          thread_ts: "1700000000.000",
+          text: "<@U-test> I'll need you to authorize GitHub. I sent you a link.",
+        }),
       }),
     ]);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "slack:C_PLUGIN_AUTH:1700000000.000",
+    );
     const state = thread.getState();
     const conversation = (
       state as {

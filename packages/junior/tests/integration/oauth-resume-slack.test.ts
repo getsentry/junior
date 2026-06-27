@@ -42,6 +42,14 @@ function testSlackSource(threadTs: string) {
   });
 }
 
+function expectBlocksIncludeConversationId(
+  params: Record<string, unknown>,
+  conversationId: string,
+): void {
+  expect(params.blocks).toBeDefined();
+  expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
 describe("oauth resume slack integration", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -209,6 +217,54 @@ describe("oauth resume slack integration", () => {
         }),
       }),
     ]);
+  });
+
+  it("posts resumed auth pause notices with the conversation footer", async () => {
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
+    const { RetryableTurnError } = await import("@/chat/runtime/turn");
+
+    await resumeAuthorizedRequest({
+      messageText: "continue this turn",
+      channelId: "C123",
+      threadTs: "1700000000.008",
+      connectedText: "",
+      replyContext: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource("1700000000.008"),
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId: "conversation-auth-pause",
+          turnId: "turn-auth-pause",
+        },
+      },
+      generateReply: async () => {
+        throw new RetryableTurnError("mcp_auth_resume", "auth required", {
+          authDisposition: "link_sent",
+          authKind: "mcp",
+          authProvider: "eval-auth",
+          authProviderDisplayName: "Eval Auth",
+        });
+      },
+      onAuthPause: async () => undefined,
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.008",
+          text: "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+        }),
+      }),
+    ]);
+    expectBlocksIncludeConversationId(
+      getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
+      "conversation-auth-pause",
+    );
   });
 
   it("chunks long resumed replies into explicit continuation messages", async () => {

@@ -1,3 +1,10 @@
+/**
+ * Slack resume execution boundary.
+ *
+ * Resumed turns run from persisted request context under the Slack thread lock.
+ * Status notices are best effort, while final replies and auth-pause notices
+ * reuse the shared Slack reply footer path when they are user-visible.
+ */
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
@@ -25,7 +32,10 @@ import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
 } from "@/chat/slack/assistant-thread/status";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
+import {
+  buildSlackReplyFooter,
+  type SlackReplyFooter,
+} from "@/chat/slack/footer";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
@@ -57,13 +67,25 @@ async function postSlackMessageBestEffort(
   channelId: string,
   threadTs: string,
   text: string,
+  footer?: SlackReplyFooter,
 ): Promise<void> {
   try {
-    await postSlackApiMessage({
-      channelId,
-      threadTs,
-      text,
-    });
+    if (footer) {
+      await postSlackApiReplyPosts({
+        channelId,
+        threadTs,
+        posts: [
+          {
+            text,
+            stage: "thread_reply",
+          },
+        ],
+        footer,
+      });
+      return;
+    }
+
+    await postSlackApiMessage({ channelId, threadTs, text });
   } catch {
     // Resume-side status notices should not decide whether the turn succeeds.
   }
@@ -155,6 +177,14 @@ function getResumeLogContext(
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
   };
+}
+
+/** Resolve the conversation identifier used by resumed-turn logs and Slack footers. */
+function getResumeConversationId(
+  args: ResumeSlackTurnArgs,
+  lockKey: string,
+): string {
+  return args.replyContext?.correlation?.conversationId ?? lockKey;
 }
 
 async function postResumeFailureReply(args: {
@@ -368,8 +398,7 @@ export async function resumeSlackTurn(
 
     await status.stop();
     const footer = buildSlackReplyFooter({
-      conversationId:
-        runArgs.replyContext?.correlation?.conversationId ?? lockKey,
+      conversationId: getResumeConversationId(runArgs, lockKey),
     });
     await postSlackApiReplyPosts({
       channelId: runArgs.channelId,
@@ -476,6 +505,9 @@ export async function resumeSlackTurn(
     try {
       await deferredPauseHandler();
       if (deferredPauseKind === "auth" && deferredAuthInfo) {
+        const footer = buildSlackReplyFooter({
+          conversationId: getResumeConversationId(runArgs, lockKey),
+        });
         await postSlackMessageBestEffort(
           runArgs.channelId,
           runArgs.threadTs,
@@ -483,6 +515,7 @@ export async function resumeSlackTurn(
             deferredAuthInfo.requesterId,
             deferredAuthInfo.providerDisplayName,
           ),
+          footer,
         );
       }
       return true;
