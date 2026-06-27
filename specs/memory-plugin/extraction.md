@@ -94,8 +94,9 @@ The `processSession` task must:
 8. Extract candidate facts with a structured model output contract.
 9. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
    non-durable facts.
-10. Assign requester or conversation target from memory-agent output, while
-    deriving all authority-bearing ids from runtime context.
+10. Assign requester or conversation target from the memory kind returned by
+    the memory agent, while deriving all authority-bearing ids from runtime
+    context.
 11. Insert accepted memories idempotently with a stable key derived through the
     runtime source helper, completed session reference, and extracted fact
     content.
@@ -178,18 +179,27 @@ be used as source evidence for new facts.
 
 The memory agent model is host-owned but selected by the memory plugin. An
 explicit `createMemoryPlugin({ modelId })` option wins, then `AI_MEMORY_MODEL`,
-then the host structured-model default. Model choice is an implementation
-tuning knob; runtime context, source authority, and storage validation remain
-the boundary.
+then the host default model. Model choice is an implementation tuning knob;
+runtime context, source authority, and storage validation remain the boundary.
 
 Memory agent output must be structured. For explicit review it should include:
 
 - decision: `store` or `reject`
+- memory kind when stored: `preference`, `procedure`, or `fact`
+- canonical stored content when stored
+- optional expiration when stored
 - normalized rejection reason code when rejected
-- optional adjusted memory type, subject, scope, expiration, or content rewrite
 
-For passive extraction it should include an array of accepted candidate
-memories with target, canonical stored content, and optional expiration.
+For passive extraction it should include categorized arrays of accepted
+candidate memories:
+
+- `preferences`: durable personal preferences, opinions, habits, or workflows
+  owned by the current requester; stored as requester memory.
+- `procedures`: reusable task, process, triage-flow, or runbook instructions;
+  stored as conversation memory.
+- `facts`: shared project, channel, operational, or runbook knowledge; stored
+  as conversation memory.
+
 Conversation-target passive memories in V1 are the primary path for learning
 how work gets done: task procedures, runbooks, project facts, channel norms,
 and operational knowledge. Requester-target passive memories are secondary and

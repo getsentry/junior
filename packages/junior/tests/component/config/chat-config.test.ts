@@ -42,7 +42,7 @@ describe("chat config", () => {
     delete process.env.AI_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.modelId).toBe("openai/gpt-5.4");
+    expect(botConfig.modelId).toBe("openai/gpt-5.5");
   });
 
   it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", async () => {

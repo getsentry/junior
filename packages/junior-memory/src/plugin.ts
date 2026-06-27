@@ -57,7 +57,9 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
       displayName: "Memory",
       description: "Long-term Junior memory storage and recall",
     },
-    ...(modelId ? { model: { structuredModelId: modelId } } : {}),
+    model: modelId
+      ? { structuredModelId: modelId }
+      : { structuredModel: "default" },
     packageName: "@sentry/junior-memory",
     cli: {
       commands: [createMemoryCliCommand()],

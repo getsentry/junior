@@ -1,16 +1,25 @@
-import type { PluginEmbedder, PluginModel } from "@sentry/junior-plugin-api";
+import type {
+  PluginEmbedder,
+  PluginModel,
+  PluginModelConfig,
+} from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { completeObject, embedTexts } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
 export function createPluginModel(
   pluginName: string,
-  options: { structuredModelId?: string } = {},
+  options: PluginModelConfig = {},
 ): PluginModel {
   return {
     async completeObject(input) {
+      const modelId =
+        options.structuredModelId ??
+        (options.structuredModel === "default"
+          ? botConfig.modelId
+          : botConfig.fastModelId);
       const result = await completeObject({
-        modelId: options.structuredModelId ?? botConfig.fastModelId,
+        modelId,
         schema: input.schema,
         prompt: input.prompt,
         ...(input.system !== undefined ? { system: input.system } : {}),

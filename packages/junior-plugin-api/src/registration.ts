@@ -4,6 +4,8 @@ import type { PluginManifest } from "./manifest";
 import type { PluginTasks } from "./tasks";
 
 export interface PluginModelConfig {
+  /** Host model family used when no explicit structured model id is configured. */
+  structuredModel?: "default" | "fast";
   /** Host model id used for this plugin's structured model calls. */
   structuredModelId?: string;
 }

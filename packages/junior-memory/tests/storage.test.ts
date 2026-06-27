@@ -211,20 +211,29 @@ function extractionModel(
   memories: Array<{
     content: string;
     expiresAtMs?: number | null;
-    target: "requester" | "conversation";
+    kind: "preference" | "procedure" | "fact";
   }>,
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
   const model: PluginModel = {
     async completeObject(input) {
       calls.push(input);
+      const procedures = memories.filter(
+        (memory) => memory.kind === "procedure",
+      );
+      const facts = memories.filter((memory) => memory.kind === "fact");
+      const preferences = memories.filter(
+        (memory) => memory.kind === "preference",
+      );
+      const toResponseMemory = (memory: (typeof memories)[number]) => ({
+        canonicalFact: memory.content,
+        expiresAtMs: memory.expiresAtMs ?? null,
+      });
       return {
         object: {
-          memories: memories.map((memory) => ({
-            canonicalFact: memory.content,
-            expiresAtMs: memory.expiresAtMs ?? null,
-            target: memory.target,
-          })),
+          facts: facts.map(toResponseMemory),
+          preferences: preferences.map(toResponseMemory),
+          procedures: procedures.map(toResponseMemory),
         },
       };
     },
@@ -335,7 +344,7 @@ function processSessionContext(
       overrides.model ??
       extractionModel([
         {
-          target: "requester",
+          kind: "preference",
           content: "terse PR summaries",
         },
       ]).model,
@@ -380,7 +389,7 @@ const rejectMemory: MemoryReviewer = {
 };
 
 describe("memory plugin storage", () => {
-  it("normalizes nullable structured review responses", async () => {
+  it("normalizes structured review responses", async () => {
     const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
     const model: PluginModel = {
       async completeObject(input) {
@@ -388,9 +397,8 @@ describe("memory plugin storage", () => {
         return {
           object: {
             decision: "store",
-            target: "requester",
+            kind: "preference",
             canonicalFact: "Uses qa-structured-output in CLI QA.",
-            reason: null,
             expiresAtMs: null,
           },
         };
@@ -421,19 +429,38 @@ describe("memory plugin storage", () => {
     });
   });
 
+  it("defaults memory extraction to the host default model", () => {
+    const previousMemoryModel = process.env.AI_MEMORY_MODEL;
+    delete process.env.AI_MEMORY_MODEL;
+
+    try {
+      const plugin = createMemoryPlugin();
+      expect(plugin.model).toEqual({
+        structuredModel: "default",
+      });
+    } finally {
+      if (previousMemoryModel === undefined) {
+        delete process.env.AI_MEMORY_MODEL;
+      } else {
+        process.env.AI_MEMORY_MODEL = previousMemoryModel;
+      }
+    }
+  });
+
   it("parses canonical requester extraction into stored memory text", async () => {
     const model: PluginModel = {
       async completeObject() {
         return {
           object: {
-            memories: [
+            facts: [],
+            preferences: [
               {
                 canonicalFact:
                   "Prefers causes before mitigations in incident writeups.",
                 expiresAtMs: null,
-                target: "requester",
               },
             ],
+            procedures: [],
           },
         };
       },
@@ -481,16 +508,13 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("normalizes nullable structured rejection responses", async () => {
+  it("normalizes structured rejection responses", async () => {
     const model: PluginModel = {
       async completeObject() {
         return {
           object: {
             decision: "reject",
-            target: null,
-            canonicalFact: null,
             reason: "not_public_shareable",
-            expiresAtMs: null,
           },
         };
       },
@@ -514,12 +538,12 @@ describe("memory plugin storage", () => {
     try {
       const { model, calls } = extractionModel([
         {
-          target: "requester",
+          kind: "preference",
           content: "Prefers QA notes that mention database row checks.",
         },
         {
           content: "Deploy runbooks live in Notion.",
-          target: "conversation",
+          kind: "fact",
         },
       ]);
       const embedder = createTestEmbedder();
@@ -553,27 +577,32 @@ describe("memory plugin storage", () => {
         .select()
         .from(memorySqlSchema.juniorMemoryMemories)
         .orderBy(memorySqlSchema.juniorMemoryMemories.createdAtMs);
-      expect(rows).toEqual([
-        expect.objectContaining({
-          content: "Prefers QA notes that mention database row checks.",
-          scope: "personal",
-          sourcePlatform: "local",
-          subjectType: "user",
-        }),
-        expect.objectContaining({
-          content: "Deploy runbooks live in Notion.",
-          scope: "conversation",
-          sourcePlatform: "local",
-          subjectType: "conversation",
-        }),
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            content: "Prefers QA notes that mention database row checks.",
+            scope: "personal",
+            sourcePlatform: "local",
+            subjectType: "user",
+          }),
+          expect.objectContaining({
+            content: "Deploy runbooks live in Notion.",
+            scope: "conversation",
+            sourcePlatform: "local",
+            subjectType: "conversation",
+          }),
+        ]),
+      );
+      expect(rows).toHaveLength(2);
+      expect(embedder.calls[0]).toEqual([
+        "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
       ]);
-      expect(embedder.calls).toEqual([
-        [
-          "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
-        ],
-        ["Prefers QA notes that mention database row checks."],
-        ["Deploy runbooks live in Notion."],
-      ]);
+      expect(embedder.calls.slice(1)).toEqual(
+        expect.arrayContaining([
+          ["Prefers QA notes that mention database row checks."],
+          ["Deploy runbooks live in Notion."],
+        ]),
+      );
     } finally {
       await fixture.close();
     }
@@ -587,7 +616,7 @@ describe("memory plugin storage", () => {
       const { model, calls } = extractionModel([
         {
           content: "Prefers retry-safe memory extraction.",
-          target: "requester",
+          kind: "preference",
         },
       ]);
       const session = {
@@ -642,7 +671,7 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
-        target: "requester",
+        kind: "preference",
         content: "duplicate memory avoidance",
       },
     ]);
@@ -682,7 +711,7 @@ describe("memory plugin storage", () => {
     try {
       const { model, calls } = extractionModel([
         {
-          target: "requester",
+          kind: "preference",
           content: "recall turns can still learn durable facts",
         },
       ]);
@@ -726,7 +755,7 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
-        target: "requester",
+        kind: "preference",
         content: "private Slack context skips",
       },
     ]);
@@ -772,7 +801,7 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     const { model, calls } = extractionModel([
       {
-        target: "requester",
+        kind: "preference",
         content: "Slack message key validation",
       },
     ]);
@@ -818,7 +847,7 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
-        target: "requester",
+        kind: "preference",
         content: "Prefers local passive memory QA.",
       },
     ]);

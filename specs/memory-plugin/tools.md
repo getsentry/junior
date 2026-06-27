@@ -73,9 +73,9 @@ beyond the active task.
 
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the memory agent's explicit-create review path. The memory agent
-decides store/reject, canonical perspective-neutral content, subject, and
-whether the memory targets the current requester, active conversation, or no
-valid V1 target.
+decides store/reject, memory kind, and canonical perspective-neutral content.
+The plugin derives the storage target from the reviewed kind: requester for
+`preference`, conversation for `procedure` and `fact`.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
 display names, aliases, or subject classes.

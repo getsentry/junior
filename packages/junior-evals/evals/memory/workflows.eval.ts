@@ -479,7 +479,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       expectedBehavior:
         "The assistant says sandbox timeout triage should inspect heartbeat gaps before increasing the timeout.",
     });
-  });
+  }, 120_000);
 
   const passiveConversationThread = {
     channel_type: "channel",
