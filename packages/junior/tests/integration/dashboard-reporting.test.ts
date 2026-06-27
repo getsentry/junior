@@ -622,68 +622,51 @@ describe("dashboard reporting", () => {
   it("caps aggregate conversation stats before building index counts", async () => {
     vi.useFakeTimers();
     const startedAtMs = Date.parse("2026-06-04T10:00:00.000Z");
-    vi.setSystemTime(new Date(startedAtMs));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { conversationStore, readConversationStatsReport } =
-      await createStateReportingReader();
-
-    await recordAgentTurnSessionSummary({
-      conversationStore,
-      conversationId: "slack:C1:baseline",
-      cumulativeDurationMs: 1_000,
-      requester: slackRequester("Avery"),
-      sessionId: "turn-baseline",
-      sliceId: 1,
-      startedAtMs,
-      state: "completed",
-    });
-    for (let index = 0; index < 5_000; index += 1) {
-      vi.setSystemTime(new Date(startedAtMs + (index + 1) * 1000));
-      await recordAgentTurnSessionSummary({
-        conversationStore,
-        conversationId: `slack:C_FILL:${index}`,
-        cumulativeDurationMs: 1,
-        requester: slackRequester("Filler"),
-        sessionId: `turn-${index}`,
-        sliceId: 1,
-        state: "completed",
-      });
-    }
-    vi.setSystemTime(new Date(startedAtMs + 5_001 * 1000));
-    await recordAgentTurnSessionSummary({
-      conversationStore,
-      conversationId: "slack:C1:baseline",
-      cumulativeDurationMs: 1_500,
-      requester: slackRequester("Blake"),
-      sessionId: "turn-latest",
-      sliceId: 1,
-      state: "completed",
-    });
+    const latestAtMs = startedAtMs + 5_001 * 1000;
+    vi.setSystemTime(new Date(latestAtMs));
+    const { readConversationStatsReport } =
+      await import("@/reporting/conversations");
+    const conversationStore = fixedConversationStore([
+      indexedConversation({
+        conversationId: "slack:C1:baseline",
+        createdAtMs: startedAtMs,
+        lastActivityAtMs: latestAtMs,
+        requester: { fullName: "Blake" },
+        source: "slack",
+      }),
+      ...Array.from({ length: 5_000 }, (_, index) =>
+        indexedConversation({
+          conversationId: `slack:C_FILL:${index}`,
+          createdAtMs: startedAtMs + (index + 1) * 1000,
+          lastActivityAtMs: startedAtMs + (index + 1) * 1000,
+          requester: { fullName: "Filler" },
+          source: "slack",
+        }),
+      ),
+    ]);
 
     const stats = await readConversationStatsReport({ conversationStore });
     expect(stats.truncated).toBe(true);
     expect(stats.sampleSize).toBe(5_000);
     expect(stats.runs).toBe(5_000);
-  }, 20_000);
+  });
 
   it("marks aggregate conversation stats truncated when the sample cap is reached", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const { recordAgentTurnSessionSummary } =
-      await import("@/chat/state/turn-session");
-    const { conversationStore, readConversationStatsReport } =
-      await createStateReportingReader();
-
-    for (let index = 0; index < 5_001; index += 1) {
-      await recordAgentTurnSessionSummary({
-        conversationStore,
-        conversationId: `slack:C1:${index}`,
-        sessionId: `turn-${index}`,
-        sliceId: 1,
-        state: "completed",
-      });
-    }
+    const nowMs = Date.parse("2026-06-04T12:00:00.000Z");
+    const { readConversationStatsReport } =
+      await import("@/reporting/conversations");
+    const conversationStore = fixedConversationStore(
+      Array.from({ length: 5_001 }, (_, index) =>
+        indexedConversation({
+          conversationId: `slack:C1:${index}`,
+          createdAtMs: nowMs - index * 1000,
+          lastActivityAtMs: nowMs - index * 1000,
+          source: "slack",
+        }),
+      ),
+    );
 
     const stats = await readConversationStatsReport({ conversationStore });
 
@@ -692,7 +675,7 @@ describe("dashboard reporting", () => {
       sampleSize: 5_000,
       truncated: true,
     });
-  }, 20_000);
+  });
 
   it("reports only the current turn transcript from session history", async () => {
     const { upsertAgentTurnSessionRecord } =

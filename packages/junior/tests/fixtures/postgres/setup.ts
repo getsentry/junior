@@ -38,6 +38,15 @@ if (harnessConfig) {
   });
 }
 
+function isRetryableResetError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "40P01" || error.code === "55P03")
+  );
+}
+
 async function resetPostgresTestDatabase(client: pg.PoolClient): Promise<void> {
   await client.query("BEGIN");
   try {
@@ -82,13 +91,29 @@ ORDER BY sequence_name ASC
   }
 }
 
+async function resetPostgresTestDatabaseWithRetry(
+  client: pg.PoolClient,
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await resetPostgresTestDatabase(client);
+      return;
+    } catch (error) {
+      if (attempt >= 2 || !isRetryableResetError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+}
+
 beforeEach(async () => {
   if (!resetPool) {
     return;
   }
   const client = await resetPool.connect();
   try {
-    await resetPostgresTestDatabase(client);
+    await resetPostgresTestDatabaseWithRetry(client);
   } finally {
     client.release();
   }
