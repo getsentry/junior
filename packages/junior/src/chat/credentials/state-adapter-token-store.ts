@@ -4,7 +4,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
-import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/adapter";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime

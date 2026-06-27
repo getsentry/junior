@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 import { createTestMessage } from "../../fixtures/slack-harness";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -57,8 +58,7 @@ describe("state adapter lock lease", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(0));
 
-    const { ACTIVE_LOCK_TTL_MS, getStateAdapter } =
-      await loadMemoryStateAdapter();
+    const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
     await adapter.connect();
 
@@ -77,8 +77,7 @@ describe("state adapter lock lease", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(0));
 
-    const { ACTIVE_LOCK_TTL_MS, getStateAdapter } =
-      await loadMemoryStateAdapter();
+    const { getStateAdapter } = await loadMemoryStateAdapter();
     const adapter = getStateAdapter();
     await adapter.connect();
 
@@ -101,10 +100,9 @@ describe("state adapter lock lease", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(0));
 
-    const { ACTIVE_LOCK_TTL_MS, getStateAdapter } =
-      await loadMemoryStateAdapter({
-        AGENT_TURN_TIMEOUT_MS: "10000",
-      });
+    const { getStateAdapter } = await loadMemoryStateAdapter({
+      AGENT_TURN_TIMEOUT_MS: "10000",
+    });
     const adapter = getStateAdapter();
     await adapter.connect();
 

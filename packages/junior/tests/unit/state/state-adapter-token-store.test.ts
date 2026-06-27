@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
-import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/adapter";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {

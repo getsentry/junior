@@ -41,7 +41,8 @@ import {
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
-import { ACTIVE_LOCK_TTL_MS, getStateAdapter } from "@/chat/state/adapter";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 import {
   startSlackProcessingReactionForMessage,
   type ProcessingReactionSession,

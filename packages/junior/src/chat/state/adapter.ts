@@ -3,8 +3,8 @@ import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, QueueEntry, StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
-export const ACTIVE_LOCK_TTL_MS = 90_000;
 const ACTIVE_LOCK_HEARTBEAT_MS = 30_000;
 
 let stateAdapter: StateAdapter | undefined;
