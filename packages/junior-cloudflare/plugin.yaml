@@ -11,7 +11,3 @@ config-keys:
 
 mcp:
   url: https://mcp.cloudflare.com/mcp
-  allowed-tools:
-    - docs
-    - search
-    - execute
