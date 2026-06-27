@@ -174,8 +174,20 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         throw new Error("loadSkill tool missing");
       }
 
-      await loadSkillTool.execute("tool-load-skill", {
+      const loadSkillResult = (await loadSkillTool.execute("tool-load-skill", {
         skill_name: SKILL_NAME,
+      })) as {
+        ok?: boolean;
+        skill_name?: string;
+      };
+      this.state.messages.push({
+        role: "toolResult",
+        toolCallId: "tool-load-skill",
+        toolName: "loadSkill",
+        skill_name: loadSkillResult.skill_name,
+        ok: loadSkillResult.ok,
+        details: loadSkillResult,
+        isError: false,
       });
 
       if (this.aborted) {
@@ -242,7 +254,11 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
   }
 
-  return { Agent: FakeAgent };
+  return {
+    Agent: FakeAgent,
+    estimateContextTokens: () => ({ tokens: 0 }),
+    estimateTokens: () => 0,
+  };
 });
 
 const ORIGINAL_ENV = { ...process.env };
@@ -806,116 +822,136 @@ describe("mcp auth runtime slack integration", () => {
     ]);
   });
 
-  it("does not abort unrelated turns when MCP auth is already pending from a prior turn", async () => {
-    // Regression: if a user previously triggered an MCP provider's auth
-    // challenge, Junior was restoring the pending-auth skill from Pi history
-    // and calling activateProvider() on EVERY subsequent turn in the
-    // conversation — even for completely unrelated requests. This caused the
-    // pre-agent MCP restoration loop to throw McpAuthorizationPauseError and
-    // abort the turn before the agent ran.
-    agentProbe.shouldBypassSkill = true;
-    const threadId = "slack:C126:1700000000.004";
-    const turnId = "turn_user-4";
-    const { createTestChatRuntime } = chatRuntimeModule;
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: async () => [],
+  it.each([
+    {
+      label: "same requester",
+      currentRequesterId: "U123",
+      currentRequesterName: "dcramer",
+    },
+    {
+      label: "different requester",
+      currentRequesterId: "U999",
+      currentRequesterName: "paul",
+    },
+  ])(
+    "does not abort unrelated turns for the $label when MCP auth is already pending from a prior turn",
+    async ({ currentRequesterId, currentRequesterName }) => {
+      const threadId = "slack:C126:1700000000.004";
+      const { createTestChatRuntime } = chatRuntimeModule;
+      const { slackRuntime } = createTestChatRuntime({
+        services: {
+          visionContext: {
+            listThreadReplies: async () => [],
+          },
         },
-      },
-    });
+      });
 
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId: "C126",
-    };
+      const destination = {
+        platform: "slack" as const,
+        teamId: "T123",
+        channelId: "C126",
+      };
 
-    // Simulate a conversation where a prior turn already triggered MCP auth
-    // for the eval-auth provider. The thread state has pendingAuth set and
-    // the Pi history contains a prior loadSkill("eval-auth") result so that
-    // inferLoadedSkillNamesFromPiMessages will restore the skill.
-    const thread = createTestThread({
-      id: threadId,
-      state: {
-        conversation: {
-          messages: [
-            {
-              id: "assistant-1",
-              role: "assistant",
-              text: "Please authorize via the link I sent you.",
-              createdAtMs: 1,
-              author: {
-                userName: "junior",
-                isBot: true,
+      const thread = createTestThread({
+        id: threadId,
+        state: {
+          conversation: {
+            messages: [
+              {
+                id: "assistant-1",
+                role: "assistant",
+                text: "Please authorize via the link I sent you.",
+                createdAtMs: 1,
+                author: {
+                  userName: "junior",
+                  isBot: true,
+                },
               },
-            },
-          ],
+            ],
+          },
+        },
+      });
+      await mirrorThreadStateToAdapter(thread);
+
+      await slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "user-auth",
+          threadId,
+          text: "what did i say about the budget?",
+          isMention: true,
+          author: {
+            userId: "U123",
+            userName: "dcramer",
+          },
+          raw: {
+            channel: "C126",
+            team_id: "T123",
+            ts: "1700000000.005",
+            thread_ts: "1700000000.004",
+          },
+        }),
+        { destination },
+      );
+
+      expect(agentProbe.promptCallCount).toBe(1);
+      expect(thread.posts).toEqual([
+        expect.objectContaining({
+          markdown: expect.stringContaining(
+            "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
+          ),
+        }),
+      ]);
+      expect(
+        await threadStateModule.getPersistedThreadState(threadId),
+      ).toMatchObject({
+        conversation: {
           processing: {
             pendingAuth: {
               kind: "mcp",
               provider: EVAL_MCP_AUTH_PROVIDER,
               requesterId: "U123",
-              sessionId: "turn_prior-turn",
-              linkSentAtMs: Date.now() - 5_000,
+              sessionId: "turn_user-auth",
+              linkSentAtMs: expect.any(Number),
             },
           },
         },
-        piMessages: [
-          // Simulate a prior turn's loadSkill("eval-auth") result in history.
-          // inferLoadedSkillNamesFromPiMessages will pick this up and try to
-          // restore the skill's MCP provider on the next turn.
-          {
-            role: "toolResult",
-            toolName: "loadSkill",
-            skill_name: SKILL_NAME,
-            ok: true,
-            details: { skill_name: SKILL_NAME },
-            isError: false,
+      });
+
+      const authLinkCount =
+        getCapturedSlackApiCalls("chat.postEphemeral").length;
+      agentProbe.shouldBypassSkill = true;
+
+      await slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "user-4",
+          threadId,
+          text: "what time is it?", // completely unrelated to eval-auth
+          isMention: true,
+          author: {
+            userId: currentRequesterId,
+            userName: currentRequesterName,
           },
-        ],
-      },
-    });
-    await mirrorThreadStateToAdapter(thread);
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "user-4",
-        threadId,
-        text: "what time is it?", // completely unrelated to eval-auth
-        isMention: true,
-        author: {
-          userId: "U123",
-          userName: "dcramer",
-        },
-        raw: {
-          channel: "C126",
-          team_id: "T123",
-          ts: "1700000000.005",
-          thread_ts: "1700000000.004",
-        },
-      }),
-      { destination },
-    );
-
-    // Agent must have run for the unrelated request, not been blocked by auth.
-    expect(agentProbe.promptCallCount).toBe(1);
-    expect(agentProbe.continueCallCount).toBe(0);
-
-    // No new auth links should have been sent.
-    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
-
-    // A real reply should have been posted.
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C126",
-          thread_ts: "1700000000.004",
-          text: unrelatedAuthPendingReply,
+          raw: {
+            channel: "C126",
+            team_id: "T123",
+            ts: "1700000000.006",
+            thread_ts: "1700000000.004",
+          },
         }),
-      }),
-    ]);
-  });
+        { destination },
+      );
 
+      expect(getCapturedSlackApiCalls("chat.postEphemeral")).toHaveLength(
+        authLinkCount,
+      );
+
+      expect(thread.posts.at(-1)).toEqual(
+        expect.objectContaining({
+          markdown: unrelatedAuthPendingReply,
+        }),
+      );
+    },
+  );
 });

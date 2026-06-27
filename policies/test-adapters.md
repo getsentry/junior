@@ -7,7 +7,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 ## Policy
 
 - Start from `specs/testing.md` for layer selection; use this policy for the fixture and adapter shape inside that layer.
-- Prefer shared test adapters over one-off mocks when a boundary recurs across tests.
+- Prefer shared test adapters over one-off mocks when a boundary recurs across tests, especially for product behavior that crosses runtime, persistence, ingress, or delivery boundaries.
 - A test adapter should implement the production-facing contract closely enough that tests can inject real payloads and observe resulting effects.
 - Give adapters small, role-specific introspection methods such as `queuedMessages()`, `messages()`, or `fileUploads()`. Do not expose broad mutable internals.
 - Model external side effects as outboxes or captured deliveries that are reset between tests.
@@ -16,6 +16,7 @@ Tests should be easy to write because the repo provides faithful test adapters f
 - Centralize temporary environment or configuration overrides in helpers that restore state automatically.
 - Make isolation explicit. Tests that use shared resources, fake clocks, singleton state, or process-global configuration must reset them locally or opt into an isolated/serial harness.
 - Keep test-only capabilities out of production singletons. Prefer injected ports, local factories, and test adapters over `setForTests` globals or module mocks.
+- Do not add broad adapter hooks only to make a low-level test possible when an existing integration harness can exercise the real path.
 - Add adapter behavior only for a real recurring test need, and keep it named after the user-visible boundary rather than the implementation mechanism.
 - When a suite fails only under order, shuffle, reverse, or parallel load, treat that as a test-isolation bug unless proven otherwise.
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-02
+- Last Edited: 2026-06-27
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Start from the real product contract, not the easiest seam to mock.
 3. Use component tests for deterministic service/runtime contracts that cross modules but are still best proven through explicit local ports: durable stores, queue wake-up ports, worker state machines, lease/recovery coordination, persistence adapters, and similar orchestration invariants.
 4. Use unit tests only for tightly local deterministic logic: parsing, scoring, routing heuristics, retry math, pure transforms, normalization, and similar algorithmic invariants.
 
-Do not default to unit tests for runtime behavior just because they are easier to write. Do not force deterministic service contracts into broad integration tests when a component test would prove the invariant more directly and with fewer fake layers.
+For runtime/product regressions, reproduce the failure at the highest deterministic boundary that owns the behavior. Prefer one integration or eval that drives real ingress, persistence, routing, and delivery wiring over unit tests that recreate intermediate state. Do not force deterministic service contracts into broad integration tests when a component test proves the invariant with fewer fake layers.
 
 ## Test Layers
 
@@ -51,7 +51,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 6. Keep test names descriptive of outcomes, not implementation mechanics.
 7. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
 8. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
-9. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary.
+9. Workflow and regression integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary. Construct state by driving the owning path when practical; hand-build persisted state only when the state shape itself is the contract or real setup would require unrelated external systems.
 10. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
 11. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
 12. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
@@ -71,6 +71,8 @@ Use this practical budget:
 
 If a proposed test does not add a new contract guarantee, do not add it.
 
+When higher-level coverage proves the user-visible contract, do not add parallel unit tests for the same workflow. Keep unit tests for deterministic helper logic the higher-level test cannot localize cleanly.
+
 ## Layer Selection Guide
 
 This section is mandatory policy, not guidance.
@@ -89,7 +91,7 @@ Ask these questions in order:
    Use `unit`.
    Examples: retry math, pure transforms, normalization, local scoring, parser behavior, deterministic state transitions.
 
-If a test needs to mock large parts of the runtime just to prove a user-visible flow, that is usually evidence the test belongs in integration or eval instead.
+If a test must mock large parts of runtime, hand-build durable state, or assert private call sequencing to prove a user-visible flow, it belongs in integration or eval instead.
 
 ## Mock Confidence Rules
 
