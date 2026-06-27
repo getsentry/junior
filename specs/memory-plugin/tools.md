@@ -65,9 +65,11 @@ to rephrase them as safer memory text. The memory agent owns the semantic
 store-or-reject decision and canonical rewrite.
 
 The outer agent should not call `createMemory` for ordinary organic statements
-that merely reveal a durable preference or fact. Those are passive-learning
-candidates handled by completed-session processing, not explicit memory-tool
-requests.
+that merely reveal a durable task, process, project, channel, or operational
+fact. Those are passive-learning candidates handled by completed-session
+processing, not explicit memory-tool requests. Organic first-person personal
+facts should be stored passively only when they are clearly durable and useful
+beyond the active task.
 
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the memory agent's explicit-create review path. The memory agent

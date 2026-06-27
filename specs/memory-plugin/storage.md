@@ -74,11 +74,11 @@ Examples:
 
 - Good: `Prefers terse PR summaries`
 - Good: `Favorite CLI QA snack is mango chips`
-- Good: `Deploy runbooks live in Notion`
+- Good: `Deploy runbooks require staging checks first`
 - Bad: `The requester prefers terse PR summaries`
 - Bad: `David prefers terse PR summaries`
 - Bad: `My favorite CLI QA snack is mango chips`
-- Bad: `This thread says deploy runbooks live in Notion`
+- Bad: `This thread says deploy runbooks require staging checks first`
 
 Prompt rendering may add perspective at recall time. Storage must not.
 

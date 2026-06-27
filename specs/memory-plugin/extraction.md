@@ -127,10 +127,11 @@ Passive session extraction must follow these rules:
    coworker speculation.
 10. Reject private or sensitive content instead of storing it under personal
     scope.
-11. In V1 passive extraction, prefer conversation-scoped operational knowledge
-    over personal memory unless the user makes a clear first-person statement.
+11. In V1 passive extraction, prioritize conversation-scoped task, process,
+    runbook, project, channel, and operational knowledge.
 12. Personal-scoped memories must be public/shareable first-person facts from
-    the current author/requester.
+    the current author/requester, and should be stored passively only when they
+    are clearly durable and useful beyond the active task.
 13. Assign `user` subject only for the current author/requester; do not create
     third-party user subjects in V1.
 14. Preserve provenance for third-party claims when the source matters for
@@ -189,16 +190,20 @@ Memory agent output must be structured. For explicit review it should include:
 
 For passive extraction it should include an array of accepted candidate
 memories with target, canonical stored content, and optional expiration.
-Requester-target passive memories in V1 focus on durable first-person
-preferences, opinions, and habits. Broader public requester facts can still be
-handled by the explicit reviewed `createMemory` path. Rejections are
-represented by omitting a candidate from the array.
+Conversation-target passive memories in V1 are the primary path for learning
+how work gets done: task procedures, runbooks, project facts, channel norms,
+and operational knowledge. Requester-target passive memories are secondary and
+limited to clearly durable first-person preferences, opinions, and habits.
+Broader public requester facts can still be handled by the explicit reviewed
+`createMemory` path. Rejections are represented by omitting a candidate from the
+array.
 
 The content field is canonical stored memory text. Requester memory content
 must omit ownership from prose because ownership lives in structured metadata.
 For example, `I prefer terse PR summaries` should become requester memory
-`Prefers terse PR summaries`, and `This thread says deploy runbooks live in
-Notion` should become conversation memory `Deploy runbooks live in Notion`.
+`Prefers terse PR summaries`, and `This thread says deploy runbooks require
+staging checks first` should become conversation memory `Deploy runbooks require
+staging checks first`.
 
 The memory agent may narrow, rewrite, or reject extracted candidates, but it
 may not override hard structural validators. If extraction and review disagree,
