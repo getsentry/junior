@@ -42,16 +42,16 @@ title: "@sentry/junior"
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
 - [JuniorPluginInput](/reference/api/type-aliases/juniorplugininput/)
 - [PluginConversationStatus](/reference/api/type-aliases/pluginconversationstatus/)
-- [PluginSessionContext](/reference/api/type-aliases/pluginsessioncontext/)
-- [PluginSessionMessage](/reference/api/type-aliases/pluginsessionmessage/)
+- [PluginRunContext](/reference/api/type-aliases/pluginruncontext/)
+- [PluginRunTranscriptEntry](/reference/api/type-aliases/pluginruntranscriptentry/)
 - [PluginTasks](/reference/api/type-aliases/plugintasks/)
 - [TranscriptPartType](/reference/api/type-aliases/transcriptparttype/)
 - [TranscriptRole](/reference/api/type-aliases/transcriptrole/)
 
 ## Variables
 
-- [pluginSessionContextSchema](/reference/api/variables/pluginsessioncontextschema/)
-- [pluginSessionMessageSchema](/reference/api/variables/pluginsessionmessageschema/)
+- [pluginRunContextSchema](/reference/api/variables/pluginruncontextschema/)
+- [pluginRunTranscriptEntrySchema](/reference/api/variables/pluginruntranscriptentryschema/)
 
 ## Functions
 

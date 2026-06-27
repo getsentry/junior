@@ -22,7 +22,7 @@ model calls, embeddings, logging, and multi-user visibility.
 6. Embeddings and lexical indexes are derived data and cannot grant visibility.
 7. Provider credentials never enter plugin storage, prompt contributions, tool
    schemas, task payloads, logs, or model-visible content.
-8. Passive extraction tasks use bounded completed-session projections and do
+8. Passive extraction tasks use bounded completed-run projections and do
    not store raw transcript text.
 9. Every write path uses the same policy, validation, and secret rejection
    layer.
@@ -115,9 +115,9 @@ They must not contain:
 - memory content unless the task exists specifically to repair a memory id that
   can be reloaded from storage
 
-Passive session-processing tasks should reload bounded completed-session
-projections through the core-provided session helper rather than carrying raw
-messages in task params or queue payloads.
+Passive processing tasks should reload bounded completed-run projections
+through the core-provided run helper rather than carrying raw messages in task
+params or queue payloads.
 
 ## Logging And Reporting
 

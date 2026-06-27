@@ -81,7 +81,7 @@ For chat/agent/Slack execution and response behavior:
 - `specs/chat-architecture.md` owns the end-to-end platform-event-to-agent-run data flow, platform adapter boundary, data authority map, and module boundaries.
 - `specs/task-execution.md` owns durable conversation mailbox execution, queue wake-up semantics, conversation leases, cooperative yield, and heartbeat repair.
 - `specs/conversation-storage.md` owns SQL-backed queryable conversation record, transcript-storage exclusions, and Vercel-safe migration/backfill behavior.
-- `specs/plugin-tasks.md` owns plugin-owned durable background task registration, queue dispatch, and completed-session projections.
+- `specs/plugin-tasks.md` owns plugin-owned durable background task registration, queue dispatch, and completed-run projections.
 - `specs/plugin-database.md` owns plugin packaged SQL migration discovery/application and the `ctx.db` hook surface.
 - `specs/plugin-cli.md` owns future plugin-contributed host CLI command discovery, dispatch, admin context, and redaction contracts.
 - `specs/memory-plugin/index.md` owns the long-term memory plugin's storage, recall, passive learning, tools, visibility, and lifecycle contracts.

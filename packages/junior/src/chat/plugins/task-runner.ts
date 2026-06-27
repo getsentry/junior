@@ -2,16 +2,16 @@
  * Plugin background-task orchestration.
  *
  * Core schedules tasks from completed sessions and exposes plugins only a
- * bounded session projection rather than live runtime internals or queue
+ * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
 import type {
   PluginRegistration,
-  PluginSessionContext,
-  PluginSessionMessage,
+  PluginRunContext,
+  PluginRunTranscriptEntry,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { pluginSessionContextSchema } from "@sentry/junior-plugin-api";
+import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -19,7 +19,9 @@ import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
-  getSuccessfulToolCalls,
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
   stripRuntimeTurnContext,
 } from "@/chat/respond-helpers";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -55,6 +57,20 @@ function textPart(value: unknown): string | undefined {
   return undefined;
 }
 
+function serializeResultValue(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === undefined || value === null) {
+    return "";
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "";
+  }
+}
+
 function messageText(message: PiMessage): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") {
@@ -64,6 +80,19 @@ function messageText(message: PiMessage): string {
     return "";
   }
   return sanitizeText(content.map(textPart).filter(Boolean).join("\n"));
+}
+
+function toolResultText(message: PiMessage): string {
+  const record = message as unknown as Record<string, unknown>;
+  const parts = [
+    messageText(message),
+    serializeResultValue(record.stdout),
+    serializeResultValue(record.stderr),
+    serializeResultValue(record.output),
+    serializeResultValue(record.result),
+    serializeResultValue(record.toolResult),
+  ].filter(Boolean);
+  return sanitizeText(parts.join("\n"));
 }
 
 function sanitizeText(text: string): string {
@@ -80,16 +109,32 @@ function sanitizeText(text: string): string {
     .trim();
 }
 
-function sessionMessage(message: PiMessage): PluginSessionMessage | undefined {
+function runTranscriptEntry(
+  message: PiMessage,
+): PluginRunTranscriptEntry | undefined {
   const role = getPiMessageRole(message);
-  if (role !== "user" && role !== "assistant") {
+  if (role === "user" || role === "assistant") {
+    const text = messageText(message);
+    if (!text) {
+      return undefined;
+    }
+    return { type: "message", role, text };
+  }
+
+  if (!isToolResultMessage(message)) {
     return undefined;
   }
-  const text = messageText(message);
-  if (!text) {
+  const toolName = normalizeToolNameFromResult(message);
+  if (!toolName) {
     return undefined;
   }
-  return { role, text };
+  const text = toolResultText(message);
+  return {
+    type: "toolResult",
+    toolName,
+    isError: isToolResultError(message),
+    ...(text ? { text } : {}),
+  };
 }
 
 async function withPluginTaskLock<T>(
@@ -113,10 +158,10 @@ async function withPluginTaskLock<T>(
   }
 }
 
-/** Load the bounded completed-session projection exposed to plugin tasks. */
-async function loadPluginSession(
+/** Load the bounded completed-run projection exposed to plugin tasks. */
+async function loadPluginRun(
   params: PluginTaskParams,
-): Promise<PluginSessionContext> {
+): Promise<PluginRunContext> {
   const record = await getAgentTurnSessionRecord(
     params.conversationId,
     params.sessionId,
@@ -140,17 +185,16 @@ async function loadPluginSession(
   const sessionMessages = stripRuntimeTurnContext(
     record.piMessages.slice(record.turnStartMessageIndex ?? 0),
   );
-  return pluginSessionContextSchema.parse({
+  return pluginRunContextSchema.parse({
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: record.destination,
-    messages: sessionMessages
-      .map(sessionMessage)
-      .filter((message): message is PluginSessionMessage => Boolean(message)),
     requester: record.requester,
-    sessionId: record.sessionId,
+    runId: record.sessionId,
     source: record.source,
-    toolCalls: getSuccessfulToolCalls(sessionMessages),
+    transcript: sessionMessages
+      .map(runTranscriptEntry)
+      .filter((entry): entry is PluginRunTranscriptEntry => Boolean(entry)),
   });
 }
 
@@ -169,9 +213,9 @@ function taskPluginContext(
     model: createPluginModel(pluginName, plugin.model),
     name: message.name,
     plugin: { name: pluginName },
-    session: {
+    run: {
       async load() {
-        return await loadPluginSession(sessionParams);
+        return await loadPluginRun(sessionParams);
       },
     },
     state: createPluginState(pluginName),

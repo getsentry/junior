@@ -16,9 +16,8 @@ contracts.
 This spec describes the intended V1 memory plugin shape. Generic plugin prompt
 hooks and plugin prompt session state are available through
 `../plugin-prompt-hooks.md`. Passive learning uses the typed task contract in
-`../plugin-tasks.md`: a `session.completed` task loads a bounded completed
-agent-run session projection and invokes the memory-owned internal extraction
-agent.
+`../plugin-tasks.md`: a `session.completed` task loads a bounded completed-run
+projection and invokes the memory-owned internal extraction agent.
 
 V1 stores only public/shareable memory content. Scope controls who can see a
 record; it is not a content sensitivity model. Private, sensitive, secret, or
@@ -162,8 +161,14 @@ Installations that do not want memory should disable the memory plugin rather
 than split recall from the plugin. Future install-level memory policy may narrow
 passive extraction, stored categories, providers, and retention defaults.
 
-V1 passive extraction targets public/shareable, durable facts from supported
-runtime contexts. Local CLI contexts are valid passive-learning sources for
+V1 passive extraction targets public/shareable, durable facts from the
+completed run transcript for supported runtime contexts, including
+user-authored messages and tool results. Extraction should prefer reusable
+knowledge about how to achieve a result, such as stable source-of-truth,
+workflow, query location, prerequisite, caveat, or decision-path knowledge.
+Point-in-time answers from analytics, search, issue, metric, incident,
+availability, or status queries are not memory unless the answer is stable
+beyond the run. Local CLI contexts are valid passive-learning sources for
 development and QA. Non-local sources must be `type: "pub"` and have a stable
 runtime source key. Private, sensitive, secret, or otherwise restricted facts
 are rejected rather than stored.

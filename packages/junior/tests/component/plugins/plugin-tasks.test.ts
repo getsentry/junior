@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   createLocalSource,
   defineJuniorPlugin,
-  type PluginSessionContext,
+  type PluginRunContext,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -92,7 +92,7 @@ describe("plugin background tasks", () => {
     };
     const runSource = createLocalSource(runConversationId);
     const queue = new PluginTaskQueueTestAdapter();
-    const loadedSessions: PluginSessionContext[] = [];
+    const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { processPluginTask, scheduleSessionCompletedPluginTasks } =
       await import("@/chat/plugins/task-runner");
@@ -108,7 +108,7 @@ describe("plugin background tasks", () => {
         tasks: {
           processSession: {
             async run(ctx) {
-              loadedSessions.push(await ctx.session.load());
+              loadedRuns.push(await ctx.run.load());
             },
           },
         },
@@ -142,6 +142,12 @@ describe("plugin background tasks", () => {
           ],
         },
         {
+          role: "toolResult",
+          toolName: "searchDocs",
+          isError: false,
+          content: "Incident runbooks live in Notion.",
+        },
+        {
           role: "assistant",
           content: "Understood.",
         },
@@ -172,16 +178,25 @@ describe("plugin background tasks", () => {
 
     await processPluginTask(messages[0]!);
 
-    expect(loadedSessions).toEqual([
+    expect(loadedRuns).toEqual([
       expect.objectContaining({
         conversationId: runConversationId,
         destination: runDestination,
-        messages: [
+        runId: runSessionId,
+        transcript: [
           {
+            type: "message",
             role: "user",
             text: "I prefer pull request summaries with test evidence.",
           },
           {
+            type: "toolResult",
+            toolName: "searchDocs",
+            isError: false,
+            text: "Incident runbooks live in Notion.",
+          },
+          {
+            type: "message",
             role: "assistant",
             text: "Understood.",
           },
@@ -192,9 +207,7 @@ describe("plugin background tasks", () => {
           userId: "local-cli",
           userName: "local",
         },
-        sessionId: runSessionId,
         source: runSource,
-        toolCalls: [],
       }),
     ]);
   });

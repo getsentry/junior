@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Define passive memory learning through completed agent-run session processing
+Define passive memory learning through completed agent-run processing
 and the memory-owned internal extraction agent.
 
 ## What Belongs In Memory
@@ -29,8 +29,9 @@ A candidate may be stored only when all of these are true:
 6. It has a runtime-derived visibility scope.
 7. It contains no credential, token, private key, password, recovery code,
    connection string with credentials, payment card number, or similar secret.
-8. It is not merely an assistant claim, assistant action, tool result summary,
-   system capability, implementation detail, or prompt/routing rule.
+8. It is not merely an assistant claim, assistant action, assistant summary of
+   a tool result, system capability, implementation detail, or prompt/routing
+   rule.
 9. Personal-scoped identity, preference, or relationship facts are first-person
    facts authored by the current requester, not third-person profile facts
    about someone else.
@@ -43,6 +44,7 @@ Examples that can be stored:
 - `Prefers concise technical answers.`
 - `Production deploy window is Mondays from 10:00 to 12:00 UTC.`
 - `Incident follow-up lives in Linear.`
+- `Revenue cohort analysis should use the finance-modeled warehouse tables.`
 - `The Acme migration is paused.`
 
 Examples that must not be stored:
@@ -58,12 +60,14 @@ Examples that must not be stored:
 - `The user is somewhere next week.`
 - `The user has not decided what to do.`
 - `Junior can use the scheduler plugin.`
+- `Today's signup conversion rate is 8.4%.`
+- `There are 17 open incidents right now.`
 
 ## Passive Learning
 
-The memory plugin processes completed agent-run sessions through a typed
+The memory plugin processes completed agent runs through a typed
 `session.completed` plugin task. Conceptually this is a memory compaction pass:
-the task loads a bounded completed-session projection and asks the memory-owned
+the task loads a bounded completed-run projection and asks the memory-owned
 extraction agent which durable public/shareable facts, if any, should survive
 as long-term memory.
 
@@ -75,11 +79,11 @@ The `processSession` task must:
 2. Receive task params that contain stable references only, such as
    `conversationId` and `sessionId`. Params must not duplicate raw messages,
    source, destination, requester, tool payloads, or model output.
-3. Load a bounded core-owned session projection from transcript/session storage.
-   The projection may include user-authored messages, assistant reply text, and
-   successful tool-call names, but not raw Pi internals, full transcript
-   history, private tool arguments/results, provider credentials, or unrelated
-   conversation context.
+3. Load a bounded core-owned run projection from transcript/session storage.
+   The projection may include normalized user-authored messages, assistant
+   reply text, and bounded tool-result text, but not raw Pi internals, raw tool
+   arguments, full transcript history, private tool payloads, provider
+   credentials, or unrelated conversation context.
 4. Skip passive extraction for unsupported sources. V1 supports local CLI
    sessions and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
@@ -90,7 +94,8 @@ The `processSession` task must:
    extraction.
 6. Provide visible existing memories as dedupe context only, not as source
    evidence for new memories.
-7. Ignore assistant-authored claims as memory sources.
+7. Use assistant-authored text only as context for interpreting the completed
+   run; assistant claims are not independent source evidence.
 8. Extract candidate facts with a structured model output contract.
 9. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
    non-durable facts.
@@ -101,7 +106,7 @@ The `processSession` task must:
     runtime source helper, completed session reference, and extracted fact
     content.
 12. Generate embeddings for accepted rows when the host embedder is configured.
-13. Avoid storing raw extraction prompt, raw model output, or raw session text
+13. Avoid storing raw extraction prompt, raw model output, or raw run text
     beyond the accepted memory records.
 
 Plugin tasks are best effort and at least once. If extraction or storage fails,
@@ -111,9 +116,9 @@ create duplicate memories.
 
 ## Extraction Rules
 
-Passive session extraction must follow these rules:
+Passive run extraction must follow these rules:
 
-1. Extract only from user-authored text.
+1. Extract only from user-authored text and bounded tool-result text.
 2. Prefer explicit `createMemory` tool writes over inferred passive learning.
 3. Store facts, not conversation summaries.
 4. Make content self-contained and perspective-neutral.
@@ -130,16 +135,23 @@ Passive session extraction must follow these rules:
     scope.
 11. In V1 passive extraction, prioritize conversation-scoped task, process,
     runbook, project, channel, and operational knowledge.
-12. Personal-scoped memories must be public/shareable first-person facts from
+12. Prefer reusable "how to achieve the result" knowledge when it took effort
+    to discover: stable source-of-truth, query location, workflow,
+    prerequisite, caveat, or decision path.
+13. Direct answers to user inquiries may be stored only when they are durable
+    operational/project knowledge. Do not store point-in-time analytics,
+    search, issue, metric, incident, availability, or status answers whose
+    values naturally change.
+14. Personal-scoped memories must be public/shareable first-person facts from
     the current author/requester, and should be stored passively only when they
     are clearly durable and useful beyond the active task.
-13. Assign `user` subject only for the current author/requester; do not create
+15. Assign `user` subject only for the current author/requester; do not create
     third-party user subjects in V1.
-14. Preserve provenance for third-party claims when the source matters for
+16. Preserve provenance for third-party claims when the source matters for
     correctness.
-15. Store the minimum useful assertion rather than a direct quote or broad
+17. Store the minimum useful assertion rather than a direct quote or broad
     summary.
-16. Store ownership, subject, and provenance in structured fields, not content
+18. Store ownership, subject, and provenance in structured fields, not content
     prose. Remove requester names, display names, `the requester`, `the user`,
     `I`, `my`, thread labels, channel labels, and source labels from accepted
     content.
@@ -157,7 +169,7 @@ belong to the memory agent rather than a caller-provided policy hook.
 The default V1 passive-extraction shape is:
 
 1. The memory agent proposes structured candidate memories from the bounded
-   completed-session projection.
+   completed-run projection.
 2. The memory agent accepts only candidates that satisfy public/shareable memory
    guidance.
 3. Deterministic validation applies only hard structural rules, such as schema
@@ -165,17 +177,16 @@ The default V1 passive-extraction shape is:
    idempotency, and storage constraints before storage.
 
 Memory agent review should receive only the candidate memory or bounded
-completed-session text, the minimum source context needed to judge it, and
+completed-run transcript, the minimum source context needed to judge it, and
 public/shareable memory guidance. It should not receive unrestricted transcript
-history, raw tool
-payloads, provider credentials, or unrelated conversation context unless those
-fields are part of the bounded extraction input. Prompt inputs should use the
-same structured context-block style as Junior's run context, with separate
-`<runtime>` and source blocks. Explicit `createMemory` review uses a singular
-`<candidate>` block and the current user-authored message as bounded source
-context. Passive extraction uses the completed session's bounded user-authored
-messages plus visible existing memories for dedupe. Existing memories must not
-be used as source evidence for new facts.
+history, raw tool arguments, private tool payloads, provider credentials, or
+unrelated conversation context unless those fields are part of the bounded
+extraction input. Prompt inputs should use the same structured context-block
+style as Junior's run context, with separate `<runtime>` and source blocks.
+Explicit `createMemory` review uses a singular `<candidate>` block and the
+current user-authored message as bounded source context. Passive extraction
+uses the completed run's bounded transcript plus visible existing memories for
+dedupe. Existing memories must not be used as source evidence for new facts.
 
 The memory agent model is host-owned but selected by the memory plugin. An
 explicit `createMemoryPlugin({ modelId })` option wins, then `AI_MEMORY_MODEL`,
@@ -196,9 +207,11 @@ candidate memories:
 - `preferences`: durable personal preferences, opinions, habits, or workflows
   owned by the current requester; stored as requester memory.
 - `procedures`: reusable task, process, triage-flow, or runbook instructions;
-  stored as conversation memory.
+  source-of-truth, lookup, or decision-path knowledge; stored as conversation
+  memory.
 - `facts`: shared project, channel, operational, or runbook knowledge; stored
-  as conversation memory.
+  as conversation memory. Point-in-time query answers are excluded unless they
+  are stable beyond the run.
 
 Conversation-target passive memories in V1 are the primary path for learning
 how work gets done: task procedures, runbooks, project facts, channel norms,

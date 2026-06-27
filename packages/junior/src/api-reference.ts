@@ -10,15 +10,15 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type {
-  PluginSessionContext,
-  PluginSessionMessage,
+  PluginRunContext,
+  PluginRunTranscriptEntry,
   PluginTaskContext,
   PluginTaskDefinition,
   PluginTasks,
 } from "@sentry/junior-plugin-api";
 export {
-  pluginSessionContextSchema,
-  pluginSessionMessageSchema,
+  pluginRunContextSchema,
+  pluginRunTranscriptEntrySchema,
 } from "@sentry/junior-plugin-api";
 export { createJuniorReporting } from "./reporting";
 export type {

@@ -39,17 +39,28 @@ const extractSessionRequestSchema = z
       )
       .max(10)
       .default([]),
-    messages: z
+    runtimeContext: memoryRuntimeContextSchema,
+    transcript: z
       .array(
-        z
-          .object({
-            role: z.enum(["user", "assistant"]),
-            text: z.string().min(1),
-          })
-          .strict(),
+        z.discriminatedUnion("type", [
+          z
+            .object({
+              type: z.literal("message"),
+              role: z.enum(["user", "assistant"]),
+              text: z.string().min(1),
+            })
+            .strict(),
+          z
+            .object({
+              type: z.literal("toolResult"),
+              toolName: z.string().min(1),
+              isError: z.boolean(),
+              text: z.string().min(1),
+            })
+            .strict(),
+        ]),
       )
       .min(1),
-    runtimeContext: memoryRuntimeContextSchema,
   })
   .strict();
 
@@ -116,13 +127,13 @@ const extractMemoriesResponseSchema = z
       .array(extractedMemorySchema)
       .max(5)
       .describe(
-        "Reusable public/shareable task, process, triage-flow, or runbook instructions from this completed turn. These are stored as conversation memory.",
+        "Reusable public/shareable task, process, triage-flow, source-of-truth, lookup, or runbook instructions learned from this completed run. These are stored as conversation memory.",
       ),
     facts: z
       .array(extractedMemorySchema)
       .max(5)
       .describe(
-        "Public/shareable shared project, channel, operational, or runbook facts from this completed turn. These are stored as conversation memory.",
+        "Public/shareable stable project, channel, operational, or runbook facts from this completed run. These are stored as conversation memory. Exclude point-in-time query answers whose values can change.",
       ),
     preferences: z
       .array(extractedMemorySchema)
@@ -169,7 +180,8 @@ const MEMORY_REVIEW_SYSTEM = [
 ].join("\n");
 const MEMORY_EXTRACTION_SYSTEM = [
   "You are Junior's passive memory extraction agent. Return only structured memories worth storing.",
-  "Use only the user-authored message as source evidence. Assistant text is rejection context only.",
+  "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
+  "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
@@ -253,8 +265,8 @@ function memoryKindsContext(): string {
   return [
     "<memory-kinds>",
     "- preference: a durable personal preference, opinion, habit, or workflow owned by the current requester. Stored as requester memory.",
-    "- procedure: reusable instructions for how a task, process, triage flow, or runbook should be done. Stored as conversation memory.",
-    "- fact: shared project, channel, operational, or runbook knowledge that is not a personal requester preference. Stored as conversation memory.",
+    "- procedure: reusable instructions for how a task, lookup, investigation, process, triage flow, or runbook should be done. Store the method, source-of-truth, prerequisite, or decision path when it took effort to discover. Stored as conversation memory.",
+    "- fact: stable shared project, channel, operational, or runbook knowledge that is not a personal requester preference. Direct answers to user inquiries qualify only when they are durable beyond this run. Stored as conversation memory.",
     "</memory-kinds>",
   ].join("\n");
 }
@@ -295,24 +307,31 @@ function reviewPrompt(request: CreateMemoryRequest): string {
   return sections.join("\n");
 }
 
-function sessionMessagesContext(request: ExtractSessionRequest): string {
+function runTranscriptContext(request: ExtractSessionRequest): string {
   return [
-    "<session-messages>",
-    ...request.messages.map((message, index) =>
-      [
-        `<message index="${index}" role="${message.role}">`,
-        escapeXml(message.text),
+    "<run-transcript>",
+    ...request.transcript.map((entry, index) => {
+      if (entry.type === "toolResult") {
+        return [
+          `<tool-result index="${index}" tool="${escapeXml(entry.toolName)}" is_error="${entry.isError ? "true" : "false"}">`,
+          escapeXml(entry.text),
+          "</tool-result>",
+        ].join("\n");
+      }
+      return [
+        `<message index="${index}" role="${entry.role}">`,
+        escapeXml(entry.text),
         "</message>",
-      ].join("\n"),
-    ),
-    "</session-messages>",
+      ].join("\n");
+    }),
+    "</run-transcript>",
   ].join("\n");
 }
 
 function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   return [
     "<memory-extraction-input>",
-    "Extract durable memories from this completed agent-run session using the runtime-owned context below.",
+    "Extract durable memories from this completed agent run using the runtime-owned context below.",
     "",
     runtimeDescription({
       runtimeContext: request.runtimeContext,
@@ -322,14 +341,18 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "",
     memoryKindsContext(),
     "",
-    sessionMessagesContext(request),
+    runTranscriptContext(request),
     "",
     "<rules>",
     "- Return at most five memories.",
-    "- Use user role messages as the only source of storable facts.",
-    "- Use assistant role messages only to reject confirmations, follow-up questions, or memory-management turns.",
+    "- Use user messages and successful tool results as source evidence for storable facts.",
+    "- Use failed tool results only when the failure reveals durable process knowledge, not transient errors.",
+    "- Use assistant messages only as context; do not store the assistant's claims unless supported by user messages or tool results.",
     "- Return one memory per distinct fact.",
-    "- Ignore advice, how-to, search, recall, planning, list, inspect, and remove requests unless user messages also state a durable fact.",
+    "- Prefer storing how to achieve a result: stable source-of-truth, query location, workflow, prerequisite, caveat, or reusable decision path that took effort to discover.",
+    "- Store direct answers to user inquiries only when they are stable operational/project knowledge, not values that naturally change over time.",
+    "- Do not store point-in-time analytics, search, issue, metric, incident, availability, or status answers just because a tool produced them.",
+    "- Do not store the fact that the user asked for advice, search, recall, planning, listing, inspection, or removal. Store only stable knowledge discovered in response, such as a reusable method or source-of-truth.",
     "- Fill procedures with reusable task/process/runbook instructions.",
     "- Fill facts with shared team, project, channel, runbook, or operational knowledge.",
     "- Fill preferences only with clear durable facts about the current requester as a person/user, such as their own preference, opinion, habit, identity, or workflow.",

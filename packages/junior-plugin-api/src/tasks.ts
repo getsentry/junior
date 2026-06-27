@@ -2,38 +2,50 @@
  * Public plugin background-task contracts.
  *
  * Plugins register small task handlers, while Junior core owns durable
- * scheduling, queue delivery, retries, and the bounded session projection.
+ * scheduling, queue delivery, retries, and the bounded run projection.
  */
 import { z } from "zod";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
 import { destinationSchema, requesterSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
 
-/** Bounded message projection exposed by completed-session plugin tasks. */
-export const pluginSessionMessageSchema = z
-  .object({
-    role: z.enum(["user", "assistant"]),
-    text: z.string().min(1),
-  })
-  .strict();
+/** One normalized transcript entry from the completed run exposed to plugin tasks. */
+export const pluginRunTranscriptEntrySchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("message"),
+      role: z.enum(["user", "assistant"]),
+      text: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("toolResult"),
+      toolName: z.string().min(1),
+      isError: z.boolean(),
+      text: z.string().min(1).optional(),
+    })
+    .strict(),
+]);
 
-/** Runtime-owned completed-session projection exposed to plugin tasks. */
-export const pluginSessionContextSchema = z
+/** Runtime-owned completed-run projection exposed to plugin tasks. */
+export const pluginRunContextSchema = z
   .object({
     completedAtMs: z.number().finite(),
     conversationId: z.string().min(1),
     destination: destinationSchema,
-    messages: z.array(pluginSessionMessageSchema),
     requester: requesterSchema,
-    sessionId: z.string().min(1),
+    runId: z.string().min(1),
     source: sourceSchema,
-    toolCalls: z.array(z.string().min(1)),
+    transcript: z.array(pluginRunTranscriptEntrySchema),
   })
   .strict();
 
-export type PluginSessionMessage = z.output<typeof pluginSessionMessageSchema>;
+export type PluginRunTranscriptEntry = z.output<
+  typeof pluginRunTranscriptEntrySchema
+>;
 
-export type PluginSessionContext = z.output<typeof pluginSessionContextSchema>;
+export type PluginRunContext = z.output<typeof pluginRunContextSchema>;
 
 /** Runtime context passed to a plugin-owned background task. */
 export interface PluginTaskContext extends PluginContext {
@@ -41,8 +53,8 @@ export interface PluginTaskContext extends PluginContext {
   id: string;
   model: PluginModel;
   name: string;
-  session: {
-    load(): Promise<PluginSessionContext>;
+  run: {
+    load(): Promise<PluginRunContext>;
   };
   state: PluginState;
 }

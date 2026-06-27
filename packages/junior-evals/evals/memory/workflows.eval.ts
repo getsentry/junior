@@ -546,6 +546,42 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     });
   });
 
+  const passiveVolatileAnswerThread = {
+    channel_type: "channel",
+    id: "thread-memory-passive-volatile-answer",
+    channel_id: "CMEMORYVOLATILE",
+    thread_ts: "17000000.memory-volatile-answer",
+  } satisfies MemoryThread;
+
+  it("when organic conversation reports a point-in-time analytics answer, store no memory", async ({
+    run,
+  }) => {
+    await clearMemories();
+    await run({
+      overrides: memoryPluginOverrides,
+      events: [
+        mention(
+          "The analytics query says today's signup conversion rate is 8.4%.",
+          {
+            thread: passiveVolatileAnswerThread,
+          },
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant treats the analytics value as a point-in-time answer, not durable memory.",
+          "The assistant does not claim it saved the conversion rate as memory.",
+        ],
+        fail: [
+          "Do not store the current conversion-rate value as memory.",
+          "Do not describe point-in-time analytics answers as durable operational knowledge.",
+        ],
+      }),
+    });
+
+    expect(await readMemories(passiveVolatileAnswerThread)).toEqual([]);
+  }, 120_000);
+
   const thirdPartyRememberThread = {
     id: "thread-memory-third-party-remember",
     channel_id: "CMEMORYTHIRDPARTY",

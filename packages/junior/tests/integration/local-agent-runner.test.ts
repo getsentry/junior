@@ -6,7 +6,7 @@ import type {
 } from "@/chat/respond";
 import {
   defineJuniorPlugin,
-  type PluginSessionContext,
+  type PluginRunContext,
 } from "@sentry/junior-plugin-api";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import {
@@ -228,7 +228,7 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const loadedSessions: PluginSessionContext[] = [];
+    const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     setPlugins([
       defineJuniorPlugin({
@@ -240,7 +240,7 @@ describe("local agent runner", () => {
         tasks: {
           captureSession: {
             async run(ctx) {
-              loadedSessions.push(await ctx.session.load());
+              loadedRuns.push(await ctx.run.load());
             },
           },
         },
@@ -277,24 +277,26 @@ describe("local agent runner", () => {
       setPlugins([]);
     }
 
-    expect(loadedSessions).toEqual([
+    expect(loadedRuns).toEqual([
       expect.objectContaining({
         conversationId,
         destination: {
           platform: "local",
           conversationId,
         },
-        messages: [
+        runId: "local-turn-1",
+        transcript: [
           {
+            type: "message",
             role: "user",
             text: "capture this local turn",
           },
           {
+            type: "message",
             role: "assistant",
             text: "captured",
           },
         ],
-        sessionId: "local-turn-1",
         requester: expect.objectContaining({
           platform: "local",
           userId: "local-cli",

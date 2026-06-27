@@ -59,7 +59,7 @@ plugins/sentry/
 - [OAuth Flows Spec](./oauth-flows.md): OAuth challenge, callback, and agent continuation behavior.
 - [Sandbox Snapshots Spec](./sandbox-snapshots.md): runtime dependency snapshot build/reuse.
 - [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md): implemented prompt hook contributions.
-- [Plugin Background Tasks Spec](./plugin-tasks.md): plugin-owned durable background task registration, queue dispatch, and session projection.
+- [Plugin Background Tasks Spec](./plugin-tasks.md): plugin-owned durable background task registration, queue dispatch, and completed-run projection.
 - [Plugin Database Spec](./plugin-database.md): packaged SQL migrations and `ctx.db` access for plugin hooks.
 - [Plugin CLI Spec](./plugin-cli.md): future plugin-contributed host CLI commands for operator/admin workflows.
 - [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, background task, database, and tool hooks.

@@ -20,7 +20,7 @@ an in-process background worker surviving a serverless request.
   `@sentry/junior-plugin-api`.
 - Core-owned queue payloads, Vercel Queue dispatch, retries, and callback
   routing.
-- Completed-session scheduling and the completed-session projection.
+- Completed-session scheduling and the completed-run projection.
 - Local development execution for plugin tasks.
 - Verification requirements for task scheduling, execution, and idempotency.
 
@@ -111,8 +111,8 @@ interface PluginTaskContext extends PluginContext {
   model: PluginModel;
   name: string;
   state: PluginState;
-  session: {
-    load(): Promise<PluginSessionContext>;
+  run: {
+    load(): Promise<PluginRunContext>;
   };
 }
 ```
@@ -139,7 +139,7 @@ interface PluginTaskQueueMessage {
 
 Core owns parsing, routing, queue topic selection, and callback registration.
 Queue messages must not include raw transcript text, raw tool payloads,
-credentials, tokens, or unbounded session data.
+credentials, tokens, or unbounded run data.
 
 The task id is derived from the plugin name, task name, and parsed params. When
 sending to Vercel Queues, core must use that id as the queue `idempotencyKey` so
@@ -179,35 +179,40 @@ For local CLI development, core may process scheduled tasks inline after
 visible delivery, but the inline path must still use the same task message and
 task runner used by queued execution.
 
-### Completed Session Projection
+### Completed Run Projection
 
-`ctx.session.load()` returns a bounded core-owned projection:
+`ctx.run.load()` returns a bounded core-owned projection of the completed agent
+run. The queue params still use `sessionId` because that is the historical
+persisted session-record key.
 
 ```ts
-interface PluginSessionContext {
+interface PluginRunContext {
   completedAtMs: number;
   conversationId: string;
   destination: Destination;
-  messages: PluginSessionMessage[];
   requester?: Requester;
-  sessionId: string;
+  runId: string;
   source: Source;
-  toolCalls: string[];
+  transcript: PluginRunTranscriptEntry[];
 }
 
-interface PluginSessionMessage {
-  role: "user" | "assistant";
-  text: string;
-}
+type PluginRunTranscriptEntry =
+  | { type: "message"; role: "user" | "assistant"; text: string }
+  | {
+      type: "toolResult";
+      toolName: string;
+      isError: boolean;
+      text?: string;
+    };
 ```
 
-The projection may include user-authored text, assistant reply text, source,
-destination, requester, and successful tool-call names. It must not expose raw
-Pi internals, raw tool args/results, full unbounded transcript history,
-provider credentials, OAuth tokens, Slack tokens, or private binary payloads.
+The projection may include normalized user-authored text, assistant reply text,
+tool-result text, source, destination, and requester. It must not expose raw Pi
+internals, raw tool arguments, full unbounded transcript history, provider
+credentials, OAuth tokens, Slack tokens, or private binary payloads.
 
 If the session record is unavailable, incomplete, missing source/destination,
-or not completed, `session.load()` throws so the task follows the normal retry
+or not completed, `run.load()` throws so the task follows the normal retry
 and terminal failure policy.
 
 Source privacy is evaluated by the plugin using the normalized `Source` helpers
@@ -256,7 +261,7 @@ Use component or integration tests for:
 - params parsed before queue dispatch and again before execution
 - `session.completed` scheduling sends one queue message per plugin task
 - duplicate scheduling derives the same idempotency id
-- task execution loads a bounded completed-session projection from durable
+- task execution loads a bounded completed-run projection from durable
   session storage
 - failed task attempts bubble to the queue retry boundary
 - queue callback parsing rejects malformed payloads

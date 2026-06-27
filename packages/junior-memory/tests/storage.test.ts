@@ -293,11 +293,11 @@ function localContext(
 
 type MemoryTaskContext = PluginTaskContext;
 
-function completedSession(
+function completedRun(
   overrides: Partial<
-    Awaited<ReturnType<MemoryTaskContext["session"]["load"]>>
+    Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>
   > = {},
-): NonNullable<Awaited<ReturnType<MemoryTaskContext["session"]["load"]>>> {
+): NonNullable<Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>> {
   const runtime = localContext();
   return {
     completedAtMs: TEST_NOW_MS,
@@ -306,20 +306,21 @@ function completedSession(
       platform: "local",
       conversationId: runtime.conversationId,
     },
-    messages: [
+    transcript: [
       {
+        type: "message",
         role: "user",
         text: "I prefer terse PR summaries.",
       },
       {
+        type: "message",
         role: "assistant",
         text: "Got it.",
       },
     ],
     requester: runtime.requester,
-    sessionId: "local-turn-1",
+    runId: "local-turn-1",
     source: runtime.source,
-    toolCalls: [],
     ...overrides,
   };
 }
@@ -328,13 +329,13 @@ function processSessionContext(
   overrides: Partial<MemoryTaskContext> = {},
 ): MemoryTaskContext {
   const runtime = localContext();
-  const session =
-    overrides.session ??
+  const run =
+    overrides.run ??
     ({
       async load() {
-        return completedSession();
+        return completedRun();
       },
-    } satisfies MemoryTaskContext["session"]);
+    } satisfies MemoryTaskContext["run"]);
   return {
     db: overrides.db ?? {},
     embedder: overrides.embedder ?? createTestEmbedder(),
@@ -350,7 +351,7 @@ function processSessionContext(
       ]).model,
     name: "processSession",
     plugin: { name: "memory" },
-    session,
+    run,
     state: memoryState,
     ...overrides,
   };
@@ -469,12 +470,14 @@ describe("memory plugin storage", () => {
 
     await expect(
       agent.extractSessionMemories({
-        messages: [
+        transcript: [
           {
+            type: "message",
             role: "user",
             text: "For incident writeups, causes go before mitigations.",
           },
           {
+            type: "message",
             role: "assistant",
             text: "Got it.",
           },
@@ -553,15 +556,17 @@ describe("memory plugin storage", () => {
           db: memoryDb(fixture),
           embedder,
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
-                messages: [
+              return completedRun({
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
                   },
                   {
+                    type: "message",
                     role: "assistant",
                     text: "I will keep that in mind.",
                   },
@@ -608,6 +613,78 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
+  it("passes tool result evidence to passive extraction", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model, calls } = extractionModel([
+        {
+          content:
+            "Signup funnel analysis should use the modeled warehouse cohort table.",
+          kind: "procedure",
+        },
+      ]);
+      const embedder = createTestEmbedder();
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          embedder,
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "Where should signup funnel analysis come from?",
+                  },
+                  {
+                    type: "toolResult",
+                    toolName: "queryAnalyticsCatalog",
+                    isError: false,
+                    text: "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
+                  },
+                  {
+                    type: "message",
+                    role: "assistant",
+                    text: "Use the modeled warehouse cohort table.",
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      expect(calls[0]?.prompt).toContain("<tool-result");
+      expect(calls[0]?.prompt).toContain("queryAnalyticsCatalog");
+      expect(calls[0]?.prompt).toContain("modeled warehouse cohort table");
+      expect(embedder.calls[0]?.[0]).toContain(
+        "Where should signup funnel analysis come from?",
+      );
+      expect(embedder.calls[0]?.[0]).toContain(
+        "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
+      );
+      expect(embedder.calls[0]?.[0]).not.toContain(
+        "Use the modeled warehouse cohort table.",
+      );
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content:
+            "Signup funnel analysis should use the modeled warehouse cohort table.",
+          scope: "conversation",
+          subjectType: "conversation",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("reuses cached extraction output across task retries", async () => {
     const fixture = await createMemoryFixture();
 
@@ -619,11 +696,12 @@ describe("memory plugin storage", () => {
           kind: "preference",
         },
       ]);
-      const session = {
+      const run = {
         async load() {
-          return completedSession({
-            messages: [
+          return completedRun({
+            transcript: [
               {
+                type: "message",
                 role: "user",
                 text: "I prefer retry-safe memory extraction.",
               },
@@ -636,7 +714,7 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session,
+          run,
           state,
         }),
       );
@@ -648,7 +726,7 @@ describe("memory plugin storage", () => {
               throw new Error("model should not run on cached retry");
             },
           },
-          session,
+          run,
           state,
         }),
       );
@@ -681,16 +759,22 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
-                messages: [
+              return completedRun({
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "Remember that I prefer duplicate memory avoidance.",
                   },
+                  {
+                    type: "toolResult",
+                    toolName: "createMemory",
+                    isError: false,
+                    text: "Memory saved.",
+                  },
                 ],
-                toolCalls: ["createMemory"],
               });
             },
           },
@@ -720,16 +804,22 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
-                messages: [
+              return completedRun({
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "I prefer recall turns to still learn durable facts.",
                   },
+                  {
+                    type: "toolResult",
+                    toolName: "searchMemories",
+                    isError: false,
+                    text: "No matching memories found.",
+                  },
                 ],
-                toolCalls: ["listMemories", "searchMemories"],
               });
             },
           },
@@ -769,13 +859,14 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
+              return completedRun({
                 conversationId: "slack:D123:1718800000.000000",
                 destination: slackDestination(privateContext),
-                messages: [
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "I prefer private Slack context skips.",
                   },
@@ -812,13 +903,14 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
+              return completedRun({
                 conversationId: "slack:C123:missing-message-key",
                 destination: slackDestination(runtime),
-                messages: [
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "I prefer Slack message key validation.",
                   },
@@ -858,16 +950,17 @@ describe("memory plugin storage", () => {
         processSessionContext({
           db: memoryDb(fixture),
           model,
-          session: {
+          run: {
             async load() {
-              return completedSession({
+              return completedRun({
                 conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
                   conversationId: runtime.conversationId,
                 },
-                messages: [
+                transcript: [
                   {
+                    type: "message",
                     role: "user",
                     text: "I prefer local passive memory QA.",
                   },

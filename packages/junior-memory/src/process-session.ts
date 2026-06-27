@@ -73,39 +73,42 @@ async function getTaskMemories(
 export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
-  const session = await context.session.load();
+  const run = await context.run.load();
   // Explicit memory mutation tools already own the user's memory-management intent.
   if (
-    session.toolCalls.some((toolName) =>
-      MEMORY_MUTATION_TOOL_NAMES.has(toolName),
+    run.transcript.some(
+      (entry) =>
+        entry.type === "toolResult" &&
+        !entry.isError &&
+        MEMORY_MUTATION_TOOL_NAMES.has(entry.toolName),
     )
   ) {
     return;
   }
   // V1 passive learning only stores public channel facts outside local QA.
-  if (session.source.platform !== "local" && isPrivateSource(session.source)) {
+  if (run.source.platform !== "local" && isPrivateSource(run.source)) {
     return;
   }
-  const sourceKey = getSourceKey(session.source);
+  const sourceKey = getSourceKey(run.source);
   if (!sourceKey) {
     return;
   }
-  const messages = session.messages
-    .filter((message) => message.text.trim())
-    .map((message) => ({ role: message.role, text: message.text.trim() }));
-  const userText = messages
-    .filter((message) => message.role === "user")
-    .map((message) => message.text)
+  const transcript = run.transcript
+    .filter((entry) => entry.text?.trim())
+    .map((entry) => ({ ...entry, text: entry.text!.trim() }));
+  const evidenceText = transcript
+    .filter((entry) => entry.type === "toolResult" || entry.role === "user")
+    .map((entry) => entry.text)
     .join("\n\n")
     .trim();
-  if (!userText) {
+  if (!evidenceText) {
     return;
   }
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
-    conversationId: session.conversationId,
-    ...(session.requester ? { requester: session.requester } : {}),
-    source: session.source,
+    conversationId: run.conversationId,
+    ...(run.requester ? { requester: run.requester } : {}),
+    source: run.source,
   });
   const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
     embedder: context.embedder,
@@ -113,14 +116,14 @@ export async function processMemorySession(
   const memories = await getTaskMemories(context, async () => {
     const existingMemories = await store.searchMemories({
       limit: 10,
-      query: userText,
+      query: evidenceText,
     });
     const agent = createMemoryAgent(context.model);
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,
       })),
-      messages,
+      transcript,
       runtimeContext,
     });
   });
@@ -129,7 +132,7 @@ export async function processMemorySession(
   }
 
   for (const memory of memories) {
-    const input = passiveInput(session.sessionId, memory, sourceKey);
+    const input = passiveInput(run.runId, memory, sourceKey);
     if (memory.target === "conversation") {
       await store.createConversationMemory(input);
       continue;
