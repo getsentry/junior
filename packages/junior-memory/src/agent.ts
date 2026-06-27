@@ -112,6 +112,9 @@ const memoryReviewResponseSchema = z.discriminatedUnion("decision", [
 ]);
 const extractedMemorySchema = z
   .object({
+    kind: memoryKindSchema.describe(
+      "Use preference only for requester-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use fact for shared project, channel, operational, or runbook knowledge.",
+    ),
     canonicalFact: z
       .string()
       .min(1)
@@ -123,23 +126,11 @@ const extractedMemorySchema = z
   .strict();
 const extractMemoriesResponseSchema = z
   .object({
-    procedures: z
+    memories: z
       .array(extractedMemorySchema)
       .max(5)
       .describe(
-        "Reusable public/shareable task, process, triage-flow, source-of-truth, lookup, or runbook instructions learned from this completed run. These are stored as conversation memory.",
-      ),
-    facts: z
-      .array(extractedMemorySchema)
-      .max(5)
-      .describe(
-        "Public/shareable stable project, channel, operational, or runbook facts from this completed run. These are stored as conversation memory. Exclude point-in-time query answers whose values can change.",
-      ),
-    preferences: z
-      .array(extractedMemorySchema)
-      .max(5)
-      .describe(
-        "Durable public/shareable personal preferences, opinions, habits, or workflows explicitly owned by the current requester. These are stored as requester memory.",
+        "Accepted public/shareable durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
       ),
   })
   .strict();
@@ -187,6 +178,8 @@ const MEMORY_EXTRACTION_SYSTEM = [
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
   "- Stored memory text must be a rewritten fact, not copied user wording or a sentence about who said it.",
+  "- Store the minimum useful assertion supported by source evidence; do not add adjacent steps, caveats, or generalized advice.",
+  "- Do not return both concise and expanded variants of the same source assertion; keep the shortest self-contained canonical memory.",
   "- Put ownership in structured fields, not prose.",
   "- For requester memories, omit the subject and write a stable fact such as 'Prefers X', 'Uses Y', or 'Thinks Z'.",
   "- Drop perspective/provenance markers while preserving useful context.",
@@ -355,9 +348,9 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "- Do not store point-in-time analytics, search, issue, metric, incident, availability, or status answers just because a tool produced them.",
     "- Do not store the fact that the user asked for advice, search, recall, planning, listing, inspection, or removal. Store only stable knowledge discovered in response, such as a reusable method or source-of-truth.",
     "- A user question asking how, what, where, or whether to do something is not source evidence for the answer. Store the answer only when supported by a user-authored factual statement or a tool result.",
-    "- Fill procedures with reusable task/process/runbook instructions.",
-    "- Fill facts with shared team, project, channel, runbook, or operational knowledge.",
-    "- Fill preferences only with clear durable first-person facts authored by the current requester about their own preference, opinion, habit, identity, or workflow.",
+    "- Set kind=procedure for reusable task/process/runbook instructions.",
+    "- Set kind=fact for shared team, project, channel, runbook, or operational knowledge.",
+    "- Set kind=preference only for clear durable first-person facts authored by the current requester about their own preference, opinion, habit, identity, or workflow.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current requester.",
     "- User-authored task instructions are procedures, not preferences, unless they explicitly describe the requester's personal preference or habit.",
     "- Procedural statements such as 'for X, do Y', 'when X, do Y', and 'to accomplish X, do Y' belong in procedures.",
@@ -422,18 +415,13 @@ function extractedMemoriesFromResponse(
   response: ExtractMemoriesResponse,
 ): ExtractedMemory[] {
   const toMemory = (
-    target: MemoryTarget,
     memory: z.output<typeof extractedMemorySchema>,
   ): ExtractedMemory => ({
     content: memory.canonicalFact,
     expiresAtMs: memory.expiresAtMs,
-    target,
+    target: targetForKind(memory.kind),
   });
-  return [
-    ...response.procedures.map((memory) => toMemory("conversation", memory)),
-    ...response.facts.map((memory) => toMemory("conversation", memory)),
-    ...response.preferences.map((memory) => toMemory("requester", memory)),
-  ].slice(0, 5);
+  return response.memories.map(toMemory);
 }
 
 /** Parse the structured decision returned by the memory agent. */

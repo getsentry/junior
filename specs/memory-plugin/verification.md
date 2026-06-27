@@ -100,8 +100,8 @@ Use integration tests for:
   dashboard reporting payloads
 - passive `session.completed` processing extracts from organic completed
   sessions without failing delivery
-- passive extraction skips completed sessions where explicit `createMemory` was
-  already called
+- passive extraction skips completed sessions where a memory tool was already
+  called
 - memory agent review rejects extracted candidates that violate workplace
   guidance
 - malformed or failed memory agent review fails closed for passive extraction

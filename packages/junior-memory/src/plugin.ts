@@ -1,5 +1,5 @@
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { createMemoryAgent, type MemoryAgent } from "./agent";
+import { createMemoryAgent } from "./agent";
 import { createMemoryCliCommand } from "./cli";
 import {
   createMemoryCreateTool,

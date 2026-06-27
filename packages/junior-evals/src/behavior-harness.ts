@@ -42,6 +42,7 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
+import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
 import { generateAssistantReply } from "@/chat/respond";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
@@ -94,6 +95,65 @@ import { createSlackConversationWorker } from "@/chat/task-execution/slack-work"
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
+
+const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
+
+interface PendingEvalPluginTask {
+  abort(): void;
+  promise: Promise<void>;
+}
+
+const pendingEvalPluginTasks = new Set<PendingEvalPluginTask>();
+
+async function processEvalPluginTask(
+  message: PluginTaskQueueMessage,
+): Promise<void> {
+  const controller = new AbortController();
+  let task!: PendingEvalPluginTask;
+  const promise = processPluginTask(message, {
+    signal: controller.signal,
+  }).finally(() => {
+    pendingEvalPluginTasks.delete(task);
+  });
+  task = {
+    abort() {
+      controller.abort(new Error("Eval plugin task cleanup aborted task"));
+    },
+    promise,
+  };
+  pendingEvalPluginTasks.add(task);
+  await promise;
+}
+
+/** Drain plugin tasks started by the eval harness before shared state cleanup. */
+export async function drainPendingEvalPluginTasks(): Promise<void> {
+  if (pendingEvalPluginTasks.size === 0) {
+    return;
+  }
+  const tasks = [...pendingEvalPluginTasks];
+  for (const task of tasks) {
+    task.abort();
+  }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.allSettled(tasks.map((task) => task.promise)),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `Timed out waiting for ${tasks.length} eval plugin task(s) to settle`,
+            ),
+          );
+        }, EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -1543,7 +1603,7 @@ function buildRuntimeServices(
       scheduleSessionCompletedPluginTasks: async (params) => {
         await scheduleSessionCompletedPluginTasks(params, {
           send: async (message) => {
-            await processPluginTask(message);
+            await processEvalPluginTask(message);
           },
         });
       },
@@ -1664,7 +1724,7 @@ async function processEvents(args: {
                 scheduleSessionCompletedPluginTasks: async (params) => {
                   await scheduleSessionCompletedPluginTasks(params, {
                     send: async (message) => {
-                      await processPluginTask(message);
+                      await processEvalPluginTask(message);
                     },
                   });
                 },

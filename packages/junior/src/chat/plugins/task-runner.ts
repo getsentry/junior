@@ -42,6 +42,10 @@ export interface ScheduleSessionCompletedPluginTasksOptions {
   send?: (message: PluginTaskQueueMessage) => Promise<void>;
 }
 
+interface ProcessPluginTaskOptions {
+  signal?: AbortSignal;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -185,15 +189,20 @@ async function loadPluginRun(
 function taskPluginContext(
   plugin: PluginRegistration,
   message: PluginTaskQueueMessage,
+  options: ProcessPluginTaskOptions = {},
 ): PluginTaskContext {
   const pluginName = plugin.manifest.name;
   const sessionParams = pluginTaskParamsSchema.parse(message.params);
   return {
     db: getDb(),
-    embedder: createPluginEmbedder(pluginName),
+    embedder: createPluginEmbedder(pluginName, {
+      signal: options.signal,
+    }),
     id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
-    model: createPluginModel(pluginName, plugin.model),
+    model: createPluginModel(pluginName, plugin.model, {
+      signal: options.signal,
+    }),
     name: message.name,
     plugin: { name: pluginName },
     run: {
@@ -251,6 +260,7 @@ export async function scheduleSessionCompletedPluginTasks(
 /** Execute one parsed plugin task request. */
 export async function processPluginTask(
   message: PluginTaskQueueMessage,
+  options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
   await withPluginTaskLock(pluginTaskId(message), async () => {
     const resolved = findPluginTask(message);
@@ -259,6 +269,8 @@ export async function processPluginTask(
         `Plugin task "${message.plugin}.${message.name}" is not registered`,
       );
     }
-    await resolved.task.run(taskPluginContext(resolved.plugin, message));
+    await resolved.task.run(
+      taskPluginContext(resolved.plugin, message, options),
+    );
   });
 }

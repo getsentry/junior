@@ -1,6 +1,6 @@
-import { afterEach, expect } from "vitest";
+import { expect } from "vitest";
 import { assistantMessages, describeEval } from "vitest-evals";
-import { closeDb, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -242,10 +242,6 @@ async function expectAssistantMemoryAnswer(args: {
     expect.objectContaining({ passed: true }),
   );
 }
-
-afterEach(async () => {
-  await closeDb();
-});
 
 describeEval("Memory Workflows", slackEvals, (it) => {
   const explicitRememberThread = {

@@ -88,25 +88,28 @@ The `processSession` task must:
    sessions and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
    extraction.
-5. Skip passive extraction when the completed session already called an
-   explicit memory mutation tool (`createMemory` or `removeMemory`). Recall
-   tools (`listMemories` and `searchMemories`) must not suppress passive
-   extraction.
-6. Provide visible existing memories as dedupe context only, not as source
+5. Skip passive extraction when the completed session called a memory tool
+   (`createMemory`, `removeMemory`, `listMemories`, or `searchMemories`).
+   Memory tool turns already operate on memory-aware context; passive
+   extraction must not reinterpret recalled or listed memories as fresh source
+   evidence.
+6. Recalled or listed memories are context for the visible answer and dedupe,
+   not source evidence for creating new memories.
+7. Provide visible existing memories as dedupe context only, not as source
    evidence for new memories.
-7. Use assistant-authored text only as context for interpreting the completed
+8. Use assistant-authored text only as context for interpreting the completed
    run; assistant claims are not independent source evidence.
-8. Extract candidate facts with a structured model output contract.
-9. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
-   non-durable facts.
-10. Assign requester or conversation target from the memory kind returned by
+9. Extract candidate facts with a structured model output contract.
+10. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
+    non-durable facts.
+11. Assign requester or conversation target from the memory kind returned by
     the memory agent, while deriving all authority-bearing ids from runtime
     context.
-11. Insert accepted memories idempotently with a stable key derived through the
+12. Insert accepted memories idempotently with a stable key derived through the
     runtime source helper, completed session reference, and extracted fact
     content.
-12. Generate embeddings for accepted rows when the host embedder is configured.
-13. Avoid storing raw extraction prompt, raw model output, or raw run text
+13. Generate embeddings for accepted rows when the host embedder is configured.
+14. Avoid storing raw extraction prompt, raw model output, or raw run text
     beyond the accepted memory records.
 
 Plugin tasks are best effort and at least once. If extraction or storage fails,
@@ -143,8 +146,8 @@ Passive run extraction must follow these rules:
     search, issue, metric, incident, availability, or status answers whose
     values naturally change.
 14. A user question is not source evidence for the answer; passive extraction
-    may store the answer only when user-authored factual text or a tool result
-    supports it.
+    may store the answer only when user-authored factual text or a non-memory
+    tool result supports it.
 15. Personal-scoped memories must be public/shareable first-person facts from
     the current author/requester, and should be stored passively only when they
     are clearly durable and useful beyond the active task.
@@ -204,17 +207,17 @@ Memory agent output must be structured. For explicit review it should include:
 - optional expiration when stored
 - normalized rejection reason code when rejected
 
-For passive extraction it should include categorized arrays of accepted
-candidate memories:
+For passive extraction it should include one `memories` array of accepted
+candidate memories. Each candidate includes:
 
-- `preferences`: durable personal preferences, opinions, habits, or workflows
-  owned by the current requester; stored as requester memory.
-- `procedures`: reusable task, process, triage-flow, or runbook instructions;
-  source-of-truth, lookup, or decision-path knowledge; stored as conversation
-  memory.
-- `facts`: shared project, channel, operational, or runbook knowledge; stored
-  as conversation memory. Point-in-time query answers are excluded unless they
-  are stable beyond the run.
+- `kind`: `preference`, `procedure`, or `fact`
+- canonical stored content
+- optional expiration
+
+The memory agent should return one object per distinct source assertion rather
+than separate categorized arrays. The runtime derives storage target from
+`kind`: requester memory for `preference`, conversation memory for `procedure`
+and `fact`.
 
 Conversation-target passive memories in V1 are the primary path for learning
 how work gets done: task procedures, runbooks, project facts, channel norms,

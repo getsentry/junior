@@ -50,6 +50,7 @@ export default defineConfig({
     setupFiles: [
       path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+      path.resolve(__dirname, "src/setup.ts"),
     ],
     reporters: [new DefaultEvalReporter()],
     testTimeout: EVAL_TEST_TIMEOUT_MS,

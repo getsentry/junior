@@ -18,11 +18,7 @@ import {
 import { Command, CommanderError } from "commander";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
-import {
-  createMemoryAgent,
-  type CreateMemoryRequest,
-  type MemoryAgent,
-} from "../src/agent";
+import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
 import { createMemoryCliCommand } from "../src/cli";
 import { createMemoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
@@ -218,28 +214,26 @@ function extractionModel(
   const model: PluginModel = {
     async completeObject(input) {
       calls.push(input);
-      const procedures = memories.filter(
-        (memory) => memory.kind === "procedure",
-      );
-      const facts = memories.filter((memory) => memory.kind === "fact");
-      const preferences = memories.filter(
-        (memory) => memory.kind === "preference",
-      );
       const toResponseMemory = (memory: (typeof memories)[number]) => ({
         canonicalFact: memory.content,
         expiresAtMs: memory.expiresAtMs ?? null,
+        kind: memory.kind,
       });
       return {
         object: {
-          facts: facts.map(toResponseMemory),
-          preferences: preferences.map(toResponseMemory),
-          procedures: procedures.map(toResponseMemory),
+          memories: memories.map(toResponseMemory),
         },
       };
     },
   };
   return { calls, model };
 }
+
+const throwingExtractionModel: PluginModel = {
+  async completeObject() {
+    throw new Error("memory extraction should not run");
+  },
+};
 
 function slackContext(
   overrides: {
@@ -327,7 +321,6 @@ function completedRun(
 function processSessionContext(
   overrides: Partial<MemoryTaskContext> = {},
 ): MemoryTaskContext {
-  const runtime = localContext();
   const run =
     overrides.run ??
     ({
@@ -452,15 +445,14 @@ describe("memory plugin storage", () => {
       async completeObject() {
         return {
           object: {
-            facts: [],
-            preferences: [
+            memories: [
               {
                 canonicalFact:
                   "Prefers causes before mitigations in incident writeups.",
                 expiresAtMs: null,
+                kind: "preference",
               },
             ],
-            procedures: [],
           },
         };
       },
@@ -492,22 +484,29 @@ describe("memory plugin storage", () => {
     ]);
   });
 
-  it("caps passive extraction at five memories across categories", async () => {
+  it("accepts up to five passive extraction memories", async () => {
     const model: PluginModel = {
       async completeObject() {
         return {
           object: {
-            facts: [
-              { canonicalFact: "Fact one.", expiresAtMs: null },
-              { canonicalFact: "Fact two.", expiresAtMs: null },
-            ],
-            preferences: [
-              { canonicalFact: "Prefers one.", expiresAtMs: null },
-              { canonicalFact: "Prefers two.", expiresAtMs: null },
-            ],
-            procedures: [
-              { canonicalFact: "Procedure one.", expiresAtMs: null },
-              { canonicalFact: "Procedure two.", expiresAtMs: null },
+            memories: [
+              { canonicalFact: "Fact one.", expiresAtMs: null, kind: "fact" },
+              { canonicalFact: "Fact two.", expiresAtMs: null, kind: "fact" },
+              {
+                canonicalFact: "Prefers one.",
+                expiresAtMs: null,
+                kind: "preference",
+              },
+              {
+                canonicalFact: "Prefers two.",
+                expiresAtMs: null,
+                kind: "preference",
+              },
+              {
+                canonicalFact: "Procedure one.",
+                expiresAtMs: null,
+                kind: "procedure",
+              },
             ],
           },
         };
@@ -527,6 +526,36 @@ describe("memory plugin storage", () => {
         runtimeContext: localContext(),
       }),
     ).resolves.toHaveLength(5);
+  });
+
+  it("rejects passive extraction responses with more than five memories", async () => {
+    const model: PluginModel = {
+      async completeObject() {
+        return {
+          object: {
+            memories: Array.from({ length: 6 }, (_, index) => ({
+              canonicalFact: `Fact ${index + 1}.`,
+              expiresAtMs: null,
+              kind: "fact",
+            })),
+          },
+        };
+      },
+    };
+    const agent = createMemoryAgent(model);
+
+    await expect(
+      agent.extractSessionMemories({
+        transcript: [
+          {
+            type: "message",
+            role: "user",
+            text: "Store several durable facts.",
+          },
+        ],
+        runtimeContext: localContext(),
+      }),
+    ).rejects.toThrow("Too big");
   });
 
   it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
@@ -575,7 +604,7 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const { model, calls } = extractionModel([
+      const { model } = extractionModel([
         {
           kind: "preference",
           content: "Prefers QA notes that mention database row checks.",
@@ -613,7 +642,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toHaveLength(1);
       const rows = await memoryDb(fixture)
         .select()
         .from(memorySqlSchema.juniorMemoryMemories)
@@ -635,46 +663,54 @@ describe("memory plugin storage", () => {
         ]),
       );
       expect(rows).toHaveLength(2);
-      expect(embedder.calls[0]).toEqual([
-        "I prefer QA notes that mention database row checks. Deploy runbooks live in Notion.",
-      ]);
-      expect(embedder.calls.slice(1)).toEqual(
-        expect.arrayContaining([
-          ["Prefers QA notes that mention database row checks."],
-          ["Deploy runbooks live in Notion."],
-        ]),
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryEmbeddings)
+          .orderBy(memorySqlSchema.juniorMemoryEmbeddings.memoryId),
+      ).resolves.toEqual(
+        expect.arrayContaining(
+          rows.map((row) =>
+            expect.objectContaining({
+              dimensions: TEST_EMBEDDING_DIMENSIONS,
+              memoryId: row.id,
+              metric: "cosine",
+              model: "test-embedding-model",
+              provider: "test-embedding-provider",
+            }),
+          ),
+        ),
       );
     } finally {
       await fixture.close();
     }
   }, 15_000);
 
-  it("passes tool result evidence to passive extraction", async () => {
+  it("stores extracted conversation memories from completed sessions with tool results", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       const model: PluginModel = {
         async completeObject(input) {
-          const prompt = input.prompt;
-          const includesToolEvidence =
-            typeof prompt === "string" &&
-            prompt.includes("queryAnalyticsCatalog") &&
-            prompt.includes(
+          if (
+            typeof input.prompt !== "string" ||
+            !input.prompt.includes("queryAnalyticsCatalog") ||
+            !input.prompt.includes(
               "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
-            );
+            )
+          ) {
+            return { object: { memories: [] } };
+          }
           return {
             object: {
-              facts: [],
-              preferences: [],
-              procedures: includesToolEvidence
-                ? [
-                    {
-                      canonicalFact:
-                        "Signup funnel analysis should use the modeled warehouse cohort table.",
-                      expiresAtMs: null,
-                    },
-                  ]
-                : [],
+              memories: [
+                {
+                  canonicalFact:
+                    "Signup funnel analysis should use the modeled warehouse cohort table.",
+                  expiresAtMs: null,
+                  kind: "procedure",
+                },
+              ],
             },
           };
         },
@@ -731,7 +767,7 @@ describe("memory plugin storage", () => {
 
     try {
       const state = createMemoryState();
-      const { model, calls } = extractionModel([
+      const { model } = extractionModel([
         {
           content: "Prefers retry-safe memory extraction.",
           kind: "preference",
@@ -772,7 +808,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toHaveLength(1);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
@@ -788,18 +823,12 @@ describe("memory plugin storage", () => {
 
   it("skips passive extraction for successful memory mutation tool turns", async () => {
     const fixture = await createMemoryFixture();
-    const { model, calls } = extractionModel([
-      {
-        kind: "preference",
-        content: "duplicate memory avoidance",
-      },
-    ]);
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
@@ -822,7 +851,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
@@ -833,18 +861,12 @@ describe("memory plugin storage", () => {
 
   it("skips passive extraction for failed memory mutation tool turns", async () => {
     const fixture = await createMemoryFixture();
-    const { model, calls } = extractionModel([
-      {
-        kind: "preference",
-        content: "failed memory mutation should not be reinterpreted",
-      },
-    ]);
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
@@ -867,7 +889,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
@@ -876,20 +897,13 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("does not skip passive extraction for memory recall tool turns", async () => {
+  it("skips passive extraction for memory recall tool turns", async () => {
     const fixture = await createMemoryFixture();
     try {
-      const { model, calls } = extractionModel([
-        {
-          kind: "preference",
-          content: "recall turns can still learn durable facts",
-        },
-      ]);
-
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
@@ -912,36 +926,23 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toHaveLength(1);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          content: "recall turns can still learn durable facts",
-          scope: "personal",
-          sourcePlatform: "local",
-        }),
-      ]);
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
-  }, 15_000);
+  });
 
   it("skips passive extraction in private Slack contexts", async () => {
     const fixture = await createMemoryFixture();
-    const { model, calls } = extractionModel([
-      {
-        kind: "preference",
-        content: "private Slack context skips",
-      },
-    ]);
     const privateContext = slackContext({ channelId: "D123" });
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
@@ -962,7 +963,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);
@@ -973,19 +973,13 @@ describe("memory plugin storage", () => {
 
   it("skips passive extraction for Slack sessions without a message key", async () => {
     const fixture = await createMemoryFixture();
-    const { model, calls } = extractionModel([
-      {
-        kind: "preference",
-        content: "Slack message key validation",
-      },
-    ]);
     const runtime = slackContext();
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
@@ -1009,7 +1003,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls).toEqual([]);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([]);

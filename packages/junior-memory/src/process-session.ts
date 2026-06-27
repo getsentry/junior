@@ -13,7 +13,12 @@ import {
 import { createMemoryAgent, type ExtractedMemory } from "./agent";
 import { memoryRuntimeContextSchema } from "./types";
 
-const MEMORY_MUTATION_TOOL_NAMES = new Set(["createMemory", "removeMemory"]);
+const MEMORY_TOOL_NAMES = new Set([
+  "createMemory",
+  "listMemories",
+  "removeMemory",
+  "searchMemories",
+]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const extractedMemoryCacheSchema = z.array(
   z
@@ -76,12 +81,12 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  // Explicit memory mutation tools already own the user's memory-management intent.
+  // Memory tool turns already own memory management or recall; do not reinterpret
+  // recalled memory output as fresh passive-learning evidence.
   if (
     run.transcript.some(
       (entry) =>
-        entry.type === "toolResult" &&
-        MEMORY_MUTATION_TOOL_NAMES.has(entry.toolName),
+        entry.type === "toolResult" && MEMORY_TOOL_NAMES.has(entry.toolName),
     )
   ) {
     return;

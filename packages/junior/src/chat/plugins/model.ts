@@ -10,6 +10,7 @@ import { completeObject, embedTexts } from "@/chat/pi/client";
 export function createPluginModel(
   pluginName: string,
   options: PluginModelConfig = {},
+  runtime: { signal?: AbortSignal } = {},
 ): PluginModel {
   return {
     async completeObject(input) {
@@ -26,6 +27,7 @@ export function createPluginModel(
         ...(input.maxTokens !== undefined
           ? { maxTokens: input.maxTokens }
           : {}),
+        signal: runtime.signal,
         metadata: {
           pluginName,
           pluginModelRole: "structured",
@@ -37,12 +39,16 @@ export function createPluginModel(
 }
 
 /** Create the host-owned embedding capability exposed to prompt hooks. */
-export function createPluginEmbedder(pluginName: string): PluginEmbedder {
+export function createPluginEmbedder(
+  pluginName: string,
+  runtime: { signal?: AbortSignal } = {},
+): PluginEmbedder {
   return {
     async embedTexts(input) {
       return await embedTexts({
         modelId: botConfig.embeddingModelId,
         texts: input.texts,
+        signal: runtime.signal,
         metadata: {
           pluginName,
           pluginModelRole: "embedding",
