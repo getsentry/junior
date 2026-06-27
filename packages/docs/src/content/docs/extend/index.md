@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /extend/build-a-plugin/
   - /extend/agent-browser-plugin/
+  - /extend/cloudflare-plugin/
   - /extend/datadog-plugin/
   - /extend/github-plugin/
   - /extend/hex-plugin/
@@ -58,7 +59,7 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests and any bundled skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-maintenance @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
+pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-cloudflare @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-maintenance @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
 Create one runtime-safe plugin set and point `juniorNitro()` at that module.
