@@ -1171,6 +1171,22 @@ export async function generateAssistantReply(
     }));
 
     // ── MCP provider activation ──────────────────────────────────────
+    // If a prior turn left an MCP provider pending user authorization, skip
+    // eager restoration of that provider here. Without this guard, every
+    // subsequent turn in the conversation would attempt to activate the
+    // still-unauthenticated provider, throw McpAuthorizationPauseError, and
+    // abort the agent run before the user's new request is even handled —
+    // even for requests that have nothing to do with that provider.
+    //
+    // Skipping only suppresses the eager-restore path. The agent can still
+    // trigger the auth flow intentionally (via loadSkill + searchMcpTools)
+    // when the user's request genuinely requires that provider.
+    const priorPendingMcpProvider =
+      context.pendingAuth?.kind === "mcp" &&
+      context.pendingAuth.requesterId === authRequesterId
+        ? context.pendingAuth.provider
+        : undefined;
+
     // Restore providers visible in durable Pi session history. In serverless
     // runtimes, later slices and follow-up turns usually run in a fresh
     // process, so in-memory MCP clients cannot be reused.
@@ -1179,6 +1195,9 @@ export async function generateAssistantReply(
       ...inferActiveMcpProvidersFromPiMessages(priorPiMessages),
     ]);
     for (const provider of providersToRestore) {
+      if (provider === priorPendingMcpProvider) {
+        continue; // awaiting user authorization — skip to avoid aborting unrelated turns
+      }
       if (await turnMcpToolManager.activateProvider(provider)) {
         await recordConnectedMcpProvider(provider);
       }
@@ -1189,6 +1208,9 @@ export async function generateAssistantReply(
     }
     // Activate MCP for skills recovered from durable Pi history.
     for (const skill of activeSkills) {
+      if (skill.pluginProvider === priorPendingMcpProvider) {
+        continue; // awaiting user authorization — skip to avoid aborting unrelated turns
+      }
       if (await turnMcpToolManager.activateForSkill(skill)) {
         await recordConnectedMcpProvider(skill.pluginProvider!);
       }
