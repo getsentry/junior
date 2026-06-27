@@ -132,12 +132,20 @@ function registerYamlPluginManifest(
   pluginDir: string,
 ): void {
   const manifest = parsePluginManifest(raw, pluginDir, pluginConfig);
+  const candidateSkillsDir = path.join(pluginDir, "skills");
+  const hasSkillsDir = (() => {
+    try {
+      return statSync(candidateSkillsDir).isDirectory();
+    } catch {
+      return false;
+    }
+  })();
   // Declarative manifests are manifest-only; code registrations claim migrations.
   registerPluginManifest(
     state,
     manifest,
     pluginDir,
-    path.join(pluginDir, "skills"),
+    hasSkillsDir ? candidateSkillsDir : undefined,
   );
 }
 

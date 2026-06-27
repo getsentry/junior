@@ -360,4 +360,45 @@ describe("plugin registry", () => {
       'Plugin "other-plugin" cannot share migrations directory with plugin "code-plugin"',
     );
   });
+
+  it("does not register a skillsDir for local yaml plugins that have no skills directory", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-no-skills-"),
+    );
+    // Create a plugin directory with a plugin.yaml but no skills/ subdirectory
+    const pluginDir = path.join(tempRoot, "rust-toolchain");
+    await fs.mkdir(pluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.yaml"),
+      [
+        "name: rust-toolchain",
+        "display-name: Rust Toolchain",
+        "description: Rust toolchain plugin",
+      ].join("\n"),
+      "utf8",
+    );
+
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [tempRoot],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: [],
+        packages: [],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+
+    expect(registry.getPluginProviders()).toHaveLength(1);
+    expect(registry.getPluginProviders()[0]?.manifest.name).toBe(
+      "rust-toolchain",
+    );
+    // No skills directory exists, so the plugin must not contribute a skill root
+    expect(registry.getPluginSkillRoots()).toEqual([]);
+  });
 });
