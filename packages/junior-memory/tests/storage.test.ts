@@ -1167,7 +1167,7 @@ ORDER BY created_at_ms ASC
         },
         {
           id: conversation.memory.id,
-          subject_key: "slack:T123:C123:1718800000.000000",
+          subject_key: "slack:T123",
           subject_type: "conversation",
         },
       ]);
@@ -1195,9 +1195,9 @@ ORDER BY created_at_ms ASC
         }),
         { now: () => nowMs },
       );
-      await expect(otherConversationStore.listMemories({})).resolves.toEqual(
-        [],
-      );
+      await expect(otherConversationStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: conversation.memory.id }),
+      ]);
 
       await expect(
         store.searchMemories({ query: "where are runbooks" }),
@@ -1206,17 +1206,19 @@ ORDER BY created_at_ms ASC
       ]);
       await expect(
         otherConversationStore.searchMemories({ query: "runbooks" }),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([
+        expect.objectContaining({ id: conversation.memory.id }),
+      ]);
       nowMs = TEST_NOW_MS + 4;
-      await expect(
-        otherConversationStore.archiveMemory({ id: conversation.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
       const otherTeamStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({ teamId: "T999", userId: "U456" }),
         { now: () => nowMs },
       );
       await expect(otherTeamStore.listMemories({})).resolves.toEqual([]);
+      await expect(
+        otherTeamStore.archiveMemory({ id: conversation.memory.id }),
+      ).rejects.toThrow("Memory was not found in the current context.");
 
       const archived = await store.archiveMemory({
         id: personal.memory.id.slice(0, 12),

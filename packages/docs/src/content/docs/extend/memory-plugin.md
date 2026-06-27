@@ -52,12 +52,12 @@ export const plugins = defineJuniorPlugins([
 
 ## Configure environment variables
 
-| Variable                    | Required | Purpose                                                                                      |
-| --------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`              | Yes      | Postgres connection string for memory storage.                                               |
-| `JUNIOR_DATABASE_DRIVER`    | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments. |
-| `AI_EMBEDDING_MODEL`        | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims). |
-| `AI_MEMORY_MODEL`           | No       | Model for memory classification and consolidation. Defaults to the app's structured model.   |
+| Variable                 | Required | Purpose                                                                                     |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`           | Yes      | Postgres connection string for memory storage.                                              |
+| `JUNIOR_DATABASE_DRIVER` | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments. |
+| `AI_EMBEDDING_MODEL`     | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims). |
+| `AI_MEMORY_MODEL`        | No       | Model for memory classification and consolidation. Defaults to the app's structured model.  |
 
 `AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
 
@@ -94,6 +94,8 @@ What do you remember about my preferences?
 ```
 
 Junior should recall the preference without prompting.
+
+Public Slack channel memories are workspace-visible. A durable fact remembered in a public channel or public-channel thread can be recalled from another public channel in the same Slack workspace. Private Slack and local conversation memories remain scoped to their original conversation.
 
 ## Failure modes
 

@@ -111,7 +111,8 @@ and model-extracted entity subjects must not become authorization principals.
 The storage model must support these V1 visibility scopes:
 
 - personal memory owned by the current requester identity
-- conversation memory owned by the current source/destination conversation
+- conversation memory owned by the current public Slack workspace or
+  private/local source conversation
 
 The stored scope must be derived from runtime context before write. Model-visible
 tool input cannot provide requester ids, actor ids, workspace ids, channel ids,

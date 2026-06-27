@@ -226,10 +226,10 @@ working relationships that pass policy.
 
 V1 supports two visibility scopes:
 
-| Scope          | Stored authority                                 | Visible to                                   |
-| -------------- | ------------------------------------------------ | -------------------------------------------- |
-| `personal`     | current requester actor                          | same requester in compatible runtime context |
-| `conversation` | current source/destination conversation identity | later requests in the same conversation      |
+| Scope          | Stored authority                                | Visible to                                                 |
+| -------------- | ----------------------------------------------- | ---------------------------------------------------------- |
+| `personal`     | current requester actor                         | same requester in compatible runtime context               |
+| `conversation` | source-derived conversation or public workspace | public Slack workspace, or same private/local conversation |
 
 Rules:
 
@@ -245,8 +245,9 @@ is on the billing team` is not a valid personal memory when written by
 3. Conversation memory may be created only when the user explicitly frames the
    fact as shared team/channel/conversation knowledge or the passive extractor
    can prove the fact is about the current conversation rather than a person.
-4. V1 does not recall memories across unrelated conversations, even if display
-   names or Slack users appear to match.
+4. Public Slack conversation memories are visible across the Slack workspace.
+   Private Slack and local conversation memories do not recall across unrelated
+   conversations, even if display names or Slack users appear to match.
 5. Subject fields describe what the memory is about; they do not broaden
    visibility beyond the stored scope.
 6. Stored content must not include ownership, source, or perspective labels
@@ -259,11 +260,11 @@ thread`, or channel labels. Those facts belong in structured scope, subject,
 Scope answers who can see the memory. Subject answers what the memory is about.
 V1 supports a small subject model rather than a graph:
 
-| Subject type   | Meaning                                      | Subject key                                 |
-| -------------- | -------------------------------------------- | ------------------------------------------- |
-| `user`         | public/shareable fact about the current user | current requester actor key                 |
-| `conversation` | norm or fact about the current conversation  | current source/destination conversation key |
-| `general`      | project, product, repository, or domain fact | none                                        |
+| Subject type   | Meaning                                      | Subject key                                       |
+| -------------- | -------------------------------------------- | ------------------------------------------------- |
+| `user`         | public/shareable fact about the current user | current requester actor key                       |
+| `conversation` | norm or fact about the current conversation  | current source-derived conversation/workspace key |
+| `general`      | project, product, repository, or domain fact | none                                              |
 
 Rules:
 

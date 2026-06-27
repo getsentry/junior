@@ -58,9 +58,11 @@ authorization is a separate host boundary.
 Personal memory is visible only to the same requester in a compatible runtime
 context.
 
-Conversation memory is visible only in the same conversation identity. V1 does
-not recall conversation memory across related channels, Slack workspaces,
-threads, projects, or rooms.
+Public Slack conversation memory is visible across the same Slack workspace.
+Private Slack and local conversation memory is visible only in the same
+conversation identity. V1 does not recall conversation memory across Slack
+workspaces, private conversations, unrelated local conversations, projects, or
+rooms.
 
 V1 passive extraction stores public/shareable memories only and prefers
 conversation-scoped workplace knowledge by default. Local CLI is a supported

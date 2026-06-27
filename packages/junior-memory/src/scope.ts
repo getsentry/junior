@@ -1,3 +1,4 @@
+import { isPrivateSource } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
@@ -19,6 +20,9 @@ export interface ResolvedMemorySubject {
 function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
   if (ctx.source.platform === "local") {
     return ctx.source.conversationId;
+  }
+  if (!isPrivateSource(ctx.source)) {
+    return `slack:${ctx.source.teamId}`;
   }
   const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
   if (!threadKey) {
