@@ -57,20 +57,6 @@ function textPart(value: unknown): string | undefined {
   return undefined;
 }
 
-function serializeResultValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value === undefined || value === null) {
-    return "";
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "";
-  }
-}
-
 function messageText(message: PiMessage): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") {
@@ -86,12 +72,14 @@ function toolResultText(message: PiMessage): string {
   const record = message as unknown as Record<string, unknown>;
   const parts = [
     messageText(message),
-    serializeResultValue(record.stdout),
-    serializeResultValue(record.stderr),
-    serializeResultValue(record.output),
-    serializeResultValue(record.result),
-    serializeResultValue(record.toolResult),
-  ].filter(Boolean);
+    record.output,
+    record.result,
+    record.stdout,
+    record.stderr,
+    record.toolResult,
+  ].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
   return sanitizeText(parts.join("\n"));
 }
 
@@ -177,11 +165,6 @@ async function loadPluginRun(
       "Completed plugin task session record is missing source or destination",
     );
   }
-  if (!record.requester) {
-    throw new Error(
-      "Completed plugin task session record is missing requester",
-    );
-  }
   const sessionMessages = stripRuntimeTurnContext(
     record.piMessages.slice(record.turnStartMessageIndex ?? 0),
   );
@@ -189,7 +172,7 @@ async function loadPluginRun(
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: record.destination,
-    requester: record.requester,
+    ...(record.requester ? { requester: record.requester } : {}),
     runId: record.sessionId,
     source: record.source,
     transcript: sessionMessages

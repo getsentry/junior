@@ -10,7 +10,7 @@ export const pluginTaskParamsSchema = z
 
 export type PluginTaskParams = z.output<typeof pluginTaskParamsSchema>;
 
-const pluginTaskQueueMessageSchema = z
+export const pluginTaskQueueMessageSchema = z
   .object({
     name: z.string().min(1),
     params: pluginTaskParamsSchema,

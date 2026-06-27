@@ -145,7 +145,7 @@ describe("plugin background tasks", () => {
           role: "toolResult",
           toolName: "searchDocs",
           isError: false,
-          content: "Incident runbooks live in Notion.",
+          output: "Incident runbooks live in Notion.",
         },
         {
           role: "assistant",

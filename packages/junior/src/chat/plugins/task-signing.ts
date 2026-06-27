@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 import {
-  parsePluginTaskQueueMessage,
+  pluginTaskQueueMessageSchema,
   type PluginTaskQueueMessage,
 } from "./task-message";
 
@@ -18,11 +19,20 @@ type VerificationResult =
   | { reason: PluginTaskQueueRejectReason; status: "rejected" }
   | { reason: "invalid_clock" | "missing_secret"; status: "unavailable" };
 
-type SignedPluginTaskQueueMessage = PluginTaskQueueMessage & {
-  signature: string;
-  signatureVersion: typeof SIGNATURE_VERSION;
-  signedAtMs: number;
-};
+const signedPluginTaskQueueMessageSchema = pluginTaskQueueMessageSchema
+  .extend({
+    signature: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0),
+    signatureVersion: z.literal(SIGNATURE_VERSION),
+    signedAtMs: z.number().finite(),
+  })
+  .strict();
+
+type SignedPluginTaskQueueMessage = z.output<
+  typeof signedPluginTaskQueueMessageSchema
+>;
 
 function queueSecret(): string | undefined {
   return process.env.JUNIOR_SECRET?.trim() || undefined;
@@ -55,28 +65,8 @@ function hmac(
 function parseSignedMessage(
   value: unknown,
 ): SignedPluginTaskQueueMessage | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  const { signature, signatureVersion, signedAtMs, ...rawMessage } = record;
-  const message = parsePluginTaskQueueMessage(rawMessage);
-  if (
-    !message ||
-    signatureVersion !== SIGNATURE_VERSION ||
-    typeof signedAtMs !== "number" ||
-    !Number.isFinite(signedAtMs) ||
-    typeof signature !== "string" ||
-    !signature.trim()
-  ) {
-    return undefined;
-  }
-  return {
-    ...message,
-    signature,
-    signatureVersion: SIGNATURE_VERSION,
-    signedAtMs,
-  };
+  const parsed = signedPluginTaskQueueMessageSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** Sign a plugin task payload before it crosses the public queue callback. */

@@ -79,7 +79,6 @@ export async function processMemorySession(
     run.transcript.some(
       (entry) =>
         entry.type === "toolResult" &&
-        !entry.isError &&
         MEMORY_MUTATION_TOOL_NAMES.has(entry.toolName),
     )
   ) {
@@ -135,6 +134,9 @@ export async function processMemorySession(
     const input = passiveInput(run.runId, memory, sourceKey);
     if (memory.target === "conversation") {
       await store.createConversationMemory(input);
+      continue;
+    }
+    if (!run.requester) {
       continue;
     }
     await store.createMemory(input);

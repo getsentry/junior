@@ -34,7 +34,7 @@ export const pluginRunContextSchema = z
     completedAtMs: z.number().finite(),
     conversationId: z.string().min(1),
     destination: destinationSchema,
-    requester: requesterSchema,
+    requester: requesterSchema.optional(),
     runId: z.string().min(1),
     source: sourceSchema,
     transcript: z.array(pluginRunTranscriptEntrySchema),

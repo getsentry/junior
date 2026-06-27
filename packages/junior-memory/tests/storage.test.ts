@@ -244,7 +244,6 @@ function extractionModel(
 function slackContext(
   overrides: {
     channelId?: string;
-    sourceType?: "priv" | "pub";
     teamId?: string;
     threadTs?: string;
     userId?: string;
@@ -491,6 +490,43 @@ describe("memory plugin storage", () => {
         target: "requester",
       },
     ]);
+  });
+
+  it("caps passive extraction at five memories across categories", async () => {
+    const model: PluginModel = {
+      async completeObject() {
+        return {
+          object: {
+            facts: [
+              { canonicalFact: "Fact one.", expiresAtMs: null },
+              { canonicalFact: "Fact two.", expiresAtMs: null },
+            ],
+            preferences: [
+              { canonicalFact: "Prefers one.", expiresAtMs: null },
+              { canonicalFact: "Prefers two.", expiresAtMs: null },
+            ],
+            procedures: [
+              { canonicalFact: "Procedure one.", expiresAtMs: null },
+              { canonicalFact: "Procedure two.", expiresAtMs: null },
+            ],
+          },
+        };
+      },
+    };
+    const agent = createMemoryAgent(model);
+
+    await expect(
+      agent.extractSessionMemories({
+        transcript: [
+          {
+            type: "message",
+            role: "user",
+            text: "Store several durable facts.",
+          },
+        ],
+        runtimeContext: localContext(),
+      }),
+    ).resolves.toHaveLength(5);
   });
 
   it("uses AI_MEMORY_MODEL as the memory plugin model default", async () => {
@@ -790,6 +826,51 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("skips passive extraction for failed memory mutation tool turns", async () => {
+    const fixture = await createMemoryFixture();
+    const { model, calls } = extractionModel([
+      {
+        kind: "preference",
+        content: "failed memory mutation should not be reinterpreted",
+      },
+    ]);
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "Remember that I prefer failed mutation shielding.",
+                  },
+                  {
+                    type: "toolResult",
+                    toolName: "createMemory",
+                    isError: true,
+                    text: "Memory rejected.",
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      expect(calls).toEqual([]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("does not skip passive extraction for memory recall tool turns", async () => {
     const fixture = await createMemoryFixture();
     try {
@@ -849,10 +930,7 @@ describe("memory plugin storage", () => {
         content: "private Slack context skips",
       },
     ]);
-    const privateContext = slackContext({
-      channelId: "D123",
-      sourceType: "priv",
-    });
+    const privateContext = slackContext({ channelId: "D123" });
 
     try {
       await processMemorySession(
@@ -981,6 +1059,62 @@ describe("memory plugin storage", () => {
           scope: "personal",
           subjectKey: "local:local-user",
         },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("stores conversation memories without requester context", async () => {
+    const fixture = await createMemoryFixture();
+    const { model } = extractionModel([
+      {
+        kind: "procedure",
+        content: "Release triage checks deployment markers first.",
+      },
+      {
+        kind: "preference",
+        content: "Prefers requester-only memory.",
+      },
+    ]);
+    const runtime = localContext();
+
+    try {
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                conversationId: runtime.conversationId,
+                destination: {
+                  platform: "local",
+                  conversationId: runtime.conversationId,
+                },
+                requester: undefined,
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "For release triage, check deployment markers first.",
+                  },
+                ],
+                source: runtime.source,
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Release triage checks deployment markers first.",
+          scope: "conversation",
+          subjectType: "conversation",
+        }),
       ]);
     } finally {
       await fixture.close();

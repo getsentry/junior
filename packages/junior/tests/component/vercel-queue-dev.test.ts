@@ -100,6 +100,11 @@ describe("plugin task Vercel queue integration", () => {
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
     expect(processPluginTask).toHaveBeenCalledWith(message);
 
+    await expect(
+      handler({ ...signedMessage, unexpected: true }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processPluginTask).toHaveBeenCalledTimes(1);
+
     processPluginTask.mockRejectedValueOnce(new Error("task failed"));
     await expect(handler(signedMessage, metadata)).rejects.toThrow(
       "task failed",

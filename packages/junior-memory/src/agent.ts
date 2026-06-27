@@ -430,7 +430,7 @@ function extractedMemoriesFromResponse(
     ...response.procedures.map((memory) => toMemory("conversation", memory)),
     ...response.facts.map((memory) => toMemory("conversation", memory)),
     ...response.preferences.map((memory) => toMemory("requester", memory)),
-  ];
+  ].slice(0, 5);
 }
 
 /** Parse the structured decision returned by the memory agent. */
