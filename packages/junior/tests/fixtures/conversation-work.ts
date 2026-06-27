@@ -178,6 +178,18 @@ export function observeConversationMutationLock(args: {
   };
 }
 
+/** Acquire the conversation mutation lock through the shared test fixture. */
+export async function acquireConversationMutationLock(args: {
+  conversationId: string;
+  state: StateAdapter;
+  ttlMs?: number;
+}): Promise<Lock | null> {
+  return await args.state.acquireLock(
+    `junior:conversation:mutation:${args.conversationId}`,
+    args.ttlMs ?? 10_000,
+  );
+}
+
 /** Build a durable mailbox record for component-level conversation work tests. */
 export function inboundMessage(
   inboundMessageId: string,

@@ -75,11 +75,8 @@ function createQueuedStateAdapter(
 
   const heartbeats = new Map<string, LockHeartbeat>();
 
-  const effectiveLockTtlMs = (ttlMs: number): number =>
-    Math.max(ttlMs, ACTIVE_LOCK_TTL_MS);
-
   const shouldHeartbeatLock = (ttlMs: number): boolean =>
-    ttlMs <= ACTIVE_LOCK_TTL_MS;
+    ttlMs === ACTIVE_LOCK_TTL_MS;
 
   const heartbeatKey = (lock: Lock): string => `${lock.threadId}:${lock.token}`;
 
@@ -164,10 +161,9 @@ function createQueuedStateAdapter(
     threadId: string,
     ttlMs: number,
   ): Promise<Lock | null> => {
-    const effectiveTtlMs = effectiveLockTtlMs(ttlMs);
-    const lock = await base.acquireLock(threadId, effectiveTtlMs);
+    const lock = await base.acquireLock(threadId, ttlMs);
     if (lock && shouldHeartbeatLock(ttlMs)) {
-      startOrUpdateHeartbeat(lock, effectiveTtlMs);
+      startOrUpdateHeartbeat(lock, ttlMs);
     }
     return lock;
   };
@@ -189,12 +185,11 @@ function createQueuedStateAdapter(
       await base.releaseLock(lock);
     },
     extendLock: async (lock, ttlMs) => {
-      const effectiveTtlMs = effectiveLockTtlMs(ttlMs);
-      const extended = await base.extendLock(lock, effectiveTtlMs);
+      const extended = await base.extendLock(lock, ttlMs);
       if (extended) {
-        lock.expiresAt = Date.now() + effectiveTtlMs;
+        lock.expiresAt = Date.now() + ttlMs;
         if (shouldHeartbeatLock(ttlMs)) {
-          startOrUpdateHeartbeat(lock, effectiveTtlMs);
+          startOrUpdateHeartbeat(lock, ttlMs);
         } else {
           stopHeartbeat(lock);
         }

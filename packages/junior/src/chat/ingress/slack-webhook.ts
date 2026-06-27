@@ -91,6 +91,16 @@ interface SlackInteractivePayload {
   user?: { id?: string; name?: string; team_id?: string; username?: string };
 }
 
+class SlackEventPersistenceError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super("Slack event durable persistence failed");
+    this.name = "SlackEventPersistenceError";
+    this.cause = cause;
+  }
+}
+
 export interface SlackWebhookServices {
   getUserTokenStore?: () => UserTokenStore;
   getSlackAdapter: () => SlackAdapter;
@@ -178,6 +188,7 @@ async function buildThread(args: {
 function shouldIgnoreMessage(message: Message): boolean {
   return (
     message.author.isMe === true ||
+    !parseActorUserId(message.author.userId) ||
     isExternalSlackUser(message.raw as Record<string, unknown> | undefined)
   );
 }
@@ -210,6 +221,8 @@ async function persistSlackMessage(args: {
     conversationStore: args.conversationStore,
     queue: args.queue,
     state: args.state,
+  }).catch((error: unknown) => {
+    throw new SlackEventPersistenceError(error);
   });
 }
 
@@ -662,9 +675,16 @@ export async function handleSlackWebhook(args: {
       services: args.services,
     });
     if (shouldPersistBeforeAck(parsed)) {
-      await eventTask.catch((error) => {
-        logException(error, "slack_event_persist_failed");
-      });
+      try {
+        await eventTask;
+      } catch (error) {
+        if (!(error instanceof SlackEventPersistenceError)) {
+          logException(error, "slack_event_enqueue_failed");
+          return new Response("ok", { status: 200 });
+        }
+        logException(error.cause, "slack_event_persist_failed");
+        return new Response("Slack event persistence failed", { status: 503 });
+      }
     } else {
       enqueue(
         args.waitUntil,

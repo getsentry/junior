@@ -39,6 +39,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
+  acquireConversationMutationLock,
   conversationQueueMessage,
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -271,6 +272,60 @@ describe("conversation work execution", () => {
       queueMessageId: "queue-1",
     });
     expect(queue.sentRecords()).toHaveLength(1);
+  });
+
+  it("recovers an expired lease after the mutation lock ttl elapses", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+    const lease = await startConversationWork({
+      conversationId: CONVERSATION_ID,
+      nowMs: 1_000,
+      state,
+    });
+    expect(lease.status).toBe("acquired");
+
+    await vi.advanceTimersByTimeAsync(CONVERSATION_WORK_LEASE_TTL_MS + 1);
+
+    const staleMutationLock = await acquireConversationMutationLock({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(staleMutationLock).not.toBeNull();
+
+    const recoveryNowMs = Date.now() + 10_001;
+    const recovery = recoverConversationWork({
+      nowMs: recoveryNowMs,
+      queue,
+      state,
+    });
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    await expect(recovery).resolves.toEqual({
+      expiredLeaseCount: 1,
+      pendingCount: 0,
+    });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `heartbeat:lease:${CONVERSATION_ID}:${recoveryNowMs}`,
+      }),
+    ]);
+
+    const recovered = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(recovered?.lease).toBeUndefined();
+    expect(recovered?.needsRun).toBe(true);
   });
 
   it("repairs pending mailbox work when the initial queue send fails", async () => {
