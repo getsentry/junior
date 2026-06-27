@@ -4,12 +4,11 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
-import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
+import { acquireActiveLock } from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime
 const LONG_LIVED_TTL_MS = 365 * 24 * 60 * 60 * 1000;
-const REFRESH_LOCK_TTL_MS = ACTIVE_LOCK_TTL_MS;
 const REFRESH_LOCK_WAIT_MS = 30_000;
 const REFRESH_LOCK_RETRY_MS = 100;
 
@@ -68,7 +67,7 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const lockKey = refreshLockKey(userId, provider);
     const deadline = Date.now() + REFRESH_LOCK_WAIT_MS;
     while (true) {
-      const lock = await this.state.acquireLock(lockKey, REFRESH_LOCK_TTL_MS);
+      const lock = await acquireActiveLock(this.state, lockKey);
       if (lock) {
         try {
           return await callback();

@@ -75,6 +75,8 @@ function createQueuedStateAdapter(
 
   const heartbeats = new Map<string, LockHeartbeat>();
 
+  // StateAdapter only carries a TTL through acquire/extend calls, so the
+  // active-lock TTL is the explicit opt-in for adapter-owned heartbeats.
   const shouldHeartbeatLock = (ttlMs: number): boolean =>
     ttlMs === ACTIVE_LOCK_TTL_MS;
 

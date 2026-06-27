@@ -42,7 +42,7 @@ import {
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
+import { acquireActiveLock } from "@/chat/state/locks";
 import {
   startSlackProcessingReactionForMessage,
   type ProcessingReactionSession,
@@ -309,7 +309,7 @@ export async function resumeSlackTurn(
   await stateAdapter.connect();
   const lockKey =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
-  const lock = await stateAdapter.acquireLock(lockKey, ACTIVE_LOCK_TTL_MS);
+  const lock = await acquireActiveLock(stateAdapter, lockKey);
   if (!lock) {
     throw new ResumeTurnBusyError(lockKey);
   }
