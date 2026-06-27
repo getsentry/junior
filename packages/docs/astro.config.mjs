@@ -109,6 +109,7 @@ export default defineConfig({
               label: "Maintenance Plugin",
               link: "/extend/maintenance-plugin/",
             },
+            { label: "Memory Plugin", link: "/extend/memory-plugin/" },
             { label: "Notion Plugin", link: "/extend/notion-plugin/" },
             { label: "Scheduler Plugin", link: "/extend/scheduler-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },

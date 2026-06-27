@@ -13,6 +13,7 @@ related:
   - /extend/hex-plugin/
   - /extend/linear-plugin/
   - /extend/maintenance-plugin/
+  - /extend/memory-plugin/
   - /extend/notion-plugin/
   - /extend/scheduler-plugin/
   - /extend/sentry-plugin/
