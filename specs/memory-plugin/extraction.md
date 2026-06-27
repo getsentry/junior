@@ -142,16 +142,19 @@ Passive run extraction must follow these rules:
     operational/project knowledge. Do not store point-in-time analytics,
     search, issue, metric, incident, availability, or status answers whose
     values naturally change.
-14. Personal-scoped memories must be public/shareable first-person facts from
+14. A user question is not source evidence for the answer; passive extraction
+    may store the answer only when user-authored factual text or a tool result
+    supports it.
+15. Personal-scoped memories must be public/shareable first-person facts from
     the current author/requester, and should be stored passively only when they
     are clearly durable and useful beyond the active task.
-15. Assign `user` subject only for the current author/requester; do not create
+16. Assign `user` subject only for the current author/requester; do not create
     third-party user subjects in V1.
-16. Preserve provenance for third-party claims when the source matters for
+17. Preserve provenance for third-party claims when the source matters for
     correctness.
-17. Store the minimum useful assertion rather than a direct quote or broad
+18. Store the minimum useful assertion rather than a direct quote or broad
     summary.
-18. Store ownership, subject, and provenance in structured fields, not content
+19. Store ownership, subject, and provenance in structured fields, not content
     prose. Remove requester names, display names, `the requester`, `the user`,
     `I`, `my`, thread labels, channel labels, and source labels from accepted
     content.

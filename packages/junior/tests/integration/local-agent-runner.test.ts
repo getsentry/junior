@@ -524,6 +524,7 @@ describe("local agent runner", () => {
       },
     ] as PiMessage[];
     const delivered: LocalAgentReply[] = [];
+    let taskRuns = 0;
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -534,6 +535,7 @@ describe("local agent runner", () => {
         tasks: {
           processSession: {
             run() {
+              taskRuns += 1;
               throw new Error("background task failed");
             },
           },
@@ -552,10 +554,15 @@ describe("local agent runner", () => {
             deliverReply: async (reply) => {
               delivered.push(reply);
             },
-            generateAssistantReply: async () =>
-              successReply("visible reply", {
+            generateAssistantReply: async (_text, context) => {
+              await persistCompletedSessionForFakeReply(
+                context,
+                generatedMessages,
+              );
+              return successReply("visible reply", {
                 piMessages: generatedMessages,
-              }),
+              });
+            },
           },
         ),
       ).resolves.toEqual({
@@ -567,6 +574,7 @@ describe("local agent runner", () => {
     }
 
     expect(delivered).toEqual([{ text: "visible reply" }]);
+    expect(taskRuns).toBe(1);
   });
 
   it("uses conversation Pi history when the session projection is stale", async () => {

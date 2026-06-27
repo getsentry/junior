@@ -653,19 +653,36 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const { model, calls } = extractionModel([
-        {
-          content:
-            "Signup funnel analysis should use the modeled warehouse cohort table.",
-          kind: "procedure",
+      const model: PluginModel = {
+        async completeObject(input) {
+          const prompt = input.prompt;
+          const includesToolEvidence =
+            typeof prompt === "string" &&
+            prompt.includes("queryAnalyticsCatalog") &&
+            prompt.includes(
+              "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
+            );
+          return {
+            object: {
+              facts: [],
+              preferences: [],
+              procedures: includesToolEvidence
+                ? [
+                    {
+                      canonicalFact:
+                        "Signup funnel analysis should use the modeled warehouse cohort table.",
+                      expiresAtMs: null,
+                    },
+                  ]
+                : [],
+            },
+          };
         },
-      ]);
-      const embedder = createTestEmbedder();
+      };
 
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          embedder,
           model,
           run: {
             async load() {
@@ -694,18 +711,6 @@ describe("memory plugin storage", () => {
         }),
       );
 
-      expect(calls[0]?.prompt).toContain("<tool-result");
-      expect(calls[0]?.prompt).toContain("queryAnalyticsCatalog");
-      expect(calls[0]?.prompt).toContain("modeled warehouse cohort table");
-      expect(embedder.calls[0]?.[0]).toContain(
-        "Where should signup funnel analysis come from?",
-      );
-      expect(embedder.calls[0]?.[0]).toContain(
-        "The modeled warehouse cohort table is the source of truth for signup funnel analysis.",
-      );
-      expect(embedder.calls[0]?.[0]).not.toContain(
-        "Use the modeled warehouse cohort table.",
-      );
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
       ).resolves.toEqual([
