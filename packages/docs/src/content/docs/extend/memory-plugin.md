@@ -52,13 +52,12 @@ export const plugins = defineJuniorPlugins([
 
 ## Configure environment variables
 
-| Variable                    | Required      | Purpose                                                                                       |
-| --------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`              | Yes (or next) | Postgres connection string for memory storage.                                                |
-| `JUNIOR_DATABASE_URL`       | Yes (or prev) | Takes precedence over `DATABASE_URL` when both are set.                                       |
-| `JUNIOR_DATABASE_DRIVER`    | No            | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments.  |
-| `AI_EMBEDDING_MODEL`        | No            | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).  |
-| `AI_MEMORY_MODEL`           | No            | Model for memory classification and consolidation. Defaults to the app's structured model.    |
+| Variable                    | Required | Purpose                                                                                      |
+| --------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`              | Yes      | Postgres connection string for memory storage.                                               |
+| `JUNIOR_DATABASE_DRIVER`    | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments. |
+| `AI_EMBEDDING_MODEL`        | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims). |
+| `AI_MEMORY_MODEL`           | No       | Model for memory classification and consolidation. Defaults to the app's structured model.   |
 
 `AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
 
@@ -66,7 +65,7 @@ For non-Neon managed Postgres (Railway, Supabase, AWS RDS, or self-hosted), set 
 
 ## Run migrations
 
-After setting `DATABASE_URL` or `JUNIOR_DATABASE_URL`, run the upgrade command to apply the memory plugin schema:
+After setting `DATABASE_URL`, run the upgrade command to apply the memory plugin schema:
 
 ```bash
 pnpm junior upgrade
@@ -100,7 +99,7 @@ Junior should recall the preference without prompting.
 
 - **Plugin not active after registration**: `@sentry/junior-memory` was registered as a bare string instead of `createMemoryPlugin()`. Switch to the factory call and redeploy.
 - **Migration error — extension "vector" does not exist**: the Postgres database does not have pgvector available. Use a provider that supports pgvector or install it manually with `CREATE EXTENSION vector`.
-- **`DATABASE_URL` or `JUNIOR_DATABASE_URL` is required**: no database URL is configured. Set at least one in the deployment environment.
+- **`DATABASE_URL` is required**: no database URL is configured. Set it in the deployment environment.
 - **Connection errors on non-Neon Postgres**: set `JUNIOR_DATABASE_DRIVER=postgres` for Railway, Supabase, AWS RDS, or self-hosted Postgres.
 - **Embedding dimension mismatch**: `AI_EMBEDDING_MODEL` was changed after memories were stored with a different model. Flush the `junior_memory_embeddings` table and re-run migrations to regenerate vectors with the new model.
 - **Memories not recalled**: the database migration has not run yet. Run `pnpm junior upgrade` against the production database.
