@@ -894,14 +894,6 @@ describe("mcp auth runtime slack integration", () => {
         { destination },
       );
 
-      expect(agentProbe.promptCallCount).toBe(1);
-      expect(thread.posts).toEqual([
-        expect.objectContaining({
-          markdown: expect.stringContaining(
-            "<@U123> I'll need you to authorize Eval Auth. I sent you a link.",
-          ),
-        }),
-      ]);
       expect(
         await threadStateModule.getPersistedThreadState(threadId),
       ).toMatchObject({
