@@ -22,6 +22,7 @@ import {
   startConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
+import { recordConversationExecution } from "@/chat/task-execution/state";
 import {
   CONVERSATION_WORK_DEFER_DELAY_MS,
   processConversationWork,
@@ -377,6 +378,38 @@ describe("conversation work execution", () => {
       needsRun: true,
       execution: {
         status: "pending",
+      },
+    });
+  });
+
+  it("keeps failed execution metadata when pending mailbox work remains", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+
+    await recordConversationExecution({
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: {
+        status: "failed",
+        updatedAtMs: 2_000,
+      },
+      lastActivityAtMs: 2_000,
+      state,
+      updatedAtMs: 2_000,
+    });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      needsRun: true,
+      execution: {
+        status: "failed",
       },
     });
   });

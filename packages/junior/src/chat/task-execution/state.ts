@@ -498,14 +498,10 @@ function pendingMessages(conversation: Conversation): InboundMessage[] {
   return [...conversation.execution.pendingMessages].sort(compareMessages);
 }
 
-// Failed and idle executions are terminal for work selection, but a new pending
-// message reopens the conversation so local/no-SQL reporting keeps progressing.
+// Failed executions are terminal for reporting, but pending messages still keep
+// them runnable through hasRunnableWork.
 function isRunnableStatus(status: ExecutionStatus): boolean {
   return status !== "failed" && status !== "idle";
-}
-
-function isTerminalStatus(status: ExecutionStatus): boolean {
-  return status === "failed" || status === "idle";
 }
 
 function hasRunnableWork(conversation: Conversation): boolean {
@@ -523,7 +519,7 @@ function executionWithPendingMessages(
   const status =
     execution.status === "idle" && execution.lease
       ? "running"
-      : isTerminalStatus(execution.status) && pendingMessages.length > 0
+      : execution.status === "idle" && pendingMessages.length > 0
         ? "pending"
         : execution.status;
   return {
