@@ -19,7 +19,7 @@ function stripTrailingSlashes(value: string): string {
   return end === value.length ? value : value.slice(0, end);
 }
 
-/** Normalize dashboard route prefixes so plugin and Nitro paths agree. */
+/** Normalize dashboard route prefixes for host routes and external links. */
 export function normalizeDashboardPath(
   path: string | undefined,
   fallback: string,

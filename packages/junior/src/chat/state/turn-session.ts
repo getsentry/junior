@@ -24,7 +24,10 @@ import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
-import type { ConversationStore } from "@/chat/conversations/store";
+import type {
+  ConversationExecution,
+  ConversationStore,
+} from "@/chat/conversations/store";
 import { logWarn } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -172,6 +175,20 @@ function parseAgentTurnSurface(value: unknown): AgentTurnSurface | undefined {
     value === "internal"
     ? value
     : undefined;
+}
+
+function conversationExecutionFromSummary(
+  summary: AgentTurnSessionSummary,
+): ConversationExecution {
+  const status =
+    summary.state === "completed" || summary.state === "abandoned"
+      ? "idle"
+      : summary.state;
+  return {
+    status,
+    runId: summary.sessionId,
+    updatedAtMs: summary.updatedAtMs,
+  };
 }
 
 function parseSource(value: unknown): Source | undefined {
@@ -359,6 +376,17 @@ async function recordConversationActivityMetadata(args: {
       nowMs: args.nowMs,
       requester: sessionLogRequester(args.summary.requester),
       source,
+    });
+    await conversationStore.recordExecution({
+      channelName: args.summary.channelName,
+      conversationId: args.summary.conversationId,
+      createdAtMs: args.summary.startedAtMs,
+      destination: args.summary.destination,
+      execution: conversationExecutionFromSummary(args.summary),
+      lastActivityAtMs: args.summary.updatedAtMs,
+      requester: sessionLogRequester(args.summary.requester),
+      source,
+      updatedAtMs: args.nowMs,
     });
   } catch (error) {
     logWarn(

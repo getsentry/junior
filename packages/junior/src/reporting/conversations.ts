@@ -385,6 +385,9 @@ function statusFromConversation(
   if (conversation.execution.status === "idle") {
     return "completed";
   }
+  if (conversation.execution.status === "failed") {
+    return "failed";
+  }
   const updatedAtMs =
     conversation.execution.updatedAtMs ?? conversation.updatedAtMs;
   if (
@@ -1262,23 +1265,8 @@ export async function readConversationStatsReport(
   });
   const truncated = conversations.length > CONVERSATION_STATS_LIMIT;
   const sampledConversations = conversations.slice(0, CONVERSATION_STATS_LIMIT);
-  const detailsByConversationId = await getConversationDetailsForIds(
-    sampledConversations.map((conversation) => conversation.conversationId),
-  );
-  const reportsByConversation = await reportsFromConversations({
-    conversations: sampledConversations,
-    detailsByConversationId,
-    nowMs,
-  });
-  const sessions = sampledConversations.flatMap(
-    (conversation) =>
-      reportsByConversation.get(conversation.conversationId) ?? [
-        sessionReportFromConversation(
-          conversation,
-          nowMs,
-          detailsByConversationId.get(conversation.conversationId),
-        ),
-      ],
+  const sessions = sampledConversations.map((conversation) =>
+    sessionReportFromConversation(conversation, nowMs),
   );
   return buildConversationStatsReport({
     generatedAt,

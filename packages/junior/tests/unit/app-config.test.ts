@@ -9,6 +9,8 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
+import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import {
   getPluginSkillRoots,
   getPluginProviders,
@@ -62,6 +64,7 @@ afterEach(async () => {
   setPlugins([]);
   setPluginCatalogConfig(undefined);
   setConfigDefaults(undefined);
+  setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
   if (originalPluginPackages === undefined) {
     delete process.env.JUNIOR_PLUGIN_PACKAGES;
@@ -570,6 +573,8 @@ describe("createApp plugin config", () => {
 
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
     vi.doMock("#junior/config", () => ({
+      createDashboardApp: undefined,
+      dashboard: undefined,
       pluginSet: defineJuniorPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -696,5 +701,137 @@ describe("createApp plugin config", () => {
         },
       } as Parameters<typeof defineJuniorPlugin>[0] & { name: string }),
     ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
+  });
+
+  it("forwards virtual plugin dashboard route apps into dashboard setup", async () => {
+    const pluginRouteApp = {
+      fetch: () => new Response("memory"),
+    };
+    const createDashboardApp = vi.fn(
+      (options: {
+        pluginRoutes?: Array<{
+          app: { fetch(request: Request): Promise<Response> | Response };
+          pluginName: string;
+        }>;
+      }) => ({
+        fetch(request: Request) {
+          const pathname = new URL(request.url).pathname;
+          const route = options.pluginRoutes?.find((candidate) =>
+            pathname.startsWith(
+              `/api/dashboard/plugins/${candidate.pluginName}`,
+            ),
+          );
+          return route?.app.fetch(request) ?? new Response("dashboard");
+        },
+      }),
+    );
+    vi.doMock("#junior/config", () => ({
+      createDashboardApp,
+      dashboard: {
+        authRequired: false,
+        allowedGoogleDomains: ["sentry.io"],
+      },
+      pluginSet: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "memory",
+            displayName: "Memory",
+            description: "Memory plugin",
+          },
+          hooks: {
+            dashboardRoutes() {
+              return pluginRouteApp;
+            },
+          },
+        }),
+      ]),
+      plugins: undefined,
+      pluginRuntimeRegistrations: ["memory"],
+    }));
+
+    const app = await createApp();
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/dashboard/plugins/memory"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("memory");
+  });
+
+  it("rejects app-level plugin routes that conflict with core dashboard routes", async () => {
+    for (const path of [
+      "/api/dashboard/*",
+      "/*",
+      "/api/*",
+      "/:slug",
+      "/api/:section/*",
+    ]) {
+      await expect(
+        createApp({
+          dashboard: {
+            authRequired: false,
+            allowedGoogleDomains: ["sentry.io"],
+          },
+          plugins: defineJuniorPlugins([
+            defineJuniorPlugin({
+              manifest: {
+                name: "legacy-dashboard",
+                displayName: "Legacy Dashboard",
+                description: "Legacy dashboard route plugin",
+              },
+              hooks: {
+                routes() {
+                  return [
+                    {
+                      path,
+                      handler: () => new Response("legacy"),
+                    },
+                  ];
+                },
+              },
+            }),
+          ]),
+        }),
+      ).rejects.toThrow(
+        `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
+      );
+    }
+  });
+
+  it("configures Slack footer links from core dashboard options", async () => {
+    vi.doMock("#junior/config", () => ({
+      createDashboardApp: vi.fn((_options: unknown) => ({
+        fetch: () => new Response("dashboard"),
+      })),
+      dashboard: undefined,
+      pluginSet: defineJuniorPlugins([]),
+      plugins: undefined,
+      pluginRuntimeRegistrations: [],
+    }));
+
+    await createApp({
+      dashboard: {
+        allowedGoogleDomains: ["sentry.io"],
+        authRequired: false,
+        basePath: "/ops",
+        baseURL: "https://junior.example.com",
+      },
+      plugins: defineJuniorPlugins([]),
+    });
+
+    expect(
+      buildSlackReplyFooter({
+        conversationId: "slack:C123:1700000000.000100",
+      }),
+    ).toEqual({
+      items: [
+        {
+          label: "ID",
+          url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
+          value: "slack:C123:1700000000.000100",
+        },
+      ],
+    });
   });
 });

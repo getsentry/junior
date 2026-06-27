@@ -206,6 +206,7 @@ function destinationUpsertFromDestination(args: {
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "awaiting_resume" ||
+    value === "failed" ||
     value === "idle" ||
     value === "pending" ||
     value === "running"

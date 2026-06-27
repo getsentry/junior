@@ -35,7 +35,14 @@ import { juniorNitro } from "@sentry/junior/nitro";
 
 export default defineConfig({
   preset: "vercel",
-  modules: [juniorNitro()],
+  modules: [
+    juniorNitro({
+      dashboard: {
+        authRequired: false,
+        allowedGoogleDomains: ["sentry.io"],
+      },
+    }),
+  ],
   routes: {
     "/**": { handler: "./server.ts" },
   },
@@ -45,15 +52,13 @@ export default defineConfig({
   fs.writeFileSync(
     path.join(root, "server.ts"),
     `import { createApp, defineJuniorPlugins } from "@sentry/junior";
-import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
 
 export default await createApp({
-  plugins: defineJuniorPlugins([
-    juniorDashboardPlugin({
-      authRequired: false,
-      allowedGoogleDomains: ["sentry.io"],
-    }),
-  ]),
+  dashboard: {
+    authRequired: false,
+    allowedGoogleDomains: ["sentry.io"],
+  },
+  plugins: defineJuniorPlugins([]),
 });
 `,
   );
@@ -65,7 +70,7 @@ export default await createApp({
 }
 
 describe.sequential("dashboard Nitro production output", () => {
-  it("serves dashboard routes from the plugin array", async () => {
+  it("serves dashboard routes from core app config", async () => {
     const root = fs.mkdtempSync(
       path.join(os.tmpdir(), "junior-dashboard-output-"),
     );

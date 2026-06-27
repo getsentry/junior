@@ -1,5 +1,6 @@
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
+import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 
 interface SlackMrkdwnTextObject {
   text: string;
@@ -69,6 +70,7 @@ export function buildSlackReplyFooter(args: {
     };
     const conversationUrl =
       getPluginSlackConversationLink(conversationId)?.url ??
+      getDashboardConversationLink(conversationId) ??
       buildSentryConversationUrl(conversationId);
     if (conversationUrl) {
       idItem.url = conversationUrl;

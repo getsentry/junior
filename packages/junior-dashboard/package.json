@@ -15,14 +15,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./nitro": {
-      "types": "./dist/nitro.d.ts",
-      "default": "./dist/nitro.js"
-    },
-    "./handler": {
-      "types": "./dist/handler.d.ts",
-      "default": "./dist/handler.js"
     }
   },
   "files": [

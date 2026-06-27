@@ -381,6 +381,96 @@ describe("juniorNitro plugin modules", () => {
     delete globalState.__juniorNitroPluginModuleImports;
   });
 
+  it("copies dashboard assets when core dashboard config is enabled", async () => {
+    const tempRoot = await makeTempDir();
+    const dashboardDist = path.join(
+      tempRoot,
+      "node_modules",
+      "@sentry",
+      "junior-dashboard",
+      "dist",
+    );
+    await fs.mkdir(dashboardDist, { recursive: true });
+    await fs.writeFile(
+      path.join(
+        tempRoot,
+        "node_modules",
+        "@sentry",
+        "junior-dashboard",
+        "package.json",
+      ),
+      JSON.stringify({ name: "@sentry/junior-dashboard" }),
+      "utf8",
+    );
+    await fs.writeFile(path.join(dashboardDist, "client.js"), "client", "utf8");
+    await fs.writeFile(
+      path.join(dashboardDist, "tailwind.css"),
+      "tailwind",
+      "utf8",
+    );
+
+    const rollupBeforeHooks: TestRollupBeforeHook[] = [];
+    const buildPlugins: TestBuildPlugin[] = [];
+    const virtual: Record<string, (() => Promise<string>) | string> = {};
+    const nitro = {
+      hooks: {
+        hook(name: string, callback: TestRollupBeforeHook) {
+          if (name === "rollup:before") {
+            rollupBeforeHooks.push(callback);
+          }
+        },
+      },
+      options: {
+        output: {
+          serverDir: path.join(tempRoot, ".output", "server"),
+        },
+        rootDir: tempRoot,
+        vercel: {},
+        virtual,
+      },
+    };
+
+    juniorNitro({
+      dashboard: { allowedGoogleDomains: ["sentry.io"] },
+    }).nitro.setup(nitro);
+
+    expect(rollupBeforeHooks).toHaveLength(1);
+    await rollupBeforeHooks[0]({}, { plugins: buildPlugins });
+    expect(buildPlugins).toHaveLength(1);
+    await buildPlugins[0]?.writeBundle?.();
+
+    await expect(
+      fs.readFile(
+        path.join(
+          tempRoot,
+          ".output",
+          "server",
+          "node_modules",
+          "@sentry",
+          "junior-dashboard",
+          "dist",
+          "client.js",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("client");
+    await expect(
+      fs.readFile(
+        path.join(
+          tempRoot,
+          ".output",
+          "server",
+          "node_modules",
+          "@sentry",
+          "junior-dashboard",
+          "dist",
+          "tailwind.css",
+        ),
+        "utf8",
+      ),
+    ).resolves.toBe("tailwind");
+  });
+
   it("rejects direct plugin sets with runtime code because they need a runtime import", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {

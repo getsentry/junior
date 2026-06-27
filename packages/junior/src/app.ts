@@ -1,3 +1,8 @@
+// Core owns host-level route ordering for Junior. Plugin app routes mount before
+// core runtime routes, so dashboard-enabled apps reject plugin route patterns
+// that can shadow dashboard/auth paths before the dashboard app is mounted.
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { Hono, type Context } from "hono";
 import {
   getConfigDefaults,
@@ -14,10 +19,13 @@ import {
 } from "@/chat/plugins/registry";
 import {
   type PluginRouteRegistration,
+  type PluginDashboardRouteRegistration,
+  getPluginDashboardRoutes,
   getPluginRoutes,
   setPlugins,
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
+import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,
@@ -27,6 +35,7 @@ import type {
   PluginRegistration,
   PluginRouteMethod,
 } from "@sentry/junior-plugin-api";
+import type { JuniorReporting } from "./reporting";
 import {
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
@@ -65,6 +74,8 @@ export type {
 } from "./plugins";
 
 export interface JuniorAppOptions {
+  /** Authenticated dashboard mounted by core when configured. */
+  dashboard?: JuniorDashboardOptions;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -90,11 +101,60 @@ export interface JuniorAppOptions {
   waitUntil?: WaitUntilFn;
 }
 
+export interface JuniorDashboardOptions {
+  /** Browser auth route prefix used by Better Auth. */
+  authPath?: string;
+  /** Require a dashboard browser session before serving dashboard pages and APIs. */
+  authRequired?: boolean;
+  /** Exact Google account emails allowed to open the dashboard. */
+  allowedEmails?: string[];
+  /** Google Workspace domains allowed to open the dashboard. */
+  allowedGoogleDomains?: string[];
+  /** Browser route prefix for the dashboard shell. */
+  basePath?: string;
+  /** Public deployment origin used for auth callbacks and external links. */
+  baseURL?: string;
+  /** Disable dashboard route mounting while preserving serializable config shape. */
+  disabled?: boolean;
+  /** Overlay dashboard visual-QA fixture conversations onto real reporting data. */
+  mockConversations?: boolean;
+  /** Reporting implementation used by dashboard APIs. Defaults to core reporting. */
+  reporting?: JuniorReporting;
+  /** Browser session lifetime in seconds. */
+  sessionMaxAgeSeconds?: number;
+  /** Additional trusted origins accepted by Better Auth. */
+  trustedOrigins?: string[];
+}
+
+interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
+  pluginRoutes?: PluginDashboardRouteRegistration[];
+}
+
+type JuniorVirtualDashboardOptions = Omit<JuniorDashboardOptions, "reporting">;
+
+interface DashboardApp {
+  fetch(request: Request): Promise<Response> | Response;
+}
+
+type CreateDashboardApp = (
+  options: JuniorDashboardRuntimeOptions,
+) => DashboardApp;
+
 interface JuniorVirtualConfig {
+  createDashboardApp?: CreateDashboardApp;
+  dashboard?: JuniorVirtualDashboardOptions;
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
   pluginRuntimeRegistrations: string[];
 }
+
+interface HostRouteRegistration {
+  handler(request: Request): Promise<Response> | Response;
+  method?: PluginRouteMethod | PluginRouteMethod[];
+  path: string;
+}
+
+const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
 
 /** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
 async function defaultWaitUntil(): Promise<WaitUntilFn> {
@@ -119,11 +179,15 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
+      createDashboardApp?: CreateDashboardApp;
+      dashboard?: JuniorVirtualDashboardOptions;
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
     return {
+      createDashboardApp: mod.createDashboardApp,
+      dashboard: mod.dashboard,
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
@@ -211,8 +275,224 @@ function validateBuildIncludesPluginRuntimeRegistrations(
   );
 }
 
-/** Mount plugin HTTP handlers before core routes claim those paths. */
-function mountPluginRoutes(app: Hono, routes: PluginRouteRegistration[]): void {
+async function createDashboardRouteRegistrations(args: {
+  dashboard: JuniorDashboardOptions | undefined;
+  createDashboardApp: CreateDashboardApp | undefined;
+  pluginRoutes: PluginDashboardRouteRegistration[];
+}): Promise<HostRouteRegistration[]> {
+  if (!args.dashboard || args.dashboard.disabled) {
+    return [];
+  }
+
+  const createDashboardApp =
+    args.createDashboardApp ?? (await loadDashboardAppFactory());
+  return dashboardRouteRegistrations({
+    dashboard: args.dashboard,
+    createDashboardApp,
+    pluginRoutes: args.pluginRoutes,
+  });
+}
+
+async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
+  try {
+    const appRequire = createRequire(`${process.cwd()}/package.json`);
+    const mod = await import(
+      pathToFileURL(appRequire.resolve(DASHBOARD_PACKAGE_NAME)).href
+    );
+    return dashboardAppFactoryFromModule(mod);
+  } catch (error) {
+    if (isMissingDashboardPackage(error)) {
+      throw new Error(
+        'createApp({ dashboard }) requires installing "@sentry/junior-dashboard"',
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
+function dashboardAppFactoryFromModule(mod: unknown): CreateDashboardApp {
+  if (
+    !mod ||
+    typeof mod !== "object" ||
+    typeof (mod as { createDashboardApp?: unknown }).createDashboardApp !==
+      "function"
+  ) {
+    throw new Error(
+      '@sentry/junior-dashboard must export a "createDashboardApp" function',
+    );
+  }
+  return (mod as { createDashboardApp: CreateDashboardApp }).createDashboardApp;
+}
+
+function isMissingDashboardPackage(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = (error as { code?: string }).code;
+  return (
+    (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
+    error.message.includes("@sentry/junior-dashboard")
+  );
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return end === value.length ? value : value.slice(0, end);
+}
+
+function normalizeDashboardPath(
+  path: string | undefined,
+  fallback: string,
+): string {
+  const value = path?.trim() || fallback;
+  const withSlash = value.startsWith("/") ? value : `/${value}`;
+  return stripTrailingSlashes(withSlash);
+}
+
+function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
+  const basePath = normalizeDashboardPath(dashboard.basePath, "/");
+  const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
+  const pagePaths =
+    basePath === "/"
+      ? [
+          "/",
+          "/conversations",
+          "/conversations/*",
+          "/plugins",
+          "/plugins/*",
+          "/sessions",
+          "/sessions/*",
+        ]
+      : [basePath, `${basePath}/*`];
+
+  return [
+    ...pagePaths,
+    "/favicon.ico",
+    "/api/dashboard",
+    "/api/dashboard/*",
+    authPath,
+    `${authPath}/*`,
+  ];
+}
+
+function routePrefixCoversPath(routePrefix: string, path: string): boolean {
+  return (
+    routePrefix === "/" ||
+    path === routePrefix ||
+    path.startsWith(`${routePrefix}/`)
+  );
+}
+
+function routeSegments(path: string): string[] {
+  return normalizeDashboardPath(path, "/").split("/").filter(Boolean);
+}
+
+function routeSegmentMatches(pattern: string, value: string): boolean {
+  return pattern === value || pattern === "*" || pattern.startsWith(":");
+}
+
+function routePatternMatchesConcretePath(
+  pattern: string,
+  concretePath: string,
+): boolean {
+  const patternSegments = routeSegments(pattern);
+  const pathSegments = routeSegments(concretePath);
+  for (let index = 0; index < patternSegments.length; index += 1) {
+    const segment = patternSegments[index];
+    if (segment === "**" || segment === "*") {
+      return true;
+    }
+    const value = pathSegments[index];
+    if (!value || !routeSegmentMatches(segment, value)) {
+      return false;
+    }
+  }
+  return patternSegments.length === pathSegments.length;
+}
+
+function routePatternExamples(routePath: string): string[] {
+  const normalized = normalizeDashboardPath(routePath, "/");
+  if (!normalized.endsWith("/*") && !normalized.endsWith("/**")) {
+    return [normalized];
+  }
+  const prefix = normalizeDashboardPath(
+    normalized.endsWith("/*")
+      ? normalized.slice(0, -2)
+      : normalized.slice(0, -3),
+    "/",
+  );
+  return [
+    prefix,
+    prefix === "/" ? "/__dashboard__" : `${prefix}/__dashboard__`,
+  ];
+}
+
+function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
+  if (
+    ownedPath.endsWith("/*") &&
+    routePrefixCoversPath(ownedPath.slice(0, -2), routePath)
+  ) {
+    return true;
+  }
+  return routePatternExamples(ownedPath).some((example) =>
+    routePatternMatchesConcretePath(routePath, example),
+  );
+}
+
+function dashboardOwnedRoutePath(
+  routePath: string,
+  dashboard: JuniorDashboardOptions,
+): boolean {
+  return dashboardHostRoutePaths(dashboard).some((path) =>
+    routePatternOverlaps(path, routePath),
+  );
+}
+
+function dashboardRouteRegistrations(args: {
+  dashboard: JuniorDashboardOptions;
+  createDashboardApp: CreateDashboardApp;
+  pluginRoutes: PluginDashboardRouteRegistration[];
+}): HostRouteRegistration[] {
+  let app: DashboardApp | undefined;
+  const fetch = (request: Request) => {
+    app ??= args.createDashboardApp({
+      ...args.dashboard,
+      pluginRoutes: args.pluginRoutes,
+    });
+    if (!app || typeof app.fetch !== "function") {
+      throw new Error("createDashboardApp() must return an app with fetch()");
+    }
+    return app.fetch(request);
+  };
+
+  return dashboardHostRoutePaths(args.dashboard).map((path) => ({
+    handler: fetch,
+    path,
+  }));
+}
+
+function validateDashboardRouteOwnership(args: {
+  dashboard: JuniorDashboardOptions | undefined;
+  routes: PluginRouteRegistration[];
+}): void {
+  if (!args.dashboard || args.dashboard.disabled) {
+    return;
+  }
+  for (const route of args.routes) {
+    if (dashboardOwnedRoutePath(route.path, args.dashboard)) {
+      throw new Error(
+        `Plugin "${route.pluginName}" route "${route.path}" conflicts with core dashboard routes`,
+      );
+    }
+  }
+}
+
+/** Mount HTTP handlers before core routes claim those paths. */
+function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   for (const route of routes) {
     const handler = (c: Context) => route.handler(c.req.raw);
     const methods = Array.isArray(route.method)
@@ -233,6 +513,7 @@ function mountPluginRoutes(app: Hono, routes: PluginRouteRegistration[]): void {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
+  const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
@@ -252,7 +533,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
+  const previousDashboardLinkOptions =
+    setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
+  let pluginDashboardRoutes: PluginDashboardRouteRegistration[] = [];
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
@@ -271,11 +555,16 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     pluginRoutes = getPluginRoutes();
+    validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
+    if (dashboard && !dashboard.disabled) {
+      pluginDashboardRoutes = getPluginDashboardRoutes();
+    }
   } catch (error) {
     setPluginCatalogConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     setSlackReactionConfig(previousSlackReactionConfig);
+    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
     throw error;
   }
 
@@ -308,7 +597,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
   });
 
-  mountPluginRoutes(app, pluginRoutes);
+  mountRoutes(app, pluginRoutes);
+  mountRoutes(
+    app,
+    await createDashboardRouteRegistrations({
+      dashboard,
+      createDashboardApp: virtualConfig?.createDashboardApp,
+      pluginRoutes: pluginDashboardRoutes,
+    }),
+  );
 
   app.get("/", () => healthGET());
   app.get("/health", () => healthGET());

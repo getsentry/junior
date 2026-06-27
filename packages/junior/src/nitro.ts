@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
+  copyDashboardAssets,
   copyAppAndPluginContent,
   copyIncludedFiles,
 } from "@/build/copy-build-content";
@@ -23,6 +24,12 @@ import {
   type JuniorPluginSet,
 } from "./plugins";
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
+import type { JuniorDashboardOptions } from "./app";
+
+export type JuniorNitroDashboardOptions = Omit<
+  JuniorDashboardOptions,
+  "reporting"
+>;
 
 export interface JuniorPluginModuleReference {
   /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */
@@ -38,6 +45,8 @@ export type JuniorNitroPluginSource =
 
 export interface JuniorNitroOptions {
   cwd?: string;
+  /** Authenticated dashboard configuration injected for createApp(). */
+  dashboard?: JuniorNitroDashboardOptions;
   maxDuration?: number;
   /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
   conversationWorkQueueTopic?: string;
@@ -86,6 +95,12 @@ function assertSerializableDirectPluginSet(pluginSet: JuniorPluginSet): void {
   throw new Error(
     `juniorNitro({ plugins }) cannot receive a direct defineJuniorPlugins(...) set with runtime plugin registration(s): ${pluginRuntimeNames.join(", ")}. Export the set from a runtime-safe plugin module and pass juniorNitro({ plugins: "./plugins" }) so createApp() can import the same registrations at runtime.`,
   );
+}
+
+function dashboardEnabled(
+  dashboard: JuniorNitroDashboardOptions | undefined,
+): boolean {
+  return Boolean(dashboard && !dashboard.disabled);
 }
 
 function runtimeModuleForResolvedPluginModule(
@@ -252,6 +267,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             : {}),
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
+          dashboard: options.dashboard,
         });
 
         const copyBuildContent = async () => {
@@ -263,6 +279,9 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             nitro.options.output.serverDir,
             compiledPluginCatalogConfig?.packages,
           );
+          if (dashboardEnabled(options.dashboard)) {
+            copyDashboardAssets(cwd, nitro.options.output.serverDir);
+          }
           copyIncludedFiles(
             cwd,
             nitro.options.output.serverDir,

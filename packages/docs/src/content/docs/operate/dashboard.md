@@ -22,32 +22,25 @@ Install the dashboard package next to `@sentry/junior`:
 pnpm add @sentry/junior-dashboard
 ```
 
-## Register the plugin
+## Configure the dashboard
 
-Register `juniorDashboardPlugin()` in the runtime-safe plugin set. Configure the
-Google Workspace domain that should be allowed to view the dashboard:
-
-```ts title="plugins.ts"
-import { defineJuniorPlugins } from "@sentry/junior";
-import { juniorDashboardPlugin } from "@sentry/junior-dashboard";
-
-export const plugins = defineJuniorPlugins([
-  juniorDashboardPlugin({
-    allowedGoogleDomains: ["sentry.io"],
-    trustedOrigins: ["https://<your-domain>"],
-  }),
-]);
-```
-
-`createApp()` reads that plugin set from Nitro's virtual config:
+Pass `dashboard` to `createApp()`. Configure the Google Workspace domain that
+should be allowed to view the dashboard:
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins";
 
-export default await createApp();
+export default await createApp({
+  dashboard: {
+    allowedGoogleDomains: ["sentry.io"],
+    trustedOrigins: ["https://<your-domain>"],
+  },
+  plugins,
+});
 ```
 
-Point the Junior Nitro module at the same plugin module:
+Point the Junior Nitro module at the same dashboard policy and plugin module:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
@@ -57,6 +50,10 @@ export default defineConfig({
   preset: "vercel",
   modules: [
     juniorNitro({
+      dashboard: {
+        allowedGoogleDomains: ["sentry.io"],
+        trustedOrigins: ["https://<your-domain>"],
+      },
       plugins: "./plugins",
     }),
   ],
@@ -94,6 +91,7 @@ The current dashboard API slices are:
 | `/api/dashboard/health`                      | Health status for the command center pulse.                                            |
 | `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.                                        |
 | `/api/dashboard/plugins`                     | Loaded plugin list.                                                                    |
+| `/api/dashboard/plugins/:plugin/*`           | Authenticated, namespaced dashboard API routes contributed by enabled plugins.         |
 | `/api/dashboard/skills`                      | Discovered skill list.                                                                 |
 | `/api/dashboard/sessions`                    | Recent conversation feed from the conversation activity index.                         |
 | `/api/dashboard/conversation-stats`          | Aggregate conversation stats, people/place leaderboards, and sampling metadata.        |
@@ -104,10 +102,10 @@ The current dashboard API slices are:
 
 The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health, aggregate conversation stats, and recent run durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and run/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
 The conversation feed is backed by the bounded conversation activity index. Conversation detail joins run metadata and transcript data from expiring session stores, so old transcripts disappear when session state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
-The conversation stats endpoint is separate from the recent feed and includes `sampleLimit`, `sampleSize`, and `truncated` fields so the UI can mark bounded aggregates.
+The conversation stats endpoint is separate from the recent feed and includes `sampleLimit`, `sampleSize`, and `truncated` fields so the UI can mark bounded aggregates. Stats are built from durable conversation-index records for fast SQL-backed counts, locations, requesters, and latest status. Run duration and token totals appear on feed and detail responses until Junior stores durable SQL run summaries.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
 
-For local dashboard visual QA, pass `mockConversations: true` to `juniorDashboardPlugin()` or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real session records.
+For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real session records.
 
 ## Configure Google auth
 
@@ -125,7 +123,7 @@ Set the required environment variables:
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
 
 Dashboard cookies are signed with `JUNIOR_SECRET` by default. Set `BETTER_AUTH_SECRET` only when you need a separate rotation boundary for browser sessions.
-Dashboard callbacks use `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `BETTER_AUTH_URL` only when dashboard auth needs a different public origin.
+Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev by default. Set `BETTER_AUTH_URL` only when dashboard auth needs a different public origin. The same public origin is used for Slack footer links to dashboard conversation pages.
 
 ## Verify
 

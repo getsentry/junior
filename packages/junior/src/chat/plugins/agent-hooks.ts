@@ -8,6 +8,7 @@ import type {
   PluginOperationalReport,
   PluginOperationalReportContent,
   PluginOperationalTone,
+  PluginRouteApp,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -52,6 +53,11 @@ export interface ToolHookResult {
 }
 
 export interface PluginRouteRegistration extends PluginRoute {
+  pluginName: string;
+}
+
+export interface PluginDashboardRouteRegistration {
+  app: PluginRouteApp;
   pluginName: string;
 }
 
@@ -544,6 +550,33 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
         pluginName,
       });
     }
+  }
+
+  return routes;
+}
+
+/** Collect dashboard-scoped route apps exposed by plugins. */
+export function getPluginDashboardRoutes(): PluginDashboardRouteRegistration[] {
+  const routes: PluginDashboardRouteRegistration[] = [];
+
+  for (const plugin of getPlugins()) {
+    const pluginName = plugin.manifest.name;
+    const hook = plugin.hooks?.dashboardRoutes;
+    if (!hook) {
+      continue;
+    }
+    const app = hook({
+      ...basePluginContext(plugin),
+    });
+    if (app === undefined) {
+      continue;
+    }
+    if (!isRecord(app) || typeof app.fetch !== "function") {
+      throw new Error(
+        `Plugin dashboardRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
+      );
+    }
+    routes.push({ app, pluginName });
   }
 
   return routes;

@@ -1,8 +1,8 @@
 export { createApp } from "./app";
-export type { JuniorAppOptions } from "./app";
+export type { JuniorAppOptions, JuniorDashboardOptions } from "./app";
 export { initSentry } from "./instrumentation";
 export { juniorNitro } from "./nitro";
-export type { JuniorNitroOptions } from "./nitro";
+export type { JuniorNitroDashboardOptions, JuniorNitroOptions } from "./nitro";
 export { defineJuniorPlugins } from "./plugins";
 export type {
   JuniorPluginInput,

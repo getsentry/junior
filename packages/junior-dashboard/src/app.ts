@@ -38,6 +38,17 @@ export interface JuniorDashboardOptions {
   mockConversations?: boolean;
 }
 
+interface DashboardRuntimeOptions extends JuniorDashboardOptions {
+  pluginRoutes?: DashboardPluginRoute[];
+}
+
+interface DashboardPluginRoute {
+  app: {
+    fetch(request: Request): Promise<Response> | Response;
+  };
+  pluginName: string;
+}
+
 type Variables = {
   dashboardSession: DashboardSession;
 };
@@ -68,6 +79,66 @@ function normalizeValues(values: string[] | undefined): string[] {
       (values ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean),
     ),
   ];
+}
+
+/** Read dashboard list env vars as comma-separated strings or JSON arrays. */
+function readEnvList(name: string): string[] | undefined {
+  const value = process.env[name];
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  if (value.trim().startsWith("[")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      throw new Error(`${name} must be a JSON string array`, {
+        cause: error,
+      });
+    }
+    if (
+      !Array.isArray(parsed) ||
+      parsed.some((item) => typeof item !== "string")
+    ) {
+      throw new Error(`${name} must be a JSON string array`);
+    }
+    return parsed;
+  }
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/** Read dashboard boolean env vars; only explicit true/false values apply. */
+function readEnvFlag(name: string): boolean | undefined {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    return undefined;
+  }
+  return value === "true" ? true : value === "false" ? false : undefined;
+}
+
+function resolveDashboardOptions(
+  options: DashboardRuntimeOptions,
+): DashboardRuntimeOptions {
+  return {
+    ...options,
+    authRequired:
+      options.authRequired ?? readEnvFlag("JUNIOR_DASHBOARD_AUTH_REQUIRED"),
+    allowedGoogleDomains:
+      options.allowedGoogleDomains ??
+      readEnvList("JUNIOR_DASHBOARD_GOOGLE_DOMAINS"),
+    allowedEmails:
+      options.allowedEmails ?? readEnvList("JUNIOR_DASHBOARD_ALLOWED_EMAILS"),
+    trustedOrigins:
+      options.trustedOrigins ?? readEnvList("JUNIOR_DASHBOARD_TRUSTED_ORIGINS"),
+    mockConversations:
+      options.mockConversations ??
+      readEnvFlag("JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"),
+  };
 }
 
 function isJsonRoute(pathname: string): boolean {
@@ -397,10 +468,26 @@ function renderFavicon(): Response {
   );
 }
 
+function pluginRoutePrefix(pluginName: string): string {
+  return `/api/dashboard/plugins/${pluginName}`;
+}
+
+/** Strip the core-owned plugin prefix before dispatching to a plugin app. */
+function pluginRouteRequest(request: Request, prefix: string): Request {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  const nextPath =
+    pathname === prefix ? "/" : pathname.slice(prefix.length) || "/";
+  url.pathname = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
+  return new Request(url, request);
+}
+
 /** Create the authenticated dashboard Hono app mounted by Nitro. */
 export function createDashboardApp(
-  options: JuniorDashboardOptions,
+  rawOptions: DashboardRuntimeOptions,
 ): Hono<{ Variables: Variables }> {
+  const options = resolveDashboardOptions(rawOptions);
+
   if (process.env.SENTRY_DSN?.trim()) {
     initSentry();
   }
@@ -518,6 +605,13 @@ export function createDashboardApp(
   app.get("/api/dashboard/sessions", async () => {
     return Response.json(await reporting.getSessions());
   });
+  for (const route of options.pluginRoutes ?? []) {
+    const prefix = pluginRoutePrefix(route.pluginName);
+    const handler = (c: Context<{ Variables: Variables }>) =>
+      route.app.fetch(pluginRouteRequest(c.req.raw, prefix));
+    app.all(prefix, handler);
+    app.all(`${prefix}/*`, handler);
+  }
   app.get("/api/dashboard/conversation-stats", async () => {
     try {
       return Response.json(await readConversationStats(reporting));

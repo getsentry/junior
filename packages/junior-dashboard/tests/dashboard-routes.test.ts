@@ -1,10 +1,8 @@
-import * as fs from "node:fs";
-import * as os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { Hono } from "hono";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import type { JuniorReporting } from "@sentry/junior/reporting";
-import { juniorDashboardPlugin } from "../src/index";
 import { createDashboardApp } from "../src/app";
 import {
   createDashboardAuth,
@@ -13,8 +11,6 @@ import {
 } from "../src/auth";
 import { filterConversations } from "../src/client/format";
 import type { Conversation } from "../src/client/types";
-import { resolveDashboardConfig } from "../src/config";
-import { juniorDashboardNitro } from "../src/nitro";
 
 const dashboardEnvNames = [
   "BETTER_AUTH_SECRET",
@@ -33,35 +29,6 @@ const dashboardEnvNames = [
   "SENTRY_DSN",
   "SENTRY_ORG_SLUG",
 ] as const;
-
-function nitroFixture(routes: Record<string, { handler: string }> = {}) {
-  const compiledHooks: Array<() => void> = [];
-  const serverDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "junior-dashboard-nitro-"),
-  );
-
-  return {
-    compiledHooks,
-    serverDir,
-    nitro: {
-      hooks: {
-        hook(name: string, hook: () => void) {
-          if (name === "compiled") {
-            compiledHooks.push(hook);
-          }
-        },
-      },
-      options: {
-        output: { serverDir },
-        routes,
-        virtual: {} as Record<string, string>,
-      },
-    },
-    [Symbol.dispose]() {
-      fs.rmSync(serverDir, { force: true, recursive: true });
-    },
-  };
-}
 
 function reporting(): JuniorReporting {
   return {
@@ -241,8 +208,19 @@ function dashboard(
   });
 }
 
+function mockDashboardVirtualConfig() {
+  vi.doMock("#junior/config", () => ({
+    createDashboardApp,
+    dashboard: undefined,
+    pluginRuntimeRegistrations: [],
+    pluginSet: undefined,
+    plugins: undefined,
+  }));
+}
+
 describe("dashboard routes", () => {
   afterEach(() => {
+    vi.doUnmock("#junior/config");
     for (const name of dashboardEnvNames) {
       delete process.env[name];
     }
@@ -963,15 +941,15 @@ describe("dashboard routes", () => {
     expect(oldInfo.status).toBe(404);
   });
 
-  it("mounts dashboard routes through the plugin array", async () => {
+  it("mounts dashboard routes through core app config", async () => {
+    mockDashboardVirtualConfig();
     const app = await createApp({
-      plugins: defineJuniorPlugins([
-        juniorDashboardPlugin({
-          authRequired: false,
-          allowedGoogleDomains: ["sentry.io"],
-          reporting: reporting(),
-        }),
-      ]),
+      dashboard: {
+        authRequired: false,
+        allowedGoogleDomains: ["sentry.io"],
+        reporting: reporting(),
+      },
+      plugins: defineJuniorPlugins([]),
     });
 
     const dashboard = await app.fetch(new Request("http://localhost/"));
@@ -994,67 +972,96 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("registers dashboard Nitro routes before an existing catch-all route", () => {
-    using fixture = nitroFixture({
-      "/**": { handler: "./server.ts" },
+  it("mounts plugin dashboard route apps under the authenticated namespace", async () => {
+    mockDashboardVirtualConfig();
+    const pluginApp = new Hono();
+    pluginApp.get("/memories", (c) => {
+      return c.json({ path: c.req.path, ok: true });
     });
 
-    juniorDashboardNitro({
-      allowedGoogleDomains: ["sentry.io"],
-      mockConversations: true,
-      trustedOrigins: ["https://junior.example.com"],
-    }).nitro.setup(fixture.nitro);
-
-    expect(Object.keys(fixture.nitro.options.routes).slice(0, 9)).toEqual([
-      "/",
-      "/conversations",
-      "/conversations/**",
-      "/plugins",
-      "/sessions",
-      "/sessions/**",
-      "/api/dashboard/**",
-      "/api/auth",
-      "/api/auth/**",
-    ]);
-    expect(fixture.nitro.options.routes["/**"]).toEqual({
-      handler: "./server.ts",
+    const app = await createApp({
+      dashboard: {
+        authRequired: false,
+        allowedGoogleDomains: ["sentry.io"],
+        reporting: reporting(),
+      },
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          manifest: {
+            name: "memory",
+            displayName: "Memory",
+            description: "Memory plugin",
+          },
+          hooks: {
+            dashboardRoutes() {
+              return pluginApp;
+            },
+          },
+        }),
+      ]),
     });
-    expect(fixture.nitro.options.virtual["#junior-dashboard/config"]).toContain(
-      "sentry.io",
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
     );
-    expect(fixture.nitro.options.virtual["#junior-dashboard/config"]).toContain(
-      "mockConversations",
-    );
-    expect(
-      fixture.nitro.options.virtual["#junior-dashboard/handler"],
-    ).toContain("sentry.io");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      path: "/memories",
+      ok: true,
+    });
+
+    const health = await app.fetch(new Request("http://localhost/health"));
+    expect(health.status).toBe(200);
   });
 
-  it("copies dashboard assets into Nitro server output", () => {
-    using fixture = nitroFixture();
+  it("protects plugin dashboard route apps with dashboard auth", async () => {
+    const pluginApp = new Hono();
+    pluginApp.get("/memories", (c) => {
+      return c.json({ path: c.req.path, ok: true });
+    });
 
-    juniorDashboardNitro({
+    const unauthenticated = createDashboardApp({
       allowedGoogleDomains: ["sentry.io"],
-      trustedOrigins: ["https://junior.example.com"],
-    }).nitro.setup(fixture.nitro);
+      auth: auth(null),
+      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      reporting: reporting(),
+    });
 
-    expect(fixture.compiledHooks).toHaveLength(1);
-    fixture.compiledHooks[0]();
+    const denied = await unauthenticated.fetch(
+      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
+    );
 
-    for (const fileName of ["client.js", "tailwind.css"]) {
-      const outputPath = path.join(
-        fixture.serverDir,
-        "node_modules",
-        "@sentry",
-        "junior-dashboard",
-        "dist",
-        fileName,
-      );
-      expect(fs.statSync(outputPath).size).toBeGreaterThan(0);
-    }
+    expect(denied.status).toBe(401);
+    await expect(denied.json()).resolves.toEqual({
+      error: "unauthenticated",
+    });
+
+    const authenticated = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      }),
+      pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
+      reporting: reporting(),
+    });
+
+    const allowed = await authenticated.fetch(
+      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
+    );
+
+    expect(allowed.status).toBe(200);
+    await expect(allowed.json()).resolves.toEqual({
+      path: "/memories",
+      ok: true,
+    });
   });
 
-  it("resolves auth policy from env when Nitro virtual config is unavailable", async () => {
+  it("resolves auth policy from env when dashboard options omit allowlists", async () => {
     process.env.JUNIOR_DASHBOARD_GOOGLE_DOMAINS = "sentry.io, example.com";
     process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = JSON.stringify([
       "admin@example.com",
@@ -1062,21 +1069,38 @@ describe("dashboard routes", () => {
     process.env.JUNIOR_DASHBOARD_TRUSTED_ORIGINS = "https://junior.example.com";
     process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
 
-    await expect(resolveDashboardConfig()).resolves.toEqual({
+    const app = createDashboardApp({
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+        },
+      }),
+      reporting: reporting(),
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/dashboard/config"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      allowedEmailCount: 1,
+      allowedGoogleDomainCount: 2,
       authRequired: true,
-      allowedGoogleDomains: ["sentry.io", "example.com"],
-      allowedEmails: ["admin@example.com"],
-      trustedOrigins: ["https://junior.example.com"],
-      mockConversations: true,
     });
   });
 
   it("fails clearly when list env JSON is malformed", async () => {
     process.env.JUNIOR_DASHBOARD_ALLOWED_EMAILS = '["admin@example.com"';
 
-    await expect(resolveDashboardConfig()).rejects.toThrow(
-      "JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array",
-    );
+    expect(() =>
+      createDashboardApp({
+        authRequired: false,
+        reporting: reporting(),
+      }),
+    ).toThrow("JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array");
   });
 
   it("keeps active conversations in the default recent filter", () => {

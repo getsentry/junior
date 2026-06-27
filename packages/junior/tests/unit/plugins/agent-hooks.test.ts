@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   createPluginHookRunner,
+  getPluginDashboardRoutes,
   getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
@@ -649,6 +650,61 @@ describe("agent plugin hooks", () => {
     try {
       expect(() => getPluginRoutes()).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',
+      );
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("collects dashboard route apps from configured plugins", async () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          dashboardRoutes() {
+            return {
+              fetch: () => new Response("dashboard demo"),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const routes = getPluginDashboardRoutes();
+
+      expect(routes).toHaveLength(1);
+      expect(routes[0]?.pluginName).toBe("agent-demo");
+      const response = await routes[0]!.app.fetch(
+        new Request("http://localhost/demo"),
+      );
+      await expect(response.text()).resolves.toBe("dashboard demo");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("rejects invalid dashboard route apps from configured plugins", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          dashboardRoutes() {
+            return {} as never;
+          },
+        },
+      }),
+    ]);
+    try {
+      expect(() => getPluginDashboardRoutes()).toThrow(
+        'Plugin dashboardRoutes hook from plugin "agent-demo" must return a fetch-compatible app',
       );
     } finally {
       setPlugins(previous);

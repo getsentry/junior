@@ -113,7 +113,13 @@ export interface PluginRoute {
   path: string;
 }
 
+export type PluginRouteApp = {
+  fetch(request: Request): Promise<Response> | Response;
+};
+
 export interface RouteRegistrationHookContext extends PluginContext {}
+
+export interface DashboardRouteRegistrationHookContext extends PluginContext {}
 
 export interface SlackConversationLink {
   url: string;

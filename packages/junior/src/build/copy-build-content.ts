@@ -4,6 +4,9 @@ import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-di
 import { globToRegex } from "@/build/glob-to-regex";
 import { isValidPackageName, resolvePackageDir } from "@/package-resolution";
 
+const DASHBOARD_PACKAGE_NAME = "@sentry/junior-dashboard";
+const DASHBOARD_ASSET_NAMES = ["client.js", "tailwind.css"] as const;
+
 /** Copy app and declared plugin package content into the server output. */
 export function copyAppAndPluginContent(
   cwd: string,
@@ -40,6 +43,30 @@ export function copyAppAndPluginContent(
         path.join(pkg.dir, "migrations"),
       );
     }
+  }
+}
+
+/** Copy dashboard browser assets when core dashboard routes are enabled. */
+export function copyDashboardAssets(cwd: string, serverRoot: string): void {
+  const packageDir = resolvePackageDir(cwd, DASHBOARD_PACKAGE_NAME);
+  if (!packageDir) {
+    throw new Error(
+      `createApp({ dashboard }) requires installing "${DASHBOARD_PACKAGE_NAME}"`,
+    );
+  }
+
+  for (const fileName of DASHBOARD_ASSET_NAMES) {
+    const source = dashboardAssetPath(packageDir, fileName);
+    copyIfExists(
+      source,
+      path.join(
+        serverRoot,
+        "node_modules",
+        DASHBOARD_PACKAGE_NAME,
+        "dist",
+        fileName,
+      ),
+    );
   }
 }
 
@@ -155,6 +182,23 @@ function copyIfExists(source: string, target: string): boolean {
   mkdirSync(path.dirname(target), { recursive: true });
   cpSync(source, target, { recursive: true });
   return true;
+}
+
+function dashboardAssetPath(packageDir: string, fileName: string): string {
+  const candidates = [
+    path.join(packageDir, fileName),
+    path.join(packageDir, "dist", fileName),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Junior dashboard asset ${fileName} was not built; run pnpm --filter @sentry/junior-dashboard build before building Nitro`,
+  );
 }
 
 function copyRootIntoServerOutput(

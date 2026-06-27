@@ -38,4 +38,31 @@ describe("renderVirtualConfig", () => {
       'import juniorRuntimePluginSet from "@acme/junior-plugins";',
     );
   });
+
+  it("imports the dashboard app factory when dashboard config is present", () => {
+    const code = renderVirtualConfig({
+      dashboard: {
+        allowedGoogleDomains: ["sentry.io"],
+      },
+    });
+
+    expect(code).toContain(
+      'import { createDashboardApp as juniorCreateDashboardApp } from "@sentry/junior-dashboard";',
+    );
+    expect(code).toContain(
+      'export const dashboard = {"allowedGoogleDomains":["sentry.io"]};',
+    );
+  });
+
+  it("does not import the dashboard route factory when dashboard config is disabled", () => {
+    const code = renderVirtualConfig({
+      dashboard: {
+        disabled: true,
+      },
+    });
+
+    expect(code).not.toContain("@sentry/junior-dashboard");
+    expect(code).toContain("export const createDashboardApp = undefined;");
+    expect(code).toContain('export const dashboard = {"disabled":true};');
+  });
 });

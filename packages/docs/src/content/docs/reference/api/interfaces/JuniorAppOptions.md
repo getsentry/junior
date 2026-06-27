@@ -5,7 +5,7 @@ prev: false
 title: "JuniorAppOptions"
 ---
 
-Defined in: [junior/src/app.ts:67](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L67)
+Defined in: [junior/src/app.ts:76](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L76)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/app.ts:67](https://github.com/getsentry/junior/blob/main
 
 > `optional` **configDefaults?**: `Record`\<`string`, `unknown`\>
 
-Defined in: [junior/src/app.ts:76](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L76)
+Defined in: [junior/src/app.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L87)
 
 Install-wide provider defaults (`provider.key` format). Channel overrides take precedence.
 
@@ -23,9 +23,19 @@ Install-wide provider defaults (`provider.key` format). Channel overrides take p
 
 > `optional` **conversationWork?**: `VercelConversationWorkCallbackOptions`
 
-Defined in: [junior/src/app.ts:78](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L78)
+Defined in: [junior/src/app.ts:89](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L89)
 
 Queue consumer wiring for the durable conversation worker.
+
+---
+
+### dashboard?
+
+> `optional` **dashboard?**: [`JuniorDashboardOptions`](/reference/api/interfaces/juniordashboardoptions/)
+
+Defined in: [junior/src/app.ts:78](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L78)
+
+Authenticated dashboard mounted by core when configured.
 
 ---
 
@@ -33,7 +43,7 @@ Queue consumer wiring for the durable conversation worker.
 
 > `optional` **plugins?**: [`JuniorPluginSet`](/reference/api/interfaces/juniorpluginset/)
 
-Defined in: [junior/src/app.ts:80](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L80)
+Defined in: [junior/src/app.ts:91](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L91)
 
 Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin module.
 
@@ -43,7 +53,7 @@ Direct plugin set override. Usually omitted when `juniorNitro()` uses a plugin m
 
 > `optional` **sandbox?**: `object`
 
-Defined in: [junior/src/app.ts:82](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L82)
+Defined in: [junior/src/app.ts:93](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L93)
 
 Sandbox execution options.
 
@@ -61,7 +71,7 @@ Entries may be exact domains or leading wildcard domains such as
 
 > `optional` **slack?**: `object`
 
-Defined in: [junior/src/app.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L69)
+Defined in: [junior/src/app.ts:80](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L80)
 
 Slack-specific overrides applied after env parsing.
 
@@ -83,4 +93,4 @@ Slack emoji shown while Junior is processing. Defaults to `eyes`.
 
 > `optional` **waitUntil?**: `WaitUntilFn`
 
-Defined in: [junior/src/app.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L90)
+Defined in: [junior/src/app.ts:101](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L101)

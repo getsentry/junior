@@ -160,6 +160,18 @@ request-time runtime hooks and must not dispatch agent work.
 
 Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
 
+Plugins may provide `dashboardRoutes` to mount a Hono app or fetch-compatible
+app under Junior's authenticated dashboard API namespace. Core owns the mount
+path and auth boundary:
+
+```text
+/api/dashboard/plugins/:pluginName/*
+```
+
+Dashboard route apps must not claim app-global routes. They are only available
+when the core dashboard is enabled and inherit the dashboard's browser-session
+authorization policy.
+
 Plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
 
 ## Security Properties

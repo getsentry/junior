@@ -15,7 +15,8 @@ Define Junior's authenticated dashboard route, browser-session auth model, and r
 - Better Auth configuration for browser sessions.
 - Google domain and email authorization policy.
 - In-process reporting interfaces exported by `@sentry/junior`.
-- Plugin route integration for mounting dashboard routes into Junior's Hono app.
+- Core route integration for mounting dashboard routes into Junior's Hono app.
+- Authenticated, namespaced plugin dashboard API route integration.
 
 ## Non-Goals
 
@@ -38,9 +39,7 @@ packages/junior-dashboard/
   src/auth.ts
   src/client/**
   src/config.ts
-  src/handler.ts
   src/index.ts
-  src/nitro.ts
   src/url.ts
 ```
 
@@ -65,32 +64,11 @@ export function createJuniorReporting(): JuniorReporting;
 
 Every exported reporting function must have a brief JSDoc comment explaining why the data is exposed.
 
-`@sentry/junior-dashboard/nitro` exports a compatibility Nitro helper for
-existing deployments:
+`@sentry/junior` accepts dashboard configuration in `createApp()` and
+`juniorNitro()`:
 
 ```ts
-export interface JuniorDashboardNitroOptions {
-  basePath?: string;
-  authPath?: string;
-  authRequired?: boolean;
-  allowedGoogleDomains?: string[];
-  allowedEmails?: string[];
-  trustedOrigins?: string[];
-  sessionMaxAgeSeconds?: number;
-  mockConversations?: boolean;
-  disabled?: boolean;
-}
-
-export function juniorDashboardNitro(options: JuniorDashboardNitroOptions): {
-  nitro: { setup(nitro: unknown): void };
-};
-```
-
-`@sentry/junior-dashboard` exports the plugin factory used by normal
-dashboard deployments:
-
-```ts
-export interface JuniorDashboardPluginOptions {
+export interface JuniorDashboardOptions {
   basePath?: string;
   baseURL?: string;
   authPath?: string;
@@ -103,16 +81,18 @@ export interface JuniorDashboardPluginOptions {
   disabled?: boolean;
 }
 
-export function juniorDashboardPlugin(
-  options?: JuniorDashboardPluginOptions,
-): PluginRegistration;
+export async function createApp(options?: {
+  dashboard?: JuniorDashboardOptions;
+}): Promise<Hono>;
+
+export function juniorNitro(options?: { dashboard?: JuniorDashboardOptions }): {
+  nitro: { setup(nitro: unknown): void };
+};
 ```
 
-The plugin factory is the normal dashboard integration path. When registered
-through a `defineJuniorPlugins([juniorDashboardPlugin(...)])` plugin set, it
-mounts the dashboard/auth HTTP routes and supplies dashboard conversation URLs
-for finalized Slack reply footers. It must not expose dashboard data or tools to
-agent runs.
+The core dashboard option is the normal dashboard integration path. It mounts
+the dashboard/auth HTTP routes once for the app. Dashboard route setup must not
+expose dashboard data or tools to agent runs.
 
 `authRequired` defaults to `true`. Setting `authRequired: false` is only for explicit local/demo deployments and must bypass dashboard auth only for dashboard routes. Production configuration must not silently disable dashboard auth.
 
@@ -151,6 +131,7 @@ Dashboard JSON APIs are split by view concern:
 | `GET /api/dashboard/sessions`                    | Compatibility conversation feed from `conversation:by-activity`.   |
 | `GET /api/dashboard/conversation-stats`          | Aggregate conversation stats, leaderboards, and sampling metadata. |
 | `GET /api/dashboard/plugin-reports`              | Sanitized plugin operational summaries.                            |
+| `/api/dashboard/plugins/:plugin/**`              | Authenticated plugin-contributed dashboard APIs.                   |
 | `GET /api/dashboard/conversations/:conversation` | Conversation transcript from expiring session logs.                |
 | `GET /api/dashboard/config`                      | Safe config counts, timezone, and feature signals.                 |
 | `GET /api/dashboard/me`                          | Signed-in dashboard identity.                                      |
@@ -195,8 +176,8 @@ Required environment/config inputs when dashboard auth is enabled:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - dashboard origin or trusted origins
-- `allowedGoogleDomains` from Nitro config or `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`
-- optional `allowedEmails` from Nitro config or `JUNIOR_DASHBOARD_ALLOWED_EMAILS`
+- `allowedGoogleDomains` from dashboard config or `JUNIOR_DASHBOARD_GOOGLE_DOMAINS`
+- optional `allowedEmails` from dashboard config or `JUNIOR_DASHBOARD_ALLOWED_EMAILS`
 - optional `JUNIOR_DASHBOARD_AUTH_REQUIRED=false` for explicit local auth bypass
 - optional `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for explicit local/demo visual-QA fixtures
 
@@ -291,6 +272,10 @@ conversation-detail and stats reports. `truncated` means the report reached the
 sample cap and should be treated as bounded, even when the backing index cannot
 prove an additional record exists. A stats-reporting failure must not make the
 core dashboard health, conversation feed, or plugin inventory unavailable.
+Stats reports are conversation-index aggregates. They count conversations,
+latest status, requester, and location from durable conversation records.
+Duration and token totals stay on feed/detail run reports until the SQL model
+has a durable run-summary table.
 
 ### Plugin Operational Reports
 
@@ -308,37 +293,63 @@ The dashboard renders plugin reports generically. The dashboard package must
 not import scheduler or other plugin implementation modules to read their
 private state.
 
-## Plugin Route Integration
+## Core Route Integration
 
-`juniorDashboardPlugin()` mounts dashboard routes into the same Hono app returned by `createApp()`.
+`createApp({ dashboard })` mounts dashboard routes into the same Hono app
+returned by `createApp()`.
 
-The dashboard plugin must:
+The dashboard route integration must:
 
-1. Register only route-prefixed dashboard/auth handlers through the plugin `routes` hook.
+1. Register only route-prefixed dashboard/auth handlers.
 2. Avoid global middleware that can intercept Junior runtime routes.
 3. Register dashboard/auth routes with higher precedence than Junior's built-in `/` health route and runtime API routes.
 4. Keep Slack webhook, provider OAuth callback, internal, sandbox egress, and `/health` routes owned by Junior core.
-5. Build the Slack footer dashboard URL from the same `basePath` and `baseURL` configuration used by dashboard route/auth setup.
 
 Apps should configure the dashboard explicitly:
 
 ```ts
-export const plugins = defineJuniorPlugins([
-  juniorDashboardPlugin({
+export default await createApp({
+  dashboard: {
     authPath: "/api/auth",
     allowedGoogleDomains: ["sentry.io"],
-  }),
-]);
-
-export default defineConfig({
-  preset: "vercel",
-  modules: [juniorNitro({ plugins: "./plugins" })],
+  },
+  plugins,
 });
 ```
 
-`juniorDashboardNitro()` is retained for compatibility with existing Nitro apps.
-It must not be required for dashboard route registration or dashboard asset
-serving.
+```ts
+export default defineConfig({
+  preset: "vercel",
+  modules: [
+    juniorNitro({
+      dashboard: {
+        authPath: "/api/auth",
+        allowedGoogleDomains: ["sentry.io"],
+      },
+      plugins: "./plugins",
+    }),
+  ],
+});
+```
+
+Dashboard route registration goes through `createApp({ dashboard })`.
+`juniorNitro({ dashboard })` injects serializable dashboard config and copies
+dashboard assets for Nitro deployments. The dashboard package must not expose a
+separate plugin or Nitro compatibility mount.
+
+### Plugin Dashboard API Routes
+
+Plugins may expose a dashboard-scoped `dashboardRoutes(ctx)` hook that returns a
+Hono app or fetch-compatible app. Core mounts the app under:
+
+```text
+/api/dashboard/plugins/:pluginName/*
+```
+
+Core owns the path prefix and dashboard auth middleware. Plugin dashboard route
+apps receive host plugin context through the hook and must not claim
+app-global routes such as `/`, `/api/auth/*`, `/api/internal/*`,
+`/api/webhooks/*`, or `/health`.
 
 ## Failure Model
 
@@ -356,7 +367,7 @@ serving.
 3. Dashboard sessions do not grant provider credentials or Slack permissions.
 4. Dashboard APIs never return secret-bearing runtime values.
 5. Browser session cookies are never model-visible and never passed into sandbox execution.
-6. The dashboard package is not exposed to agent runs; the plugin may only provide dashboard/auth route handlers and the Slack footer conversation link hook.
+6. The dashboard package is not exposed to agent runs; plugins may only provide dashboard-scoped API route apps through the dashboard route hook.
 
 ## Observability
 
@@ -382,7 +393,7 @@ Dashboard implementation requires integration tests for:
 
 1. unauthenticated `GET /` starts the Better Auth login flow when the dashboard package is mounted.
 2. `GET /health` returns public minimal health JSON.
-3. the dashboard plugin does not intercept Junior runtime routes when mounted at `/`.
+3. the dashboard does not intercept Junior runtime routes when mounted at `/`.
 4. unauthenticated `GET /api/dashboard/info` does not return diagnostics.
 5. authenticated allowed-domain users can read `/api/dashboard/info`.
 6. authenticated wrong-domain users receive `403`.

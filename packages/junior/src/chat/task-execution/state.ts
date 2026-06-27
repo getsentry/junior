@@ -56,6 +56,7 @@ export type Source =
 
 export type ExecutionStatus =
   | "awaiting_resume"
+  | "failed"
   | "idle"
   | "pending"
   | "running";
@@ -247,6 +248,7 @@ function normalizeSource(value: unknown): Source | undefined {
 function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
   if (
     value === "awaiting_resume" ||
+    value === "failed" ||
     value === "idle" ||
     value === "pending" ||
     value === "running"
@@ -496,9 +498,19 @@ function pendingMessages(conversation: Conversation): InboundMessage[] {
   return [...conversation.execution.pendingMessages].sort(compareMessages);
 }
 
+// Failed and idle executions are terminal for work selection, but a new pending
+// message reopens the conversation so local/no-SQL reporting keeps progressing.
+function isRunnableStatus(status: ExecutionStatus): boolean {
+  return status !== "failed" && status !== "idle";
+}
+
+function isTerminalStatus(status: ExecutionStatus): boolean {
+  return status === "failed" || status === "idle";
+}
+
 function hasRunnableWork(conversation: Conversation): boolean {
   return (
-    conversation.execution.status !== "idle" ||
+    isRunnableStatus(conversation.execution.status) ||
     pendingMessages(conversation).length > 0
   );
 }
@@ -511,7 +523,7 @@ function executionWithPendingMessages(
   const status =
     execution.status === "idle" && execution.lease
       ? "running"
-      : execution.status === "idle" && pendingMessages.length > 0
+      : isTerminalStatus(execution.status) && pendingMessages.length > 0
         ? "pending"
         : execution.status;
   return {
@@ -1182,6 +1194,80 @@ export async function recordConversationActivity(args: {
         current.execution.pendingMessages,
       ),
     });
+  });
+}
+
+/** Store task-execution metadata for local/no-SQL reporting. */
+export async function recordConversationExecution(args: {
+  channelName?: string;
+  conversationId: string;
+  createdAtMs: number;
+  destination?: Destination;
+  execution: {
+    lastCheckpointAtMs?: number;
+    lastEnqueuedAtMs?: number;
+    runId?: string;
+    status: ExecutionStatus;
+    updatedAtMs?: number;
+  };
+  lastActivityAtMs: number;
+  requester?: StoredSlackRequester;
+  source?: Source;
+  state?: StateAdapter;
+  title?: string;
+  updatedAtMs: number;
+}): Promise<void> {
+  const nowMs = args.updatedAtMs;
+  await withConversationMutation(args, async (state) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && args.destination) {
+      assertSameConversationDestination({
+        conversationId: args.conversationId,
+        current: existing.destination,
+        next: args.destination,
+      });
+    }
+    const current =
+      existing ??
+      emptyConversation({
+        conversationId: args.conversationId,
+        destination: args.destination,
+        nowMs,
+        source: args.source,
+      });
+    await writeConversation(
+      state,
+      withExecutionUpdate(
+        {
+          ...current,
+          ...((current.destination ?? args.destination)
+            ? { destination: current.destination ?? args.destination }
+            : {}),
+          ...((current.source ?? args.source)
+            ? { source: current.source ?? args.source }
+            : {}),
+          ...((current.channelName ?? args.channelName)
+            ? { channelName: current.channelName ?? args.channelName }
+            : {}),
+          ...((current.requester ?? args.requester)
+            ? { requester: current.requester ?? args.requester }
+            : {}),
+          ...((current.title ?? args.title)
+            ? { title: current.title ?? args.title }
+            : {}),
+          createdAtMs: Math.min(current.createdAtMs, args.createdAtMs),
+          lastActivityAtMs: Math.max(
+            current.lastActivityAtMs,
+            args.lastActivityAtMs,
+          ),
+        },
+        {
+          ...current.execution,
+          ...args.execution,
+        },
+        nowMs,
+      ),
+    );
   });
 }
 

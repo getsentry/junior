@@ -11,6 +11,7 @@ export type ConversationSource =
 
 export type ConversationStatus =
   | "awaiting_resume"
+  | "failed"
   | "idle"
   | "pending"
   | "running";

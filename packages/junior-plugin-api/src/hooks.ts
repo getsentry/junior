@@ -11,8 +11,10 @@ import type {
   HeartbeatHookContext,
   HeartbeatResult,
   OperationalReportHookContext,
+  DashboardRouteRegistrationHookContext,
   PluginOperationalReportContent,
   PluginRoute,
+  PluginRouteApp,
   RouteRegistrationHookContext,
   SlackConversationLink,
   SlackConversationLinkHookContext,
@@ -55,6 +57,9 @@ export interface PluginHooks {
     | Promise<PluginOperationalReportContent | undefined>
     | PluginOperationalReportContent
     | undefined;
+  dashboardRoutes?(
+    ctx: DashboardRouteRegistrationHookContext,
+  ): PluginRouteApp | undefined;
   resolveOAuthAccount?(
     ctx: ResolveOAuthAccountHookContext,
   ):

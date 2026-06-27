@@ -26,7 +26,7 @@ interface EsbuildPlugin {
 const packageRoot = import.meta.dirname;
 const dashboardAssetsPath = path.join(packageRoot, "src", "assets.ts");
 
-/** Read client build output that must be embedded in plugin routes. */
+/** Read client build output that must be embedded in dashboard routes. */
 function readBuiltAsset(fileName: string): string {
   const assetPath = path.join(packageRoot, "dist", fileName);
   if (!existsSync(assetPath)) {
@@ -37,7 +37,7 @@ function readBuiltAsset(fileName: string): string {
   return readFileSync(assetPath, "utf8");
 }
 
-/** Inline dashboard browser assets so plugin routes need no Nitro copy hook. */
+/** Inline dashboard browser assets so dashboard routes can serve static assets. */
 function dashboardAssetsPlugin(): EsbuildPlugin {
   return {
     name: "junior-dashboard-assets",
@@ -65,9 +65,7 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
 export default defineConfig({
   entry: {
     app: "src/app.ts",
-    handler: "src/handler.ts",
     index: "src/index.ts",
-    nitro: "src/nitro.ts",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
@@ -79,12 +77,5 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   esbuildPlugins: [dashboardAssetsPlugin()],
-  external: [
-    "#junior-dashboard/config",
-    "@sentry/junior",
-    "@sentry/junior-plugin-api",
-    "better-auth",
-    "hono",
-    "nitro",
-  ],
+  external: ["@sentry/junior", "better-auth", "hono"],
 });

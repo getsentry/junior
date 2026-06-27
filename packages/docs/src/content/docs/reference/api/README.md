@@ -16,6 +16,7 @@ title: "@sentry/junior"
 - [ConversationUsage](/reference/api/interfaces/conversationusage/)
 - [HealthReport](/reference/api/interfaces/healthreport/)
 - [JuniorAppOptions](/reference/api/interfaces/juniorappoptions/)
+- [JuniorDashboardOptions](/reference/api/interfaces/juniordashboardoptions/)
 - [JuniorNitroOptions](/reference/api/interfaces/juniornitrooptions/)
 - [JuniorPluginSet](/reference/api/interfaces/juniorpluginset/)
 - [JuniorPluginSetOptions](/reference/api/interfaces/juniorpluginsetoptions/)
@@ -40,6 +41,7 @@ title: "@sentry/junior"
 
 - [ConversationReportStatus](/reference/api/type-aliases/conversationreportstatus/)
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
+- [JuniorNitroDashboardOptions](/reference/api/type-aliases/juniornitrodashboardoptions/)
 - [JuniorPluginInput](/reference/api/type-aliases/juniorplugininput/)
 - [PluginConversationStatus](/reference/api/type-aliases/pluginconversationstatus/)
 - [PluginRunContext](/reference/api/type-aliases/pluginruncontext/)
