@@ -6,6 +6,7 @@ summary: Choose the right path through setup, extension, and operations docs.
 prerequisites: []
 related:
   - /start-here/quickstart/
+  - /start-here/using-junior/
   - /start-here/slack-app-setup/
   - /extend/
 ---
@@ -30,6 +31,7 @@ The recommended first app path is `junior init`, then Slack setup, then Vercel d
 
 | Goal                                   | Start with                                                    |
 | -------------------------------------- | ------------------------------------------------------------- |
+| Work with Junior in Slack              | [Using Junior](/start-here/using-junior/)                     |
 | Create a new app                       | [Quickstart](/start-here/quickstart/)                         |
 | Configure Slack events and permissions | [Slack App Setup](/start-here/slack-app-setup/)               |
 | Deploy the scaffolded app              | [Deploy to Vercel](/start-here/deploy-to-vercel/)             |

@@ -58,6 +58,7 @@ export default defineConfig({
           label: "Start Here",
           items: [
             { label: "Overview", link: "/start-here/overview/" },
+            { label: "Using Junior", link: "/start-here/using-junior/" },
             { label: "Quickstart", link: "/start-here/quickstart/" },
             {
               label: "Slack App Setup",
