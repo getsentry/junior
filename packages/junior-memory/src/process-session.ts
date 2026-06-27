@@ -58,7 +58,9 @@ async function getTaskMemories(
     return extractedMemoryCacheSchema.parse(cached);
   }
   const memories = await extract();
-  await context.state.set(cacheKey, memories, MEMORY_TASK_STATE_TTL_MS);
+  if (memories.length > 0) {
+    await context.state.set(cacheKey, memories, MEMORY_TASK_STATE_TTL_MS);
+  }
   return memories;
 }
 
