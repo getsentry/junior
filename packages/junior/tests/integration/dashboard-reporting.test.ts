@@ -4,6 +4,7 @@ import type {
   ConversationStore,
 } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentTurnSessionSummary } from "@/chat/state/turn-session";
 
 vi.mock("@/chat/prompt", () => ({
   buildSystemPrompt: vi.fn(() => "[system prompt]"),
@@ -17,6 +18,8 @@ const SYSTEM_MESSAGE = {
   parts: [{ type: "text", text: "[system prompt]" }],
 };
 
+const AGENT_TURN_SESSION_INDEX_KEY = "junior:agent_turn_session:index";
+const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const ORIGINAL_ENV = { ...process.env };
 const USE_POSTGRES_HARNESS = Boolean(process.env.DATABASE_URL);
 
@@ -853,7 +856,9 @@ describe("dashboard reporting", () => {
   });
 
   it("reports a conversation after newer turns evict it from the global index", async () => {
-    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { THREAD_STATE_TTL_MS } = await import("chat");
+    const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { conversationStore, readConversationReport } =
       await createStateReportingReader();
@@ -885,13 +890,24 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
     for (let index = 0; index < 5_005; index += 1) {
-      await recordAgentTurnSessionSummary({
-        conversationStore,
+      const nowMs = Date.now();
+      const summary: AgentTurnSessionSummary = {
         conversationId: `slack:C2:${index}`,
+        cumulativeDurationMs: 0,
+        lastProgressAtMs: nowMs,
         sessionId: `newer-turn-${index}`,
         sliceId: 1,
+        startedAtMs: nowMs,
         state: "completed",
+        updatedAtMs: nowMs,
+        version: 0,
+      };
+      await stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, summary, {
+        maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
+        ttlMs: THREAD_STATE_TTL_MS,
       });
     }
 
