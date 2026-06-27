@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/adapter";
 
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
@@ -88,7 +89,7 @@ describe("StateAdapterTokenStore", () => {
     expect(acquireLock).toHaveBeenCalledTimes(2);
     expect(acquireLock).toHaveBeenCalledWith(
       "oauth-token:U123:github:refresh",
-      30_000,
+      ACTIVE_LOCK_TTL_MS,
     );
     expect(callback).toHaveBeenCalledTimes(1);
     expect(releaseLock).toHaveBeenCalledWith(lock);
