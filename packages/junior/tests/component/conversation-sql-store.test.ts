@@ -314,6 +314,54 @@ INSERT INTO junior_conversations (
     }
   });
 
+  it("keeps SQL execution timestamps when a fresh summary omits them", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          lastCheckpointAtMs: 5_000,
+          lastEnqueuedAtMs: 4_000,
+          runId: "run-worker",
+          status: "running",
+          updatedAtMs: 5_000,
+        },
+        lastActivityAtMs: 5_000,
+        updatedAtMs: 5_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-summary",
+          status: "failed",
+          updatedAtMs: 6_000,
+        },
+        lastActivityAtMs: 6_000,
+        updatedAtMs: 6_000,
+      });
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        execution: {
+          lastCheckpointAtMs: 5_000,
+          lastEnqueuedAtMs: 4_000,
+          runId: "run-summary",
+          status: "failed",
+          updatedAtMs: 6_000,
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps the earliest creation time across SQL metadata updates", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

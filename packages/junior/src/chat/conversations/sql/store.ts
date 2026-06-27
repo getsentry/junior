@@ -591,8 +591,8 @@ export class SqlStore implements ConversationStore {
           executionUpdatedAt: sql`case when ${incomingExecutionIsFresh} then excluded.execution_updated_at else ${juniorConversations.executionUpdatedAt} end`,
           executionStatus: sql`case when ${incomingExecutionIsFresh} then excluded.execution_status else ${juniorConversations.executionStatus} end`,
           runId: sql`case when ${incomingExecutionIsFresh} then excluded.run_id else ${juniorConversations.runId} end`,
-          lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then excluded.last_checkpoint_at else ${juniorConversations.lastCheckpointAt} end`,
-          lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then excluded.last_enqueued_at else ${juniorConversations.lastEnqueuedAt} end`,
+          lastCheckpointAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_checkpoint_at, ${juniorConversations.lastCheckpointAt}) else ${juniorConversations.lastCheckpointAt} end`,
+          lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
         },
       });
   }
