@@ -21,7 +21,7 @@ import {
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
-  MEMORY_TYPES,
+  MEMORY_KINDS,
 } from "../types";
 
 export const juniorMemoryMemories = pgTable(
@@ -30,7 +30,7 @@ export const juniorMemoryMemories = pgTable(
     id: text("id").primaryKey(),
     scope: text("scope", { enum: MEMORY_SCOPES }).notNull(),
     scopeKey: text("scope_key").notNull(),
-    type: text("type", { enum: MEMORY_TYPES }).notNull(),
+    kind: text("type", { enum: MEMORY_KINDS }).notNull(),
     subjectType: text("subject_type", { enum: MEMORY_SUBJECT_TYPES }).notNull(),
     subjectKey: text("subject_key"),
     content: text("content").notNull(),
@@ -68,16 +68,11 @@ export const juniorMemoryMemories = pgTable(
       sql`${table.scope} IN ('personal', 'conversation')`,
     ),
     check(
-      "junior_memory_memories_type_check",
-      sql`${table.type} IN (
+      "junior_memory_memories_kind_check",
+      sql`${table.kind} IN (
         'preference',
-        'identity',
-        'relationship',
-        'knowledge',
-        'context',
-        'event',
-        'task',
-        'observation'
+        'procedure',
+        'knowledge'
       )`,
     ),
     check(

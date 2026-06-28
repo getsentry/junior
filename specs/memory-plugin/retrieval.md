@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -57,7 +57,7 @@ Retrieval must filter by visibility before prompt rendering:
 
 - matching personal requester scope
 - matching conversation scope
-- future install policy allows recall for the memory type, scope, and source
+- future install policy allows recall for the memory kind, scope, and source
   when that policy surface exists
 - `archived_at is null`
 - `superseded_at is null`
@@ -110,7 +110,7 @@ The store should choose the simplest safe query for the visible candidate set:
   vector search with an overfetch multiplier, then re-rank exact visible
   candidates.
 - If embedding generation fails, skip vector search and continue with lexical,
-  recency, and type ranking.
+  recency, and kind ranking.
 
 This keeps correctness independent of pgvector index tuning.
 

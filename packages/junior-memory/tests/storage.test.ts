@@ -208,7 +208,7 @@ function extractionModel(
   memories: Array<{
     content: string;
     expiresAtMs?: number | null;
-    kind: "preference" | "procedure" | "fact";
+    kind: "preference" | "procedure" | "knowledge";
   }>,
 ) {
   const calls: Parameters<PluginModel["completeObject"]>[0][] = [];
@@ -363,7 +363,7 @@ function allowMemory(
       onRequest?.(candidate);
       return {
         decision: "store",
-        target,
+        kind: target === "requester" ? "preference" : "knowledge",
         content: testCanonicalContent(candidate.content),
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
@@ -407,7 +407,7 @@ describe("memory plugin storage", () => {
       }),
     ).resolves.toEqual({
       decision: "store",
-      target: "requester",
+      kind: "preference",
       content: "Uses qa-structured-output in CLI QA.",
     });
     expect(calls[0]?.schema).toBeDefined();
@@ -480,7 +480,7 @@ describe("memory plugin storage", () => {
       {
         content: "Prefers causes before mitigations in incident writeups.",
         expiresAtMs: null,
-        target: "requester",
+        kind: "preference",
       },
     ]);
   });
@@ -491,8 +491,16 @@ describe("memory plugin storage", () => {
         return {
           object: {
             memories: [
-              { canonicalFact: "Fact one.", expiresAtMs: null, kind: "fact" },
-              { canonicalFact: "Fact two.", expiresAtMs: null, kind: "fact" },
+              {
+                canonicalFact: "Fact one.",
+                expiresAtMs: null,
+                kind: "knowledge",
+              },
+              {
+                canonicalFact: "Fact two.",
+                expiresAtMs: null,
+                kind: "knowledge",
+              },
               {
                 canonicalFact: "Prefers one.",
                 expiresAtMs: null,
@@ -537,7 +545,7 @@ describe("memory plugin storage", () => {
             memories: Array.from({ length: 6 }, (_, index) => ({
               canonicalFact: `Fact ${index + 1}.`,
               expiresAtMs: null,
-              kind: "fact",
+              kind: "knowledge",
             })),
           },
         };
@@ -612,7 +620,7 @@ describe("memory plugin storage", () => {
         },
         {
           content: "Deploy runbooks live in Notion.",
-          kind: "fact",
+          kind: "knowledge",
         },
       ]);
       const embedder = createTestEmbedder();
@@ -654,12 +662,14 @@ describe("memory plugin storage", () => {
             scope: "personal",
             sourcePlatform: "local",
             subjectType: "user",
+            kind: "preference",
           }),
           expect.objectContaining({
             content: "Deploy runbooks live in Notion.",
             scope: "conversation",
             sourcePlatform: "local",
             subjectType: "conversation",
+            kind: "knowledge",
           }),
         ]),
       );
@@ -756,6 +766,7 @@ describe("memory plugin storage", () => {
             "Signup funnel analysis should use the modeled warehouse cohort table.",
           scope: "conversation",
           subjectType: "conversation",
+          kind: "procedure",
         }),
       ]);
     } finally {
@@ -815,8 +826,151 @@ describe("memory plugin storage", () => {
         expect.objectContaining({
           content: "Prefers retry-safe memory extraction.",
           scope: "personal",
+          kind: "preference",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps passive extraction idempotency distinct by memory kind", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model } = extractionModel([
+        {
+          content: "Memory classification compatibility is important.",
+          kind: "procedure",
+        },
+        {
+          content: "Memory classification compatibility is important.",
+          kind: "knowledge",
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "Memory classification compatibility is important.",
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .orderBy(memorySqlSchema.juniorMemoryMemories.kind),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Memory classification compatibility is important.",
+          kind: "knowledge",
+        }),
+        expect.objectContaining({
+          content: "Memory classification compatibility is important.",
+          kind: "procedure",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("reuses pre-kind cached extraction output across task retries", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const state = createMemoryState();
+      await state.set("memory-extraction:plugin-task-memory", [
+        {
+          content: "Prefers cached memory retry compatibility.",
+          expiresAtMs: null,
+          target: "requester",
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model: {
+            async completeObject() {
+              throw new Error("model should not run for cached output");
+            },
+          },
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "I prefer cached memory retry compatibility.",
+                  },
+                ],
+              });
+            },
+          },
+          state,
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Prefers cached memory retry compatibility.",
+          scope: "personal",
+          kind: "preference",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("rejects cached extraction output with conflicting legacy target", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const state = createMemoryState();
+      await state.set("memory-extraction:plugin-task-memory", [
+        {
+          content: "Prefers conflicting cache entries to fail.",
+          expiresAtMs: null,
+          kind: "preference",
+          target: "conversation",
+        },
+      ]);
+
+      await expect(
+        processMemorySession(
+          processSessionContext({
+            db: memoryDb(fixture),
+            model: {
+              async completeObject() {
+                throw new Error("model should not run for cached output");
+              },
+            },
+            state,
+          }),
+        ),
+      ).rejects.toThrow("Invalid input");
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -1057,6 +1211,7 @@ describe("memory plugin storage", () => {
           content: "Prefers local passive memory QA.",
           scope: "personal",
           subjectKey: "local:local-user",
+          kind: "preference",
         },
       ]);
     } finally {
@@ -1113,6 +1268,7 @@ describe("memory plugin storage", () => {
           content: "Release triage checks deployment markers first.",
           scope: "conversation",
           subjectType: "conversation",
+          kind: "procedure",
         }),
       ]);
     } finally {
@@ -1132,11 +1288,13 @@ describe("memory plugin storage", () => {
 
       const personal = await store.createMemory({
         content: "Prefers short PR summaries.",
+        kind: "preference",
         idempotencyKey: "memory-test:personal",
       });
       nowMs = TEST_NOW_MS + 1;
       const conversation = await store.createConversationMemory({
         content: "Deploy runbooks live in Notion.",
+        kind: "knowledge",
         idempotencyKey: "memory-test:conversation",
       });
 
@@ -1250,15 +1408,18 @@ ORDER BY created_at_ms ASC
       });
       const created = await store.createMemory({
         content: "Prefers CLI memory QA with scoped search.",
+        kind: "preference",
         idempotencyKey: "memory-test:cli-search",
       });
       const expired = await store.createMemory({
         content: "Prefers expired CLI memory rows to stay hidden.",
+        kind: "preference",
         expiresAtMs: Date.now() - 1,
         idempotencyKey: "memory-test:cli-search-expired",
       });
       const superseded = await store.createMemory({
         content: "Prefers superseded CLI memory rows to stay hidden.",
+        kind: "preference",
         idempotencyKey: "memory-test:cli-search-superseded",
       });
       await fixture.execute(
@@ -1381,11 +1542,13 @@ WHERE id = '${superseded.memory.id}'
 
       const react = await store.createMemory({
         content: reactMemory,
+        kind: "preference",
         idempotencyKey: "memory-test:embedding-react",
       });
       nowMs += 1;
       await store.createMemory({
         content: mangoMemory,
+        kind: "preference",
         idempotencyKey: "memory-test:embedding-mango",
       });
 
@@ -1443,6 +1606,7 @@ WHERE id = '${superseded.memory.id}'
         nowMs += 1;
         await vectorStore.createMemory({
           content: memory,
+          kind: "preference",
           idempotencyKey: `memory-test:fusion-vector-${index}`,
         });
       }
@@ -1456,6 +1620,7 @@ WHERE id = '${superseded.memory.id}'
       );
       const lexical = await lexicalStore.createMemory({
         content: lexicalMemory,
+        kind: "preference",
         idempotencyKey: "memory-test:fusion-lexical",
       });
 
@@ -1479,11 +1644,13 @@ WHERE id = '${superseded.memory.id}'
 
       const created = await store.createMemory({
         content: "Prefers duplicate-safe vector writes.",
+        kind: "preference",
         idempotencyKey: "memory-test:embedding-idempotent",
       });
       await expect(
         store.createMemory({
           content: "Changed retry content should not be re-embedded.",
+          kind: "preference",
           idempotencyKey: "memory-test:embedding-idempotent",
         }),
       ).resolves.toMatchObject({
@@ -1510,6 +1677,7 @@ WHERE id = '${superseded.memory.id}'
       });
       const created = await firstStore.createMemory({
         content,
+        kind: "preference",
         idempotencyKey: "memory-test:embedding-retry-backfill",
       });
       await expect(
@@ -1524,6 +1692,7 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         retryStore.createMemory({
           content: "Changed retry content should not be embedded.",
+          kind: "preference",
           idempotencyKey: "memory-test:embedding-retry-backfill",
         }),
       ).resolves.toMatchObject({
@@ -1562,15 +1731,18 @@ WHERE id = '${superseded.memory.id}'
 
       const expired = await store.createMemory({
         content: expiredContent,
+        kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:read-expired",
       });
       const active = await store.createMemory({
         content: activeContent,
+        kind: "preference",
         idempotencyKey: "memory-test:read-active",
       });
       const superseded = await store.createMemory({
         content: supersededContent,
+        kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:read-superseded",
       });
@@ -1646,6 +1818,7 @@ WHERE id = '${superseded.memory.id}'
 
       const created = await store.createMemory({
         content: "Prefers lexical fallback for vector failures.",
+        kind: "preference",
         idempotencyKey: "memory-test:embedding-dimension-mismatch",
       });
 
@@ -1693,6 +1866,22 @@ WHERE id = '${superseded.memory.id}'
           content: "Prefers terse status updates.",
         },
       });
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(
+              memorySqlSchema.juniorMemoryMemories.content,
+              "Prefers terse status updates.",
+            ),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          scope: "personal",
+          kind: "preference",
+        }),
+      ]);
       expect(reviewedRequests[0]).toMatchObject({
         content: "I prefer terse status updates.",
         runtimeContext: {
@@ -1731,6 +1920,22 @@ WHERE id = '${superseded.memory.id}'
           content: "Incident notes live in Linear.",
         },
       });
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(
+              memorySqlSchema.juniorMemoryMemories.content,
+              "Incident notes live in Linear.",
+            ),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          scope: "conversation",
+          kind: "knowledge",
+        }),
+      ]);
 
       await expect(
         tools.listMemories.execute({ limit: 10 }, {}),
@@ -1906,16 +2111,19 @@ WHERE id = '${superseded.memory.id}'
       });
       const personal = await store.createMemory({
         content: "Prefers PR summaries with risks first.",
+        kind: "preference",
         idempotencyKey: "memory-test:recall-personal",
       });
       nowMs += 1;
       const conversation = await store.createConversationMemory({
         content: "Release notes live in Notion.",
+        kind: "knowledge",
         idempotencyKey: "memory-test:recall-conversation",
       });
       nowMs += 1;
       await store.createMemory({
         content: "Prefers PR summary obsolete wording.",
+        kind: "preference",
         expiresAtMs: TEST_NOW_MS + 1,
         idempotencyKey: "memory-test:recall-expired",
       });
@@ -1926,6 +2134,7 @@ WHERE id = '${superseded.memory.id}'
         { now: () => nowMs },
       ).createMemory({
         content: "Prefers PR summary unrelated owner.",
+        kind: "preference",
         idempotencyKey: "memory-test:recall-other-user",
       });
 
@@ -1964,6 +2173,7 @@ WHERE id = '${superseded.memory.id}'
       const context = slackContext();
       await createMemoryStore(memoryDb(fixture), context).createMemory({
         content: "Prefers PR summaries with risks first.",
+        kind: "preference",
         idempotencyKey: "memory-test:recall-blank",
       });
 
@@ -2001,6 +2211,7 @@ WHERE id = '${superseded.memory.id}'
         now: () => TEST_NOW_MS,
       }).createMemory({
         content: memory,
+        kind: "preference",
         idempotencyKey: "memory-test:recall-semantic",
       });
 
@@ -2086,11 +2297,13 @@ WHERE id = '${superseded.memory.id}'
 
       const personal = await store.createMemory({
         content: "Prefers local CLI memory checks.",
+        kind: "preference",
         idempotencyKey: "memory-test:local-personal",
       });
       nowMs = TEST_NOW_MS + 1;
       const conversation = await store.createConversationMemory({
         content: "Memory plugin validation is tracked in this local session.",
+        kind: "knowledge",
         idempotencyKey: "memory-test:local-conversation",
       });
 
@@ -2138,6 +2351,7 @@ WHERE id = '${superseded.memory.id}'
 
       const created = await store.createMemory({
         content: "Different content with the same retry key.",
+        kind: "preference",
         idempotencyKey: "explicit-create-1",
       });
       expect(created.memory.observedAtMs).toBe(TEST_NOW_MS);
@@ -2146,6 +2360,7 @@ WHERE id = '${superseded.memory.id}'
       await expect(
         store.createMemory({
           content: "Changed content with the same retry key.",
+          kind: "preference",
           idempotencyKey: "explicit-create-1",
         }),
       ).resolves.toMatchObject({
@@ -2204,6 +2419,7 @@ INSERT INTO junior_memory_memories (
 
       const archived = await store.createMemory({
         content: "Prefers short deployment summaries.",
+        kind: "preference",
         idempotencyKey: "explicit-create-archived",
       });
 
@@ -2213,6 +2429,7 @@ INSERT INTO junior_memory_memories (
       nowMs = TEST_NOW_MS + 2;
       const recreated = await store.createMemory({
         content: "Prefers short deployment summaries.",
+        kind: "preference",
         idempotencyKey: "explicit-create-archived",
       });
       expect(recreated).toMatchObject({
@@ -2225,6 +2442,7 @@ INSERT INTO junior_memory_memories (
       await expect(
         store.createMemory({
           content: "Changed content with the recreated retry key.",
+          kind: "preference",
           idempotencyKey: "explicit-create-archived",
         }),
       ).resolves.toMatchObject({
@@ -2256,6 +2474,7 @@ INSERT INTO junior_memory_memories (
 
       const expired = await store.createMemory({
         content,
+        kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:expires",
       });
@@ -2268,6 +2487,7 @@ INSERT INTO junior_memory_memories (
       nowMs = TEST_NOW_MS + 12;
       const recreated = await store.createMemory({
         content,
+        kind: "preference",
         idempotencyKey: "memory-test:expires",
       });
 
@@ -2312,6 +2532,7 @@ INSERT INTO junior_memory_memories (
       });
       const target = await store.createConversationMemory({
         content: "Release cutover rehearsal is durable.",
+        kind: "knowledge",
         idempotencyKey: "memory-test:search-target",
       });
 
@@ -2319,6 +2540,7 @@ INSERT INTO junior_memory_memories (
         nowMs = TEST_NOW_MS + index + 1;
         await store.createConversationMemory({
           content: `Recent unrelated memory ${index}`,
+          kind: "knowledge",
           idempotencyKey: `memory-test:search-recent-${index}`,
         });
       }
@@ -2343,11 +2565,11 @@ INSERT INTO junior_memory_memories (
       await expect(
         store.createMemory({
           content: "Prefers short PR summaries.",
+          kind: "preference",
           idempotencyKey: "memory-test:smuggle",
           scope: "conversation",
           subjectKey: "slack:T123:U999",
           subjectType: "general",
-          type: "preference",
         } as unknown as Parameters<typeof store.createMemory>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
@@ -2373,6 +2595,7 @@ INSERT INTO junior_memory_memories (
       await expect(
         store.createMemory({
           content: " \n\t ",
+          kind: "preference",
           idempotencyKey: "memory-test:empty-content",
         }),
       ).rejects.toThrow("Memory content is required.");

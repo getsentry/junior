@@ -7,16 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-export const MEMORY_TYPES = [
-  "preference",
-  "identity",
-  "relationship",
-  "knowledge",
-  "context",
-  "event",
-  "task",
-  "observation",
-] as const;
+export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
 export const MEMORY_SCOPES = ["personal", "conversation"] as const;
 export const MEMORY_SUBJECT_TYPES = [
@@ -31,7 +22,7 @@ export const MEMORY_SOURCE_PLATFORMS = [
 export const MEMORY_EMBEDDING_METRICS = ["cosine"] as const;
 export const MEMORY_EMBEDDING_DIMENSIONS = 1536;
 
-export type MemoryType = (typeof MEMORY_TYPES)[number];
+export type MemoryKind = (typeof MEMORY_KINDS)[number];
 export type MemoryScope = (typeof MEMORY_SCOPES)[number];
 export type MemorySubjectType = (typeof MEMORY_SUBJECT_TYPES)[number];
 export type MemorySourcePlatform = (typeof MEMORY_SOURCE_PLATFORMS)[number];

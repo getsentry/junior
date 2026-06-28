@@ -13,4 +13,5 @@ export type {
   MemoryStoreOptions,
   SearchMemoriesInput,
 } from "./store";
-export type { MemoryRuntimeContext } from "./types";
+export { MEMORY_KINDS } from "./types";
+export type { MemoryKind, MemoryRuntimeContext } from "./types";

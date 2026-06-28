@@ -10,8 +10,16 @@ import {
   type CreateMemoryInput,
   type MemoryDb,
 } from "./store";
-import { createMemoryAgent, type ExtractedMemory } from "./agent";
-import { memoryRuntimeContextSchema } from "./types";
+import {
+  createMemoryAgent,
+  parseExtractedMemory,
+  type ExtractedMemory,
+} from "./agent";
+import {
+  MEMORY_KINDS,
+  memoryRuntimeContextSchema,
+  type MemoryKind,
+} from "./types";
 
 const MEMORY_TOOL_NAMES = new Set([
   "createMemory",
@@ -20,19 +28,62 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const legacyMemoryTargetSchema = z.enum(["requester", "conversation"]);
+// Cached task state may contain pre-kind entries with only target, or model
+// outputs that used the old `fact` name. Normalize both into the current kind.
+// TODO(v0.80.0): Remove legacy cached extraction support for missing kind/target.
 const extractedMemoryCacheSchema = z.array(
   z
     .object({
       content: z.string().min(1),
       expiresAtMs: z.number().finite().nullable(),
-      target: z.enum(["requester", "conversation"]),
+      kind: z.enum([...MEMORY_KINDS, "fact"] as const).optional(),
+      target: legacyMemoryTargetSchema.optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (memory) => memory.kind !== undefined || memory.target !== undefined,
+    )
+    .refine((memory) => {
+      if (memory.kind === undefined || memory.target === undefined) {
+        return true;
+      }
+      const kind = memory.kind === "fact" ? "knowledge" : memory.kind;
+      return targetForKind(kind) === memory.target;
+    })
+    .transform((memory): ExtractedMemory => {
+      let kind: MemoryKind;
+      if (memory.kind === "fact") {
+        kind = "knowledge";
+      } else if (memory.kind !== undefined) {
+        kind = memory.kind;
+      } else if (memory.target === "requester") {
+        kind = "preference";
+      } else if (memory.target === "conversation") {
+        kind = "knowledge";
+      } else {
+        throw new Error("Cached memory extraction requires kind or target.");
+      }
+      return parseExtractedMemory({
+        content: memory.content,
+        expiresAtMs: memory.expiresAtMs,
+        kind,
+      });
+    }),
 );
+
+function targetForKind(kind: MemoryKind): "requester" | "conversation" {
+  if (kind === "preference") {
+    return "requester";
+  }
+  return "conversation";
+}
 
 function memoryIdempotencySuffix(memory: ExtractedMemory): string {
   return createHash("sha256")
-    .update(memory.target)
+    .update(targetForKind(memory.kind))
+    .update("\0")
+    .update(memory.kind)
     .update("\0")
     .update(memory.content)
     .update("\0")
@@ -49,6 +100,7 @@ function passiveInput(
   return {
     content: memory.content,
     idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory)}`,
+    kind: memory.kind,
     ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
   };
 }
@@ -140,7 +192,7 @@ export async function processMemorySession(
 
   for (const memory of memories) {
     const input = passiveInput(run.runId, memory, sourceKey);
-    if (memory.target === "conversation") {
+    if (targetForKind(memory.kind) === "conversation") {
       await store.createConversationMemory(input);
       continue;
     }

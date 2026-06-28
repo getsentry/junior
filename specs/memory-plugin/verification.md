@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-24
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -45,7 +45,7 @@ Logs and spans may include:
 - memory id or bounded id prefix
 - scope type
 - subject type
-- memory type
+- memory kind
 - embedding provider/model/dimensions
 - extracted candidate fact count
 - accepted/rejected fact counts
@@ -117,7 +117,7 @@ When the future admin CLI is implemented, use integration tests for:
 
 Use unit tests for:
 
-- memory type, scope, and subject parsers
+- memory kind, scope, and subject parsers
 - future install policy parser and policy evaluation predicates
 - secret detection
 - storable-fact validation

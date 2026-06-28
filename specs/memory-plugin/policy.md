@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -54,8 +54,8 @@ Workplace-safe defaults should be conservative:
    scope.
 4. Third-party personal facts about coworkers should not be passively stored by
    default.
-5. Retention should prefer shorter TTLs for `context`, `event`, `task`, and
-   `observation` memories.
+5. Retention should use explicit expiration timestamps for memories that should
+   decay; V1 does not infer default TTLs from kind.
 6. Default admin output should be redacted.
 
 An install chooses whether to enable memory through plugin registration. V1 does

@@ -19,7 +19,11 @@ import {
   parseMemoryReview,
   type MemoryAgent,
 } from "./agent";
-import { memoryRuntimeContextSchema, type MemoryRuntimeContext } from "./types";
+import {
+  memoryRuntimeContextSchema,
+  type MemoryKind,
+  type MemoryRuntimeContext,
+} from "./types";
 
 export type MemoryReviewer = Pick<MemoryAgent, "reviewCreateRequest">;
 
@@ -299,16 +303,24 @@ function sourceIdempotencyKey(context: MemoryToolContext): string {
 
 function createInput(
   context: MemoryToolContext,
-  input: { content: string; expiresAtMs?: number },
+  input: { content: string; expiresAtMs?: number; kind: MemoryKind },
   toolCallId: string,
 ) {
   return {
     content: requireMemoryContent(input.content),
     idempotencyKey: `tool:${sourceIdempotencyKey(context)}:${toolCallId}`,
+    kind: input.kind,
     ...(input.expiresAtMs !== undefined
       ? { expiresAtMs: input.expiresAtMs }
       : {}),
   } satisfies CreateMemoryInput;
+}
+
+function targetForKind(kind: MemoryKind): "requester" | "conversation" {
+  if (kind === "preference") {
+    return "requester";
+  }
+  return "conversation";
 }
 
 /** Return the model-visible projection without hidden ownership/source fields. */
@@ -327,7 +339,7 @@ function compactMemory(memory: MemoryRecord) {
 export function createMemoryCreateTool(context: MemoryToolContext) {
   return {
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides the canonical stored content, subject, and target.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     execute: async (input, options) => {
@@ -382,6 +394,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
         context,
         {
           content: review.content,
+          kind: review.kind,
           ...(review.expiresAtMs !== undefined
             ? { expiresAtMs: review.expiresAtMs }
             : requestedExpiresAtMs !== undefined
@@ -392,7 +405,7 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
       );
       const result = await (async () => {
         try {
-          if (review.target === "conversation") {
+          if (targetForKind(review.kind) === "conversation") {
             return await store.createConversationMemory(memoryInput);
           }
           return await store.createMemory(memoryInput);

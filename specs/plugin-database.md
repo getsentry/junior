@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -104,6 +104,10 @@ Rules:
    plugin development, but Junior applies only `migrations/*.sql`.
 5. A plugin package must not require the consuming app to run Drizzle Kit to use
    the published plugin.
+6. Schema DDL should come from the generator. Hand-written SQL in a generated
+   migration must be limited to data rewrites needed to make the generated
+   schema change safe, such as cleaning existing rows before adding a narrowed
+   check constraint.
 
 ### Schema Migration Application
 
@@ -395,6 +399,13 @@ Use integration tests with the local Postgres-compatible PGlite fixture for:
 - typed plugin table queries using plugin-owned Drizzle table objects
 - plugin storage migration hooks run after plugin schema migrations
 - plugin storage migration hooks are idempotent across repeated upgrade runs
+
+Do not add permanent feature-level tests for every generated schema or data
+migration. Review and verify those migration artifacts directly: regenerate
+from the owning schema, inspect the SQL for deploy safety, and run a targeted
+upgrade probe when a data rewrite or constraint narrowing needs evidence. Keep
+tests for reusable migration runners, ordering, checksum behavior, storage
+migration hooks, and explicit migration-contract surfaces.
 
 Use unit tests for:
 

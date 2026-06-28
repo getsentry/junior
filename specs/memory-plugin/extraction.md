@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-24
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -202,7 +202,7 @@ runtime context, source authority, and storage validation remain the boundary.
 Memory agent output must be structured. For explicit review it should include:
 
 - decision: `store` or `reject`
-- memory kind when stored: `preference`, `procedure`, or `fact`
+- memory kind when stored: `preference`, `procedure`, or `knowledge`
 - canonical stored content when stored
 - optional expiration when stored
 - normalized rejection reason code when rejected
@@ -210,14 +210,14 @@ Memory agent output must be structured. For explicit review it should include:
 For passive extraction it should include one `memories` array of accepted
 candidate memories. Each candidate includes:
 
-- `kind`: `preference`, `procedure`, or `fact`
+- `kind`: `preference`, `procedure`, or `knowledge`
 - canonical stored content
 - optional expiration
 
 The memory agent should return one object per distinct source assertion rather
 than separate categorized arrays. The runtime derives storage target from
 `kind`: requester memory for `preference`, conversation memory for `procedure`
-and `fact`.
+and `knowledge`.
 
 Conversation-target passive memories in V1 are the primary path for learning
 how work gets done: task procedures, runbooks, project facts, channel norms,
@@ -274,7 +274,7 @@ a model-visible rejection, not storage with a special classification.
 Duplicate prevention is required before insertion where the relevant signal is
 available:
 
-- same source, completed session reference, target, normalized content, and
+- same source, completed session reference, target, kind, normalized content, and
   expiration marker
 - high lexical or embedding similarity to an active memory in the same scope
 

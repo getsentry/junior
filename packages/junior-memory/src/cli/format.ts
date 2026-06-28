@@ -17,7 +17,7 @@ export function formatMemory(
     `scope_key=${row.scopeKey}`,
     `subject_type=${row.subjectType}`,
     ...(row.subjectKey ? [`subject_key=${row.subjectKey}`] : []),
-    `type=${row.type}`,
+    `kind=${row.kind}`,
     `created_at=${formatDate(row.createdAtMs)}`,
     `observed_at=${formatDate(row.observedAtMs)}`,
     `expires_at=${formatDate(row.expiresAtMs)}`,

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-24
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -104,9 +104,9 @@ The V1 shape is informed by `~/src/ash/specs/memory/*` and a prior-art pass over
 qmd, Mem0/OpenMemory, Supermemory, Zep/Graphiti, Cognee, Letta, and MemU. The
 common durable-storage pattern is an authoritative scoped memory row plus
 derived retrieval indexes, source attribution, lifecycle state, and optional
-versioning or graph layers. V1 uses Ash's useful type taxonomy, centralized
-secret rejection, temporal rewriting, and lifecycle/supersession discipline,
-but does not copy Ash's sensitivity split, exact-content dedupe, or person
+versioning or graph layers. V1 keeps Ash's centralized secret rejection,
+temporal rewriting, and lifecycle/supersession discipline, but does not copy
+Ash's broader type taxonomy, sensitivity split, exact-content dedupe, or person
 graph.
 
 Future graph/entity/fact indexes should be derived from authoritative memory
@@ -198,29 +198,29 @@ Core owns:
 - plugin config loading
 - log, trace, and dashboard redaction
 
-## Memory Types
+## Memory Kinds
 
-The plugin stores one `type` for lifecycle and rendering policy:
+The plugin stores one semantic `kind` for V1 extraction, storage, rendering, and
+future lifecycle policy:
 
-| Type           | Meaning                                            | Default TTL |
-| -------------- | -------------------------------------------------- | ----------- |
-| `preference`   | Stable user or conversation preference             | none        |
-| `identity`     | Stable fact about the requester                    | none        |
-| `relationship` | Stable fact about a named person or relationship   | none        |
-| `knowledge`    | Durable project, workspace, or domain fact         | none        |
-| `context`      | Current situation that should decay                | 7 days      |
-| `event`        | Dated occurrence that may matter later             | 30 days     |
-| `task`         | Remembered obligation that is not a scheduled task | 14 days     |
-| `observation`  | Low-durability observation                         | 3 days      |
+| Kind         | Meaning                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `preference` | Stable requester-owned preference, opinion, habit, identity fact, or workflow preference |
+| `procedure`  | Reusable task, lookup, process, runbook, or decision-path instruction                    |
+| `knowledge`  | Stable shared project, workspace, operational, or domain fact                            |
+
+Every stored memory is still a self-contained fact. `kind` is the single
+classification layer; V1 does not keep a second storage `type` taxonomy.
 
 Explicit scheduled work belongs to the scheduler plugin, not memory. A memory
-of type `task` is only a remembered fact unless the user explicitly creates a
-scheduled task through the scheduler workflow.
+that describes an obligation remains ordinary `knowledge` or `procedure` unless
+the user explicitly creates a scheduled task through the scheduler workflow.
 
-V1 passive extraction must not create `identity` or `relationship` memories
-about third parties. Those types are primarily for explicit personal memory,
-such as the requester's own public/shareable preferences, identity facts, or
-working relationships that pass policy.
+V1 passive extraction must not create personal identity or relationship memories
+about third parties. Public/shareable requester identity facts may be stored
+only as requester-owned memories when they pass policy; a future graph/entity
+index can derive richer identity or relationship structure from authoritative
+memory rows if needed.
 
 ## Scope Model
 

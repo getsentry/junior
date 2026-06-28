@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -131,7 +131,7 @@ Logs, spans, dashboards, and plugin operational reports may include:
 - memory id or bounded id prefix
 - scope type
 - subject type
-- memory type
+- memory kind
 - embedding provider/model/dimensions
 - extraction candidate counts
 - rejection reason codes

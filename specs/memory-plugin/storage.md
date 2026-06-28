@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -49,7 +49,7 @@ Required conceptual fields:
 
 - stable memory id
 - self-contained memory content
-- memory type
+- memory kind
 - runtime-derived visibility scope
 - subject type
 - runtime-derived subject key when the subject is a user or conversation
@@ -291,7 +291,6 @@ deletion workflows.
 Memory maintenance must archive:
 
 - memories whose expiration is in the past
-- ephemeral memories older than their type default TTL
 - superseded memories after the supersession marker is committed
 
 V1 may perform this maintenance opportunistically during create, list, recall,

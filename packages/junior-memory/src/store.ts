@@ -32,7 +32,7 @@ import {
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
-  MEMORY_TYPES,
+  MEMORY_KINDS,
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
   type MemoryScope,
@@ -70,6 +70,7 @@ const createMemoryInputSchema = z
     content: memoryContentSchema,
     expiresAtMs: numberSchema.optional(),
     idempotencyKey: nonEmptyStringSchema,
+    kind: z.enum(MEMORY_KINDS),
   })
   .strict();
 const listMemoriesInputSchema = z
@@ -130,7 +131,7 @@ const memoryRowSchema = z
     subjectType: z.enum(MEMORY_SUBJECT_TYPES),
     supersededAtMs: optionalNumberSchema,
     supersededById: optionalStringSchema,
-    type: z.enum(MEMORY_TYPES),
+    kind: z.enum(MEMORY_KINDS),
   })
   .strict()
   .superRefine((row, ctx) => {
@@ -166,7 +167,7 @@ const memoryRecordSchema = z
     subjectType: z.enum(MEMORY_SUBJECT_TYPES),
     supersededAtMs: numberSchema.optional(),
     supersededById: nonEmptyStringSchema.optional(),
-    type: z.enum(MEMORY_TYPES),
+    kind: z.enum(MEMORY_KINDS),
   })
   .strict();
 const embeddingVectorSchema = z
@@ -274,7 +275,7 @@ function parseMemoryRow(row: unknown): MemoryRecord {
   return memoryRecordSchema.parse({
     id: parsed.id,
     scope: parsed.scope,
-    type: parsed.type,
+    kind: parsed.kind,
     subjectType: parsed.subjectType,
     content: parsed.content,
     observedAtMs: parsed.observedAtMs,
@@ -732,7 +733,7 @@ export function createMemoryStore(
         sourcePlatform: runtimeContext.source.platform,
         subjectKey: subject.subjectKey,
         subjectType: subject.subjectType,
-        type: "knowledge",
+        kind: input.kind,
       })
       .onConflictDoNothing({
         target: [

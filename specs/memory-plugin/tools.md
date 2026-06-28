@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-13
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -75,7 +75,7 @@ The explicit tool path uses runtime context for source and idempotency. It must
 run through the memory agent's explicit-create review path. The memory agent
 decides store/reject, memory kind, and canonical perspective-neutral content.
 The plugin derives the storage target from the reviewed kind: requester for
-`preference`, conversation for `procedure` and `fact`.
+`preference`, conversation for `procedure` and `knowledge`.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
 display names, aliases, or subject classes.
