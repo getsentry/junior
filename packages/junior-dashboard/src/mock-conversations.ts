@@ -12,7 +12,10 @@ import type {
 } from "@sentry/junior/reporting";
 
 import { longReleaseConversation } from "./mock-release-conversation";
-import { mockToolActivity } from "./mock-reporting/activity";
+import {
+  mockSubagentActivity,
+  mockToolActivity,
+} from "./mock-reporting/activity";
 import { mockConversation, mockRun } from "./mock-reporting/conversation";
 import {
   mockToolCallPart,
@@ -650,6 +653,8 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
   const transcriptStartedAt = iso(nowMs, -10 * 60_000);
   const runningToolId = "toolu_mock_dashboard_running";
   const invertedToolId = "toolu_mock_dashboard_inverted";
+  const advisorToolId = "toolu_mock_dashboard_advisor";
+  const advisorSubagentId = "subagent_mock_dashboard_advisor";
 
   return mockConversation({
     conversationId,
@@ -724,6 +729,85 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             toolName: "mock.inverted_timestamp_tool",
             createdAt: transcriptStartedAt,
             status: "completed",
+          }),
+        ],
+      }),
+      mockRun({
+        conversationId,
+        displayTitle,
+        id: "mock-dashboard-qa-advisor-subagent",
+        status: "completed",
+        startedAt: iso(nowMs, -8 * 60_000),
+        lastProgressAt: iso(nowMs, -7 * 60_000),
+        lastSeenAt: iso(nowMs, -7 * 60_000),
+        completedAt: iso(nowMs, -7 * 60_000),
+        cumulativeDurationMs: 90_000,
+        surface: "internal",
+        transcriptAvailable: true,
+        transcriptMessageCount: 3,
+        transcript: [
+          mockTranscriptMessage({
+            role: "user",
+            timestamp: nowMs - 8 * 60_000,
+            parts: [
+              {
+                type: "text",
+                text: "Use an advisor to review the dashboard transcript ordering.",
+              },
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "assistant",
+            timestamp: nowMs - 8 * 60_000 + 4_000,
+            parts: [
+              mockToolCallPart({
+                id: advisorToolId,
+                name: "advisor",
+                input: {
+                  question:
+                    "Check whether tool calls, tool results, and subagent activity render together.",
+                },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "toolResult",
+            timestamp: nowMs - 7 * 60_000,
+            parts: [
+              mockToolResultPart({
+                id: advisorToolId,
+                name: "advisor",
+                output: {
+                  verdict: "ok",
+                  summary:
+                    "Tool call, advisor result, and subagent activity are visible.",
+                },
+              }),
+            ],
+          }),
+        ],
+        activity: [
+          mockToolActivity({
+            id: advisorToolId,
+            toolCallId: advisorToolId,
+            toolName: "advisor",
+            createdAt: iso(nowMs, -8 * 60_000 + 4_000),
+            status: "completed",
+            args: {
+              question:
+                "Check whether tool calls, tool results, and subagent activity render together.",
+            },
+            subagents: [
+              mockSubagentActivity({
+                id: advisorSubagentId,
+                parentToolCallId: advisorToolId,
+                subagentKind: "advisor",
+                createdAt: iso(nowMs, -8 * 60_000 + 6_000),
+                endedAt: iso(nowMs, -7 * 60_000),
+                status: "completed",
+                outcome: "success",
+              }),
+            ],
           }),
         ],
       }),

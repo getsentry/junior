@@ -214,10 +214,17 @@ describe("dashboard mock conversation routes", () => {
       runs: Array<{
         activity?: Array<{
           status?: string;
+          subagents?: Array<{
+            parentToolCallId?: string;
+            status?: string;
+            subagentKind?: string;
+            type: string;
+          }>;
           toolCallId?: string;
           toolName?: string;
           type: string;
         }>;
+        id?: string;
         transcript: Array<{
           parts: Array<{ id?: string; name?: string; type: string }>;
           timestamp?: number;
@@ -249,6 +256,28 @@ describe("dashboard mock conversation routes", () => {
     expect(invertedRun?.transcript[1]?.timestamp).toBeLessThan(
       invertedRun?.transcript[0]?.timestamp ?? 0,
     );
+    const advisorRun = qaConversationBody.runs[2];
+    expect(advisorRun?.id).toBe("mock-dashboard-qa-advisor-subagent");
+    expect(
+      advisorRun?.transcript
+        .flatMap((message) => message.parts)
+        .filter((part) => part.name === "advisor")
+        .map((part) => part.type),
+    ).toEqual(["tool_call", "tool_result"]);
+    expect(advisorRun?.activity?.[0]).toMatchObject({
+      type: "tool_execution",
+      status: "completed",
+      toolCallId: "toolu_mock_dashboard_advisor",
+      toolName: "advisor",
+      subagents: [
+        {
+          type: "subagent",
+          status: "completed",
+          subagentKind: "advisor",
+          parentToolCallId: "toolu_mock_dashboard_advisor",
+        },
+      ],
+    });
 
     const longConversation = await app.fetch(
       new Request(

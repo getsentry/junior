@@ -59,9 +59,12 @@ Then open the dashboard in a browser and exercise the relevant conversation,
 transcript, search, or conversation stats surface. The mock overlay returns
 read-only `@sentry/junior/reporting` conversation API-shaped data, including
 dashboard QA edge cases such as activity-only tool rows and inverted tool
-timestamps. Use it when a UI change needs deterministic reporting records that
-are hard to produce through a live local chat. Plugin report data is pass-through
-from the configured reporting provider and needs separate validation.
+timestamps. It also includes an advisor tool call/result paired with advisor
+subagent activity so transcript rendering can be checked against nested tool
+activity without manufacturing a live agent run. Use it when a UI change needs
+deterministic reporting records that are hard to produce through a live local
+chat. Plugin report data is pass-through from the configured reporting provider
+and needs separate validation.
 
 Do not treat mock dashboard data as proof of runtime ingestion, Slack delivery,
 credential behavior, or model behavior. Pair it with local CLI or integration
