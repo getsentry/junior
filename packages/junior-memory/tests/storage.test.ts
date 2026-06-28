@@ -16,6 +16,7 @@ import {
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import { createMemoryAgent, type CreateMemoryRequest } from "../src/agent";
@@ -1541,6 +1542,95 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("archives expired visible memories during reads", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const expiredContent = "Temporary CLI memory should expire cleanly.";
+      const activeContent = "Persistent CLI memory should remain visible.";
+      const supersededContent = "Superseded CLI memory stays superseded.";
+      const embedder = createTestEmbedder({
+        [expiredContent]: unitEmbedding(1),
+        [activeContent]: unitEmbedding(2),
+        [supersededContent]: unitEmbedding(3),
+      });
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => nowMs,
+      });
+
+      const expired = await store.createMemory({
+        content: expiredContent,
+        expiresAtMs: TEST_NOW_MS + 10,
+        idempotencyKey: "memory-test:read-expired",
+      });
+      const active = await store.createMemory({
+        content: activeContent,
+        idempotencyKey: "memory-test:read-active",
+      });
+      const superseded = await store.createMemory({
+        content: supersededContent,
+        expiresAtMs: TEST_NOW_MS + 10,
+        idempotencyKey: "memory-test:read-superseded",
+      });
+      await memoryDb(fixture)
+        .update(memorySqlSchema.juniorMemoryMemories)
+        .set({ supersededAtMs: TEST_NOW_MS + 1 })
+        .where(
+          eq(memorySqlSchema.juniorMemoryMemories.id, superseded.memory.id),
+        );
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toHaveLength(3);
+
+      nowMs = TEST_NOW_MS + 11;
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: active.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, expired.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          archiveReason: "expired",
+          archivedAtMs: TEST_NOW_MS + 11,
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ memoryId: active.memory.id }),
+          expect.objectContaining({ memoryId: superseded.memory.id }),
+        ]),
+      );
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toHaveLength(2);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, superseded.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          archivedAtMs: null,
+          archiveReason: null,
+          supersededAtMs: TEST_NOW_MS + 1,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("keeps memories searchable when embeddings have the wrong dimension", async () => {
     const fixture = await createMemoryFixture();
 
@@ -2157,12 +2247,15 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
+      const content = "Temporarily prefers quiet deploy reminders.";
+      const embedder = createTestEmbedder({ [content]: unitEmbedding(1) });
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
         now: () => nowMs,
       });
 
       const expired = await store.createMemory({
-        content: "Temporarily prefers quiet deploy reminders.",
+        content,
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:expires",
       });
@@ -2171,14 +2264,11 @@ INSERT INTO junior_memory_memories (
       await expect(
         store.archiveMemory({ id: expired.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
-      await expect(store.searchMemories({ query: "quiet" })).resolves.toEqual(
-        [],
-      );
 
       nowMs = TEST_NOW_MS + 12;
       const recreated = await store.createMemory({
-        content: "Temporarily prefers quiet deploy reminders.",
-        idempotencyKey: "memory-test:expires-recreated",
+        content,
+        idempotencyKey: "memory-test:expires",
       });
 
       expect(recreated).toMatchObject({
@@ -2186,6 +2276,24 @@ INSERT INTO junior_memory_memories (
         memory: { content: expired.memory.content },
       });
       expect(recreated.memory.id).not.toBe(expired.memory.id);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, expired.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          archiveReason: "expired",
+          archivedAtMs: TEST_NOW_MS + 12,
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([
+        expect.objectContaining({ memoryId: recreated.memory.id }),
+      ]);
       await expect(store.searchMemories({ query: "quiet" })).resolves.toEqual([
         expect.objectContaining({ id: recreated.memory.id }),
       ]);

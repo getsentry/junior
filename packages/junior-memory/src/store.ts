@@ -13,8 +13,10 @@ import {
   eq,
   gt,
   ilike,
+  inArray,
   isNull,
   like,
+  lte,
   or,
   sql,
   type SQL,
@@ -44,6 +46,7 @@ import {
 
 const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
+const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const VECTOR_SEARCH_OVERFETCH = 4;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
@@ -84,6 +87,11 @@ const archiveMemoryInputSchema = z
   .object({
     id: nonEmptyStringSchema,
     reason: nonEmptyStringSchema.optional(),
+  })
+  .strict();
+const archiveExpiredMemoriesInputSchema = z
+  .object({
+    limit: numberSchema.optional(),
   })
   .strict();
 const clockSchema = z.function({ input: [], output: numberSchema }).optional();
@@ -188,6 +196,14 @@ export type SearchMemoriesInput = z.output<typeof searchMemoriesInputSchema>;
 
 export type ArchiveMemoryInput = z.output<typeof archiveMemoryInputSchema>;
 
+export type ArchiveExpiredMemoriesInput = z.output<
+  typeof archiveExpiredMemoriesInputSchema
+>;
+
+export interface ArchiveExpiredMemoriesResult {
+  archivedCount: number;
+}
+
 export interface MemoryEmbeddingProvider {
   /** Embed normalized memory text for derived vector retrieval. */
   embedTexts(input: { texts: string[] }): Promise<{
@@ -205,6 +221,10 @@ export interface MemoryStoreOptions {
 
 /** Context-bound storage operations for visible long-term memories. */
 export interface MemoryStore {
+  /** Archive expired memories visible in the current runtime context. */
+  archiveExpiredMemories(
+    input?: ArchiveExpiredMemoriesInput,
+  ): Promise<ArchiveExpiredMemoriesResult>;
   /** Archive a visible memory in the current runtime context. */
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
   /** Store a personal memory for the current requester. */
@@ -312,6 +332,7 @@ function activeVisiblePredicate(args: {
 async function findByIdempotencyKey(args: {
   db: MemoryDb;
   idempotencyKey: string;
+  nowMs: number;
   scope: ResolvedMemoryScope;
 }): Promise<MemoryRecord | undefined> {
   const rows = await args.db
@@ -325,10 +346,75 @@ async function findByIdempotencyKey(args: {
         isNull(juniorMemoryMemories.archivedAtMs),
         isNull(juniorMemoryMemories.supersededAtMs),
         isNull(juniorMemoryMemories.supersededById),
+        or(
+          isNull(juniorMemoryMemories.expiresAtMs),
+          gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+        ),
       ),
     )
     .limit(1);
   return rows[0] ? parseMemoryRow(rows[0]) : undefined;
+}
+
+/**
+ * Archive a bounded batch of expired active rows and remove their derived vectors.
+ */
+async function archiveExpiredMemoryBatch(args: {
+  db: MemoryDb;
+  idempotencyKey?: string;
+  limit?: number;
+  nowMs: number;
+  scopes: ResolvedMemoryScope[];
+}): Promise<ArchiveExpiredMemoriesResult> {
+  const scopePredicate = visibleScopePredicate(args.scopes);
+  if (!scopePredicate) {
+    return { archivedCount: 0 };
+  }
+  const predicates: SQL[] = [
+    scopePredicate,
+    isNull(juniorMemoryMemories.archivedAtMs),
+    isNull(juniorMemoryMemories.supersededAtMs),
+    isNull(juniorMemoryMemories.supersededById),
+    lte(juniorMemoryMemories.expiresAtMs, args.nowMs),
+  ];
+  if (args.idempotencyKey !== undefined) {
+    predicates.push(
+      eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
+    );
+  }
+
+  const archivedIds = await args.db.transaction(async (tx) => {
+    const expired = await tx
+      .select({ id: juniorMemoryMemories.id })
+      .from(juniorMemoryMemories)
+      .where(and(...predicates))
+      .orderBy(
+        asc(juniorMemoryMemories.expiresAtMs),
+        asc(juniorMemoryMemories.id),
+      )
+      .limit(boundedLimit(args.limit, DEFAULT_EXPIRED_ARCHIVE_LIMIT));
+    const ids = expired.map((row) => row.id);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const archived = await tx
+      .update(juniorMemoryMemories)
+      .set({
+        archivedAtMs: args.nowMs,
+        archiveReason: "expired",
+      })
+      .where(and(inArray(juniorMemoryMemories.id, ids), ...predicates))
+      .returning({ id: juniorMemoryMemories.id });
+    const idsToClean = archived.map((row) => row.id);
+    if (idsToClean.length > 0) {
+      await tx
+        .delete(juniorMemoryEmbeddings)
+        .where(inArray(juniorMemoryEmbeddings.memoryId, idsToClean));
+    }
+    return idsToClean;
+  });
+  return { archivedCount: archivedIds.length };
 }
 
 function searchScore(memory: MemoryRecord, terms: string[]): number {
@@ -591,6 +677,19 @@ export function createMemoryStore(
   const embedder = options.embedder;
   const getNowMs = parsedOptions.now ?? Date.now;
 
+  async function archiveExpiredVisibleMemories(
+    input: ArchiveExpiredMemoriesInput | undefined,
+    nowMs: number,
+  ): Promise<ArchiveExpiredMemoriesResult> {
+    input = archiveExpiredMemoriesInputSchema.parse(input ?? {});
+    return await archiveExpiredMemoryBatch({
+      db,
+      limit: input.limit,
+      nowMs,
+      scopes: deriveVisibleMemoryScopes(runtimeContext),
+    });
+  }
+
   /** Persist a memory under the plugin-derived scope and subject. */
   async function createScopedMemory(
     rawInput: CreateMemoryInput,
@@ -604,6 +703,18 @@ export function createMemoryStore(
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }
+    await archiveExpiredMemoryBatch({
+      db,
+      nowMs,
+      scopes: [scope],
+    });
+    await archiveExpiredMemoryBatch({
+      db,
+      idempotencyKey: input.idempotencyKey,
+      limit: 1,
+      nowMs,
+      scopes: [scope],
+    });
 
     const id = randomUUID();
     const rows = await db
@@ -647,6 +758,7 @@ export function createMemoryStore(
     const idempotent = await findByIdempotencyKey({
       db,
       idempotencyKey: input.idempotencyKey,
+      nowMs,
       scope,
     });
     if (!idempotent) {
@@ -663,6 +775,10 @@ export function createMemoryStore(
   }
 
   return {
+    async archiveExpiredMemories(input) {
+      return await archiveExpiredVisibleMemories(input, getNowMs());
+    },
+
     async createMemory(input) {
       return await createScopedMemory(input, "personal");
     },
@@ -675,6 +791,11 @@ export function createMemoryStore(
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      await archiveExpiredMemoryBatch({
+        db,
+        nowMs,
+        scopes,
+      });
       return await listVisibleMemories({
         db,
         limit: input.limit,
@@ -687,6 +808,11 @@ export function createMemoryStore(
       input = searchMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      await archiveExpiredMemoryBatch({
+        db,
+        nowMs,
+        scopes,
+      });
       const limit = boundedLimit(input.limit, DEFAULT_SEARCH_LIMIT);
       const vectorCandidates = await searchVisibleVectorMemories({
         db,
