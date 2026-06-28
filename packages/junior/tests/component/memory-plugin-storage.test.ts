@@ -44,6 +44,24 @@ vi.mock("@/chat/sql/executor", () => ({
   }),
 }));
 
+vi.mock("@/chat/pi/client", () => ({
+  completeObject: vi.fn(async () => ({
+    object: {
+      canonicalFact: "Prefers terse status updates.",
+      decision: "store",
+      expiresAtMs: null,
+      kind: "preference",
+    },
+  })),
+  embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
+    dimensions: 1,
+    model: "test-embedding-model",
+    provider: "test-provider",
+    vectors: texts.map(() => [1]),
+  })),
+  resolveGatewayModel: vi.fn((modelId: string) => modelId),
+}));
+
 afterAll(() => {
   if (NEON.originalJuniorDatabaseUrl === undefined) {
     delete process.env.JUNIOR_DATABASE_URL;
@@ -137,10 +155,12 @@ WHERE table_name = 'junior_memory_memories'
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",
+        kind: "preference",
       });
       await store.createConversationMemory({
         content: "This thread tracks host-wired memory context.",
         idempotencyKey: "component-memory-conversation",
+        kind: "knowledge",
       });
 
       const tools = getPluginTools({
