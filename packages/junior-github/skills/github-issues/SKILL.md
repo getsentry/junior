@@ -67,6 +67,15 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Attach screenshots from the thread as image links when present.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
+**Body footer:**
+
+- When `gen_ai.conversation.id` is available in runtime context, append a session link as the last line of the issue body:
+
+```
+---
+[View Session in Sentry](https://sentry.sentry.io/explore/conversations/<url-encoded conversation id>/?project=4510944073809921)
+```
+
 ### 4. Verify draft
 
 Before running the `gh` create/edit command, check each gate. If any fails, revise and re-check before executing:

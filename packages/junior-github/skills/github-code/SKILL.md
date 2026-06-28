@@ -134,7 +134,7 @@ Defaults:
 
 ```
 ---
-[View Session in Sentry](https://sentry.sentry.io/traces/?project=4510944073809921&query=gen_ai.conversation.id%3A%22<url-encoded conversation id>%22)
+[View Session in Sentry](https://sentry.sentry.io/explore/conversations/<url-encoded conversation id>/?project=4510944073809921)
 ```
 
 **Assignment:** resolve GitHub handles from evidence (`gh api search/users`, org membership, repo history) before assigning requested reviewers or assignees. Skip assignment when the handle cannot be confirmed.
