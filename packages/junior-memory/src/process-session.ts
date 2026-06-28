@@ -28,48 +28,15 @@ const MEMORY_TOOL_NAMES = new Set([
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const legacyMemoryTargetSchema = z.enum(["requester", "conversation"]);
-// Cached task state may contain pre-kind entries with only target, or model
-// outputs that used the old `fact` name. Normalize both into the current kind.
-// TODO(v0.80.0): Remove legacy cached extraction support for missing kind/target.
 const extractedMemoryCacheSchema = z.array(
   z
     .object({
       content: z.string().min(1),
       expiresAtMs: z.number().finite().nullable(),
-      kind: z.enum([...MEMORY_KINDS, "fact"] as const).optional(),
-      target: legacyMemoryTargetSchema.optional(),
+      kind: z.enum(MEMORY_KINDS),
     })
     .strict()
-    .refine(
-      (memory) => memory.kind !== undefined || memory.target !== undefined,
-    )
-    .refine((memory) => {
-      if (memory.kind === undefined || memory.target === undefined) {
-        return true;
-      }
-      const kind = memory.kind === "fact" ? "knowledge" : memory.kind;
-      return targetForKind(kind) === memory.target;
-    })
-    .transform((memory): ExtractedMemory => {
-      let kind: MemoryKind;
-      if (memory.kind === "fact") {
-        kind = "knowledge";
-      } else if (memory.kind !== undefined) {
-        kind = memory.kind;
-      } else if (memory.target === "requester") {
-        kind = "preference";
-      } else if (memory.target === "conversation") {
-        kind = "knowledge";
-      } else {
-        throw new Error("Cached memory extraction requires kind or target.");
-      }
-      return parseExtractedMemory({
-        content: memory.content,
-        expiresAtMs: memory.expiresAtMs,
-        kind,
-      });
-    }),
+    .transform(parseExtractedMemory),
 );
 
 function targetForKind(kind: MemoryKind): "requester" | "conversation" {
