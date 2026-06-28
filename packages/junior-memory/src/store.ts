@@ -696,7 +696,6 @@ async function rememberDuplicateIdempotency(args: {
   content: string;
   db: MemoryDb;
   duplicate: MemoryRecord;
-  expiresAtMs?: number;
   idempotencyKey?: string;
   nowMs: number;
   runtimeContext: MemoryRuntimeContext;
@@ -711,7 +710,7 @@ async function rememberDuplicateIdempotency(args: {
     .values({
       content: args.content,
       createdAtMs: args.nowMs,
-      expiresAtMs: args.expiresAtMs,
+      expiresAtMs: args.duplicate.expiresAtMs,
       id: idempotencyAliasId({
         idempotencyKey: args.idempotencyKey,
         scope: args.scope,
@@ -968,7 +967,6 @@ export function createMemoryStore(
         content,
         db,
         duplicate: exactDuplicate,
-        expiresAtMs: input.expiresAtMs,
         idempotencyKey: input.idempotencyKey,
         nowMs,
         runtimeContext,
@@ -1008,7 +1006,6 @@ export function createMemoryStore(
         content,
         db,
         duplicate: vectorDuplicate,
-        expiresAtMs: input.expiresAtMs,
         idempotencyKey: input.idempotencyKey,
         nowMs,
         runtimeContext,

@@ -1584,8 +1584,9 @@ WHERE id = '${superseded.memory.id}'
     const fixture = await createMemoryFixture();
 
     try {
+      let nowMs = TEST_NOW_MS;
       const store = createMemoryStore(memoryDb(fixture), slackContext(), {
-        now: () => TEST_NOW_MS,
+        now: () => nowMs,
       });
 
       const created = await store.createMemory({
@@ -1597,12 +1598,14 @@ WHERE id = '${superseded.memory.id}'
         store.createMemory({
           content: "  Prefers release notes\nwith risk callouts.  ",
           kind: "preference",
+          expiresAtMs: TEST_NOW_MS + 1,
           idempotencyKey: "memory-test:exact-dedup-repeat",
         }),
       ).resolves.toMatchObject({
         created: false,
         memory: { id: created.memory.id },
       });
+      nowMs = TEST_NOW_MS + 2;
       await expect(
         store.createMemory({
           content: "Changed retry content must not create a duplicate.",
