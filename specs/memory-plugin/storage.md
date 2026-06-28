@@ -133,9 +133,12 @@ Passive extraction must be idempotent across repeated completed-session task
 scheduling, queue redelivery, and task retry. The store needs a stable source
 marker for a completed session and each extracted fact.
 
-Semantic duplicate suppression needs extractor and retrieval context. It runs
-before insertion in memory creation paths that have memory agent review, but V1
-storage does not use exact-content hashing as memory identity.
+Semantic duplicate suppression needs extractor and retrieval context. V1 store
+writes also enforce a conservative duplicate gate before insertion for active
+memories in the same scope, subject, and kind, using exact normalized-content
+equality and very-high embedding similarity when embeddings are available.
+Exact content remains one suppression signal, not a durable identity for memory
+facts.
 
 ### Lexical Search
 

@@ -15,6 +15,7 @@ import {
   ilike,
   inArray,
   isNull,
+  isNotNull,
   like,
   lte,
   or,
@@ -40,6 +41,7 @@ import {
 import {
   deriveMemoryScope,
   deriveMemorySubject,
+  type ResolvedMemorySubject,
   deriveVisibleMemoryScopes,
   type ResolvedMemoryScope,
 } from "./scope";
@@ -47,6 +49,7 @@ import {
 const DEFAULT_LIST_LIMIT = 50;
 const DEFAULT_SEARCH_LIMIT = 10;
 const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
+const HIGH_CONFIDENCE_DUPLICATE_DISTANCE = 0.015;
 const VECTOR_SEARCH_OVERFETCH = 4;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
@@ -56,6 +59,12 @@ export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 interface SearchCandidate {
   memory: MemoryRecord;
   score: number;
+}
+
+interface MemoryEmbedding {
+  model: string;
+  provider: string;
+  vector: number[];
 }
 
 const nonEmptyStringSchema = z.string().min(1);
@@ -248,6 +257,22 @@ function hashEmbeddedContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
+function idempotencyAliasId(args: {
+  idempotencyKey: string;
+  scope: ResolvedMemoryScope;
+  targetId: string;
+}): string {
+  return `alias:${createHash("sha256")
+    .update(args.scope.scope)
+    .update("\0")
+    .update(args.scope.scopeKey)
+    .update("\0")
+    .update(args.idempotencyKey)
+    .update("\0")
+    .update(args.targetId)
+    .digest("hex")}`;
+}
+
 function boundedLimit(value: number | undefined, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
@@ -336,7 +361,7 @@ async function findByIdempotencyKey(args: {
   nowMs: number;
   scope: ResolvedMemoryScope;
 }): Promise<MemoryRecord | undefined> {
-  const rows = await args.db
+  const activeRows = await args.db
     .select()
     .from(juniorMemoryMemories)
     .where(
@@ -354,7 +379,58 @@ async function findByIdempotencyKey(args: {
       ),
     )
     .limit(1);
-  return rows[0] ? parseMemoryRow(rows[0]) : undefined;
+  if (activeRows[0]) {
+    return parseMemoryRow(activeRows[0]);
+  }
+
+  const aliasRows = await args.db
+    .select({ supersededById: juniorMemoryMemories.supersededById })
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        eq(juniorMemoryMemories.scope, args.scope.scope),
+        eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+        eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
+        isNull(juniorMemoryMemories.archivedAtMs),
+        isNotNull(juniorMemoryMemories.supersededAtMs),
+        isNotNull(juniorMemoryMemories.supersededById),
+        or(
+          isNull(juniorMemoryMemories.expiresAtMs),
+          gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+        ),
+      ),
+    )
+    .orderBy(
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    );
+  for (const alias of aliasRows) {
+    if (!alias.supersededById) {
+      continue;
+    }
+    const rows = await args.db
+      .select()
+      .from(juniorMemoryMemories)
+      .where(
+        and(
+          eq(juniorMemoryMemories.id, alias.supersededById),
+          eq(juniorMemoryMemories.scope, args.scope.scope),
+          eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+          isNull(juniorMemoryMemories.archivedAtMs),
+          isNull(juniorMemoryMemories.supersededAtMs),
+          isNull(juniorMemoryMemories.supersededById),
+          or(
+            isNull(juniorMemoryMemories.expiresAtMs),
+            gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+          ),
+        ),
+      )
+      .limit(1);
+    if (rows[0]) {
+      return parseMemoryRow(rows[0]);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -442,11 +518,7 @@ function searchTerms(query: string): string[] {
 async function embedOne(
   embedder: MemoryEmbeddingProvider,
   text: string,
-): Promise<{
-  model: string;
-  provider: string;
-  vector: number[];
-}> {
+): Promise<MemoryEmbedding> {
   const normalized = normalizeContent(text);
   if (!normalized) {
     throw new Error("Embedding text is required.");
@@ -469,10 +541,11 @@ async function storeEmbedding(args: {
   content: string;
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
+  embedding?: MemoryEmbedding;
   memoryId: string;
   nowMs: number;
 }): Promise<void> {
-  if (!args.embedder) {
+  if (!args.embedder && !args.embedding) {
     return;
   }
   try {
@@ -488,10 +561,18 @@ async function storeEmbedding(args: {
     return;
   }
   let embedding: Awaited<ReturnType<typeof embedOne>>;
-  try {
-    embedding = await embedOne(args.embedder, args.content);
-  } catch {
-    return;
+  if (args.embedding) {
+    embedding = args.embedding;
+  } else {
+    const embedder = args.embedder;
+    if (!embedder) {
+      return;
+    }
+    try {
+      embedding = await embedOne(embedder, args.content);
+    } catch {
+      return;
+    }
   }
   try {
     await args.db
@@ -510,6 +591,145 @@ async function storeEmbedding(args: {
   } catch {
     return;
   }
+}
+
+function activeScopedSubjectPredicate(args: {
+  kind: MemoryRecord["kind"];
+  nowMs: number;
+  scope: ResolvedMemoryScope;
+  subject: ResolvedMemorySubject;
+}): SQL {
+  const predicate = and(
+    eq(juniorMemoryMemories.scope, args.scope.scope),
+    eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+    eq(juniorMemoryMemories.kind, args.kind),
+    eq(juniorMemoryMemories.subjectType, args.subject.subjectType),
+    args.subject.subjectKey === undefined
+      ? isNull(juniorMemoryMemories.subjectKey)
+      : eq(juniorMemoryMemories.subjectKey, args.subject.subjectKey),
+    isNull(juniorMemoryMemories.archivedAtMs),
+    isNull(juniorMemoryMemories.supersededAtMs),
+    isNull(juniorMemoryMemories.supersededById),
+    or(
+      isNull(juniorMemoryMemories.expiresAtMs),
+      gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+    ),
+  );
+  if (!predicate) {
+    throw new Error("Memory duplicate predicate is empty.");
+  }
+  return predicate;
+}
+
+async function findExactDuplicateMemory(args: {
+  content: string;
+  db: MemoryDb;
+  kind: MemoryRecord["kind"];
+  nowMs: number;
+  scope: ResolvedMemoryScope;
+  subject: ResolvedMemorySubject;
+}): Promise<MemoryRecord | undefined> {
+  const rows = await args.db
+    .select()
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        activeScopedSubjectPredicate(args),
+        eq(juniorMemoryMemories.content, args.content),
+      ),
+    )
+    .orderBy(
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(1);
+  return rows[0] ? parseMemoryRow(rows[0]) : undefined;
+}
+
+async function findVectorDuplicateMemory(args: {
+  db: MemoryDb;
+  embedding: MemoryEmbedding;
+  kind: MemoryRecord["kind"];
+  nowMs: number;
+  scope: ResolvedMemoryScope;
+  subject: ResolvedMemorySubject;
+}): Promise<MemoryRecord | undefined> {
+  const distance = cosineDistance(
+    juniorMemoryEmbeddings.embedding,
+    args.embedding.vector,
+  );
+  const rows = await args.db
+    .select({
+      contentHash: juniorMemoryEmbeddings.contentHash,
+      distance,
+      memory: juniorMemoryMemories,
+    })
+    .from(juniorMemoryMemories)
+    .innerJoin(
+      juniorMemoryEmbeddings,
+      eq(juniorMemoryEmbeddings.memoryId, juniorMemoryMemories.id),
+    )
+    .where(
+      and(
+        activeScopedSubjectPredicate(args),
+        eq(juniorMemoryEmbeddings.provider, args.embedding.provider),
+        eq(juniorMemoryEmbeddings.model, args.embedding.model),
+        eq(juniorMemoryEmbeddings.dimensions, MEMORY_EMBEDDING_DIMENSIONS),
+        eq(juniorMemoryEmbeddings.metric, EMBEDDING_METRIC),
+        lte(distance, HIGH_CONFIDENCE_DUPLICATE_DISTANCE),
+      ),
+    )
+    .orderBy(
+      distance,
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row || hashEmbeddedContent(row.memory.content) !== row.contentHash) {
+    return undefined;
+  }
+  return parseMemoryRow(row.memory);
+}
+
+async function rememberDuplicateIdempotency(args: {
+  content: string;
+  db: MemoryDb;
+  duplicate: MemoryRecord;
+  expiresAtMs?: number;
+  idempotencyKey?: string;
+  nowMs: number;
+  runtimeContext: MemoryRuntimeContext;
+  scope: ResolvedMemoryScope;
+  subject: ResolvedMemorySubject;
+}): Promise<void> {
+  if (args.idempotencyKey === undefined) {
+    return;
+  }
+  await args.db
+    .insert(juniorMemoryMemories)
+    .values({
+      content: args.content,
+      createdAtMs: args.nowMs,
+      expiresAtMs: args.expiresAtMs,
+      id: idempotencyAliasId({
+        idempotencyKey: args.idempotencyKey,
+        scope: args.scope,
+        targetId: args.duplicate.id,
+      }),
+      idempotencyKey: args.idempotencyKey,
+      observedAtMs: args.nowMs,
+      scope: args.scope.scope,
+      scopeKey: args.scope.scopeKey,
+      sourceKey: sourceKey(args.runtimeContext),
+      sourcePlatform: args.runtimeContext.source.platform,
+      subjectKey: args.subject.subjectKey,
+      subjectType: args.subject.subjectType,
+      supersededAtMs: args.nowMs,
+      supersededById: args.duplicate.id,
+      kind: args.duplicate.kind,
+    })
+    .onConflictDoNothing();
 }
 
 /** List active records for the runtime-derived visible scopes. */
@@ -716,6 +936,94 @@ export function createMemoryStore(
       nowMs,
       scopes: [scope],
     });
+    if (input.idempotencyKey !== undefined) {
+      const idempotent = await findByIdempotencyKey({
+        db,
+        idempotencyKey: input.idempotencyKey,
+        nowMs,
+        scope,
+      });
+      if (idempotent) {
+        await storeEmbedding({
+          content: idempotent.content,
+          db,
+          embedder,
+          memoryId: idempotent.id,
+          nowMs,
+        });
+        return { created: false, memory: idempotent };
+      }
+    }
+
+    const exactDuplicate = await findExactDuplicateMemory({
+      content,
+      db,
+      kind: input.kind,
+      nowMs,
+      scope,
+      subject,
+    });
+    if (exactDuplicate) {
+      await rememberDuplicateIdempotency({
+        content,
+        db,
+        duplicate: exactDuplicate,
+        expiresAtMs: input.expiresAtMs,
+        idempotencyKey: input.idempotencyKey,
+        nowMs,
+        runtimeContext,
+        scope,
+        subject,
+      });
+      await storeEmbedding({
+        content: exactDuplicate.content,
+        db,
+        embedder,
+        memoryId: exactDuplicate.id,
+        nowMs,
+      });
+      return { created: false, memory: exactDuplicate };
+    }
+
+    let candidateEmbedding: MemoryEmbedding | undefined;
+    if (embedder) {
+      try {
+        candidateEmbedding = await embedOne(embedder, content);
+      } catch {
+        candidateEmbedding = undefined;
+      }
+    }
+    const vectorDuplicate = candidateEmbedding
+      ? await findVectorDuplicateMemory({
+          db,
+          embedding: candidateEmbedding,
+          kind: input.kind,
+          nowMs,
+          scope,
+          subject,
+        })
+      : undefined;
+    if (vectorDuplicate) {
+      await rememberDuplicateIdempotency({
+        content,
+        db,
+        duplicate: vectorDuplicate,
+        expiresAtMs: input.expiresAtMs,
+        idempotencyKey: input.idempotencyKey,
+        nowMs,
+        runtimeContext,
+        scope,
+        subject,
+      });
+      await storeEmbedding({
+        content: vectorDuplicate.content,
+        db,
+        embedder,
+        memoryId: vectorDuplicate.id,
+        nowMs,
+      });
+      return { created: false, memory: vectorDuplicate };
+    }
 
     const id = randomUUID();
     const rows = await db
@@ -750,6 +1058,7 @@ export function createMemoryStore(
         content: memory.content,
         db,
         embedder,
+        embedding: candidateEmbedding,
         memoryId: memory.id,
         nowMs,
       });

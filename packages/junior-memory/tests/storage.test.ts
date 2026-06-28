@@ -1580,6 +1580,164 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("returns an existing same-kind memory for exact duplicate content", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => TEST_NOW_MS,
+      });
+
+      const created = await store.createMemory({
+        content: "Prefers release notes with risk callouts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:exact-dedup-original",
+      });
+      await expect(
+        store.createMemory({
+          content: "  Prefers release notes\nwith risk callouts.  ",
+          kind: "preference",
+          idempotencyKey: "memory-test:exact-dedup-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id },
+      });
+      await expect(
+        store.createMemory({
+          content: "Changed retry content must not create a duplicate.",
+          kind: "preference",
+          idempotencyKey: "memory-test:exact-dedup-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id },
+      });
+      const otherKind = await store.createMemory({
+        content: "Prefers release notes with risk callouts.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:exact-dedup-other-kind",
+      });
+      expect(otherKind).toMatchObject({
+        created: true,
+        memory: { content: created.memory.content, kind: "knowledge" },
+      });
+      const otherScope = await store.createConversationMemory({
+        content: "Prefers release notes with risk callouts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:exact-dedup-other-scope",
+      });
+      expect(otherScope).toMatchObject({
+        created: true,
+        memory: { content: created.memory.content, kind: "preference" },
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: otherScope.memory.id }),
+          expect.objectContaining({ id: otherKind.memory.id }),
+          expect.objectContaining({ id: created.memory.id }),
+        ]),
+      );
+      await expect(store.listMemories({})).resolves.toHaveLength(3);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("preserves vector duplicate retry identity", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const firstContent = "Prefers weekly summaries in bullet form.";
+      const duplicateContent = "Likes weekly updates as bullet lists.";
+      const embedder = createTestEmbedder({
+        [firstContent]: unitEmbedding(1),
+        [duplicateContent]: unitEmbedding(1),
+      });
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+
+      const created = await store.createMemory({
+        content: firstContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:vector-dedup-idempotent-original",
+      });
+      await expect(
+        store.createMemory({
+          content: duplicateContent,
+          kind: "preference",
+          idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id, content: firstContent },
+      });
+      await expect(
+        store.createMemory({
+          content: "Changed retry content should stay deduped.",
+          kind: "preference",
+          idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id, content: firstContent },
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: created.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("returns an existing same-kind memory for high-confidence vector duplicates", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const firstContent = "Prefers weekly summaries in bullet form.";
+      const duplicateContent = "Likes weekly updates as bullet lists.";
+      const embedder = createTestEmbedder({
+        [firstContent]: unitEmbedding(1),
+        [duplicateContent]: unitEmbedding(1),
+      });
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => TEST_NOW_MS,
+      });
+
+      const created = await store.createMemory({
+        content: firstContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:vector-dedup-original",
+      });
+      await expect(
+        store.createMemory({
+          content: duplicateContent,
+          kind: "preference",
+          idempotencyKey: "memory-test:vector-dedup-repeat",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: created.memory.id, content: firstContent },
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: created.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([
+        expect.objectContaining({ memoryId: created.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("backfills missing embeddings on idempotent create retries", async () => {
     const fixture = await createMemoryFixture();
 
