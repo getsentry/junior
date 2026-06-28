@@ -5,7 +5,7 @@ prev: false
 title: "PluginPackageContentItemReport"
 ---
 
-Defined in: [junior/src/reporting.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L68)
+Defined in: [junior/src/reporting.ts:72](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L72)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:68](https://github.com/getsentry/junior/blo
 
 > **dir**: `string`
 
-Defined in: [junior/src/reporting.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L69)
+Defined in: [junior/src/reporting.ts:73](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L73)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting.ts:69](https://github.com/getsentry/junior/blo
 
 > **hasMigrationsDir**: `boolean`
 
-Defined in: [junior/src/reporting.ts:70](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L70)
+Defined in: [junior/src/reporting.ts:74](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L74)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting.ts:70](https://github.com/getsentry/junior/blo
 
 > **hasSkillsDir**: `boolean`
 
-Defined in: [junior/src/reporting.ts:71](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L71)
+Defined in: [junior/src/reporting.ts:75](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L75)
 
 ---
 
@@ -37,4 +37,4 @@ Defined in: [junior/src/reporting.ts:71](https://github.com/getsentry/junior/blo
 
 > **packageName**: `string`
 
-Defined in: [junior/src/reporting.ts:72](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L72)
+Defined in: [junior/src/reporting.ts:76](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L76)

@@ -58,6 +58,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import {
   loadConnectedMcpProviders,
+  recordToolExecutionStarted,
   recordMcpProviderConnected,
 } from "@/chat/state/session-log";
 import { createTools } from "@/chat/tools";
@@ -665,7 +666,6 @@ export async function generateAssistantReply(
       await recordConnectedMcpProvider(provider);
     }
   };
-
   const getSandboxMetadata = () =>
     sandboxExecutor
       ? {
@@ -766,6 +766,27 @@ export async function generateAssistantReply(
     canRecordMcpProviders = Boolean(
       turnSessionState.canUseTurnSession && sessionConversationId && sessionId,
     );
+    const recordParentToolExecutionStart = async (event: {
+      args: unknown;
+      toolCallId: string;
+      toolName: string;
+    }) => {
+      if (
+        !turnSessionState.canUseTurnSession ||
+        !sessionConversationId ||
+        !sessionId
+      ) {
+        return;
+      }
+      await recordToolExecutionStarted({
+        conversationId: sessionConversationId,
+        sessionId,
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        args: event.args,
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
+    };
     const persistedConfigurationValues = context.channelConfiguration
       ? await context.channelConfiguration.resolveValues()
       : {};
@@ -1047,6 +1068,7 @@ export async function generateAssistantReply(
         config: botConfig.advisor,
         conversationId: sessionConversationId,
         conversationPrivacy,
+        parentSessionId: sessionId,
         logContext: spanContext,
         getTools: () => advisorTools,
         streamFn: createTracedStreamFn({ conversationPrivacy }),
@@ -1465,6 +1487,9 @@ export async function generateAssistantReply(
     });
 
     const unsubscribe = agent.subscribe((event) => {
+      if (event.type === "tool_execution_start") {
+        return recordParentToolExecutionStart(event);
+      }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
         return persistSafeBoundary([...agent!.state.messages]).then(
           () => undefined,

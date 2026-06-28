@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   commitMessages,
+  loadActivityEntries,
   loadConnectedMcpProviders,
   loadMessages,
   loadProjection,
@@ -9,6 +10,9 @@ import {
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
+  recordSubagentEnded,
+  recordSubagentStarted,
+  recordToolExecutionStarted,
   type SessionLogEntry,
   type SessionLogStore,
 } from "@/chat/state/session-log";
@@ -81,6 +85,75 @@ describe("agent session log store", () => {
         messageCount: 2,
       }),
     ).resolves.toEqual([first, second]);
+  });
+
+  it("keeps host activity entries out of Pi projections", async () => {
+    const store = memoryStore();
+    const first: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await commitMessages({
+      store,
+      conversationId: "conversation-1",
+      messages: [first],
+      ttlMs: 60_000,
+    });
+    await recordToolExecutionStarted({
+      store,
+      conversationId: "conversation-1",
+      createdAtMs: 2,
+      toolCallId: "call-1",
+      toolName: "advisor",
+      args: { question: "private" },
+      ttlMs: 60_000,
+    });
+    await recordSubagentStarted({
+      store,
+      conversationId: "conversation-1",
+      createdAtMs: 3,
+      historyMode: "shared",
+      parentConversationId: "conversation-1",
+      parentToolCallId: "call-1",
+      subagentInvocationId: "call-1",
+      subagentKind: "advisor",
+      transcriptRef: {
+        type: "advisor_session",
+        parentConversationId: "conversation-1",
+        key: "junior:conversation-1:advisor_session",
+      },
+      ttlMs: 60_000,
+    });
+    await recordSubagentEnded({
+      store,
+      conversationId: "conversation-1",
+      createdAtMs: 4,
+      outcome: "success",
+      subagentInvocationId: "call-1",
+      ttlMs: 60_000,
+    });
+
+    await expect(
+      loadProjection({ store, conversationId: "conversation-1" }),
+    ).resolves.toEqual([first]);
+    await expect(
+      loadActivityEntries({ store, conversationId: "conversation-1" }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        type: "tool_execution_started",
+        toolCallId: "call-1",
+      }),
+      expect.objectContaining({
+        type: "subagent_started",
+        parentToolCallId: "call-1",
+      }),
+      expect.objectContaining({
+        type: "subagent_ended",
+        subagentInvocationId: "call-1",
+      }),
+    ]);
   });
 
   it("records projection resets instead of rewriting unsafe history", async () => {

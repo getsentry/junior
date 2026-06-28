@@ -71,6 +71,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
 - `policies/context-bound-systems.md` (explicit actor/destination/context propagation across runtime boundaries)
 - `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
+- `policies/error-handling.md` (when to catch locally vs let top-level handlers own failures)
 - `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
 - `policies/interface-design.md` (domain naming, module paths, and minimal interface boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)

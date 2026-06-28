@@ -174,6 +174,15 @@ happened:
   authorization link for provider work that blocked the current session.
 - `authorization_completed`: records that the requester completed the
   authorization callback for the blocked provider work.
+- `tool_execution_started`: records that the parent run started a tool call so
+  operator-facing activity views can show in-flight work before Pi emits the
+  final tool result.
+- `subagent_started`: records that a child agent execution became visible from
+  the parent run. The current child transcript reference is an
+  `advisor_session`; widening child transcript references requires a spec
+  update before changing the runtime schema.
+- `subagent_ended`: records the terminal child agent outcome for a previously
+  recorded `subagent_started` event.
 - `timeout_paused`: records a safe timeout or cooperative-yield boundary when a
   durable pause fact is needed beyond the Pi messages already in the log.
 - `auth_paused`: records a safe auth boundary and points at auth-owned callback
@@ -202,12 +211,20 @@ are reduced only for runtime state:
 - `slice_started`
 - `mcp_provider_connected`
 - `authorization_requested`
+- `tool_execution_started`
+- `subagent_started`
+- `subagent_ended`
 - `timeout_paused`
 - `auth_paused`
 - `pause_resumed`
 - `assistant_reply_delivered`
 - `session_abandoned`
 - `session_error_recorded`
+
+Host-only activity events (`tool_execution_started`, `subagent_started`, and
+`subagent_ended`) must not contribute to Pi replay or resume history. They are
+durable reporting facts for activity timelines and diagnostics; the Pi
+projection reducer must ignore them when constructing `agent.state.messages`.
 
 `authorization_completed` is a host-authored event that projects to one concise
 Pi-compatible observation in chronological order:

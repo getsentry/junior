@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Bot, Check, Copy, Wrench } from "lucide-react";
 import { useParams } from "react-router";
 
 import { useConversationData } from "../api";
@@ -29,6 +29,7 @@ import {
 import { Transcript } from "../components/Transcript";
 import { TranscriptLoading } from "../components/TranscriptLoading";
 import type {
+  ConversationActivity,
   Conversation,
   ConversationDetailFeed,
   DashboardData,
@@ -84,18 +85,123 @@ export function ConversationPage(props: { data?: DashboardData }) {
             {detail.error.message}
           </div>
         ) : (
-          <Transcript
-            actions={
-              <CopyMarkdownButton
-                conversation={conversation}
-                detail={detail.data}
-              />
-            }
-            live={conversationIsLive(visualStatus, detail.data)}
-            turns={detail.data?.runs ?? []}
-          />
+          <>
+            <ActivityTimeline turns={detail.data?.runs ?? []} />
+            <Transcript
+              actions={
+                <CopyMarkdownButton
+                  conversation={conversation}
+                  detail={detail.data}
+                />
+              }
+              live={conversationIsLive(visualStatus, detail.data)}
+              turns={detail.data?.runs ?? []}
+            />
+          </>
         )}
       </section>
+    </div>
+  );
+}
+
+function ActivityTimeline(props: {
+  turns: NonNullable<ConversationDetailFeed["runs"]>;
+}) {
+  const activity = props.turns.flatMap((turn) =>
+    (turn.activity ?? []).map((item) => ({ ...item, turnId: turn.id })),
+  );
+  if (activity.length === 0) return null;
+
+  return (
+    <section
+      aria-label="Execution activity"
+      className="mb-5 grid min-w-0 gap-2 border border-white/10 bg-white/[0.025] p-3"
+    >
+      <div className="text-[0.82rem] font-bold uppercase tracking-normal text-[#b8b8b8]">
+        Execution Activity
+      </div>
+      <div className="grid min-w-0 gap-2">
+        {activity.map((item) => (
+          <ActivityRow
+            activity={item}
+            key={`${item.turnId}:${item.type}:${item.id}`}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ActivityRow(props: { activity: ConversationActivity }) {
+  if (props.activity.type === "tool_execution") {
+    const meta = [
+      props.activity.status,
+      formatTime(props.activity.createdAt),
+      props.activity.toolCallId,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return (
+      <ActivityRowShell
+        icon={Wrench}
+        label={props.activity.toolName}
+        meta={meta}
+      >
+        {props.activity.subagents.length > 0 ? (
+          <div className="mt-2 grid min-w-0 gap-1">
+            {props.activity.subagents.map((subagent) => (
+              <ActivityRow activity={subagent} key={subagent.id} />
+            ))}
+          </div>
+        ) : null}
+      </ActivityRowShell>
+    );
+  }
+
+  const meta = [
+    props.activity.status,
+    formatTime(props.activity.createdAt),
+    props.activity.parentToolCallId
+      ? `parent ${props.activity.parentToolCallId}`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <ActivityRowShell
+      icon={Bot}
+      label={`${props.activity.subagentKind} subagent`}
+      meta={meta}
+    />
+  );
+}
+
+function ActivityRowShell(props: {
+  children?: ReactNode;
+  icon: typeof Bot;
+  label: string;
+  meta: string;
+}) {
+  const Icon = props.icon;
+  return (
+    <div className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-2 border-l-2 border-[#beaaff]/35 py-1 pl-2">
+      <Icon
+        aria-hidden="true"
+        className="mt-0.5 text-[#beaaff]"
+        size={14}
+        strokeWidth={2}
+      />
+      <div className="min-w-0">
+        <div className="break-words text-[0.86rem] font-semibold leading-snug text-[#f4f4f4]">
+          {props.label}
+        </div>
+        <div className="break-words text-[0.75rem] leading-relaxed text-[#888]">
+          {props.meta}
+        </div>
+        {props.children}
+      </div>
     </div>
   );
 }

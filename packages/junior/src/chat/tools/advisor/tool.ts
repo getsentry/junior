@@ -4,6 +4,7 @@ import {
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
 import { Type } from "@sinclair/typebox";
+import { THREAD_STATE_TTL_MS } from "chat";
 import type { AdvisorConfig } from "@/chat/config";
 import {
   type ConversationPrivacy,
@@ -35,6 +36,10 @@ import {
   getAdvisorSessionKey,
   type AdvisorSessionStore,
 } from "@/chat/tools/advisor/session-store";
+import {
+  recordSubagentEnded,
+  recordSubagentStarted,
+} from "@/chat/state/session-log";
 import { tool, type ToolDefinition } from "@/chat/tools/definition";
 import { escapeXml } from "@/chat/xml";
 
@@ -63,6 +68,7 @@ export interface AdvisorToolRuntimeContext {
   conversationPrivacy?: ConversationPrivacy;
   getTools: () => AgentTool[];
   logContext?: LogContext;
+  parentSessionId?: string;
   store?: AdvisorSessionStore;
   streamFn?: StreamFn;
 }
@@ -155,7 +161,10 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           "Curated evidence packet: relevant requirements, constraints, current plan, alternatives, code snippets, diffs, command output, and open questions.",
       }),
     }),
-    execute: async ({ question, context: suppliedContext }) => {
+    execute: async (
+      { question, context: suppliedContext },
+      { toolCallId } = {},
+    ) => {
       if (typeof question !== "string" || !question.trim()) {
         return failure(
           "invalid_question",
@@ -180,6 +189,41 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
       }
 
       const conversationId = context.conversationId;
+      const advisorSessionKey = getAdvisorSessionKey(conversationId);
+      const subagentInvocationId =
+        typeof toolCallId === "string" && toolCallId.length > 0
+          ? toolCallId
+          : `advisor:${Date.now()}`;
+      const endSubagent = async (
+        outcome: "success" | "error" | "aborted",
+        errorCode?: AdvisorErrorCode,
+      ) =>
+        recordSubagentEnded({
+          conversationId,
+          sessionId: context.parentSessionId,
+          subagentInvocationId,
+          outcome,
+          ...(errorCode ? { errorCode } : {}),
+          ttlMs: THREAD_STATE_TTL_MS,
+        });
+      await recordSubagentStarted({
+        conversationId,
+        sessionId: context.parentSessionId,
+        parentConversationId: conversationId,
+        parentSessionId: context.parentSessionId,
+        ...(typeof toolCallId === "string" && toolCallId.length > 0
+          ? { parentToolCallId: toolCallId }
+          : {}),
+        subagentInvocationId,
+        subagentKind: "advisor",
+        transcriptRef: {
+          type: "advisor_session",
+          parentConversationId: conversationId,
+          key: advisorSessionKey,
+        },
+        historyMode: "shared",
+        ttlMs: THREAD_STATE_TTL_MS,
+      });
       const conversationPrivacy = context.conversationPrivacy ?? "private";
       const requestText = [
         "<advisor-task>",
@@ -221,6 +265,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             advisorMessages = await store.load(conversationId);
           } catch {
             setSpanStatus("error");
+            await endSubagent("error", "session_unavailable");
             return failure(
               "session_unavailable",
               "Advisor guidance is unavailable because advisor history could not be loaded. Continue without assuming advisor history.",
@@ -236,7 +281,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               thinkingLevel: context.config.thinkingLevel,
               tools: context.getTools(),
             },
-            sessionId: getAdvisorSessionKey(conversationId),
+            sessionId: advisorSessionKey,
             streamFn: context.streamFn,
           });
           advisorAgent.state.messages = advisorMessages;
@@ -246,6 +291,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             await advisorAgent.prompt(requestMessage);
           } catch {
             setSpanStatus("error");
+            await endSubagent("error", "unavailable");
             return failure(
               "unavailable",
               "Advisor guidance is unavailable. Continue without advisor guidance if the next step is clear from verified evidence.",
@@ -275,6 +321,10 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             assistant.stopReason === "aborted"
           ) {
             setSpanStatus("error");
+            await endSubagent(
+              assistant?.stopReason === "aborted" ? "aborted" : "error",
+              "unavailable",
+            );
             return failure(
               "unavailable",
               "Advisor guidance is unavailable. Continue without advisor guidance if the next step is clear from verified evidence.",
@@ -286,11 +336,13 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
             await store.save(conversationId, advisorAgent.state.messages);
           } catch {
             setSpanStatus("error");
+            await endSubagent("error", "session_unavailable");
             return failure(
               "session_unavailable",
               "Advisor guidance is unavailable because advisor history could not be saved. Retry the advisor call or continue without assuming advisor history.",
             );
           }
+          await endSubagent("success");
           setSpanStatus("ok");
           return success(memo);
         },

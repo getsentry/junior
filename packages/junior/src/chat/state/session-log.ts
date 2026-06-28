@@ -94,6 +94,50 @@ const authorizationCompletedEntrySchema = z.object({
   authorizationId: z.string().min(1),
 });
 
+const transcriptRefSchema = z.object({
+  type: z.literal("advisor_session"),
+  parentConversationId: z.string().min(1),
+  key: z.string().min(1),
+});
+
+const toolExecutionStartedEntrySchema = z.object({
+  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  type: z.literal("tool_execution_started"),
+  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
+  createdAtMs: z.number().int().nonnegative(),
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1),
+  args: z.unknown().optional(),
+});
+
+const subagentStartedEntrySchema = z.object({
+  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  type: z.literal("subagent_started"),
+  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
+  subagentInvocationId: z.string().min(1),
+  subagentKind: z.string().min(1),
+  parentToolCallId: z.string().min(1).optional(),
+  parentConversationId: z.string().min(1),
+  parentSessionId: z.string().min(1).optional(),
+  transcriptRef: transcriptRefSchema,
+  historyMode: z.literal("shared"),
+  createdAtMs: z.number().int().nonnegative(),
+});
+
+const subagentEndedEntrySchema = z.object({
+  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  type: z.literal("subagent_ended"),
+  sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
+  subagentInvocationId: z.string().min(1),
+  outcome: z.union([
+    z.literal("success"),
+    z.literal("error"),
+    z.literal("aborted"),
+  ]),
+  errorCode: z.string().min(1).optional(),
+  createdAtMs: z.number().int().nonnegative(),
+});
+
 const sessionLogEntrySchema = z.discriminatedUnion("type", [
   piMessageEntrySchema,
   projectionResetEntrySchema,
@@ -101,11 +145,19 @@ const sessionLogEntrySchema = z.discriminatedUnion("type", [
   mcpProviderConnectedEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
+  toolExecutionStartedEntrySchema,
+  subagentStartedEntrySchema,
+  subagentEndedEntrySchema,
 ]);
 
 /** Requester identity stored with turn-start messages for durable continuation. */
 export type SessionLogEntry = z.infer<typeof sessionLogEntrySchema>;
 export type AuthorizationKind = z.infer<typeof authorizationKindSchema>;
+export type TranscriptRef = z.infer<typeof transcriptRefSchema>;
+export type SessionActivityEntry =
+  | Extract<SessionLogEntry, { type: "tool_execution_started" }>
+  | Extract<SessionLogEntry, { type: "subagent_started" }>
+  | Extract<SessionLogEntry, { type: "subagent_ended" }>;
 
 interface Scope {
   conversationId: string;
@@ -151,6 +203,16 @@ function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
 
 function entrySessionId(entry: SessionLogEntry): string {
   return entry.sessionId ?? INITIAL_SESSION_ID;
+}
+
+function isActivityEntry(
+  entry: SessionLogEntry,
+): entry is SessionActivityEntry {
+  return (
+    entry.type === "tool_execution_started" ||
+    entry.type === "subagent_started" ||
+    entry.type === "subagent_ended"
+  );
 }
 
 function latestProjectionResetIndex(entries: SessionLogEntry[]): number {
@@ -339,6 +401,70 @@ function authorizationCompletedEntry(args: {
   };
 }
 
+function toolExecutionStartedEntry(args: {
+  args?: unknown;
+  createdAtMs: number;
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+}): SessionLogEntry {
+  return {
+    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
+    type: "tool_execution_started",
+    sessionId: args.sessionId,
+    createdAtMs: args.createdAtMs,
+    toolCallId: args.toolCallId,
+    toolName: args.toolName,
+    ...(args.args !== undefined ? { args: args.args } : {}),
+  };
+}
+
+function subagentStartedEntry(args: {
+  createdAtMs: number;
+  historyMode: "shared";
+  parentConversationId: string;
+  parentSessionId?: string;
+  parentToolCallId?: string;
+  sessionId: string;
+  subagentInvocationId: string;
+  subagentKind: string;
+  transcriptRef: TranscriptRef;
+}): SessionLogEntry {
+  return {
+    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
+    type: "subagent_started",
+    sessionId: args.sessionId,
+    subagentInvocationId: args.subagentInvocationId,
+    subagentKind: args.subagentKind,
+    ...(args.parentToolCallId
+      ? { parentToolCallId: args.parentToolCallId }
+      : {}),
+    parentConversationId: args.parentConversationId,
+    ...(args.parentSessionId ? { parentSessionId: args.parentSessionId } : {}),
+    transcriptRef: args.transcriptRef,
+    historyMode: args.historyMode,
+    createdAtMs: args.createdAtMs,
+  };
+}
+
+function subagentEndedEntry(args: {
+  createdAtMs: number;
+  errorCode?: string;
+  outcome: "success" | "error" | "aborted";
+  sessionId: string;
+  subagentInvocationId: string;
+}): SessionLogEntry {
+  return {
+    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
+    type: "subagent_ended",
+    sessionId: args.sessionId,
+    subagentInvocationId: args.subagentInvocationId,
+    outcome: args.outcome,
+    ...(args.errorCode ? { errorCode: args.errorCode } : {}),
+    createdAtMs: args.createdAtMs,
+  };
+}
+
 function decode(value: unknown): SessionLogEntry {
   if (typeof value === "string") {
     return decode(JSON.parse(value) as unknown);
@@ -385,15 +511,12 @@ function project(
       messages.push(authorizationObservationMessage(entry));
       continue;
     }
-    if (
-      entry.type === "mcp_provider_connected" ||
-      entry.type === "authorization_requested"
-    ) {
+    if (entry.type === "projection_reset") {
+      messages = [...entry.messages];
+      if (entry.requester) {
+        requester = entry.requester;
+      }
       continue;
-    }
-    messages = [...entry.messages];
-    if (entry.requester) {
-      requester = entry.requester;
     }
   }
   return { messages, requester };
@@ -548,6 +671,17 @@ async function loadEntries(
   return await store.read(args);
 }
 
+/** Load chronological host-only runtime activity entries for reporting. */
+export async function loadActivityEntries(
+  args: Scope & {
+    store?: SessionLogStore;
+    sessionId?: string;
+  },
+): Promise<SessionActivityEntry[]> {
+  const entries = await loadEntries(args);
+  return projectionEntries(entries, args.sessionId).filter(isActivityEntry);
+}
+
 /** Load the committed Pi-message projection for a conversation. */
 export async function loadMessages(
   args: Scope & {
@@ -697,6 +831,104 @@ export async function recordAuthorizationCompleted(
         provider: args.provider,
         requesterId: args.requesterId,
         authorizationId: args.authorizationId,
+      }),
+    ],
+    ttlMs: args.ttlMs,
+  });
+}
+
+/** Record a host-observed parent tool start without adding it to Pi replay. */
+export async function recordToolExecutionStarted(
+  args: Scope & {
+    args?: unknown;
+    createdAtMs?: number;
+    sessionId?: string;
+    store?: SessionLogStore;
+    toolCallId: string;
+    toolName: string;
+    ttlMs: number;
+  },
+): Promise<void> {
+  const store = args.store ?? (await defaultStore());
+  const entries = await store.read(args);
+  const sessionId = args.sessionId ?? currentSessionId(entries);
+  await store.append({
+    scope: args,
+    entries: [
+      toolExecutionStartedEntry({
+        args: args.args,
+        createdAtMs: args.createdAtMs ?? Date.now(),
+        sessionId,
+        toolCallId: args.toolCallId,
+        toolName: args.toolName,
+      }),
+    ],
+    ttlMs: args.ttlMs,
+  });
+}
+
+/** Record that a child agent execution became visible from this parent run. */
+export async function recordSubagentStarted(
+  args: Scope & {
+    createdAtMs?: number;
+    historyMode: "shared";
+    parentConversationId: string;
+    parentSessionId?: string;
+    parentToolCallId?: string;
+    sessionId?: string;
+    store?: SessionLogStore;
+    subagentInvocationId: string;
+    subagentKind: string;
+    transcriptRef: TranscriptRef;
+    ttlMs: number;
+  },
+): Promise<void> {
+  const store = args.store ?? (await defaultStore());
+  const entries = await store.read(args);
+  const sessionId = args.sessionId ?? currentSessionId(entries);
+  await store.append({
+    scope: args,
+    entries: [
+      subagentStartedEntry({
+        createdAtMs: args.createdAtMs ?? Date.now(),
+        historyMode: args.historyMode,
+        parentConversationId: args.parentConversationId,
+        parentSessionId: args.parentSessionId,
+        parentToolCallId: args.parentToolCallId,
+        sessionId,
+        subagentInvocationId: args.subagentInvocationId,
+        subagentKind: args.subagentKind,
+        transcriptRef: args.transcriptRef,
+      }),
+    ],
+    ttlMs: args.ttlMs,
+  });
+}
+
+/** Record the terminal state for a previously-started child agent execution. */
+export async function recordSubagentEnded(
+  args: Scope & {
+    createdAtMs?: number;
+    errorCode?: string;
+    outcome: "success" | "error" | "aborted";
+    sessionId?: string;
+    store?: SessionLogStore;
+    subagentInvocationId: string;
+    ttlMs: number;
+  },
+): Promise<void> {
+  const store = args.store ?? (await defaultStore());
+  const entries = await store.read(args);
+  const sessionId = args.sessionId ?? currentSessionId(entries);
+  await store.append({
+    scope: args,
+    entries: [
+      subagentEndedEntry({
+        createdAtMs: args.createdAtMs ?? Date.now(),
+        errorCode: args.errorCode,
+        outcome: args.outcome,
+        sessionId,
+        subagentInvocationId: args.subagentInvocationId,
       }),
     ],
     ttlMs: args.ttlMs,

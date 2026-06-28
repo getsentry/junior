@@ -778,6 +778,175 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("reports private execution activity as safe metadata", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const {
+      recordSubagentEnded,
+      recordSubagentStarted,
+      recordToolExecutionStarted,
+    } = await import("@/chat/state/session-log");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:G1:activity",
+      sessionId: "turn-activity",
+      sliceId: 1,
+      state: "completed",
+      turnStartMessageIndex: 0,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "current question" }],
+          timestamp: 1,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "advisor-call-1",
+          name: "advisor",
+          content: [{ type: "text", text: "advisor result" }],
+          timestamp: 4,
+        },
+      ] as PiMessage[],
+    });
+    await recordToolExecutionStarted({
+      conversationId: "slack:G1:activity",
+      sessionId: "turn-activity",
+      createdAtMs: 2,
+      toolCallId: "advisor-call-1",
+      toolName: "advisor",
+      args: { question: "private question", context: "private context" },
+      ttlMs: 60_000,
+    });
+    await recordSubagentStarted({
+      conversationId: "slack:G1:activity",
+      sessionId: "turn-activity",
+      createdAtMs: 3,
+      historyMode: "shared",
+      parentConversationId: "slack:G1:activity",
+      parentSessionId: "turn-activity",
+      parentToolCallId: "advisor-call-1",
+      subagentInvocationId: "advisor-call-1",
+      subagentKind: "advisor",
+      transcriptRef: {
+        type: "advisor_session",
+        parentConversationId: "slack:G1:activity",
+        key: "junior:slack:G1:activity:advisor_session",
+      },
+      ttlMs: 60_000,
+    });
+    await recordSubagentEnded({
+      conversationId: "slack:G1:activity",
+      sessionId: "turn-activity",
+      createdAtMs: 5,
+      outcome: "success",
+      subagentInvocationId: "advisor-call-1",
+      ttlMs: 60_000,
+    });
+
+    const report =
+      await createJuniorReporting().getConversation("slack:G1:activity");
+
+    expect(report.runs[0]?.activity).toEqual([
+      expect.objectContaining({
+        type: "tool_execution",
+        toolCallId: "advisor-call-1",
+        toolName: "advisor",
+        status: "completed",
+        redacted: true,
+        inputKeys: ["question", "context"],
+        subagents: [
+          expect.objectContaining({
+            type: "subagent",
+            id: "advisor-call-1",
+            outcome: "success",
+            parentToolCallId: "advisor-call-1",
+            status: "success",
+            subagentKind: "advisor",
+          }),
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(report.runs[0]?.activity)).not.toContain(
+      "private question",
+    );
+  });
+
+  it("derives unfinished subagent status from completed parent tool results", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { recordSubagentStarted, recordToolExecutionStarted } =
+      await import("@/chat/state/session-log");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "slack:C1:activity-parent-result",
+      sessionId: "turn-parent-result",
+      sliceId: 1,
+      state: "completed",
+      turnStartMessageIndex: 0,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "current question" }],
+          timestamp: 1,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "advisor-call-parent",
+          name: "advisor",
+          content: [{ type: "text", text: "advisor result" }],
+          timestamp: 4,
+        },
+      ] as PiMessage[],
+    });
+    await recordToolExecutionStarted({
+      conversationId: "slack:C1:activity-parent-result",
+      sessionId: "turn-parent-result",
+      createdAtMs: 2,
+      toolCallId: "advisor-call-parent",
+      toolName: "advisor",
+      args: { question: "public question" },
+      ttlMs: 60_000,
+    });
+    await recordSubagentStarted({
+      conversationId: "slack:C1:activity-parent-result",
+      sessionId: "turn-parent-result",
+      createdAtMs: 3,
+      historyMode: "shared",
+      parentConversationId: "slack:C1:activity-parent-result",
+      parentSessionId: "turn-parent-result",
+      parentToolCallId: "advisor-call-parent",
+      subagentInvocationId: "advisor-call-parent",
+      subagentKind: "advisor",
+      transcriptRef: {
+        type: "advisor_session",
+        parentConversationId: "slack:C1:activity-parent-result",
+        key: "junior:slack:C1:activity-parent-result:advisor_session",
+      },
+      ttlMs: 60_000,
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:activity-parent-result",
+    );
+
+    expect(report.runs[0]?.activity).toEqual([
+      expect.objectContaining({
+        type: "tool_execution",
+        status: "completed",
+        subagents: [
+          expect.objectContaining({
+            type: "subagent",
+            id: "advisor-call-parent",
+            parentToolCallId: "advisor-call-parent",
+            status: "completed",
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("keeps the initial prompt when steering adds another user message", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

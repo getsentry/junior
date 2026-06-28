@@ -43,6 +43,10 @@ export type TranscriptPart =
 
 export type TranscriptMessage = ConversationRunReport["transcript"][number];
 
+export type ConversationActivity = NonNullable<
+  ConversationRunReport["activity"]
+>[number];
+
 export type ConversationTurn = ConversationRunReport;
 
 export type ConversationDetailFeed = ReportingConversationReport;

@@ -12,7 +12,9 @@ title: "@sentry/junior"
 - [ConversationRunReport](/reference/api/interfaces/conversationrunreport/)
 - [ConversationStatsItem](/reference/api/interfaces/conversationstatsitem/)
 - [ConversationStatsReport](/reference/api/interfaces/conversationstatsreport/)
+- [ConversationSubagentActivityReport](/reference/api/interfaces/conversationsubagentactivityreport/)
 - [ConversationSummaryReport](/reference/api/interfaces/conversationsummaryreport/)
+- [ConversationToolActivityReport](/reference/api/interfaces/conversationtoolactivityreport/)
 - [ConversationUsage](/reference/api/interfaces/conversationusage/)
 - [HealthReport](/reference/api/interfaces/healthreport/)
 - [JuniorAppOptions](/reference/api/interfaces/juniorappoptions/)
@@ -39,6 +41,8 @@ title: "@sentry/junior"
 
 ## Type Aliases
 
+- [ConversationActivityReport](/reference/api/type-aliases/conversationactivityreport/)
+- [ConversationActivityStatus](/reference/api/type-aliases/conversationactivitystatus/)
 - [ConversationReportStatus](/reference/api/type-aliases/conversationreportstatus/)
 - [ConversationSurface](/reference/api/type-aliases/conversationsurface/)
 - [JuniorNitroDashboardOptions](/reference/api/type-aliases/juniornitrodashboardoptions/)

@@ -38,6 +38,10 @@ import {
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import {
+  loadActivityEntries,
+  type SessionActivityEntry,
+} from "@/chat/state/session-log";
+import {
   toStoredSlackRequester,
   type Requester,
   type StoredSlackRequester,
@@ -161,6 +165,7 @@ export interface TranscriptMessage {
 }
 
 export interface ConversationRunReport extends ConversationSummaryReport {
+  activity?: ConversationActivityReport[];
   transcriptAvailable: boolean;
   transcriptMetadata?: TranscriptMessage[];
   transcriptMessageCount?: number;
@@ -168,6 +173,47 @@ export interface ConversationRunReport extends ConversationSummaryReport {
   transcriptRedactionReason?: "non_public_conversation";
   transcript: TranscriptMessage[];
 }
+
+export type ConversationActivityStatus =
+  | "aborted"
+  | "completed"
+  | "error"
+  | "running"
+  | "success";
+
+interface ActivityPayloadMetadata {
+  inputKeys?: string[];
+  inputSizeBytes?: number;
+  inputSizeChars?: number;
+  inputType?: string;
+}
+
+export interface ConversationSubagentActivityReport {
+  type: "subagent";
+  createdAt: string;
+  endedAt?: string;
+  id: string;
+  outcome?: "success" | "error" | "aborted";
+  parentToolCallId?: string;
+  status: ConversationActivityStatus;
+  subagentKind: string;
+}
+
+export interface ConversationToolActivityReport extends ActivityPayloadMetadata {
+  type: "tool_execution";
+  args?: unknown;
+  createdAt: string;
+  id: string;
+  redacted?: boolean;
+  status: ConversationActivityStatus;
+  subagents: ConversationSubagentActivityReport[];
+  toolCallId: string;
+  toolName: string;
+}
+
+export type ConversationActivityReport =
+  | ConversationToolActivityReport
+  | ConversationSubagentActivityReport;
 
 export interface ConversationReport {
   conversationId: string;
@@ -1084,6 +1130,125 @@ function redactTranscriptMessage(
   };
 }
 
+function toolResultStatuses(
+  messages: PiMessage[],
+): Map<string, ConversationActivityStatus> {
+  const statuses = new Map<string, ConversationActivityStatus>();
+  for (const message of messages) {
+    const record = message as unknown as Record<string, unknown>;
+    if (record.role !== "toolResult" || typeof record.toolCallId !== "string") {
+      continue;
+    }
+    statuses.set(record.toolCallId, record.isError ? "error" : "completed");
+  }
+  return statuses;
+}
+
+function activityPayloadFields(
+  args: unknown,
+  canExposePayload: boolean,
+): ActivityPayloadMetadata & { args?: unknown; redacted?: boolean } {
+  if (args === undefined) {
+    return {};
+  }
+  return canExposePayload
+    ? { args }
+    : { redacted: true, ...redactedPayloadFields("input", args) };
+}
+
+function subagentActivity(
+  entry: Extract<SessionActivityEntry, { type: "subagent_started" }>,
+  options: {
+    end?: Extract<SessionActivityEntry, { type: "subagent_ended" }>;
+    parentStatus?: ConversationActivityStatus;
+  },
+): ConversationSubagentActivityReport {
+  const end = options.end;
+  return {
+    type: "subagent",
+    id: entry.subagentInvocationId,
+    subagentKind: entry.subagentKind,
+    ...(entry.parentToolCallId
+      ? { parentToolCallId: entry.parentToolCallId }
+      : {}),
+    createdAt: new Date(entry.createdAtMs).toISOString(),
+    ...(end
+      ? {
+          endedAt: new Date(end.createdAtMs).toISOString(),
+          outcome: end.outcome,
+          status: end.outcome,
+        }
+      : { status: options.parentStatus ?? "running" }),
+  };
+}
+
+function buildConversationActivity(args: {
+  canExposePayload: boolean;
+  entries: SessionActivityEntry[];
+  messages: PiMessage[];
+}): ConversationActivityReport[] {
+  const toolStatuses = toolResultStatuses(args.messages);
+  const subagentEnds = new Map<
+    string,
+    Extract<SessionActivityEntry, { type: "subagent_ended" }>
+  >();
+  const subagentsByToolCallId = new Map<
+    string,
+    ConversationSubagentActivityReport[]
+  >();
+  const orphanSubagents: ConversationSubagentActivityReport[] = [];
+
+  for (const entry of args.entries) {
+    if (entry.type === "subagent_ended") {
+      subagentEnds.set(entry.subagentInvocationId, entry);
+    }
+  }
+
+  for (const entry of args.entries) {
+    if (entry.type !== "subagent_started") {
+      continue;
+    }
+    const parentStatus = entry.parentToolCallId
+      ? toolStatuses.get(entry.parentToolCallId)
+      : undefined;
+    const activity = subagentActivity(entry, {
+      end: subagentEnds.get(entry.subagentInvocationId),
+      parentStatus,
+    });
+    if (entry.parentToolCallId) {
+      subagentsByToolCallId.set(entry.parentToolCallId, [
+        ...(subagentsByToolCallId.get(entry.parentToolCallId) ?? []),
+        activity,
+      ]);
+      continue;
+    }
+    orphanSubagents.push(activity);
+  }
+
+  const rows: ConversationActivityReport[] = [];
+  for (const entry of args.entries) {
+    if (entry.type !== "tool_execution_started") {
+      continue;
+    }
+    rows.push({
+      type: "tool_execution",
+      id: entry.toolCallId,
+      toolCallId: entry.toolCallId,
+      toolName: entry.toolName,
+      createdAt: new Date(entry.createdAtMs).toISOString(),
+      status: toolStatuses.get(entry.toolCallId) ?? "running",
+      subagents: subagentsByToolCallId.get(entry.toolCallId) ?? [],
+      ...activityPayloadFields(entry.args, args.canExposePayload),
+    });
+  }
+
+  return [...rows, ...orphanSubagents].sort(
+    (left, right) =>
+      Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+      left.id.localeCompare(right.id),
+  );
+}
+
 function isConversationMessageRole(role: TranscriptRole): boolean {
   return role === "user" || role === "assistant";
 }
@@ -1345,10 +1510,13 @@ export async function readConversationReport(
 
   const runs = await Promise.all(
     summaries.map(async (summary): Promise<ConversationRunReport> => {
-      const sessionRecord = await getAgentTurnSessionRecord(
-        summary.conversationId,
-        summary.sessionId,
-      );
+      const [sessionRecord, activityEntries] = await Promise.all([
+        getAgentTurnSessionRecord(summary.conversationId, summary.sessionId),
+        loadActivityEntries({
+          conversationId: summary.conversationId,
+          sessionId: summary.sessionId,
+        }),
+      ]);
       const scopedMessages = sessionRecord?.piMessages
         ? turnScopedMessages(
             sessionRecord.piMessages,
@@ -1359,6 +1527,11 @@ export async function readConversationReport(
       const normalizedTranscript = scopedMessages.messages.map(
         normalizeTranscriptMessage,
       );
+      const activity = buildConversationActivity({
+        canExposePayload: canExposeTranscript,
+        entries: activityEntries,
+        messages: scopedMessages.messages,
+      });
       const transcriptMessageCount =
         countConversationMessages(normalizedTranscript);
       const transcript = canExposeTranscript
@@ -1383,6 +1556,7 @@ export async function readConversationReport(
         ...sessionReportFromSummary(summary, nowMs, details),
         ...(traceId ? { traceId } : {}),
         ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
+        activity,
         transcriptAvailable: Boolean(sessionRecord) && canExposeTranscript,
         ...(sessionRecord && transcriptMessageCount > 0
           ? { transcriptMessageCount }
@@ -1416,6 +1590,7 @@ export async function readConversationReport(
       : [
           {
             ...sessionReportFromConversation(conversation, nowMs, details),
+            activity: [],
             transcriptAvailable: false,
             transcript: [],
           },

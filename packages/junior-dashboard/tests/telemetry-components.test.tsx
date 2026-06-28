@@ -443,6 +443,65 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("tool call");
   });
 
+  it("renders execution activity above the transcript", () => {
+    const session = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      displayTitle: "Conversation",
+    } satisfies Session;
+    const detail = {
+      conversationId: "conversation-1",
+      displayTitle: session.displayTitle,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      runs: [
+        {
+          ...session,
+          activity: [
+            {
+              type: "tool_execution",
+              id: "advisor-call-1",
+              toolCallId: "advisor-call-1",
+              toolName: "advisor",
+              createdAt: "2026-01-01T00:00:01.000Z",
+              status: "completed",
+              subagents: [
+                {
+                  type: "subagent",
+                  id: "advisor-call-1",
+                  subagentKind: "advisor",
+                  parentToolCallId: "advisor-call-1",
+                  createdAt: "2026-01-01T00:00:01.000Z",
+                  endedAt: "2026-01-01T00:00:05.000Z",
+                  outcome: "success",
+                  status: "success",
+                },
+              ],
+            },
+          ],
+          transcript: [],
+          transcriptAvailable: true,
+        },
+      ],
+    } satisfies ConversationDetailFeed;
+    client.setQueryData(["conversation", "conversation-1"], detail);
+
+    const html = renderConversationPage(dashboardData([session]));
+
+    expect(html).toContain('aria-label="Execution activity"');
+    expect(html).toContain("Execution Activity");
+    expect(html).toContain("advisor");
+    expect(html).toContain("advisor subagent");
+    expect(html.indexOf("Execution Activity")).toBeLessThan(
+      html.indexOf('aria-label="Transcript view"'),
+    );
+  });
+
   it("caps dashboard route pages at a readable width", () => {
     const session = {
       conversationId: "conversation-1",
