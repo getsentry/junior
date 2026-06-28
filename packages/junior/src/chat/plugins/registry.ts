@@ -41,8 +41,37 @@ interface PluginCatalogSource {
   signature: string;
 }
 
-let loadedPluginState: LoadedPluginState | undefined;
-let pluginConfig: PluginCatalogConfig | undefined;
+interface PluginCatalogRuntimeState {
+  loadedPluginState?: LoadedPluginState;
+  pluginConfig?: PluginCatalogConfig;
+}
+
+export interface PluginCatalogRuntime {
+  createBroker(provider: string, deps: PluginBrokerDeps): CredentialBroker;
+  getCapabilityProviders(): CapabilityProviderDefinition[];
+  getDefinition(provider: string): PluginDefinition | undefined;
+  getDisplayName(provider: string): string | undefined;
+  getForSkillPath(skillPath: string): PluginDefinition | undefined;
+  getMcpProviders(): PluginDefinition[];
+  getMigrationRoots(): { dir: string; pluginName: string }[];
+  getOAuthConfig(provider: string): OAuthProviderConfig | undefined;
+  getPackageContent(): InstalledPluginPackageContent;
+  getProviders(): PluginDefinition[];
+  getRuntimeDependencies(): PluginRuntimeDependency[];
+  getRuntimePostinstall(): PluginRuntimePostinstallCommand[];
+  getSignature(): string;
+  getSkillRoots(): string[];
+  isCapability(capability: string): boolean;
+  isConfigKey(key: string): boolean;
+  isProvider(provider: string): boolean;
+  parseConfiguredInlineManifest(
+    manifest: InlinePluginManifestDefinition["manifest"],
+    dir: string,
+  ): PluginDefinition["manifest"];
+  setConfig(
+    config: PluginCatalogConfig | undefined,
+  ): PluginCatalogConfig | undefined;
+}
 
 function getLoggedPluginNames(): Set<string> {
   const globalState = globalThis as typeof globalThis & {
@@ -130,8 +159,9 @@ function registerYamlPluginManifest(
   state: LoadedPluginState,
   raw: string,
   pluginDir: string,
+  config: PluginCatalogConfig | undefined,
 ): void {
-  const manifest = parsePluginManifest(raw, pluginDir, pluginConfig);
+  const manifest = parsePluginManifest(raw, pluginDir, config);
   const candidateSkillsDir = path.join(pluginDir, "skills");
   const hasSkillsDir = (() => {
     try {
@@ -165,8 +195,12 @@ function normalizePluginRoots(roots: string[]): string[] {
   return resolved;
 }
 
-function getPluginCatalogSource(): PluginCatalogSource {
-  const packagedContent = discoverConfiguredPluginPackageContent();
+function getPluginCatalogSource(
+  runtime: PluginCatalogRuntimeState,
+): PluginCatalogSource {
+  const packagedContent = discoverConfiguredPluginPackageContent(
+    runtime.pluginConfig,
+  );
   const localRoots = normalizePluginRoots(pluginRoots());
   const manifestRoots = normalizePluginRoots([
     ...localRoots,
@@ -174,7 +208,7 @@ function getPluginCatalogSource(): PluginCatalogSource {
   ]);
   const packagedSkillRoots = normalizePluginRoots(packagedContent.skillRoots);
 
-  const inlineManifests = pluginConfig?.inlineManifests ?? [];
+  const inlineManifests = runtime.pluginConfig?.inlineManifests ?? [];
   return {
     inlineManifests,
     manifestRoots,
@@ -195,7 +229,7 @@ function getPluginCatalogSource(): PluginCatalogSource {
         ),
       packagedSkillRoots,
       packageNames: [...packagedContent.packageNames].sort(),
-      pluginConfig: pluginConfig ?? {},
+      pluginConfig: runtime.pluginConfig ?? {},
     }),
   };
 }
@@ -250,6 +284,7 @@ function packageContentByName(
 function registerInlineManifests(
   state: LoadedPluginState,
   source: PluginCatalogSource,
+  config: PluginCatalogConfig | undefined,
 ): void {
   const migrationOwners = new Map<string, string>();
   for (const definition of source.inlineManifests) {
@@ -270,7 +305,7 @@ function registerInlineManifests(
     const manifest = parseInlinePluginManifest(
       definition.manifest,
       dir,
-      pluginConfig,
+      config,
     );
     if (migrationsDir) {
       const owner = migrationOwners.get(migrationsDir);
@@ -285,14 +320,17 @@ function registerInlineManifests(
   }
 }
 
-function discoverConfiguredPluginPackageContent(): InstalledPluginPackageContent {
+function discoverConfiguredPluginPackageContent(
+  config: PluginCatalogConfig | undefined,
+): InstalledPluginPackageContent {
   return discoverInstalledPluginPackageContent(process.cwd(), {
-    packageNames: pluginConfig?.packages,
+    packageNames: config?.packages,
   });
 }
 
 function buildLoadedPluginState(
   source: PluginCatalogSource,
+  config: PluginCatalogConfig | undefined,
 ): LoadedPluginState {
   const state = createLoadedPluginState(source.signature);
 
@@ -300,7 +338,7 @@ function buildLoadedPluginState(
     state.packageSkillRoots.add(skillRoot);
   }
 
-  registerInlineManifests(state, source);
+  registerInlineManifests(state, source, config);
 
   const roots = source.manifestRoots;
   for (const pluginsRoot of roots) {
@@ -331,7 +369,7 @@ function buildLoadedPluginState(
       }
       if (hasRootManifest) {
         const rawRootManifest = readFileSync(manifestPath, "utf8");
-        registerYamlPluginManifest(state, rawRootManifest, pluginsRoot);
+        registerYamlPluginManifest(state, rawRootManifest, pluginsRoot, config);
         continue;
       }
     }
@@ -368,11 +406,11 @@ function buildLoadedPluginState(
         continue; // No manifest — skip
       }
 
-      registerYamlPluginManifest(state, raw, pluginDir);
+      registerYamlPluginManifest(state, raw, pluginDir, config);
     }
   }
 
-  for (const name of Object.keys(pluginConfig?.manifests ?? {})) {
+  for (const name of Object.keys(config?.manifests ?? {})) {
     if (!state.pluginsByName.has(name)) {
       throw new Error(
         `plugins.manifests.${name} does not match a loaded plugin`,
@@ -410,27 +448,231 @@ function logLoadedPlugins(state: LoadedPluginState): void {
   }
 }
 
-function ensurePluginsLoaded(): LoadedPluginState {
-  const source = getPluginCatalogSource();
-  if (loadedPluginState?.signature === source.signature) {
-    return loadedPluginState;
+function ensurePluginsLoaded(
+  runtime: PluginCatalogRuntimeState,
+): LoadedPluginState {
+  const source = getPluginCatalogSource(runtime);
+  if (runtime.loadedPluginState?.signature === source.signature) {
+    return runtime.loadedPluginState;
   }
 
-  const state = buildLoadedPluginState(source);
-  loadedPluginState = state;
+  const state = buildLoadedPluginState(source, runtime.pluginConfig);
+  runtime.loadedPluginState = state;
   logLoadedPlugins(state);
   return state;
 }
 
-// --- Sync exports ---
+/** Create an isolated plugin catalog runtime for explicit app wiring. */
+export function createPluginCatalogRuntime(): PluginCatalogRuntime {
+  const runtime: PluginCatalogRuntimeState = {};
+  return {
+    setConfig(config) {
+      const previousConfig = clonePluginCatalogConfig(runtime.pluginConfig);
+      runtime.pluginConfig = normalizePluginCatalogConfig(config);
+      return previousConfig;
+    },
+    parseConfiguredInlineManifest(manifest, dir) {
+      return parseInlinePluginManifest(manifest, dir, runtime.pluginConfig);
+    },
+    getPackageContent() {
+      return discoverConfiguredPluginPackageContent(runtime.pluginConfig);
+    },
+    getSignature() {
+      return ensurePluginsLoaded(runtime).signature;
+    },
+    getCapabilityProviders() {
+      const state = ensurePluginsLoaded(runtime);
+      return state.pluginDefinitions.map((plugin) => ({
+        provider: plugin.manifest.name,
+        capabilities: [...plugin.manifest.capabilities],
+        configKeys: [...plugin.manifest.configKeys],
+        ...(plugin.manifest.target
+          ? {
+              target: {
+                ...plugin.manifest.target,
+                ...(plugin.manifest.target.commandFlags
+                  ? { commandFlags: [...plugin.manifest.target.commandFlags] }
+                  : {}),
+              },
+            }
+          : {}),
+      }));
+    },
+    getProviders() {
+      return [...ensurePluginsLoaded(runtime).pluginDefinitions];
+    },
+    getMigrationRoots() {
+      const state = ensurePluginsLoaded(runtime);
+      return [...state.pluginMigrationRoots.entries()]
+        .map(([pluginName, dir]) => ({ pluginName, dir }))
+        .sort((left, right) => left.pluginName.localeCompare(right.pluginName));
+    },
+    getMcpProviders() {
+      return ensurePluginsLoaded(runtime).pluginDefinitions.filter((plugin) =>
+        Boolean(plugin.manifest.mcp),
+      );
+    },
+    getRuntimeDependencies() {
+      const state = ensurePluginsLoaded(runtime);
+      const seen = new Set<string>();
+      const deps: PluginRuntimeDependency[] = [];
+      for (const plugin of state.pluginDefinitions) {
+        for (const dep of plugin.manifest.runtimeDependencies ?? []) {
+          const key =
+            dep.type === "npm"
+              ? `${dep.type}:${dep.package}:${dep.version}`
+              : "package" in dep
+                ? `${dep.type}:package:${dep.package}`
+                : `${dep.type}:url:${dep.url}:${dep.sha256}`;
+          if (seen.has(key)) {
+            continue;
+          }
+          seen.add(key);
+          deps.push(dep);
+        }
+      }
+
+      return deps.sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type.localeCompare(right.type);
+        }
+        const leftIdentity =
+          "package" in left
+            ? `package:${left.package}`
+            : `url:${left.url}:${left.sha256}`;
+        const rightIdentity =
+          "package" in right
+            ? `package:${right.package}`
+            : `url:${right.url}:${right.sha256}`;
+        if (leftIdentity !== rightIdentity) {
+          return leftIdentity.localeCompare(rightIdentity);
+        }
+        if (left.type === "npm" && right.type === "npm") {
+          return left.version.localeCompare(right.version);
+        }
+        return 0;
+      });
+    },
+    getRuntimePostinstall() {
+      const state = ensurePluginsLoaded(runtime);
+      const commands: PluginRuntimePostinstallCommand[] = [];
+      for (const plugin of state.pluginDefinitions) {
+        for (const command of plugin.manifest.runtimePostinstall ?? []) {
+          commands.push({
+            cmd: command.cmd,
+            ...(command.args ? { args: [...command.args] } : {}),
+            ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
+          });
+        }
+      }
+
+      return commands;
+    },
+    getOAuthConfig(provider) {
+      const plugin = ensurePluginsLoaded(runtime).pluginsByName.get(provider);
+      if (!plugin?.manifest.oauth) return undefined;
+      const oauth = plugin.manifest.oauth;
+      return {
+        clientIdEnv: oauth.clientIdEnv,
+        clientSecretEnv: oauth.clientSecretEnv,
+        authorizeEndpoint: oauth.authorizeEndpoint,
+        tokenEndpoint: oauth.tokenEndpoint,
+        ...(oauth.scope ? { scope: oauth.scope } : {}),
+        ...(oauth.authorizeParams
+          ? { authorizeParams: { ...oauth.authorizeParams } }
+          : {}),
+        ...(oauth.tokenAuthMethod
+          ? { tokenAuthMethod: oauth.tokenAuthMethod }
+          : {}),
+        ...(oauth.tokenExtraHeaders
+          ? { tokenExtraHeaders: { ...oauth.tokenExtraHeaders } }
+          : {}),
+        ...(oauth.treatEmptyScopeAsUnreported
+          ? { treatEmptyScopeAsUnreported: true }
+          : {}),
+        callbackPath: `/api/oauth/callback/${plugin.manifest.name}`,
+      };
+    },
+    getSkillRoots() {
+      const state = ensurePluginsLoaded(runtime);
+      return [
+        ...new Set([
+          ...state.pluginDefinitions.flatMap((plugin) =>
+            plugin.skillsDir ? [plugin.skillsDir] : [],
+          ),
+          ...state.packageSkillRoots,
+        ]),
+      ];
+    },
+    getForSkillPath(skillPath) {
+      const state = ensurePluginsLoaded(runtime);
+      const resolvedSkillPath = path.resolve(skillPath);
+
+      return state.pluginDefinitions.find((plugin) => {
+        if (!plugin.skillsDir) {
+          return false;
+        }
+        const resolvedSkillsDir = path.resolve(plugin.skillsDir);
+        return (
+          resolvedSkillPath === resolvedSkillsDir ||
+          resolvedSkillPath.startsWith(`${resolvedSkillsDir}${path.sep}`)
+        );
+      });
+    },
+    getDefinition(provider) {
+      return ensurePluginsLoaded(runtime).pluginsByName.get(provider);
+    },
+    getDisplayName(provider) {
+      return ensurePluginsLoaded(runtime).pluginsByName.get(provider)?.manifest
+        .displayName;
+    },
+    isProvider(provider) {
+      return ensurePluginsLoaded(runtime).pluginsByName.has(provider);
+    },
+    isCapability(capability) {
+      return ensurePluginsLoaded(runtime).capabilityToPlugin.has(capability);
+    },
+    isConfigKey(key) {
+      return ensurePluginsLoaded(runtime).pluginConfigKeys.has(key);
+    },
+    createBroker(provider, deps) {
+      const plugin = ensurePluginsLoaded(runtime).pluginsByName.get(provider);
+      if (!plugin) {
+        throw new Error(`Unknown plugin provider: "${provider}"`);
+      }
+
+      const { credentials, name } = plugin.manifest;
+      if (!credentials && !plugin.manifest.apiHeaders) {
+        throw new Error(
+          `Provider "${name}" has no credentials or API headers configured`,
+        );
+      }
+      let broker: CredentialBroker;
+
+      if (!credentials) {
+        broker = createApiHeadersBroker(plugin.manifest);
+      } else {
+        broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
+      }
+
+      setSpanAttributes({
+        "app.plugin.name": name,
+        "app.plugin.capabilities": plugin.manifest.capabilities,
+        "app.plugin.has_oauth": Boolean(plugin.manifest.oauth),
+      });
+
+      return broker;
+    },
+  };
+}
+
+const defaultPluginCatalogRuntime = createPluginCatalogRuntime();
 
 /** Set install-wide plugin configuration and return the previous value for rollback. */
 export function setPluginCatalogConfig(
   config: PluginCatalogConfig | undefined,
 ): PluginCatalogConfig | undefined {
-  const previousConfig = clonePluginCatalogConfig(pluginConfig);
-  pluginConfig = normalizePluginCatalogConfig(config);
-  return previousConfig;
+  return defaultPluginCatalogRuntime.setConfig(config);
 }
 
 /** Parse an inline plugin manifest using the active catalog configuration. */
@@ -438,228 +680,91 @@ export function parseConfiguredInlinePluginManifest(
   manifest: InlinePluginManifestDefinition["manifest"],
   dir: string,
 ): PluginDefinition["manifest"] {
-  return parseInlinePluginManifest(manifest, dir, pluginConfig);
+  return defaultPluginCatalogRuntime.parseConfiguredInlineManifest(
+    manifest,
+    dir,
+  );
 }
 
 /** Return installed plugin package content from the active plugin configuration. */
 export function getPluginPackageContent(): InstalledPluginPackageContent {
-  return discoverConfiguredPluginPackageContent();
+  return defaultPluginCatalogRuntime.getPackageContent();
 }
 
 /** Return the current plugin catalog signature used for cache invalidation. */
 export function getPluginCatalogSignature(): string {
-  return ensurePluginsLoaded().signature;
+  return defaultPluginCatalogRuntime.getSignature();
 }
 
 export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
-  const state = ensurePluginsLoaded();
-  return state.pluginDefinitions.map((plugin) => ({
-    provider: plugin.manifest.name,
-    capabilities: [...plugin.manifest.capabilities],
-    configKeys: [...plugin.manifest.configKeys],
-    ...(plugin.manifest.target
-      ? {
-          target: {
-            ...plugin.manifest.target,
-            ...(plugin.manifest.target.commandFlags
-              ? { commandFlags: [...plugin.manifest.target.commandFlags] }
-              : {}),
-          },
-        }
-      : {}),
-  }));
+  return defaultPluginCatalogRuntime.getCapabilityProviders();
 }
 
 export function getPluginProviders(): PluginDefinition[] {
-  return [...ensurePluginsLoaded().pluginDefinitions];
+  return defaultPluginCatalogRuntime.getProviders();
 }
 
 export function getPluginMigrationRoots(): {
   dir: string;
   pluginName: string;
 }[] {
-  const state = ensurePluginsLoaded();
-  return [...state.pluginMigrationRoots.entries()]
-    .map(([pluginName, dir]) => ({ pluginName, dir }))
-    .sort((left, right) => left.pluginName.localeCompare(right.pluginName));
+  return defaultPluginCatalogRuntime.getMigrationRoots();
 }
 
 export function getPluginMcpProviders(): PluginDefinition[] {
-  return ensurePluginsLoaded().pluginDefinitions.filter((plugin) =>
-    Boolean(plugin.manifest.mcp),
-  );
+  return defaultPluginCatalogRuntime.getMcpProviders();
 }
 
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
-  const state = ensurePluginsLoaded();
-  const seen = new Set<string>();
-  const deps: PluginRuntimeDependency[] = [];
-  for (const plugin of state.pluginDefinitions) {
-    for (const dep of plugin.manifest.runtimeDependencies ?? []) {
-      const key =
-        dep.type === "npm"
-          ? `${dep.type}:${dep.package}:${dep.version}`
-          : "package" in dep
-            ? `${dep.type}:package:${dep.package}`
-            : `${dep.type}:url:${dep.url}:${dep.sha256}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      deps.push(dep);
-    }
-  }
-
-  return deps.sort((left, right) => {
-    if (left.type !== right.type) {
-      return left.type.localeCompare(right.type);
-    }
-    const leftIdentity =
-      "package" in left
-        ? `package:${left.package}`
-        : `url:${left.url}:${left.sha256}`;
-    const rightIdentity =
-      "package" in right
-        ? `package:${right.package}`
-        : `url:${right.url}:${right.sha256}`;
-    if (leftIdentity !== rightIdentity) {
-      return leftIdentity.localeCompare(rightIdentity);
-    }
-    if (left.type === "npm" && right.type === "npm") {
-      return left.version.localeCompare(right.version);
-    }
-    return 0;
-  });
+  return defaultPluginCatalogRuntime.getRuntimeDependencies();
 }
 
 export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[] {
-  const state = ensurePluginsLoaded();
-  const commands: PluginRuntimePostinstallCommand[] = [];
-  for (const plugin of state.pluginDefinitions) {
-    for (const command of plugin.manifest.runtimePostinstall ?? []) {
-      commands.push({
-        cmd: command.cmd,
-        ...(command.args ? { args: [...command.args] } : {}),
-        ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
-      });
-    }
-  }
-
-  return commands;
+  return defaultPluginCatalogRuntime.getRuntimePostinstall();
 }
 
 export function getPluginOAuthConfig(
   provider: string,
 ): OAuthProviderConfig | undefined {
-  const plugin = ensurePluginsLoaded().pluginsByName.get(provider);
-  if (!plugin?.manifest.oauth) return undefined;
-  const oauth = plugin.manifest.oauth;
-  return {
-    clientIdEnv: oauth.clientIdEnv,
-    clientSecretEnv: oauth.clientSecretEnv,
-    authorizeEndpoint: oauth.authorizeEndpoint,
-    tokenEndpoint: oauth.tokenEndpoint,
-    ...(oauth.scope ? { scope: oauth.scope } : {}),
-    ...(oauth.authorizeParams
-      ? { authorizeParams: { ...oauth.authorizeParams } }
-      : {}),
-    ...(oauth.tokenAuthMethod
-      ? { tokenAuthMethod: oauth.tokenAuthMethod }
-      : {}),
-    ...(oauth.tokenExtraHeaders
-      ? { tokenExtraHeaders: { ...oauth.tokenExtraHeaders } }
-      : {}),
-    ...(oauth.treatEmptyScopeAsUnreported
-      ? { treatEmptyScopeAsUnreported: true }
-      : {}),
-    callbackPath: `/api/oauth/callback/${plugin.manifest.name}`,
-  };
+  return defaultPluginCatalogRuntime.getOAuthConfig(provider);
 }
 
 export function getPluginSkillRoots(): string[] {
-  const state = ensurePluginsLoaded();
-  return [
-    ...new Set([
-      ...state.pluginDefinitions.flatMap((plugin) =>
-        plugin.skillsDir ? [plugin.skillsDir] : [],
-      ),
-      ...state.packageSkillRoots,
-    ]),
-  ];
+  return defaultPluginCatalogRuntime.getSkillRoots();
 }
 
 export function getPluginForSkillPath(
   skillPath: string,
 ): PluginDefinition | undefined {
-  const state = ensurePluginsLoaded();
-  const resolvedSkillPath = path.resolve(skillPath);
-
-  return state.pluginDefinitions.find((plugin) => {
-    if (!plugin.skillsDir) {
-      return false;
-    }
-    const resolvedSkillsDir = path.resolve(plugin.skillsDir);
-    return (
-      resolvedSkillPath === resolvedSkillsDir ||
-      resolvedSkillPath.startsWith(`${resolvedSkillsDir}${path.sep}`)
-    );
-  });
+  return defaultPluginCatalogRuntime.getForSkillPath(skillPath);
 }
 
 export function getPluginDefinition(
   provider: string,
 ): PluginDefinition | undefined {
-  return ensurePluginsLoaded().pluginsByName.get(provider);
+  return defaultPluginCatalogRuntime.getDefinition(provider);
 }
 
 /** Return the human-facing provider label from the plugin manifest. */
 export function getPluginDisplayName(provider: string): string | undefined {
-  return ensurePluginsLoaded().pluginsByName.get(provider)?.manifest
-    .displayName;
+  return defaultPluginCatalogRuntime.getDisplayName(provider);
 }
 
 export function isPluginProvider(provider: string): boolean {
-  return ensurePluginsLoaded().pluginsByName.has(provider);
+  return defaultPluginCatalogRuntime.isProvider(provider);
 }
 
 export function isPluginCapability(capability: string): boolean {
-  return ensurePluginsLoaded().capabilityToPlugin.has(capability);
+  return defaultPluginCatalogRuntime.isCapability(capability);
 }
 
 export function isPluginConfigKey(key: string): boolean {
-  return ensurePluginsLoaded().pluginConfigKeys.has(key);
+  return defaultPluginCatalogRuntime.isConfigKey(key);
 }
-
-// --- Broker creation ---
 
 export function createPluginBroker(
   provider: string,
   deps: PluginBrokerDeps,
 ): CredentialBroker {
-  const plugin = ensurePluginsLoaded().pluginsByName.get(provider);
-  if (!plugin) {
-    throw new Error(`Unknown plugin provider: "${provider}"`);
-  }
-
-  const { credentials, name } = plugin.manifest;
-  if (!credentials && !plugin.manifest.apiHeaders) {
-    throw new Error(
-      `Provider "${name}" has no credentials or API headers configured`,
-    );
-  }
-  let broker: CredentialBroker;
-
-  if (!credentials) {
-    broker = createApiHeadersBroker(plugin.manifest);
-  } else {
-    broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
-  }
-
-  setSpanAttributes({
-    "app.plugin.name": name,
-    "app.plugin.capabilities": plugin.manifest.capabilities,
-    "app.plugin.has_oauth": Boolean(plugin.manifest.oauth),
-  });
-
-  return broker;
+  return defaultPluginCatalogRuntime.createBroker(provider, deps);
 }

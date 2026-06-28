@@ -103,6 +103,61 @@ describe("plugin registry", () => {
     expect(registry.isPluginProvider("demo")).toBe(true);
   });
 
+  it("creates isolated catalog runtimes behind the default registry exports", async () => {
+    vi.doMock("@/chat/discovery", () => ({
+      pluginRoots: () => [],
+    }));
+    vi.doMock("@/chat/plugins/package-discovery", () => ({
+      discoverInstalledPluginPackageContent: () => ({
+        packageNames: [],
+        packages: [],
+        manifestRoots: [],
+        skillRoots: [],
+        tracingIncludes: [],
+      }),
+      normalizePluginPackageNames: (names: string[] | undefined) => names,
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    const first = registry.createPluginCatalogRuntime();
+    const second = registry.createPluginCatalogRuntime();
+
+    first.setConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "first",
+            displayName: "First",
+            description: "First plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+    second.setConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "second",
+            displayName: "Second",
+            description: "Second plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+
+    expect(first.getProviders().map((plugin) => plugin.manifest.name)).toEqual([
+      "first",
+    ]);
+    expect(second.getProviders().map((plugin) => plugin.manifest.name)).toEqual(
+      ["second"],
+    );
+    expect(registry.getPluginProviders()).toEqual([]);
+  });
+
   it("does not register migrations from plugin yaml packages", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-yaml-migrations-"),
