@@ -130,8 +130,13 @@ export function entryMatchesSearch(
   }
 
   if (entry.kind === "tool") {
+    const visibleCallStatus =
+      entry.call?.status === "running" && !entry.result
+        ? entry.call.status
+        : undefined;
     return (
       textContains(entry.call?.name, normalizedQuery) ||
+      textContains(visibleCallStatus, normalizedQuery) ||
       textContains(entry.result?.name, normalizedQuery) ||
       textContains(stringifyPartValue(entry.call?.input), normalizedQuery) ||
       textContains(stringifyPartValue(entry.result?.output), normalizedQuery)

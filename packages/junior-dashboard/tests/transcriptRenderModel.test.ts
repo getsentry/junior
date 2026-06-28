@@ -306,4 +306,24 @@ describe("transcript render model", () => {
     expect(turnHasMatch(turn, "running")).toBe(true);
     expect(turnHasMatch(turn, "not-present")).toBe(false);
   });
+
+  it("matches tool activity status in transcript search", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "call-running",
+          toolCallId: "call-running",
+          toolName: "search",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [],
+        },
+      ],
+      transcript: [],
+      transcriptAvailable: true,
+    });
+
+    expect(turnHasMatch(turn, "running")).toBe(true);
+  });
 });
