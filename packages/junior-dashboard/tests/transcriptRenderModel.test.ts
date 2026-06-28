@@ -160,6 +160,50 @@ describe("transcript render model", () => {
     ]);
   });
 
+  it("preserves transcript order when activity rows have inverted tool timestamps", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "call-1",
+          toolCallId: "call-1",
+          toolName: "search",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "completed",
+          subagents: [],
+        },
+      ],
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+          parts: [{ type: "tool_call", id: "call-1", name: "search" }],
+        },
+        {
+          role: "toolResult",
+          timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+          parts: [{ type: "tool_result", id: "call-1", name: "search" }],
+        },
+      ],
+      transcriptAvailable: true,
+    });
+
+    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+      {
+        call: {
+          type: "tool_call",
+          id: "call-1",
+          name: "search",
+          status: "completed",
+        },
+        kind: "tool",
+        result: { type: "tool_result", id: "call-1", name: "search" },
+        resultTimestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+        timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+      },
+    ]);
+  });
+
   it("adds subagent activity as transcript entries", () => {
     const turn = conversationTurn({
       activity: [
@@ -178,6 +222,15 @@ describe("transcript render model", () => {
               parentToolCallId: "advisor-call",
               createdAt: "2026-01-01T00:00:02.000Z",
               status: "running",
+            },
+            {
+              type: "subagent",
+              id: "advisor-call-2",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:03.000Z",
+              status: "completed",
+              outcome: "success",
             },
           ],
         },
@@ -207,6 +260,18 @@ describe("transcript render model", () => {
           status: "running",
         },
         timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+      },
+      {
+        kind: "subagent",
+        part: {
+          type: "subagent",
+          id: "advisor-call-2",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-call",
+          status: "completed",
+          outcome: "success",
+        },
+        timestamp: Date.parse("2026-01-01T00:00:03.000Z"),
       },
     ]);
   });

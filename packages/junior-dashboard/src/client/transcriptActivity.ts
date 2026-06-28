@@ -29,6 +29,10 @@ function isToolCall(
   return part.type === "tool_call";
 }
 
+function isToolResult(part: TranscriptViewPart): boolean {
+  return part.type === "tool_result";
+}
+
 function partMatchesToolActivity(
   part: TranscriptViewPart,
   activity: ToolActivity,
@@ -184,19 +188,104 @@ function syntheticMessages(
   return messages;
 }
 
-function compareIndexedMessages(left: IndexedMessage, right: IndexedMessage) {
-  const leftTimestamp = left.message.timestamp;
-  const rightTimestamp = right.message.timestamp;
-  if (
-    typeof leftTimestamp === "number" &&
-    Number.isFinite(leftTimestamp) &&
-    typeof rightTimestamp === "number" &&
-    Number.isFinite(rightTimestamp) &&
-    leftTimestamp !== rightTimestamp
+function messageTimestamp(message: TranscriptViewMessage): number | undefined {
+  return typeof message.timestamp === "number" &&
+    Number.isFinite(message.timestamp)
+    ? message.timestamp
+    : undefined;
+}
+
+function findMatchingToolResultIndex(
+  messages: TranscriptViewMessage[],
+  part: TranscriptViewToolCallPart,
+): number | undefined {
+  const index = messages.findIndex((message) =>
+    message.parts.some(
+      (candidate) =>
+        isToolResult(candidate) && sameToolInvocation(candidate, part),
+    ),
+  );
+  return index >= 0 ? index : undefined;
+}
+
+function findParentToolCallIndex(
+  messages: TranscriptViewMessage[],
+  parentToolCallId: string,
+): number | undefined {
+  const index = messages.findIndex((message) =>
+    message.parts.some(
+      (candidate) => isToolCall(candidate) && candidate.id === parentToolCallId,
+    ),
+  );
+  return index >= 0 ? index : undefined;
+}
+
+function isSubagentForParent(
+  message: TranscriptViewMessage,
+  parentToolCallId: string,
+): boolean {
+  return message.parts.some(
+    (candidate) =>
+      candidate.type === "subagent" &&
+      candidate.parentToolCallId === parentToolCallId,
+  );
+}
+
+function subagentInsertionIndex(
+  messages: TranscriptViewMessage[],
+  parentToolCallId: string,
+): number | undefined {
+  const parentIndex = findParentToolCallIndex(messages, parentToolCallId);
+  if (parentIndex === undefined) return undefined;
+
+  let index = parentIndex + 1;
+  while (
+    index < messages.length &&
+    isSubagentForParent(messages[index]!, parentToolCallId)
   ) {
-    return leftTimestamp - rightTimestamp;
+    index += 1;
   }
-  return left.order - right.order;
+  return index;
+}
+
+function syntheticInsertionIndex(
+  messages: TranscriptViewMessage[],
+  message: TranscriptViewMessage,
+): number {
+  const part = message.parts[0];
+  if (part && isToolCall(part)) {
+    const resultIndex = findMatchingToolResultIndex(messages, part);
+    if (resultIndex !== undefined) return resultIndex;
+  }
+
+  if (part?.type === "subagent" && part.parentToolCallId) {
+    const index = subagentInsertionIndex(messages, part.parentToolCallId);
+    if (index !== undefined) return index;
+  }
+
+  const timestamp = messageTimestamp(message);
+  if (timestamp === undefined) return messages.length;
+
+  const index = messages.findIndex((candidate) => {
+    const candidateTimestamp = messageTimestamp(candidate);
+    return candidateTimestamp !== undefined && candidateTimestamp > timestamp;
+  });
+  return index >= 0 ? index : messages.length;
+}
+
+function mergeMessages(
+  messages: TranscriptViewMessage[],
+  synthetic: IndexedMessage[],
+): TranscriptViewMessage[] {
+  const merged = [...messages];
+  for (const entry of synthetic) {
+    merged.splice(
+      syntheticInsertionIndex(merged, entry.message),
+      0,
+      entry.message,
+    );
+  }
+  return merged;
 }
 
 /** Return the transcript rows that dashboard views should render for a turn. */
@@ -213,15 +302,9 @@ export function turnTranscriptMessages(
   }
 
   const { messages, usedToolCallIds } = upgradeToolCalls(source, activities);
-  const indexedMessages: IndexedMessage[] = messages.map((message, order) => ({
-    message,
-    order,
-  }));
 
-  return [
-    ...indexedMessages,
-    ...syntheticMessages(activities, orphanSubagents, usedToolCallIds),
-  ]
-    .sort(compareIndexedMessages)
-    .map((entry) => entry.message);
+  return mergeMessages(
+    messages,
+    syntheticMessages(activities, orphanSubagents, usedToolCallIds),
+  );
 }
