@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JuniorReporting } from "@sentry/junior/reporting";
 import { createDashboardApp } from "../src/app";
-import { createMockConversationReporting } from "../src/mock-conversations";
+import {
+  createMockConversationReporting,
+  DASHBOARD_QA_CONVERSATION_ID,
+} from "../src/mock-conversations";
 
 function reporting(): JuniorReporting {
   return {
@@ -130,7 +133,12 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(sessions.status).toBe(200);
     const sessionBody = (await sessions.json()) as {
-      sessions: Array<{ conversationId: string; cumulativeDurationMs: number }>;
+      sessions: Array<{
+        activity?: unknown;
+        conversationId: string;
+        cumulativeDurationMs: number;
+        id: string;
+      }>;
     };
     expect(sessionBody.sessions[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
@@ -141,6 +149,16 @@ describe("dashboard mock conversation routes", () => {
     expect(
       sessionBody.sessions.map((session) => session.conversationId),
     ).toContain("slack:CQA456:1770021600.000600");
+    expect(
+      sessionBody.sessions.map((session) => session.conversationId),
+    ).toContain(DASHBOARD_QA_CONVERSATION_ID);
+    const qaActivityOnlySession = sessionBody.sessions.find(
+      (session) =>
+        session.conversationId === DASHBOARD_QA_CONVERSATION_ID &&
+        session.id === "mock-dashboard-qa-activity-only",
+    );
+    expect(qaActivityOnlySession).toBeDefined();
+    expect(qaActivityOnlySession).not.toHaveProperty("activity");
     const conversationStats = await app.fetch(
       new Request("http://localhost/api/dashboard/conversation-stats"),
     );
@@ -183,6 +201,54 @@ describe("dashboard mock conversation routes", () => {
         .map((part) => part.name)
         .filter(Boolean),
     ).toContain("datacat.search_logs");
+
+    const qaConversation = await app.fetch(
+      new Request(
+        `http://localhost/api/dashboard/conversations/${encodeURIComponent(
+          DASHBOARD_QA_CONVERSATION_ID,
+        )}`,
+      ),
+    );
+    expect(qaConversation.status).toBe(200);
+    const qaConversationBody = (await qaConversation.json()) as {
+      runs: Array<{
+        activity?: Array<{
+          status?: string;
+          toolCallId?: string;
+          toolName?: string;
+          type: string;
+        }>;
+        transcript: Array<{
+          parts: Array<{ id?: string; name?: string; type: string }>;
+          timestamp?: number;
+        }>;
+        transcriptMessageCount?: number;
+      }>;
+    };
+    expect(qaConversationBody.runs[0]).toMatchObject({
+      id: "mock-dashboard-qa-activity-only",
+      transcript: [],
+      transcriptMessageCount: 3,
+      activity: [
+        {
+          type: "tool_execution",
+          status: "running",
+          toolName: "mock.dashboard_running_tool",
+        },
+      ],
+    });
+    const invertedRun = qaConversationBody.runs[1];
+    expect(invertedRun?.transcript[0]?.parts[0]).toMatchObject({
+      type: "tool_call",
+      name: "mock.inverted_timestamp_tool",
+    });
+    expect(invertedRun?.transcript[1]?.parts[0]).toMatchObject({
+      type: "tool_result",
+      name: "mock.inverted_timestamp_tool",
+    });
+    expect(invertedRun?.transcript[1]?.timestamp).toBeLessThan(
+      invertedRun?.transcript[0]?.timestamp ?? 0,
+    );
 
     const longConversation = await app.fetch(
       new Request(

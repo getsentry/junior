@@ -1,6 +1,6 @@
 ---
 name: junior-qa
-description: Validate Junior changes by running the local Junior CLI from apps/example. Use for local client or agent QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...` or `pnpm cli -- <command> ...`.
+description: Validate Junior changes through local app-facing paths. Use for local client or agent QA, dashboard mock reporting UI QA, PR readiness, plugin CLI commands, skill/tool/prompt/plugin behavior, and behavior that tests do not cover well but can be exercised with `pnpm cli -- chat ...`, `pnpm cli -- <command> ...`, or `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev`.
 ---
 
 Use the local Junior CLI to exercise behavior the test suite does not prove well.
@@ -46,6 +46,27 @@ Healthy startup usually logs `SOUL.md`, `WORLD.md`, loaded plugins, and
 discovered skills. Treat those logs as useful evidence that the example app path
 was exercised.
 
+## Dashboard UI QA
+
+For dashboard UI changes that depend on reporting payload shape, use the typed
+mock reporting overlay before relying on ad-hoc local conversations:
+
+```sh
+JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
+```
+
+Then open the dashboard in a browser and exercise the relevant conversation,
+transcript, search, or conversation stats surface. The mock overlay returns
+read-only `@sentry/junior/reporting` conversation API-shaped data, including
+dashboard QA edge cases such as activity-only tool rows and inverted tool
+timestamps. Use it when a UI change needs deterministic reporting records that
+are hard to produce through a live local chat. Plugin report data is pass-through
+from the configured reporting provider and needs separate validation.
+
+Do not treat mock dashboard data as proof of runtime ingestion, Slack delivery,
+credential behavior, or model behavior. Pair it with local CLI or integration
+tests when the changed contract crosses those boundaries.
+
 ## Choosing a Probe
 
 Pick the smallest local CLI run that demonstrates the changed behavior:
@@ -54,6 +75,8 @@ Pick the smallest local CLI run that demonstrates the changed behavior:
 - Use natural-language prompts when the behavior is an agent/tool workflow.
 - Use direct plugin commands when the behavior is an operator CLI surface.
 - Use interactive `pnpm cli -- chat` when continuity across turns matters.
+- Use dashboard mock reporting when the behavior is dashboard rendering,
+  filtering, search, or metrics over reporting API payloads.
 - Do not use local CLI to claim Slack-only behavior, such as Slack formatting,
   delivery retries, reactions, files, or OAuth UI.
 
@@ -78,6 +101,8 @@ insufficient and name the runtime surface that still needs manual coverage.
 Report:
 
 - the exact `pnpm cli -- ...` commands run
+- for dashboard mock QA, the dev-server command, URL, mock conversation or page
+  inspected, and the visible UI evidence
 - exit status and the key output that proves the behavior
 - whether `apps/example` loaded the expected app/plugin/skill path
 - whether local QA was sufficient, or what remains unproven locally

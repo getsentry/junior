@@ -12,6 +12,13 @@ import type {
 } from "@sentry/junior/reporting";
 
 import { longReleaseConversation } from "./mock-release-conversation";
+import { mockToolActivity } from "./mock-reporting/activity";
+import { mockConversation, mockRun } from "./mock-reporting/conversation";
+import {
+  mockToolCallPart,
+  mockToolResultPart,
+  mockTranscriptMessage,
+} from "./mock-reporting/transcript";
 
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -19,6 +26,7 @@ const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
 const HUNG_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
+export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function iso(nowMs: number, offsetMs = 0): string {
@@ -35,6 +43,7 @@ function sentryTraceUrl(traceId: string): string {
 
 function sessionFromRun(run: DashboardRunReport): DashboardSessionReport {
   const {
+    activity,
     transcript,
     transcriptAvailable,
     transcriptMessageCount,
@@ -634,9 +643,98 @@ function schedulerConversation(nowMs: number): DashboardConversationReport {
   };
 }
 
+function dashboardQaConversation(nowMs: number): DashboardConversationReport {
+  const conversationId = DASHBOARD_QA_CONVERSATION_ID;
+  const displayTitle = "Dashboard QA edge cases";
+  const activityStartedAt = iso(nowMs, -11 * 60_000);
+  const transcriptStartedAt = iso(nowMs, -10 * 60_000);
+  const runningToolId = "toolu_mock_dashboard_running";
+  const invertedToolId = "toolu_mock_dashboard_inverted";
+
+  return mockConversation({
+    conversationId,
+    displayTitle,
+    generatedAt: iso(nowMs),
+    runs: [
+      mockRun({
+        conversationId,
+        displayTitle,
+        id: "mock-dashboard-qa-activity-only",
+        status: "active",
+        startedAt: activityStartedAt,
+        lastProgressAt: iso(nowMs, -10 * 60_000),
+        lastSeenAt: iso(nowMs, -10 * 60_000),
+        cumulativeDurationMs: 60_000,
+        surface: "internal",
+        transcriptAvailable: true,
+        transcript: [],
+        transcriptMessageCount: 3,
+        activity: [
+          mockToolActivity({
+            id: runningToolId,
+            toolCallId: runningToolId,
+            toolName: "mock.dashboard_running_tool",
+            createdAt: iso(nowMs, -10 * 60_000),
+            status: "running",
+            args: { query: "activity-only edge case" },
+          }),
+        ],
+      }),
+      mockRun({
+        conversationId,
+        displayTitle,
+        id: "mock-dashboard-qa-inverted-tool",
+        status: "completed",
+        startedAt: transcriptStartedAt,
+        lastProgressAt: iso(nowMs, -9 * 60_000),
+        lastSeenAt: iso(nowMs, -9 * 60_000),
+        completedAt: iso(nowMs, -9 * 60_000),
+        cumulativeDurationMs: 120_000,
+        surface: "internal",
+        transcriptAvailable: true,
+        transcriptMessageCount: 2,
+        transcript: [
+          mockTranscriptMessage({
+            role: "assistant",
+            timestamp: Date.parse(transcriptStartedAt) + 2_000,
+            parts: [
+              mockToolCallPart({
+                id: invertedToolId,
+                name: "mock.inverted_timestamp_tool",
+                input: { order: "call before result" },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "toolResult",
+            timestamp: Date.parse(transcriptStartedAt) + 1_000,
+            parts: [
+              mockToolResultPart({
+                id: invertedToolId,
+                name: "mock.inverted_timestamp_tool",
+                output: { ok: true },
+              }),
+            ],
+          }),
+        ],
+        activity: [
+          mockToolActivity({
+            id: invertedToolId,
+            toolCallId: invertedToolId,
+            toolName: "mock.inverted_timestamp_tool",
+            createdAt: transcriptStartedAt,
+            status: "completed",
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
 function mockConversations(nowMs: number): DashboardConversationReport[] {
   return [
     activeConversation(nowMs),
+    dashboardQaConversation(nowMs),
     longReleaseConversation(nowMs),
     publicIncidentConversation(nowMs),
     privateConversation(nowMs),
