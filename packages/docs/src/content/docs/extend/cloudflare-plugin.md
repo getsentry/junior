@@ -11,7 +11,7 @@ related:
 
 The Cloudflare plugin uses Cloudflare's hosted API MCP server so Slack users can investigate Workers errors, check build and deployment status, inspect DNS records, query logs, check load balancer pool health, review Zero Trust tunnels, and manage Cloudflare resources from their own account context.
 
-The Cloudflare API MCP server uses a token-efficient [code-mode](https://blog.cloudflare.com/code-mode-mcp/) pattern that exposes ~2,500 API endpoints through just three tools (`docs`, `search`, `execute`), keeping context usage to ~1,000 tokens regardless of how many endpoints exist.
+Junior connects to the hosted MCP server declared by the plugin. Cloudflare OAuth or API token permissions determine which Cloudflare operations are available; the Junior plugin does not maintain an API allowlist.
 
 ## Install
 
@@ -36,7 +36,7 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 - No static `CLOUDFLARE_API_TOKEN` or shared account credential is required for the default setup.
 - Each user completes Cloudflare's MCP OAuth flow the first time Junior calls a Cloudflare MCP tool on their behalf.
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
-- The plugin is optimized for interactive user-driven work in Slack. For fully headless automation, configure a Cloudflare API token at the Cloudflare MCP server level.
+- The plugin is optimized for interactive user-driven work in Slack.
 
 ## Optional channel defaults
 
@@ -66,13 +66,13 @@ These defaults are optional. When not set, Junior discovers the account and zone
 
 When Cloudflare's OAuth does not grant sufficient scope for a task, create a Cloudflare API token with the minimum permissions needed:
 
-| Task | Token permissions |
-| --- | --- |
-| Read-only monitoring | Account Resources: Read, Zone: Read, Workers Scripts: Read, Logs: Read, Analytics: Read |
-| Worker deploy / rollback | Workers Scripts: Edit |
-| DNS management | DNS: Edit, Zone: Read |
-| Load balancer management | Load Balancers: Edit, Zone: Read |
-| Zero Trust inspection | Access: Read |
+| Task                     | Token permissions                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| Read-only monitoring     | Account Resources: Read, Zone: Read, Workers Scripts: Read, Logs: Read, Analytics: Read |
+| Worker deploy / rollback | Workers Scripts: Edit                                                                   |
+| DNS management           | DNS: Edit, Zone: Read                                                                   |
+| Load balancer management | Load Balancers: Edit, Zone: Read                                                        |
+| Zero Trust inspection    | Access: Read                                                                            |
 
 Tokens with Client IP Address Filtering enabled are not currently supported by the Cloudflare MCP server.
 
