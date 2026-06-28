@@ -3,7 +3,7 @@ import { pluginRuntimeRegistrationsFromPluginSet } from "@/plugins";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
-import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getChatConfig } from "@/chat/config";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
@@ -47,7 +47,7 @@ export async function runPluginStorageMigrations(
     return emptyResult();
   }
 
-  const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
+  const previousConfig = pluginCatalogRuntime.setConfig(pluginCatalogConfig);
   const ownedExecutor =
     context.db || !context.sqlDatabaseUrl
       ? undefined
@@ -82,7 +82,7 @@ export async function runPluginStorageMigrations(
     }
     return result;
   } finally {
-    setPluginCatalogConfig(previousConfig);
+    pluginCatalogRuntime.setConfig(previousConfig);
     await ownedExecutor?.close();
   }
 }

@@ -6,20 +6,24 @@ import {
 } from "@/chat/sandbox/egress-credentials";
 
 const {
-  getPluginOAuthConfig,
+  getOAuthConfigMock,
   hasEgressCredentialHooks,
   issuePluginCredential,
   issueProviderCredentialLease,
   getStateAdapter,
 } = vi.hoisted(() => ({
-  getPluginOAuthConfig: vi.fn(),
+  getOAuthConfigMock: vi.fn(),
   hasEgressCredentialHooks: vi.fn(),
   issuePluginCredential: vi.fn(),
   issueProviderCredentialLease: vi.fn(),
   getStateAdapter: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({ getPluginOAuthConfig }));
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getOAuthConfig: getOAuthConfigMock,
+  },
+}));
 vi.mock("@/chat/plugins/credential-hooks", () => ({
   hasEgressCredentialHooks,
   selectPluginGrant: vi.fn(),
@@ -53,7 +57,7 @@ function credentialContext() {
 describe("sandboxEgressCredentialLease — credential error normalization", () => {
   it("converts broker CredentialUnavailableError to auth_required with OAuth authorization", async () => {
     hasEgressCredentialHooks.mockReturnValue(false);
-    getPluginOAuthConfig.mockReturnValue({
+    getOAuthConfigMock.mockReturnValue({
       clientIdEnv: "SENTRY_CLIENT_ID",
       clientSecretEnv: "SENTRY_CLIENT_SECRET",
       authorizeEndpoint: "https://sentry.io/oauth/authorize/",
@@ -92,7 +96,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
 
   it("converts broker CredentialUnavailableError to auth_required without authorization when provider has no OAuth config", async () => {
     hasEgressCredentialHooks.mockReturnValue(false);
-    getPluginOAuthConfig.mockReturnValue(undefined); // no OAuth configured
+    getOAuthConfigMock.mockReturnValue(undefined); // no OAuth configured
     issueProviderCredentialLease.mockRejectedValue(
       new CredentialUnavailableError(
         PROVIDER,
@@ -124,7 +128,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
 
   it("propagates non-credential broker errors unchanged", async () => {
     hasEgressCredentialHooks.mockReturnValue(false);
-    getPluginOAuthConfig.mockReturnValue(undefined);
+    getOAuthConfigMock.mockReturnValue(undefined);
     const tokenStoreError = new Error("token store unavailable");
     issueProviderCredentialLease.mockRejectedValue(tokenStoreError);
     const stateStub = {
@@ -146,7 +150,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
 
   it("converts plugin unavailable results to unavailable credential errors", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
-    getPluginOAuthConfig.mockReturnValue({ scope: "read" });
+    getOAuthConfigMock.mockReturnValue({ scope: "read" });
     issuePluginCredential.mockResolvedValue({
       type: "unavailable",
       message: "plugin cannot issue credential for this actor",

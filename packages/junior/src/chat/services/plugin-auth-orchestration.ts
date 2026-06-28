@@ -24,7 +24,7 @@ import {
 } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-schemas";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
@@ -140,7 +140,7 @@ export function createPluginAuthOrchestration(
     if (pendingPause) {
       throw pendingPause;
     }
-    if (!input.requesterId || !getPluginOAuthConfig(provider)) {
+    if (!input.requesterId || !pluginCatalogRuntime.getOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
     if (input.authorizationFlowMode === "disabled") {
@@ -273,7 +273,7 @@ export function createPluginAuthOrchestration(
         );
       }
 
-      if (!getPluginOAuthConfig(authorization.provider)) {
+      if (!pluginCatalogRuntime.getOAuthConfig(authorization.provider)) {
         throw new PluginCredentialFailureError(
           provider,
           signal.message ??

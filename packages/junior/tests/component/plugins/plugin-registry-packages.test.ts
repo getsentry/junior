@@ -13,8 +13,9 @@ async function setPackages(packageNames: string[]): Promise<void> {
 }
 
 async function setConfig(config: PluginCatalogConfig): Promise<void> {
-  const { setPluginCatalogConfig } = await import("@/chat/plugins/registry");
-  setPluginCatalogConfig({
+  const { pluginCatalogRuntime } =
+    await import("@/chat/plugins/catalog-runtime");
+  pluginCatalogRuntime.setConfig({
     ...config,
     packages: config.packages ?? configuredPackageNames,
   });
@@ -25,8 +26,9 @@ async function expectRegistryLoadFailure(
   message: string,
 ): Promise<void> {
   await setPackages(packageNames);
-  const registry = await import("@/chat/plugins/registry");
-  expect(() => registry.getPluginProviders()).toThrow(message);
+  const { pluginCatalogRuntime: registry } =
+    await import("@/chat/plugins/catalog-runtime");
+  expect(() => registry.getProviders()).toThrow(message);
 }
 
 async function writePackagedPlugin(tempRoot: string): Promise<void> {
@@ -585,13 +587,14 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-demo"]);
-    const registry = await import("@/chat/plugins/registry");
-    const providers = registry.getPluginProviders();
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
     expect(providers[0]?.manifest.capabilities).toEqual(["demo.api"]);
     const resolvedTempRoot = await fs.realpath(tempRoot);
-    expect(registry.getPluginSkillRoots()).toEqual([
+    expect(registry.getSkillRoots()).toEqual([
       path.join(
         resolvedTempRoot,
         "node_modules",
@@ -600,7 +603,7 @@ describe("plugin registry package discovery", () => {
         "skills",
       ),
     ]);
-    expect(registry.isPluginProvider("demo")).toBe(true);
+    expect(registry.isProvider("demo")).toBe(true);
   });
 
   it("defaults npm runtime dependency version to latest when omitted", async () => {
@@ -628,8 +631,9 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-implicit-version"]);
-    const registry = await import("@/chat/plugins/registry");
-    const providers = registry.getPluginProviders();
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimeDependencies).toEqual([
       { type: "npm", package: "sentry", version: "latest" },
@@ -661,15 +665,16 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-bundle-only"]);
-    const registry = await import("@/chat/plugins/registry");
-    const providers = registry.getPluginProviders();
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.name).toBe("demo");
     expect(providers[0]?.manifest.capabilities).toEqual([]);
     expect(providers[0]?.manifest.configKeys).toEqual([]);
     expect(providers[0]?.manifest.credentials).toBeUndefined();
     expect(() =>
-      registry.createPluginBroker("demo", {
+      registry.createBroker("demo", {
         userTokenStore: {
           get: async () => undefined,
           set: async () => {},
@@ -705,8 +710,9 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-system-url"]);
-    const registry = await import("@/chat/plugins/registry");
-    const providers = registry.getPluginProviders();
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimeDependencies).toEqual([
       {
@@ -743,8 +749,9 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-postinstall"]);
-    const registry = await import("@/chat/plugins/registry");
-    const providers = registry.getPluginProviders();
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const providers = registry.getProviders();
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimePostinstall).toEqual([
       {
@@ -853,9 +860,10 @@ describe("plugin registry package discovery", () => {
         },
       },
     });
-    const registry = await import("@/chat/plugins/registry");
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
     expect(
-      registry.getPluginProviders().map((plugin) => ({
+      registry.getProviders().map((plugin) => ({
         name: plugin.manifest.name,
         domains: plugin.manifest.credentials?.domains,
       })),
@@ -897,9 +905,10 @@ describe("plugin registry package discovery", () => {
         },
       },
     });
-    const registry = await import("@/chat/plugins/registry");
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
 
-    expect(() => registry.getPluginProviders()).toThrow(
+    expect(() => registry.getProviders()).toThrow(
       "plugins.manifests.missing does not match a loaded plugin",
     );
   });
@@ -1050,8 +1059,9 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-oauth-overrides"]);
-    const registry = await import("@/chat/plugins/registry");
-    const provider = registry.getPluginProviders()[0];
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const provider = registry.getProviders()[0];
     expect(provider?.manifest.credentials).toMatchObject({
       type: "oauth-bearer",
       apiHeaders: {
@@ -1067,7 +1077,7 @@ describe("plugin registry package discovery", () => {
         "Content-Type": "application/json",
       },
     });
-    expect(registry.getPluginOAuthConfig("example")).toMatchObject({
+    expect(registry.getOAuthConfig("example")).toMatchObject({
       authorizeParams: {
         audience: "workspace",
       },
@@ -1136,8 +1146,9 @@ describe("plugin registry package discovery", () => {
     }));
 
     await setPackages(["@acme/junior-plugin-mcp"]);
-    const registry = await import("@/chat/plugins/registry");
-    const provider = registry.getPluginProviders()[0];
+    const { pluginCatalogRuntime: registry } =
+      await import("@/chat/plugins/catalog-runtime");
+    const provider = registry.getProviders()[0];
     expect(provider?.manifest.mcp).toEqual({
       transport: "http",
       url: "https://mcp.example.com",
@@ -1147,7 +1158,7 @@ describe("plugin registry package discovery", () => {
       allowedTools: ["search", "fetch"],
     });
     expect(
-      registry.getPluginMcpProviders().map((plugin) => plugin.manifest.name),
+      registry.getMcpProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["demo"]);
   });
 
@@ -1243,8 +1254,9 @@ describe("plugin registry package discovery", () => {
       }));
 
       await setPackages(["@acme/junior-plugin-mcp-template"]);
-      const registry = await import("@/chat/plugins/registry");
-      const provider = registry.getPluginProviders()[0];
+      const { pluginCatalogRuntime: registry } =
+        await import("@/chat/plugins/catalog-runtime");
+      const provider = registry.getProviders()[0];
       expect(provider?.manifest.mcp?.url).toBe(
         "https://mcp.example.com/api/unstable/mcp-server/mcp?toolsets=core",
       );
@@ -1292,8 +1304,9 @@ describe("plugin registry package discovery", () => {
       }));
 
       await setPackages(["@acme/junior-plugin-mcp-template"]);
-      const registry = await import("@/chat/plugins/registry");
-      const provider = registry.getPluginProviders()[0];
+      const { pluginCatalogRuntime: registry } =
+        await import("@/chat/plugins/catalog-runtime");
+      const provider = registry.getProviders()[0];
       expect(provider?.manifest.mcp?.url).toBe(
         "https://mcp.us5.example.com/api/unstable/mcp-server/mcp?toolsets=core",
       );

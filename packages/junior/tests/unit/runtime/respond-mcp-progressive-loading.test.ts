@@ -513,9 +513,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/chat/plugins/registry", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@/chat/plugins/registry")>();
+vi.mock("@/chat/plugins/catalog-runtime", () => {
   const plugin = {
     dir: "/tmp/plugins/demo",
     skillsDir: "/tmp/plugins/demo/skills",
@@ -533,11 +531,12 @@ vi.mock("@/chat/plugins/registry", async (importOriginal) => {
   };
 
   return {
-    ...actual,
-    getPluginDefinition: (provider: string) =>
-      provider === "demo" ? plugin : undefined,
-    getPluginMcpProviders: () => [plugin],
-    getPluginProviders: () => [plugin],
+    pluginCatalogRuntime: {
+      getDefinition: (provider: string) =>
+        provider === "demo" ? plugin : undefined,
+      getMcpProviders: () => [plugin],
+      getProviders: () => [plugin],
+    },
   };
 });
 

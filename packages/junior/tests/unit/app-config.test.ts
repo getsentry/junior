@@ -11,11 +11,7 @@ import {
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
-import {
-  getPluginSkillRoots,
-  getPluginProviders,
-  setPluginCatalogConfig,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
 
@@ -63,7 +59,7 @@ async function writePluginPackage(
 afterEach(async () => {
   process.chdir(originalCwd);
   setPlugins([]);
-  setPluginCatalogConfig(undefined);
+  pluginCatalogRuntime.setConfig(undefined);
   setConfigDefaults(undefined);
   setDashboardConversationLinkOptions(undefined);
   vi.doUnmock("#junior/config");
@@ -123,7 +119,7 @@ describe("createApp plugin config", () => {
       plugins: defineJuniorPlugins([]),
     });
 
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
   });
 
@@ -160,9 +156,9 @@ describe("createApp plugin config", () => {
     ).rejects.toThrow(
       "sandbox.egressTracePropagationDomains entries must be exact domains or leading wildcard domains",
     );
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "base",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["base"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "base",
     ]);
@@ -199,10 +195,9 @@ describe("createApp plugin config", () => {
       configDefaults: { "env.org": "sentry" },
     });
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "dashboard",
-      "env",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["dashboard", "env"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "dashboard",
     ]);
@@ -248,9 +243,9 @@ describe("createApp plugin config", () => {
       'configDefaults: "missing.org" is not a registered plugin config key',
     );
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "base",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["base"]);
     expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
   });
 
@@ -283,9 +278,9 @@ describe("createApp plugin config", () => {
       'Plugin package "@acme/missing-plugin" was configured but could not be resolved',
     );
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "base",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["base"]);
     expect(getConfigDefaults()).toEqual({ "base.org": "sentry" });
   });
 
@@ -305,9 +300,9 @@ describe("createApp plugin config", () => {
       configDefaults: { "hooked.org": "sentry" },
     });
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "hooked",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["hooked"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "hooked",
     ]);
@@ -341,7 +336,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("rejects plugin egress credential hooks without manifest domains", async () => {
@@ -377,7 +372,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("rejects plugin OAuth without credentials or egress credential hooks", async () => {
@@ -409,7 +404,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("loads plugins with egress credential hooks", async () => {
@@ -437,9 +432,9 @@ describe("createApp plugin config", () => {
       ]),
     });
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "example",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["example"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "example",
     ]);
@@ -465,7 +460,7 @@ describe("createApp plugin config", () => {
       ]),
     });
 
-    expect(getPluginSkillRoots()).toEqual([]);
+    expect(pluginCatalogRuntime.getSkillRoots()).toEqual([]);
   });
 
   it("assigns package skills to runtime hook inline plugin packages", async () => {
@@ -496,7 +491,7 @@ describe("createApp plugin config", () => {
     });
 
     const resolvedTempRoot = await fs.realpath(tempRoot);
-    expect(getPluginSkillRoots()).toEqual([
+    expect(pluginCatalogRuntime.getSkillRoots()).toEqual([
       path.join(
         resolvedTempRoot,
         "node_modules",
@@ -538,7 +533,7 @@ describe("createApp plugin config", () => {
     });
 
     expect(
-      getPluginProviders().map((plugin) => ({
+      pluginCatalogRuntime.getProviders().map((plugin) => ({
         name: plugin.manifest.name,
         domains: plugin.manifest.credentials?.domains,
       })),
@@ -557,7 +552,7 @@ describe("createApp plugin config", () => {
       },
       hooks: {},
     });
-    setPluginCatalogConfig({
+    pluginCatalogRuntime.setConfig({
       inlineManifests: [
         {
           manifest: {
@@ -600,7 +595,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("loads plugin instances from the Nitro virtual plugin set", async () => {
@@ -638,9 +633,9 @@ describe("createApp plugin config", () => {
       configDefaults: { "hooked.org": "sentry" },
     });
 
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "hooked",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["hooked"]);
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([
       "hooked",
     ]);
@@ -667,9 +662,9 @@ describe("createApp plugin config", () => {
     });
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders().map((plugin) => plugin.manifest.name)).toEqual([
-      "full",
-    ]);
+    expect(
+      pluginCatalogRuntime.getProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["full"]);
   });
 
   it("rejects duplicate plugin names before mutating app config", async () => {
@@ -697,7 +692,7 @@ describe("createApp plugin config", () => {
     ).toThrow('Duplicate plugin registration name "dupe"');
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("rejects invalid plugin names before mutating app config", async () => {
@@ -719,7 +714,7 @@ describe("createApp plugin config", () => {
     );
 
     expect(getPlugins().map((plugin) => plugin.manifest.name)).toEqual([]);
-    expect(getPluginProviders()).toEqual([]);
+    expect(pluginCatalogRuntime.getProviders()).toEqual([]);
   });
 
   it("rejects top-level plugin registration names", () => {

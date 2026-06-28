@@ -1,8 +1,5 @@
 import { logInfo } from "@/chat/logging";
-import {
-  getPluginCapabilityProviders,
-  getPluginCatalogSignature,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
 export interface CapabilityProviderTargetDefinition {
   type: string;
@@ -47,10 +44,10 @@ function cloneProviderDefinition(
 
 /** Build (and cache) the capability catalog from registered plugins. */
 function getCapabilityCatalog() {
-  const signature = getPluginCatalogSignature();
+  const signature = pluginCatalogRuntime.getSignature();
   if (cachedCatalog?.signature === signature) return cachedCatalog;
 
-  const providers = getPluginCapabilityProviders();
+  const providers = pluginCatalogRuntime.getCapabilityProviders();
   const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
 
   for (const provider of providers) {

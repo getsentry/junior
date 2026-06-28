@@ -10,12 +10,12 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
 const {
   formatProviderLabel,
-  getPluginOAuthConfig,
+  getOAuthConfigMock,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
-  getPluginOAuthConfig: vi.fn(),
+  getOAuthConfigMock: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
 }));
@@ -25,8 +25,10 @@ vi.mock("@/chat/oauth-flow", () => ({
   startOAuthFlow,
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginOAuthConfig,
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getOAuthConfig: getOAuthConfigMock,
+  },
 }));
 
 vi.mock("@/chat/credentials/unlink-provider", () => ({
@@ -66,8 +68,8 @@ const slackSource = createSlackSource({
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
-    getPluginOAuthConfig.mockReset();
-    getPluginOAuthConfig.mockImplementation((provider: string) =>
+    getOAuthConfigMock.mockReset();
+    getOAuthConfigMock.mockImplementation((provider: string) =>
       provider === "sentry" || provider === "github" ? { provider } : undefined,
     );
     startOAuthFlow.mockReset();

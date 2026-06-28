@@ -40,10 +40,7 @@ import {
   parseSkillInvocation,
   type Skill,
 } from "@/chat/skills";
-import {
-  getPluginMcpProviders,
-  getPluginProviders,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   createPluginHookRunner,
   getPluginSystemPromptContributions,
@@ -700,7 +697,7 @@ export async function generateAssistantReply(
     });
     if (!startupDiscoveryLogged) {
       startupDiscoveryLogged = true;
-      const plugins = getPluginProviders();
+      const plugins = pluginCatalogRuntime.getProviders();
       const roots = [
         ...new Set(availableSkills.map((skill) => skill.skillPath)),
       ].sort();
@@ -1032,10 +1029,13 @@ export async function generateAssistantReply(
       userTokenStore,
     });
 
-    mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
-      authProviderFactory: mcpAuth.authProviderFactory,
-      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
-    });
+    mcpToolManager = new McpToolManager(
+      pluginCatalogRuntime.getMcpProviders(),
+      {
+        authProviderFactory: mcpAuth.authProviderFactory,
+        onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      },
+    );
     const turnMcpToolManager = mcpToolManager;
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();

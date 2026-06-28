@@ -20,10 +20,12 @@ async function loadCatalogModule() {
   vi.doMock("@/chat/logging", () => ({
     logInfo: () => undefined,
   }));
-  vi.doMock("@/chat/plugins/registry", () => ({
-    getPluginCatalogSignature: () => currentSignature,
-    getPluginCapabilityProviders: () =>
-      currentProviders.map(cloneProviderDefinition),
+  vi.doMock("@/chat/plugins/catalog-runtime", () => ({
+    pluginCatalogRuntime: {
+      getSignature: () => currentSignature,
+      getCapabilityProviders: () =>
+        currentProviders.map(cloneProviderDefinition),
+    },
   }));
   return await import("@/chat/capabilities/catalog");
 }
@@ -33,7 +35,7 @@ afterEach(() => {
   currentProviders = [];
   vi.resetModules();
   vi.doUnmock("@/chat/logging");
-  vi.doUnmock("@/chat/plugins/registry");
+  vi.doUnmock("@/chat/plugins/catalog-runtime");
 });
 
 describe("capability catalog", () => {

@@ -34,27 +34,29 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: () => [
-    {
-      manifest: {
-        name: "sentry",
-        displayName: "Sentry",
-        description: "Sentry",
-        capabilities: ["sentry.api"],
-        configKeys: [],
-        commandEnv: {
-          SENTRY_READ_ONLY: "1",
-        },
-        credentials: {
-          type: "oauth-bearer",
-          domains: ["sentry.io"],
-          authTokenEnv: "SENTRY_AUTH_TOKEN",
-          authTokenPlaceholder: "host_managed_credential",
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getProviders: () => [
+      {
+        manifest: {
+          name: "sentry",
+          displayName: "Sentry",
+          description: "Sentry",
+          capabilities: ["sentry.api"],
+          configKeys: [],
+          commandEnv: {
+            SENTRY_READ_ONLY: "1",
+          },
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["sentry.io"],
+            authTokenEnv: "SENTRY_AUTH_TOKEN",
+            authTokenPlaceholder: "host_managed_credential",
+          },
         },
       },
-    },
-  ],
+    ],
+  },
 }));
 
 const {

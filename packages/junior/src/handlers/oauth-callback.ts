@@ -29,7 +29,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -554,7 +554,7 @@ export async function GET(
   waitUntil: WaitUntilFn,
   options: OAuthCallbackOptions = {},
 ): Promise<Response> {
-  const providerConfig = getPluginOAuthConfig(provider);
+  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
       "Unknown provider",

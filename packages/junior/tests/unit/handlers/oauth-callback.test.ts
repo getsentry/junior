@@ -44,40 +44,42 @@ const {
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginDisplayName: (provider: string) => {
-    if (provider === "sentry") {
-      return "Sentry";
-    }
-    if (provider === "example") {
-      return "Example";
-    }
-    if (provider === "github") {
-      return "GitHub";
-    }
-    return undefined;
-  },
-  getPluginOAuthConfig: (provider: string) => {
-    if (provider === "sentry") {
-      return SENTRY_OAUTH_CONFIG;
-    }
-    if (provider === "example") {
-      return EXAMPLE_OAUTH_CONFIG;
-    }
-    if (provider === "github") {
-      return GITHUB_OAUTH_CONFIG;
-    }
-    return undefined;
-  },
-  isPluginProvider: (provider: string) =>
-    provider === "sentry" || provider === "example" || provider === "github",
-  getPluginCapabilityProviders: () => [],
-  isPluginCapability: () => false,
-  isPluginConfigKey: () => false,
-  getPluginProviders: () => [],
-  getPluginSkillRoots: () => [],
-  createPluginBroker: () => {
-    throw new Error("not implemented in test");
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getDisplayName: (provider: string) => {
+      if (provider === "sentry") {
+        return "Sentry";
+      }
+      if (provider === "example") {
+        return "Example";
+      }
+      if (provider === "github") {
+        return "GitHub";
+      }
+      return undefined;
+    },
+    getOAuthConfig: (provider: string) => {
+      if (provider === "sentry") {
+        return SENTRY_OAUTH_CONFIG;
+      }
+      if (provider === "example") {
+        return EXAMPLE_OAUTH_CONFIG;
+      }
+      if (provider === "github") {
+        return GITHUB_OAUTH_CONFIG;
+      }
+      return undefined;
+    },
+    isProvider: (provider: string) =>
+      provider === "sentry" || provider === "example" || provider === "github",
+    getCapabilityProviders: () => [],
+    isCapability: () => false,
+    isConfigKey: () => false,
+    getProviders: () => [],
+    getSkillRoots: () => [],
+    createBroker: () => {
+      throw new Error("not implemented in test");
+    },
   },
 }));
 

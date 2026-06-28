@@ -13,10 +13,7 @@ import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
-import {
-  getPluginCatalogSignature,
-  setPluginCatalogConfig,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,
   type PluginDashboardRouteRegistration,
@@ -529,7 +526,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousPluginCatalogConfig = setPluginCatalogConfig(pluginConfig);
+  const previousPluginCatalogConfig =
+    pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
   const previousConfigDefaults = getConfigDefaults();
   const previousSlackReactionConfig = getSlackReactionConfig();
@@ -548,7 +546,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       setSlackReactionConfig(options.slack);
     }
     if (shouldValidatePluginCatalog) {
-      getPluginCatalogSignature();
+      pluginCatalogRuntime.getSignature();
       validatePluginRegistrations(configuredPlugins?.registrations ?? []);
       validatePluginEgressCredentialHooks(
         configuredPlugins?.registrations ?? [],
@@ -560,7 +558,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       pluginDashboardRoutes = getPluginDashboardRoutes();
     }
   } catch (error) {
-    setPluginCatalogConfig(previousPluginCatalogConfig);
+    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     setSlackReactionConfig(previousSlackReactionConfig);

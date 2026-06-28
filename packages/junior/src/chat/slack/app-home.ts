@@ -4,7 +4,7 @@ import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
-import { getPluginProviders } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
 import type {
@@ -115,7 +115,7 @@ export async function buildHomeView(
   const runtimeMetadata = getRuntimeMetadata();
   const descriptionText = loadDescriptionText();
   const skillsSummaryText = await buildSkillsSummaryText();
-  const providers = getPluginProviders();
+  const providers = pluginCatalogRuntime.getProviders();
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {

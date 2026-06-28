@@ -302,9 +302,11 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
   maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginMcpProviders: () => [],
-  getPluginProviders: () => [],
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getMcpProviders: () => [],
+    getProviders: () => [],
+  },
 }));
 
 vi.mock("@/chat/oauth-flow", () => ({

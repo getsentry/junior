@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-22
+- Last Edited: 2026-06-28
 
 ## Purpose
 
@@ -37,28 +37,32 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 4. Apply `PluginCatalogConfig` manifest overrides derived from that plugin set.
 5. Parse and validate every effective manifest before registering any plugin.
 6. Register capabilities, config keys, OAuth config, provider domains, and skill roots.
-7. Discover plugin skills later through `getPluginSkillRoots()`.
+7. Discover plugin skills later through `PluginCatalogRuntime.getSkillRoots()`.
 
-Plugin registry initialization is synchronous at module load so `discoverSkills()` can associate plugin-backed skills with their parent plugin.
+Plugin catalog loading is synchronous when a catalog runtime is read so `discoverSkills()` can associate plugin-backed skills with their parent plugin.
 
 Plugin packages must be explicitly declared by plugin registrations. Runtime must never scan `node_modules`, `package.json` dependencies, or arbitrary filesystem paths to auto-discover plugins.
 
 ## Registry Surface
 
 ```ts
-getPluginCapabilityProviders(): CapabilityProviderDefinition[]
-getPluginProviders(): PluginDefinition[]
-getPluginOAuthConfig(provider): OAuthProviderConfig | undefined
-getPluginSkillRoots(): string[]
-isPluginProvider(provider): boolean
-isPluginCapability(capability): boolean
-isPluginConfigKey(key): boolean
-createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
+createPluginCatalogRuntime(): PluginCatalogRuntime
+
+pluginCatalogRuntime.getCapabilityProviders(): CapabilityProviderDefinition[]
+pluginCatalogRuntime.getProviders(): PluginDefinition[]
+pluginCatalogRuntime.getOAuthConfig(provider): OAuthProviderConfig | undefined
+pluginCatalogRuntime.getSkillRoots(): string[]
+pluginCatalogRuntime.isProvider(provider): boolean
+pluginCatalogRuntime.isCapability(capability): boolean
+pluginCatalogRuntime.isConfigKey(key): boolean
+pluginCatalogRuntime.createBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 ```
+
+`createPluginCatalogRuntime()` constructs isolated catalog runtimes for tests and local composition. Runtime app wiring uses the active `pluginCatalogRuntime` instance from `chat/plugins/catalog-runtime`; registry modules must not reintroduce module-level one-method facade exports around that instance.
 
 ## Broker Creation
 
-`createPluginBroker(provider, deps)` constructs brokers from generic manifest credential config:
+`PluginCatalogRuntime.createBroker(provider, deps)` constructs brokers from generic manifest credential config:
 
 - `oauth-bearer`: generic OAuth bearer broker for per-user OAuth tokens, refresh, static host-token use when no credential context exists, command env, and header transforms.
 - plugin-level `api-headers`: API header broker for providers that need header injection without OAuth/App credentials.
@@ -73,7 +77,7 @@ Tests and evals seed credentials through the same stores and plugin env vars use
 `catalog.ts` sources capabilities from plugins:
 
 ```ts
-const CAPABILITY_PROVIDERS = [...getPluginCapabilityProviders()];
+const CAPABILITY_PROVIDERS = [...pluginCatalogRuntime.getCapabilityProviders()];
 ```
 
 Existing helpers such as `getCapabilityProvider` and `isKnownCapability` work through plugin-sourced providers.

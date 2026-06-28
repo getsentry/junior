@@ -148,13 +148,13 @@ async function configureLocalChatPlugins(
   const [
     pluginsModule,
     agentHooksModule,
-    registryModule,
+    catalogRuntimeModule,
     validationModule,
     databaseModule,
   ] = await Promise.all([
     import("@/plugins"),
     import("@/chat/plugins/agent-hooks"),
-    import("@/chat/plugins/registry"),
+    import("@/chat/plugins/catalog-runtime"),
     import("@/chat/plugins/validation"),
     import("@/chat/db"),
   ]);
@@ -171,10 +171,10 @@ async function configureLocalChatPlugins(
     Boolean(pluginConfig) || Boolean(resolvedPluginSet?.registrations.length);
   agentHooksModule.validatePlugins(plugins);
   const previousPluginCatalogConfig =
-    registryModule.setPluginCatalogConfig(pluginConfig);
+    catalogRuntimeModule.pluginCatalogRuntime.setConfig(pluginConfig);
   try {
     if (shouldValidatePluginCatalog) {
-      registryModule.getPluginCatalogSignature();
+      catalogRuntimeModule.pluginCatalogRuntime.getSignature();
       validationModule.validatePluginRegistrations(
         resolvedPluginSet?.registrations ?? [],
       );
@@ -185,7 +185,9 @@ async function configureLocalChatPlugins(
     databaseModule.getDb();
     agentHooksModule.setPlugins(plugins);
   } catch (error) {
-    registryModule.setPluginCatalogConfig(previousPluginCatalogConfig);
+    catalogRuntimeModule.pluginCatalogRuntime.setConfig(
+      previousPluginCatalogConfig,
+    );
     throw error;
   }
 }

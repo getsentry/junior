@@ -8,52 +8,80 @@ import type {
 } from "@/chat/credentials/user-token-store";
 import { discoverSkills } from "@/chat/skills";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import type { PluginCatalogRuntime } from "@/chat/plugins/registry";
+import type { PluginDefinition } from "@/chat/plugins/types";
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: () => [
-    {
-      manifest: {
-        name: "sentry",
-        displayName: "Sentry",
-        description: "Sentry provider",
-        credentials: {
-          type: "oauth-bearer",
+const catalogPlugins = vi.hoisted(
+  () =>
+    [
+      {
+        dir: "/tmp/plugins/sentry",
+        manifest: {
+          name: "sentry",
+          displayName: "Sentry",
+          description: "Sentry provider",
+          capabilities: [],
+          configKeys: [],
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["sentry.io"],
+            authTokenEnv: "SENTRY_AUTH_TOKEN",
+          },
         },
       },
-    },
-    {
-      manifest: {
-        name: "notion",
-        displayName: "Notion",
-        description: "Notion provider",
-        mcp: {
-          transport: "http",
-          url: "https://mcp.notion.com/mcp",
+      {
+        dir: "/tmp/plugins/notion",
+        manifest: {
+          name: "notion",
+          displayName: "Notion",
+          description: "Notion provider",
+          capabilities: [],
+          configKeys: [],
+          mcp: {
+            transport: "http",
+            url: "https://mcp.notion.com/mcp",
+          },
         },
       },
-    },
-    {
-      manifest: {
-        name: "github",
-        displayName: "GitHub",
-        description: "GitHub provider",
-        domains: ["api.github.com", "github.com"],
-        oauth: {
-          clientIdEnv: "GITHUB_APP_CLIENT_ID",
-          clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
-          authorizeEndpoint: "https://github.com/login/oauth/authorize",
-          tokenEndpoint: "https://github.com/login/oauth/access_token",
+      {
+        dir: "/tmp/plugins/github",
+        manifest: {
+          name: "github",
+          displayName: "GitHub",
+          description: "GitHub provider",
+          capabilities: [],
+          configKeys: [],
+          domains: ["api.github.com", "github.com"],
+          oauth: {
+            clientIdEnv: "GITHUB_APP_CLIENT_ID",
+            clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+            authorizeEndpoint: "https://github.com/login/oauth/authorize",
+            tokenEndpoint: "https://github.com/login/oauth/access_token",
+          },
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["api.github.com"],
+            authTokenEnv: "GITHUB_TOKEN",
+          },
         },
       },
-    },
-    {
-      manifest: {
-        name: "example-bundle",
-        displayName: "Example Bundle",
-        description: "Bundle-only plugin",
+      {
+        dir: "/tmp/plugins/example-bundle",
+        manifest: {
+          name: "example-bundle",
+          displayName: "Example Bundle",
+          description: "Bundle-only plugin",
+          capabilities: [],
+          configKeys: [],
+        },
       },
-    },
-  ],
+    ] satisfies PluginDefinition[],
+);
+
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getProviders: () => catalogPlugins,
+  } satisfies Pick<PluginCatalogRuntime, "getProviders">,
 }));
 
 vi.mock("@/chat/discovery", () => ({

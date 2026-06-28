@@ -34,10 +34,7 @@ import {
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
-import {
-  getPluginOAuthConfig,
-  setPluginCatalogConfig,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
@@ -1271,7 +1268,7 @@ async function autoCompleteOauth(args: {
   consumedStates: Set<string>;
 }): Promise<boolean> {
   const provider = args.provider.trim() || EVAL_OAUTH_PROVIDER;
-  const providerConfig = getPluginOAuthConfig(provider);
+  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
   if (!providerConfig) {
     throw new Error(`Unknown OAuth provider "${provider}" in eval harness`);
   }
@@ -1364,7 +1361,7 @@ async function setupHarnessEnvironment(
             ),
           })
         : undefined;
-    setPluginCatalogConfig({
+    pluginCatalogRuntime.setConfig({
       packages: scenario.overrides?.plugin_packages ?? [],
     });
 
@@ -1401,7 +1398,7 @@ async function setupHarnessEnvironment(
     };
   } catch (error) {
     resetSkillDiscoveryCache();
-    setPluginCatalogConfig(undefined);
+    pluginCatalogRuntime.setConfig(undefined);
     envSnapshot.restore();
     await egressServer?.close();
     await pluginApp?.cleanup();
@@ -1414,7 +1411,7 @@ async function teardownHarnessEnvironment(
   env: HarnessEnvironment,
 ): Promise<void> {
   resetSkillDiscoveryCache();
-  setPluginCatalogConfig(undefined);
+  pluginCatalogRuntime.setConfig(undefined);
   await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
   await cleanupMcpAuthState(
     env.authRequesterUsers,

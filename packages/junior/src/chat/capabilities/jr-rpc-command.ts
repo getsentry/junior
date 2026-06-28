@@ -1,7 +1,7 @@
 import { Bash, defineCommand } from "just-bash";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logInfo } from "@/chat/logging";
-import { getPluginProviders } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
@@ -270,7 +270,8 @@ async function handlePluginsCommand(
     });
   }
 
-  const plugins = getPluginProviders()
+  const plugins = pluginCatalogRuntime
+    .getProviders()
     .map((plugin) => ({
       name: plugin.manifest.name,
       displayName: plugin.manifest.displayName,

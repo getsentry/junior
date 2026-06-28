@@ -1,21 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  getPluginProvidersMock,
-  getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstallMock,
+  getProvidersMock,
+  getRuntimeDependenciesMock,
+  getRuntimePostinstallMock,
   resolveRuntimeDependencySnapshotMock,
 } = vi.hoisted(() => ({
-  getPluginProvidersMock: vi.fn(),
-  getPluginRuntimeDependenciesMock: vi.fn(),
-  getPluginRuntimePostinstallMock: vi.fn(),
+  getProvidersMock: vi.fn(),
+  getRuntimeDependenciesMock: vi.fn(),
+  getRuntimePostinstallMock: vi.fn(),
   resolveRuntimeDependencySnapshotMock: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginProviders: getPluginProvidersMock,
-  getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getProviders: getProvidersMock,
+    getRuntimeDependencies: getRuntimeDependenciesMock,
+    getRuntimePostinstall: getRuntimePostinstallMock,
+  },
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
@@ -26,14 +28,14 @@ import { runSnapshotCreate } from "@/cli/snapshot-warmup";
 
 describe("snapshot create cli", () => {
   beforeEach(() => {
-    getPluginProvidersMock.mockReset();
-    getPluginRuntimeDependenciesMock.mockReset();
-    getPluginRuntimePostinstallMock.mockReset();
+    getProvidersMock.mockReset();
+    getRuntimeDependenciesMock.mockReset();
+    getRuntimePostinstallMock.mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
 
-    getPluginProvidersMock.mockReturnValue([]);
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
-    getPluginRuntimePostinstallMock.mockReturnValue([]);
+    getProvidersMock.mockReturnValue([]);
+    getRuntimeDependenciesMock.mockReturnValue([]);
+    getRuntimePostinstallMock.mockReturnValue([]);
   });
 
   it("uses default runtime and timeout", async () => {
@@ -66,7 +68,7 @@ describe("snapshot create cli", () => {
   });
 
   it("logs plugin and dependency inputs before snapshot resolution", async () => {
-    getPluginProvidersMock.mockReturnValue([
+    getProvidersMock.mockReturnValue([
       {
         manifest: {
           name: "agent-browser",
@@ -85,11 +87,11 @@ describe("snapshot create cli", () => {
         },
       },
     ]);
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gtk3" },
       { type: "npm", package: "agent-browser", version: "latest" },
     ]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
+    getRuntimePostinstallMock.mockReturnValue([
       { cmd: "agent-browser", args: ["install"] },
     ]);
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({

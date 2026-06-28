@@ -7,10 +7,7 @@ import {
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
-import {
-  getPluginDisplayName,
-  getPluginOAuthConfig,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getSlackClient, isDmChannel } from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
@@ -109,7 +106,7 @@ export function parseOAuthStatePayload(
 
 /** Return the manifest-owned display label for a provider. */
 export function formatProviderLabel(provider: string): string {
-  const displayName = getPluginDisplayName(provider);
+  const displayName = pluginCatalogRuntime.getDisplayName(provider);
   if (!displayName) {
     throw new Error(`Unknown plugin provider display name: "${provider}"`);
   }
@@ -218,7 +215,7 @@ export async function startOAuthFlow(
 ): Promise<
   { ok: false; error: string } | { ok: true; delivery: PrivateDeliveryResult }
 > {
-  const providerConfig = getPluginOAuthConfig(provider);
+  const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
   if (!providerConfig) {
     return {
       ok: false,

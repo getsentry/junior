@@ -244,10 +244,11 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   }),
 }));
 
-vi.mock("@/chat/plugins/registry", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/plugins/registry")>()),
-  getPluginMcpProviders: () => [],
-  getPluginProviders: () => [],
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getMcpProviders: () => [],
+    getProviders: () => [],
+  },
 }));
 
 vi.mock("@/chat/skills", async (importOriginal) => ({

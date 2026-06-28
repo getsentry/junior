@@ -1,9 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-  getPluginPackageContent,
-  getPluginProviders,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getPluginOperationalReports } from "@/chat/plugins/agent-hooks";
 import { discoverSkills } from "@/chat/skills";
 import { homeDir } from "@/chat/discovery";
@@ -147,7 +144,7 @@ async function readSkills(): Promise<SkillReport[]> {
 }
 
 async function readPlugins(): Promise<PluginReport[]> {
-  return getPluginProviders().map((plugin) => ({
+  return pluginCatalogRuntime.getProviders().map((plugin) => ({
     name: plugin.manifest.name,
   }));
 }
@@ -180,7 +177,7 @@ export function createJuniorReporting(): JuniorReporting & {
         descriptionText: readDescriptionText(),
         providers: plugins.map((plugin) => plugin.name),
         skills,
-        packagedContent: getPluginPackageContent(),
+        packagedContent: pluginCatalogRuntime.getPackageContent(),
       };
     },
     getPlugins: readPlugins,

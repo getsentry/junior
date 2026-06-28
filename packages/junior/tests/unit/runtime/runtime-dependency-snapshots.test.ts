@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   sandboxCreateMock,
-  getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstallMock,
+  getRuntimeDependenciesMock,
+  getRuntimePostinstallMock,
 } = vi.hoisted(() => ({
   sandboxCreateMock: vi.fn(),
-  getPluginRuntimeDependenciesMock: vi.fn(),
-  getPluginRuntimePostinstallMock: vi.fn(),
+  getRuntimeDependenciesMock: vi.fn(),
+  getRuntimePostinstallMock: vi.fn(),
 }));
 const { withSpanMock } = vi.hoisted(() => ({
   withSpanMock: vi.fn(
@@ -26,9 +26,11 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getRuntimeDependencies: getRuntimeDependenciesMock,
+    getRuntimePostinstall: getRuntimePostinstallMock,
+  },
 }));
 vi.mock("@/chat/logging", () => ({
   withSpan: withSpanMock,
@@ -109,9 +111,9 @@ describe("runtime dependency snapshots", () => {
         callback: () => Promise<unknown>,
       ) => await callback(),
     );
-    getPluginRuntimeDependenciesMock.mockReset();
-    getPluginRuntimePostinstallMock.mockReset();
-    getPluginRuntimePostinstallMock.mockReturnValue([]);
+    getRuntimeDependenciesMock.mockReset();
+    getRuntimePostinstallMock.mockReset();
+    getRuntimePostinstallMock.mockReturnValue([]);
     delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
     delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
     delete process.env.VERCEL_TOKEN;
@@ -122,7 +124,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("rebuilds stale snapshots for floating dependency selectors", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
@@ -152,8 +154,8 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("rebuilds stale snapshots for postinstall-only profiles", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([]);
+    getRuntimePostinstallMock.mockReturnValue([
       { cmd: "agent-browser", args: ["install"] },
     ]);
     sandboxCreateMock
@@ -183,7 +185,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("rebuilds when rebuild epoch changes", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
@@ -211,7 +213,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("reuses cached rebuilt snapshot during force rebuild when stale id differs", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_new"));
@@ -238,7 +240,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("stops the build sandbox after snapshot creation succeeds", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     const sandbox = makeSandbox("snap_stopped");
@@ -256,7 +258,7 @@ describe("runtime dependency snapshots", () => {
     process.env.VERCEL_TOKEN = "sandbox-token";
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "1.0.0" },
     ]);
     const sandbox = makeSandbox("snap_creds");
@@ -278,7 +280,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("installs system dependencies via dnf", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gh" },
     ]);
     const sandbox = makeSandbox("snap_system");
@@ -296,7 +298,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("installs system dependencies from URL after sha256 verification", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       {
         type: "system",
         url: "https://example.com/tool.rpm",
@@ -341,7 +343,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gh" },
     ]);
     const sandbox = makeSandbox("snap_system_fallback", async (params) => {
@@ -390,7 +392,7 @@ describe("runtime dependency snapshots", () => {
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
@@ -424,7 +426,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("rebuilds when forceRebuild is true without stale snapshot id", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
@@ -452,7 +454,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("reuses a concurrent rebuilt snapshot while waiting on force rebuild lock without stale id", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
@@ -507,7 +509,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("returns no_profile metadata when runtime dependency profile is empty", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([]);
+    getRuntimeDependenciesMock.mockReturnValue([]);
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
@@ -523,7 +525,7 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("emits lifecycle snapshot spans for build and install", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gh" },
       { type: "npm", package: "sentry-cli", version: "2.0.0" },
     ]);
@@ -547,10 +549,10 @@ describe("runtime dependency snapshots", () => {
   });
 
   it("runs runtime-postinstall commands after dependency install", async () => {
-    getPluginRuntimeDependenciesMock.mockReturnValue([
+    getRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "example-cli", version: "latest" },
     ]);
-    getPluginRuntimePostinstallMock.mockReturnValue([
+    getRuntimePostinstallMock.mockReturnValue([
       { cmd: "example-cli", args: ["install"] },
     ]);
     const sandbox = makeSandbox("snap_postinstall");

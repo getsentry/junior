@@ -8,10 +8,7 @@ import type {
 import type { CredentialContext } from "@/chat/credentials/context";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import {
-  createPluginBroker,
-  getPluginProviders,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const sandboxEgressRouters = new WeakMap<
@@ -31,12 +28,14 @@ function createProviderCredentialRouter(
 
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
-  for (const plugin of getPluginProviders()) {
+  for (const plugin of pluginCatalogRuntime.getProviders()) {
     const { name } = plugin.manifest;
     if (!plugin.manifest.credentials && !plugin.manifest.apiHeaders) {
       continue;
     }
-    brokersByProvider[name] = createPluginBroker(name, { userTokenStore });
+    brokersByProvider[name] = pluginCatalogRuntime.createBroker(name, {
+      userTokenStore,
+    });
   }
 
   return new ProviderCredentialRouter({ brokersByProvider });

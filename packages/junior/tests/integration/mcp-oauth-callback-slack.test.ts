@@ -53,7 +53,8 @@ type McpClientModule = typeof import("@/chat/mcp/client");
 type McpOauthModule = typeof import("@/chat/mcp/oauth");
 type McpOauthCallbackHarnessModule =
   typeof import("../fixtures/mcp-oauth-callback-harness");
-type PluginRegistryModule = typeof import("@/chat/plugins/registry");
+type PluginCatalogRuntimeModule =
+  typeof import("@/chat/plugins/catalog-runtime");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
@@ -63,7 +64,7 @@ let mcpAuthStoreModule: McpAuthStoreModule;
 let mcpClientModule: McpClientModule;
 let mcpOauthModule: McpOauthModule;
 let mcpOauthCallbackHarnessModule: McpOauthCallbackHarnessModule;
-let pluginRegistryModule: PluginRegistryModule;
+let pluginCatalogRuntimeModule: PluginCatalogRuntimeModule;
 let stateAdapterModule: StateAdapterModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
@@ -87,7 +88,7 @@ async function createPendingAuthSession(args: {
     source: slackSource(args.threadTs),
   });
 
-  const plugin = pluginRegistryModule.getPluginDefinition(
+  const plugin = pluginCatalogRuntimeModule.pluginCatalogRuntime.getDefinition(
     EVAL_MCP_AUTH_PROVIDER,
   );
   expect(plugin).toBeDefined();
@@ -170,7 +171,7 @@ describe("mcp oauth callback slack integration", () => {
     mcpOauthModule = await import("@/chat/mcp/oauth");
     mcpOauthCallbackHarnessModule =
       await import("../fixtures/mcp-oauth-callback-harness");
-    pluginRegistryModule = await import("@/chat/plugins/registry");
+    pluginCatalogRuntimeModule = await import("@/chat/plugins/catalog-runtime");
     stateAdapterModule = await import("@/chat/state/adapter");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
 
@@ -289,9 +290,10 @@ describe("mcp oauth callback slack integration", () => {
       },
     });
 
-    const plugin = pluginRegistryModule.getPluginDefinition(
-      EVAL_MCP_AUTH_PROVIDER,
-    );
+    const plugin =
+      pluginCatalogRuntimeModule.pluginCatalogRuntime.getDefinition(
+        EVAL_MCP_AUTH_PROVIDER,
+      );
     expect(plugin).toBeDefined();
 
     const client = new mcpClientModule.PluginMcpClient(plugin!, {

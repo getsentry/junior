@@ -93,9 +93,12 @@ export const plugins = {
 
       const { getChatConfig } = await import("@/chat/config");
       expect(getChatConfig().state.adapter).toBe("memory");
-      const { getPluginProviders } = await import("@/chat/plugins/registry");
+      const { pluginCatalogRuntime } =
+        await import("@/chat/plugins/catalog-runtime");
       expect(
-        getPluginProviders().map((plugin) => plugin.manifest.name),
+        pluginCatalogRuntime
+          .getProviders()
+          .map((plugin) => plugin.manifest.name),
       ).toContain("local-chat-plugin");
       expect(generateAssistantReplyMock).toHaveBeenCalledWith(
         "hello",

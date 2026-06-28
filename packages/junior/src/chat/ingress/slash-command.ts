@@ -1,8 +1,7 @@
 import type { SlashCommandEvent } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
-import { isPluginProvider } from "@/chat/plugins/registry";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
 import { parseActorUserId } from "@/chat/requester";
@@ -31,12 +30,12 @@ async function handleLink(
   requesterId: string,
   provider: string,
 ): Promise<void> {
-  if (!isPluginProvider(provider)) {
+  if (!pluginCatalogRuntime.isProvider(provider)) {
     await postEphemeral(event, `Unknown provider: \`${provider}\``);
     return;
   }
 
-  if (!getPluginOAuthConfig(provider)) {
+  if (!pluginCatalogRuntime.getOAuthConfig(provider)) {
     await postEphemeral(
       event,
       `${formatProviderLabel(provider)} doesn't support account linking.`,
@@ -73,12 +72,12 @@ async function handleUnlink(
   requesterId: string,
   provider: string,
 ): Promise<void> {
-  if (!isPluginProvider(provider)) {
+  if (!pluginCatalogRuntime.isProvider(provider)) {
     await postEphemeral(event, `Unknown provider: \`${provider}\``);
     return;
   }
 
-  if (!getPluginOAuthConfig(provider)) {
+  if (!pluginCatalogRuntime.getOAuthConfig(provider)) {
     await postEphemeral(
       event,
       `${formatProviderLabel(provider)} doesn't support account unlinking.`,

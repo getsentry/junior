@@ -4,10 +4,7 @@ import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
-import {
-  getPluginForSkillPath,
-  getPluginSkillRoots,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 
 // ---------------------------------------------------------------------------
@@ -261,7 +258,7 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const envRoots =
     process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
   const defaults = skillRoots();
-  const pluginRoots = getPluginSkillRoots();
+  const pluginRoots = pluginCatalogRuntime.getSkillRoots();
 
   const seen = new Set<string>();
   const resolved: string[] = [];
@@ -284,7 +281,7 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
 function resolveSkillPlugin(
   meta: Pick<SkillMetadata, "name" | "skillPath" | "pluginProvider">,
 ): PluginDefinition | undefined {
-  const plugin = getPluginForSkillPath(meta.skillPath);
+  const plugin = pluginCatalogRuntime.getForSkillPath(meta.skillPath);
   if (meta.pluginProvider && plugin?.manifest.name !== meta.pluginProvider) {
     throw new Error(
       `Skill "${meta.name}" metadata names plugin "${meta.pluginProvider}" but is not owned by that plugin`,
@@ -349,7 +346,7 @@ async function readSkillDirectory(
 
     const { name, description, allowedTools, disableModelInvocation } =
       parsed.skill;
-    const plugin = getPluginForSkillPath(skillDir);
+    const plugin = pluginCatalogRuntime.getForSkillPath(skillDir);
 
     return {
       name,

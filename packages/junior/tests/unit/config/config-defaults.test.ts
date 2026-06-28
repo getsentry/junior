@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/chat/plugins/registry", () => ({
-  isPluginConfigKey: (key: string) =>
-    ["sentry.org", "sentry.project", "github.org", "github.repo"].includes(key),
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    isConfigKey: (key: string) =>
+      ["sentry.org", "sentry.project", "github.org", "github.repo"].includes(
+        key,
+      ),
+  },
 }));
 
 import {

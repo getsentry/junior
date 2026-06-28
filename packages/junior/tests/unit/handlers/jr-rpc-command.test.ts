@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
-import { setPluginCatalogConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { Skill } from "@/chat/skills";
 
 const activeSkill: Skill = {
@@ -136,7 +136,7 @@ describe("jr-rpc custom command", () => {
   });
 
   it("lists installed plugins", async () => {
-    const previousConfig = setPluginCatalogConfig({
+    const previousConfig = pluginCatalogRuntime.setConfig({
       inlineManifests: [
         {
           manifest: {
@@ -172,7 +172,7 @@ describe("jr-rpc custom command", () => {
         ]),
       );
     } finally {
-      setPluginCatalogConfig(previousConfig);
+      pluginCatalogRuntime.setConfig(previousConfig);
     }
   });
 

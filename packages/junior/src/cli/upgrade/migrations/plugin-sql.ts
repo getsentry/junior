@@ -1,9 +1,6 @@
 import { getChatConfig } from "@/chat/config";
 import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
-import {
-  getPluginMigrationRoots,
-  setPluginCatalogConfig,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
@@ -25,15 +22,15 @@ export async function migratePluginsToSql(
 ): Promise<MigrationResult> {
   const databaseUrl = requirePluginSqlDatabaseUrl(context);
   const { pluginCatalogConfig } = await resolveUpgradePlugins(context);
-  const previousConfig = setPluginCatalogConfig(pluginCatalogConfig);
+  const previousConfig = pluginCatalogRuntime.setConfig(pluginCatalogConfig);
   const executor = createJuniorSqlExecutor({
     connectionString: databaseUrl,
     driver: context.sqlDriver ?? getChatConfig().sql.driver,
   });
   try {
-    const migrations = getPluginMigrationRoots().flatMap((root) =>
-      readPluginMigrations(root),
-    );
+    const migrations = pluginCatalogRuntime
+      .getMigrationRoots()
+      .flatMap((root) => readPluginMigrations(root));
     const result = await migratePluginSchemas(executor, migrations);
     return {
       existing: result.existing,
@@ -42,7 +39,7 @@ export async function migratePluginsToSql(
       scanned: result.scanned,
     };
   } finally {
-    setPluginCatalogConfig(previousConfig);
+    pluginCatalogRuntime.setConfig(previousConfig);
     await executor.close();
   }
 }

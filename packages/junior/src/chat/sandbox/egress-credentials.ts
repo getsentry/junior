@@ -12,7 +12,7 @@ import {
   selectPluginGrant,
   issuePluginCredential,
 } from "@/chat/plugins/credential-hooks";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -83,7 +83,7 @@ function defaultGrantForProvider(input: {
 function oauthAuthorizationForProvider(
   provider: string,
 ): PluginAuthorization | undefined {
-  const oauth = getPluginOAuthConfig(provider);
+  const oauth = pluginCatalogRuntime.getOAuthConfig(provider);
   return oauth
     ? {
         type: "oauth",

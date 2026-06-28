@@ -8,7 +8,7 @@ import {
 } from "@/chat/sandbox/egress-tracing";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
-import { getPluginProviders } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 /** Return whether an outbound host is covered by a sandbox egress domain rule. */
@@ -28,7 +28,8 @@ function manifestDomains(manifest: PluginManifest): string[] {
 }
 
 function providerEntries(): Array<{ provider: string; domains: string[] }> {
-  return getPluginProviders()
+  return pluginCatalogRuntime
+    .getProviders()
     .map((plugin) => ({
       provider: plugin.manifest.name,
       domains: manifestDomains(plugin.manifest),
@@ -126,9 +127,11 @@ export async function resolveSandboxCommandEnvironment(): Promise<
   Record<string, string>
 > {
   const env: Record<string, string> = {};
-  for (const plugin of getPluginProviders().sort((left, right) =>
-    left.manifest.name.localeCompare(right.manifest.name),
-  )) {
+  for (const plugin of pluginCatalogRuntime
+    .getProviders()
+    .sort((left, right) =>
+      left.manifest.name.localeCompare(right.manifest.name),
+    )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
     if (credentials?.authTokenEnv) {

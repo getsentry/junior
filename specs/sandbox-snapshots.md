@@ -36,8 +36,8 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 - Runtime declarations are parsed and validated in:
   - `packages/junior/src/chat/plugins/registry.ts`
   - `packages/junior/src/chat/plugins/types.ts`
-- Runtime computes one merged, de-duplicated dependency profile from all loaded plugins via `getPluginRuntimeDependencies()`.
-- Runtime computes one ordered post-install command list via `getPluginRuntimePostinstall()`.
+- Runtime computes one merged, de-duplicated dependency profile from all loaded plugins via `pluginCatalogRuntime.getRuntimeDependencies()`.
+- Runtime computes one ordered post-install command list via `pluginCatalogRuntime.getRuntimePostinstall()`.
 
 ### Profile Hash Contract
 

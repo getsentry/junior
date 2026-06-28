@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginCatalogRuntime } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-const createPluginBrokerMock = vi.fn();
-const getPluginProvidersMock = vi.fn<() => PluginDefinition[]>();
+const createBrokerMock = vi.fn<PluginCatalogRuntime["createBroker"]>();
+const getProvidersMock = vi.fn<() => PluginDefinition[]>();
 const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
 };
@@ -11,9 +12,11 @@ vi.mock("@/chat/capabilities/catalog", () => ({
   logCapabilityCatalogLoadedOnce: vi.fn(),
 }));
 
-vi.mock("@/chat/plugins/registry", () => ({
-  createPluginBroker: (...args: unknown[]) => createPluginBrokerMock(...args),
-  getPluginProviders: () => getPluginProvidersMock(),
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    createBroker: createBrokerMock,
+    getProviders: () => getProvidersMock(),
+  } satisfies Pick<PluginCatalogRuntime, "createBroker" | "getProviders">,
 }));
 
 vi.mock("@/chat/state/adapter", () => ({
@@ -26,8 +29,8 @@ vi.mock("@/chat/state/adapter", () => ({
 
 describe("capability factory", () => {
   afterEach(() => {
-    createPluginBrokerMock.mockReset();
-    getPluginProvidersMock.mockReset();
+    createBrokerMock.mockReset();
+    getProvidersMock.mockReset();
     vi.resetModules();
   });
 
@@ -40,8 +43,8 @@ describe("capability factory", () => {
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       })),
     };
-    createPluginBrokerMock.mockReturnValue(broker);
-    getPluginProvidersMock.mockReturnValue([
+    createBrokerMock.mockReturnValue(broker);
+    getProvidersMock.mockReturnValue([
       {
         manifest: {
           name: "example",
@@ -71,7 +74,7 @@ describe("capability factory", () => {
       reason: "test:api-headers",
     });
 
-    expect(createPluginBrokerMock).toHaveBeenCalledWith("example", {
+    expect(createBrokerMock).toHaveBeenCalledWith("example", {
       userTokenStore: expect.any(Object),
     });
     expect(broker.issue).toHaveBeenCalledWith({
@@ -90,8 +93,8 @@ describe("capability factory", () => {
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       })),
     };
-    createPluginBrokerMock.mockReturnValue(broker);
-    getPluginProvidersMock.mockReturnValue([
+    createBrokerMock.mockReturnValue(broker);
+    getProvidersMock.mockReturnValue([
       {
         manifest: {
           name: "github",
@@ -131,8 +134,8 @@ describe("capability factory", () => {
       reason: "test:oauth",
     });
 
-    expect(createPluginBrokerMock).toHaveBeenCalledTimes(1);
-    expect(createPluginBrokerMock).toHaveBeenCalledWith("sentry", {
+    expect(createBrokerMock).toHaveBeenCalledTimes(1);
+    expect(createBrokerMock).toHaveBeenCalledWith("sentry", {
       userTokenStore: expect.any(Object),
     });
   });

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { getPluginDefinition } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -18,7 +18,7 @@ export function getMcpOAuthCallbackPath(provider: string): string {
 }
 
 function requirePluginWithMcp(provider: string): PluginDefinition {
-  const plugin = getPluginDefinition(provider);
+  const plugin = pluginCatalogRuntime.getDefinition(provider);
   if (!plugin?.manifest.mcp) {
     throw new Error(`Plugin "${provider}" does not support MCP`);
   }

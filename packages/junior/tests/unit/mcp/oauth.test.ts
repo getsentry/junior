@@ -33,9 +33,11 @@ describe("createMcpOAuthClientProvider", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     };
     vi.resetModules();
-    vi.doMock("@/chat/plugins/registry", () => ({
-      getPluginDefinition: (provider: string) =>
-        provider === "demo" ? buildPlugin() : undefined,
+    vi.doMock("@/chat/plugins/catalog-runtime", () => ({
+      pluginCatalogRuntime: {
+        getDefinition: (provider: string) =>
+          provider === "demo" ? buildPlugin() : undefined,
+      },
     }));
 
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
@@ -45,7 +47,7 @@ describe("createMcpOAuthClientProvider", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    vi.doUnmock("@/chat/plugins/registry");
+    vi.doUnmock("@/chat/plugins/catalog-runtime");
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });

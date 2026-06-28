@@ -6,9 +6,9 @@ import {
 
 const {
   continueTraceMock,
-  getPluginDefinitionMock,
-  getPluginOAuthConfigMock,
-  getPluginProvidersMock,
+  getDefinitionMock,
+  getOAuthConfigMock,
+  getProvidersMock,
   issueProviderCredentialLeaseMock,
   loggerMock,
   startSpanMock,
@@ -17,9 +17,9 @@ const {
     async (_context: unknown, callback: () => Promise<unknown>) =>
       await callback(),
   ),
-  getPluginDefinitionMock: vi.fn(),
-  getPluginOAuthConfigMock: vi.fn(),
-  getPluginProvidersMock: vi.fn(),
+  getDefinitionMock: vi.fn(),
+  getOAuthConfigMock: vi.fn(),
+  getProvidersMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
   loggerMock: {
     debug: vi.fn(),
@@ -48,10 +48,12 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginDefinition: getPluginDefinitionMock,
-  getPluginOAuthConfig: getPluginOAuthConfigMock,
-  getPluginProviders: getPluginProvidersMock,
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getDefinition: getDefinitionMock,
+    getOAuthConfig: getOAuthConfigMock,
+    getProviders: getProvidersMock,
+  },
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
@@ -247,15 +249,15 @@ describe("sandbox egress proxy", () => {
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "test-secret";
     activeCredentialToken = undefined;
-    getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
-    getPluginDefinitionMock.mockReset();
-    getPluginDefinitionMock.mockImplementation((provider: string) =>
+    getProvidersMock.mockReturnValue([sentryPlugin()]);
+    getDefinitionMock.mockReset();
+    getDefinitionMock.mockImplementation((provider: string) =>
       [sentryPlugin(), githubPlugin()].find(
         (plugin) => plugin.manifest.name === provider,
       ),
     );
-    getPluginOAuthConfigMock.mockReset();
-    getPluginOAuthConfigMock.mockImplementation((provider: string) =>
+    getOAuthConfigMock.mockReset();
+    getOAuthConfigMock.mockImplementation((provider: string) =>
       provider === "sentry" ? { provider, scope: "project:read" } : undefined,
     );
     issueProviderCredentialLeaseMock.mockReset();
@@ -343,7 +345,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("adds trace propagation transforms only for configured domains", () => {
-    getPluginProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
+    getProvidersMock.mockReturnValue([sentryPlugin(), githubPlugin()]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -374,7 +376,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("adds trace-only domains without provider forwarding", () => {
-    getPluginProvidersMock.mockReturnValue([sentryPlugin()]);
+    getProvidersMock.mockReturnValue([sentryPlugin()]);
 
     expect(
       buildSandboxEgressNetworkPolicy({
@@ -433,7 +435,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("resolves command env for every registered sandbox provider", async () => {
-    getPluginProvidersMock.mockReturnValue([githubPlugin(), sentryPlugin()]);
+    getProvidersMock.mockReturnValue([githubPlugin(), sentryPlugin()]);
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       GITHUB_READ_ONLY: "1",
@@ -444,7 +446,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("does not invent token env placeholders for domain-only providers", async () => {
-    getPluginProvidersMock.mockReturnValue([headerOnlyPlugin()]);
+    getProvidersMock.mockReturnValue([headerOnlyPlugin()]);
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
       HEADER_ONLY_READ_ONLY: "1",
@@ -546,7 +548,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("strips Sentry trace propagation before forwarding non-Sentry requests", async () => {
-    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    getProvidersMock.mockReturnValue([githubPlugin()]);
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock.mockResolvedValue({
       id: "lease-1",
@@ -912,7 +914,7 @@ describe("sandbox egress proxy", () => {
 
   it("records current GitHub grant reason and smart HTTP target on cached-lease 403", async () => {
     setSandboxEgressUserActor();
-    getPluginProvidersMock.mockReturnValue([githubPlugin()]);
+    getProvidersMock.mockReturnValue([githubPlugin()]);
     const issueCredential = vi.fn((ctx: IssueCredentialHookContext) => {
       expect(ctx.grant).toMatchObject({
         name: "user-write",

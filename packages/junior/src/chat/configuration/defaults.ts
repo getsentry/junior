@@ -1,4 +1,4 @@
-import { isPluginConfigKey } from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
 let installDefaults: Record<string, unknown> = {};
 
@@ -34,7 +34,7 @@ export function setConfigDefaults(
   }
 
   for (const key of Object.keys(defaults)) {
-    if (!isPluginConfigKey(key)) {
+    if (!pluginCatalogRuntime.isConfigKey(key)) {
       throw new Error(
         `configDefaults: "${key}" is not a registered plugin config key`,
       );

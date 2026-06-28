@@ -1,8 +1,4 @@
-import {
-  getPluginProviders,
-  getPluginRuntimeDependencies,
-  getPluginRuntimePostinstall,
-} from "@/chat/plugins/registry";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
@@ -35,7 +31,7 @@ function formatList(values: string[]): string {
 }
 
 function logSnapshotProfile(log: (line: string) => void): void {
-  const providers = getPluginProviders();
+  const providers = pluginCatalogRuntime.getProviders();
   const pluginNames = providers.map((plugin) => plugin.manifest.name).sort();
   const snapshotPluginNames = providers
     .filter(
@@ -47,7 +43,7 @@ function logSnapshotProfile(log: (line: string) => void): void {
     .sort();
   const systemDependencies: string[] = [];
   const npmDependencies: string[] = [];
-  for (const dep of getPluginRuntimeDependencies()) {
+  for (const dep of pluginCatalogRuntime.getRuntimeDependencies()) {
     if (dep.type === "npm") {
       npmDependencies.push(`${dep.package}@${dep.version}`);
       continue;
@@ -55,10 +51,11 @@ function logSnapshotProfile(log: (line: string) => void): void {
 
     systemDependencies.push("package" in dep ? dep.package : dep.url);
   }
-  const postinstallCommands = getPluginRuntimePostinstall().map(
-    ({ cmd, args }) =>
+  const postinstallCommands = pluginCatalogRuntime
+    .getRuntimePostinstall()
+    .map(({ cmd, args }) =>
       [cmd, ...(args ?? [])].filter((part) => part.trim().length > 0).join(" "),
-  );
+    );
 
   log(`Loaded plugins (${pluginNames.length}): ${formatList(pluginNames)}`);
   log(
