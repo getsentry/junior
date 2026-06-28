@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
 
 const ORIGINAL_SENTRY_DSN = process.env.SENTRY_DSN;
 const ORIGINAL_SENTRY_RELEASE = process.env.SENTRY_RELEASE;
@@ -36,7 +37,13 @@ async function loadInstrumentationModule() {
     getClient: () => undefined,
     init,
     getGlobalScope: () => globalScope,
-    vercelAIIntegration: () => ({ name: "vercel-ai" }),
+    vercelAIIntegration: vi.fn((options) => ({
+      name: "vercel-ai",
+      options,
+    })),
+    withStreamedSpan: vi.fn((callback) =>
+      Object.assign(callback, { _streamed: true }),
+    ),
   }));
   const instrumentation = await import("@/instrumentation");
   return { init, globalScope, instrumentation };
@@ -63,6 +70,47 @@ describe("initSentry", () => {
     expect(init).toHaveBeenCalledTimes(1);
     const options = init.mock.calls[0]?.[0];
     expect(options?.release).toBe("git-sha");
+    expect(options).toMatchObject({
+      sendDefaultPii: true,
+      streamGenAiSpans: true,
+    });
+    expect(options?.beforeSend).toEqual(expect.any(Function));
+    expect(options?.beforeSendLog).toEqual(expect.any(Function));
+    expect(options?.beforeSendSpan).toEqual(expect.any(Function));
+    expect(options?.beforeSendSpan?._streamed).toBe(true);
+    expect(options?.beforeSendTransaction).toEqual(expect.any(Function));
+    expect(options?.integrations?.[0]).toMatchObject({
+      options: {
+        recordInputs: true,
+        recordOutputs: true,
+      },
+    });
+    const span: {
+      attributes: Record<string, unknown>;
+      end_timestamp: number;
+      is_segment: boolean;
+      name: string;
+      span_id: string;
+      start_timestamp: number;
+      status: "ok";
+      trace_id: string;
+    } = {
+      attributes: {
+        "gen_ai.input.messages": "private input",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "gen_ai.chat",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    };
+    runWithConversationPrivacy("private", () =>
+      options?.beforeSendSpan?.(span),
+    );
+    expect(span.attributes["gen_ai.input.messages"]).toBeUndefined();
+    expect(span.attributes["app.conversation.payload_redacted"]).toBe(true);
 
     expect(globalScope.setAttributes).toHaveBeenCalledWith(
       expect.objectContaining({

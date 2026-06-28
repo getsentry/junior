@@ -1,8 +1,10 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { parseSlackThreadId } from "@/chat/slack/context";
 
 export type ConversationPrivacy = "public" | "private";
 type TraceAttributeValue = string | number | boolean | string[];
 const SAFE_METADATA_KEY_LIMIT = 20;
+const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
 
 function conversationPrivacyFromChannelId(
   channelId: string | undefined,
@@ -40,6 +42,21 @@ export function canExposeConversationPayload(input: {
   conversationId?: string;
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
+}
+
+/** Return the privacy mode bound to the current agent turn. */
+export function getCurrentConversationPrivacy():
+  | ConversationPrivacy
+  | undefined {
+  return conversationPrivacyStorage.getStore();
+}
+
+/** Bind one conversation privacy mode to all async work in a turn. */
+export function runWithConversationPrivacy<T>(
+  privacy: ConversationPrivacy,
+  callback: () => T,
+): T {
+  return conversationPrivacyStorage.run(privacy, callback);
 }
 
 function contentMetadata(content: unknown): unknown {

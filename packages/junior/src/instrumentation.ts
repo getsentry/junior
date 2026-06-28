@@ -1,5 +1,11 @@
 import * as Sentry from "@/chat/sentry";
 import {
+  scrubPrivateSentryEvent,
+  scrubPrivateSentryLog,
+  scrubPrivateSentrySpan,
+  scrubPrivateSentryTransaction,
+} from "@/chat/sentry-payload-filter";
+import {
   getDeploymentServiceVersion,
   getDeploymentTelemetryAttributes,
 } from "@/deployment";
@@ -42,6 +48,10 @@ export function initSentry(): void {
     enableLogs,
     registerEsmLoaderHooks: false,
     streamGenAiSpans: true,
+    beforeSend: scrubPrivateSentryEvent,
+    beforeSendLog: scrubPrivateSentryLog,
+    beforeSendSpan: Sentry.withStreamedSpan(scrubPrivateSentrySpan),
+    beforeSendTransaction: scrubPrivateSentryTransaction,
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,

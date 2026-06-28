@@ -150,8 +150,10 @@ import {
 } from "@/chat/services/auth-pause";
 import {
   resolveConversationPrivacy,
+  runWithConversationPrivacy,
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
+  type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 
 // Re-export types for backward compatibility with existing consumers.
@@ -573,6 +575,27 @@ export async function generateAssistantReply(
   messageText: string,
   context: AssistantReplyRequestContext,
 ): Promise<AssistantReply> {
+  const conversationPrivacy = resolveConversationPrivacy({
+    channelId: context.correlation?.channelId,
+    conversationId:
+      context.correlation?.conversationId ??
+      context.correlation?.threadId ??
+      context.correlation?.runId,
+  });
+  return runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
+    generateAssistantReplyInPrivacyContext(
+      messageText,
+      context,
+      conversationPrivacy,
+    ),
+  );
+}
+
+async function generateAssistantReplyInPrivacyContext(
+  messageText: string,
+  context: AssistantReplyRequestContext,
+  conversationPrivacy: ConversationPrivacy | undefined,
+): Promise<AssistantReply> {
   if (!context.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
@@ -624,13 +647,6 @@ export async function generateAssistantReply(
             : credentialActor.id,
       }
     : {};
-  const conversationPrivacy = resolveConversationPrivacy({
-    channelId: context.correlation?.channelId,
-    conversationId:
-      context.correlation?.conversationId ??
-      context.correlation?.threadId ??
-      context.correlation?.runId,
-  });
   const sessionRecordLogContext = {
     threadId: context.correlation?.threadId,
     requesterId: context.correlation?.requesterId,
