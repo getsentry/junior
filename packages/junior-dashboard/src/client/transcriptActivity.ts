@@ -148,10 +148,12 @@ function syntheticMessages(
   usedToolCallIds: Set<string>,
 ): IndexedMessage[] {
   const messages: IndexedMessage[] = [];
+  const emittedSubagentKeys = new Set<string>();
+  const emittedToolCallIds = new Set(usedToolCallIds);
   let order = 0;
 
   for (const activity of activities) {
-    if (!usedToolCallIds.has(activity.toolCallId)) {
+    if (!emittedToolCallIds.has(activity.toolCallId)) {
       messages.push({
         message: activityMessage(
           activityTimestamp(activity.createdAt),
@@ -159,9 +161,13 @@ function syntheticMessages(
         ),
         order: order + 0.1,
       });
+      emittedToolCallIds.add(activity.toolCallId);
     }
 
     for (const subagent of activity.subagents) {
+      const key = subagentActivityKey(subagent);
+      if (emittedSubagentKeys.has(key)) continue;
+
       messages.push({
         message: activityMessage(
           activityTimestamp(subagent.createdAt),
@@ -169,12 +175,16 @@ function syntheticMessages(
         ),
         order: order + 0.2,
       });
+      emittedSubagentKeys.add(key);
       order += 1;
     }
     order += 1;
   }
 
   for (const subagent of orphanSubagents) {
+    const key = subagentActivityKey(subagent);
+    if (emittedSubagentKeys.has(key)) continue;
+
     messages.push({
       message: activityMessage(
         activityTimestamp(subagent.createdAt),
@@ -182,10 +192,19 @@ function syntheticMessages(
       ),
       order: order + 0.2,
     });
+    emittedSubagentKeys.add(key);
     order += 1;
   }
 
   return messages;
+}
+
+function subagentActivityKey(activity: SubagentActivity): string {
+  return [
+    activity.parentToolCallId ?? "",
+    activity.id,
+    activity.subagentKind,
+  ].join("\u0000");
 }
 
 function messageTimestamp(message: TranscriptViewMessage): number | undefined {

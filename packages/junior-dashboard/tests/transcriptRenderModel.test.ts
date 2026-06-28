@@ -276,6 +276,148 @@ describe("transcript render model", () => {
     ]);
   });
 
+  it("does not duplicate subagents from repeated activity snapshots", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
+            {
+              type: "subagent",
+              id: "advisor-subagent",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
+              status: "running",
+            },
+          ],
+        },
+        {
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
+            {
+              type: "subagent",
+              id: "advisor-subagent",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
+              status: "running",
+            },
+          ],
+        },
+      ],
+      transcript: [],
+      transcriptAvailable: true,
+    });
+
+    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+      {
+        call: {
+          type: "tool_call",
+          id: "advisor-call",
+          name: "advisor",
+          status: "running",
+        },
+        kind: "tool",
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        kind: "subagent",
+        part: {
+          type: "subagent",
+          id: "advisor-subagent",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-call",
+          status: "running",
+        },
+        timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+      },
+    ]);
+  });
+
+  it("keeps subagent activity between an existing tool call and result", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "completed",
+          subagents: [
+            {
+              type: "subagent",
+              id: "advisor-subagent",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
+              status: "completed",
+              outcome: "success",
+            },
+          ],
+        },
+      ],
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+          parts: [{ type: "tool_call", id: "advisor-call", name: "advisor" }],
+        },
+        {
+          role: "toolResult",
+          timestamp: Date.parse("2026-01-01T00:00:03.000Z"),
+          parts: [{ type: "tool_result", id: "advisor-call", name: "advisor" }],
+        },
+      ],
+      transcriptAvailable: true,
+    });
+
+    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+      {
+        call: {
+          type: "tool_call",
+          id: "advisor-call",
+          name: "advisor",
+          status: "completed",
+        },
+        kind: "tool",
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        kind: "subagent",
+        part: {
+          type: "subagent",
+          id: "advisor-subagent",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-call",
+          status: "completed",
+          outcome: "success",
+        },
+        timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+      },
+      {
+        kind: "tool",
+        result: {
+          type: "tool_result",
+          id: "advisor-call",
+          name: "advisor",
+        },
+        resultTimestamp: Date.parse("2026-01-01T00:00:03.000Z"),
+      },
+    ]);
+  });
+
   it("matches derived activity rows in transcript search", () => {
     const turn = conversationTurn({
       activity: [

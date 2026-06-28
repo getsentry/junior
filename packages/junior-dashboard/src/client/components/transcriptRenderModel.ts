@@ -133,6 +133,7 @@ function findToolEntry(
 ): RenderedToolCallEntry | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
+    if (entry.kind !== "tool") return undefined;
     if (!isRenderedToolCallEntry(entry) || entry.result) continue;
     if (sameToolInvocation(entry.call, result)) {
       return entry;
