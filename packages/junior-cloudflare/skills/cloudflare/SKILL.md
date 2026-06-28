@@ -13,12 +13,12 @@ The MCP server exposes the full Cloudflare API (~2,500 endpoints) through a code
 
 Load references conditionally based on the request:
 
-| Need | Read |
-| ---- | ---- |
-| Any Cloudflare operation | [references/api-surface.md](references/api-surface.md) |
-| Common prod ops tasks (Worker errors, builds, DNS, LB health) | [references/common-use-cases.md](references/common-use-cases.md) |
-| Permission errors, account discovery, MCP failures | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
-| Writes, rollbacks, DNS changes, destructive actions | [references/safety-and-permissions.md](references/safety-and-permissions.md) |
+| Need                                                          | Read                                                                                   |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Any Cloudflare operation                                      | [references/api-surface.md](references/api-surface.md)                                 |
+| Common prod ops tasks (Worker errors, builds, DNS, LB health) | [references/common-use-cases.md](references/common-use-cases.md)                       |
+| Permission errors, account discovery, MCP failures            | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Writes, rollbacks, DNS changes, destructive actions           | [references/safety-and-permissions.md](references/safety-and-permissions.md)           |
 
 ## Workflow
 
@@ -71,7 +71,7 @@ The MCP server exposes three tools:
 
 **Stop and confirm before any write.**
 
-Before executing any mutating API call:
+Before executing any state-changing API call:
 
 1. Identify the exact resource (account ID, zone ID, script name, record ID, pool ID, etc.).
 2. Fetch and display the current state.

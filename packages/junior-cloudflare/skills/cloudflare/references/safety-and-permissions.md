@@ -4,20 +4,20 @@
 
 **Never execute the following without fetching current state, showing a before/after summary, and receiving explicit user approval:**
 
-| Category | Requires confirmation |
-| --- | --- |
-| Workers | Deploy (new version), rollback, route create/update/delete, script delete, env var/secret change |
-| DNS | Record create, update, delete (any type — A, AAAA, CNAME, MX, TXT, SRV) |
-| Load Balancers | Pool create/update/delete, monitor create/update/delete, LB failover |
-| WAF / Firewall | Rule create, update, disable, delete; ruleset deploy |
-| Access / Zero Trust | App policy change, tunnel create/delete, connector restart |
-| Logpush | Job enable/disable, destination change, job delete |
-| Storage | R2 bucket delete, KV namespace delete, D1 database drop; **no destructive ops by default** |
-| Account | API token create/delete, member add/remove |
+| Category            | Requires confirmation                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| Workers             | Deploy (new version), rollback, route create/update/delete, script delete, env var/secret change |
+| DNS                 | Record create, update, delete (any type — A, AAAA, CNAME, MX, TXT, SRV)                          |
+| Load Balancers      | Pool create/update/delete, monitor create/update/delete, LB failover                             |
+| WAF / Firewall      | Rule create, update, disable, delete; ruleset deploy                                             |
+| Access / Zero Trust | App policy change, tunnel create/delete, connector restart                                       |
+| Logpush             | Job enable/disable, destination change, job delete                                               |
+| Storage             | R2 bucket delete, KV namespace delete, D1 database drop; **no destructive ops by default**       |
+| Account             | API token create/delete, member add/remove                                                       |
 
 ## Pre-write checklist
 
-Before executing any write:
+Before executing any state-changing API call:
 
 1. **Identify the resource exactly.** Confirm account ID, zone ID, resource name, and resource ID.
 2. **Fetch current state.** Use a `GET` call to show what exists now.
@@ -48,15 +48,15 @@ Before executing any write:
 
 Suggest least-privilege tokens. Do not request or use an all-powerful token by default.
 
-| Task | Minimum token permissions |
-| --- | --- |
+| Task                                        | Minimum token permissions                                                               |
+| ------------------------------------------- | --------------------------------------------------------------------------------------- |
 | Read-only ops (monitoring, logs, analytics) | Account Resources: Read, Zone: Read, Workers Scripts: Read, Logs: Read, Analytics: Read |
-| Worker deploy / rollback | Workers Scripts: Edit (add Workers Routes: Edit if routes change) |
-| DNS management | DNS: Edit, Zone: Read |
-| Load balancer management | Load Balancers: Edit, Zone: Read |
-| Logpush job management | Logs: Edit |
-| Zero Trust / Access | Access: Edit, Zero Trust: Edit |
-| R2 / KV / D1 read-only | corresponding Read scopes only |
+| Worker deploy / rollback                    | Workers Scripts: Edit (add Workers Routes: Edit if routes change)                       |
+| DNS management                              | DNS: Edit, Zone: Read                                                                   |
+| Load balancer management                    | Load Balancers: Edit, Zone: Read                                                        |
+| Logpush job management                      | Logs: Edit                                                                              |
+| Zero Trust / Access                         | Access: Edit, Zero Trust: Edit                                                          |
+| R2 / KV / D1 read-only                      | corresponding Read scopes only                                                          |
 
 When the user's token lacks required permissions, stop and explain what permission is needed rather than attempting workarounds.
 
