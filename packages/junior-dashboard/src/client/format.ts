@@ -225,6 +225,12 @@ function transcriptSource(turn: ConversationTurn) {
   return turnTranscriptMessages(turn);
 }
 
+function rawTranscriptSource(turn: ConversationTurn) {
+  return turn.transcriptAvailable
+    ? turn.transcript
+    : (turn.transcriptMetadata ?? []);
+}
+
 /** Normalized role category for transcript messages. */
 export type TranscriptRoleKind =
   | "assistant"
@@ -264,7 +270,7 @@ function isConversationMessage(
 
 /** Count visible or redacted message records for a turn. */
 export function turnMessageCount(turn: ConversationTurn): number {
-  const source = transcriptSource(turn);
+  const source = rawTranscriptSource(turn);
   if (source.length > 0) {
     return source.filter(isConversationMessage).length;
   }
