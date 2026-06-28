@@ -5,94 +5,43 @@ description: Cloudflare production operations via the Cloudflare API MCP server.
 
 # Cloudflare Operations
 
-Use this skill for Cloudflare production operations via the Cloudflare API MCP server.
+Use this skill for Cloudflare production operations through Cloudflare's hosted API MCP.
 
-The MCP server exposes the full Cloudflare API (~2,500 endpoints) through a code-mode pattern: write minimal JavaScript to search the API spec, then execute calls against the Cloudflare API.
+Default to read-only investigation. Cloudflare OAuth or API token scopes are the permission boundary; this plugin cannot allowlist individual Cloudflare API operations inside MCP.
+
+## MCP basics
+
+Cloudflare MCP exposes three tools:
+
+- `docs`: search Cloudflare developer documentation for product behavior and terminology.
+- `search`: inspect the current Cloudflare API spec.
+- `execute`: call Cloudflare APIs with minimal JavaScript.
+
+Use `docs` when Cloudflare product behavior is unclear. Use `search` before every `execute`; the spec is the source of truth for current methods, paths, parameters, and response shapes. Keep `execute` calls small, scoped, and read-only unless the user has explicitly approved a state-changing change.
 
 ## Reference loading
 
 Load references conditionally based on the request:
 
-| Need                                                          | Read                                                                                   |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Any Cloudflare operation                                      | [references/api-surface.md](references/api-surface.md)                                 |
-| Common prod ops tasks (Worker errors, builds, DNS, LB health) | [references/common-use-cases.md](references/common-use-cases.md)                       |
-| Permission errors, account discovery, MCP failures            | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
-| Writes, rollbacks, DNS changes, destructive actions           | [references/safety-and-permissions.md](references/safety-and-permissions.md)           |
+| Need                                                                                                     | Read                                                                                   |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Worker errors, failed builds, logs, Logpush, DNS checks, LB health, tunnels                              | [references/workflows.md](references/workflows.md)                                     |
+| Any state-changing request: deploy, rollback, DNS, WAF, LB, Access, Logpush, storage, account membership | [references/safety-and-permissions.md](references/safety-and-permissions.md)           |
+| Auth failures, permission errors, multiple accounts/zones, rate limits, stale operations                 | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Workflow
 
-### 1. Resolve the operation and target
-
-- Determine whether the request is read-only inspection, deployment/rollback, DNS change, log investigation, build status, or other write.
-- Prefer explicit account IDs, zone names, Worker script names, build IDs, or Cloudflare URLs when the user provides them.
-- When the user did not specify scope, treat `cloudflare.account-id` and `cloudflare.zone-id` conversation config as optional defaults. Explicit user input always wins over config.
-- Only set or change `cloudflare.account-id` and `cloudflare.zone-id` when the user explicitly asks to store a default for this conversation or channel.
-- If the request refers to a prior Cloudflare resource indirectly, inspect the current thread for account IDs, zone names, Worker names, ray IDs, or build IDs before asking the user to restate them.
-- Ask one focused follow-up only when the request cannot proceed without missing information that the thread does not supply.
-
-### 2. Discover account and zone IDs when not configured
-
-- Validate the token and list accounts: use `search` to find `/user/tokens/verify` and `/accounts` endpoints, then `execute` to call them.
-- When the user provides a zone name (e.g. `example.com`), resolve it with `/zones?name=<zone>` rather than assuming an ID.
-- When `cloudflare.account-id` is configured, use it directly. Do not re-fetch unless the config is wrong.
-- Auto-detection works when the token has Account Resources: Read. If it fails, ask the user for the account ID.
-
-### 3. Use the code-mode MCP tools
-
-The MCP server exposes three tools:
-
-- **`search`** — writes JavaScript against the Cloudflare API spec to find matching endpoints. Use this first to confirm the correct endpoint path and method.
-- **`execute`** — writes JavaScript that calls `cloudflare.request()` with the discovered endpoint. This makes real API calls.
-- **`docs`** — searches Cloudflare developer documentation. Use to clarify concepts, compatibility dates, product behavior, or flag naming.
-
-**Always search before executing.** Do not guess endpoint paths. Use `search` to confirm the exact endpoint, required parameters, and response schema before calling `execute`.
-
-**Bound every query:**
-
-- For logs and analytics: default to the last 30 minutes for "right now" questions, last 24 hours for retrospective questions. Name the assumed window in the response.
-- For Worker script lists or zone lists: cap results at a reasonable page size; do not page through thousands of results unless the user asks.
-- For builds and deployments: start with the most recent N items.
-
-**Keep execute code minimal:**
-
-- Print only the fields relevant to the answer. Do not dump full API responses.
-- Do not include or print secrets, tokens, Worker source code, environment variable values, or raw authorization headers.
-- Paginate deliberately; do not fetch more than necessary.
-
-### 4. For investigation requests (default mode)
-
-- Start read-only. Use `search` + `execute` to inspect current state.
-- Report concrete findings first: error counts, deployment version, build status, DNS record values, pool health status.
-- Include Cloudflare dashboard deep links when you have resource IDs. Construct them as `https://dash.cloudflare.com/<account_id>/...`.
-- Keep routine tool steps silent. Do not narrate every search and execute call.
-
-### 5. For write requests (deploy, rollback, DNS, config changes)
-
-**Stop and confirm before any write.**
-
-Before executing any state-changing API call:
-
-1. Identify the exact resource (account ID, zone ID, script name, record ID, pool ID, etc.).
-2. Fetch and display the current state.
-3. State the intended API endpoint, method, and what will change.
-4. Show a concise before/after summary or diff.
-5. Ask for explicit user approval.
-6. After approval, execute the write and verify the result.
-
-See [references/safety-and-permissions.md](references/safety-and-permissions.md) for the full list of write operations requiring confirmation.
-
-### 6. Report results
-
-- Lead with the answer (status, count, version, health) then evidence.
-- Include resource IDs and Cloudflare dashboard links when available.
-- Redact secrets, tokens, env var values, cookie headers, authorization headers, and Worker source code. Summarize patterns, include small representative samples.
-- State assumed time windows. Flag when data may be delayed (analytics pipelines can lag by a few minutes).
-- For incomplete results (pagination cutoff, log retention limit, plan restriction), say so explicitly.
+1. Classify the request as read-only investigation or state-changing work.
+2. Resolve target scope: explicit user account/zone/resource wins; otherwise use `cloudflare.account-id` and `cloudflare.zone-id` config; otherwise discover with MCP and ask one focused question if ambiguous.
+3. For any Cloudflare API call, search the MCP API spec first. Do not call Cloudflare API paths from memory or from bundled docs.
+4. Keep investigation bounded: last 30 minutes for "right now", last 24 hours for retrospective checks, and recent N builds/deployments unless the user asks for more.
+5. Before any state-changing API call, load [references/safety-and-permissions.md](references/safety-and-permissions.md), show current state and the intended change, then wait for explicit approval.
+6. Lead with concrete findings, then evidence. Include dashboard links when IDs are available.
 
 ## Guardrails
 
 - **Read-first.** Default to investigation. Do not execute writes in response to ambiguous requests like "fix this" or "roll it back" — investigate and propose a plan first.
+- **Search owns API selection.** The bundled references give workflows, not API authority.
 - **Confirm before writes.** No Worker deploy, rollback, DNS create/update/delete, load balancer change, WAF rule change, Access policy change, or R2/KV/D1 destructive action without explicit user approval after showing current state and change summary.
 - **Never delete data by default.** For R2, KV, and D1, support list/inspect/read. Avoid delete/truncate/drop unless the user explicitly asks and confirms.
 - **Redact sensitive data.** Do not paste raw log bodies, Worker source, env var values, token values, or authorization headers.

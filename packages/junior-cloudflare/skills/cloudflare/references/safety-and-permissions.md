@@ -21,18 +21,18 @@ Before executing any state-changing API call:
 
 1. **Identify the resource exactly.** Confirm account ID, zone ID, resource name, and resource ID.
 2. **Fetch current state.** Use a `GET` call to show what exists now.
-3. **State the intended change.** Name the endpoint, method, and the exact fields that will change.
+3. **State the intended change.** Name the Cloudflare operation, method, and the exact fields that will change.
 4. **Summarize impact.** What breaks if this fails? Is there a rollback path?
 5. **Ask for approval.** Do not proceed until the user explicitly confirms.
 6. **Execute and verify.** After the write, confirm the new state with a follow-up `GET`.
 
 ## Rollback runbook
 
-1. List deployments: `GET /accounts/{id}/workers/scripts/{name}/deployments`
+1. Search for Workers script deployments and list recent deployments.
 2. Identify target (last known good version by timestamp or user input).
 3. Diff compatibility date, bindings metadata, routes, and cron triggers between current and target.
 4. Confirm the rollback target with the user — include version tag, deploy timestamp, and any config deltas.
-5. Execute: `POST /accounts/{id}/workers/scripts/{name}/deployments` pinning the target version.
+5. Search for the current deployment operation, then execute it with the target version pinned.
 6. Verify: check tail logs and analytics for error rate stabilization.
 
 ## DNS change safety

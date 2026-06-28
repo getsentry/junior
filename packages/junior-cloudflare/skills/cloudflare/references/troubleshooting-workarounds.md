@@ -16,7 +16,7 @@
 
 ## Multiple accounts
 
-**Symptom:** `/accounts` returns more than one account.
+**Symptom:** account discovery returns more than one account.
 
 - Do not guess which account to use.
 - Show the user the list (name + ID) and ask them to specify.
@@ -24,7 +24,7 @@
 
 ## Zone name ambiguity
 
-**Symptom:** `/zones?name=<domain>` returns multiple zones (e.g. test + production zones).
+**Symptom:** zone lookup by domain returns multiple zones (e.g. test + production zones).
 
 - Show all matching zones with their IDs and statuses.
 - Ask the user to confirm the intended zone.
@@ -34,15 +34,15 @@
 
 **Symptom:** `execute` returns an unexpected error or empty result.
 
-- Use `search` to re-confirm the endpoint path and parameters before retrying.
-- Check whether the endpoint requires `account_id` vs `zone_id` — this is a common mistake.
-- Use `docs` to verify current endpoint behavior if the spec seems stale.
+- Use `search` to re-confirm the operation shape before retrying.
+- Check whether the operation requires `account_id` vs `zone_id` — this is a common mistake.
+- Use `docs` to verify current product behavior if the spec seems stale.
 - If the MCP server itself returns 5xx, note this and retry once. If it persists, report the error.
 
-**Symptom:** `search` returns no results for an expected endpoint.
+**Symptom:** `search` returns no results for an expected operation.
 
 - Try a broader search term (e.g. `workers` instead of `workers/scripts/deployments`).
-- The spec may use a different path structure; use `docs` to look up the current endpoint.
+- The spec may use different names than Cloudflare's product docs; use `docs` to clarify terminology.
 
 ## Analytics data delays
 
@@ -51,7 +51,7 @@ Cloudflare analytics pipelines typically have a 1–2 minute delay. For "right n
 ## Log retention and plan limits
 
 - Workers tail logs are live only — they do not provide historical log retrieval.
-- Logpush provides historical logs but requires configuration (destination bucket/endpoint). If the user has not configured Logpush, tail is the only real-time option.
+- Logpush provides historical logs but requires configuration (destination bucket or external service). If the user has not configured Logpush, tail is the only real-time option.
 - Workers analytics retention varies by plan. Enterprise customers may have longer retention.
 - If a query returns fewer results than expected, check whether plan limits or retention windows are truncating the data.
 
@@ -63,19 +63,20 @@ Cloudflare analytics pipelines typically have a 1–2 minute delay. For "right n
 - If still throttled, report the rate limit and stop.
 - Do not loop or retry aggressively — Cloudflare enforces per-second and per-minute limits.
 
-## Endpoint changed or not found
+## Operation changed or not found
 
-**Symptom:** An expected endpoint (from memory or prior context) returns 404.
+**Symptom:** An expected Cloudflare operation returns 404.
 
 - Use `search` against the current spec. Do not hand-guess a corrected path.
 - Use `docs` to look up the current API surface for the product area.
-- Cloudflare frequently moves endpoints; the spec in `search` is authoritative.
+- Cloudflare frequently changes API surfaces; the spec in `search` is authoritative.
 
 ## Workers Builds vs Pages
 
 Cloudflare has two CI systems:
-- **Workers Builds** (`/accounts/{id}/builds`) — for Worker scripts deployed via `wrangler`
-- **Pages** (`/accounts/{id}/pages/projects`) — for static sites and Pages Functions
+
+- **Workers Builds** — for Worker scripts deployed via `wrangler`
+- **Pages** — for static sites and Pages Functions
 
 If the user asks about "builds" and it's unclear which system, ask whether they are deploying a Worker or a Pages project.
 
