@@ -6,8 +6,12 @@ capabilities:
   - api
 
 config-keys:
-  - account-id
-  - zone-id
+  - account.id
+  - zone.id
 
 mcp:
   url: https://mcp.cloudflare.com/mcp
+  allowed-tools:
+    - docs
+    - search
+    - execute

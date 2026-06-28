@@ -43,8 +43,8 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 If a Slack channel consistently works with the same Cloudflare account or zone, store those as conversation-scoped defaults:
 
 ```bash
-jr-rpc config set cloudflare.account-id <account_id>
-jr-rpc config set cloudflare.zone-id <zone_id>
+jr-rpc config set cloudflare.account.id <account_id>
+jr-rpc config set cloudflare.zone.id <zone_id>
 ```
 
 These defaults are optional. When not set, Junior discovers the account and zone from the API on first use (requires Account Resources: Read permission). If the user names a different account or zone in a request, Junior follows the explicit request instead.
@@ -89,8 +89,8 @@ Confirm a real user can connect and query Cloudflare successfully:
 
 - **Auth error or 401**: The user's session is not authorized. Retry the request to trigger the OAuth flow again.
 - **403 permission denied**: The authorized account lacks the required Cloudflare permission for this resource. Check the token permissions table above.
-- **Account not found**: Auto-discovery failed because the token lacks Account Resources: Read. Set `cloudflare.account-id` explicitly.
-- **Multiple accounts found**: The token has access to more than one account. Junior will ask the user to specify; set `cloudflare.account-id` to avoid the prompt.
+- **Account not found**: Auto-discovery failed because the token lacks Account Resources: Read. Set `cloudflare.account.id` explicitly.
+- **Multiple accounts found**: The token has access to more than one account. Junior will ask the user to specify; set `cloudflare.account.id` to avoid the prompt.
 - **Analytics delayed**: Cloudflare analytics pipelines typically lag by 1–2 minutes. Use live tail logs for real-time error investigation.
 - **Build logs unavailable**: Workers Builds log access may require specific plan or token permissions.
 

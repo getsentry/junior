@@ -32,7 +32,7 @@ Load references conditionally based on the request:
 ## Workflow
 
 1. Classify the request as read-only investigation or state-changing work.
-2. Resolve target scope: explicit user account/zone/resource wins; otherwise use `cloudflare.account-id` and `cloudflare.zone-id` config; otherwise discover with MCP and ask one focused question if ambiguous.
+2. Resolve target scope: explicit user account/zone/resource wins; otherwise use `cloudflare.account.id` and `cloudflare.zone.id` config; otherwise discover with MCP and ask one focused question if ambiguous.
 3. For any Cloudflare API call, search the MCP API spec first. Do not call Cloudflare API paths from memory or from bundled docs.
 4. Keep investigation bounded: last 30 minutes for "right now", last 24 hours for retrospective checks, and recent N builds/deployments unless the user asks for more.
 5. Before any state-changing API call, load [references/safety-and-permissions.md](references/safety-and-permissions.md), show current state and the intended change, then wait for explicit approval.

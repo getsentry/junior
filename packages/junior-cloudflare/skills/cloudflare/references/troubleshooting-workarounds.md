@@ -20,7 +20,7 @@
 
 - Do not guess which account to use.
 - Show the user the list (name + ID) and ask them to specify.
-- Once identified, suggest they configure `cloudflare.account-id` for this channel.
+- Once identified, suggest they configure `cloudflare.account.id` for this channel.
 
 ## Zone name ambiguity
 
