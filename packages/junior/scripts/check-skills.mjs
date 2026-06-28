@@ -12,6 +12,29 @@ function unique(values) {
   return [...new Set(values)];
 }
 
+async function uniqueRealPaths(values) {
+  const seen = new Set();
+  const result = [];
+
+  for (const value of values) {
+    let key;
+    try {
+      key = await fs.realpath(value);
+    } catch {
+      key = value;
+    }
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(value);
+  }
+
+  return result;
+}
+
 function resolveContentRoots(subdir) {
   const canonical = path.resolve(process.cwd(), "app", subdir);
   const legacy = path.resolve(process.cwd(), subdir);
@@ -193,7 +216,11 @@ async function resolvePluginSkillRoots() {
 
   const packagedRoots = await resolvePackagedPluginSkillRoots();
   const workspacePackageRoots = await resolveWorkspacePackageSkillRoots();
-  return unique([...localRoots, ...packagedRoots, ...workspacePackageRoots]);
+  return uniqueRealPaths([
+    ...localRoots,
+    ...packagedRoots,
+    ...workspacePackageRoots,
+  ]);
 }
 
 function resolveSkillRoots() {
