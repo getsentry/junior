@@ -433,6 +433,14 @@ export function setPluginCatalogConfig(
   return previousConfig;
 }
 
+/** Parse an inline plugin manifest using the active catalog configuration. */
+export function parseConfiguredInlinePluginManifest(
+  manifest: InlinePluginManifestDefinition["manifest"],
+  dir: string,
+): PluginDefinition["manifest"] {
+  return parseInlinePluginManifest(manifest, dir, pluginConfig);
+}
+
 /** Return installed plugin package content from the active plugin configuration. */
 export function getPluginPackageContent(): InstalledPluginPackageContent {
   return discoverConfiguredPluginPackageContent();

@@ -16,6 +16,7 @@ import {
   getPluginProviders,
   setPluginCatalogConfig,
 } from "@/chat/plugins/registry";
+import { validatePluginRegistrations } from "@/chat/plugins/validation";
 import { createSlackWebhookTestClient } from "../fixtures/slack/webhook-client";
 
 const originalCwd = process.cwd();
@@ -542,6 +543,37 @@ describe("createApp plugin config", () => {
         domains: plugin.manifest.credentials?.domains,
       })),
     ).toEqual([{ name: "hooked", domains: ["new.example.com"] }]);
+  });
+
+  it("rejects runtime registrations that drift from the loaded manifest", async () => {
+    const tempRoot = await makeTempDir();
+    process.chdir(tempRoot);
+
+    const registration = defineJuniorPlugin({
+      manifest: {
+        name: "hooked",
+        displayName: "Hooked",
+        description: "Runtime plugin",
+      },
+      hooks: {},
+    });
+    setPluginCatalogConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "hooked",
+            displayName: "Different Hooked",
+            description: "Runtime plugin",
+            capabilities: [],
+            configKeys: [],
+          },
+        },
+      ],
+    });
+
+    expect(() => validatePluginRegistrations([registration])).toThrow(
+      'Plugin registration "hooked" manifest does not match the loaded plugin manifest. Use one canonical manifest source for runtime hook plugins.',
+    );
   });
 
   it("rejects invalid plugin inline manifests before mutating app config", async () => {
