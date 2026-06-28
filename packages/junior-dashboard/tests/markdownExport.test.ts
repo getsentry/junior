@@ -128,6 +128,57 @@ describe("dashboard markdown export", () => {
     expect(markdown).not.toContain("# Public Channel");
   });
 
+  it("exports running tool and subagent activity from derived transcript rows", () => {
+    const detail = {
+      conversationId: "conversation-activity",
+      displayTitle: "Activity transcript",
+      generatedAt: "2026-01-01T00:00:08.000Z",
+      runs: [
+        {
+          conversationId: "conversation-activity",
+          cumulativeDurationMs: 0,
+          displayTitle: "Activity transcript",
+          id: "turn-activity",
+          lastProgressAt: "2026-01-01T00:00:02.000Z",
+          lastSeenAt: "2026-01-01T00:00:02.000Z",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          status: "active",
+          surface: "internal",
+          transcriptAvailable: true,
+          transcript: [],
+          activity: [
+            {
+              type: "tool_execution",
+              id: "advisor-call",
+              toolCallId: "advisor-call",
+              toolName: "advisor",
+              createdAt: "2026-01-01T00:00:01.000Z",
+              status: "running",
+              subagents: [
+                {
+                  type: "subagent",
+                  id: "advisor-call",
+                  subagentKind: "advisor",
+                  parentToolCallId: "advisor-call",
+                  createdAt: "2026-01-01T00:00:02.000Z",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        } as ConversationTurn,
+      ],
+    } satisfies ConversationDetailFeed;
+
+    const markdown = buildConversationMarkdown(detail);
+
+    expect(markdown).toContain("### Tool: advisor");
+    expect(markdown).toContain("- Result: running");
+    expect(markdown).toContain("### Subagent: advisor");
+    expect(markdown).toContain("- Status: running");
+    expect(markdown).toContain("- Parent tool call: advisor-call");
+  });
+
   it("exports only safe redaction metadata for private transcripts", () => {
     const detail = {
       conversationId: "slack:D1:222",

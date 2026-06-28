@@ -443,7 +443,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("tool call");
   });
 
-  it("renders execution activity above the transcript", () => {
+  it("renders execution activity inside the transcript", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
@@ -469,7 +469,7 @@ describe("dashboard telemetry components", () => {
               toolCallId: "advisor-call-1",
               toolName: "advisor",
               createdAt: "2026-01-01T00:00:01.000Z",
-              status: "completed",
+              status: "running",
               subagents: [
                 {
                   type: "subagent",
@@ -477,9 +477,7 @@ describe("dashboard telemetry components", () => {
                   subagentKind: "advisor",
                   parentToolCallId: "advisor-call-1",
                   createdAt: "2026-01-01T00:00:01.000Z",
-                  endedAt: "2026-01-01T00:00:05.000Z",
-                  outcome: "success",
-                  status: "success",
+                  status: "running",
                 },
               ],
             },
@@ -493,11 +491,12 @@ describe("dashboard telemetry components", () => {
 
     const html = renderConversationPage(dashboardData([session]));
 
-    expect(html).toContain('aria-label="Execution activity"');
-    expect(html).toContain("Execution Activity");
+    expect(html).not.toContain('aria-label="Execution activity"');
+    expect(html).not.toContain("Execution Activity");
     expect(html).toContain("advisor");
     expect(html).toContain("advisor subagent");
-    expect(html.indexOf("Execution Activity")).toBeLessThan(
+    expect(html).toContain("running");
+    expect(html.indexOf("advisor")).toBeGreaterThan(
       html.indexOf('aria-label="Transcript view"'),
     );
   });

@@ -9,7 +9,8 @@ import {
   type RefObject,
 } from "react";
 
-import type { ConversationTurn, TranscriptPart } from "../types";
+import type { ConversationTurn, TranscriptViewPart } from "../types";
+import { turnTranscriptMessages } from "../transcriptActivity";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const USER_SCROLL_DELTA_PX = 2;
@@ -51,10 +52,7 @@ export function transcriptBottomVersion(turns: ConversationTurn[]): string {
   const lastTurn = turns.at(-1);
   if (!lastTurn) return "empty";
 
-  const messages =
-    lastTurn.transcript.length > 0
-      ? lastTurn.transcript
-      : (lastTurn.transcriptMetadata ?? []);
+  const messages = turnTranscriptMessages(lastTurn);
   const lastMessage = messages.at(-1);
   const lastPart = lastMessage?.parts.at(-1);
 
@@ -256,13 +254,16 @@ export function usePinnedTranscriptBottom(input: {
   );
 }
 
-function transcriptPartVersion(part: TranscriptPart | undefined): string {
+function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
   if (!part) return "";
 
   return [
     part.type,
     part.id ?? "",
     part.name ?? "",
+    part.subagentKind ?? "",
+    part.status ?? "",
+    part.outcome ?? "",
     part.chars ?? part.text?.length ?? "",
     part.bytes ?? "",
     part.inputSizeChars ?? "",

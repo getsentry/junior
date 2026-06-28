@@ -4,7 +4,28 @@ import {
   groupTranscriptMessages,
   groupTranscriptParts,
 } from "../src/client/components/transcriptRenderModel";
-import type { TranscriptMessage } from "../src/client/types";
+import { turnHasMatch } from "../src/client/components/transcriptSearch";
+import { turnTranscriptMessages } from "../src/client/transcriptActivity";
+import type { ConversationTurn, TranscriptMessage } from "../src/client/types";
+
+function conversationTurn(
+  overrides: Partial<ConversationTurn>,
+): ConversationTurn {
+  return {
+    conversationId: "conversation-1",
+    cumulativeDurationMs: 0,
+    displayTitle: "Conversation",
+    id: "turn-1",
+    lastProgressAt: "2026-01-01T00:00:00.000Z",
+    lastSeenAt: "2026-01-01T00:00:00.000Z",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    status: "completed",
+    surface: "internal",
+    transcript: [],
+    transcriptAvailable: true,
+    ...overrides,
+  };
+}
 
 describe("transcript render model", () => {
   it("promotes thinking parts to standalone transcript events", () => {
@@ -96,5 +117,128 @@ describe("transcript render model", () => {
         result: { type: "tool_result", id: "call-2", name: "search" },
       },
     ]);
+  });
+
+  it("backfills activity tool calls so result-only transcript entries are paired", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "call-1",
+          toolCallId: "call-1",
+          toolName: "search",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "completed",
+          args: { query: "activity" },
+          subagents: [],
+        },
+      ],
+      transcript: [
+        {
+          role: "toolResult",
+          timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+          parts: [{ type: "tool_result", id: "call-1", name: "search" }],
+        },
+      ],
+      transcriptAvailable: true,
+    });
+
+    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+      {
+        call: {
+          type: "tool_call",
+          id: "call-1",
+          name: "search",
+          status: "completed",
+          input: { query: "activity" },
+        },
+        kind: "tool",
+        result: { type: "tool_result", id: "call-1", name: "search" },
+        resultTimestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+    ]);
+  });
+
+  it("adds subagent activity as transcript entries", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
+            {
+              type: "subagent",
+              id: "advisor-call",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
+              status: "running",
+            },
+          ],
+        },
+      ],
+      transcript: [],
+      transcriptAvailable: true,
+    });
+
+    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+      {
+        call: {
+          type: "tool_call",
+          id: "advisor-call",
+          name: "advisor",
+          status: "running",
+        },
+        kind: "tool",
+        timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
+      },
+      {
+        kind: "subagent",
+        part: {
+          type: "subagent",
+          id: "advisor-call",
+          subagentKind: "advisor",
+          parentToolCallId: "advisor-call",
+          status: "running",
+        },
+        timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+      },
+    ]);
+  });
+
+  it("matches derived activity rows in transcript search", () => {
+    const turn = conversationTurn({
+      activity: [
+        {
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
+            {
+              type: "subagent",
+              id: "advisor-call",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
+              status: "running",
+            },
+          ],
+        },
+      ],
+      transcript: [],
+      transcriptAvailable: true,
+    });
+
+    expect(turnHasMatch(turn, "advisor")).toBe(true);
+    expect(turnHasMatch(turn, "running")).toBe(true);
+    expect(turnHasMatch(turn, "not-present")).toBe(false);
   });
 });

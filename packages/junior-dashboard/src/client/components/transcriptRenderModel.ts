@@ -5,46 +5,57 @@ import {
   transcriptRoleKind,
 } from "../format";
 import { sameToolInvocation } from "../toolInvocations";
-import type { TranscriptMessage, TranscriptPart } from "../types";
+import type {
+  TranscriptViewMessage,
+  TranscriptViewPart,
+  TranscriptViewSubagentPart,
+} from "../types";
 
 type RenderedToolPart =
-  | { call: TranscriptPart; kind: "tool"; result?: TranscriptPart }
-  | { call?: undefined; kind: "tool"; result: TranscriptPart };
+  | { call: TranscriptViewPart; kind: "tool"; result?: TranscriptViewPart }
+  | { call?: undefined; kind: "tool"; result: TranscriptViewPart };
 
 export type RenderedTranscriptPart =
-  | { kind: "part"; part: TranscriptPart }
+  | { kind: "part"; part: TranscriptViewPart }
   | RenderedToolPart;
 
 export type RenderedTranscriptEntry =
-  | { kind: "message"; message: TranscriptMessage }
+  | { kind: "message"; message: TranscriptViewMessage }
+  | RenderedSubagentEntry
   | RenderedThinkingEntry
   | RenderedToolEntry;
 
 type RenderedThinkingEntry = {
   kind: "thinking";
-  part: TranscriptPart;
+  part: TranscriptViewPart;
+  timestamp?: number;
+};
+
+export type RenderedSubagentEntry = {
+  kind: "subagent";
+  part: TranscriptViewSubagentPart;
   timestamp?: number;
 };
 
 export type RenderedToolEntry =
   | {
-      call: TranscriptPart;
+      call: TranscriptViewPart;
       kind: "tool";
-      result?: TranscriptPart;
+      result?: TranscriptViewPart;
       resultTimestamp?: number;
       timestamp?: number;
     }
   | {
       call?: undefined;
       kind: "tool";
-      result: TranscriptPart;
+      result: TranscriptViewPart;
       resultTimestamp?: number;
       timestamp?: never;
     };
 
 type RenderedToolCallEntry = Extract<
   RenderedToolEntry,
-  { call: TranscriptPart }
+  { call: TranscriptViewPart }
 >;
 
 function isRenderedToolCallEntry(
@@ -55,16 +66,22 @@ function isRenderedToolCallEntry(
 
 export type TranscriptViewMode = "raw" | "rich";
 
-function isToolCall(part: TranscriptPart): boolean {
+function isToolCall(part: TranscriptViewPart): boolean {
   return part.type === "tool_call";
 }
 
-function isToolResult(part: TranscriptPart): boolean {
+function isToolResult(part: TranscriptViewPart): boolean {
   return part.type === "tool_result";
 }
 
-function isThinking(part: TranscriptPart): boolean {
+function isThinking(part: TranscriptViewPart): boolean {
   return part.type === "thinking";
+}
+
+function isSubagent(
+  part: TranscriptViewPart,
+): part is TranscriptViewSubagentPart {
+  return part.type === "subagent";
 }
 
 function isString(value: string | undefined): value is string {
@@ -73,7 +90,7 @@ function isString(value: string | undefined): value is string {
 
 /** Group inline transcript parts so matching tool calls/results render together. */
 export function groupTranscriptParts(
-  parts: TranscriptPart[],
+  parts: TranscriptViewPart[],
 ): RenderedTranscriptPart[] {
   const grouped: RenderedTranscriptPart[] = [];
   const consumed = new Set<number>();
@@ -112,7 +129,7 @@ export function groupTranscriptParts(
 
 function findToolEntry(
   entries: RenderedTranscriptEntry[],
-  result: TranscriptPart,
+  result: TranscriptViewPart,
 ): RenderedToolCallEntry | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
@@ -126,12 +143,12 @@ function findToolEntry(
 
 /** Flatten message-local tool parts into turn-level events for scan-friendly rendering. */
 export function groupTranscriptMessages(
-  messages: TranscriptMessage[],
+  messages: TranscriptViewMessage[],
 ): RenderedTranscriptEntry[] {
   const entries: RenderedTranscriptEntry[] = [];
 
   for (const message of messages) {
-    let messageParts: TranscriptPart[] = [];
+    let messageParts: TranscriptViewPart[] = [];
     const flushMessage = () => {
       if (messageParts.length === 0) return;
       entries.push({
@@ -178,6 +195,16 @@ export function groupTranscriptMessages(
         continue;
       }
 
+      if (isSubagent(part)) {
+        flushMessage();
+        entries.push({
+          kind: "subagent",
+          part,
+          timestamp: message.timestamp,
+        });
+        continue;
+      }
+
       messageParts.push(part);
     }
 
@@ -188,7 +215,7 @@ export function groupTranscriptMessages(
 }
 
 /** Build the plain-text clipboard/raw view for one transcript message. */
-export function messageRawText(message: TranscriptMessage): string {
+export function messageRawText(message: TranscriptViewMessage): string {
   return message.parts
     .map((part) => {
       if (part.type === "text") return part.text ?? "";
@@ -205,6 +232,19 @@ export function messageRawText(message: TranscriptMessage): string {
         return [
           `tool_result ${part.name ?? part.id ?? "unknown"}`,
           stringifyPartValue(part.output),
+        ]
+          .filter(isString)
+          .join("\n");
+      }
+      if (part.type === "subagent") {
+        return [
+          `subagent ${part.subagentKind}`,
+          stringifyPartValue({
+            id: part.id,
+            outcome: part.outcome,
+            parentToolCallId: part.parentToolCallId,
+            status: part.status,
+          }),
         ]
           .filter(isString)
           .join("\n");

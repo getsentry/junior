@@ -23,10 +23,11 @@ import {
   visualStatusForSession,
 } from "../format";
 import { cn } from "../styles";
+import { turnTranscriptMessages } from "../transcriptActivity";
 import type {
   ConversationTurn,
-  TranscriptMessage,
-  TranscriptPart,
+  TranscriptViewMessage,
+  TranscriptViewPart,
 } from "../types";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
@@ -44,6 +45,7 @@ import {
 } from "./TelemetryMetrics";
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptThinkingView } from "./TranscriptThinkingView";
+import { TranscriptSubagentView } from "./TranscriptSubagentView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
@@ -60,13 +62,11 @@ import {
   mutedTranscriptMetaClass,
 } from "./transcriptStyles";
 import { previewToolValue } from "./transcriptPreview";
-import {
-  entryMatchesSearch,
-  useTranscriptSearch,
-} from "./transcriptSearch";
+import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
+type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
 type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
@@ -214,41 +214,24 @@ function SegmentEvents(props: {
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
+  const transcript = turnTranscriptMessages(props.turn);
+
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
       {props.turn.transcriptAvailable ? (
-        <TranscriptEntryList
-          entries={groupTranscriptMessages(props.turn.transcript)}
-          keyPrefix={props.turn.id}
-          renderMessage={(entry, index) => (
-            <TranscriptMessageView
-              key={`${props.turn.id}:${index}`}
-              message={entry.message}
-              turn={props.turn}
-              view={props.view}
-            />
-          )}
-          renderThinking={(entry, index) => (
-            <TranscriptThinkingView
-              key={`${props.turn.id}:thinking:${index}`}
-              timestamp={entry.timestamp}
-              value={entry.part.output}
-            />
-          )}
-          renderTool={(entry, index) => (
-            <TranscriptToolView
-              call={entry.call}
-              key={`${props.turn.id}:${index}`}
-              result={entry.result}
-              resultTimestamp={entry.resultTimestamp}
-              timestamp={entry.timestamp}
-              view={props.view}
-            />
-          )}
+        <VisibleTranscriptEntries
+          transcript={transcript}
+          turn={props.turn}
+          view={props.view}
         />
-      ) : props.turn.transcriptRedacted &&
-        props.turn.transcriptMetadata?.length ? (
+      ) : props.turn.transcriptRedacted && transcript.length > 0 ? (
         <RedactedTranscriptView turn={props.turn} />
+      ) : transcript.length > 0 ? (
+        <VisibleTranscriptEntries
+          transcript={transcript}
+          turn={props.turn}
+          view={props.view}
+        />
       ) : (
         <div className={transcriptEmptyClass()}>
           {unavailableTranscriptLabel(props.turn)}
@@ -258,10 +241,56 @@ function SegmentEvents(props: {
   );
 }
 
+function VisibleTranscriptEntries(props: {
+  transcript: TranscriptViewMessage[];
+  turn: ConversationTurn;
+  view: TranscriptViewMode;
+}) {
+  return (
+    <TranscriptEntryList
+      entries={groupTranscriptMessages(props.transcript)}
+      keyPrefix={props.turn.id}
+      renderMessage={(entry, index) => (
+        <TranscriptMessageView
+          key={`${props.turn.id}:${index}`}
+          message={entry.message}
+          turn={props.turn}
+          view={props.view}
+        />
+      )}
+      renderSubagent={(entry, index) => (
+        <TranscriptSubagentView
+          key={`${props.turn.id}:subagent:${index}`}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
+      )}
+      renderThinking={(entry, index) => (
+        <TranscriptThinkingView
+          key={`${props.turn.id}:thinking:${index}`}
+          timestamp={entry.timestamp}
+          value={entry.part.output}
+        />
+      )}
+      renderTool={(entry, index) => (
+        <TranscriptToolView
+          call={entry.call}
+          key={`${props.turn.id}:${index}`}
+          result={entry.result}
+          resultTimestamp={entry.resultTimestamp}
+          timestamp={entry.timestamp}
+          view={props.view}
+        />
+      )}
+    />
+  );
+}
+
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
   renderMessage: (entry: TranscriptMessageEntry, index: number) => ReactNode;
+  renderSubagent: (entry: TranscriptSubagentEntry, index: number) => ReactNode;
   renderThinking: (entry: TranscriptThinkingEntry, index: number) => ReactNode;
   renderTool: (entry: TranscriptToolEntry, index: number) => ReactNode;
 }) {
@@ -304,7 +333,9 @@ function TranscriptEntryList(props: {
         <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
           {entry.kind === "thinking"
             ? props.renderThinking(entry, index)
-            : props.renderMessage(entry, index)}
+            : entry.kind === "subagent"
+              ? props.renderSubagent(entry, index)
+              : props.renderMessage(entry, index)}
         </Fragment>,
       );
     }
@@ -323,13 +354,20 @@ function TranscriptEntryList(props: {
 function RedactedTranscriptView(props: { turn: ConversationTurn }) {
   return (
     <TranscriptEntryList
-      entries={groupTranscriptMessages(props.turn.transcriptMetadata ?? [])}
+      entries={groupTranscriptMessages(turnTranscriptMessages(props.turn))}
       keyPrefix={`${props.turn.id}:redacted`}
       renderMessage={(entry, index) => (
         <RedactedMessageView
           key={`${props.turn.id}:redacted:${index}`}
           message={entry.message}
           turn={props.turn}
+        />
+      )}
+      renderSubagent={(entry, index) => (
+        <TranscriptSubagentView
+          key={`${props.turn.id}:redacted:subagent:${index}`}
+          part={entry.part}
+          timestamp={entry.timestamp}
         />
       )}
       renderThinking={(entry, index) => (
@@ -352,7 +390,7 @@ function RedactedTranscriptView(props: { turn: ConversationTurn }) {
 }
 
 function RedactedMessageView(props: {
-  message: TranscriptMessage;
+  message: TranscriptViewMessage;
   turn: ConversationTurn;
 }) {
   const meta = [formatMessageTimestamp(props.message.timestamp)].filter(
@@ -375,7 +413,7 @@ function RedactedMessageView(props: {
   );
 }
 
-function RedactedPartLine(props: { part: TranscriptPart }) {
+function RedactedPartLine(props: { part: TranscriptViewPart }) {
   if (props.part.type === "text") {
     return <RedactedMetadataRow meta={redactedMessageSize(props.part)} />;
   }
@@ -437,8 +475,8 @@ function RedactedThinkingView(props: { timestamp?: number }) {
 }
 
 function RedactedToolView(props: {
-  call?: TranscriptPart;
-  result?: TranscriptPart;
+  call?: TranscriptViewPart;
+  result?: TranscriptViewPart;
   resultTimestamp?: number;
   timestamp?: number;
 }) {
@@ -454,15 +492,17 @@ function RedactedToolView(props: {
     props.resultTimestamp >= props.timestamp
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
+  const missingResultLabel =
+    props.call?.status === "running" ? "running" : "missing result";
   const meta = [
     duration,
-    props.result ? undefined : "missing result",
+    props.result ? undefined : missingResultLabel,
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
   ].filter(isString);
   const mobileSummaryMeta =
-    duration ?? (props.call && !props.result ? "missing result" : undefined);
+    duration ?? (props.call && !props.result ? missingResultLabel : undefined);
 
   return (
     <ToolFrame
@@ -485,7 +525,7 @@ function RedactedToolView(props: {
   );
 }
 
-function redactedMessageSize(part: TranscriptPart): string | undefined {
+function redactedMessageSize(part: TranscriptViewPart): string | undefined {
   if (typeof part.bytes === "number") return formatBytes(part.bytes);
   return typeof part.chars === "number" ? `${part.chars} chars` : undefined;
 }
@@ -565,7 +605,7 @@ function turnMeta(turn: ConversationTurn): MetricListItem[] {
  * block-level XML heuristic in format.ts fires.
  */
 function SystemMessageView(props: {
-  message: TranscriptMessage;
+  message: TranscriptViewMessage;
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
@@ -601,7 +641,10 @@ function SystemMessageView(props: {
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
             {renderedParts.map((part, index) => {
               const firstChildIndex = seenRenderedChildren;
-              seenRenderedChildren += countRenderedTranscriptChildren(part, role);
+              seenRenderedChildren += countRenderedTranscriptChildren(
+                part,
+                role,
+              );
               return (
                 <TranscriptPartView
                   firstChildIndex={firstChildIndex}
@@ -661,7 +704,7 @@ function SystemMessageView(props: {
 }
 
 function TranscriptMessageView(props: {
-  message: TranscriptMessage;
+  message: TranscriptViewMessage;
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {

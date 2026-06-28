@@ -145,6 +145,38 @@ describe("dashboard token formatting", () => {
     });
   });
 
+  it("counts activity-only tool calls in tool summaries", () => {
+    const turn = {
+      conversationId: "conversation-activity",
+      cumulativeDurationMs: 0,
+      displayTitle: "Activity",
+      id: "turn-activity",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "active",
+      surface: "internal",
+      transcriptAvailable: true,
+      transcript: [],
+      activity: [
+        {
+          type: "tool_execution",
+          id: "call-activity",
+          toolCallId: "call-activity",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [],
+        },
+      ],
+    } as ConversationTurn;
+
+    expect(summarizeToolCalls([turn])).toEqual({
+      items: [{ count: 1, name: "advisor" }],
+      total: 1,
+    });
+  });
+
   it("does not match tool durations across different turns", () => {
     const turns = [
       {

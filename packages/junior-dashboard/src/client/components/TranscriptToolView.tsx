@@ -8,15 +8,15 @@ import {
   stringifyPartValue,
 } from "../format";
 import { cn } from "../styles";
-import type { TranscriptPart } from "../types";
+import type { TranscriptViewPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
 import { isPreviewableValue } from "./transcriptPreview";
 import { HighlightText } from "./transcriptSearch";
 
 /** Render a tool call/result pair in rich or raw transcript mode. */
 export function TranscriptToolView(props: {
-  call?: TranscriptPart;
-  result?: TranscriptPart;
+  call?: TranscriptViewPart;
+  result?: TranscriptViewPart;
   resultTimestamp?: number;
   timestamp?: number;
   view?: "raw" | "rich";
@@ -38,10 +38,12 @@ export function TranscriptToolView(props: {
     props.resultTimestamp >= props.timestamp
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
+  const missingResultLabel =
+    props.call?.status === "running" ? "running" : "missing result";
   const meta = [
     duration,
     props.result ? formatBytes(outputBytes) : undefined,
-    props.result ? undefined : "missing result",
+    props.result ? undefined : missingResultLabel,
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
@@ -49,7 +51,7 @@ export function TranscriptToolView(props: {
   const args = <ToolArgumentsPreview input={input} />;
   const hasExpandableContent = Boolean(props.call || props.result);
   const mobileSummaryMeta =
-    duration ?? (props.call && !props.result ? "missing result" : undefined);
+    duration ?? (props.call && !props.result ? missingResultLabel : undefined);
 
   if (props.view === "raw") {
     return (

@@ -8,12 +8,13 @@ import type {
   RequesterIdentity,
   Session,
   SessionFilter,
-  TranscriptMessage,
-  TranscriptPart,
+  TranscriptViewMessage,
+  TranscriptViewPart,
   TurnUsage,
   VisualStatus,
 } from "./types";
 import { sameToolInvocation } from "./toolInvocations";
+import { turnTranscriptMessages } from "./transcriptActivity";
 
 let dashboardTimeZone = "America/Los_Angeles";
 const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -221,9 +222,7 @@ export function formatBytes(value: number | undefined): string {
 }
 
 function transcriptSource(turn: ConversationTurn) {
-  return turn.transcriptAvailable
-    ? turn.transcript
-    : (turn.transcriptMetadata ?? []);
+  return turnTranscriptMessages(turn);
 }
 
 /** Normalized role category for transcript messages. */
@@ -245,7 +244,7 @@ export function transcriptRoleKind(role: string): TranscriptRoleKind {
 }
 
 function hasTextPart(
-  message: Pick<ConversationTurn["transcript"][number], "parts" | "role">,
+  message: Pick<TranscriptViewMessage, "parts" | "role">,
 ): boolean {
   return message.parts.some((part) => {
     if (part.type !== "text") return false;
@@ -255,7 +254,7 @@ function hasTextPart(
 }
 
 function isConversationMessage(
-  message: Pick<ConversationTurn["transcript"][number], "parts" | "role">,
+  message: Pick<TranscriptViewMessage, "parts" | "role">,
 ): boolean {
   const kind = transcriptRoleKind(message.role);
   if (kind !== "user" && kind !== "assistant") return false;
@@ -289,13 +288,13 @@ type PendingToolCall = {
   timestamp?: number;
 };
 
-function toolCallName(part: TranscriptPart): string {
+function toolCallName(part: TranscriptViewPart): string {
   return part.name ?? part.id ?? "unknown";
 }
 
 function findPendingToolCallIndex(
   calls: PendingToolCall[],
-  result: TranscriptPart,
+  result: TranscriptViewPart,
 ): number {
   for (let index = calls.length - 1; index >= 0; index -= 1) {
     if (sameToolInvocation(calls[index]!, result)) {
@@ -377,7 +376,7 @@ export type MessageSummary = {
 
 function transcriptMessageAuthor(
   turn: ConversationTurn,
-  message: TranscriptMessage,
+  message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return "Junior";
@@ -389,7 +388,7 @@ function transcriptMessageAuthor(
   return message.role || "Unknown";
 }
 
-function transcriptPartBytes(part: TranscriptPart): number {
+function transcriptPartBytes(part: TranscriptViewPart): number {
   if (typeof part.bytes === "number" && Number.isFinite(part.bytes)) {
     return Math.max(0, Math.floor(part.bytes));
   }

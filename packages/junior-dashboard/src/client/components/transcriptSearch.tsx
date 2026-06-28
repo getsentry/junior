@@ -2,6 +2,7 @@ import { type ReactNode, createContext, useContext } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
 import { stringifyPartValue } from "../format";
+import { turnTranscriptMessages } from "../transcriptActivity";
 import type { ConversationTurn } from "../types";
 import {
   groupTranscriptMessages,
@@ -137,11 +138,18 @@ export function entryMatchesSearch(
     );
   }
 
-  if (entry.kind === "thinking") {
-    return textContains(
-      stringifyPartValue(entry.part.output),
-      normalizedQuery,
+  if (entry.kind === "subagent") {
+    return (
+      textContains(entry.part.subagentKind, normalizedQuery) ||
+      textContains(entry.part.id, normalizedQuery) ||
+      textContains(entry.part.status, normalizedQuery) ||
+      textContains(entry.part.outcome, normalizedQuery) ||
+      textContains(entry.part.parentToolCallId, normalizedQuery)
     );
+  }
+
+  if (entry.kind === "thinking") {
+    return textContains(stringifyPartValue(entry.part.output), normalizedQuery);
   }
 
   return false;
@@ -153,10 +161,7 @@ export function turnHasMatch(
   normalizedQuery: string,
 ): boolean {
   if (!normalizedQuery) return true;
-  const source = turn.transcriptAvailable
-    ? turn.transcript
-    : (turn.transcriptMetadata ?? []);
-  return groupTranscriptMessages(source).some((entry) =>
+  return groupTranscriptMessages(turnTranscriptMessages(turn)).some((entry) =>
     entryMatchesSearch(entry, normalizedQuery),
   );
 }

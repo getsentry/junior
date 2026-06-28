@@ -12,12 +12,14 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
+import { turnTranscriptMessages } from "./transcriptActivity";
 import type {
   Conversation,
   ConversationDetailFeed,
   ConversationTurn,
-  TranscriptMessage,
-  TranscriptPart,
+  TranscriptViewMessage,
+  TranscriptViewPart,
+  TranscriptViewSubagentPart,
 } from "./types";
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
@@ -62,17 +64,24 @@ export function buildConversationMarkdown(
 }
 
 function appendTurnTranscript(lines: string[], turn: ConversationTurn): void {
+  const transcript = turnTranscriptMessages(turn);
+
   if (turn.transcriptAvailable) {
-    appendTranscriptMessages(lines, turn, turn.transcript, false);
+    appendTranscriptMessages(lines, turn, transcript, false);
     return;
   }
 
-  if (turn.transcriptRedacted && turn.transcriptMetadata?.length) {
+  if (turn.transcriptRedacted && transcript.length) {
     lines.push(
       "",
       "Transcript hidden because this conversation is not public.",
     );
-    appendTranscriptMessages(lines, turn, turn.transcriptMetadata, true);
+    appendTranscriptMessages(lines, turn, transcript, true);
+    return;
+  }
+
+  if (transcript.length) {
+    appendTranscriptMessages(lines, turn, transcript, false);
     return;
   }
 
@@ -82,7 +91,7 @@ function appendTurnTranscript(lines: string[], turn: ConversationTurn): void {
 function appendTranscriptMessages(
   lines: string[],
   turn: ConversationTurn,
-  messages: TranscriptMessage[],
+  messages: TranscriptViewMessage[],
   redacted: boolean,
 ): void {
   for (const entry of groupTranscriptMessages(messages)) {
@@ -93,6 +102,11 @@ function appendTranscriptMessages(
 
     if (entry.kind === "thinking") {
       appendThinking(lines, turn, entry.part, entry.timestamp, redacted);
+      continue;
+    }
+
+    if (entry.kind === "subagent") {
+      appendSubagent(lines, turn, entry.part, entry.timestamp);
       continue;
     }
 
@@ -122,7 +136,7 @@ function appendTranscriptMessages(
 function appendMessage(
   lines: string[],
   turn: ConversationTurn,
-  message: TranscriptMessage,
+  message: TranscriptViewMessage,
   redacted: boolean,
 ): void {
   lines.push("", `### ${messageRoleLabel(message, turn)}`);
@@ -141,7 +155,7 @@ function appendMessage(
 function appendThinking(
   lines: string[],
   turn: ConversationTurn,
-  part: TranscriptPart,
+  part: TranscriptViewPart,
   timestamp: number | undefined,
   redacted: boolean,
 ): void {
@@ -156,11 +170,23 @@ function appendThinking(
   lines.push("", fencedBlock(stringifyPartValue(part.output), "text"));
 }
 
+function appendSubagent(
+  lines: string[],
+  turn: ConversationTurn,
+  part: TranscriptViewSubagentPart,
+  timestamp: number | undefined,
+): void {
+  lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
+  addEventMeta(lines, turn, timestamp);
+  addMetaLine(lines, "Status", part.outcome ?? part.status);
+  addMetaLine(lines, "Parent tool call", part.parentToolCallId);
+}
+
 function appendTool(
   lines: string[],
   turn: ConversationTurn,
-  call: TranscriptPart | undefined,
-  result: TranscriptPart | undefined,
+  call: TranscriptViewPart | undefined,
+  result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
@@ -171,15 +197,15 @@ function appendTool(
 function appendRedactedTool(
   lines: string[],
   turn: ConversationTurn,
-  call: TranscriptPart | undefined,
-  result: TranscriptPart | undefined,
+  call: TranscriptViewPart | undefined,
+  result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
   appendToolHeader(lines, turn, call, result, timestamp, resultTimestamp);
 
   const redactedLines = [call, result]
-    .filter((part): part is TranscriptPart => part !== undefined)
+    .filter((part): part is TranscriptViewPart => part !== undefined)
     .map(redactedPartLabel);
   lines.push("", ...redactedLines.map((line) => `- ${line}`));
 }
@@ -187,8 +213,8 @@ function appendRedactedTool(
 function appendToolHeader(
   lines: string[],
   turn: ConversationTurn,
-  call: TranscriptPart | undefined,
-  result: TranscriptPart | undefined,
+  call: TranscriptViewPart | undefined,
+  result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
@@ -197,7 +223,11 @@ function appendToolHeader(
   addMetaLine(lines, "Result timestamp", eventTimestamp(resultTimestamp));
   addMetaLine(lines, "Duration", toolDuration(timestamp, resultTimestamp));
   if (!result) {
-    addMetaLine(lines, "Result", "missing");
+    addMetaLine(
+      lines,
+      "Result",
+      call?.status === "running" ? "running" : "missing",
+    );
   }
 }
 
@@ -243,7 +273,7 @@ function conversationLocation(
 }
 
 function messageRoleLabel(
-  message: TranscriptMessage,
+  message: TranscriptViewMessage,
   turn: ConversationTurn,
 ): string {
   const kind = transcriptRoleKind(message.role);
@@ -254,7 +284,7 @@ function messageRoleLabel(
   return headingText(message.role || "Unknown");
 }
 
-function redactedPartLabel(part: TranscriptPart): string {
+function redactedPartLabel(part: TranscriptViewPart): string {
   const meta = [
     part.type !== "text" ? part.type : "",
     part.name ? `name: ${inlineCode(part.name)}` : "",
@@ -269,8 +299,8 @@ function redactedPartLabel(part: TranscriptPart): string {
 }
 
 function toolName(
-  call: TranscriptPart | undefined,
-  result: TranscriptPart | undefined,
+  call: TranscriptViewPart | undefined,
+  result: TranscriptViewPart | undefined,
 ): string {
   return call?.name ?? result?.name ?? call?.id ?? result?.id ?? "unknown";
 }

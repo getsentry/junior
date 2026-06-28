@@ -47,6 +47,58 @@ export type ConversationActivity = NonNullable<
   ConversationRunReport["activity"]
 >[number];
 
+export type TranscriptActivityStatus = NonNullable<
+  ConversationRunReport["activity"]
+>[number]["status"];
+
+// Dashboard view transcript parts merge reporting transcript payloads with
+// lifecycle activity rows; the backend reporting transcript contract is unchanged.
+type TranscriptViewReportingPart = TranscriptPart & {
+  endedAt?: never;
+  outcome?: never;
+  parentToolCallId?: never;
+  status?: TranscriptActivityStatus;
+  subagentKind?: never;
+};
+
+export type TranscriptViewToolCallPart = TranscriptViewReportingPart & {
+  type: "tool_call";
+};
+
+export type TranscriptViewSubagentPart = {
+  bytes?: never;
+  chars?: never;
+  endedAt?: string;
+  id: string;
+  input?: never;
+  inputKeys?: never;
+  inputSizeBytes?: never;
+  inputSizeChars?: never;
+  inputType?: never;
+  name?: never;
+  outcome?: "success" | "error" | "aborted";
+  output?: never;
+  outputKeys?: never;
+  outputSizeBytes?: never;
+  outputSizeChars?: never;
+  outputType?: never;
+  parentToolCallId?: string;
+  redacted?: boolean;
+  status: TranscriptActivityStatus;
+  subagentKind: string;
+  text?: never;
+  type: "subagent";
+};
+
+export type TranscriptViewPart =
+  | TranscriptViewReportingPart
+  | TranscriptViewSubagentPart
+  | TranscriptViewToolCallPart;
+
+export type TranscriptViewMessage = Omit<TranscriptMessage, "parts"> & {
+  parts: TranscriptViewPart[];
+};
+
 export type ConversationTurn = ConversationRunReport;
 
 export type ConversationDetailFeed = ReportingConversationReport;
