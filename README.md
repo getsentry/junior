@@ -25,6 +25,7 @@ Start here:
 | `@sentry/junior`               | Core Slack bot runtime                                                       |
 | `@sentry/junior-plugin-api`    | Lightweight plugin API types and helpers                                     |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
+| `@sentry/junior-cloudflare`    | Cloudflare plugin package for production operations                          |
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |

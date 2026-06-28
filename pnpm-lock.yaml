@@ -286,6 +286,8 @@ importers:
 
   packages/junior-agent-browser: {}
 
+  packages/junior-cloudflare: {}
+
   packages/junior-dashboard:
     dependencies:
       "@sentry/junior":
