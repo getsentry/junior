@@ -51,6 +51,15 @@ const SLACK_SOURCE = createSlackSource({
   channelId: SLACK_DESTINATION.channelId,
 });
 
+class PrototypeTool {
+  description = "Prototype tool";
+  inputSchema = Type.Object({});
+
+  execute() {
+    return { ok: true };
+  }
+}
+
 function slackSource(channelId: string) {
   return createSlackSource({
     teamId: "T123",
@@ -393,6 +402,48 @@ describe("agent plugin hooks", () => {
       });
 
       expect(tools).toHaveProperty("demoTool");
+      expect(tools.demoTool?.identity).toEqual({
+        id: "agent-demo.demoTool",
+        name: "demoTool",
+        plugin: "agent-demo",
+      });
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("preserves plugin tool instances while adding internal identity", () => {
+    const prototypeTool = new PrototypeTool();
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              prototypeTool,
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        sandbox: {} as any,
+      });
+
+      expect(tools.prototypeTool).toBe(prototypeTool);
+      expect(tools.prototypeTool?.identity).toEqual({
+        id: "agent-demo.prototypeTool",
+        name: "prototypeTool",
+        plugin: "agent-demo",
+      });
+      expect(tools.prototypeTool?.execute?.({}, {})).toEqual({ ok: true });
     } finally {
       setPlugins(previous);
     }

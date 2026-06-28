@@ -4,6 +4,12 @@ import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
+  /** Stable internal owner-qualified identity for plugin-contributed tools. */
+  identity?: {
+    id: string;
+    name: string;
+    plugin: string;
+  };
   description: string;
   inputSchema: TInputSchema;
   annotations?: ToolAnnotations;

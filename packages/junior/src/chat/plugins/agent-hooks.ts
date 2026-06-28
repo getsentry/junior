@@ -455,7 +455,13 @@ export function getPluginTools(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      tools[name] = tool as unknown as ToolDefinition<any>;
+      const definition = tool as unknown as ToolDefinition<any>;
+      definition.identity = {
+        id: `${pluginName}.${name}`,
+        name,
+        plugin: pluginName,
+      };
+      tools[name] = definition;
     }
   }
   return tools;
