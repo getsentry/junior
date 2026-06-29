@@ -189,6 +189,13 @@ function unitEmbedding(index: number): number[] {
   return embedding;
 }
 
+function cosineEmbedding(cosine: number): number[] {
+  const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
+  embedding[0] = cosine;
+  embedding[1] = Math.sqrt(1 - cosine * cosine);
+  return embedding;
+}
+
 function createTestEmbedder(
   vectors: Record<string, number[]> = {},
   overrides: { dimensions?: number; model?: string; provider?: string } = {},
@@ -1639,6 +1646,110 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("uses observed recency only as a relevance tie-breaker", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const oldRelevant = await store.createMemory({
+        content:
+          "Deploy checklist ownership escalation requires release approval.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-old-relevant",
+      });
+      nowMs = TEST_NOW_MS;
+      const newLessRelevant = await store.createMemory({
+        content: "Deploy snacks live near the office checklist.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-new-less-relevant",
+      });
+
+      await expect(
+        store.searchMemories({
+          limit: 2,
+          query: "deploy checklist ownership escalation approval",
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({ id: oldRelevant.memory.id }),
+        expect.objectContaining({ id: newLessRelevant.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("prefers newer memories when search relevance is otherwise equal", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const oldMemory = await store.createMemory({
+        content: "Deploy checklist lives in the legacy wiki.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-old-equal",
+      });
+      nowMs = TEST_NOW_MS;
+      const newMemory = await store.createMemory({
+        content: "Deploy checklist lives in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-new-equal",
+      });
+
+      await expect(
+        store.searchMemories({ limit: 2, query: "deploy checklist" }),
+      ).resolves.toEqual([
+        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps vector relevance ahead of observed recency outside near ties", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const query = "semantic needle";
+      const oldContent = "Old vector-only memory.";
+      const newContent = "New vector-only memory.";
+      const embedder = createTestEmbedder({
+        [query]: unitEmbedding(0),
+        [oldContent]: cosineEmbedding(0.995),
+        [newContent]: cosineEmbedding(0.9),
+      });
+      let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => nowMs,
+      });
+      const oldMemory = await store.createMemory({
+        content: oldContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-vector-old",
+      });
+      nowMs = TEST_NOW_MS;
+      const newMemory = await store.createMemory({
+        content: newContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:recency-vector-new",
+      });
+
+      await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
+        expect.objectContaining({ id: oldMemory.memory.id }),
+        expect.objectContaining({ id: newMemory.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("does not duplicate embeddings for idempotent create retries", async () => {
     const fixture = await createMemoryFixture();
 
@@ -2324,6 +2435,7 @@ WHERE id = '${superseded.memory.id}'
         },
       ]);
       const text = result?.[0]?.text ?? "";
+      expect(text).toContain(`Observed 2026-06-19: ${personal.memory.content}`);
       expect(text).toContain(conversation.memory.content);
       expect(text).not.toContain(personal.memory.id);
       expect(text).not.toContain(conversation.memory.id);

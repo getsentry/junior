@@ -151,6 +151,9 @@ Tool output must be concise and must not reveal hidden private metadata. For
 private conversations, tool output may contain memory content because it is
 model-visible response context, but logs/traces/reporting for that tool must
 redact content according to [`../data-redaction-policy.md`](../data-redaction-policy.md).
+Model-visible memory projections may include the memory id, content,
+`createdAtMs`, `observedAtMs`, and optional `expiresAtMs`. They must not include
+hidden ownership, source, subject, Slack, actor, or provenance fields.
 
 ## Related Specs
 

@@ -1,4 +1,4 @@
-import { Type, type TSchema } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
   getSourceKey,
@@ -291,6 +291,18 @@ const searchMemoriesInputSchema = Type.Object(
   { additionalProperties: false },
 );
 
+const memoryToolProjectionSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    content: Type.String({ minLength: 1 }),
+    createdAtMs: Type.Number(),
+    observedAtMs: Type.Number(),
+    expiresAtMs: Type.Optional(Type.Number()),
+  },
+  { additionalProperties: false },
+);
+type MemoryToolProjection = Static<typeof memoryToolProjectionSchema>;
+
 function parseToolInput<T>(schema: TSchema, input: unknown): T {
   try {
     if (!Value.Check(schema, input)) {
@@ -335,15 +347,16 @@ function targetForKind(kind: MemoryKind): "requester" | "conversation" {
 }
 
 /** Return the model-visible projection without hidden ownership/source fields. */
-function compactMemory(memory: MemoryRecord) {
-  return {
+function compactMemory(memory: MemoryRecord): MemoryToolProjection {
+  return Value.Parse(memoryToolProjectionSchema, {
     id: memory.id,
     content: memory.content,
     createdAtMs: memory.createdAtMs,
+    observedAtMs: memory.observedAtMs,
     ...(memory.expiresAtMs !== undefined
       ? { expiresAtMs: memory.expiresAtMs }
       : {}),
-  };
+  });
 }
 
 /** Create a tool that submits an explicit memory candidate for storage. */

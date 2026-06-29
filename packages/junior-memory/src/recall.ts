@@ -32,6 +32,10 @@ function trimContent(content: string, maxLength: number): string {
   return `${trimmed.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
 }
 
+function formatObservedDate(observedAtMs: number): string {
+  return new Date(observedAtMs).toISOString().slice(0, 10);
+}
+
 function renderMemoryPrompt(memories: MemoryRecord[]): string | undefined {
   const header = "Relevant memories for this request:";
   const footer =
@@ -40,7 +44,10 @@ function renderMemoryPrompt(memories: MemoryRecord[]): string | undefined {
   let totalChars = header.length + footer.length + 2;
 
   for (const memory of memories) {
-    const line = `- ${trimContent(memory.content, MAX_MEMORY_LINE_CHARS)}`;
+    const line = `- Observed ${formatObservedDate(memory.observedAtMs)}: ${trimContent(
+      memory.content,
+      MAX_MEMORY_LINE_CHARS,
+    )}`;
     if (totalChars + line.length + 1 > MAX_PROMPT_CHARS) {
       break;
     }

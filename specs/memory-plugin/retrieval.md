@@ -83,7 +83,14 @@ agent, ranker/evaluator, and eval coverage.
 2. Run lexical search against memory content to retrieve candidates.
 3. For automatic injection only, drop memories already injected into the active
    session projection.
-4. Return the top memories within count and character budgets.
+4. Use observed age as a near-tie reranking signal for otherwise similar
+   candidates, without letting age overtake materially stronger relevance.
+5. Return the top memories within count and character budgets.
+
+Observed age is context and a weak ranking signal, not a lifecycle signal.
+Age alone must not archive, expire, or supersede a memory. Hard lifecycle still
+comes only from expiration, supersession, explicit removal, policy/security
+repair, or future admin workflows.
 
 Do not add regexes, keyword lists, stopwords, or text-shape heuristics as a
 semantic relevance gate. If recall relevance is weak, improve the memory agent,
@@ -125,6 +132,7 @@ must:
 - include only active visible memories
 - stay within configured count and character limits
 - avoid raw provenance unless needed for disambiguation
+- include the observation date for each memory when rendering automatic recall
 - avoid ids
 - not include secrets or archived facts
 - not include facts whose scope is no longer visible

@@ -54,6 +54,8 @@ const SUPERSESSION_CANDIDATE_LIMIT = 10;
 const VECTOR_SEARCH_OVERFETCH = 4;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const RELEVANCE_NEAR_TIE_DELTA = 0.01;
 const SUPERSESSION_STOP_TERMS = new Set([
   "and",
   "for",
@@ -1052,8 +1054,26 @@ async function searchVisibleVectorMemories(args: {
   });
 }
 
-/** Fuse higher-is-better retrieval candidates before applying the final limit. */
-function mergeSearchCandidates(candidates: SearchCandidate[]): MemoryRecord[] {
+/** Score only observation age for near-tie reranking; this is not lifecycle decay. */
+function observedAgeBoost(memory: MemoryRecord, nowMs: number): number {
+  const ageMs = Math.max(0, nowMs - memory.observedAtMs);
+  if (ageMs <= 7 * ONE_DAY_MS) {
+    return 0.15;
+  }
+  if (ageMs <= 30 * ONE_DAY_MS) {
+    return 0.1;
+  }
+  if (ageMs <= 90 * ONE_DAY_MS) {
+    return 0.05;
+  }
+  return 0;
+}
+
+/** Fuse retrieval candidates while keeping observed age to near-tie reranking. */
+function mergeSearchCandidates(
+  candidates: SearchCandidate[],
+  nowMs: number,
+): MemoryRecord[] {
   const byId = new Map<
     string,
     {
@@ -1073,12 +1093,18 @@ function mergeSearchCandidates(candidates: SearchCandidate[]): MemoryRecord[] {
     });
   }
   return [...byId.values()]
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        right.memory.createdAtMs - left.memory.createdAtMs ||
-        left.memory.id.localeCompare(right.memory.id),
-    )
+    .sort((left, right) => {
+      const scoreDelta = right.score - left.score;
+      if (Math.abs(scoreDelta) > RELEVANCE_NEAR_TIE_DELTA) {
+        return scoreDelta;
+      }
+      return (
+        observedAgeBoost(right.memory, nowMs) -
+          observedAgeBoost(left.memory, nowMs) ||
+        right.memory.observedAtMs - left.memory.observedAtMs ||
+        left.memory.id.localeCompare(right.memory.id)
+      );
+    })
     .map((candidate) => candidate.memory);
 }
 
@@ -1392,10 +1418,10 @@ export function createMemoryStore(
       const lexicalCandidates = candidates
         .map((memory) => ({ memory, score: searchScore(memory, terms) }))
         .filter((item) => item.score > 0);
-      return mergeSearchCandidates([
-        ...vectorCandidates,
-        ...lexicalCandidates,
-      ]).slice(0, limit);
+      return mergeSearchCandidates(
+        [...vectorCandidates, ...lexicalCandidates],
+        nowMs,
+      ).slice(0, limit);
     },
 
     async archiveMemory(input) {
