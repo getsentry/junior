@@ -69,6 +69,27 @@ function parsePrefixFlag(
   };
 }
 
+
+/** Build a stderr warning when a config key is not declared by any installed plugin. */
+function buildUnknownKeyWarning(key: string): string {
+  const knownKeys = pluginCatalogRuntime
+    .getProviders()
+    .flatMap((plugin) => [...plugin.manifest.configKeys]);
+  if (knownKeys.includes(key)) {
+    return "";
+  }
+  // Find suggestions with the same dot-prefix (e.g. "cloudflare." for "cloudflare.worker-id")
+  const prefix = key.includes(".") ? key.slice(0, key.indexOf(".") + 1) : "";
+  const suggestions = prefix
+    ? knownKeys.filter((k) => k.startsWith(prefix))
+    : knownKeys;
+  const hint =
+    suggestions.length > 0
+      ? `Known keys with prefix "${prefix}": ${suggestions.join(", ")}`
+      : `Known config keys: ${knownKeys.join(", ")}`;
+  return `Warning: "${key}" is not a recognized config key. ${hint}\n`;
+}
+
 async function handleConfigCommand(
   args: string[],
   deps: JrRpcDeps,
@@ -150,6 +171,8 @@ async function handleConfigCommand(
       }
     }
 
+    const unknownKeyWarning = buildUnknownKeyWarning(key);
+
     try {
       const entry = await configuration.set({
         key,
@@ -181,6 +204,7 @@ async function handleConfigCommand(
           updatedBy: entry.updatedBy,
           source: entry.source,
         },
+        stderr: unknownKeyWarning,
         exitCode: 0,
       });
     } catch (error) {

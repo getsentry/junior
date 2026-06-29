@@ -208,4 +208,73 @@ describe("jr-rpc custom command", () => {
       undefined,
     );
   });
+
+  it("warns when setting an unrecognized config key", async () => {
+    const previousConfig = pluginCatalogRuntime.setConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "cloudflare",
+            displayName: "Cloudflare",
+            description: "Cloudflare plugin",
+            capabilities: [],
+            configKeys: ["cloudflare.account.id", "cloudflare.zone.id", "cloudflare.worker.name"],
+          },
+        },
+      ],
+    });
+    try {
+      const configuration = makeChannelConfiguration();
+      const result = await maybeExecuteJrRpcCustomCommand(
+        "jr-rpc config set cloudflare.worker-id sentry-mcp",
+        {
+          activeSkill,
+          channelConfiguration: configuration,
+          requesterId: "U123",
+        },
+      );
+      const handled = expectHandled(result);
+      // Still succeeds
+      expect(handled.result.exit_code).toBe(0);
+      // But warns about the unrecognized key with suggestions
+      expect(handled.result.stderr).toContain(
+        '"cloudflare.worker-id" is not a recognized config key',
+      );
+      expect(handled.result.stderr).toContain("cloudflare.worker.name");
+    } finally {
+      pluginCatalogRuntime.setConfig(previousConfig);
+    }
+  });
+
+  it("does not warn when setting a recognized config key", async () => {
+    const previousConfig = pluginCatalogRuntime.setConfig({
+      inlineManifests: [
+        {
+          manifest: {
+            name: "cloudflare",
+            displayName: "Cloudflare",
+            description: "Cloudflare plugin",
+            capabilities: [],
+            configKeys: ["cloudflare.account.id", "cloudflare.zone.id", "cloudflare.worker.name"],
+          },
+        },
+      ],
+    });
+    try {
+      const configuration = makeChannelConfiguration();
+      const result = await maybeExecuteJrRpcCustomCommand(
+        "jr-rpc config set cloudflare.worker.name sentry-mcp",
+        {
+          activeSkill,
+          channelConfiguration: configuration,
+          requesterId: "U123",
+        },
+      );
+      const handled = expectHandled(result);
+      expect(handled.result.exit_code).toBe(0);
+      expect(handled.result.stderr).toBe("");
+    } finally {
+      pluginCatalogRuntime.setConfig(previousConfig);
+    }
+  });
 });
