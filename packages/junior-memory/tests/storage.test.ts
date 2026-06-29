@@ -2594,6 +2594,9 @@ INSERT INTO junior_memory_memories (
         supersessionDecider: {
           adjudicateSupersession(input) {
             supersessionCalls.push(input);
+            if (input.candidate.content !== newContent) {
+              return { decision: "distinct" };
+            }
             return {
               decision: "supersedes_old",
               supersededIds: [input.existingMemories[0].id],
@@ -2608,7 +2611,17 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-old",
       });
 
-      nowMs = TEST_NOW_MS + 1;
+      for (let index = 0; index < 12; index += 1) {
+        nowMs = TEST_NOW_MS + index + 1;
+        await store.createMemory({
+          content: `Prefers unrelated workflow detail ${index}.`,
+          kind: "preference",
+          idempotencyKey: `memory-test:supersession-unrelated-${index}`,
+        });
+      }
+
+      supersessionCalls.length = 0;
+      nowMs = TEST_NOW_MS + 20;
       const newMemory = await store.createMemory({
         content: newContent,
         kind: "preference",
@@ -2618,15 +2631,25 @@ INSERT INTO junior_memory_memories (
       expect(supersessionCalls).toEqual([
         expect.objectContaining({
           candidate: { content: newContent, kind: "preference" },
-          existingMemories: [{ content: oldContent, id: oldMemory.memory.id }],
+          existingMemories: expect.arrayContaining([
+            { content: oldContent, id: oldMemory.memory.id },
+          ]),
         }),
       ]);
-      await expect(store.listMemories({})).resolves.toEqual([
+      expect(supersessionCalls[0]?.existingMemories[0]).toEqual({
+        content: oldContent,
+        id: oldMemory.memory.id,
+      });
+      const activeMemories = await store.listMemories({});
+      expect(activeMemories).toContainEqual(
         expect.objectContaining({
           content: newContent,
           id: newMemory.memory.id,
         }),
-      ]);
+      );
+      expect(activeMemories).not.toContainEqual(
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      );
       await expect(
         memoryDb(fixture)
           .select()
@@ -2636,15 +2659,19 @@ INSERT INTO junior_memory_memories (
           ),
       ).resolves.toEqual([
         expect.objectContaining({
-          supersededAtMs: TEST_NOW_MS + 1,
+          supersededAtMs: TEST_NOW_MS + 20,
           supersededById: newMemory.memory.id,
         }),
       ]);
-      await expect(
-        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
-      ).resolves.toEqual([
+      const embeddingRows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryEmbeddings);
+      expect(embeddingRows).toContainEqual(
         expect.objectContaining({ memoryId: newMemory.memory.id }),
-      ]);
+      );
+      expect(embeddingRows).not.toContainEqual(
+        expect.objectContaining({ memoryId: oldMemory.memory.id }),
+      );
 
       nowMs = TEST_NOW_MS + 2;
       await expect(
