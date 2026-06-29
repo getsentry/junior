@@ -1,12 +1,15 @@
 import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import {
+  createLocalSource,
   defineJuniorPlugin,
   EgressAuthRequired,
   type PluginHooks,
 } from "@sentry/junior-plugin-api";
+import { Type } from "@sinclair/typebox";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tool } from "@/chat/tools/definition";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -112,8 +115,10 @@ function proxiedRequest(input: {
 
 async function registerManagedEgressPlugin(input?: {
   egressTracePropagationDomains?: string[];
+  grantForEgress?: NonNullable<PluginHooks["grantForEgress"]>;
   issueCredential?: NonNullable<PluginHooks["issueCredential"]>;
   onEgressResponse?: NonNullable<PluginHooks["onEgressResponse"]>;
+  tools?: NonNullable<PluginHooks["tools"]>;
 }) {
   const { createApp, defineJuniorPlugins } = await import("@/app");
   await createApp({
@@ -127,19 +132,20 @@ async function registerManagedEgressPlugin(input?: {
           domains: [MANAGED_PROVIDER_HOST, MANAGED_PROVIDER_SUBDOMAIN],
         },
         hooks: {
-          grantForEgress(ctx) {
-            return ctx.request.method === "POST"
-              ? {
-                  name: "user-write",
-                  access: "write",
-                  reason: "managed.write",
-                }
-              : {
-                  name: "installation-read",
-                  access: "read",
-                  reason: "managed.read",
-                };
-          },
+          grantForEgress:
+            input?.grantForEgress ??
+            ((ctx) =>
+              ctx.request.method === "POST"
+                ? {
+                    name: "user-write",
+                    access: "write",
+                    reason: "managed.write",
+                  }
+                : {
+                    name: "installation-read",
+                    access: "read",
+                    reason: "managed.read",
+                  }),
           issueCredential:
             input?.issueCredential ??
             ((ctx) => ({
@@ -160,6 +166,7 @@ async function registerManagedEgressPlugin(input?: {
           ...(input?.onEgressResponse
             ? { onEgressResponse: input.onEgressResponse }
             : {}),
+          ...(input?.tools ? { tools: input.tools } : {}),
         },
       }),
     ]),
@@ -634,6 +641,142 @@ describe("sandbox egress proxy integration", () => {
     expect(writeResponse.status).toBe(200);
     await expect(writeResponse.text()).resolves.toBe("Bearer user-write");
     expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets a host-registered plugin tool fetch provider data through ctx.egress", async () => {
+    const grantForEgress = vi.fn((ctx) =>
+      ctx.request.operation === "managed.issues.read"
+        ? {
+            name: "installation-read",
+            access: "read" as const,
+            reason: "managed.issues.read",
+          }
+        : {
+            name: "unknown-operation",
+            access: "read" as const,
+            reason: "managed.unknown",
+          },
+    );
+    const issueCredential = vi.fn((ctx) => ({
+      type: "lease" as const,
+      lease: {
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        headerTransforms: [
+          {
+            domain: MANAGED_PROVIDER_HOST,
+            headers: {
+              Authorization: `Bearer ${ctx.grant.name}`,
+            },
+          },
+        ],
+      },
+    }));
+    await registerManagedEgressPlugin({
+      grantForEgress,
+      issueCredential,
+      tools(ctx) {
+        return {
+          managedEgressRead: tool({
+            description: "Read managed provider data through host egress",
+            inputSchema: Type.Object({}),
+            async execute() {
+              const response = await ctx.egress.fetch({
+                provider: "managed-egress",
+                operation: "managed.issues.read",
+                request: new Request(
+                  `https://${MANAGED_PROVIDER_HOST}/v1/issues`,
+                ),
+              });
+              return {
+                ok: response.ok,
+                status: response.status,
+                body: await response.text(),
+              };
+            },
+          }),
+        };
+      },
+    });
+    const upstreamFetch = vi.fn(
+      async (url: URL | string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        expect(String(url)).toBe(`https://${MANAGED_PROVIDER_HOST}/v1/issues`);
+        expect(headers.get("authorization")).toBe("Bearer installation-read");
+        return new Response("provider ok");
+      },
+    );
+    const [
+      { createPluginEgress },
+      { SkillSandbox },
+      { createAgentTools },
+      toolsModule,
+    ] = await Promise.all([
+      import("@/chat/egress/plugin"),
+      import("@/chat/sandbox/skill-sandbox"),
+      import("@/chat/tools/agent-tools"),
+      import("@/chat/tools"),
+    ]);
+    const conversationId = "local:test:plugin-egress-tool";
+    const tools = toolsModule.createTools(
+      [],
+      {},
+      {
+        destination: {
+          platform: "local",
+          conversationId,
+        },
+        egress: createPluginEgress({
+          credentialContext: { actor: { type: "user", userId: REQUESTER_ID } },
+          fetch: upstreamFetch as typeof fetch,
+          pluginAuth: {
+            maybeHandleAuthSignal: vi.fn(),
+          },
+        }),
+        sandbox: {} as Parameters<typeof toolsModule.createTools>[2]["sandbox"],
+        source: createLocalSource(conversationId),
+      },
+    );
+
+    const agentTools = createAgentTools(tools, new SkillSandbox([], []), {});
+    const managedEgressRead = agentTools.find(
+      (candidate) => candidate.name === "managedEgressRead",
+    );
+    if (!managedEgressRead) {
+      throw new Error("managedEgressRead tool was not registered");
+    }
+
+    const result = await managedEgressRead.execute(
+      "tool-call-managed-egress-read",
+      {},
+    );
+
+    expect(result).toMatchObject({
+      details: {
+        ok: true,
+        status: 200,
+        body: "provider ok",
+      },
+    });
+    expect(grantForEgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: {
+          method: "GET",
+          operation: "managed.issues.read",
+          url: `https://${MANAGED_PROVIDER_HOST}/v1/issues`,
+        },
+      }),
+    );
+    expect(issueCredential).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: "user", userId: REQUESTER_ID },
+        grant: {
+          name: "installation-read",
+          access: "read",
+          reason: "managed.issues.read",
+        },
+      }),
+    );
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
   it("lets plugin response hooks interrupt egress for auth-required recovery", async () => {
