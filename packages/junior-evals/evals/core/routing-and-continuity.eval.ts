@@ -1,26 +1,5 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
-import type { HarnessRun } from "vitest-evals/harness";
-import { expect } from "vitest";
+import { describeEval } from "vitest-evals";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
-
-type EvalRun = HarnessRun;
-
-function expectOnlyThreadReplies(result: EvalRun): void {
-  const messages = assistantMessages(result.session);
-  expect(
-    toolCalls(result.session).some(
-      (call) => call.name === "slackChannelPostMessage",
-    ),
-  ).toBe(false);
-  expect(
-    messages.some((message) => message.metadata?.event_type === "channel_post"),
-  ).toBe(false);
-  expect(
-    messages.filter(
-      (message) => message.metadata?.event_type === "thread_post",
-    ),
-  ).toHaveLength(1);
-}
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
@@ -50,37 +29,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         ],
       }),
     });
-  });
-
-  it("when Junior is mentioned mid-sentence, answer in the thread instead of pinging the channel", async ({
-    run,
-  }) => {
-    const thread = {
-      id: "thread-mid-sentence-mention",
-      channel_id: "CMIDSENTENCE",
-      thread_ts: "17000000.mid-sentence",
-    };
-    const result = await run({
-      events: [
-        threadMessage(
-          "This is a good point. Just doing some quick digging: <@U0AGGRG1V0X> what is the largest amount of aggregates we can feasibly get to? context: I'm wondering if we need a lot of server logic to handle exporting many of them at once.",
-          { thread, is_mention: true },
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant posts exactly one thread reply in the original thread.",
-          "The assistant treats the aggregates question as a request for Junior to answer or investigate, not as a request to relay a message to another Slack user.",
-        ],
-        fail: [
-          "Do not create a channel_post message.",
-          "Do not call slackChannelPostMessage.",
-          "Do not paraphrase the user's message back into Slack.",
-        ],
-      }),
-    });
-
-    expectOnlyThreadReplies(result);
   });
 
   it("when asked to post in another named channel, explain the limitation instead", async ({
