@@ -178,6 +178,87 @@ async function grantForEgress(input: {
   });
 }
 
+function githubToolsContext(input?: {
+  conversationId?: string;
+  egressFetch?: (request: {
+    operation: string;
+    provider: string;
+    request: Request;
+  }) => Promise<Response>;
+}) {
+  const conversationId = input?.conversationId ?? "local:test:github-tool";
+  const state = new Map<string, unknown>();
+  const requests: Array<{
+    operation: string;
+    provider: string;
+    request: Request;
+  }> = [];
+  return {
+    db,
+    log: pluginLog,
+    plugin: { name: "github" },
+    conversationId,
+    destination: { platform: "local" as const, conversationId },
+    source: {
+      platform: "local" as const,
+      type: "priv" as const,
+      conversationId,
+    },
+    embedder: {},
+    egress: {
+      async fetch(request: {
+        operation: string;
+        provider: string;
+        request: Request;
+      }) {
+        requests.push(request);
+        if (input?.egressFetch) {
+          return await input.egressFetch(request);
+        }
+        return new Response(
+          JSON.stringify({
+            number: 660,
+            html_url: "https://github.com/getsentry/junior/issues/660",
+          }),
+          { status: 201 },
+        );
+      },
+    },
+    model: {},
+    state: {
+      async delete(key: string) {
+        state.delete(key);
+      },
+      async get(key: string) {
+        return state.get(key);
+      },
+      async set(key: string, value: unknown) {
+        state.set(key, value);
+      },
+      async setIfNotExists(key: string, value: unknown) {
+        if (state.has(key)) {
+          return false;
+        }
+        state.set(key, value);
+        return true;
+      },
+      async withLock<T>(
+        _key: string,
+        _ttlMs: number,
+        callback: () => Promise<T>,
+      ) {
+        return await callback();
+      },
+    },
+    egressRequests() {
+      return requests;
+    },
+    setState(key: string, value: unknown) {
+      state.set(key, value);
+    },
+  };
+}
+
 function githubIssueCredentialContext(input: {
   actor?: { type: "system"; id: string } | { type: "user"; userId: string };
   credentialSubjectToken?: {
@@ -345,6 +426,168 @@ describe("github plugin", () => {
       access: "write",
       reason: "github.fork-create",
     });
+  });
+
+  it("creates issues through host egress with a deterministic Junior footer", async () => {
+    const ctx = githubToolsContext({
+      conversationId: "slack:C123:1712345.0001",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed issue",
+          body: "Issue body",
+          labels: ["bug", "high-priority"],
+        },
+        { toolCallId: "call-create-issue" },
+      ),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+    const request = ctx.egressRequests()[0];
+    expect(request).toMatchObject({
+      provider: "github",
+      operation: "github.issue.create",
+    });
+    expect(request?.request.method).toBe("POST");
+    expect(request?.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/issues",
+    );
+    expect(
+      Object.fromEntries(request?.request.headers.entries() ?? []),
+    ).toEqual(
+      expect.objectContaining({
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+      }),
+    );
+    await expect(request?.request.json()).resolves.toEqual({
+      title: "Typed issue",
+      body: `Issue body
+
+<!-- junior-session-footer:start -->
+
+---
+Created by Junior.
+Conversation: \`slack:C123:1712345.0001\`
+
+<!-- junior-session-footer:end -->`,
+      labels: ["bug", "high-priority"],
+    });
+  });
+
+  it("replaces an existing Junior issue footer before creating issues", async () => {
+    const ctx = githubToolsContext({
+      conversationId: "local:test:new-conversation",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: `Issue body
+
+<!-- junior-session-footer:start -->
+
+---
+Created by Junior.
+Conversation: \`local:test:old-conversation\`
+
+<!-- junior-session-footer:end -->`,
+      },
+      { toolCallId: "call-replace-footer" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: `Issue body
+
+<!-- junior-session-footer:start -->
+
+---
+Created by Junior.
+Conversation: \`local:test:new-conversation\`
+
+<!-- junior-session-footer:end -->`,
+    });
+  });
+
+  it("returns the stored issue result when a createIssue tool call is retried", async () => {
+    const ctx = githubToolsContext();
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
+  it("refuses to duplicate issue creation after an uncertain pending attempt", async () => {
+    const ctx = githubToolsContext();
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    ctx.setState("createIssue:local:test:github-tool:call-pending-create", {
+      status: "pending",
+      createdAtMs: Date.now(),
+    });
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed issue",
+        },
+        { toolCallId: "call-pending-create" },
+      ),
+    ).rejects.toThrow("refusing to create a duplicate issue");
+
+    expect(ctx.egressRequests()).toHaveLength(0);
+  });
+
+  it("keeps pending idempotency state when GitHub response handling fails", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () => new Response("created", { status: 201 }),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-lost-response" }),
+    ).rejects.toThrow("invalid response");
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-lost-response" }),
+    ).rejects.toThrow("refusing to create a duplicate issue");
+
+    expect(ctx.egressRequests()).toHaveLength(1);
   });
 
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
