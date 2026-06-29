@@ -2,17 +2,17 @@ import { logWarn, withSpan } from "@/chat/logging";
 import {
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
-} from "@/chat/sandbox/credentialed-egress";
-import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress-policy";
-import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
+} from "@/chat/sandbox/egress/execute";
+import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
   parseSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
-} from "@/chat/sandbox/egress-session";
+} from "@/chat/sandbox/egress/session";
 import {
   shouldPropagateSandboxEgressTrace,
   type SandboxEgressTracePropagationConfig,
-} from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/tracing";
 import type { JWTPayload } from "jose";
 import * as Sentry from "@/chat/sentry";
 

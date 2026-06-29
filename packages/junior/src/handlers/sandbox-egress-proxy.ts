@@ -2,8 +2,8 @@ import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
   type SandboxEgressHttpInterceptor,
-} from "@/chat/sandbox/egress-proxy";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/proxy";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
 interface SandboxEgressProxyOptions {
   interceptHttp?: SandboxEgressHttpInterceptor;

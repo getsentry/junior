@@ -9,7 +9,7 @@ import {
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
   type SandboxEgressPermissionDeniedSignal,
-} from "@/chat/sandbox/egress-schemas";
+} from "@/chat/sandbox/egress/schemas";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";

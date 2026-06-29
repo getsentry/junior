@@ -83,7 +83,7 @@ import {
   type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";

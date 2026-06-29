@@ -3,7 +3,7 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   SandboxEgressCredentialError,
   sandboxEgressCredentialLease,
-} from "@/chat/sandbox/egress-credentials";
+} from "@/chat/sandbox/egress/credentials";
 
 const {
   getOAuthConfigMock,

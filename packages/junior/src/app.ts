@@ -12,7 +12,7 @@ import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
-import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress-tracing";
+import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,

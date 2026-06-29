@@ -1,11 +1,11 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import type { TracePropagationHeaders } from "@/chat/logging";
-import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress-session";
+import { SANDBOX_EGRESS_PROXY_PATH } from "@/chat/sandbox/egress/session";
 import {
   shouldPropagateSandboxEgressTrace,
   type SandboxEgressTracePropagationConfig,
-} from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/tracing";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";

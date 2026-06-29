@@ -16,13 +16,13 @@ import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
-} from "@/chat/sandbox/egress-policy";
+} from "@/chat/sandbox/egress/policy";
 import {
   getSandboxEgressCredentialLease,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
-} from "@/chat/sandbox/egress-session";
+} from "@/chat/sandbox/egress/session";
 
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

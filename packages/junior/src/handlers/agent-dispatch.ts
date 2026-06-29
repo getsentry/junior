@@ -1,7 +1,7 @@
 import { logException } from "@/chat/logging";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface AgentDispatchHandlerOptions {

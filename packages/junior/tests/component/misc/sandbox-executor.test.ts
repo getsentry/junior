@@ -96,7 +96,7 @@ import {
   SANDBOX_EGRESS_PROXY_PATH,
   setSandboxEgressAuthRequiredSignal,
   setSandboxEgressPermissionDeniedSignal,
-} from "@/chat/sandbox/egress-session";
+} from "@/chat/sandbox/egress/session";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createBashTool } from "bash-tool";

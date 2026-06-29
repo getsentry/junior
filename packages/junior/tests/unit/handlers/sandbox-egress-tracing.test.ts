@@ -1,7 +1,7 @@
 import {
   normalizeSandboxEgressTracePropagationDomains,
   shouldPropagateSandboxEgressTrace,
-} from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/tracing";
 import { describe, expect, it } from "vitest";
 
 describe("sandbox egress tracing config", () => {

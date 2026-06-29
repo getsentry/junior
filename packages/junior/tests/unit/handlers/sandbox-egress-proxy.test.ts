@@ -73,20 +73,20 @@ import {
   buildSandboxEgressNetworkPolicy,
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
-} from "@/chat/sandbox/egress-policy";
+} from "@/chat/sandbox/egress/policy";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
-} from "@/chat/sandbox/egress-proxy";
+} from "@/chat/sandbox/egress/proxy";
 import {
   consumeSandboxEgressPermissionDeniedSignal,
   createSandboxEgressCredentialToken,
   SANDBOX_EGRESS_PROXY_PATH,
-} from "@/chat/sandbox/egress-session";
+} from "@/chat/sandbox/egress/session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { ALL } from "@/handlers/sandbox-egress-proxy";
 
 const EGRESS_ID = "junior-sbx";

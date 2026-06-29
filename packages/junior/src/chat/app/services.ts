@@ -3,7 +3,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue,

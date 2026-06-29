@@ -14,7 +14,7 @@ vi.mock("jose", () => ({
   jwtVerify: jwtVerifyMock,
 }));
 
-import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 
 describe("sandbox egress OIDC verification", () => {
   afterEach(() => {

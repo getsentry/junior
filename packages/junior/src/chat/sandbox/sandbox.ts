@@ -10,7 +10,7 @@ import {
 import {
   buildSandboxEgressNetworkPolicy,
   resolveSandboxCommandEnvironment,
-} from "@/chat/sandbox/egress-policy";
+} from "@/chat/sandbox/egress/policy";
 import {
   clearSandboxEgressSignals,
   consumeSandboxEgressAuthRequiredSignal,
@@ -18,8 +18,8 @@ import {
   createSandboxEgressCredentialToken,
   type SandboxEgressAuthRequiredSignal,
   type SandboxEgressPermissionDeniedSignal,
-} from "@/chat/sandbox/egress-session";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/session";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { CredentialContext } from "@/chat/credentials/context";
 import {
   isSandboxCommandStreamInterruptedError,

@@ -17,7 +17,7 @@ afterEach(() => {
 describe("sandbox egress route trace config", () => {
   it("passes configured egress trace domains to sandbox egress routes", async () => {
     const { normalizeSandboxEgressTracePropagationDomains } =
-      await import("@/chat/sandbox/egress-tracing");
+      await import("@/chat/sandbox/egress/tracing");
     const { handleSandboxEgressRoute } =
       await import("@/handlers/sandbox-egress-route");
 

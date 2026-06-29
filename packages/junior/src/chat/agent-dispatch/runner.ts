@@ -11,7 +11,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
 } from "@/chat/respond";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress-tracing";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { logException } from "@/chat/logging";
 import {
   buildConversationContext,

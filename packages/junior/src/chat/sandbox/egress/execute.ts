@@ -1,12 +1,12 @@
 import { logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
-import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress-policy";
+import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
 import {
   hasSandboxEgressLeaseTransformForHost,
   sandboxEgressCredentialLease,
   SandboxEgressCredentialError,
   selectSandboxEgressGrant,
-} from "@/chat/sandbox/egress-credentials";
+} from "@/chat/sandbox/egress/credentials";
 import {
   clearSandboxEgressCredentialLease,
   SANDBOX_EGRESS_PROXY_PATH,
@@ -14,11 +14,11 @@ import {
   setSandboxEgressPermissionDeniedSignal,
   type SandboxEgressCredentialContext,
   type SandboxEgressCredentialLease,
-} from "@/chat/sandbox/egress-session";
+} from "@/chat/sandbox/egress/session";
 import {
   shouldPropagateSandboxEgressTrace,
   type SandboxEgressTracePropagationConfig,
-} from "@/chat/sandbox/egress-tracing";
+} from "@/chat/sandbox/egress/tracing";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 
 // Owns the verified provider request path after sandbox identity and

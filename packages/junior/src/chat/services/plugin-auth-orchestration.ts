@@ -25,7 +25,7 @@ import {
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress-schemas";
+import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(

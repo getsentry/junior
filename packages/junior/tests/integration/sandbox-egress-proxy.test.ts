@@ -28,9 +28,9 @@ const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
 
-type EgressPolicyModule = typeof import("@/chat/sandbox/egress-policy");
-type EgressProxyModule = typeof import("@/chat/sandbox/egress-proxy");
-type EgressSessionModule = typeof import("@/chat/sandbox/egress-session");
+type EgressPolicyModule = typeof import("@/chat/sandbox/egress/policy");
+type EgressProxyModule = typeof import("@/chat/sandbox/egress/proxy");
+type EgressSessionModule = typeof import("@/chat/sandbox/egress/session");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 
 interface LoadedModules {
@@ -43,9 +43,9 @@ interface LoadedModules {
 async function loadModules(): Promise<LoadedModules> {
   vi.resetModules();
   const [policy, proxy, session, state] = await Promise.all([
-    import("@/chat/sandbox/egress-policy"),
-    import("@/chat/sandbox/egress-proxy"),
-    import("@/chat/sandbox/egress-session"),
+    import("@/chat/sandbox/egress/policy"),
+    import("@/chat/sandbox/egress/proxy"),
+    import("@/chat/sandbox/egress/session"),
     import("@/chat/state/adapter"),
   ]);
   await state.disconnectStateAdapter();
