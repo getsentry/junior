@@ -1646,6 +1646,108 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
+  it("prefers same-channel memories for otherwise close public conversation matches", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS - 1;
+      const sameChannelStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "C123" }),
+        {
+          now: () => nowMs,
+        },
+      );
+      const sameChannel = await sameChannelStore.createConversationMemory({
+        content: "Deploy checklist lives in the release runbook.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:source-boost-same",
+      });
+
+      nowMs = TEST_NOW_MS;
+      const otherChannelStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "C456" }),
+        {
+          now: () => nowMs,
+        },
+      );
+      const otherChannel = await otherChannelStore.createConversationMemory({
+        content: "Deploy checklist lives in the release notes.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:source-boost-other",
+      });
+
+      await expect(
+        sameChannelStore.searchMemories({
+          limit: 2,
+          query: "deploy checklist lives release",
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({ id: sameChannel.memory.id }),
+        expect.objectContaining({ id: otherChannel.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps stronger vector relevance ahead of same-channel proximity", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const query = "semantic channel relevance";
+      const sameChannelContent = "Same channel semantic memory.";
+      const otherChannelContent = "Other channel stronger semantic memory.";
+      const embedder = createTestEmbedder({
+        [query]: unitEmbedding(0),
+        [sameChannelContent]: cosineEmbedding(0.9),
+        [otherChannelContent]: cosineEmbedding(0.995),
+      });
+      let nowMs = TEST_NOW_MS;
+      const sameChannelStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "C123" }),
+        {
+          embedder,
+          now: () => nowMs,
+        },
+      );
+      const sameChannel = await sameChannelStore.createConversationMemory({
+        content: sameChannelContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:source-boost-vector-same",
+      });
+
+      nowMs += 1;
+      const otherChannelStore = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "C456" }),
+        {
+          embedder,
+          now: () => nowMs,
+        },
+      );
+      const otherChannel = await otherChannelStore.createConversationMemory({
+        content: otherChannelContent,
+        kind: "knowledge",
+        idempotencyKey: "memory-test:source-boost-vector-other",
+      });
+
+      await expect(
+        sameChannelStore.searchMemories({
+          limit: 2,
+          query,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({ id: otherChannel.memory.id }),
+        expect.objectContaining({ id: sameChannel.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("uses observed recency only as a relevance tie-breaker", async () => {
     const fixture = await createMemoryFixture();
 

@@ -56,6 +56,7 @@ const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const RELEVANCE_NEAR_TIE_DELTA = 0.01;
+const SOURCE_CHANNEL_BOOST = 0.05;
 const SUPERSESSION_STOP_TERMS = new Set([
   "and",
   "for",
@@ -73,6 +74,7 @@ export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
 interface SearchCandidate {
   memory: MemoryRecord;
   score: number;
+  sourceKey: string;
 }
 
 interface MemoryEmbedding {
@@ -343,6 +345,14 @@ function sourceKey(ctx: MemoryRuntimeContext): string {
     );
   }
   return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
+}
+
+function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
+  if (ctx.source.platform !== "slack") {
+    return undefined;
+  }
+  // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
+  return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
 }
 
 /** Parse one SQL row into the public memory record projection. */
@@ -961,7 +971,7 @@ async function searchVisibleMemories(args: {
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
-}): Promise<MemoryRecord[]> {
+}): Promise<SearchCandidate[]> {
   const terms = searchTerms(args.query);
   if (terms.length === 0) {
     return [];
@@ -983,7 +993,11 @@ async function searchVisibleMemories(args: {
         ),
       ),
     );
-  return rows.map(parseMemoryRow);
+  return rows.map((row) => ({
+    memory: parseMemoryRow(row),
+    score: 0,
+    sourceKey: row.sourceKey,
+  }));
 }
 
 /** Search active visible records with exact pgvector cosine distance. */
@@ -1055,9 +1069,22 @@ async function searchVisibleVectorMemories(args: {
       {
         memory: parseMemoryRow(row.memory),
         score: 1 / (1 + Math.max(0, distanceValue)),
+        sourceKey: row.memory.sourceKey,
       },
     ];
   });
+}
+
+function sourceBoost(
+  candidate: Pick<SearchCandidate, "sourceKey">,
+  currentChannelPrefix: string | undefined,
+): number {
+  if (!currentChannelPrefix) {
+    return 0;
+  }
+  return candidate.sourceKey.startsWith(currentChannelPrefix)
+    ? SOURCE_CHANNEL_BOOST
+    : 0;
 }
 
 /** Score only observation age for near-tie reranking; this is not lifecycle decay. */
@@ -1079,12 +1106,14 @@ function observedAgeBoost(memory: MemoryRecord, nowMs: number): number {
 function mergeSearchCandidates(
   candidates: SearchCandidate[],
   nowMs: number,
+  currentChannelKey?: string,
 ): MemoryRecord[] {
   const byId = new Map<
     string,
     {
       memory: MemoryRecord;
       score: number;
+      sourceKey: string;
     }
   >();
   for (const candidate of candidates) {
@@ -1096,6 +1125,7 @@ function mergeSearchCandidates(
     byId.set(candidate.memory.id, {
       memory: candidate.memory,
       score: candidate.score,
+      sourceKey: candidate.sourceKey,
     });
   }
   return [...byId.values()]
@@ -1103,6 +1133,12 @@ function mergeSearchCandidates(
       const scoreDelta = right.score - left.score;
       if (Math.abs(scoreDelta) > RELEVANCE_NEAR_TIE_DELTA) {
         return scoreDelta;
+      }
+      const sourceDelta =
+        sourceBoost(right, currentChannelKey) -
+        sourceBoost(left, currentChannelKey);
+      if (sourceDelta !== 0) {
+        return sourceDelta;
       }
       return (
         observedAgeBoost(right.memory, nowMs) -
@@ -1411,7 +1447,9 @@ export function createMemoryStore(
         db,
         embedder,
         limit: limit * VECTOR_SEARCH_OVERFETCH,
-        ...(maxVectorDistance !== undefined ? { maxDistance: maxVectorDistance } : {}),
+        ...(maxVectorDistance !== undefined
+          ? { maxDistance: maxVectorDistance }
+          : {}),
         nowMs,
         query: input.query,
         scopes,
@@ -1424,11 +1462,15 @@ export function createMemoryStore(
       });
       const terms = searchTerms(input.query);
       const lexicalCandidates = candidates
-        .map((memory) => ({ memory, score: searchScore(memory, terms) }))
+        .map((candidate) => ({
+          ...candidate,
+          score: searchScore(candidate.memory, terms),
+        }))
         .filter((item) => item.score > 0);
       return mergeSearchCandidates(
         [...vectorCandidates, ...lexicalCandidates],
         nowMs,
+        sourceChannelPrefix(runtimeContext),
       ).slice(0, limit);
     },
 

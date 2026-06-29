@@ -102,7 +102,10 @@ Embedding support may upgrade this to hybrid retrieval:
 1. Run vector search when embeddings are configured and the user text can be
    embedded.
 2. Merge lexical and vector results with reciprocal-rank style fusion.
-3. Apply the same visibility filtering, ranking model, and prompt budgets.
+3. Apply weak same-source proximity reranking after visibility filtering. For
+   Slack sources this is channel-granular, not thread-granular, and must remain
+   small enough that materially stronger semantic or lexical matches still win.
+4. Apply the same visibility filtering, ranking model, and prompt budgets.
 
 Vector results should be overfetched before final filtering and prompt
 formatting. Approximate vector search must be exact-reranked over visible
