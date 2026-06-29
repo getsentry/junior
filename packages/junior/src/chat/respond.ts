@@ -1080,7 +1080,22 @@ async function generateAssistantReplyInPrivacyContext(
       configuration: configurationValues,
       egress: createPluginEgress({
         credentialContext: context.credentialContext,
-        pluginAuth,
+        pluginAuth: {
+          async handleAuthRequired(signal) {
+            await pluginAuth.maybeHandleAuthSignal({
+              auth_required: {
+                ...(signal.authorization
+                  ? { authorization: signal.authorization }
+                  : {}),
+                createdAtMs: Date.now(),
+                grant: signal.grant,
+                kind: signal.kind,
+                message: signal.message,
+                provider: signal.provider,
+              },
+            });
+          },
+        },
       }),
       mcpToolManager: turnMcpToolManager,
       sandbox,

@@ -729,7 +729,7 @@ describe("sandbox egress proxy integration", () => {
           credentialContext: { actor: { type: "user", userId: REQUESTER_ID } },
           fetch: upstreamFetch as typeof fetch,
           pluginAuth: {
-            maybeHandleAuthSignal: vi.fn(),
+            handleAuthRequired: vi.fn(),
           },
         }),
         sandbox: {} as Parameters<typeof toolsModule.createTools>[2]["sandbox"],

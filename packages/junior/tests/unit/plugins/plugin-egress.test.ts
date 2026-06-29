@@ -4,7 +4,6 @@ import { createPluginEgress } from "@/chat/egress/plugin";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 
 function githubManifest() {
   return {
@@ -17,10 +16,9 @@ function githubManifest() {
   };
 }
 
-function authOrchestration(): PluginAuthOrchestration {
+function authOrchestration() {
   return {
-    maybeHandleAuthSignal: vi.fn(),
-    getPendingPause: () => undefined,
+    handleAuthRequired: vi.fn(),
   };
 }
 
@@ -76,7 +74,7 @@ describe("plugin egress", () => {
       }),
     ]);
     const pluginAuth = authOrchestration();
-    vi.mocked(pluginAuth.maybeHandleAuthSignal).mockRejectedValue(
+    vi.mocked(pluginAuth.handleAuthRequired).mockRejectedValue(
       new Error("paused"),
     );
     const egress = createPluginEgress({
@@ -98,19 +96,52 @@ describe("plugin egress", () => {
         ),
       }),
     ).rejects.toThrow("paused");
-    expect(pluginAuth.maybeHandleAuthSignal).toHaveBeenCalledWith({
-      auth_required: expect.objectContaining({
-        authorization,
-        grant: {
-          name: "user-write",
-          access: "write",
-          reason: "github.issue.create",
-        },
-        kind: "auth_required",
-        message: "Connect GitHub.",
-        provider: "github",
-      }),
+    expect(pluginAuth.handleAuthRequired).toHaveBeenCalledWith({
+      authorization,
+      grant: {
+        name: "user-write",
+        access: "write",
+        reason: "github.issue.create",
+      },
+      kind: "auth_required",
+      message: "Connect GitHub.",
+      provider: "github",
     });
+  });
+
+  it("rejects non-HTTPS provider URLs before issuing credentials", async () => {
+    const issueCredential = vi.fn();
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: githubManifest(),
+        hooks: {
+          grantForEgress() {
+            return {
+              name: "installation-read",
+              access: "read",
+              reason: "github.repo.read",
+            };
+          },
+          issueCredential,
+        },
+      }),
+    ]);
+    const fetchMock = vi.fn();
+    const egress = createPluginEgress({
+      credentialContext: { actor: { type: "user", userId: "U123" } },
+      fetch: fetchMock as unknown as typeof fetch,
+      pluginAuth: authOrchestration(),
+    });
+
+    await expect(
+      egress.fetch({
+        provider: "github",
+        operation: "github.repo.get",
+        request: new Request("http://api.github.com/repos/getsentry/junior"),
+      }),
+    ).rejects.toThrow("Plugin egress requires HTTPS provider URLs");
+    expect(issueCredential).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("returns upstream permission denied responses to plugin callers", async () => {

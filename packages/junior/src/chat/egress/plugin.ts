@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { PluginEgress } from "@sentry/junior-plugin-api";
+import type {
+  PluginAuthorization,
+  PluginEgress,
+} from "@sentry/junior-plugin-api";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
@@ -7,7 +10,18 @@ import type { SandboxEgressCredentialContext } from "@/chat/sandbox/egress/sessi
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 
 interface PluginEgressAuth {
-  maybeHandleAuthSignal(details: unknown): Promise<void>;
+  handleAuthRequired(input: {
+    authorization?: PluginAuthorization;
+    grant: {
+      access: "read" | "write";
+      name: string;
+      reason?: string;
+      requirements?: string[];
+    };
+    kind: "auth_required" | "unavailable";
+    message: string;
+    provider: string;
+  }): Promise<void>;
 }
 
 interface PluginEgressDeps {
@@ -47,6 +61,9 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
       }
 
       const upstreamUrl = new URL(input.request.url);
+      if (upstreamUrl.protocol !== "https:") {
+        throw new Error("Plugin egress requires HTTPS provider URLs");
+      }
       const resolvedProvider = resolveSandboxEgressProviderForHost(
         upstreamUrl.hostname,
       );
@@ -62,17 +79,14 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
         deps: {
           ...(deps.fetch ? { fetch: deps.fetch } : {}),
           recordAuthRequired: async (signal) => {
-            await deps.pluginAuth.maybeHandleAuthSignal({
-              auth_required: {
-                ...(signal.authorization
-                  ? { authorization: signal.authorization }
-                  : {}),
-                createdAtMs: Date.now(),
-                grant: signal.grant,
-                kind: signal.kind ?? "auth_required",
-                message: signal.message,
-                provider: signal.provider,
-              },
+            await deps.pluginAuth.handleAuthRequired({
+              ...(signal.authorization
+                ? { authorization: signal.authorization }
+                : {}),
+              grant: signal.grant,
+              kind: signal.kind ?? "auth_required",
+              message: signal.message,
+              provider: signal.provider,
             });
           },
           recordPermissionDenied: async () => {},
