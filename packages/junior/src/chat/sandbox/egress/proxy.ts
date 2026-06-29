@@ -2,7 +2,7 @@ import { logWarn, withSpan } from "@/chat/logging";
 import {
   executeCredentialedEgressRequest,
   type CredentialedEgressHttpInterceptor,
-} from "@/chat/sandbox/egress/execute";
+} from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress/oidc";
 import {
@@ -24,7 +24,7 @@ import * as Sentry from "@/chat/sentry";
 // requests here with an OIDC token and forwarding headers that describe the
 // original upstream URL. This module authenticates the VM, rebuilds that URL,
 // checks the signed Junior credential context bound to the VM id, and then
-// hands the trusted provider request to `execute.ts`.
+// hands the trusted provider request to the shared credentialed egress engine.
 
 const OIDC_TOKEN_HEADER = "vercel-sandbox-oidc-token";
 const FORWARDED_HOST_HEADER = "vercel-forwarded-host";

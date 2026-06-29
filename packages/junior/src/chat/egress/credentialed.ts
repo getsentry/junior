@@ -21,7 +21,8 @@ import {
 } from "@/chat/sandbox/egress/tracing";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 
-// Module overview: own the trusted half of sandbox credentialed egress.
+// Module overview: own credentialed provider forwarding after a caller has
+// authenticated the request source and resolved its provider.
 //
 // `proxy.ts` first proves that the request came from the expected Vercel
 // Sandbox VM and reconstructs the upstream URL from Vercel forwarding headers.
@@ -29,9 +30,10 @@ import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 // credential header transforms, forwards the upstream request, and records the
 // auth/permission signal that the sandbox command runner consumes afterward.
 //
-// Keep this file about the provider request itself. Sandbox identity checks and
-// forwarded-header parsing belong in `proxy.ts`; signed context, leases, and
-// command-result signals belong in `session.ts`.
+// Keep this file about the provider request itself. Source authentication and
+// forwarded-header parsing belong to callers such as the sandbox proxy; lease
+// persistence and auth/permission signal storage stay in their caller-specific
+// adapters until a second host/plugin caller needs a different storage surface.
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
