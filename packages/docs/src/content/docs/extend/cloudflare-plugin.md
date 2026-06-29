@@ -40,14 +40,17 @@ export const plugins = defineJuniorPlugins(["@sentry/junior-cloudflare"]);
 
 ## Optional channel defaults
 
-If a Slack channel consistently works with the same Cloudflare account or zone, store those as conversation-scoped defaults:
+If a Slack channel consistently works with the same Cloudflare account, zone, or Worker, store those as conversation-scoped defaults:
 
 ```bash
 jr-rpc config set cloudflare.account.id <account_id>
 jr-rpc config set cloudflare.zone.id <zone_id>
+jr-rpc config set cloudflare.worker.name sentry-mcp
 ```
 
-These defaults are optional. When not set, Junior discovers the account and zone from the API on first use (requires Account Resources: Read permission). If the user names a different account or zone in a request, Junior follows the explicit request instead.
+These defaults are optional. When not set, Junior discovers the account, zone, or Worker from the API on first use (requires Account Resources: Read permission). If the user names a different account, zone, or Worker in a request, Junior follows the explicit request instead.
+
+Use `cloudflare.worker.name` for the Worker a channel usually investigates. For example, if most operations in a channel are about the `sentry-mcp` Worker, this default lets users ask "check the latest errors" or "show the recent deploy" without repeating the Worker name.
 
 ## What users can do
 

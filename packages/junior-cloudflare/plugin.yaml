@@ -8,6 +8,7 @@ capabilities:
 config-keys:
   - account.id
   - zone.id
+  - worker.name
 
 mcp:
   url: https://mcp.cloudflare.com/mcp

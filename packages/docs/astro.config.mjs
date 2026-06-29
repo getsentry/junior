@@ -19,10 +19,12 @@ export default defineConfig({
     "/deploy/vercel": "/start-here/deploy-to-vercel",
     "/extend/custom-plugins": "/extend/build-a-plugin",
     "/extend/plugins-overview": "/extend",
+    "/extend/cloudflare": "/extend/cloudflare-plugin",
     "/extend/datadog": "/extend/datadog-plugin",
     "/extend/hex": "/extend/hex-plugin",
     "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
+    "/plugins/cloudflare": "/extend/cloudflare-plugin",
     "/plugins/datadog": "/extend/datadog-plugin",
     "/plugins/github": "/extend/github-plugin",
     "/plugins/hex": "/extend/hex-plugin",
@@ -101,6 +103,10 @@ export default defineConfig({
             {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
+            },
+            {
+              label: "Cloudflare Plugin",
+              link: "/extend/cloudflare-plugin/",
             },
             { label: "Datadog Plugin", link: "/extend/datadog-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
