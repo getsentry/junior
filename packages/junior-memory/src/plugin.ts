@@ -40,8 +40,8 @@ function recallMaxVectorDistance(options: MemoryPluginOptions): number {
   const raw = process.env[MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV]?.trim();
   if (raw) {
     const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 2) {
-      return parsed;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.min(parsed, 1);
     }
   }
   return DEFAULT_RECALL_MAX_VECTOR_DISTANCE;
