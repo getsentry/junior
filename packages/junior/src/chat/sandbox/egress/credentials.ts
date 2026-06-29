@@ -24,8 +24,17 @@ import {
   type SandboxEgressCredentialLease,
 } from "@/chat/sandbox/egress/session";
 
+// Module overview: select and issue provider credentials for sandbox egress.
+//
+// The proxy has already resolved a provider for the upstream host before this
+// module runs. A plugin may choose a precise grant from the request method,
+// URL, and limited body text; otherwise we fall back to the broker's default
+// read/write grant. The result is a short-lived set of header transforms, never
+// raw provider credentials inside the sandbox.
+
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+/** Describes whether grant selection came from plugin hooks or the broker default. */
 export type SandboxEgressGrantSelection =
   | {
       grant: PluginGrant;
@@ -38,7 +47,12 @@ export type SandboxEgressGrantSelection =
 
 export type SandboxEgressCredentialErrorKind = "auth_required" | "unavailable";
 
-/** Signals that egress selected a grant but could not issue credential headers. */
+/**
+ * Signals that egress selected a grant but could not issue credential headers.
+ *
+ * Callers convert this into command-level auth-required state so the agent can
+ * request authorization without exposing provider-specific lease internals.
+ */
 export class SandboxEgressCredentialError extends Error {
   readonly authorization?: PluginAuthorization;
   readonly grant: PluginGrant;
@@ -114,7 +128,12 @@ function assertLeaseTransformsOwnedByProvider(
   }
 }
 
-/** Select the plugin-defined or default grant needed for one outbound request. */
+/**
+ * Select the grant needed for one outbound request.
+ *
+ * GitHub GraphQL and other plugin-owned APIs may need body-aware grant choices;
+ * providers without hooks use a simple read/write default based on HTTP method.
+ */
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string;
   method: string;
@@ -139,7 +158,12 @@ export async function selectSandboxEgressGrant(input: {
   return { source: "plugin", grant: pluginGrant };
 }
 
-/** Resolve the authorization flow attached to a broker-selected egress grant. */
+/**
+ * Resolve the authorization flow attached to a broker-selected egress grant.
+ *
+ * Plugin-selected grants can return their own authorization metadata when
+ * issuing credentials; broker defaults use the provider OAuth config.
+ */
 export function authorizationForSandboxEgressGrant(
   provider: string,
   selection: SandboxEgressGrantSelection,
@@ -149,7 +173,13 @@ export function authorizationForSandboxEgressGrant(
     : undefined;
 }
 
-/** Return a cached or newly issued credential lease for a selected grant. */
+/**
+ * Return cached or newly issued credential header transforms for a selected grant.
+ *
+ * Leases are cached per actor/context/grant, validated against provider-owned
+ * domains, and reused only while both the provider lease and sandbox context are
+ * still valid.
+ */
 export async function sandboxEgressCredentialLease(
   provider: string,
   selection: SandboxEgressGrantSelection,

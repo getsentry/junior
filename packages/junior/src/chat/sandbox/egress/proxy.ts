@@ -16,14 +16,30 @@ import {
 import type { JWTPayload } from "jose";
 import * as Sentry from "@/chat/sentry";
 
+// Module overview: verify and route requests emitted by Vercel Sandbox
+// network-policy forwarding.
+//
+// The sandbox VM is allowed to make outbound requests only through Vercel's
+// firewall policy. For credentialed provider domains, Vercel forwards those
+// requests here with an OIDC token and forwarding headers that describe the
+// original upstream URL. This module authenticates the VM, rebuilds that URL,
+// checks the signed Junior credential context bound to the VM id, and then
+// hands the trusted provider request to `execute.ts`.
+
 const OIDC_TOKEN_HEADER = "vercel-sandbox-oidc-token";
 const FORWARDED_HOST_HEADER = "vercel-forwarded-host";
 const FORWARDED_SCHEME_HEADER = "vercel-forwarded-scheme";
 const FORWARDED_PORT_HEADER = "vercel-forwarded-port";
 const FORWARDED_PATH_HEADER = "vercel-forwarded-path";
-/** Intercepts a credential-injected sandbox HTTP request before live forwarding. */
+/**
+ * Intercepts a verified sandbox HTTP request before live provider forwarding.
+ *
+ * The hook runs after OIDC, forwarded URL validation, provider ownership, and
+ * credential-context checks have succeeded.
+ */
 export type SandboxEgressHttpInterceptor = CredentialedEgressHttpInterceptor;
 
+/** Runtime dependencies for the sandbox egress proxy boundary. */
 interface ProxyDeps {
   fetch?: typeof fetch;
   interceptHttp?: SandboxEgressHttpInterceptor;
@@ -165,6 +181,12 @@ function upstreamPath(request: Request): UpstreamPathResult {
   return normalizedForwardedPath(forwardedPath.trim());
 }
 
+/**
+ * Rebuild the HTTPS upstream URL from Vercel forwarding headers.
+ *
+ * This is the proxy's wire-format boundary for forwarded requests: host, path,
+ * scheme, and port must normalize before the request can reach provider egress.
+ */
 function buildUpstreamUrl(request: Request): UpstreamUrlResult {
   const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
   if (!forwardedHost?.trim()) {
@@ -224,7 +246,13 @@ function continueSandboxEgressTrace<T>(
   return Sentry.continueTrace({ sentryTrace, baggage }, run);
 }
 
-/** Return whether a request appears to be from the Vercel Sandbox egress proxy. */
+/**
+ * Return whether a request carries the forwarding headers expected from Vercel.
+ *
+ * This is only a cheap classifier for routing into the proxy handler. Real
+ * authentication happens in `proxySandboxEgressRequest` by verifying the OIDC
+ * token and signed Junior credential context.
+ */
 export function isSandboxEgressForwardedRequest(request: Request): boolean {
   return Boolean(
     request.headers.get(OIDC_TOKEN_HEADER)?.trim() &&
@@ -233,7 +261,14 @@ export function isSandboxEgressForwardedRequest(request: Request): boolean {
   );
 }
 
-/** Proxy one Vercel Sandbox firewall egress request through lazy credential headers. */
+/**
+ * Handle one forwarded sandbox egress request.
+ *
+ * This is the public proxy boundary: it rejects unauthenticated VM requests,
+ * rejects forwarded URLs outside plugin-owned provider domains, rejects signed
+ * credential contexts that do not match the active VM id, and only then asks
+ * `execute.ts` to issue credentials and contact the upstream provider.
+ */
 export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},

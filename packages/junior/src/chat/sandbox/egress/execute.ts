@@ -21,10 +21,17 @@ import {
 } from "@/chat/sandbox/egress/tracing";
 import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 
-// Owns the verified provider request path after sandbox identity and
-// credential context checks have already passed. This module must preserve the
-// sandbox egress auth-signal contract until host plugin egress gets its own
-// caller-specific result surface.
+// Module overview: own the trusted half of sandbox credentialed egress.
+//
+// `proxy.ts` first proves that the request came from the expected Vercel
+// Sandbox VM and reconstructs the upstream URL from Vercel forwarding headers.
+// This module starts after that point: it chooses the provider grant, obtains
+// credential header transforms, forwards the upstream request, and records the
+// auth/permission signal that the sandbox command runner consumes afterward.
+//
+// Keep this file about the provider request itself. Sandbox identity checks and
+// forwarded-header parsing belong in `proxy.ts`; signed context, leases, and
+// command-result signals belong in `session.ts`.
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -58,13 +65,20 @@ const UPSTREAM_PERMISSION_REJECTION_STATUS = 403;
 const GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
 const RESPONSE_BODY_TEXT_LIMIT_BYTES = 64 * 1024;
 
-/** Intercepts a credential-injected HTTP request before live forwarding. */
+/**
+ * Intercepts the already-authenticated provider request before live forwarding.
+ *
+ * Tests use this to inspect the exact upstream request after grant selection
+ * and credential header injection, without weakening the proxy verification
+ * path that runs before this hook is reached.
+ */
 export type CredentialedEgressHttpInterceptor = (input: {
   provider: string;
   request: Request;
   upstreamUrl: URL;
 }) => Promise<Response | undefined>;
 
+/** Runtime dependencies for the credentialed provider forwarding step. */
 export interface CredentialedEgressDeps {
   fetch?: typeof fetch;
   interceptHttp?: CredentialedEgressHttpInterceptor;
@@ -343,7 +357,14 @@ async function responseTextWithinLimit(
   return new TextDecoder().decode(combined);
 }
 
-/** Build sanitized upstream headers and preserve trace headers only for configured hosts. */
+/**
+ * Build the upstream request headers.
+ *
+ * Sandbox/proxy-only headers are stripped so they cannot leak to providers, and
+ * trace headers are preserved only for hosts opted into trace propagation.
+ * Credential lease transforms win last because they are the host-issued
+ * authority for provider auth headers.
+ */
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
@@ -400,7 +421,15 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
-/** Execute one verified provider egress request with host-managed credentials. */
+/**
+ * Forward one verified sandbox egress request with host-managed credentials.
+ *
+ * The caller must already have authenticated the sandbox VM, checked the signed
+ * credential context, and resolved the provider for `upstreamUrl`. This function
+ * then selects the read/write grant, issues or reuses a short-lived credential
+ * lease, applies its header transforms, and maps provider auth failures into
+ * command-level signals instead of throwing raw upstream details at the agent.
+ */
 export async function executeCredentialedEgressRequest(input: {
   activeEgressId: string;
   credentialContext: SandboxEgressCredentialContext;

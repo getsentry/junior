@@ -12,6 +12,16 @@ import {
 } from "@/chat/sandbox/egress/schemas";
 import { getStateAdapter } from "@/chat/state/adapter";
 
+// Module overview: store the short-lived state that connects a sandbox command
+// to host egress.
+//
+// The sandbox gets a signed context token in its network policy URL; the proxy
+// verifies that token on every forwarded request. Credential leases are cached
+// per actor, grant, VM id, and token id so repeated provider calls in the same
+// command do not reissue credentials. Auth-required and permission-denied
+// signals are written here so the sandbox command runner can translate host
+// egress failures into the same user-facing auth flow as direct tool calls.
+
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
 const SANDBOX_EGRESS_TOKEN_VERSION = "v1";
@@ -29,6 +39,9 @@ export type {
   SandboxEgressPermissionDeniedSignal,
 };
 
+/**
+ * Build the lease cache key for one provider grant, actor, sandbox VM, and token.
+ */
 function leaseKey(
   provider: string,
   grantName: string,
@@ -40,6 +53,9 @@ function leaseKey(
   return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grantName}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
+/**
+ * Build the command signal key for credential issuance failures by access level.
+ */
 function authSignalKey(
   egressId: string,
   access: SandboxEgressAuthRequiredSignal["grant"]["access"],
@@ -47,6 +63,9 @@ function authSignalKey(
   return `${SANDBOX_EGRESS_AUTH_SIGNAL_PREFIX}:${egressId}:${access}`;
 }
 
+/**
+ * Build the command signal key for upstream permission denials by access level.
+ */
 function permissionSignalKey(
   egressId: string,
   access: SandboxEgressPermissionDeniedSignal["grant"]["access"],
@@ -62,6 +81,12 @@ function fromBase64Url(input: string): string {
   return Buffer.from(input, "base64url").toString("utf8");
 }
 
+/**
+ * Sign a versioned context payload in the sandbox egress HMAC domain.
+ *
+ * `JUNIOR_SECRET` is the shared secret so proxy URLs cannot be forged by code
+ * running inside the sandbox.
+ */
 function signPayload(payload: string): string {
   return createHmac("sha256", getSandboxEgressSecret())
     .update(`${SANDBOX_EGRESS_HMAC_CONTEXT}:${payload}`)
@@ -110,7 +135,13 @@ function getSandboxEgressSecret(): string {
   throw new Error("Cannot determine sandbox egress secret (set JUNIOR_SECRET)");
 }
 
-/** Create a signed actor/sandbox context token for lazy sandbox egress auth. */
+/**
+ * Create the signed Junior credential context embedded in the proxy URL.
+ *
+ * The token binds requester credentials to a specific sandbox egress id and a
+ * short expiry. Vercel OIDC proves which VM sent a request; this token proves
+ * which Junior actor and credential context that VM is allowed to use.
+ */
 export function createSandboxEgressCredentialToken(input: {
   credentials: CredentialContext;
   egressId: string;
@@ -130,7 +161,12 @@ export function createSandboxEgressCredentialToken(input: {
   return `${payload}.${signPayload(payload)}`;
 }
 
-/** Verify a signed actor/sandbox context token from the proxy URL. */
+/**
+ * Verify the signed Junior credential context from the proxy URL.
+ *
+ * Returning `undefined` means the token is missing, expired, malformed, or not
+ * signed with the current `JUNIOR_SECRET`.
+ */
 export function parseSandboxEgressCredentialToken(
   token: string | undefined,
 ): SandboxEgressCredentialContext | undefined {
@@ -157,7 +193,12 @@ export function parseSandboxEgressCredentialToken(
   }
 }
 
-/** Cache a short-lived credential lease for one actor/sandbox context and grant. */
+/**
+ * Cache credential header transforms for one actor, VM, context token, and grant.
+ *
+ * The cache TTL is capped by both the provider lease expiry and the signed
+ * context expiry so a stale sandbox URL cannot keep using old credentials.
+ */
 export async function setSandboxEgressCredentialLease(
   context: SandboxEgressCredentialContext,
   lease: SandboxEgressCredentialLease,
@@ -179,7 +220,9 @@ export async function setSandboxEgressCredentialLease(
   );
 }
 
-/** Load a cached egress credential lease for one actor/sandbox context and grant. */
+/**
+ * Load cached credential header transforms for the exact actor/context/grant.
+ */
 export async function getSandboxEgressCredentialLease(
   provider: string,
   grantName: string,
@@ -190,7 +233,7 @@ export async function getSandboxEgressCredentialLease(
   return parseLease(await state.get(leaseKey(provider, grantName, context)));
 }
 
-/** Clear a cached egress credential lease after the provider rejects its headers. */
+/** Clear a cached lease after the upstream provider rejects its auth headers. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
   grantName: string,
@@ -201,7 +244,13 @@ export async function clearSandboxEgressCredentialLease(
   await state.delete(leaseKey(provider, grantName, context));
 }
 
-/** Record that host-side sandbox egress returned an auth-required response. */
+/**
+ * Record that credential issuance needs user authorization for this command.
+ *
+ * The command runner consumes this after the sandbox tool finishes so the agent
+ * can present a normal authorization-required response instead of a raw proxy
+ * failure.
+ */
 export async function setSandboxEgressAuthRequiredSignal(
   context: SandboxEgressCredentialContext,
   signal: Omit<SandboxEgressAuthRequiredSignal, "createdAtMs" | "kind"> & {
@@ -221,7 +270,9 @@ export async function setSandboxEgressAuthRequiredSignal(
   );
 }
 
-/** Record that host-side sandbox egress saw an upstream permission denial. */
+/**
+ * Record that the provider rejected an issued credential with permission denial.
+ */
 export async function setSandboxEgressPermissionDeniedSignal(
   context: SandboxEgressCredentialContext,
   signal: Omit<SandboxEgressPermissionDeniedSignal, "createdAtMs">,
@@ -239,7 +290,7 @@ export async function setSandboxEgressPermissionDeniedSignal(
   );
 }
 
-/** Remove any pending host-side sandbox egress signals for a command. */
+/** Remove pending auth/permission signals before or after a sandbox command. */
 export async function clearSandboxEgressSignals(
   egressId: string | undefined,
 ): Promise<void> {
@@ -256,7 +307,9 @@ export async function clearSandboxEgressSignals(
   ]);
 }
 
-/** Consume the host-side sandbox egress auth signal produced during a command. */
+/**
+ * Consume the auth signal produced during a sandbox command, preferring writes.
+ */
 export async function consumeSandboxEgressAuthRequiredSignal(
   egressId: string | undefined,
 ): Promise<SandboxEgressAuthRequiredSignal | undefined> {
@@ -279,7 +332,9 @@ export async function consumeSandboxEgressAuthRequiredSignal(
   return signal;
 }
 
-/** Consume the host-side sandbox egress permission signal produced during a command. */
+/**
+ * Consume the permission signal produced during a sandbox command, preferring writes.
+ */
 export async function consumeSandboxEgressPermissionDeniedSignal(
   egressId: string | undefined,
 ): Promise<SandboxEgressPermissionDeniedSignal | undefined> {
