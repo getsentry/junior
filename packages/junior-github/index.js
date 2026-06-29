@@ -68,6 +68,13 @@ class GitHubPluginSetupError extends Error {
   }
 }
 
+class GitHubIssueCreateRejectedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "GitHubIssueCreateRejectedError";
+  }
+}
+
 function isRecord(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -181,7 +188,7 @@ function isPendingCreateIssue(value) {
   return isRecord(value) && value.status === "pending";
 }
 
-async function createGitHubIssue(ctx, input) {
+function createGitHubIssueRequest(ctx, input) {
   const repo = parseRepo(input.repo);
   const title = requiredString(input.title, "title");
   const body = optionalString(input.body, "body") ?? "";
@@ -191,27 +198,31 @@ async function createGitHubIssue(ctx, input) {
     body: appendGitHubIssueFooter(body, ctx.conversationId),
     ...(labels ? { labels } : {}),
   };
+  return new Request(
+    `https://api.github.com/repos/${encodeURIComponent(
+      repo.owner,
+    )}/${encodeURIComponent(repo.name)}/issues`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+async function createGitHubIssue(ctx, request) {
   const response = await ctx.egress.fetch({
     provider: "github",
     operation: "github.issue.create",
-    request: new Request(
-      `https://api.github.com/repos/${encodeURIComponent(
-        repo.owner,
-      )}/${encodeURIComponent(repo.name)}/issues`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        body: JSON.stringify(payload),
-      },
-    ),
+    request,
   });
   const parsed = await readJsonResponse(response);
   if (!response.ok) {
-    throw new Error(
+    throw new GitHubIssueCreateRejectedError(
       `GitHub issue creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
         parsed,
       )}`,
@@ -279,18 +290,26 @@ function createGitHubIssueTool(ctx) {
               "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
             );
           }
+          const request = createGitHubIssueRequest(ctx, input);
           await ctx.state.set(
             key,
             { status: "pending", createdAtMs: Date.now() },
             GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
           );
-          const result = await createGitHubIssue(ctx, input);
-          await ctx.state.set(
-            key,
-            { status: "completed", ...result },
-            GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
-          );
-          return result;
+          try {
+            const result = await createGitHubIssue(ctx, request);
+            await ctx.state.set(
+              key,
+              { status: "completed", ...result },
+              GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+            );
+            return result;
+          } catch (error) {
+            if (error instanceof GitHubIssueCreateRejectedError) {
+              await ctx.state.delete(key);
+            }
+            throw error;
+          }
         },
       );
     },

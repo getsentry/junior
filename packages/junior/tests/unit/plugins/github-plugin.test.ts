@@ -590,6 +590,45 @@ Conversation: \`local:test:new-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
+  it("clears pending idempotency state after definitive GitHub rejection", async () => {
+    let attempts = 0;
+    const ctx = githubToolsContext({
+      egressFetch: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new Response(JSON.stringify({ message: "Invalid title" }), {
+            status: 422,
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            number: 660,
+            html_url: "https://github.com/getsentry/junior/issues/660",
+          }),
+          { status: 201 },
+        );
+      },
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
+    ).rejects.toThrow("HTTP 422");
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(2);
+  });
+
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
     expect(
       await grantForEgress({
