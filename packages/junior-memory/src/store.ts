@@ -274,6 +274,8 @@ export interface MemorySupersessionDecider {
 
 export interface MemoryStoreOptions {
   embedder?: MemoryEmbeddingProvider;
+  /** Maximum cosine distance for vector recall candidates. Model-dependent; tune when changing AI_EMBEDDING_MODEL. */
+  maxVectorDistance?: number;
   now?: () => number;
   supersessionDecider?: MemorySupersessionDecider;
 }
@@ -989,6 +991,7 @@ async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
   limit: number;
+  maxDistance?: number;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
@@ -1043,6 +1046,9 @@ async function searchVisibleVectorMemories(args: {
       !Number.isFinite(distanceValue) ||
       hashEmbeddedContent(row.memory.content) !== row.contentHash
     ) {
+      return [];
+    }
+    if (args.maxDistance !== undefined && distanceValue > args.maxDistance) {
       return [];
     }
     return [
@@ -1117,6 +1123,7 @@ export function createMemoryStore(
   const runtimeContext = memoryRuntimeContextSchema.parse(context);
   const parsedOptions = memoryStoreOptionsSchema.parse({ now: options.now });
   const embedder = options.embedder;
+  const maxVectorDistance = options.maxVectorDistance;
   const supersessionDecider = options.supersessionDecider;
   const getNowMs = parsedOptions.now ?? Date.now;
 
@@ -1404,6 +1411,7 @@ export function createMemoryStore(
         db,
         embedder,
         limit: limit * VECTOR_SEARCH_OVERFETCH,
+        ...(maxVectorDistance !== undefined ? { maxDistance: maxVectorDistance } : {}),
         nowMs,
         query: input.query,
         scopes,

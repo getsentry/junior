@@ -19,6 +19,8 @@ export interface MemoryRecallContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
+  /** Maximum cosine distance for vector recall. Passed through to the memory store. */
+  maxVectorDistance?: number;
   requester?: Requester;
   source: Source;
   text: string;
@@ -78,7 +80,12 @@ export async function createMemoryPromptMessages(
   const memories = await createMemoryStore(
     context.db,
     runtimeContext,
-    context.embedder ? { embedder: context.embedder } : {},
+    {
+      ...(context.embedder ? { embedder: context.embedder } : {}),
+      ...(context.maxVectorDistance !== undefined
+        ? { maxVectorDistance: context.maxVectorDistance }
+        : {}),
+    },
   ).searchMemories({
     query: context.text,
     limit: DEFAULT_RECALL_LIMIT,

@@ -15,9 +15,13 @@ import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
+const MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV = "MEMORY_RECALL_MAX_VECTOR_DISTANCE";
+const DEFAULT_RECALL_MAX_VECTOR_DISTANCE = 0.45;
 
 export interface MemoryPluginOptions {
   modelId?: string;
+  /** Maximum cosine distance for vector recall candidates. Defaults to MEMORY_RECALL_MAX_VECTOR_DISTANCE env or 0.45. */
+  recallMaxVectorDistance?: number;
 }
 
 function memoryModelId(options: MemoryPluginOptions): string | undefined {
@@ -27,6 +31,20 @@ function memoryModelId(options: MemoryPluginOptions): string | undefined {
   }
   const envModelId = process.env[MEMORY_MODEL_ENV]?.trim();
   return envModelId || undefined;
+}
+
+function recallMaxVectorDistance(options: MemoryPluginOptions): number {
+  if (options.recallMaxVectorDistance !== undefined) {
+    return options.recallMaxVectorDistance;
+  }
+  const raw = process.env[MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV]?.trim();
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0 && parsed <= 2) {
+      return parsed;
+    }
+  }
+  return DEFAULT_RECALL_MAX_VECTOR_DISTANCE;
 }
 
 function memoryToolContext(ctx: {
@@ -118,6 +136,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
           ...(ctx.requester ? { requester: ctx.requester } : {}),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
+          maxVectorDistance: recallMaxVectorDistance(options),
           source: ctx.source,
           text: ctx.text,
         });
