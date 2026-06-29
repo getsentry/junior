@@ -352,6 +352,11 @@ describe("slackUserLookup", () => {
             teamId: "T_TEST",
             channelId: "C_TEST",
           },
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
           sandbox: {} as any,
         },
       );

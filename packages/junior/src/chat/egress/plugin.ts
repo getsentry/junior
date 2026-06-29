@@ -4,15 +4,16 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { executeCredentialedEgressRequest } from "@/chat/egress/credentialed";
 import { resolveSandboxEgressProviderForHost } from "@/chat/sandbox/egress/policy";
 import type { SandboxEgressCredentialContext } from "@/chat/sandbox/egress/session";
-import {
-  PluginCredentialFailureError,
-  type PluginAuthOrchestration,
-} from "@/chat/services/plugin-auth-orchestration";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
+
+interface PluginEgressAuth {
+  maybeHandleAuthSignal(details: unknown): Promise<void>;
+}
 
 interface PluginEgressDeps {
   credentialContext?: CredentialContext;
   fetch?: typeof fetch;
-  pluginAuth: PluginAuthOrchestration;
+  pluginAuth: PluginEgressAuth;
 }
 
 function credentialContextForPluginEgress(
@@ -74,14 +75,10 @@ export function createPluginEgress(deps: PluginEgressDeps): PluginEgress {
               },
             });
           },
-          recordPermissionDenied: async (denial) => {
-            throw new PluginCredentialFailureError(
-              denial.provider,
-              denial.message,
-            );
-          },
+          recordPermissionDenied: async () => {},
           tracePropagation: {},
         },
+        operation,
         provider: input.provider,
         request: input.request,
         upstreamUrl,

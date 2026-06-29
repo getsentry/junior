@@ -77,7 +77,7 @@ interface BaseToolRuntimeContext {
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  egress?: PluginEgress;
+  egress: PluginEgress;
   mcpToolManager?: McpToolManager;
   sandbox: SandboxWorkspace;
 }

@@ -531,6 +531,7 @@ export async function executeCredentialedEgressRequest(input: {
   activeEgressId: string;
   credentialContext: SandboxEgressCredentialContext;
   deps: CredentialedEgressDeps;
+  operation?: string;
   provider: string;
   request: Request;
   upstreamUrl: URL;
@@ -539,6 +540,7 @@ export async function executeCredentialedEgressRequest(input: {
     activeEgressId,
     credentialContext,
     deps,
+    operation,
     provider,
     request,
     upstreamUrl,
@@ -551,6 +553,7 @@ export async function executeCredentialedEgressRequest(input: {
     : undefined;
   const grantSelection = await selectSandboxEgressGrant({
     bodyText: requestBodyText(bodyForGrantSelection),
+    ...(operation ? { operation } : {}),
     provider,
     method: request.method,
     upstreamUrl,
@@ -675,6 +678,7 @@ export async function executeCredentialedEgressRequest(input: {
       provider,
       grant: lease.grant,
       method: request.method,
+      ...(operation ? { operation } : {}),
       upstreamUrl,
       response: {
         headers: new Headers(upstream.headers),

@@ -8,6 +8,11 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
+const noopEgress = {
+  async fetch() {
+    return new Response("ok");
+  },
+};
 
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
@@ -20,6 +25,7 @@ function ctx(channelId?: string): ToolRuntimeContext {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
       },
+      egress: noopEgress,
       source: createLocalSource("local:test:tool-registration"),
       sandbox: noopSandbox,
     };
@@ -35,6 +41,7 @@ function ctx(channelId?: string): ToolRuntimeContext {
       teamId: "T123",
       channelId,
     }),
+    egress: noopEgress,
     sandbox: noopSandbox,
   };
 }
@@ -165,6 +172,7 @@ describe("Slack tool registration", () => {
           platform: "local",
           conversationId: "local:test:run-test",
         },
+        egress: noopEgress,
         source: createLocalSource("local:test:run-test"),
         sandbox: noopSandbox,
       },

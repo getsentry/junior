@@ -1232,6 +1232,11 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
           userName: "alice",
           fullName: "Alice",
         },
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
         sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
       });
 

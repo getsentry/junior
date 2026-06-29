@@ -137,6 +137,7 @@ function assertLeaseTransformsOwnedByProvider(
 export async function selectSandboxEgressGrant(input: {
   bodyText?: string;
   method: string;
+  operation?: string;
   provider: string;
   upstreamUrl: URL;
 }): Promise<SandboxEgressGrantSelection> {
@@ -146,6 +147,7 @@ export async function selectSandboxEgressGrant(input: {
 
   const pluginGrant = await selectPluginGrant({
     ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+    ...(input.operation ? { operation: input.operation } : {}),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,

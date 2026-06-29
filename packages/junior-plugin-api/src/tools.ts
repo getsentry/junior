@@ -54,7 +54,8 @@ export interface PluginEgress {
    * Fetch a provider URL with host-owned credentials.
    *
    * The runtime selects and injects credentials for `provider`; plugin code
-   * owns the request shape and response handling.
+   * owns the request shape and response handling. `operation` names the
+   * provider action for grant selection and diagnostics.
    */
   fetch(input: {
     operation: string;

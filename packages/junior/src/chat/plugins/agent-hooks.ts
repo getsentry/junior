@@ -102,12 +102,6 @@ function basePluginContext(plugin: PluginRegistration) {
   };
 }
 
-const missingPluginEgress = {
-  async fetch(): Promise<Response> {
-    throw new Error("Plugin egress is not configured for this turn");
-  },
-};
-
 function systemPromptPluginContext(plugin: PluginRegistration) {
   return {
     ...basePluginContext(plugin),
@@ -406,7 +400,6 @@ export function getPluginTools(
             ...(credentialSubject ? { credentialSubject } : {}),
           }
         : undefined;
-    const egress = context.egress ?? missingPluginEgress;
     let pluginContext: ToolRegistrationHookContext;
     if (context.source.platform === "slack") {
       if (context.destination.platform !== "slack") {
@@ -426,7 +419,7 @@ export function getPluginTools(
         source: context.source,
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
-        egress,
+        egress: context.egress,
         model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };
@@ -447,7 +440,7 @@ export function getPluginTools(
         source: context.source,
         userText: context.userText,
         embedder: createPluginEmbedder(pluginName),
-        egress,
+        egress: context.egress,
         model: createPluginModel(pluginName, plugin.model),
         state: createPluginState(pluginName),
       };

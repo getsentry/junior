@@ -103,6 +103,7 @@ function parseCredentialResult(
 export interface EgressGrantInput {
   bodyText?: string;
   method: string;
+  operation?: string;
   provider: string;
   upstreamUrl: URL;
 }
@@ -121,6 +122,7 @@ export async function selectPluginGrant(
     request: {
       ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
       method: input.method,
+      ...(input.operation ? { operation: input.operation } : {}),
       url: input.upstreamUrl.toString(),
     },
   });
@@ -132,6 +134,7 @@ export async function selectPluginGrant(
 export interface EgressResponseInput {
   grant: PluginGrant;
   method: string;
+  operation?: string;
   provider: string;
   response: {
     headers: Headers;
@@ -171,6 +174,7 @@ export async function onPluginEgressResponse(
     },
     request: {
       method: input.method,
+      ...(input.operation ? { operation: input.operation } : {}),
       url: input.upstreamUrl.toString(),
     },
     response: input.response,

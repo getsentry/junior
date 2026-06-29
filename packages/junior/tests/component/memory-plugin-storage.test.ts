@@ -170,6 +170,11 @@ WHERE table_name = 'junior_memory_memories'
           teamId: "T123",
           channelId: "C123",
         },
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
         requester,
         sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
         source,

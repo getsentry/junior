@@ -131,6 +131,8 @@ export interface PluginEgressRequest {
   /** Capped request body text when the host exposes it for provider-specific grant classification. */
   bodyText?: string;
   method: string;
+  /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
+  operation?: string;
   url: string;
 }
 

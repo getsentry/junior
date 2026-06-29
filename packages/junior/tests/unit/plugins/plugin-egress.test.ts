@@ -102,6 +102,7 @@ describe("plugin egress", () => {
       expect.objectContaining({
         request: {
           method: "GET",
+          operation: "github.repo.get",
           url: "https://api.github.com/repos/getsentry/junior",
         },
       }),
@@ -181,5 +182,50 @@ describe("plugin egress", () => {
         provider: "github",
       }),
     });
+  });
+
+  it("returns upstream permission denied responses to plugin callers", async () => {
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: githubManifest(),
+        hooks: {
+          grantForEgress() {
+            return {
+              name: "installation-read",
+              access: "read",
+              reason: "github.repo.read",
+            };
+          },
+          issueCredential() {
+            return {
+              type: "lease" as const,
+              lease: {
+                expiresAt: new Date(Date.now() + 60_000).toISOString(),
+                headerTransforms: [
+                  {
+                    domain: "api.github.com",
+                    headers: { Authorization: "Bearer github-token" },
+                  },
+                ],
+              },
+            };
+          },
+        },
+      }),
+    ]);
+    const egress = createPluginEgress({
+      credentialContext: { actor: { type: "user", userId: "U123" } },
+      fetch: vi.fn(async () => new Response("forbidden", { status: 403 })),
+      pluginAuth: authOrchestration(),
+    });
+
+    const response = await egress.fetch({
+      provider: "github",
+      operation: "github.repo.get",
+      request: new Request("https://api.github.com/repos/getsentry/junior"),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.text()).resolves.toBe("forbidden");
   });
 });

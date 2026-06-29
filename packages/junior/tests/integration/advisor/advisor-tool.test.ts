@@ -96,6 +96,11 @@ describe("advisor tool", () => {
   it("is exposed only when advisor runtime context is enabled", () => {
     const baseContext = {
       destination: LOCAL_DESTINATION,
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
       source: LOCAL_SOURCE,
       sandbox: {} as any,
     };
@@ -191,6 +196,11 @@ describe("advisor tool", () => {
         {},
         {
           destination: LOCAL_DESTINATION,
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
+          },
           source: LOCAL_SOURCE,
           sandbox: {} as any,
         },
