@@ -52,7 +52,6 @@ const DEFAULT_EXPIRED_ARCHIVE_LIMIT = 100;
 const HIGH_CONFIDENCE_DUPLICATE_DISTANCE = 0.015;
 const SUPERSESSION_CANDIDATE_LIMIT = 10;
 const VECTOR_SEARCH_OVERFETCH = 4;
-const MAX_RECALL_VECTOR_DISTANCE = 0.45;
 const MAX_MEMORY_CONTENT_CHARS = 4_000;
 const EMBEDDING_METRIC = "cosine";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -990,7 +989,6 @@ async function searchVisibleVectorMemories(args: {
   db: MemoryDb;
   embedder: MemoryEmbeddingProvider | undefined;
   limit: number;
-  maxDistance?: number;
   nowMs: number;
   query: string;
   scopes: ResolvedMemoryScope[];
@@ -1045,9 +1043,6 @@ async function searchVisibleVectorMemories(args: {
       !Number.isFinite(distanceValue) ||
       hashEmbeddedContent(row.memory.content) !== row.contentHash
     ) {
-      return [];
-    }
-    if (args.maxDistance !== undefined && distanceValue > args.maxDistance) {
       return [];
     }
     return [
@@ -1409,7 +1404,6 @@ export function createMemoryStore(
         db,
         embedder,
         limit: limit * VECTOR_SEARCH_OVERFETCH,
-        maxDistance: MAX_RECALL_VECTOR_DISTANCE,
         nowMs,
         query: input.query,
         scopes,
