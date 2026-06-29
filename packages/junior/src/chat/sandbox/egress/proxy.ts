@@ -273,13 +273,6 @@ export async function proxySandboxEgressRequest(
   request: Request,
   deps: ProxyDeps = {},
 ): Promise<Response> {
-  return await proxySandboxEgressRequestImpl(request, deps);
-}
-
-async function proxySandboxEgressRequestImpl(
-  request: Request,
-  deps: ProxyDeps,
-): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
   if (!oidcToken) {
     return jsonError("Missing Vercel Sandbox OIDC token", 401);
