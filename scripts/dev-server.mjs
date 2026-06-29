@@ -115,10 +115,15 @@ const tunnelUrl =
 applyJuniorDevelopmentDefaults(process.env, {
   baseUrl: `http://localhost:${devPort}`,
 });
+if (
+  !process.env.JUNIOR_SCHEDULER_SECRET?.trim() &&
+  !process.env.CRON_SECRET?.trim()
+) {
+  process.env.JUNIOR_SCHEDULER_SECRET = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
+}
 const heartbeatSecret =
   process.env.JUNIOR_SCHEDULER_SECRET?.trim() ||
-  process.env.CRON_SECRET?.trim() ||
-  JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
+  process.env.CRON_SECRET?.trim();
 const heartbeatUrl =
   process.env.JUNIOR_DEV_HEARTBEAT_URL?.trim() ||
   `http://localhost:${devPort}/api/internal/heartbeat`;
