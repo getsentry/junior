@@ -1,5 +1,9 @@
 import type { PluginModel } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import type {
+  MemorySupersessionDecision,
+  MemorySupersessionInput,
+} from "./store";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 
 const memoryKindSchema = z.enum(MEMORY_KINDS);
@@ -60,6 +64,28 @@ const extractSessionRequestSchema = z
         ]),
       )
       .min(1),
+  })
+  .strict();
+const supersessionRequestSchema = z
+  .object({
+    candidate: z
+      .object({
+        content: z.string().min(1),
+        kind: z.literal("preference"),
+      })
+      .strict(),
+    existingMemories: z
+      .array(
+        z
+          .object({
+            content: z.string().min(1),
+            id: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+    runtimeContext: memoryRuntimeContextSchema,
   })
   .strict();
 
@@ -140,6 +166,19 @@ const extractMemoriesResponseSchema = z
       ),
   })
   .strict();
+const supersessionDecisionResponseSchema = z.discriminatedUnion("decision", [
+  z
+    .object({
+      decision: z.literal("supersedes_old"),
+      supersededIds: z.array(z.string().min(1)).min(1).max(10),
+    })
+    .strict(),
+  z
+    .object({
+      decision: z.enum(["distinct", "uncertain"]),
+    })
+    .strict(),
+]);
 
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
@@ -153,6 +192,10 @@ export type ExtractSessionRequest = z.output<
 export type ExtractedMemory = z.output<typeof extractedMemoryResultSchema>;
 
 export interface MemoryAgent {
+  /** Decide whether a new preference safely replaces active old preferences. */
+  adjudicateSupersession(
+    request: MemorySupersessionInput,
+  ): Promise<MemorySupersessionDecision> | MemorySupersessionDecision;
   extractSessionMemories(
     request: ExtractSessionRequest,
   ): Promise<ExtractedMemory[]> | ExtractedMemory[];
@@ -174,6 +217,12 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
+].join("\n");
+const MEMORY_SUPERSESSION_SYSTEM = [
+  "You are Junior's memory supersession agent.",
+  "Decide whether a new requester preference clearly replaces existing active requester preferences.",
+  "Return supersedes_old only for obvious changed preferences about the same mutable slot.",
+  "If the facts are additive, different topics, duplicate, broader/narrower without direct replacement, or uncertain, do not supersede.",
 ].join("\n");
 const CANONICAL_CONTENT_RULES = [
   "- Stored memory text must be a rewritten fact, not copied user wording or a sentence about who said it.",
@@ -355,9 +404,52 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
   ].join("\n");
 }
 
+function supersessionPrompt(request: MemorySupersessionInput): string {
+  return [
+    "<memory-supersession-input>",
+    "Decide whether the candidate preference clearly replaces one or more existing active preferences.",
+    "",
+    runtimeDescription({
+      runtimeContext: request.runtimeContext,
+    }),
+    "",
+    "<candidate>",
+    escapeXml(JSON.stringify(request.candidate)),
+    "</candidate>",
+    "",
+    "<existing-memories>",
+    escapeXml(JSON.stringify(request.existingMemories)),
+    "</existing-memories>",
+    "",
+    "<rules>",
+    "- Return supersedes_old only when the candidate and old memory describe the same mutable preference slot and the candidate is the newer value.",
+    "- Examples of same mutable slot: preferred programming language, preferred review style, preferred notification cadence, preferred tool for a task.",
+    "- Do not supersede when the candidate is just more specific, an additional preference, a different task/context, or the same value phrased differently.",
+    "- Do not supersede memories from different topics even if they are both preferences.",
+    "- Only return ids that appear in existing-memories.",
+    "- If unsure, return uncertain.",
+    "</rules>",
+    "</memory-supersession-input>",
+  ].join("\n");
+}
+
 /** Create the memory-owned agent that reviews and extracts memory candidates. */
 export function createMemoryAgent(model: PluginModel): MemoryAgent {
   return {
+    async adjudicateSupersession(rawRequest) {
+      const request = supersessionRequestSchema.parse(
+        rawRequest,
+      ) as MemorySupersessionInput;
+      const result = await model.completeObject({
+        schema: supersessionDecisionResponseSchema,
+        system: MEMORY_SUPERSESSION_SYSTEM,
+        prompt: supersessionPrompt(request),
+        maxTokens: 400,
+      });
+      return supersessionDecisionResponseSchema.parse(
+        result.object,
+      ) as MemorySupersessionDecision;
+    },
     async extractSessionMemories(rawRequest) {
       const request = extractSessionRequestSchema.parse(rawRequest);
       const result = await model.completeObject({

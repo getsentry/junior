@@ -140,6 +140,13 @@ equality and very-high embedding similarity when embeddings are available.
 Exact content remains one suppression signal, not a durable identity for memory
 facts.
 
+Conservative supersession may run after duplicate suppression for requester
+preference memories. The store must consider only active memories in the same
+scope, subject, and kind, and must mark old rows superseded only when the memory
+agent confidently decides that the new preference replaces the same mutable
+preference slot. Uncertain, duplicate, additive, or different-topic preferences
+remain active. Procedure and knowledge memories do not use V1 supersession.
+
 ### Lexical Search
 
 Lexical search is required because embeddings are optional operationally and can
@@ -252,10 +259,15 @@ Memory creation follows this order:
    extractor decisions.
 3. Run deterministic structural validation for schemas, authority fields,
    lifecycle bounds, idempotency, and storage constraints.
-4. Insert the memory record transactionally.
-5. After the transaction commits, batch-generate embeddings for inserted records
+4. Resolve idempotent retries and conservative duplicate matches before insert.
+5. For requester preference memories, adjudicate conservative supersession after
+   duplicate suppression and before insert.
+6. Insert the memory record transactionally. When supersession was confidently
+   adjudicated, mark still-active superseded rows and delete their derived
+   vectors in the same transaction.
+7. After the transaction commits, batch-generate embeddings for inserted records
    when an embedding provider is configured.
-6. Store or repair vector data only when provider output matches the configured
+8. Store or repair vector data only when provider output matches the configured
    vector storage.
 
 Provider calls must not run inside the SQL transaction.

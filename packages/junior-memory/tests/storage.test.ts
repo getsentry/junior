@@ -31,6 +31,10 @@ import {
   type MemoryReviewer,
 } from "../src/tools";
 import { createMemoryStore, type MemoryDb } from "../src/store";
+import type {
+  MemorySupersessionDecider,
+  MemorySupersessionInput,
+} from "../src/store";
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
@@ -691,6 +695,96 @@ describe("memory plugin storage", () => {
             }),
           ),
         ),
+      );
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("supersedes old preferences from passive completed-session extraction", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const store = createMemoryStore(memoryDb(fixture), localContext(), {
+        now: () => TEST_NOW_MS,
+      });
+      const oldMemory = await store.createMemory({
+        content: "Prefers Python for automation scripts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:passive-supersession-old",
+      });
+      const model: PluginModel = {
+        async completeObject(input) {
+          if (
+            typeof input.prompt === "string" &&
+            input.prompt.includes("<memory-supersession-input>")
+          ) {
+            return {
+              object: {
+                decision: "supersedes_old",
+                supersededIds: [oldMemory.memory.id],
+              },
+            };
+          }
+          return {
+            object: {
+              memories: [
+                {
+                  canonicalFact: "Prefers TypeScript for automation scripts.",
+                  expiresAtMs: null,
+                  kind: "preference",
+                },
+              ],
+            },
+          };
+        },
+      };
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  {
+                    type: "message",
+                    role: "user",
+                    text: "Actually, I prefer TypeScript for automation scripts.",
+                  },
+                  {
+                    type: "message",
+                    role: "assistant",
+                    text: "Noted.",
+                  },
+                ],
+              });
+            },
+          },
+        }),
+      );
+
+      const rows = await memoryDb(fixture)
+        .select()
+        .from(memorySqlSchema.juniorMemoryMemories)
+        .orderBy(memorySqlSchema.juniorMemoryMemories.createdAtMs);
+      const newMemory = rows.find((row) => row.content.includes("TypeScript"));
+      expect(newMemory).toBeDefined();
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: oldMemory.memory.id,
+            supersededAtMs: expect.any(Number),
+            supersededById: newMemory!.id,
+          }),
+          expect.objectContaining({
+            content: "Prefers TypeScript for automation scripts.",
+            scope: "personal",
+            supersededAtMs: null,
+            supersededById: null,
+          }),
+        ]),
       );
     } finally {
       await fixture.close();
@@ -2477,6 +2571,265 @@ INSERT INTO junior_memory_memories (
           ],
         ),
       ).rejects.toThrow("duplicate key value violates unique constraint");
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("supersedes old requester preferences when adjudication is confident", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const oldContent = "Prefers Python for automation scripts.";
+      const newContent = "Prefers TypeScript for automation scripts.";
+      const embedder = createTestEmbedder({
+        [oldContent]: unitEmbedding(1),
+        [newContent]: unitEmbedding(2),
+      });
+      const supersessionCalls: MemorySupersessionInput[] = [];
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        embedder,
+        now: () => nowMs,
+        supersessionDecider: {
+          adjudicateSupersession(input) {
+            supersessionCalls.push(input);
+            return {
+              decision: "supersedes_old",
+              supersededIds: [input.existingMemories[0].id],
+            };
+          },
+        },
+      });
+
+      const oldMemory = await store.createMemory({
+        content: oldContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-old",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      const newMemory = await store.createMemory({
+        content: newContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-new",
+      });
+
+      expect(supersessionCalls).toEqual([
+        expect.objectContaining({
+          candidate: { content: newContent, kind: "preference" },
+          existingMemories: [{ content: oldContent, id: oldMemory.memory.id }],
+        }),
+      ]);
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({
+          content: newContent,
+          id: newMemory.memory.id,
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, oldMemory.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          supersededAtMs: TEST_NOW_MS + 1,
+          supersededById: newMemory.memory.id,
+        }),
+      ]);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([
+        expect.objectContaining({ memoryId: newMemory.memory.id }),
+      ]);
+
+      nowMs = TEST_NOW_MS + 2;
+      await expect(
+        store.createMemory({
+          content: "Different content with the superseding retry key.",
+          kind: "preference",
+          idempotencyKey: "memory-test:supersession-new",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: newMemory.memory.id },
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps old preferences active when supersession is not confident", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+        supersessionDecider: {
+          adjudicateSupersession() {
+            return { decision: "distinct" };
+          },
+        },
+      });
+
+      const oldMemory = await store.createMemory({
+        content: "Prefers terse PR summaries.",
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-distinct-old",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      const newMemory = await store.createMemory({
+        content: "Prefers Slack updates in the morning.",
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-distinct-new",
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, oldMemory.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          supersededAtMs: null,
+          supersededById: null,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not supersede active preferences with immediately expired replacements", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const decider: MemorySupersessionDecider = {
+        adjudicateSupersession() {
+          throw new Error("expired replacement should not use supersession");
+        },
+      };
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+        supersessionDecider: decider,
+      });
+
+      const oldMemory = await store.createMemory({
+        content: "Prefers Python for automation scripts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-expired-old",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      await store.createMemory({
+        content: "Prefers TypeScript for automation scripts.",
+        expiresAtMs: TEST_NOW_MS,
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-expired-new",
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(
+            eq(memorySqlSchema.juniorMemoryMemories.id, oldMemory.memory.id),
+          ),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          supersededAtMs: null,
+          supersededById: null,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not supersede conversation-scoped preference rows", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+        supersessionDecider: {
+          adjudicateSupersession() {
+            throw new Error(
+              "conversation-scoped preferences should not use supersession",
+            );
+          },
+        },
+      });
+
+      const oldMemory = await store.createConversationMemory({
+        content: "Prefers Python for automation scripts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-conversation-old",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      const newMemory = await store.createConversationMemory({
+        content: "Prefers TypeScript for automation scripts.",
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-conversation-new",
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("does not adjudicate supersession for non-preference memories", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      let nowMs = TEST_NOW_MS;
+      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+        supersessionDecider: {
+          adjudicateSupersession() {
+            throw new Error("knowledge should not use preference supersession");
+          },
+        },
+      });
+
+      const oldMemory = await store.createMemory({
+        content: "Deploy checks use the release runbook.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:supersession-knowledge-old",
+      });
+
+      nowMs = TEST_NOW_MS + 1;
+      const newMemory = await store.createMemory({
+        content: "Deploy checks use the release checklist.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:supersession-knowledge-new",
+      });
+
+      await expect(store.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: newMemory.memory.id }),
+        expect.objectContaining({ id: oldMemory.memory.id }),
+      ]);
     } finally {
       await fixture.close();
     }

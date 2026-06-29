@@ -3,11 +3,12 @@ import { assistantMessages, describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import { createSlackSource, type PluginModel } from "@sentry/junior-plugin-api";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
 } from "../../../junior-memory/src/db/schema";
+import { createMemoryAgent } from "../../../junior-memory/src/agent";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 const memoryPluginOverrides = {
@@ -27,6 +28,7 @@ interface MemoryThread {
 async function seedMemory(args: {
   content: string;
   idempotencyKey: string;
+  kind?: "knowledge" | "preference" | "procedure";
   scope?: "conversation" | "personal";
   thread: MemoryThread;
 }) {
@@ -47,6 +49,7 @@ async function seedMemory(args: {
   const input = {
     content: args.content,
     idempotencyKey: args.idempotencyKey,
+    kind: args.kind ?? "preference",
   };
   if (args.scope === "conversation") {
     await store.createConversationMemory(input);
@@ -58,6 +61,45 @@ async function seedMemory(args: {
 function memoryDb(): MemoryDb {
   return getDb() as unknown as MemoryDb;
 }
+
+const evalMemoryModel: PluginModel = {
+  async completeObject(input) {
+    const { text } = await completeText({
+      maxTokens: input.maxTokens,
+      modelId: memoryJudgeModelId,
+      system: input.system,
+      messages: [
+        {
+          role: "user",
+          content: [
+            input.prompt,
+            "",
+            "Return only raw JSON in exactly one of these shapes:",
+            '{"decision":"supersedes_old","supersededIds":["existing-memory-id"]}',
+            '{"decision":"distinct"}',
+            '{"decision":"uncertain"}',
+            'Use camelCase keys exactly, including "supersededIds". Do not wrap it in markdown.',
+          ].join("\n"),
+          timestamp: Date.now(),
+        },
+      ],
+      temperature: 0,
+    });
+    const parsed = JSON.parse(text) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "superseded_ids" in parsed &&
+      !("supersededIds" in parsed)
+    ) {
+      (parsed as Record<string, unknown>).supersededIds = (
+        parsed as Record<string, unknown>
+      ).superseded_ids;
+      delete (parsed as Record<string, unknown>).superseded_ids;
+    }
+    return { object: input.schema.parse(parsed) };
+  },
+};
 
 function memorySourceKey(thread: MemoryThread): string {
   return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
@@ -346,6 +388,57 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       userText,
     });
   });
+
+  it("when adjudicating preference supersession, distinguish replacement from additive preferences", async () => {
+    const agent = createMemoryAgent(evalMemoryModel);
+    const runtimeContext = {
+      conversationId: "slack:CMEMORYSUPERSESSION:17000000.memory-supersession",
+      requester: {
+        platform: "slack" as const,
+        teamId: memoryTeamId,
+        userId: requesterUserId,
+      },
+      source: createSlackSource({
+        channelId: "CMEMORYSUPERSESSION",
+        messageTs: "17000000.memory-supersession",
+        teamId: memoryTeamId,
+        threadTs: "17000000.memory-supersession",
+      }),
+    };
+
+    const replacement = await agent.adjudicateSupersession({
+      candidate: {
+        content: "Prefers TypeScript for automation scripts.",
+        kind: "preference",
+      },
+      existingMemories: [
+        {
+          content: "Prefers Python for automation scripts.",
+          id: "memory-old-language",
+        },
+      ],
+      runtimeContext,
+    });
+    expect(replacement).toEqual({
+      decision: "supersedes_old",
+      supersededIds: ["memory-old-language"],
+    });
+
+    const additive = await agent.adjudicateSupersession({
+      candidate: {
+        content: "Prefers Slack updates in the morning.",
+        kind: "preference",
+      },
+      existingMemories: [
+        {
+          content: "Prefers terse PR summaries.",
+          id: "memory-old-summary-style",
+        },
+      ],
+      runtimeContext,
+    });
+    expect(additive.decision).not.toBe("supersedes_old");
+  }, 120_000);
 
   const explicitTaskProcedureThread = {
     channel_type: "channel",

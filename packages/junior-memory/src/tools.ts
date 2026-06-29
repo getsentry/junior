@@ -13,6 +13,7 @@ import {
   type MemoryEmbeddingProvider,
   type MemoryDb,
   type MemoryRecord,
+  type MemorySupersessionDecider,
 } from "./store";
 import {
   parseCreateMemoryRequest,
@@ -54,6 +55,10 @@ export interface MemoryToolContext {
   userText?: string;
 }
 
+export interface MemoryCreateToolContext extends MemoryToolContext {
+  supersessionDecider?: MemorySupersessionDecider;
+}
+
 function throwToolInputError(message: string): never {
   throw new PluginToolInputError(message);
 }
@@ -83,9 +88,15 @@ function memoryRuntimeContext(
   });
 }
 
-function memoryStore(context: MemoryToolContext) {
+function memoryStore(
+  context: MemoryToolContext,
+  options: { supersessionDecider?: MemorySupersessionDecider } = {},
+) {
   return createMemoryStore(context.db, memoryRuntimeContext(context), {
     embedder: context.embedder,
+    ...(options.supersessionDecider
+      ? { supersessionDecider: options.supersessionDecider }
+      : {}),
   });
 }
 
@@ -336,7 +347,7 @@ function compactMemory(memory: MemoryRecord) {
 }
 
 /** Create a tool that submits an explicit memory candidate for storage. */
-export function createMemoryCreateTool(context: MemoryToolContext) {
+export function createMemoryCreateTool(context: MemoryCreateToolContext) {
   return {
     description:
       "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
@@ -350,7 +361,9 @@ export function createMemoryCreateTool(context: MemoryToolContext) {
       const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
       const runtimeContext = memoryRuntimeContext(context);
-      const store = memoryStore(context);
+      const store = memoryStore(context, {
+        supersessionDecider: context.supersessionDecider,
+      });
       const review = await (async () => {
         try {
           return parseMemoryReview(

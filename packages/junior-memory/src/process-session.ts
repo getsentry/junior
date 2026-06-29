@@ -135,8 +135,10 @@ export async function processMemorySession(
     ...(run.requester ? { requester: run.requester } : {}),
     source: run.source,
   });
+  const agent = createMemoryAgent(context.model);
   const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
     embedder: context.embedder,
+    supersessionDecider: agent,
   });
   await store.archiveExpiredMemories();
   const memories = await getTaskMemories(context, async () => {
@@ -144,7 +146,6 @@ export async function processMemorySession(
       limit: 10,
       query: evidenceText,
     });
-    const agent = createMemoryAgent(context.model);
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,

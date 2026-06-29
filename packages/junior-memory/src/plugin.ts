@@ -6,6 +6,7 @@ import {
   createMemoryListTool,
   createMemoryRemoveTool,
   createMemorySearchTool,
+  type MemoryCreateToolContext,
   type MemoryReviewer,
   type MemoryToolContext,
 } from "./tools";
@@ -48,6 +49,22 @@ function memoryToolContext(ctx: {
   };
 }
 
+function memoryCreateToolContext(ctx: {
+  agent: MemoryReviewer;
+  conversationId?: string;
+  db: MemoryCreateToolContext["db"];
+  embedder?: MemoryCreateToolContext["embedder"];
+  requester?: MemoryCreateToolContext["requester"];
+  source: MemoryCreateToolContext["source"];
+  supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
+  userText?: string;
+}): MemoryCreateToolContext {
+  return {
+    ...memoryToolContext(ctx),
+    supersessionDecider: ctx.supersessionDecider,
+  };
+}
+
 /** Create Junior's long-term memory plugin registration. */
 export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
   const modelId = memoryModelId(options);
@@ -73,14 +90,23 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
     },
     hooks: {
       tools(ctx) {
+        const agent = createMemoryAgent(ctx.model);
         const context = memoryToolContext({
           ...ctx,
-          agent: createMemoryAgent(ctx.model),
+          agent,
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
         });
         return {
-          createMemory: createMemoryCreateTool(context),
+          createMemory: createMemoryCreateTool(
+            memoryCreateToolContext({
+              ...ctx,
+              agent,
+              db: ctx.db as MemoryDb,
+              embedder: ctx.embedder,
+              supersessionDecider: agent,
+            }),
+          ),
           removeMemory: createMemoryRemoveTool(context),
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
