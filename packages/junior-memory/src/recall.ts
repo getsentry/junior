@@ -12,8 +12,8 @@ import {
 import { memoryRuntimeContextSchema } from "./types";
 
 const DEFAULT_RECALL_LIMIT = 5;
-const MAX_PROMPT_CHARS = 1_600;
-const MAX_MEMORY_LINE_CHARS = 320;
+const MAX_PROMPT_CHARS = 4_000;
+const MAX_MEMORY_LINE_CHARS = 600;
 
 export interface MemoryRecallContext {
   conversationId?: string;
