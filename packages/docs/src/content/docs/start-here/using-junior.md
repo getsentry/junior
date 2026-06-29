@@ -25,7 +25,12 @@ Vague requests usually produce vague answers. Ask for a specific outcome and inc
 | `@jr make this better`      | `@jr review this onboarding doc for unclear steps. Keep the tone direct and suggest edits, but do not change setup commands.`               |
 | `@jr look at the Slack bug` | `@jr the bot replies in DMs but not channel threads. Check the event path and tell me which Slack config or runtime path is wrong.`         |
 
-If you know a boundary, say it upfront. For example, tell Junior whether to only investigate, whether it can edit files, whether it should avoid committing, or whether it should wait before touching production settings.
+If you know a boundary, say it upfront — tell Junior whether to only investigate, whether it can edit files, whether it should avoid committing, or whether it should wait before touching production settings. For risky or ambiguous work, ask it to lay out the plan before acting:
+
+```
+@jr this migration may touch production data.
+Inspect the code and describe what you would do — do not run commands or open a PR until I say go.
+```
 
 ## Use public threads by default
 
@@ -52,6 +57,17 @@ Start a new thread when the goal changes:
 Mention `@jr` when you want Junior to join a channel thread. After Junior has replied in that thread, follow-up replies in the same thread do not need another mention.
 
 In DMs, send the request directly. In shared channels, prefer a thread over a top-level back-and-forth so the work stays grouped with the original context.
+
+## Steering Junior
+
+Junior reads every message in the thread, so you can course-correct at any point without starting over. Reply with plain language to redirect, narrow scope, stop the current task, or adjust how much detail you want:
+
+- **Redirect:** `@jr focus on the worker path only, not the whole queue`
+- **Stop:** `@jr stop — I meant staging, not prod`
+- **Narrow scope:** `@jr skip the frontend, just fix the query`
+- **Verbosity:** `@jr tl;dr` or `@jr more detail on the error handling`
+
+Junior cannot undo side effects that have already landed — a pushed commit, a filed issue, a sent Slack message. Redirect before the action, not after.
 
 ## Verify important output
 
