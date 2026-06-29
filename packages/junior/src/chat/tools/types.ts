@@ -3,6 +3,7 @@ import type {
   Destination,
   LocalDestination,
   LocalSource,
+  PluginEgress,
   SlackDestination,
   SlackSource,
   Source,
@@ -76,6 +77,7 @@ interface BaseToolRuntimeContext {
   userText?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
+  egress?: PluginEgress;
   mcpToolManager?: McpToolManager;
   sandbox: SandboxWorkspace;
 }

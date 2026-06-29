@@ -49,6 +49,20 @@ export interface PluginSandbox {
   }): Promise<void>;
 }
 
+export interface PluginEgress {
+  /**
+   * Fetch a provider URL with host-owned credentials.
+   *
+   * The runtime selects and injects credentials for `provider`; plugin code
+   * owns the request shape and response handling.
+   */
+  fetch(input: {
+    operation: string;
+    provider: string;
+    request: Request;
+  }): Promise<Response>;
+}
+
 export interface SandboxPrepareHookContext extends PluginContext {
   requester?: Requester;
   sandbox: PluginSandbox;
@@ -124,6 +138,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
    */
   conversationId?: string;
   embedder: PluginEmbedder;
+  egress: PluginEgress;
   model: PluginModel;
   state: PluginState;
   userText?: string;

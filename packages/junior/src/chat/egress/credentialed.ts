@@ -6,6 +6,7 @@ import {
   sandboxEgressCredentialLease,
   SandboxEgressCredentialError,
   selectSandboxEgressGrant,
+  type SandboxEgressGrantSelection,
 } from "@/chat/sandbox/egress/credentials";
 import {
   clearSandboxEgressCredentialLease,
@@ -82,8 +83,34 @@ export type CredentialedEgressHttpInterceptor = (input: {
 
 /** Runtime dependencies for the credentialed provider forwarding step. */
 export interface CredentialedEgressDeps {
+  clearCredentialLease?: (
+    provider: string,
+    grantName: string,
+    credentialContext: SandboxEgressCredentialContext,
+  ) => Promise<void>;
   fetch?: typeof fetch;
+  issueCredentialLease?: (
+    provider: string,
+    selection: SandboxEgressGrantSelection,
+    credentialContext: SandboxEgressCredentialContext,
+  ) => Promise<SandboxEgressCredentialLease>;
   interceptHttp?: CredentialedEgressHttpInterceptor;
+  recordAuthRequired?: (input: {
+    authorization?: SandboxEgressCredentialLease["authorization"];
+    credentialContext: SandboxEgressCredentialContext;
+    grant: SandboxEgressCredentialLease["grant"];
+    kind?: "auth_required" | "unavailable";
+    message: string;
+    provider: string;
+  }) => Promise<void>;
+  recordPermissionDenied?: (input: {
+    credentialContext: SandboxEgressCredentialContext;
+    lease: SandboxEgressCredentialLease;
+    message: string;
+    provider: string;
+    upstream: Response;
+    upstreamUrl: URL;
+  }) => Promise<void>;
   tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
@@ -451,7 +478,7 @@ function leaseLogAttributes(input: {
   };
 }
 
-async function recordAuthRequired(input: {
+async function recordSandboxAuthRequired(input: {
   authorization?: SandboxEgressCredentialLease["authorization"];
   credentialContext: SandboxEgressCredentialContext;
   grant: SandboxEgressCredentialLease["grant"];
@@ -468,7 +495,7 @@ async function recordAuthRequired(input: {
   });
 }
 
-async function recordPermissionDenied(input: {
+async function recordSandboxPermissionDenied(input: {
   credentialContext: SandboxEgressCredentialContext;
   lease: SandboxEgressCredentialLease;
   message: string;
@@ -528,10 +555,18 @@ export async function executeCredentialedEgressRequest(input: {
     method: request.method,
     upstreamUrl,
   });
+  const issueCredentialLease =
+    deps.issueCredentialLease ?? sandboxEgressCredentialLease;
+  const clearCredentialLease =
+    deps.clearCredentialLease ?? clearSandboxEgressCredentialLease;
+  const recordAuthRequired =
+    deps.recordAuthRequired ?? recordSandboxAuthRequired;
+  const recordPermissionDenied =
+    deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await sandboxEgressCredentialLease(
+    lease = await issueCredentialLease(
       provider,
       grantSelection,
       credentialContext,
@@ -670,11 +705,7 @@ export async function executeCredentialedEgressRequest(input: {
     if (!isEgressAuthRequired(error)) {
       throw error;
     }
-    await clearSandboxEgressCredentialLease(
-      provider,
-      lease.grant.name,
-      credentialContext,
-    );
+    await clearCredentialLease(provider, lease.grant.name, credentialContext);
     await recordAuthRequired({
       credentialContext,
       provider,
@@ -739,11 +770,7 @@ export async function executeCredentialedEgressRequest(input: {
         : "Sandbox egress upstream permission denied",
     );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
-      await clearSandboxEgressCredentialLease(
-        provider,
-        lease.grant.name,
-        credentialContext,
-      );
+      await clearCredentialLease(provider, lease.grant.name, credentialContext);
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -758,11 +785,7 @@ export async function executeCredentialedEgressRequest(input: {
         message: `Provider rejected the injected ${provider} credential.\n`,
       });
     } else {
-      await clearSandboxEgressCredentialLease(
-        provider,
-        lease.grant.name,
-        credentialContext,
-      );
+      await clearCredentialLease(provider, lease.grant.name, credentialContext);
       await recordPermissionDenied({
         credentialContext,
         provider,

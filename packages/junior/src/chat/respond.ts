@@ -142,6 +142,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+import { createPluginEgress } from "@/chat/egress/plugin";
 import { createRequester, type Requester } from "@/chat/requester";
 import {
   AuthorizationFlowDisabledError,
@@ -1077,6 +1078,10 @@ async function generateAssistantReplyInPrivacyContext(
       userText: userInput,
       artifactState: context.artifactState,
       configuration: configurationValues,
+      egress: createPluginEgress({
+        credentialContext: context.credentialContext,
+        pluginAuth,
+      }),
       mcpToolManager: turnMcpToolManager,
       sandbox,
       surface,

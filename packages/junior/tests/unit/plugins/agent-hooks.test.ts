@@ -372,6 +372,9 @@ describe("agent plugin hooks", () => {
   });
 
   it("collects turn-scoped tools from configured plugins", () => {
+    const egress = {
+      fetch: async () => new Response("ok"),
+    };
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -382,6 +385,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools(ctx) {
             expect(ctx.requester).toEqual(TEST_REQUESTER);
+            expect(ctx.egress).toBe(egress);
             return {
               demoTool: tool({
                 description: "Demo tool",
@@ -397,6 +401,7 @@ describe("agent plugin hooks", () => {
       const tools = getPluginTools({
         destination: SLACK_DESTINATION,
         requester: TEST_REQUESTER,
+        egress,
         source: SLACK_SOURCE,
         sandbox: {} as any,
       });
