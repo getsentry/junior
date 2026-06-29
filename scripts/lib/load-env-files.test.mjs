@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
-import { loadEnvFiles } from "./load-env-files.mjs";
+import test, { describe } from "node:test";
+import {
+  applyJuniorDevelopmentDefaults,
+  JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
+  JUNIOR_LOCAL_DEV_INTERNAL_SECRET,
+  loadEnvFiles,
+} from "./load-env-files.mjs";
 
 test("app env overrides root env without replacing shell env", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "junior-env-root-"));
@@ -92,4 +97,58 @@ test("later example env files do not replace earlier defaults", () => {
     fs.rmSync(root, { force: true, recursive: true });
     fs.rmSync(app, { force: true, recursive: true });
   }
+});
+
+describe("applyJuniorDevelopmentDefaults", () => {
+  test("applies global development defaults", () => {
+    const env = {
+      NODE_ENV: "development",
+    };
+
+    applyJuniorDevelopmentDefaults(env, {
+      baseUrl: "http://localhost:3000",
+    });
+
+    assert.equal(env.JUNIOR_SECRET, JUNIOR_LOCAL_DEV_INTERNAL_SECRET);
+    assert.equal(env.JUNIOR_STATE_ADAPTER, "memory");
+    assert.equal(
+      env.JUNIOR_SCHEDULER_SECRET,
+      JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
+    );
+    assert.equal(env.JUNIOR_BASE_URL, "http://localhost:3000");
+  });
+
+  test("preserves explicit config values", () => {
+    const env = {
+      NODE_ENV: "development",
+      CRON_SECRET: "cron-secret",
+      JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_SECRET: "explicit-secret",
+      JUNIOR_STATE_ADAPTER: "redis",
+    };
+
+    applyJuniorDevelopmentDefaults(env, {
+      baseUrl: "http://localhost:3000",
+    });
+
+    assert.equal(env.JUNIOR_SECRET, "explicit-secret");
+    assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
+    assert.equal(env.JUNIOR_SCHEDULER_SECRET, undefined);
+    assert.equal(env.JUNIOR_BASE_URL, "https://junior.example.com");
+  });
+
+  test("does not apply development defaults outside development", () => {
+    const env = {
+      NODE_ENV: "production",
+    };
+
+    applyJuniorDevelopmentDefaults(env, {
+      baseUrl: "http://localhost:3000",
+    });
+
+    assert.equal(env.JUNIOR_SECRET, undefined);
+    assert.equal(env.JUNIOR_STATE_ADAPTER, undefined);
+    assert.equal(env.JUNIOR_SCHEDULER_SECRET, undefined);
+    assert.equal(env.JUNIOR_BASE_URL, undefined);
+  });
 });

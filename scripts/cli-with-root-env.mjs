@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { loadEnvFiles } from "./lib/load-env-files.mjs";
+import {
+  applyJuniorDevelopmentDefaults,
+  loadEnvFiles,
+} from "./lib/load-env-files.mjs";
 
 const workspaceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,8 +21,7 @@ const rawCliArgs = process.argv.slice(2);
 const cliArgs = rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
 
 loadEnvFiles([workspaceRoot, exampleRoot]);
-
-process.env.JUNIOR_STATE_ADAPTER ??= "memory";
+applyJuniorDevelopmentDefaults(process.env);
 
 function run(command, args, options = {}) {
   return new Promise((resolve) => {
