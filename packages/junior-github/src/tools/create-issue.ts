@@ -4,6 +4,8 @@ import {
   type PluginToolExecuteOptions,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { Type, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 
 const GITHUB_ISSUE_FOOTER_START = "<!-- junior-session-footer:start -->";
 const GITHUB_ISSUE_FOOTER_END = "<!-- junior-session-footer:end -->";
@@ -20,55 +22,70 @@ class GitHubIssueCreateRejectedError extends Error {
   }
 }
 
-interface CreateGitHubIssueInput {
-  body?: unknown;
-  labels?: unknown;
-  repo?: unknown;
-  title?: unknown;
-}
-
 interface GitHubIssueResult {
   number: number;
   url: string;
+}
+
+const createIssueInputSchema = Type.Object(
+  {
+    repo: Type.String({
+      description: 'Repository in "owner/name" format.',
+    }),
+    title: Type.String({
+      description: "Issue title.",
+    }),
+    body: Type.Optional(
+      Type.String({
+        description: "Issue body. Junior appends the conversation footer.",
+      }),
+    ),
+    labels: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Labels to apply to the issue.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+type CreateGitHubIssueInput = Static<typeof createIssueInputSchema>;
+
+interface NormalizedCreateGitHubIssueInput {
+  body: string;
+  labels?: string[];
+  repo: {
+    name: string;
+    owner: string;
+  };
+  title: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function requiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || !value.trim()) {
+function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
+  try {
+    if (!Value.Check(createIssueInputSchema, input)) {
+      throw new Error("Input does not match GitHub createIssue schema.");
+    }
+    return Value.Parse(createIssueInputSchema, input);
+  } catch (error) {
+    throw new PluginToolInputError("Invalid GitHub createIssue input.", {
+      cause: error,
+    });
+  }
+}
+
+function nonEmptyString(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
     throw new PluginToolInputError(`${name} is required`);
   }
   return value.trim();
 }
 
-function optionalString(value: unknown, name: string): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new PluginToolInputError(`${name} must be a string`);
-  }
-  return value;
-}
-
-function optionalStringList(
-  value: unknown,
-  name: string,
-): string[] | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    throw new PluginToolInputError(`${name} must be an array`);
-  }
-  const entries = value.map((entry) => requiredString(entry, `${name} entry`));
-  return entries.length ? entries : undefined;
-}
-
-function parseRepo(value: unknown): { name: string; owner: string } {
-  const repo = requiredString(value, "repo");
+function parseRepo(value: string): { name: string; owner: string } {
+  const repo = nonEmptyString(value, "repo");
   const parts = repo.split("/");
   if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
     throw new PluginToolInputError('repo must use "owner/name" format');
@@ -79,19 +96,30 @@ function parseRepo(value: unknown): { name: string; owner: string } {
   };
 }
 
+function normalizeCreateIssueInput(
+  input: CreateGitHubIssueInput,
+): NormalizedCreateGitHubIssueInput {
+  const labels = input.labels?.map((label) =>
+    nonEmptyString(label, "labels entry"),
+  );
+  return {
+    repo: parseRepo(input.repo),
+    title: nonEmptyString(input.title, "title"),
+    body: input.body ?? "",
+    ...(labels?.length ? { labels } : {}),
+  };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function githubIssueConversationFooter(conversationId: unknown): string {
-  const id = requiredString(conversationId, "conversationId");
+function githubIssueConversationFooter(conversationId: string): string {
+  const id = nonEmptyString(conversationId, "conversationId");
   return `${GITHUB_ISSUE_FOOTER_START}\n\n---\nCreated by Junior.\nConversation: \`${id}\`\n\n${GITHUB_ISSUE_FOOTER_END}`;
 }
 
-function appendGitHubIssueFooter(
-  body: string,
-  conversationId: unknown,
-): string {
+function appendGitHubIssueFooter(body: string, conversationId: string): string {
   const footer = githubIssueConversationFooter(conversationId);
   const normalizedBody = body.trimEnd();
   const existingFooter = new RegExp(
@@ -147,16 +175,13 @@ function isPendingCreateIssue(value: unknown): boolean {
 }
 
 function createGitHubIssueRequest(
-  ctx: ToolRegistrationHookContext,
+  conversationId: string,
   input: CreateGitHubIssueInput,
 ): Request {
-  const repo = parseRepo(input.repo);
-  const title = requiredString(input.title, "title");
-  const body = optionalString(input.body, "body") ?? "";
-  const labels = optionalStringList(input.labels, "labels");
+  const { body, labels, repo, title } = normalizeCreateIssueInput(input);
   const payload = {
     title,
-    body: appendGitHubIssueFooter(body, ctx.conversationId),
+    body: appendGitHubIssueFooter(body, conversationId),
     ...(labels ? { labels } : {}),
   };
   return new Request(
@@ -213,39 +238,17 @@ export function createGitHubIssueTool(
   return {
     description:
       "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["repo", "title"],
-      properties: {
-        repo: {
-          type: "string",
-          description: 'Repository in "owner/name" format.',
-        },
-        title: {
-          type: "string",
-          description: "Issue title.",
-        },
-        body: {
-          type: "string",
-          description: "Issue body. Junior appends the conversation footer.",
-        },
-        labels: {
-          type: "array",
-          items: { type: "string" },
-          description: "Labels to apply to the issue.",
-        },
-      },
-    },
+    inputSchema: createIssueInputSchema,
     async execute(
       input: CreateGitHubIssueInput,
       options: PluginToolExecuteOptions,
     ) {
-      const conversationId = requiredString(
+      const parsedInput = parseCreateIssueInput(input);
+      const conversationId = nonEmptyString(
         ctx.conversationId,
         "conversationId",
       );
-      const toolCallId = requiredString(options?.toolCallId, "toolCallId");
+      const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
       const key = `createIssue:${conversationId}:${toolCallId}`;
       return await ctx.state.withLock(
         `${key}:lock`,
@@ -260,7 +263,7 @@ export function createGitHubIssueTool(
               "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
             );
           }
-          const request = createGitHubIssueRequest(ctx, input);
+          const request = createGitHubIssueRequest(conversationId, parsedInput);
           const pendingState: {
             createdAtMs: number;
             number?: number;

@@ -31,7 +31,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sentry/junior-plugin-api": "workspace:*"
+    "@sentry/junior-plugin-api": "workspace:*",
+    "@sinclair/typebox": "^0.34.49"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

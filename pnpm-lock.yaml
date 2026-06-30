@@ -416,6 +416,9 @@ importers:
       "@sentry/junior-plugin-api":
         specifier: workspace:*
         version: link:../junior-plugin-api
+      "@sinclair/typebox":
+        specifier: ^0.34.49
+        version: 0.34.49
     devDependencies:
       "@types/node":
         specifier: ^25.9.1
