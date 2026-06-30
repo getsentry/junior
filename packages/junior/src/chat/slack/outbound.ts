@@ -61,7 +61,13 @@ async function getPermalinkBestEffort(args: {
           message_ts: args.messageTs,
         }),
       3,
-      { action: "chat.getPermalink" },
+      {
+        action: "chat.getPermalink",
+        spanAttributes: {
+          "app.slack.channel_id": args.channelId,
+          "app.slack.message_ts": args.messageTs,
+        },
+      },
     );
     return response.permalink;
   } catch {
@@ -102,7 +108,14 @@ export async function postSlackMessage(input: {
         ...(threadTs ? { thread_ts: threadTs } : {}),
       }),
     3,
-    { action: "chat.postMessage" },
+    {
+      action: "chat.postMessage",
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "messaging.destination.id": channelId,
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
+      },
+    },
   );
 
   if (!response.ts) {
@@ -143,7 +156,13 @@ export async function deleteSlackMessage(input: {
         ts: timestamp,
       }),
     3,
-    { action: "chat.delete" },
+    {
+      action: "chat.delete",
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.message_ts": timestamp,
+      },
+    },
   );
 }
 
@@ -185,7 +204,15 @@ export async function postSlackEphemeralMessage(input: {
         ...(threadTs ? { thread_ts: threadTs } : {}),
       }),
     3,
-    { action: "chat.postEphemeral" },
+    {
+      action: "chat.postEphemeral",
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.user_id": userId,
+        "messaging.destination.id": channelId,
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
+      },
+    },
   );
 
   return {
@@ -231,7 +258,14 @@ export async function uploadFilesToThread(input: {
         file_uploads: fileUploads,
       }),
     3,
-    { action: "filesUploadV2" },
+    {
+      action: "filesUploadV2",
+      spanAttributes: {
+        "app.slack.channel_id": channelId,
+        "app.slack.thread_ts": threadTs,
+        "messaging.destination.id": channelId,
+      },
+    },
   );
 }
 
@@ -263,7 +297,14 @@ export async function addReactionToMessage(input: {
           name: emoji,
         }),
       3,
-      { action: "reactions.add" },
+      {
+        action: "reactions.add",
+        spanAttributes: {
+          "app.slack.channel_id": channelId,
+          "app.slack.message_ts": timestamp,
+          "app.slack.reaction": emoji,
+        },
+      },
     );
   } catch (error) {
     if (error instanceof SlackActionError && error.code === "already_reacted") {
@@ -303,7 +344,14 @@ export async function removeReactionFromMessage(input: {
           name: emoji,
         }),
       3,
-      { action: "reactions.remove" },
+      {
+        action: "reactions.remove",
+        spanAttributes: {
+          "app.slack.channel_id": channelId,
+          "app.slack.message_ts": timestamp,
+          "app.slack.reaction": emoji,
+        },
+      },
     );
   } catch (error) {
     if (error instanceof SlackActionError && error.code === "no_reaction") {

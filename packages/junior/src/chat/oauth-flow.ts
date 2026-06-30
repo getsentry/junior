@@ -8,7 +8,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { getSlackClient, isDmChannel } from "@/chat/slack/client";
+import { getSlackClient, isDmChannel, withSlackRetries } from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
   postSlackMessage,
@@ -180,7 +180,14 @@ export async function deliverPrivateMessage(input: {
 
   try {
     const dmChannelId = (
-      await client.conversations.open({ users: input.userId })
+      await withSlackRetries(
+        () => client.conversations.open({ users: input.userId }),
+        3,
+        {
+          action: "conversations.open",
+          spanAttributes: { "app.slack.user_id": input.userId },
+        },
+      )
     ).channel?.id;
     if (!dmChannelId) {
       logWarn(
