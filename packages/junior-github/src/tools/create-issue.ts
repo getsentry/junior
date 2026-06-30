@@ -84,9 +84,49 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function githubIssueConversationFooter(conversationId: string): string {
+function sentryConversationUrl(conversationId: string): string | undefined {
+  const dsn = process.env.SENTRY_DSN?.trim();
+  const orgSlug = process.env.SENTRY_ORG_SLUG?.trim();
+  if (!dsn || !orgSlug) {
+    return undefined;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(dsn);
+  } catch {
+    return undefined;
+  }
+
+  const projectId = parsed.pathname.split("/").filter(Boolean).at(-1);
+  if (!parsed.hostname || !projectId) {
+    return undefined;
+  }
+
+  const encodedConversationId = encodeURIComponent(conversationId);
+  const params = new URLSearchParams({ project: projectId });
+  const path = `explore/conversations/${encodedConversationId}/?${params.toString()}`;
+
+  if (
+    parsed.hostname === "sentry.io" ||
+    parsed.hostname.endsWith(".sentry.io")
+  ) {
+    return `https://${orgSlug}.sentry.io/${path}`;
+  }
+
+  const port = parsed.port ? `:${parsed.port}` : "";
+  return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
+}
+
+function githubIssueConversationFooter(
+  conversationId: string,
+): string | undefined {
   const id = nonEmptyString(conversationId, "conversationId");
-  return `${GITHUB_ISSUE_FOOTER_START}\n\n---\nCreated by Junior.\nConversation: \`${id}\`\n\n${GITHUB_ISSUE_FOOTER_END}`;
+  const sessionUrl = sentryConversationUrl(id);
+  if (!sessionUrl) {
+    return undefined;
+  }
+  return `${GITHUB_ISSUE_FOOTER_START}\n\n[View Session in Sentry](${sessionUrl})\n\n${GITHUB_ISSUE_FOOTER_END}`;
 }
 
 function appendGitHubIssueFooter(body: string, conversationId: string): string {
@@ -98,7 +138,12 @@ function appendGitHubIssueFooter(body: string, conversationId: string): string {
     )}`,
   );
   if (existingFooter.test(normalizedBody)) {
-    return normalizedBody.replace(existingFooter, footer);
+    return footer
+      ? normalizedBody.replace(existingFooter, footer)
+      : normalizedBody.replace(existingFooter, "").trimEnd();
+  }
+  if (!footer) {
+    return normalizedBody;
   }
   return normalizedBody ? `${normalizedBody}\n\n${footer}` : footer;
 }

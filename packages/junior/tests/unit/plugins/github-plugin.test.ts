@@ -474,16 +474,35 @@ describe("github plugin", () => {
     );
     await expect(request?.request.json()).resolves.toEqual({
       title: "Typed issue",
-      body: `Issue body
+      body: "Issue body",
+      labels: ["bug", "high-priority"],
+    });
+  });
 
-<!-- junior-session-footer:start -->
+  it("adds a Sentry session link to issue footers when configured", async () => {
+    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
+    process.env.SENTRY_ORG_SLUG = "acme";
+    const ctx = githubToolsContext({
+      conversationId: "slack:C123:1712345.0001",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
 
----
-Created by Junior.
-Conversation: \`slack:C123:1712345.0001\`
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+      },
+      { toolCallId: "call-create-issue-with-session-link" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: `<!-- junior-session-footer:start -->
+
+[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
-      labels: ["bug", "high-priority"],
     });
   });
 
@@ -513,15 +532,7 @@ Conversation: \`local:test:old-conversation\`
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: `Issue body
-
-<!-- junior-session-footer:start -->
-
----
-Created by Junior.
-Conversation: \`local:test:new-conversation\`
-
-<!-- junior-session-footer:end -->`,
+      body: "Issue body",
     });
   });
 
