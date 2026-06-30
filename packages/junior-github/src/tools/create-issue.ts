@@ -1,4 +1,5 @@
 import {
+  EgressAuthRequired,
   PluginToolInputError,
   type PluginToolDefinition,
   type PluginToolExecuteOptions,
@@ -174,6 +175,13 @@ function isPendingCreateIssue(value: unknown): boolean {
   return isRecord(value) && value.status === "pending";
 }
 
+function isEgressAuthRequired(error: unknown): boolean {
+  return (
+    error instanceof EgressAuthRequired ||
+    (error instanceof Error && error.name === "EgressAuthRequired")
+  );
+}
+
 function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
@@ -290,9 +298,10 @@ export function createGitHubIssueTool(
             return result;
           } catch (error) {
             if (
-              error instanceof GitHubIssueCreateRejectedError &&
-              error.status >= 400 &&
-              error.status < 500
+              isEgressAuthRequired(error) ||
+              (error instanceof GitHubIssueCreateRejectedError &&
+                error.status >= 400 &&
+                error.status < 500)
             ) {
               await ctx.state.delete(key);
             }

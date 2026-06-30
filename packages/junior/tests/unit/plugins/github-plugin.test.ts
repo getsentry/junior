@@ -1,8 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import type {
-  PluginStoredTokens,
-  SandboxPrepareHookContext,
+import {
+  EgressAuthRequired,
+  type PluginStoredTokens,
+  type SandboxPrepareHookContext,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -623,6 +624,49 @@ Conversation: \`local:test:new-conversation\`
     ).rejects.toThrow("HTTP 422");
     await expect(
       tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(2);
+  });
+
+  it("clears pending idempotency state after GitHub authorization pauses", async () => {
+    let attempts = 0;
+    const ctx = githubToolsContext({
+      egressFetch: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new EgressAuthRequired("GitHub authorization required.", {
+            authorization: {
+              provider: "github",
+              scope: "repo",
+              type: "oauth",
+            },
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            number: 660,
+            html_url: "https://github.com/getsentry/junior/issues/660",
+          }),
+          { status: 201 },
+        );
+      },
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-auth-required" }),
+    ).rejects.toThrow("GitHub authorization required");
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-auth-required" }),
     ).resolves.toEqual({
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
