@@ -1,4 +1,9 @@
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type PluginToolDefinition,
+  type PluginToolExecuteOptions,
+  type ToolRegistrationHookContext,
+} from "@sentry/junior-plugin-api";
 
 const GITHUB_ISSUE_FOOTER_START = "<!-- junior-session-footer:start -->";
 const GITHUB_ISSUE_FOOTER_END = "<!-- junior-session-footer:end -->";
@@ -6,25 +11,39 @@ const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
 class GitHubIssueCreateRejectedError extends Error {
-  constructor(message, status) {
+  status: number;
+
+  constructor(message: string, status: number) {
     super(message);
     this.name = "GitHubIssueCreateRejectedError";
     this.status = status;
   }
 }
 
-function isRecord(value) {
+interface CreateGitHubIssueInput {
+  body?: unknown;
+  labels?: unknown;
+  repo?: unknown;
+  title?: unknown;
+}
+
+interface GitHubIssueResult {
+  number: number;
+  url: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function requiredString(value, name) {
+function requiredString(value: unknown, name: string): string {
   if (typeof value !== "string" || !value.trim()) {
     throw new PluginToolInputError(`${name} is required`);
   }
   return value.trim();
 }
 
-function optionalString(value, name) {
+function optionalString(value: unknown, name: string): string | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -34,7 +53,10 @@ function optionalString(value, name) {
   return value;
 }
 
-function optionalStringList(value, name) {
+function optionalStringList(
+  value: unknown,
+  name: string,
+): string[] | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -45,7 +67,7 @@ function optionalStringList(value, name) {
   return entries.length ? entries : undefined;
 }
 
-function parseRepo(value) {
+function parseRepo(value: unknown): { name: string; owner: string } {
   const repo = requiredString(value, "repo");
   const parts = repo.split("/");
   if (parts.length !== 2 || !parts[0]?.trim() || !parts[1]?.trim()) {
@@ -57,16 +79,19 @@ function parseRepo(value) {
   };
 }
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function githubIssueConversationFooter(conversationId) {
+function githubIssueConversationFooter(conversationId: unknown): string {
   const id = requiredString(conversationId, "conversationId");
   return `${GITHUB_ISSUE_FOOTER_START}\n\n---\nCreated by Junior.\nConversation: \`${id}\`\n\n${GITHUB_ISSUE_FOOTER_END}`;
 }
 
-function appendGitHubIssueFooter(body, conversationId) {
+function appendGitHubIssueFooter(
+  body: string,
+  conversationId: unknown,
+): string {
   const footer = githubIssueConversationFooter(conversationId);
   const normalizedBody = body.trimEnd();
   const existingFooter = new RegExp(
@@ -80,7 +105,7 @@ function appendGitHubIssueFooter(body, conversationId) {
   return normalizedBody ? `${normalizedBody}\n\n${footer}` : footer;
 }
 
-async function readJsonResponse(response) {
+async function readJsonResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {
     return undefined;
@@ -92,7 +117,7 @@ async function readJsonResponse(response) {
   }
 }
 
-function githubApiErrorMessage(payload) {
+function githubApiErrorMessage(payload: unknown): string {
   if (isRecord(payload) && typeof payload.message === "string") {
     return payload.message;
   }
@@ -102,7 +127,7 @@ function githubApiErrorMessage(payload) {
   return "GitHub request failed";
 }
 
-function createIssueResult(value) {
+function createIssueResult(value: unknown): GitHubIssueResult | undefined {
   if (
     isRecord(value) &&
     value.status === "completed" &&
@@ -117,11 +142,14 @@ function createIssueResult(value) {
   return undefined;
 }
 
-function isPendingCreateIssue(value) {
+function isPendingCreateIssue(value: unknown): boolean {
   return isRecord(value) && value.status === "pending";
 }
 
-function createGitHubIssueRequest(ctx, input) {
+function createGitHubIssueRequest(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubIssueInput,
+): Request {
   const repo = parseRepo(input.repo);
   const title = requiredString(input.title, "title");
   const body = optionalString(input.body, "body") ?? "";
@@ -147,7 +175,10 @@ function createGitHubIssueRequest(ctx, input) {
   );
 }
 
-async function createGitHubIssue(ctx, request) {
+async function createGitHubIssue(
+  ctx: ToolRegistrationHookContext,
+  request: Request,
+): Promise<GitHubIssueResult> {
   const response = await ctx.egress.fetch({
     provider: "github",
     operation: "github.issue.create",
@@ -176,7 +207,9 @@ async function createGitHubIssue(ctx, request) {
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubIssueTool(ctx) {
+export function createGitHubIssueTool(
+  ctx: ToolRegistrationHookContext,
+): PluginToolDefinition<CreateGitHubIssueInput> {
   return {
     description:
       "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
@@ -204,7 +237,10 @@ export function createGitHubIssueTool(ctx) {
         },
       },
     },
-    async execute(input, options) {
+    async execute(
+      input: CreateGitHubIssueInput,
+      options: PluginToolExecuteOptions,
+    ) {
       const conversationId = requiredString(
         ctx.conversationId,
         "conversationId",

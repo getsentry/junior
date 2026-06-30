@@ -14,7 +14,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-import { githubPlugin } from "../../../junior-github/index.js";
+import { githubPlugin } from "@sentry/junior-github";
 import { mswServer } from "../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };

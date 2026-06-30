@@ -13,20 +13,30 @@
   },
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
     }
   },
   "files": [
-    "index.d.ts",
-    "index.js",
-    "permissions.js",
-    "tools.js",
-    "tools",
+    "dist",
+    "src",
     "skills",
     "SETUP.md"
   ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

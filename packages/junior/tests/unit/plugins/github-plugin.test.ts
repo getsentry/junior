@@ -7,7 +7,7 @@ import type {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
-import { githubPlugin } from "../../../../junior-github/index.js";
+import { githubPlugin } from "@sentry/junior-github";
 import { mswServer } from "../../msw/server";
 
 const ORIGINAL_ENV = { ...process.env };

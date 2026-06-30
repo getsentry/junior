@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
@@ -145,10 +144,7 @@ describe("plugin manifest API headers", () => {
   });
 
   it("registers the packaged GitHub command env host bindings", async () => {
-    const { githubPlugin } = (await import(
-      pathToFileURL(path.resolve(process.cwd(), "../junior-github/index.js"))
-        .href
-    )) as typeof import("../../../../junior-github/index.js");
+    const { githubPlugin } = await import("@sentry/junior-github");
     const manifest = githubPlugin().manifest!;
 
     expect(manifest.domains).toEqual(["api.github.com", "github.com"]);

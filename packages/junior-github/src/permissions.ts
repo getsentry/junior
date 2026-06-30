@@ -1,17 +1,23 @@
-const LEVELS = new Set(["read", "write", "admin"]);
+export type GitHubAppPermissionLevel = "admin" | "read" | "write";
+
+export type GitHubAppPermissions = Record<string, GitHubAppPermissionLevel>;
+
+const LEVELS = new Set<unknown>(["read", "write", "admin"]);
 // GitHub documents these installation-token permission fields as write-only.
 const WRITE_ONLY_PERMISSIONS = new Set(["profile", "workflows"]);
 
-function isLevel(value) {
+function isLevel(value: unknown): value is GitHubAppPermissionLevel {
   return LEVELS.has(value);
 }
 
-function normalizeScope(rawScope) {
+function normalizeScope(rawScope: string): string {
   return String(rawScope).trim().replace(/-/g, "_");
 }
 
 /** Validate configured GitHub App permissions before using them in grants. */
-export function normalizePermissions(permissions) {
+export function normalizePermissions(
+  permissions: GitHubAppPermissions | undefined,
+): GitHubAppPermissions | undefined {
   if (permissions === undefined) {
     return undefined;
   }
@@ -23,7 +29,7 @@ export function normalizePermissions(permissions) {
     );
   }
 
-  const request = {};
+  const request: GitHubAppPermissions = {};
   for (const [rawScope, rawLevel] of entries) {
     const normalizedScope = normalizeScope(rawScope);
     if (!normalizedScope) {
@@ -47,8 +53,10 @@ export function normalizePermissions(permissions) {
 }
 
 /** Build the read-only installation-token permission body. */
-export function readGrantPermissions(permissions) {
-  const readOnly = { metadata: "read" };
+export function readGrantPermissions(
+  permissions: Record<string, unknown> | undefined,
+): Record<string, "read"> {
+  const readOnly: Record<string, "read"> = { metadata: "read" };
   for (const [scope, level] of Object.entries(permissions ?? {})) {
     if (!isLevel(level)) {
       throw new Error(
@@ -63,7 +71,9 @@ export function readGrantPermissions(permissions) {
 }
 
 /** Expose configured permissions as plugin capabilities for host policy checks. */
-export function permissionCapabilities(permissions) {
+export function permissionCapabilities(
+  permissions: GitHubAppPermissions | undefined,
+): string[] | undefined {
   if (permissions === undefined) {
     return undefined;
   }
