@@ -111,20 +111,21 @@ const DEFAULT_TODO_SCHEMA = [
 ];
 
 /** Create a new Slack todo list with the default schema. */
-export async function createTodoList(
-  name: string,
-): Promise<{
+export async function createTodoList(name: string): Promise<{
   listId: string;
   listColumnMap: ListColumnMap;
   permalink?: string;
 }> {
   const client = getSlackClient();
-  const result = await withSlackRetries(() =>
-    client.slackLists.create({
-      name,
-      schema: DEFAULT_TODO_SCHEMA,
-      todo_mode: true,
-    }),
+  const result = await withSlackRetries(
+    () =>
+      client.slackLists.create({
+        name,
+        schema: DEFAULT_TODO_SCHEMA,
+        todo_mode: true,
+      }),
+    3,
+    { action: "slackLists.create" },
   );
 
   if (!result.list_id) {
@@ -185,11 +186,14 @@ export async function addListItems(input: {
       });
     }
 
-    const response = await withSlackRetries(() =>
-      client.slackLists.items.create({
-        list_id: input.listId,
-        initial_fields: initialFields as never,
-      }),
+    const response = await withSlackRetries(
+      () =>
+        client.slackLists.items.create({
+          list_id: input.listId,
+          initial_fields: initialFields as never,
+        }),
+      3,
+      { action: "slackLists.items.create" },
     );
 
     if (response.item?.id) {
@@ -214,12 +218,15 @@ export async function listItems(
   const cappedLimit = Math.max(1, Math.min(limit, 200));
 
   do {
-    const response: SlackListsItemsListResponse = await withSlackRetries(() =>
-      client.slackLists.items.list({
-        list_id: listId,
-        limit: cappedLimit,
-        cursor,
-      }),
+    const response: SlackListsItemsListResponse = await withSlackRetries(
+      () =>
+        client.slackLists.items.list({
+          list_id: listId,
+          limit: cappedLimit,
+          cursor,
+        }),
+      3,
+      { action: "slackLists.items.list" },
     );
 
     const remaining = cappedLimit - items.length;
@@ -278,10 +285,13 @@ export async function updateListItem(input: {
     );
   }
 
-  await withSlackRetries(() =>
-    client.slackLists.items.update({
-      list_id: input.listId,
-      cells: cells as never,
-    }),
+  await withSlackRetries(
+    () =>
+      client.slackLists.items.update({
+        list_id: input.listId,
+        cells: cells as never,
+      }),
+    3,
+    { action: "slackLists.items.update" },
   );
 }

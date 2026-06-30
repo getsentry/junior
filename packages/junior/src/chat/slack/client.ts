@@ -340,7 +340,10 @@ export async function withSlackRetries<T>(
           "url.path": `/api/${action}`,
           "app.slack.method": action,
           "app.retry.max_attempts": maxAttempts,
-          ...(attemptNumber > 1 ? { "http.resend_count": attemptNumber - 1 } : {}),
+          ...(attemptNumber > 1
+            ? { "http.resend_count": attemptNumber - 1 }
+            : {}),
+          ...(context.attributes ?? {}),
           ...(context.spanAttributes ?? {}),
         },
       );

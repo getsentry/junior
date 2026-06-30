@@ -56,6 +56,11 @@ describe("slack outbound boundary", () => {
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
       action: "reactions.add",
+      spanAttributes: {
+        "app.slack.channel_id": "C123",
+        "app.slack.message_ts": "1700000000.100",
+        "app.slack.reaction": "thumbsup",
+      },
     });
     expect(reactionsAdd).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -84,6 +89,11 @@ describe("slack outbound boundary", () => {
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
       action: "reactions.remove",
+      spanAttributes: {
+        "app.slack.channel_id": "C123",
+        "app.slack.message_ts": "1700000000.100",
+        "app.slack.reaction": "eyes",
+      },
     });
   });
 

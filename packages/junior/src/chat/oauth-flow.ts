@@ -8,7 +8,11 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { parseDestination } from "@/chat/destination";
 import { logInfo, logWarn } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { getSlackClient, isDmChannel, withSlackRetries } from "@/chat/slack/client";
+import {
+  getSlackClient,
+  isDmChannel,
+  withSlackRetries,
+} from "@/chat/slack/client";
 import {
   postSlackEphemeralMessage,
   postSlackMessage,
