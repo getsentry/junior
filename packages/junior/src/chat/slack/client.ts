@@ -310,21 +310,17 @@ export async function withSlackRetries<T>(
         {},
         async () => {
           try {
-            const result = await task();
-            setSpanAttributes({ "app.slack.ok": true });
-            return result;
+            return await task();
           } catch (error) {
             const mapped = mapSlackError(error);
             const errorAttrs: Record<string, string | number | boolean> = {
-              "app.slack.ok": false,
-              "app.slack.error_code": mapped.code,
+              "error.type": mapped.code,
             };
             if (mapped.apiError) {
-              errorAttrs["app.slack.api_error"] = mapped.apiError;
+              errorAttrs["app.slack.api_error_code"] = mapped.apiError;
             }
             if (mapped.code === "rate_limited") {
               errorAttrs["http.response.status_code"] = 429;
-              errorAttrs["app.slack.rate_limited"] = true;
               if (mapped.retryAfterSeconds) {
                 errorAttrs["app.slack.retry_after_ms"] =
                   mapped.retryAfterSeconds * 1000;
@@ -338,14 +334,13 @@ export async function withSlackRetries<T>(
           }
         },
         {
-          "app.slack.action": action,
-          "app.slack.attempt": attemptNumber,
-          "app.slack.max_attempts": maxAttempts,
           "http.request.method": "POST",
           "server.address": "slack.com",
           "url.scheme": "https",
           "url.path": `/api/${action}`,
-          "messaging.system": "slack",
+          "app.slack.method": action,
+          "app.retry.max_attempts": maxAttempts,
+          ...(attemptNumber > 1 ? { "http.resend_count": attemptNumber - 1 } : {}),
           ...(context.spanAttributes ?? {}),
         },
       );
@@ -491,17 +486,17 @@ export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
       });
       setSpanAttributes({ "http.response.status_code": response.status });
       if (!response.ok) {
+        setSpanAttributes({ "error.type": String(response.status) });
         setSpanStatus("error");
         throw new Error(`Slack file download failed: ${response.status}`);
       }
       return Buffer.from(await response.arrayBuffer());
     },
     {
-      "app.slack.action": "files.download",
       "http.request.method": "GET",
       "server.address": "files.slack.com",
       "url.scheme": "https",
-      "messaging.system": "slack",
+      "app.slack.method": "files.download",
     },
   );
 }
