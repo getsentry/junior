@@ -680,6 +680,18 @@ Conversation: \`local:test:new-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed issue",
+        },
+        { toolCallId: "call-completed-storage-fails" },
+      ),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
 
     expect(ctx.egressRequests()).toHaveLength(1);
   });

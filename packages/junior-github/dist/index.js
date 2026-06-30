@@ -280,17 +280,19 @@ function createGitHubIssueTool(ctx) {
             );
           }
           const request = createGitHubIssueRequest(ctx, input);
+          const pendingState = { status: "pending", createdAtMs: Date.now() };
           await ctx.state.set(
             key,
-            { status: "pending", createdAtMs: Date.now() },
+            pendingState,
             GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS
           );
           try {
             const result = await createGitHubIssue(ctx, request);
+            Object.assign(pendingState, { status: "completed", ...result });
             try {
               await ctx.state.set(
                 key,
-                { status: "completed", ...result },
+                pendingState,
                 GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS
               );
             } catch {
