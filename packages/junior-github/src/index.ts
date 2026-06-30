@@ -1,3 +1,10 @@
+/**
+ * GitHub plugin runtime boundary.
+ *
+ * This package owns GitHub App credentials, egress grant selection, sandbox git
+ * preparation, and runtime tools. Host egress injects provider credentials; the
+ * plugin builds provider requests and enforces GitHub-specific command policy.
+ */
 import { createPrivateKey, createSign } from "node:crypto";
 import {
   defineJuniorPlugin,

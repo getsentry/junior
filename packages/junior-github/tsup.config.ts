@@ -5,6 +5,6 @@ export default defineConfig({
   dts: false,
   entry: ["src/index.ts"],
   format: ["esm"],
-  sourcemap: true,
+  sourcemap: false,
   target: "node24",
 });

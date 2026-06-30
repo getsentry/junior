@@ -23,11 +23,6 @@ class GitHubIssueCreateRejectedError extends Error {
   }
 }
 
-interface GitHubIssueResult {
-  number: number;
-  url: string;
-}
-
 const createIssueInputSchema = Type.Object(
   {
     repo: Type.String({
@@ -50,6 +45,36 @@ const createIssueInputSchema = Type.Object(
   { additionalProperties: false },
 );
 type CreateGitHubIssueInput = Static<typeof createIssueInputSchema>;
+
+const createIssueStateSchema = Type.Union([
+  Type.Object(
+    {
+      createdAtMs: Type.Number(),
+      number: Type.Number(),
+      status: Type.Literal("completed"),
+      url: Type.String(),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      createdAtMs: Type.Number(),
+      status: Type.Literal("pending"),
+    },
+    { additionalProperties: false },
+  ),
+]);
+
+/**
+ * Durable createIssue idempotency record; pending blocks retries and completed
+ * replays the provider result.
+ */
+type CreateIssueState = Static<typeof createIssueStateSchema>;
+
+interface GitHubIssueResult {
+  number: number;
+  url: string;
+}
 
 function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
   try {
@@ -173,33 +198,17 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-function createIssueResult(value: unknown): GitHubIssueResult | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+function createIssueState(value: unknown): CreateIssueState | undefined {
+  if (value === undefined) {
     return undefined;
   }
-  const result = value as {
-    number?: unknown;
-    status?: unknown;
-    url?: unknown;
-  };
-  if (
-    result.status === "completed" &&
-    typeof result.number === "number" &&
-    typeof result.url === "string"
-  ) {
-    return {
-      number: result.number,
-      url: result.url,
-    };
+  try {
+    return Value.Parse(createIssueStateSchema, value);
+  } catch (error) {
+    throw new Error("Invalid GitHub createIssue idempotency state.", {
+      cause: error,
+    });
   }
-  return undefined;
-}
-
-function isPendingCreateIssue(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  return (value as { status?: unknown }).status === "pending";
 }
 
 function isEgressAuthRequired(error: unknown): boolean {
@@ -301,22 +310,23 @@ export function createGitHubIssueTool(
         `${key}:lock`,
         GITHUB_ISSUE_CREATE_LOCK_TTL_MS,
         async () => {
-          const existing = createIssueResult(await ctx.state.get(key));
-          if (existing) {
-            return existing;
+          const state = createIssueState(await ctx.state.get(key));
+          if (state?.status === "completed") {
+            return {
+              number: state.number,
+              url: state.url,
+            };
           }
-          if (isPendingCreateIssue(await ctx.state.get(key))) {
+          if (state?.status === "pending") {
             throw new Error(
               "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
             );
           }
           const request = createGitHubIssueRequest(conversationId, parsedInput);
-          const pendingState: {
-            createdAtMs: number;
-            number?: number;
-            status: "completed" | "pending";
-            url?: string;
-          } = { status: "pending", createdAtMs: Date.now() };
+          const pendingState: CreateIssueState = {
+            status: "pending",
+            createdAtMs: Date.now(),
+          };
           await ctx.state.set(
             key,
             pendingState,
@@ -331,8 +341,11 @@ export function createGitHubIssueTool(
                 pendingState,
                 GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
               );
-            } catch {
-              return result;
+            } catch (error) {
+              throw new Error(
+                "GitHub issue was created, but Junior could not persist the completed issue state.",
+                { cause: error },
+              );
             }
             return result;
           } catch (error) {

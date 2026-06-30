@@ -1,5 +1,4 @@
 import { generateKeyPairSync } from "node:crypto";
-import { createMemoryState } from "@chat-adapter/state-memory";
 import {
   EgressAuthRequired,
   type PluginStoredTokens,
@@ -7,13 +6,51 @@ import {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
-import { githubPlugin } from "@sentry/junior-github";
-import { mswServer } from "../../msw/server";
+import { githubPlugin } from "../src/index";
+import { mswServer } from "./msw";
 
 const ORIGINAL_ENV = { ...process.env };
 
 const db = {};
+
+class TestTokenStore {
+  private refreshLock = Promise.resolve();
+  private tokens = new Map<string, PluginStoredTokens>();
+
+  async get(
+    userId: string,
+    provider: string,
+  ): Promise<PluginStoredTokens | undefined> {
+    const tokens = this.tokens.get(this.key(userId, provider));
+    return tokens ? structuredClone(tokens) : undefined;
+  }
+
+  async set(
+    userId: string,
+    provider: string,
+    tokens: PluginStoredTokens,
+  ): Promise<void> {
+    this.tokens.set(this.key(userId, provider), structuredClone(tokens));
+  }
+
+  async withRefresh<T>(callback: () => Promise<T>): Promise<T> {
+    const previous = this.refreshLock;
+    let release: () => void;
+    this.refreshLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await callback();
+    } finally {
+      release!();
+    }
+  }
+
+  private key(userId: string, provider: string): string {
+    return `${provider}:${userId}`;
+  }
+}
 
 function beforeToolContext(requester: {
   email?: string;
@@ -89,6 +126,10 @@ async function captureRequest(request: Request): Promise<CapturedRequest> {
     headers: Object.fromEntries(request.headers.entries()),
     ...(text ? { body } : {}),
   };
+}
+
+function cloneStateValue<T>(value: T): T {
+  return value === undefined ? value : structuredClone(value);
 }
 
 function mockGitHubInstallationApi(): CapturedRequest[] {
@@ -232,17 +273,17 @@ function githubToolsContext(input?: {
         state.delete(key);
       },
       async get(key: string) {
-        return state.get(key);
+        return cloneStateValue(state.get(key));
       },
       async set(key: string, value: unknown) {
         await input?.stateSet?.({ key, value });
-        state.set(key, value);
+        state.set(key, cloneStateValue(value));
       },
       async setIfNotExists(key: string, value: unknown) {
         if (state.has(key)) {
           return false;
         }
-        state.set(key, value);
+        state.set(key, cloneStateValue(value));
         return true;
       },
       async withLock<T>(
@@ -257,7 +298,7 @@ function githubToolsContext(input?: {
       return requests;
     },
     setState(key: string, value: unknown) {
-      state.set(key, value);
+      state.set(key, cloneStateValue(value));
     },
   };
 }
@@ -734,7 +775,7 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
-  it("returns the created issue when completed idempotency storage fails", async () => {
+  it("fail-closes retries when completed storage fails after creation", async () => {
     let setCalls = 0;
     const ctx = githubToolsContext({
       stateSet: () => {
@@ -755,10 +796,9 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-completed-storage-fails" },
       ),
-    ).resolves.toEqual({
-      number: 660,
-      url: "https://github.com/getsentry/junior/issues/660",
-    });
+    ).rejects.toThrow(
+      "GitHub issue was created, but Junior could not persist the completed issue state.",
+    );
     await expect(
       tool?.execute?.(
         {
@@ -767,10 +807,7 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-completed-storage-fails" },
       ),
-    ).resolves.toEqual({
-      number: 660,
-      url: "https://github.com/getsentry/junior/issues/660",
-    });
+    ).rejects.toThrow("refusing to create a duplicate issue");
 
     expect(ctx.egressRequests()).toHaveLength(1);
   });
@@ -1397,9 +1434,7 @@ Conversation: \`local:test:old-conversation\`
       expires_in: 3600,
       refresh_token: "fresh-refresh-token",
     });
-    const state = createMemoryState();
-    await state.connect();
-    const store = new StateAdapterTokenStore(state);
+    const store = new TestTokenStore();
     const storedToken: PluginStoredTokens = {
       account: {
         id: "12345",
@@ -1420,7 +1455,7 @@ Conversation: \`local:test:old-conversation\`
         await store.set("U123", "github", tokens);
       }),
       withRefresh: async <T>(callback: () => Promise<T>) =>
-        await store.withRefresh("U123", "github", callback),
+        await store.withRefresh(callback),
     };
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const context = {
@@ -1436,39 +1471,35 @@ Conversation: \`local:test:old-conversation\`
       tokens: { currentUser },
     };
 
-    try {
-      const [first, second] = await Promise.all([
-        plugin.hooks?.issueCredential?.(context),
-        plugin.hooks?.issueCredential?.(context),
-      ]);
+    const [first, second] = await Promise.all([
+      plugin.hooks?.issueCredential?.(context),
+      plugin.hooks?.issueCredential?.(context),
+    ]);
 
-      expect(refreshRequests).toHaveLength(1);
-      for (const result of [first, second]) {
-        expect(result).toMatchObject({
-          type: "lease",
-          lease: {
-            headerTransforms: [
-              {
-                domain: "api.github.com",
-                headers: { Authorization: "Bearer fresh-token" },
+    expect(refreshRequests).toHaveLength(1);
+    for (const result of [first, second]) {
+      expect(result).toMatchObject({
+        type: "lease",
+        lease: {
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: { Authorization: "Bearer fresh-token" },
+            },
+            {
+              domain: "github.com",
+              headers: {
+                Authorization: expect.stringMatching(/^Basic /),
               },
-              {
-                domain: "github.com",
-                headers: {
-                  Authorization: expect.stringMatching(/^Basic /),
-                },
-              },
-            ],
-          },
-        });
-      }
-      await expect(store.get("U123", "github")).resolves.toMatchObject({
-        refreshToken: "fresh-refresh-token",
-        refreshTokenExpiresAt,
+            },
+          ],
+        },
       });
-    } finally {
-      await state.disconnect();
     }
+    await expect(store.get("U123", "github")).resolves.toMatchObject({
+      refreshToken: "fresh-refresh-token",
+      refreshTokenExpiresAt,
+    });
   });
 
   it("uses the refreshed token expiry when GitHub returns one", async () => {
@@ -1485,9 +1516,7 @@ Conversation: \`local:test:old-conversation\`
       refresh_token_expires_in: 7200,
     });
 
-    const state = createMemoryState();
-    await state.connect();
-    const store = new StateAdapterTokenStore(state);
+    const store = new TestTokenStore();
     const storedToken: PluginStoredTokens = {
       account: {
         id: "12345",
@@ -1508,31 +1537,27 @@ Conversation: \`local:test:old-conversation\`
         await store.set("U123", "github", tokens);
       }),
       withRefresh: async <T>(callback: () => Promise<T>) =>
-        await store.withRefresh("U123", "github", callback),
+        await store.withRefresh(callback),
     };
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
-    try {
-      const result = await plugin.hooks?.issueCredential?.({
-        actor: { type: "user" as const, userId: "U123" },
-        grant: {
-          name: "user-write",
-          access: "write",
-          reason: "github.issue-create",
-        },
-        db,
-        log: pluginLog,
-        plugin: { name: "github" },
-        tokens: { currentUser },
-      });
+    const result = await plugin.hooks?.issueCredential?.({
+      actor: { type: "user" as const, userId: "U123" },
+      grant: {
+        name: "user-write",
+        access: "write",
+        reason: "github.issue-create",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: { currentUser },
+    });
 
-      expect(result?.type).toBe("lease");
-      await expect(store.get("U123", "github")).resolves.toMatchObject({
-        refreshToken: "fresh-refresh-token",
-        refreshTokenExpiresAt: now.getTime() + 7200_000,
-      });
-    } finally {
-      await state.disconnect();
-    }
+    expect(result?.type).toBe("lease");
+    await expect(store.get("U123", "github")).resolves.toMatchObject({
+      refreshToken: "fresh-refresh-token",
+      refreshTokenExpiresAt: now.getTime() + 7200_000,
+    });
   });
 
   it.each(["bad_refresh_token", "invalid_grant"])(
