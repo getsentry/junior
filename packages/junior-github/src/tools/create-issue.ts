@@ -151,7 +151,7 @@ function githubIssueConversationFooter(
   if (!sessionUrl) {
     return undefined;
   }
-  return `${GITHUB_ISSUE_FOOTER_START}\n\n[View Session in Sentry](${sessionUrl})\n\n${GITHUB_ISSUE_FOOTER_END}`;
+  return `${GITHUB_ISSUE_FOOTER_START}\n\n--\n\n[View Junior Session in Sentry](${sessionUrl})\n\n${GITHUB_ISSUE_FOOTER_END}`;
 }
 
 function appendGitHubIssueFooter(body: string, conversationId: string): string {

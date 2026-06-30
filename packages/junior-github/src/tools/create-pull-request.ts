@@ -160,7 +160,7 @@ function githubPullRequestConversationFooter(
   if (!sessionUrl) {
     return undefined;
   }
-  return `${GITHUB_PULL_REQUEST_FOOTER_START}\n\n[View Session in Sentry](${sessionUrl})\n\n${GITHUB_PULL_REQUEST_FOOTER_END}`;
+  return `${GITHUB_PULL_REQUEST_FOOTER_START}\n\n--\n\n[View Junior Session in Sentry](${sessionUrl})\n\n${GITHUB_PULL_REQUEST_FOOTER_END}`;
 }
 
 function appendGitHubPullRequestFooter(

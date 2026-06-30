@@ -573,7 +573,9 @@ describe("github plugin", () => {
     await expect(request?.request.json()).resolves.toMatchObject({
       body: `<!-- junior-session-footer:start -->
 
-[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+--
+
+[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
@@ -938,7 +940,9 @@ Conversation: \`local:test:old-conversation\`
 
 <!-- junior-session-footer:start -->
 
-[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+--
+
+[View Junior Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
 
 <!-- junior-session-footer:end -->`,
     });
