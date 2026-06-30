@@ -43,27 +43,38 @@ export async function ingestResourceEvent(
     state: options.state,
   });
   let enqueued = 0;
+  const errors: unknown[] = [];
   for (const subscription of subscriptions) {
-    const delivered = await deliverResourceEventSubscription({
-      eventType: event.eventType,
-      provider: event.provider,
-      resourceRef: event.resourceRef,
-      terminal: event.terminal,
-      nowMs,
-      state: options.state,
-      subscription,
-      deliver: async (current) => {
-        await enqueueResourceEventNotification({
-          event,
-          queue: options.queue,
-          state: options.state,
-          subscription: current,
-        });
-      },
-    });
-    if (delivered) {
-      enqueued += 1;
+    try {
+      const delivered = await deliverResourceEventSubscription({
+        eventType: event.eventType,
+        provider: event.provider,
+        resourceRef: event.resourceRef,
+        terminal: event.terminal,
+        nowMs,
+        state: options.state,
+        subscription,
+        deliver: async (current) => {
+          await enqueueResourceEventNotification({
+            event,
+            queue: options.queue,
+            state: options.state,
+            subscription: current,
+          });
+        },
+      });
+      if (delivered) {
+        enqueued += 1;
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "Failed to deliver one or more resource event subscriptions",
+    );
   }
   return { enqueued };
 }

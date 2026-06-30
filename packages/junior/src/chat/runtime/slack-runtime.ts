@@ -876,9 +876,14 @@ export function createSlackTurnRuntime<
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
+        const isResourceEventNotification =
+          isResourceEventNotificationMessage(message);
+        const requesterId = isResourceEventNotification
+          ? undefined
+          : message.author.userId;
         const turnContext = logContext({
           threadId,
-          requesterId: message.author.userId,
+          requesterId,
           requesterUserName: requesterUserName(message),
           channelId,
           runId,
@@ -901,7 +906,7 @@ export function createSlackTurnRuntime<
           };
           const threadContext: TurnContext = {
             threadId,
-            requesterId: message.author.userId,
+            requesterId,
             channelId,
             runId,
           };
@@ -913,9 +918,6 @@ export function createSlackTurnRuntime<
           const turnIsExplicitMention =
             Boolean(message.isMention) ||
             queuedMessages.some((queued) => queued.explicitMention);
-          const isResourceEventNotification =
-            isResourceEventNotificationMessage(message);
-
           const preflightDecision = isResourceEventNotification
             ? undefined
             : getSubscribedReplyPreflightDecision({

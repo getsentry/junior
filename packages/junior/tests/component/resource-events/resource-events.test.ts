@@ -315,11 +315,54 @@ describe("resource event subscriptions", () => {
         },
         { nowMs: 1_500, queue, state },
       ),
-    ).resolves.toEqual({ enqueued: 1 });
+    ).rejects.toThrow(
+      "Failed to deliver one or more resource event subscriptions",
+    );
 
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: "slack:C456:1712345.0002",
+      }),
+    ]);
+  });
+
+  it("does not complete a subscription refreshed during terminal delivery", async () => {
+    const subscription = await createGithubPrSubscription({
+      events: ["state.merged"],
+      expiresAtMs: 2_000_000,
+      intent: "Report when the PR lands.",
+      nowMs: 1_000,
+    });
+
+    await expect(
+      deliverResourceEventSubscription({
+        eventType: "state.merged",
+        nowMs: 1_500,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        subscription,
+        terminal: true,
+        deliver: async () => {
+          await createGithubPrSubscription({
+            events: ["state.merged"],
+            expiresAtMs: 3_000_000,
+            intent: "Keep watching the refreshed PR subscription.",
+            nowMs: 1_400,
+          });
+        },
+      }),
+    ).resolves.toBe(true);
+
+    await expect(
+      listResourceEventSubscriptions({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_600,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: subscription.id,
+        expiresAtMs: 3_000_000,
+        status: "active",
       }),
     ]);
   });

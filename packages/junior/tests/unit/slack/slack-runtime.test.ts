@@ -163,6 +163,30 @@ describe("createSlackTurnRuntime", () => {
         expect.objectContaining({ conversationContext: "some context" }),
       );
     });
+
+    it("prepares resource-event notifications without a requester", async () => {
+      const deps = createMockDeps({
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+      });
+      const runtime = createSlackTurnRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({
+        author: { userId: "UJRNEVENT", isBot: true },
+        raw: { event_type: "resource_event" },
+      });
+
+      await runtime.handleSubscribedMessage(thread, message, {
+        destination: createTestDestination(thread),
+      });
+
+      expect(deps.prepareTurnState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            requesterId: undefined,
+          }),
+        }),
+      );
+    });
   });
 
   describe("handleAssistantThreadStarted", () => {

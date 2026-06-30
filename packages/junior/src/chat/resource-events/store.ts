@@ -382,7 +382,9 @@ export async function deliverResourceEventSubscription(input: {
     SUBSCRIPTION_LOCK_TTL_MS,
   );
   if (!lock) {
-    return false;
+    throw new Error(
+      `Resource event subscription delivery lock busy: ${input.subscription.id}`,
+    );
   }
   try {
     const nowMs = input.nowMs ?? Date.now();
@@ -402,6 +404,16 @@ export async function deliverResourceEventSubscription(input: {
     }
     await input.deliver(current);
     if (input.terminal) {
+      const latest = parseSubscription(
+        await state.get(subscriptionKey(current.id)),
+      );
+      if (
+        !latest ||
+        latest.status !== current.status ||
+        latest.updatedAtMs !== current.updatedAtMs
+      ) {
+        return true;
+      }
       const next: ResourceEventSubscription = {
         ...current,
         status: "completed",
