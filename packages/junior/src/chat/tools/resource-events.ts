@@ -14,13 +14,13 @@ const subscribeInputSchema = Type.Object(
   {
     resourceRef: Type.String({
       description:
-        "Opaque resource ref from a subscribable tool result, such as github:pull_request:owner/repo#123.",
+        "Opaque resource ref copied from a subscribable tool result.",
     }),
     provider: Type.String({
       description: "Provider that owns the resource ref.",
     }),
     resourceType: Type.String({
-      description: "Provider-defined resource type, such as pull_request.",
+      description: "Provider-defined resource type from the subscribable hint.",
     }),
     label: Type.String({
       description: "Human-readable resource label from the subscribable hint.",
@@ -66,7 +66,35 @@ function requireConversationContext(context: ToolRuntimeContext): string {
       "Resource event subscriptions currently require Slack delivery",
     );
   }
+  if (!isSlackThreadConversationId(context.conversationId)) {
+    throw new Error(
+      "Resource event subscriptions require a Slack thread conversation",
+    );
+  }
   return context.conversationId;
+}
+
+/** Return whether the current runtime can safely manage conversation subscriptions. */
+export function canUseResourceEventSubscriptionTools(
+  context: ToolRuntimeContext,
+): boolean {
+  return (
+    context.destination.platform === "slack" &&
+    Boolean(
+      context.conversationId &&
+      isSlackThreadConversationId(context.conversationId),
+    )
+  );
+}
+
+function isSlackThreadConversationId(conversationId: string): boolean {
+  const parts = conversationId.split(":");
+  return (
+    parts.length === 3 &&
+    parts[0] === "slack" &&
+    Boolean(parts[1]) &&
+    Boolean(parts[2])
+  );
 }
 
 function cleanStrings(values: string[]): string[] {
@@ -107,10 +135,8 @@ export function createSubscribeToResourceEventsTool(
         intent,
         label: input.label.trim(),
         provider: input.provider.trim(),
-        requester: context.requester,
         resourceRef: input.resourceRef.trim(),
         resourceType: input.resourceType.trim(),
-        source: context.source,
       });
       return {
         id: subscription.id,

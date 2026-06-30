@@ -328,10 +328,9 @@ function gitHubPullRequestSubscribable(
     "state.closed_unmerged",
   ];
   return {
-    defaultTtlMs: 14 * 24 * 60 * 60 * 1000,
     label: `GitHub PR ${repoRef}#${result.number}`,
     provider: "github",
-    ref: `github:pull_request:${repoRef}#${result.number}`,
+    resourceRef: `github:pull_request:${repoRef}#${result.number}`,
     suggestedEvents: [
       "checks.failed",
       "review.changes_requested",

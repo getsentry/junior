@@ -3,10 +3,10 @@ import type { StoredSlackRequester } from "@/chat/requester";
 
 export type ConversationSource =
   | "api"
-  | "event"
   | "internal"
   | "local"
   | "plugin"
+  | "resource_event"
   | "scheduler"
   | "slack";
 

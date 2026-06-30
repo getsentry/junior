@@ -42,8 +42,9 @@ Define the plugin model for provider integrations. Plugins package declarative r
     model-visible, sandbox, credential, external-system, lifecycle, or migration
     boundary.
 11. Resource event subscriptions are core-owned conversation routing state.
-    Plugins may return subscribable resource hints from tools and normalize
-    provider events, but core owns subscription tools, storage, TTL,
+    Plugins may return subscribable resource hints from tools. Host
+    runtime/provider route code may normalize provider events for the internal
+    ingestion boundary, but core owns subscription tools, storage, TTL,
     cancellation, dedupe, and queued conversation delivery.
 
 ## File Shape

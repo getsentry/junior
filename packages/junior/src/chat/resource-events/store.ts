@@ -1,13 +1,6 @@
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
-import {
-  destinationSchema,
-  requesterSchema,
-  sourceSchema,
-  type Destination,
-  type Requester,
-  type Source,
-} from "@sentry/junior-plugin-api";
+import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
@@ -15,14 +8,10 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;
-const INDEX_MAX_LENGTH = 10_000;
 
-const subscriptionStatusSchema = z.enum([
-  "active",
-  "cancelled",
-  "completed",
-  "expired",
-]);
+const subscriptionStatusSchema = z.enum(["active", "cancelled", "completed"]);
+
+const subscriptionIdIndexSchema = z.array(z.string().min(1));
 
 const subscriptionSchema = z
   .object({
@@ -35,10 +24,8 @@ const subscriptionSchema = z
     intent: z.string().min(1),
     label: z.string().min(1),
     provider: z.string().min(1),
-    requester: requesterSchema.optional(),
     resourceRef: z.string().min(1),
     resourceType: z.string().min(1),
-    source: sourceSchema,
     status: subscriptionStatusSchema,
     updatedAtMs: z.number().finite(),
   })
@@ -54,10 +41,8 @@ export interface CreateResourceEventSubscriptionInput {
   intent: string;
   label: string;
   provider: string;
-  requester?: Requester;
   resourceRef: string;
   resourceType: string;
-  source: Source;
 }
 
 function digest(value: string): string {
@@ -86,6 +71,17 @@ function indexLockKey(key: string): string {
 
 function ttlUntil(expiresAtMs: number, nowMs: number): number {
   return Math.max(1, expiresAtMs - nowMs);
+}
+
+async function readSubscriptionIdIndex(
+  state: StateAdapter,
+  key: string,
+): Promise<string[]> {
+  const value = await state.get(key);
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return subscriptionIdIndexSchema.parse(value);
 }
 
 function buildSubscriptionId(input: {
@@ -123,13 +119,8 @@ async function addToIndex(
   nowMs: number,
 ): Promise<void> {
   await withIndexLock(state, key, async () => {
-    const existing = (await state.get<string[]>(key)) ?? [];
-    const ids = [
-      ...new Set(existing.filter((id): id is string => typeof id === "string")),
-    ];
-    const next = ids.includes(subscriptionId)
-      ? ids
-      : [...ids, subscriptionId].slice(-INDEX_MAX_LENGTH);
+    const ids = [...new Set(await readSubscriptionIdIndex(state, key))];
+    const next = ids.includes(subscriptionId) ? ids : [...ids, subscriptionId];
     await state.set(key, next, await indexTtlMs(state, next, nowMs));
   });
 }
@@ -141,7 +132,7 @@ async function removeFromIndex(
   nowMs: number,
 ): Promise<void> {
   await withIndexLock(state, key, async () => {
-    const existing = (await state.get<string[]>(key)) ?? [];
+    const existing = await readSubscriptionIdIndex(state, key);
     const next = existing.filter((id) => id !== subscriptionId);
     await state.set(key, next, await indexTtlMs(state, next, nowMs));
   });
@@ -172,8 +163,10 @@ async function indexTtlMs(
 function parseSubscription(
   value: unknown,
 ): ResourceEventSubscription | undefined {
-  const parsed = subscriptionSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return subscriptionSchema.parse(value);
 }
 
 function activeAt(
@@ -233,10 +226,8 @@ export async function createResourceEventSubscription(
     intent: input.intent,
     label: input.label,
     provider: input.provider,
-    ...(input.requester ? { requester: input.requester } : {}),
     resourceRef: input.resourceRef,
     resourceType: input.resourceType,
-    source: input.source,
     status: "active",
     updatedAtMs: nowMs,
   };
@@ -270,9 +261,10 @@ export async function listResourceEventSubscriptions(input: {
   const state = input.state ?? getStateAdapter();
   await state.connect();
   const nowMs = input.nowMs ?? Date.now();
-  const ids =
-    (await state.get<string[]>(conversationIndexKey(input.conversationId))) ??
-    [];
+  const ids = await readSubscriptionIdIndex(
+    state,
+    conversationIndexKey(input.conversationId),
+  );
   const records = await Promise.all(
     ids.map(async (id) =>
       parseSubscription(await state.get(subscriptionKey(id))),
@@ -351,10 +343,10 @@ export async function findMatchingResourceEventSubscriptions(input: {
   const state = input.state ?? getStateAdapter();
   await state.connect();
   const nowMs = input.nowMs ?? Date.now();
-  const ids =
-    (await state.get<string[]>(
-      resourceIndexKey(input.provider, input.resourceRef),
-    )) ?? [];
+  const ids = await readSubscriptionIdIndex(
+    state,
+    resourceIndexKey(input.provider, input.resourceRef),
+  );
   const records = await Promise.all(
     ids.map(async (id) =>
       parseSubscription(await state.get(subscriptionKey(id))),

@@ -874,10 +874,9 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        defaultTtlMs: 14 * 24 * 60 * 60 * 1000,
         label: "GitHub PR getsentry/junior#691",
         provider: "github",
-        ref: "github:pull_request:getsentry/junior#691",
+        resourceRef: "github:pull_request:getsentry/junior#691",
         suggestedEvents: [
           "checks.failed",
           "review.changes_requested",
@@ -990,7 +989,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        ref: "github:pull_request:getsentry/junior#691",
+        resourceRef: "github:pull_request:getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });
@@ -999,7 +998,7 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {
-        ref: "github:pull_request:getsentry/junior#691",
+        resourceRef: "github:pull_request:getsentry/junior#691",
       },
       url: "https://github.com/getsentry/junior/pull/691",
     });

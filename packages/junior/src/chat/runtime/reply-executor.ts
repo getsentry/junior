@@ -32,6 +32,7 @@ import {
   generateAssistantReply as generateAssistantReplyImpl,
   type ReplySteeringMessage,
 } from "@/chat/respond";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAssistantThreadContext,
@@ -133,6 +134,22 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
 
 function turnRequester(requester: SlackRequester): StoredSlackRequester {
   return toStoredSlackRequester(requester);
+}
+
+function isResourceEventMessage(message: Message): boolean {
+  const raw =
+    message.raw && typeof message.raw === "object"
+      ? (message.raw as Record<string, unknown>)
+      : undefined;
+  return raw?.event_type === "resource_event";
+}
+
+function resourceEventCredentialContext(
+  message: Message,
+): CredentialContext | undefined {
+  return isResourceEventMessage(message)
+    ? { actor: { type: "system", id: "resource-event" } }
+    : undefined;
 }
 
 async function resolveChannelName(thread: Thread): Promise<string | undefined> {
@@ -348,20 +365,33 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           currentText,
         ).userText;
         await Promise.all(
-          (options.queuedMessages ?? []).map((queued) =>
-            ensureSlackMessageActorIdentity(
-              queued.message,
-              teamId,
-              deps.services.lookupSlackUser,
+          (options.queuedMessages ?? [])
+            .filter((queued) => !isResourceEventMessage(queued.message))
+            .map((queued) =>
+              ensureSlackMessageActorIdentity(
+                queued.message,
+                teamId,
+                deps.services.lookupSlackUser,
+              ),
             ),
-          ),
         );
-        const requester = await ensureSlackMessageActorIdentity(
-          message,
-          teamId,
-          deps.services.lookupSlackUser,
-        );
-        const storedRequester = turnRequester(requester);
+        const credentialContext =
+          resourceEventCredentialContext(message) ??
+          ({
+            actor: { type: "user", userId: message.author.userId },
+          } satisfies CredentialContext);
+        const requester =
+          credentialContext.actor.type === "user"
+            ? await ensureSlackMessageActorIdentity(
+                message,
+                teamId,
+                deps.services.lookupSlackUser,
+              )
+            : undefined;
+        const storedRequester = requester
+          ? turnRequester(requester)
+          : undefined;
+        const slackRequesterId = requester?.userId;
 
         const preparedState =
           options.preparedState ??
@@ -375,7 +405,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             queuedMessages: options.queuedMessages,
             context: {
               threadId,
-              requesterId: message.author.userId,
+              requesterId: slackRequesterId,
               channelId,
               runId,
             },
@@ -403,8 +433,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const postAuthPauseNotice = async (
           providerDisplayName: string,
         ): Promise<void> => {
+          if (!requester) {
+            throw new Error("Slack auth pause notice requires a requester");
+          }
           const text = buildAuthPauseResponse(
-            message.author.userId,
+            requester.userId,
             providerDisplayName,
           );
           const footer = buildSlackReplyFooter({ conversationId });
@@ -516,7 +549,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,
-          requesterId: message.author.userId,
+          requesterId: requester?.userId,
           text: effectiveUserText,
         });
         if (configReply) {
@@ -636,14 +669,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         });
         await options.onTurnStatePersisted?.();
 
-        if (message.author.userId) {
+        if (requester) {
           setSentryUser({
-            id: message.author.userId,
+            id: requester.userId,
             ...(requester.userName ? { username: requester.userName } : {}),
             ...(requester.email ? { email: requester.email } : {}),
           });
         }
-        if (requester.userName) {
+        if (requester?.userName) {
           setTags({ slackUserName: requester.userName });
         }
         const turnAttachments = collectTurnAttachments(
@@ -654,7 +687,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           turnAttachments,
           {
             threadId,
-            requesterId: message.author.userId,
+            requesterId: slackRequesterId,
             channelId,
             runId,
             conversation: preparedState.conversation,
@@ -719,7 +752,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 metadata: {
                   threadId,
-                  requesterId: message.author.userId,
+                  requesterId: slackRequesterId,
                   channelId,
                   runId,
                 },
@@ -744,7 +777,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             generateThreadTitle: deps.services.generateThreadTitle,
             getSlackAdapter: deps.getSlackAdapter,
             modelId: botConfig.fastModelId,
-            requesterId: message.author.userId,
+            requesterId: slackRequesterId,
             runId,
             threadId,
           });
@@ -824,7 +857,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     attachments,
                     {
                       threadId,
-                      requesterId: queued.message.author.userId,
+                      requesterId: isResourceEventMessage(queued.message)
+                        ? undefined
+                        : queued.message.author.userId,
                       channelId,
                       runId,
                       conversation: preparedState.conversation,
@@ -856,9 +891,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           let reply = await deps.services.generateAssistantReply(
             effectiveUserText,
             {
-              credentialContext: {
-                actor: { type: "user", userId: message.author.userId },
-              },
+              credentialContext,
               requester,
               conversationContext: preparedState.conversationContext,
               artifactState: preparedState.artifacts,
@@ -884,7 +917,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 runId,
                 channelId,
                 channelName,
-                requesterId: message.author.userId,
+                requesterId: slackRequesterId,
               },
               toolChannelId,
               sandbox: {

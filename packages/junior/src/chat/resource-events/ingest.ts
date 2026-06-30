@@ -1,44 +1,60 @@
 import type { StateAdapter } from "chat";
+import { z } from "zod";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueResourceEventNotification } from "@/chat/resource-events/notification";
-import type { ResourceEventNotification } from "@/chat/resource-events/notification";
 import {
   deliverResourceEventSubscription,
   findMatchingResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 
-export interface IngestResourceEventInput extends ResourceEventNotification {}
+const ingestResourceEventInputSchema = z
+  .object({
+    eventKey: z.string().min(1),
+    eventType: z.string().min(1),
+    occurredAtMs: z.number().finite(),
+    provider: z.string().min(1),
+    resourceRef: z.string().min(1),
+    terminal: z.boolean().optional(),
+    trustedSummary: z.string().min(1),
+    untrustedText: z.string().optional(),
+  })
+  .strict();
+
+export type IngestResourceEventInput = z.output<
+  typeof ingestResourceEventInputSchema
+>;
 
 /** Match a normalized provider event and enqueue notifications into conversations. */
 export async function ingestResourceEvent(
-  input: IngestResourceEventInput,
+  input: unknown,
   options: {
     nowMs?: number;
     queue: ConversationWorkQueue;
     state?: StateAdapter;
   },
 ): Promise<{ enqueued: number }> {
+  const event = ingestResourceEventInputSchema.parse(input);
   const nowMs = options.nowMs ?? Date.now();
   const subscriptions = await findMatchingResourceEventSubscriptions({
-    eventType: input.eventType,
+    eventType: event.eventType,
     nowMs,
-    provider: input.provider,
-    resourceRef: input.resourceRef,
+    provider: event.provider,
+    resourceRef: event.resourceRef,
     state: options.state,
   });
   let enqueued = 0;
   for (const subscription of subscriptions) {
     const delivered = await deliverResourceEventSubscription({
-      eventType: input.eventType,
-      provider: input.provider,
-      resourceRef: input.resourceRef,
-      terminal: input.terminal,
+      eventType: event.eventType,
+      provider: event.provider,
+      resourceRef: event.resourceRef,
+      terminal: event.terminal,
       nowMs,
       state: options.state,
       subscription,
       deliver: async (current) => {
         await enqueueResourceEventNotification({
-          event: input,
+          event,
           queue: options.queue,
           state: options.state,
           subscription: current,

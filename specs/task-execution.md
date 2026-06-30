@@ -171,7 +171,7 @@ type Source =
   | "scheduler"
   | "plugin"
   | "internal"
-  | "event";
+  | "resource_event";
 
 type Destination =
   | {

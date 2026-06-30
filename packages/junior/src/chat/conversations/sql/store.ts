@@ -87,10 +87,10 @@ function requiredMsFromDate(value: Date | string): number {
 function sourceFromValue(value: unknown): ConversationSource | undefined {
   if (
     value === "api" ||
-    value === "event" ||
     value === "internal" ||
     value === "local" ||
     value === "plugin" ||
+    value === "resource_event" ||
     value === "scheduler" ||
     value === "slack"
   ) {
@@ -136,7 +136,7 @@ function systemIdentityFromSource(
       displayName: "Local CLI",
     };
   }
-  if (source === "event") {
+  if (source === "resource_event") {
     return {
       kind: "system",
       provider: "junior",

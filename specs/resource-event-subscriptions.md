@@ -63,13 +63,12 @@ Action tools and resource-reading tools may return a `subscribable` hint:
 
 ```ts
 interface SubscribableResource {
-  ref: string;
   label: string;
   provider: string;
+  resourceRef: string;
   type: string;
   supportedEvents: string[];
   suggestedEvents?: string[];
-  defaultTtlMs?: number;
 }
 ```
 
@@ -78,7 +77,7 @@ before any durable subscription exists.
 
 Rules:
 
-1. `ref` is opaque to the model and provider-resolvable by runtime/plugin code.
+1. `resourceRef` is opaque to the model and provider-resolvable by runtime/plugin code.
 2. `supportedEvents` names provider-defined normalized event types for that
    resource.
 3. `suggestedEvents` should contain high-signal defaults appropriate for the
@@ -109,14 +108,12 @@ cancelResourceEventSubscription({ subscriptionId });
 
 Rules:
 
-1. Tools derive `conversationId`, destination, source, and requester from
-   runtime-owned context.
+1. Tools derive `conversationId` and destination from runtime-owned context.
 2. Tool schemas must not accept Slack team ids, channel ids, thread timestamps,
    requester ids, credentials, or provider secrets.
 3. `intent` is required and must summarize why this conversation wants the
    event. Event notifications render it back to the agent.
-4. TTL defaults may come from the subscribable hint, but core enforces an upper
-   bound.
+4. Core owns TTL defaults and enforces an upper bound.
 5. Listing and cancellation are scoped to the current conversation.
 
 ### Durable Subscription Record
@@ -126,7 +123,7 @@ Core owns subscription records:
 ```ts
 interface ResourceEventSubscription {
   id: string;
-  status: "active" | "expired" | "cancelled" | "completed";
+  status: "active" | "cancelled" | "completed";
 
   provider: string;
   resourceRef: string;
@@ -136,9 +133,7 @@ interface ResourceEventSubscription {
   intent: string;
 
   conversationId: string;
-  source: Source;
   destination: Destination;
-  requester?: Requester;
 
   createdAtMs: number;
   expiresAtMs: number;
@@ -159,12 +154,15 @@ Rules:
 
 ### Plugin Boundary
 
-Plugins can extend the system in two ways:
+The MVP public plugin-facing surface is the subscribable hint. Provider event
+ingestion is an internal host-runtime boundary until a plugin-facing event
+ingestion API exists.
+
+Plugins can extend the system in one public way:
 
 1. Return `SubscribableResource` hints from plugin tools.
-2. Normalize provider events and call the core ingestion boundary.
 
-Plugins own:
+Provider route code owns:
 
 - provider webhook signature verification
 - provider payload parsing
@@ -181,13 +179,12 @@ Core owns:
 - mailbox enqueueing
 - final delivery behavior through existing conversation workers
 
-Runtime-hook plugins may add code for provider event ingestion through the
-existing `routes` hook. Declarative `plugin.yaml` manifests must not register
-event handlers or executable subscription behavior.
+Declarative `plugin.yaml` manifests must not register event handlers or
+executable subscription behavior.
 
 ### Event Ingestion
 
-Provider code passes normalized events to core:
+Host runtime/provider route code passes normalized events to core:
 
 ```ts
 ingestResourceEvent({

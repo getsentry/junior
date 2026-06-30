@@ -17,10 +17,10 @@ export interface PluginConversationSummary {
   lastUpdatedAt: string;
   source?:
     | "api"
-    | "event"
     | "internal"
     | "local"
     | "plugin"
+    | "resource_event"
     | "scheduler"
     | "slack";
   status: PluginConversationStatus;

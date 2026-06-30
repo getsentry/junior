@@ -59,13 +59,6 @@ function createGithubPrSubscription(input: {
       provider: "github",
       resourceRef: "github:pull_request:getsentry/junior#691",
       resourceType: "pull_request",
-      source: {
-        platform: "slack",
-        type: "pub",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-      },
     },
     { nowMs: input.nowMs ?? 1_000, state: input.state },
   );
@@ -114,7 +107,7 @@ describe("resource event subscriptions", () => {
     });
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]).toMatchObject({
-      source: "event",
+      source: "resource_event",
       input: {
         text: expect.stringContaining("CI failed on workflow test."),
         metadata: {

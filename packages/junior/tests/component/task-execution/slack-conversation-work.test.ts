@@ -16,6 +16,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
+  createSlackResourceEventInboundMessage,
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -132,6 +133,64 @@ describe("Slack conversation work execution", () => {
         }),
       }),
     ]);
+  });
+
+  it("routes resource-event mailbox records without Slack requester lookup", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const lookupSlackUser = vi.fn(async () => {
+      throw new Error("resource event notifications do not have Slack users");
+    });
+    const calls: Message[] = [];
+
+    await appendInboundMessage({
+      message: createSlackResourceEventInboundMessage({
+        event: {
+          eventKey: "check-suite-1",
+          eventType: "checks.failed",
+          occurredAtMs: 1_700_000_000_000,
+          provider: "github",
+          resourceRef: "github:pull_request:getsentry/junior#691",
+        },
+        subscription: {
+          conversationId: CONVERSATION_ID,
+          destination: SLACK_DESTINATION,
+          id: "resub_1",
+        },
+        text: "[event notification]\n\nA subscribed resource changed.",
+      }),
+      state,
+    });
+    await queue.send(conversationQueueMessage(), {
+      idempotencyKey: "resource-event-test",
+    });
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        lookupSlackUser,
+        queue,
+        runtime: {
+          handleNewMention: async () => {
+            throw new Error("unexpected mention route");
+          },
+          handleSubscribedMessage: async (_thread, message, hooks) => {
+            await hooks.onInputCommitted?.();
+            calls.push(message);
+          },
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(lookupSlackUser).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
+    expect(getMessageActorIdentity(calls[0]!)).toEqual({
+      userId: "UJRNEVENT",
+    });
   });
 
   it("does not persist Slack mailbox messages without actor ids", async () => {

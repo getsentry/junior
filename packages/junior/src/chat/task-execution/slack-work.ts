@@ -191,7 +191,7 @@ export function createSlackResourceEventInboundMessage(
     createdAtMs: input.event.occurredAtMs,
     destination,
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
-    source: "event",
+    source: "resource_event",
     receivedAtMs: Date.now(),
     input: {
       text: input.text,
@@ -272,6 +272,14 @@ function isSlackAssistantThreadUserMessage(message: Message): boolean {
   );
 }
 
+function isResourceEventNotificationMessage(message: Message): boolean {
+  const raw =
+    message.raw && typeof message.raw === "object"
+      ? (message.raw as Record<string, unknown>)
+      : undefined;
+  return raw?.event_type === "resource_event";
+}
+
 /** Rehydrate the Slack message payload before handing it back to runtime code. */
 function restoreMessage(args: {
   adapter: SlackAdapter;
@@ -300,6 +308,9 @@ async function bindSlackActorIdentities(args: {
 }): Promise<void> {
   const byAuthorId = new Map<string, Message[]>();
   for (const message of args.messages) {
+    if (isResourceEventNotificationMessage(message)) {
+      continue;
+    }
     const authorId = requireSlackAuthorId(message);
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
