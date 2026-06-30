@@ -55,12 +55,13 @@ export async function ingestResourceEvent(
         state: options.state,
         subscription,
         deliver: async (current) => {
-          await enqueueResourceEventNotification({
+          const result = await enqueueResourceEventNotification({
             event,
             queue: options.queue,
             state: options.state,
             subscription: current,
           });
+          return result.status === "appended";
         },
       });
       if (delivered) {

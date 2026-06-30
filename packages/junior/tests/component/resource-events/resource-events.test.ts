@@ -176,7 +176,7 @@ describe("resource event subscriptions", () => {
     ).resolves.toEqual({ enqueued: 1 });
     await expect(
       ingestResourceEvent(event, { nowMs: 1_600, queue }),
-    ).resolves.toEqual({ enqueued: 1 });
+    ).resolves.toEqual({ enqueued: 0 });
 
     expect(queue.sentRecords()).toEqual([
       {
@@ -237,7 +237,7 @@ describe("resource event subscriptions", () => {
       nowMs: 1_600,
     });
 
-    const deliver = vi.fn(async () => {});
+    const deliver = vi.fn(async () => true);
     await expect(
       deliverResourceEventSubscription({
         deliver,
@@ -349,6 +349,7 @@ describe("resource event subscriptions", () => {
             intent: "Keep watching the refreshed PR subscription.",
             nowMs: 1_400,
           });
+          return true;
         },
       }),
     ).resolves.toBe(true);

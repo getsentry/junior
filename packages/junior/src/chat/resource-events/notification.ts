@@ -43,7 +43,7 @@ export async function enqueueResourceEventNotification(args: {
   queue: ConversationWorkQueue;
   subscription: ResourceEventSubscription;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<void> {
+}): Promise<Awaited<ReturnType<typeof appendAndEnqueueInboundMessage>>> {
   if (args.subscription.destination.platform !== "slack") {
     throw new Error(
       "Resource event delivery currently requires a Slack destination",
@@ -54,7 +54,7 @@ export async function enqueueResourceEventNotification(args: {
     destination: args.subscription.destination,
     id: args.subscription.id,
   };
-  await appendAndEnqueueInboundMessage({
+  return await appendAndEnqueueInboundMessage({
     message: createSlackResourceEventInboundMessage({
       event: args.event,
       subscription,

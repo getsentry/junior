@@ -366,7 +366,7 @@ export async function findMatchingResourceEventSubscriptions(input: {
 
 /** Recheck and deliver a matched subscription while holding its status lock. */
 export async function deliverResourceEventSubscription(input: {
-  deliver: (subscription: ResourceEventSubscription) => Promise<void>;
+  deliver: (subscription: ResourceEventSubscription) => Promise<boolean>;
   eventType: string;
   nowMs?: number;
   provider: string;
@@ -402,7 +402,7 @@ export async function deliverResourceEventSubscription(input: {
     ) {
       return false;
     }
-    await input.deliver(current);
+    const delivered = await input.deliver(current);
     if (input.terminal) {
       const latest = parseSubscription(
         await state.get(subscriptionKey(current.id)),
@@ -412,7 +412,7 @@ export async function deliverResourceEventSubscription(input: {
         latest.status !== current.status ||
         latest.updatedAtMs !== current.updatedAtMs
       ) {
-        return true;
+        return delivered;
       }
       const next: ResourceEventSubscription = {
         ...current,
@@ -437,7 +437,7 @@ export async function deliverResourceEventSubscription(input: {
         nowMs,
       );
     }
-    return true;
+    return delivered;
   } finally {
     await state.releaseLock(lock);
   }
