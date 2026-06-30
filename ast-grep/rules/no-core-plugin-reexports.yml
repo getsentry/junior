@@ -1,0 +1,17 @@
+id: no-core-plugin-reexports
+language: TypeScript
+severity: error
+message: Core @sentry/junior must not re-export plugin packages. Use plugin discovery/catalog wiring instead.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+rule:
+  all:
+    - kind: export_statement
+    - has:
+        kind: string
+        regex: '^["@'']@sentry/junior-.+["@'']$'
+    - not:
+        has:
+          kind: string
+          regex: '^["@'']@sentry/junior-plugin-api["@'']$'

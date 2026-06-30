@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowJs": false,
+    "noEmit": true,
+    "paths": {
+      "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
+      "@sentry/junior/reporting": ["../junior/src/reporting.ts"],
+      "@sentry/junior-dashboard": ["./src/index.ts"],
+      "@/*": ["../junior/src/*"]
+    },
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+}

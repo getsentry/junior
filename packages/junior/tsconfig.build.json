@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "incremental": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/api-reference.ts",
+    "src/app.ts",
+    "src/handlers/**/*.ts",
+    "src/instrumentation.ts",
+    "src/nitro.ts",
+    "src/reporting.ts",
+    "src/vercel.ts",
+    "src/virtual-modules.d.ts"
+  ]
+}

@@ -1,0 +1,15 @@
+id: no-core-plugin-dynamic-imports
+language: TypeScript
+severity: error
+message: Core @sentry/junior must not dynamically import plugin packages. Use plugin discovery/catalog wiring instead.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+rule:
+  pattern: import($PKG)
+constraints:
+  PKG:
+    all:
+      - regex: '^["@'']@sentry/junior-.+["@'']$'
+      - not:
+          regex: '^["@'']@sentry/junior-plugin-api["@'']$'

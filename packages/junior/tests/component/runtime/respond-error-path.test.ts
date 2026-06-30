@@ -1,0 +1,114 @@
+import { afterAll, describe, expect, it, vi } from "vitest";
+import {
+  createLocalSource,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
+const originalAiModel = process.env.AI_MODEL;
+
+process.env.AI_MODEL = "openai/gpt-5.4";
+
+vi.mock("@/chat/skills", () => ({
+  discoverSkills: vi.fn(async () => {
+    throw new Error("discover failed");
+  }),
+  findSkillByName: vi.fn(),
+  parseSkillInvocation: vi.fn(),
+}));
+
+const { generateAssistantReply } = await import("@/chat/respond");
+
+const LOCAL_DESTINATION = {
+  platform: "local" as const,
+  conversationId: "local:test:respond-error-path",
+};
+const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+const SLACK_DESTINATION = {
+  platform: "slack" as const,
+  teamId: "T123",
+  channelId: "C123",
+};
+const SLACK_SOURCE = createSlackSource({
+  teamId: SLACK_DESTINATION.teamId,
+  channelId: SLACK_DESTINATION.channelId,
+});
+
+describe("generateAssistantReply error path", () => {
+  afterAll(() => {
+    if (originalAiModel === undefined) {
+      delete process.env.AI_MODEL;
+    } else {
+      process.env.AI_MODEL = originalAiModel;
+    }
+  });
+
+  it("preserves sandbox dependency hash on non-retryable failures", async () => {
+    const reply = await generateAssistantReply("hello", {
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+      sandbox: {
+        sandboxId: "sb-123",
+        sandboxDependencyProfileHash: "hash-abc",
+      },
+    });
+
+    expect(reply.text).toContain("Error: discover failed");
+    expect(reply.sandboxId).toBe("sb-123");
+    expect(reply.sandboxDependencyProfileHash).toBe("hash-abc");
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.diagnostics.modelId).toBe("openai/gpt-5.4");
+    expect(reply.diagnostics.thinkingLevel).toBeUndefined();
+  });
+
+  it("propagates pre-commit failures when durable input commit is required", async () => {
+    await expect(
+      generateAssistantReply("hello", {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        onInputCommitted: async () => {
+          throw new Error("input should not commit before startup succeeds");
+        },
+      }),
+    ).rejects.toThrow("discover failed");
+  });
+
+  it("hard-fails missing destinations", async () => {
+    await expect(
+      generateAssistantReply(
+        "hello",
+        {} as Parameters<typeof generateAssistantReply>[1],
+      ),
+    ).rejects.toThrow("Assistant reply generation requires a destination");
+  });
+
+  it("hard-fails requester and destination platform mismatches", async () => {
+    await expect(
+      generateAssistantReply("hello", {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        requester: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+      }),
+    ).rejects.toThrow(
+      'Requester platform "slack" does not match destination platform "local"',
+    );
+  });
+
+  it("hard-fails Slack correlation and destination mismatches", async () => {
+    await expect(
+      generateAssistantReply("hello", {
+        destination: SLACK_DESTINATION,
+        source: SLACK_SOURCE,
+        correlation: {
+          channelId: "C999",
+          teamId: "T123",
+        },
+      }),
+    ).rejects.toThrow(
+      "Slack correlation channel does not match destination channel",
+    );
+  });
+});

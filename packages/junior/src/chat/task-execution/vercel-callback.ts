@@ -1,0 +1,201 @@
+import {
+  handleCallback,
+  registerDevConsumer,
+  type MessageMetadata,
+  type RetryDirective,
+} from "@vercel/queue";
+import type { StateAdapter } from "chat";
+import { getChatConfig } from "@/chat/config";
+import { parseDestination } from "@/chat/destination";
+import { logWarn } from "@/chat/logging";
+import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import type { ConversationStore } from "@/chat/conversations/store";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import {
+  ConversationQueueMessageRejectedError,
+  isConversationQueueMessageRejectedError,
+  type ConversationQueueMessage,
+  type ConversationWorkQueue,
+} from "./queue";
+import {
+  getVercelConversationWorkQueue,
+  resolveConversationWorkQueueTopic,
+} from "./vercel-queue";
+import {
+  processConversationWork,
+  type ConversationWorkProcessResult,
+  type ConversationWorkerResult,
+  type ConversationWorkerContext,
+} from "./worker";
+import { verifyConversationQueueMessage } from "./queue-signing";
+
+export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
+export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
+  "junior_conversation_work_dev";
+
+export interface ProcessConversationQueueMessageOptions {
+  checkInIntervalMs?: number;
+  conversationStore?: ConversationStore;
+  nowMs?: () => number;
+  queue?: ConversationWorkQueue;
+  run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
+  softYieldAfterMs?: number;
+  state?: StateAdapter;
+}
+
+export interface VercelConversationWorkCallbackOptions extends ProcessConversationQueueMessageOptions {
+  topic?: string;
+  visibilityTimeoutSeconds?: number;
+}
+
+function parseConversationQueueMessage(
+  message: unknown,
+): ConversationQueueMessage {
+  const destination = parseDestination(
+    (message as { destination?: unknown } | undefined)?.destination,
+  );
+  if (
+    !message ||
+    typeof message !== "object" ||
+    typeof (message as { conversationId?: unknown }).conversationId !==
+      "string" ||
+    !(message as { conversationId: string }).conversationId.trim() ||
+    !destination
+  ) {
+    throw new Error(
+      "Conversation queue message is missing destination context",
+    );
+  }
+  return {
+    conversationId: (message as { conversationId: string }).conversationId,
+    destination,
+  };
+}
+
+/** Resolve queue visibility so redelivery waits past the host timeout boundary. */
+export function resolveConversationWorkVisibilityTimeoutSeconds(
+  functionMaxDurationSeconds = getChatConfig().functionMaxDurationSeconds,
+): number {
+  return (
+    functionMaxDurationSeconds +
+    CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS
+  );
+}
+
+/** Process one Vercel Queue payload with the generic conversation worker. */
+export async function processConversationQueueMessage(
+  message: unknown,
+  options: ProcessConversationQueueMessageOptions,
+): Promise<ConversationWorkProcessResult> {
+  const parsed = parseConversationQueueMessage(message);
+  return await processConversationWork(parsed, {
+    checkInIntervalMs: options.checkInIntervalMs,
+    conversationStore: options.conversationStore,
+    nowMs: options.nowMs,
+    queue: options.queue ?? getVercelConversationWorkQueue(),
+    run: options.run,
+    softYieldAfterMs: options.softYieldAfterMs,
+    state: options.state,
+  });
+}
+
+/** Consume queue messages, acking permanent rejects while preserving transient retries. */
+async function handleConversationQueueMessage(
+  message: unknown,
+  metadata: MessageMetadata,
+  options: VercelConversationWorkCallbackOptions,
+): Promise<void> {
+  const verification = verifyConversationQueueMessage(message);
+  if (verification.status === "rejected") {
+    logConversationQueueMessageRejected(verification.reason, metadata);
+    return;
+  }
+  if (verification.status === "unavailable") {
+    throw new Error(
+      `Conversation queue message verification unavailable: ${verification.reason}`,
+    );
+  }
+  try {
+    await runWithTurnRequestDeadline(() =>
+      processConversationQueueMessage(verification.message, options),
+    );
+  } catch (error) {
+    if (isConversationQueueMessageRejectedError(error)) {
+      logConversationQueueMessageRejected(error.reason, metadata, {
+        conversationId: error.conversationId,
+      });
+      return;
+    }
+    throw error;
+  }
+}
+
+function logConversationQueueMessageRejected(
+  reason: ConversationQueueMessageRejectedError["reason"],
+  metadata: MessageMetadata,
+  context: { conversationId?: string } = {},
+): void {
+  logWarn(
+    "conversation_queue_message_rejected",
+    context.conversationId ? { conversationId: context.conversationId } : {},
+    {
+      "app.queue.consumer_group": metadata.consumerGroup,
+      "app.queue.delivery_count": metadata.deliveryCount,
+      "app.queue.message_id": metadata.messageId,
+      "app.queue.reject_reason": reason,
+      "app.queue.topic_name": metadata.topicName,
+    },
+    "Conversation queue message rejected without retry",
+  );
+}
+
+/** Acknowledge permanently rejected queue messages while preserving normal retries. */
+function handleConversationQueueRetry(
+  error: unknown,
+  metadata: MessageMetadata,
+): RetryDirective | undefined {
+  if (!isConversationQueueMessageRejectedError(error)) {
+    return undefined;
+  }
+  logConversationQueueMessageRejected(error.reason, metadata, {
+    conversationId: error.conversationId,
+  });
+  return { acknowledge: true };
+}
+
+/** Create the Vercel Queue push callback for conversation work nudges. */
+export function createVercelConversationWorkCallback(
+  options: VercelConversationWorkCallbackOptions,
+): (request: Request) => Promise<Response> {
+  return handleCallback(
+    (message: unknown, metadata: MessageMetadata) =>
+      handleConversationQueueMessage(message, metadata, options),
+    {
+      retry: handleConversationQueueRetry,
+      visibilityTimeoutSeconds:
+        options.visibilityTimeoutSeconds ??
+        resolveConversationWorkVisibilityTimeoutSeconds(),
+    },
+  );
+}
+
+/** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */
+export function registerVercelConversationWorkDevConsumer(
+  options: VercelConversationWorkCallbackOptions,
+): (() => void) | undefined {
+  if (process.env.NODE_ENV !== "development") {
+    return undefined;
+  }
+
+  return registerDevConsumer({
+    client: createVercelQueueClient(),
+    consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
+    handler: (message: unknown, metadata: MessageMetadata) =>
+      handleConversationQueueMessage(message, metadata, options),
+    retry: handleConversationQueueRetry,
+    topic: resolveConversationWorkQueueTopic(options),
+    visibilityTimeoutSeconds:
+      options.visibilityTimeoutSeconds ??
+      resolveConversationWorkVisibilityTimeoutSeconds(),
+  });
+}

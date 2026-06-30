@@ -1,0 +1,9 @@
+name: notion
+display-name: Notion
+description: Notion page search and summarization
+
+mcp:
+  url: https://mcp.notion.com/mcp
+  allowed-tools:
+    - notion-search
+    - notion-fetch

@@ -1,0 +1,283 @@
+import { describe, expect, it } from "vitest";
+
+import { buildConversationMarkdown } from "../src/client/markdownExport";
+import type {
+  Conversation,
+  ConversationDetailFeed,
+  ConversationTurn,
+} from "../src/client/types";
+
+describe("dashboard markdown export", () => {
+  it("serializes visible conversation transcripts as Markdown", () => {
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const detail = {
+      conversationId: "slack:C1:222",
+      displayTitle: "Copy button discussion",
+      generatedAt: "2026-01-01T00:00:08.000Z",
+      runs: [
+        {
+          channel: "C1",
+          channelName: "eng",
+          conversationId: "slack:C1:222",
+          id: "turn-1",
+          lastProgressAt: "2026-01-01T00:00:07.000Z",
+          lastSeenAt: "2026-01-01T00:00:07.000Z",
+          requesterIdentity: { fullName: "Alice" },
+          startedAt,
+          status: "completed",
+          surface: "slack",
+          displayTitle: "Conversation",
+          transcriptAvailable: true,
+          transcript: [
+            {
+              role: "user",
+              timestamp: Date.parse(startedAt) + 1_000,
+              parts: [
+                {
+                  type: "text",
+                  text: "  copy this conversation  \n",
+                },
+              ],
+            },
+            {
+              role: "assistant",
+              timestamp: Date.parse(startedAt) + 2_000,
+              parts: [
+                {
+                  type: "thinking",
+                  output: "Need a deterministic export.  \n",
+                },
+                {
+                  type: "tool_call",
+                  id: "call-1",
+                  name: "search",
+                  input: { query: "copy markdown" },
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              timestamp: Date.parse(startedAt) + 3_500,
+              parts: [
+                {
+                  type: "tool_result",
+                  id: "call-1",
+                  name: "search",
+                  output: { ok: true },
+                },
+              ],
+            },
+            {
+              role: "assistant",
+              timestamp: Date.parse(startedAt) + 5_000,
+              parts: [
+                {
+                  type: "text",
+                  text: "## Done\n\n\n\nCopied as Markdown.",
+                },
+              ],
+            },
+          ],
+        } as ConversationTurn,
+      ],
+    } satisfies ConversationDetailFeed;
+
+    const markdown = buildConversationMarkdown(detail);
+
+    expect(markdown).toContain("# Copy button discussion");
+    expect(markdown).toContain("- Conversation ID: `slack:C1:222`");
+    expect(markdown).toContain("- Requester: Alice");
+    expect(markdown).toContain("- Location: #eng (C1)");
+    expect(markdown).toContain("## Transcript");
+    expect(markdown).not.toContain("## Turn");
+    expect(markdown).not.toContain("- Turns:");
+    expect(markdown).not.toContain("- Turn ID:");
+    expect(markdown).toContain("### Alice");
+    expect(markdown).toContain("  copy this conversation  \n");
+    expect(markdown).toContain("### Thinking");
+    expect(markdown).toContain("Need a deterministic export.  \n");
+    expect(markdown).toContain("### Tool: search");
+    expect(markdown).toContain('"query": "copy markdown"');
+    expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
+  });
+
+  it("prefers the freshly loaded detail title over a stale list row title", () => {
+    const generatedAt = "2026-01-01T00:00:08.000Z";
+    const detail = {
+      conversationId: "slack:C1:222",
+      displayTitle: "Fresh async title",
+      generatedAt,
+      runs: [],
+    } satisfies ConversationDetailFeed;
+    const conversation = {
+      channel: "C1",
+      channelName: "eng",
+      displayTitle: "Public Channel",
+      id: "slack:C1:222",
+      lastProgressAt: generatedAt,
+      lastSeenAt: generatedAt,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      runs: [],
+    } satisfies Conversation;
+
+    const markdown = buildConversationMarkdown(detail, conversation);
+
+    expect(markdown).toContain("# Fresh async title");
+    expect(markdown).not.toContain("# Public Channel");
+  });
+
+  it("exports running tool and subagent activity from derived transcript rows", () => {
+    const detail = {
+      conversationId: "conversation-activity",
+      displayTitle: "Activity transcript",
+      generatedAt: "2026-01-01T00:00:08.000Z",
+      runs: [
+        {
+          conversationId: "conversation-activity",
+          cumulativeDurationMs: 0,
+          displayTitle: "Activity transcript",
+          id: "turn-activity",
+          lastProgressAt: "2026-01-01T00:00:02.000Z",
+          lastSeenAt: "2026-01-01T00:00:02.000Z",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          status: "active",
+          surface: "internal",
+          transcriptAvailable: true,
+          transcript: [],
+          activity: [
+            {
+              type: "tool_execution",
+              id: "advisor-call",
+              toolCallId: "advisor-call",
+              toolName: "advisor",
+              createdAt: "2026-01-01T00:00:01.000Z",
+              status: "running",
+              subagents: [
+                {
+                  type: "subagent",
+                  id: "advisor-call",
+                  subagentKind: "advisor",
+                  parentToolCallId: "advisor-call",
+                  createdAt: "2026-01-01T00:00:02.000Z",
+                  status: "running",
+                },
+              ],
+            },
+          ],
+        } as ConversationTurn,
+      ],
+    } satisfies ConversationDetailFeed;
+
+    const markdown = buildConversationMarkdown(detail);
+
+    expect(markdown).toContain("### Tool: advisor");
+    expect(markdown).toContain("- Result: running");
+    expect(markdown).toContain("### Subagent: advisor");
+    expect(markdown).toContain("- Status: running");
+    expect(markdown).toContain("- Parent tool call: advisor-call");
+  });
+
+  it("exports only safe redaction metadata for private transcripts", () => {
+    const detail = {
+      conversationId: "slack:D1:222",
+      displayTitle: "Direct Message",
+      generatedAt: "2026-01-01T00:00:08.000Z",
+      runs: [
+        {
+          channel: "D1",
+          channelName: "Direct Message",
+          conversationId: "slack:D1:222",
+          displayTitle: "Direct Message",
+          cumulativeDurationMs: 7_000,
+          id: "turn-private",
+          lastProgressAt: "2026-01-01T00:00:07.000Z",
+          lastSeenAt: "2026-01-01T00:00:07.000Z",
+          requesterIdentity: { email: "alice@example.com" },
+          startedAt: "2026-01-01T00:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          transcriptAvailable: false,
+          transcriptRedacted: true,
+          transcriptRedactionReason: "non_public_conversation",
+          transcript: [],
+          transcriptMetadata: [
+            {
+              role: "user",
+              timestamp: 1_767_225_601_000,
+              parts: [
+                {
+                  bytes: 24,
+                  chars: 24,
+                  redacted: true,
+                  text: "private question",
+                  type: "text",
+                },
+              ],
+            },
+            {
+              role: "assistant",
+              timestamp: 1_767_225_602_000,
+              parts: [
+                {
+                  bytes: 22,
+                  chars: 22,
+                  redacted: true,
+                  text: "private answer",
+                  type: "text",
+                },
+                {
+                  id: "call-1",
+                  input: { query: "private search value" },
+                  inputKeys: ["query"],
+                  inputSizeBytes: 42,
+                  inputType: "object",
+                  name: "search",
+                  redacted: true,
+                  type: "tool_call",
+                },
+              ],
+            },
+            {
+              role: "toolResult",
+              timestamp: 1_767_225_603_000,
+              parts: [
+                {
+                  id: "call-1",
+                  name: "search",
+                  output: "private tool result",
+                  outputSizeBytes: 19,
+                  outputType: "string",
+                  redacted: true,
+                  type: "tool_result",
+                },
+              ],
+            },
+          ],
+        } as ConversationTurn,
+      ],
+    } satisfies ConversationDetailFeed;
+
+    const markdown = buildConversationMarkdown(detail);
+
+    expect(markdown).toContain("# Direct Message");
+    expect(markdown).not.toContain("## Turn");
+    expect(markdown).not.toContain("- Turn ID:");
+    expect(markdown).toContain(
+      "Transcript hidden because this conversation is not public.",
+    );
+    expect(markdown).toContain("<redacted> - 24 chars - 24 bytes");
+    expect(markdown).toContain("<redacted> - 22 chars - 22 bytes");
+    expect(markdown).toContain(
+      "<redacted> - tool_call - name: `search` - input: object - input keys: query",
+    );
+    expect(markdown).toContain(
+      "<redacted> - tool_result - name: `search` - output: string",
+    );
+    expect(markdown).not.toContain("private question");
+    expect(markdown).not.toContain("private answer");
+    expect(markdown).not.toContain("private search value");
+    expect(markdown).not.toContain("private tool result");
+  });
+});

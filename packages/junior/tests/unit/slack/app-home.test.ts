@@ -1,0 +1,334 @@
+import fs from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { KnownBlock, SectionBlock } from "@slack/web-api";
+import { buildHomeView } from "@/chat/slack/app-home";
+import type {
+  UserTokenStore,
+  StoredTokens,
+} from "@/chat/credentials/user-token-store";
+import { discoverSkills } from "@/chat/skills";
+import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
+import type { PluginCatalogRuntime } from "@/chat/plugins/registry";
+import type { PluginDefinition } from "@/chat/plugins/types";
+
+const catalogPlugins = vi.hoisted(
+  () =>
+    [
+      {
+        dir: "/tmp/plugins/sentry",
+        manifest: {
+          name: "sentry",
+          displayName: "Sentry",
+          description: "Sentry provider",
+          capabilities: [],
+          configKeys: [],
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["sentry.io"],
+            authTokenEnv: "SENTRY_AUTH_TOKEN",
+          },
+        },
+      },
+      {
+        dir: "/tmp/plugins/notion",
+        manifest: {
+          name: "notion",
+          displayName: "Notion",
+          description: "Notion provider",
+          capabilities: [],
+          configKeys: [],
+          mcp: {
+            transport: "http",
+            url: "https://mcp.notion.com/mcp",
+          },
+        },
+      },
+      {
+        dir: "/tmp/plugins/github",
+        manifest: {
+          name: "github",
+          displayName: "GitHub",
+          description: "GitHub provider",
+          capabilities: [],
+          configKeys: [],
+          domains: ["api.github.com", "github.com"],
+          oauth: {
+            clientIdEnv: "GITHUB_APP_CLIENT_ID",
+            clientSecretEnv: "GITHUB_APP_CLIENT_SECRET",
+            authorizeEndpoint: "https://github.com/login/oauth/authorize",
+            tokenEndpoint: "https://github.com/login/oauth/access_token",
+          },
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["api.github.com"],
+            authTokenEnv: "GITHUB_TOKEN",
+          },
+        },
+      },
+      {
+        dir: "/tmp/plugins/example-bundle",
+        manifest: {
+          name: "example-bundle",
+          displayName: "Example Bundle",
+          description: "Bundle-only plugin",
+          capabilities: [],
+          configKeys: [],
+        },
+      },
+    ] satisfies PluginDefinition[],
+);
+
+vi.mock("@/chat/plugins/catalog-runtime", () => ({
+  pluginCatalogRuntime: {
+    getProviders: () => catalogPlugins,
+  } satisfies Pick<PluginCatalogRuntime, "getProviders">,
+}));
+
+vi.mock("@/chat/discovery", () => ({
+  homeDir: () => "/mock/app",
+}));
+
+vi.mock("@/chat/mcp/auth-store", () => ({
+  getMcpStoredOAuthCredentials: vi.fn(async () => undefined),
+}));
+
+vi.mock("@/chat/skills", () => ({
+  discoverSkills: vi.fn(async () => []),
+}));
+
+function createMockTokenStore(
+  tokens: Record<string, StoredTokens | undefined>,
+): UserTokenStore {
+  return {
+    get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
+    set: vi.fn(async () => {}),
+    delete: vi.fn(async () => {}),
+    withRefresh: vi.fn(async (_userId, _provider, callback) => callback()),
+  };
+}
+
+const validToken: StoredTokens = {
+  accessToken: "xoxp-test",
+  refreshToken: "xoxr-test",
+  expiresAt: Date.now() + 3600_000,
+};
+
+const expiredToken: StoredTokens = {
+  accessToken: "xoxp-expired",
+  refreshToken: "xoxr-expired",
+  expiresAt: Date.now() - 1000,
+};
+
+function findSection(
+  blocks: KnownBlock[],
+  predicate: (section: SectionBlock) => boolean,
+): SectionBlock | undefined {
+  return blocks.find((block) => {
+    const section = block as SectionBlock;
+    return section.type === "section" && predicate(section);
+  }) as SectionBlock | undefined;
+}
+
+function getVersionText(
+  view: Awaited<ReturnType<typeof buildHomeView>>,
+): string | undefined {
+  const versionBlock = view.blocks[view.blocks.length - 1] as {
+    type: string;
+    elements?: Array<{ text?: string }>;
+  };
+  if (versionBlock.type !== "context") {
+    return undefined;
+  }
+  return versionBlock.elements?.[0]?.text;
+}
+
+function getAllSectionText(blocks: KnownBlock[]): string {
+  return blocks
+    .map((block) => block as SectionBlock)
+    .filter((block) => block.type === "section")
+    .map((block) => block.text?.text ?? "")
+    .join("\n");
+}
+
+describe("buildHomeView", () => {
+  let readFileSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    readFileSpy = vi.spyOn(fs, "readFileSync").mockReturnValue("About text");
+    vi.mocked(getMcpStoredOAuthCredentials).mockReset();
+    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    vi.restoreAllMocks();
+    vi.mocked(discoverSkills).mockResolvedValue([]);
+  });
+
+  it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
+    process.env.VERCEL_GIT_COMMIT_SHA = "abc123def456";
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getVersionText(view)).toBe("*junior version:* `abc123def456`");
+  });
+
+  it("shows unknown version metadata when VERCEL_GIT_COMMIT_SHA is missing", async () => {
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getVersionText(view)).toBe("*junior version:* `unknown`");
+  });
+
+  it("shows connected oauth-bearer provider with Unlink button", async () => {
+    const store = createMockTokenStore({ sentry: validToken });
+    const view = await buildHomeView("U123", store);
+
+    expect(view.type).toBe("home");
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("sentry") ?? false,
+    );
+    expect(section).toBeDefined();
+    if (!section) {
+      throw new Error("Expected connected account section for sentry");
+    }
+
+    const accessory = section.accessory as { action_id: string; value: string };
+    expect(accessory.action_id).toBe("app_home_disconnect");
+    expect(accessory.value).toBe("sentry");
+  });
+
+  it("shows connected MCP provider with Unlink button", async () => {
+    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
+      tokens: {
+        access_token: "token",
+        token_type: "bearer",
+      },
+    });
+
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("notion") ?? false,
+    );
+    expect(section).toBeDefined();
+    if (!section) {
+      throw new Error("Expected connected account section for notion");
+    }
+
+    const accessory = section.accessory as { action_id: string; value: string };
+    expect(accessory.action_id).toBe("app_home_disconnect");
+    expect(accessory.value).toBe("notion");
+  });
+
+  it("shows 'No connected accounts' when user has no tokens", async () => {
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(view.type).toBe("home");
+    const noAccountsSection = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text === "No connected accounts",
+    );
+    expect(noAccountsSection).toBeDefined();
+  });
+
+  it("shows providers with expired access tokens (refresh token keeps connection alive)", async () => {
+    const store = createMockTokenStore({ sentry: expiredToken });
+    const view = await buildHomeView("U123", store);
+
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("sentry") ?? false,
+    );
+    expect(section?.text?.text).toContain("sentry");
+  });
+
+  it("shows GitHub App providers with user OAuth tokens", async () => {
+    const store = createMockTokenStore({
+      github: {
+        ...validToken,
+        account: {
+          id: "12345",
+          label: "requester",
+          url: "https://github.com/requester",
+        },
+      },
+    });
+    const view = await buildHomeView("U123", store);
+
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("github") ?? false,
+    );
+    expect(section).toBeDefined();
+    expect(section?.text?.text).toContain(
+      "Connected as <https://github.com/requester|requester>",
+    );
+    expect(store.get).toHaveBeenCalledWith("U123", "github");
+    expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");
+    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
+      "U123",
+      "github",
+    );
+    expect(getMcpStoredOAuthCredentials).not.toHaveBeenCalledWith(
+      "U123",
+      "example-bundle",
+    );
+  });
+
+  it("loads DESCRIPTION.md from app root for home intro text", async () => {
+    readFileSpy.mockReturnValue("Custom app home intro");
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
+    expect(fs.readFileSync).toHaveBeenCalledWith(
+      "/mock/app/DESCRIPTION.md",
+      "utf8",
+    );
+  });
+
+  it("falls back to default intro text when DESCRIPTION.md is missing", async () => {
+    readFileSpy.mockImplementation(() => {
+      throw new Error("missing");
+    });
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getAllSectionText(view.blocks)).toContain(
+      "I help your team investigate, summarize, and act on work in Slack.",
+    );
+  });
+
+  it("shows available skills as read-only list", async () => {
+    vi.mocked(discoverSkills).mockResolvedValue([
+      {
+        name: "incident-summary",
+        description: "Summarize incidents",
+        skillPath: "/skills/incident-summary",
+      },
+      {
+        name: "release-check",
+        description: "Check release health",
+        skillPath: "/skills/release-check",
+      },
+      {
+        name: "jr-rpc",
+        description: "Internal credential ops",
+        skillPath: "/skills/jr-rpc",
+      },
+    ]);
+
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    const content = getAllSectionText(view.blocks);
+    expect(content).toContain("*incident-summary*");
+    expect(content).toContain("*release-check*");
+    expect(content).not.toContain("jr-rpc");
+  });
+});

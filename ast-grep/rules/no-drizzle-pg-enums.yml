@@ -1,0 +1,15 @@
+id: no-drizzle-pg-enums
+language: TypeScript
+severity: error
+message: Do not use Drizzle pgEnum. Use text columns with literal tuple typing and SQL CHECK constraints instead.
+files:
+  - packages/**/*.ts
+  - packages/**/*.tsx
+rule:
+  any:
+    - pattern: import { pgEnum } from "drizzle-orm/pg-core"
+    - pattern: import { $$$, pgEnum, $$$ } from "drizzle-orm/pg-core"
+    - pattern: import { pgEnum as $ALIAS } from "drizzle-orm/pg-core"
+    - pattern: import { $$$, pgEnum as $ALIAS, $$$ } from "drizzle-orm/pg-core"
+    - pattern: pgEnum($$$)
+    - pattern: $OBJ.pgEnum($$$)

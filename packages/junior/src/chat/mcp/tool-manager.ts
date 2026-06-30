@@ -1,0 +1,544 @@
+/**
+ * Turn-local MCP tool manager.
+ *
+ * This manager activates plugin MCP providers for one agent turn, exposes
+ * discovered tools through provider-prefixed names, and converts MCP results
+ * into Pi tool content. MCP clients, auth challenges, and provider session
+ * details stay inside this layer.
+ */
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import {
+  logWarn,
+  serializeGenAiAttribute,
+  setSpanAttributes,
+  withSpan,
+} from "@/chat/logging";
+import {
+  toGenAiPayloadMetadata,
+  type ConversationPrivacy,
+} from "@/chat/conversation-privacy";
+import type { SkillMetadata } from "@/chat/skills";
+import type { PluginDefinition } from "@/chat/plugins/types";
+import {
+  McpAuthorizationRequiredError,
+  PluginMcpClient,
+  type PluginMcpListedTool,
+  type PluginMcpToolCallResult,
+} from "./client";
+import {
+  getMcpAwareTelemetryMessage,
+  getMcpAwareErrorType,
+  McpToolError,
+} from "./errors";
+
+function normalizeMcpToolName(provider: string, toolName: string): string {
+  // Raw MCP tool names are only provider-scoped. Prefix the provider for the
+  // model-facing callable name so two active MCP providers cannot collide.
+  return `mcp__${provider}__${toolName}`;
+}
+
+function summarizeStructuredContent(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function summarizeResourcePart(part: {
+  type: "resource";
+  resource:
+    | { uri: string; text: string; mimeType?: string }
+    | { uri: string; blob: string; mimeType?: string };
+}): string {
+  if ("text" in part.resource) {
+    return part.resource.text;
+  }
+
+  return [
+    `Resource: ${part.resource.uri}`,
+    ...(part.resource.mimeType ? [`Mime Type: ${part.resource.mimeType}`] : []),
+    `Blob bytes (base64): ${part.resource.blob.length}`,
+  ].join("\n");
+}
+
+function toAgentToolContent(
+  result: PluginMcpToolCallResult,
+): Array<TextContent | ImageContent> {
+  if ("toolResult" in result) {
+    return [
+      {
+        type: "text",
+        text: JSON.stringify(result.toolResult, null, 2),
+      },
+    ];
+  }
+
+  const content: Array<TextContent | ImageContent> = [];
+
+  for (const part of result.content) {
+    if (part.type === "text") {
+      content.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (part.type === "image") {
+      content.push({
+        type: "image",
+        data: part.data,
+        mimeType: part.mimeType,
+      });
+      continue;
+    }
+    if (part.type === "audio") {
+      content.push({
+        type: "text",
+        text: `Audio output (${part.mimeType}, ${part.data.length} base64 chars)`,
+      });
+      continue;
+    }
+    if (part.type === "resource_link") {
+      content.push({
+        type: "text",
+        text: part.uri,
+      });
+      continue;
+    }
+    content.push({
+      type: "text",
+      text: summarizeResourcePart(part),
+    });
+  }
+
+  if (content.length > 0) {
+    return content;
+  }
+
+  const structured = summarizeStructuredContent(result.structuredContent);
+  if (structured) {
+    return [{ type: "text", text: structured }];
+  }
+
+  return [{ type: "text", text: "ok" }];
+}
+
+function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
+  const prefix = `[${provider}]`;
+  const details = tool.description?.trim() || tool.title?.trim() || tool.name;
+  return `${prefix} ${details}`;
+}
+
+function extractMcpErrorMessage(result: PluginMcpToolCallResult): string {
+  if ("toolResult" in result) {
+    return JSON.stringify(result.toolResult, null, 2);
+  }
+
+  const textParts = result.content
+    .filter(
+      (part): part is Extract<typeof part, { type: "text" }> =>
+        part.type === "text",
+    )
+    .map((part) => part.text.trim())
+    .filter((text) => text.length > 0);
+  if (textParts.length > 0) {
+    return textParts.join("\n\n");
+  }
+
+  const structured = summarizeStructuredContent(result.structuredContent);
+  if (structured) {
+    return structured;
+  }
+
+  return "MCP tool call failed";
+}
+
+export interface McpToolManagerOptions {
+  authProviderFactory?: (
+    plugin: PluginDefinition,
+  ) =>
+    | OAuthClientProvider
+    | undefined
+    | Promise<OAuthClientProvider | undefined>;
+  fetch?: typeof fetch;
+  onAuthorizationRequired?: (
+    provider: string,
+    error: McpAuthorizationRequiredError,
+  ) => Promise<boolean | void> | boolean | void;
+}
+
+export interface ManagedMcpToolResult {
+  content: Array<TextContent | ImageContent>;
+  details: {
+    provider: string;
+    tool: string;
+    rawResult: PluginMcpToolCallResult;
+  };
+}
+
+export interface ManagedMcpToolDescriptor {
+  name: string;
+  rawName: string;
+  title?: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  provider: string;
+}
+
+type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
+
+export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
+  execute: (
+    args: Record<string, unknown>,
+    options?: {
+      conversationPrivacy?: ConversationPrivacy;
+      toolCallId?: string;
+    },
+  ) => Promise<ManagedMcpToolResult>;
+}
+
+export class McpToolManager {
+  private readonly pluginsByProvider = new Map<string, PluginDefinition>();
+  private readonly activeProviders = new Set<string>();
+  private readonly authorizationPendingProviders = new Set<string>();
+  private readonly clientsByProvider = new Map<string, PluginMcpClient>();
+  private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
+
+  constructor(
+    plugins: PluginDefinition[],
+    private readonly options: McpToolManagerOptions = {},
+  ) {
+    for (const plugin of plugins) {
+      if (plugin.manifest.mcp) {
+        this.pluginsByProvider.set(plugin.manifest.name, plugin);
+      }
+    }
+  }
+
+  getActiveProviders(): string[] {
+    return [...this.activeProviders].sort((left, right) =>
+      left.localeCompare(right),
+    );
+  }
+
+  /** List configured MCP providers for discovery without connecting to them. */
+  getAvailableProviderCatalog(): Array<{
+    provider: string;
+    description: string;
+    active: boolean;
+  }> {
+    return [...this.pluginsByProvider.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([provider, plugin]) => ({
+        provider,
+        description: plugin.manifest.description,
+        active: this.activeProviders.has(provider),
+      }));
+  }
+
+  async activateForSkill(skill: ActiveMcpSkill): Promise<boolean> {
+    if (!skill.pluginProvider) {
+      return false;
+    }
+
+    return await this.activateProvider(skill.pluginProvider);
+  }
+
+  async activateProvider(provider: string): Promise<boolean> {
+    if (this.activeProviders.has(provider)) {
+      return false;
+    }
+    if (this.authorizationPendingProviders.has(provider)) {
+      return false;
+    }
+
+    const plugin = this.pluginsByProvider.get(provider);
+    if (!plugin?.manifest.mcp) {
+      return false;
+    }
+
+    try {
+      const client = await this.getClient(plugin);
+      const tools = this.filterListedTools(plugin, await client.listTools());
+      this.toolsByProvider.set(
+        provider,
+        tools.map((tool) => this.toManagedTool(plugin, client, tool)),
+      );
+      this.activeProviders.add(provider);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof McpAuthorizationRequiredError &&
+        (await this.handleAuthorizationRequired(plugin.manifest.name, error))
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async close(): Promise<void> {
+    let firstError: unknown;
+
+    for (const client of this.clientsByProvider.values()) {
+      try {
+        await client.close();
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+
+    this.clientsByProvider.clear();
+    this.toolsByProvider.clear();
+    this.activeProviders.clear();
+    this.authorizationPendingProviders.clear();
+
+    if (firstError) {
+      throw firstError;
+    }
+  }
+
+  /** Return descriptors for all active MCP provider tools, optionally filtered by provider. */
+  getActiveToolCatalog(
+    options: { provider?: string } = {},
+  ): ManagedMcpToolDescriptor[] {
+    return this.getResolvedActiveTools(options).map((tool) =>
+      this.toToolDescriptor(tool),
+    );
+  }
+
+  private filterListedTools(
+    plugin: PluginDefinition,
+    tools: PluginMcpListedTool[],
+  ): PluginMcpListedTool[] {
+    const allowedTools = plugin.manifest.mcp?.allowedTools;
+    if (!allowedTools || allowedTools.length === 0) {
+      return tools;
+    }
+
+    const availableToolNames = new Set(tools.map((tool) => tool.name));
+    const missingTools = allowedTools.filter(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (missingTools.length > 0) {
+      throw new Error(
+        `Plugin ${plugin.manifest.name} MCP discovery missing allowlisted tools: ${missingTools.join(", ")}`,
+      );
+    }
+
+    const allowedToolSet = new Set(allowedTools);
+    return tools.filter((tool) => allowedToolSet.has(tool.name));
+  }
+
+  private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
+    const existing = this.clientsByProvider.get(plugin.manifest.name);
+    if (existing) {
+      return existing;
+    }
+
+    const authProvider = this.options.authProviderFactory
+      ? await this.options.authProviderFactory(plugin)
+      : undefined;
+    const client = new PluginMcpClient(plugin, {
+      ...(authProvider ? { authProvider } : {}),
+      ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
+    });
+    this.clientsByProvider.set(plugin.manifest.name, client);
+    return client;
+  }
+
+  private toManagedTool(
+    plugin: PluginDefinition,
+    client: PluginMcpClient,
+    tool: PluginMcpListedTool,
+  ): ManagedMcpTool {
+    const outputSchema = toOptionalRecord(tool.outputSchema);
+    const annotations = toOptionalRecord(tool.annotations);
+    return {
+      name: normalizeMcpToolName(plugin.manifest.name, tool.name),
+      description: describeMcpTool(plugin.manifest.name, tool),
+      parameters: tool.inputSchema as Record<string, unknown>,
+      provider: plugin.manifest.name,
+      rawName: tool.name,
+      ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
+      ...(outputSchema ? { outputSchema } : {}),
+      ...(annotations ? { annotations } : {}),
+      execute: async (args, options) => {
+        const resolvedArgs =
+          typeof args === "object" && args !== null ? args : {};
+        const conversationPrivacy = options?.conversationPrivacy ?? "private";
+        const managedToolName = normalizeMcpToolName(
+          plugin.manifest.name,
+          tool.name,
+        );
+        const baseAttributes = {
+          "mcp.method.name": "tools/call",
+          "gen_ai.operation.name": "execute_tool",
+          "gen_ai.tool.name": managedToolName,
+          "gen_ai.tool.description": describeMcpTool(
+            plugin.manifest.name,
+            tool,
+          ),
+          "gen_ai.tool.type": "extension",
+          "app.plugin.name": plugin.manifest.name,
+          ...(options?.toolCallId
+            ? { "gen_ai.tool.call.id": options.toolCallId }
+            : {}),
+        };
+        const argumentAttribute = serializeMcpPayload(
+          resolvedArgs,
+          conversationPrivacy,
+        );
+
+        return await withSpan(
+          `execute_tool ${managedToolName}`,
+          "gen_ai.execute_tool",
+          {},
+          async () => {
+            try {
+              const result = await client.callTool(tool.name, resolvedArgs);
+              if ("isError" in result && result.isError) {
+                throw new McpToolError(extractMcpErrorMessage(result));
+              }
+
+              const resultAttribute = serializeMcpPayload(
+                result,
+                conversationPrivacy,
+              );
+              if (resultAttribute) {
+                setSpanAttributes({
+                  "gen_ai.tool.call.result": resultAttribute,
+                });
+              }
+
+              return {
+                content: toAgentToolContent(result),
+                details: {
+                  provider: plugin.manifest.name,
+                  tool: tool.name,
+                  rawResult: result,
+                },
+              };
+            } catch (error) {
+              if (
+                error instanceof McpAuthorizationRequiredError &&
+                (await this.handleAuthorizationRequired(
+                  plugin.manifest.name,
+                  error,
+                ))
+              ) {
+                const parkedResult = {
+                  toolResult: {
+                    authorizationPending: true,
+                  },
+                };
+                return {
+                  // Pi turns thrown tool errors into toolResult isError frames.
+                  // Once auth pause has been requested, return a placeholder result
+                  // and let the aborted turn park cleanly instead of surfacing a
+                  // spurious tool failure to the model.
+                  content: [{ type: "text", text: "Authorization pending." }],
+                  details: {
+                    provider: plugin.manifest.name,
+                    tool: tool.name,
+                    rawResult: parkedResult,
+                  },
+                };
+              }
+              const errorAttributes = {
+                ...baseAttributes,
+                "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
+                "exception.message": getMcpAwareTelemetryMessage(
+                  error,
+                  conversationPrivacy,
+                ),
+              };
+              setSpanAttributes(errorAttributes);
+              if (error instanceof McpToolError) {
+                logWarn(
+                  "mcp_tool_call_failed",
+                  {},
+                  errorAttributes,
+                  "MCP tool call failed",
+                );
+              }
+              throw error;
+            }
+          },
+          {
+            ...baseAttributes,
+            ...(argumentAttribute
+              ? { "gen_ai.tool.call.arguments": argumentAttribute }
+              : {}),
+          },
+        );
+      },
+    };
+  }
+
+  private async handleAuthorizationRequired(
+    provider: string,
+    error: McpAuthorizationRequiredError,
+  ): Promise<boolean> {
+    if (!this.options.onAuthorizationRequired) {
+      return false;
+    }
+
+    const handled =
+      (await this.options.onAuthorizationRequired(provider, error)) === true;
+    if (!handled) {
+      return false;
+    }
+
+    this.authorizationPendingProviders.add(provider);
+    this.clientsByProvider.delete(provider);
+    this.toolsByProvider.delete(provider);
+    this.activeProviders.delete(provider);
+    return true;
+  }
+
+  /** Return all active ManagedMcpTool objects, optionally filtered by provider. */
+  getResolvedActiveTools(
+    options: { provider?: string } = {},
+  ): ManagedMcpTool[] {
+    const resolved: ManagedMcpTool[] = [];
+
+    for (const provider of this.getActiveProviders()) {
+      if (options.provider && provider !== options.provider) {
+        continue;
+      }
+
+      resolved.push(...(this.toolsByProvider.get(provider) ?? []));
+    }
+
+    return resolved;
+  }
+
+  private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {
+    return {
+      name: tool.name,
+      rawName: tool.rawName,
+      ...(tool.title ? { title: tool.title } : {}),
+      description: tool.description,
+      parameters: tool.parameters,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.annotations ? { annotations: tool.annotations } : {}),
+      provider: tool.provider,
+    };
+  }
+}
+
+function toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function serializeMcpPayload(
+  payload: unknown,
+  privacy: ConversationPrivacy,
+): string | undefined {
+  return serializeGenAiAttribute(
+    privacy === "private" ? toGenAiPayloadMetadata(payload) : payload,
+  );
+}

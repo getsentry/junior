@@ -1,0 +1,49 @@
+minVersion: 0.23.1
+changelogPolicy: none
+preReleaseCommand: bash scripts/craft-pre-release.sh
+targets:
+  - name: npm
+    id: "@sentry/junior"
+    includeNames: /^sentry-junior-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-plugin-api"
+    includeNames: /^sentry-junior-plugin-api-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-agent-browser"
+    includeNames: /^sentry-junior-agent-browser-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-cloudflare"
+    includeNames: /^sentry-junior-cloudflare-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-dashboard"
+    includeNames: /^sentry-junior-dashboard-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-datadog"
+    includeNames: /^sentry-junior-datadog-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-github"
+    includeNames: /^sentry-junior-github-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-hex"
+    includeNames: /^sentry-junior-hex-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-linear"
+    includeNames: /^sentry-junior-linear-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-memory"
+    includeNames: /^sentry-junior-memory-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-notion"
+    includeNames: /^sentry-junior-notion-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-scheduler"
+    includeNames: /^sentry-junior-scheduler-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-sentry"
+    includeNames: /^sentry-junior-sentry-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-maintenance"
+    includeNames: /^sentry-junior-maintenance-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-vercel"
+    includeNames: /^sentry-junior-vercel-\d.*\.tgz$/

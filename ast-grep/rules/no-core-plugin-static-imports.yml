@@ -1,0 +1,17 @@
+id: no-core-plugin-static-imports
+language: TypeScript
+severity: error
+message: Core @sentry/junior must not statically import plugin packages. Use plugin discovery/catalog wiring instead.
+files:
+  - packages/junior/src/**/*.ts
+  - packages/junior/src/**/*.tsx
+rule:
+  all:
+    - kind: import_statement
+    - has:
+        kind: string
+        regex: '^["@'']@sentry/junior-.+["@'']$'
+    - not:
+        has:
+          kind: string
+          regex: '^["@'']@sentry/junior-plugin-api["@'']$'

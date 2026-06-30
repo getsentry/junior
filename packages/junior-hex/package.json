@@ -1,0 +1,18 @@
+{
+  "name": "@sentry/junior-hex",
+  "version": "0.81.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-hex"
+  },
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

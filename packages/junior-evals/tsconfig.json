@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../junior/src/*"],
+      "@junior-tests/*": ["../junior/tests/*"],
+      "@sentry/junior-memory": ["../junior-memory/src/index.ts"],
+      "@sentry/junior-plugin-api": ["../junior-plugin-api/src/index.ts"],
+      "@sentry/junior-scheduler": ["../junior-scheduler/src/index.ts"]
+    }
+  },
+  "include": ["evals/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
+}

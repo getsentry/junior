@@ -1,0 +1,36 @@
+{
+  "writtenAt": "2026-05-20T22:18:17.770Z",
+  "toolName": "webSearch",
+  "input": {
+    "query": "docs.slack.dev \"developing agents\" streaming chat.startStream chat.appendStream chat.stopStream agent",
+    "max_results": 3
+  },
+  "output": {
+    "ok": true,
+    "model": "openai/gpt-5.4",
+    "query": "docs.slack.dev \"developing agents\" streaming chat.startStream chat.appendStream chat.stopStream agent",
+    "result_count": 3,
+    "results": [
+      {
+        "title": "Slack developer docs | Slack Developer Docs",
+        "url": "http://docs.slack.dev",
+        "snippet": ""
+      },
+      {
+        "title": "New features designed for Slack apps sending AI responses | Slack Developer Docs",
+        "url": "https://docs.slack.dev/changelog/2025/10/7/chat-streaming",
+        "snippet": ""
+      },
+      {
+        "title": "Apps can now display thinking steps to users! | Slack Developer Docs",
+        "url": "https://docs.slack.dev/changelog/2026/02/11/task-cards-plan-blocks",
+        "snippet": ""
+      }
+    ]
+  },
+  "metadata": {
+    "cacheKey": "30cbb7db43a518a6b2a0e244c90a648f11cbfec26d44f5587f3574233f62fadd",
+    "version": "web-search-v1",
+    "mode": "auto"
+  }
+}

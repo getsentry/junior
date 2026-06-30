@@ -1,0 +1,392 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { createAgentTools } from "@/chat/tools/agent-tools";
+import { createBashTool } from "@/chat/tools/sandbox/bash";
+import type { Skill } from "@/chat/skills";
+
+const { handleToolExecutionError } = vi.hoisted(() => ({
+  handleToolExecutionError: vi.fn((error: unknown) => {
+    throw error;
+  }),
+}));
+
+vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
+  handleToolExecutionError,
+}));
+
+const githubSkill: Skill = {
+  name: "github",
+  description: "GitHub helper",
+  skillPath: "/tmp/github",
+  body: "instructions",
+  pluginProvider: "github",
+  allowedTools: ["bash"],
+};
+
+describe("createAgentTools", () => {
+  beforeEach(() => {
+    handleToolExecutionError.mockClear();
+  });
+
+  it("emits assistant status only for reportProgress", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onStatus = vi.fn(async () => undefined);
+    const [reportProgressTool, bashTool] = createAgentTools(
+      {
+        reportProgress: {
+          description: "report progress",
+          inputSchema: {} as any,
+        },
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      onStatus,
+    );
+
+    await reportProgressTool!.execute("tool-progress", {
+      message: "  Reviewing results  ",
+    });
+    await bashTool!.execute("tool-bash", { command: "pwd" });
+
+    expect(onStatus).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
+  });
+
+  it("executes sandbox bash without host credential injection", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async ({ input }) => ({
+        result: {
+          ok: true,
+          command: (input as Record<string, unknown>).command,
+          cwd: "/vercel/sandbox",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "ok",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+    );
+
+    const result = await bashTool!.execute("tool-1", {
+      command: "gh issue view 123 --repo getsentry/junior",
+    });
+
+    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 123 --repo getsentry/junior",
+      },
+    });
+    expect(result.details).toMatchObject({
+      ok: true,
+      exit_code: 0,
+    });
+  });
+
+  it("passes Pi abort signals to sandbox execution", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: true,
+          command: "sleep 60",
+          cwd: "/vercel/sandbox",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+    );
+
+    await bashTool!.execute(
+      "tool-1",
+      {
+        command: "sleep 60",
+      },
+      abortController.signal,
+    );
+
+    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: {
+        command: "sleep 60",
+      },
+      signal: abortController.signal,
+    });
+  });
+
+  it("passes Pi abort signals to non-sandbox tools", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const abortController = new AbortController();
+    const execute = vi.fn(async () => ({
+      ok: true,
+    }));
+
+    const [demoTool] = createAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute,
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await demoTool!.execute(
+      "tool-demo",
+      {
+        value: "input",
+      },
+      abortController.signal,
+    );
+
+    expect(execute).toHaveBeenCalledWith(
+      {
+        value: "input",
+      },
+      {
+        experimental_context: sandbox,
+        signal: abortController.signal,
+        conversationPrivacy: "public",
+        toolCallId: "tool-demo",
+      },
+    );
+  });
+
+  it("reports tool call parameters to the caller", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onToolCall = vi.fn();
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      onToolCall,
+    );
+
+    await bashTool!.execute("tool-bash", { command: "which gh" });
+
+    expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
+  });
+
+  it("forwards Pi tool preparation metadata", () => {
+    const sandbox = new SkillSandbox([], []);
+    const prepareArguments = vi.fn((args: unknown) => args as never);
+    const [editTool] = createAgentTools(
+      {
+        editFile: {
+          description: "edit",
+          inputSchema: {} as any,
+          prepareArguments,
+          executionMode: "sequential",
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    expect(editTool?.prepareArguments).toBe(prepareArguments);
+    expect(editTool?.executionMode).toBe("sequential");
+  });
+
+  it("marks sandbox bash as sequential", () => {
+    const sandbox = new SkillSandbox([], []);
+    const [bashTool] = createAgentTools(
+      {
+        bash: createBashTool(),
+      },
+      sandbox,
+      {},
+    );
+
+    expect(bashTool?.executionMode).toBe("sequential");
+  });
+
+  it("rethrows plugin auth pauses without reporting a tool failure", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const pluginAuthOrchestration = {
+      maybeHandleAuthSignal: vi.fn(async () => {
+        throw new PluginAuthorizationPauseError(
+          "github",
+          "GitHub",
+          "link_sent",
+        );
+      }),
+    } as any;
+    const authRequired = {
+      provider: "github",
+      grant: {
+        name: "default",
+        access: "read",
+        reason: "sandbox-egress:github:read",
+      },
+      authorization: {
+        type: "oauth",
+        provider: "github",
+        scope: "repo",
+      },
+      createdAtMs: Date.now(),
+    };
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: false,
+          command: "gh issue view 123",
+          cwd: "/vercel/sandbox",
+          exit_code: 1,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "bad credentials",
+          stdout_truncated: false,
+          stderr_truncated: false,
+          auth_required: authRequired,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      pluginAuthOrchestration,
+      undefined,
+    );
+
+    await expect(
+      bashTool!.execute("tool-2", { command: "gh issue view 123" }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+    expect(pluginAuthOrchestration.maybeHandleAuthSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "gh issue view 123",
+        auth_required: authRequired,
+      }),
+    );
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
+  });
+
+  it("rethrows disabled authorization errors without reporting a tool failure", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const pluginAuthOrchestration = {
+      maybeHandleAuthSignal: vi.fn(async () => {
+        throw new AuthorizationFlowDisabledError("plugin", "github");
+      }),
+    } as any;
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: false,
+          command: "gh issue view 123",
+          cwd: "/vercel/sandbox",
+          exit_code: 1,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "bad credentials",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      pluginAuthOrchestration,
+      undefined,
+    );
+
+    await expect(
+      bashTool!.execute("tool-2", { command: "gh issue view 123" }),
+    ).rejects.toBeInstanceOf(AuthorizationFlowDisabledError);
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
+  });
+});

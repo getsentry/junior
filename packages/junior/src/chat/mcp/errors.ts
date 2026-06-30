@@ -1,0 +1,33 @@
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+
+/** Thrown when an MCP failure should be returned as a model-visible tool error. */
+export class McpToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpToolError";
+  }
+}
+
+/** Return the OpenTelemetry error.type value for MCP-aware tool failures. */
+export function getMcpAwareErrorType(error: unknown, fallback: string): string {
+  if (error instanceof McpToolError) {
+    return "tool_error";
+  }
+  return error instanceof Error ? error.name : fallback;
+}
+
+/** Return the display-safe error message for MCP-aware tool failures. */
+export function getMcpAwareErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Return an error message safe for logs and span attributes. */
+export function getMcpAwareTelemetryMessage(
+  error: unknown,
+  privacy: ConversationPrivacy | undefined,
+): string {
+  if (privacy === "private" && error instanceof McpToolError) {
+    return "MCP tool call failed";
+  }
+  return getMcpAwareErrorMessage(error);
+}

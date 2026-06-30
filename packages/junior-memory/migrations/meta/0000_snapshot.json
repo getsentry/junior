@@ -1,0 +1,234 @@
+{
+  "id": "57a69a4f-1cc5-4597-a818-fb23e3a5bf17",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.junior_memory_memories": {
+      "name": "junior_memory_memories",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_key": {
+          "name": "scope_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_type": {
+          "name": "subject_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_key": {
+          "name": "subject_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_platform": {
+          "name": "source_platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_at_ms": {
+          "name": "observed_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at_ms": {
+          "name": "created_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at_ms": {
+          "name": "expires_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_at_ms": {
+          "name": "superseded_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superseded_by_id": {
+          "name": "superseded_by_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at_ms": {
+          "name": "archived_at_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archive_reason": {
+          "name": "archive_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "junior_memory_memories_visible_idx": {
+          "name": "junior_memory_memories_visible_idx",
+          "columns": [
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at_ms",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_memory_memories_expiration_idx": {
+          "name": "junior_memory_memories_expiration_idx",
+          "columns": [
+            {
+              "expression": "expires_at_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"expires_at_ms\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_memory_memories_idempotency_idx": {
+          "name": "junior_memory_memories_idempotency_idx",
+          "columns": [
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_memory_memories_scope_check": {
+          "name": "junior_memory_memories_scope_check",
+          "value": "\"junior_memory_memories\".\"scope\" IN ('personal', 'conversation')"
+        },
+        "junior_memory_memories_type_check": {
+          "name": "junior_memory_memories_type_check",
+          "value": "\"junior_memory_memories\".\"type\" IN (\n        'preference',\n        'identity',\n        'relationship',\n        'knowledge',\n        'context',\n        'event',\n        'task',\n        'observation'\n      )"
+        },
+        "junior_memory_memories_subject_type_check": {
+          "name": "junior_memory_memories_subject_type_check",
+          "value": "\"junior_memory_memories\".\"subject_type\" IN ('user', 'conversation', 'general')"
+        },
+        "junior_memory_memories_subject_key_check": {
+          "name": "junior_memory_memories_subject_key_check",
+          "value": "(\"junior_memory_memories\".\"subject_type\" = 'general' AND \"junior_memory_memories\".\"subject_key\" IS NULL) OR (\"junior_memory_memories\".\"subject_type\" IN ('user', 'conversation') AND \"junior_memory_memories\".\"subject_key\" IS NOT NULL AND length(\"junior_memory_memories\".\"subject_key\") > 0)"
+        },
+        "junior_memory_memories_source_platform_check": {
+          "name": "junior_memory_memories_source_platform_check",
+          "value": "\"junior_memory_memories\".\"source_platform\" IN ('slack', 'local')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -1,0 +1,58 @@
+version = 1
+# Skills always fetch the latest version; lockfile tracks names only.
+agents = ["claude", "codex", "cursor"]
+
+[trust]
+allow_all = true
+
+[[skills]]
+name = "dotagents"
+source = "getsentry/dotagents"
+
+[[skills]]
+name = "skill-writer"
+source = "getsentry/skills"
+
+[[skills]]
+name = "commit"
+source = "getsentry/skills"
+
+[[skills]]
+name = "pr-writer"
+source = "getsentry/skills"
+
+[[skills]]
+name = "iterate-pr"
+source = "getsentry/skills"
+
+[[skills]]
+name = "brand-guidelines"
+source = "getsentry/skills"
+
+[[skills]]
+name = "agents-md"
+source = "getsentry/skills"
+
+[[mcp]]
+name = "sentry"
+url = "https://mcp.sentry.dev/mcp/sentry/junior?experimental=1"
+
+[[skills]]
+name = "chat-sdk"
+source = "vercel/chat"
+
+[[skills]]
+name = "ai-sdk"
+source = "vercel/ai"
+
+[[skills]]
+name = "doc-coauthoring"
+source = "getsentry/skills"
+
+[[skills]]
+name = "agent-browser"
+source = "vercel-labs/agent-browser"
+
+[[skills]]
+name = "dogfood"
+source = "vercel-labs/agent-browser"

@@ -1,0 +1,91 @@
+export const CLI_USAGE =
+  "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]\n       junior upgrade\n       junior chat\n       junior chat -p <message>";
+
+interface CliHandlers {
+  runChat: (argv: string[]) => Promise<number>;
+  runInit: (dir: string) => Promise<void>;
+  runSnapshotCreate: () => Promise<void>;
+  runCheck: (dir?: string) => Promise<void>;
+  runUpgrade: () => Promise<void>;
+  runPluginCommand?: (
+    command: string,
+    argv: string[],
+  ) => Promise<number | undefined>;
+}
+
+interface CliIo {
+  error: (line: string) => void;
+}
+
+const DEFAULT_IO: CliIo = {
+  error: console.error,
+};
+
+/** Strip Node's leading argv separator while preserving command-level flags. */
+function normalizeCliArgv(argv: string[]): string[] {
+  return argv[0] === "--" ? argv.slice(1) : argv;
+}
+
+/** Dispatch CLI arguments to command handlers and return a process exit code. */
+export async function runCli(
+  argv: string[],
+  handlers: CliHandlers,
+  io: CliIo = DEFAULT_IO,
+): Promise<number> {
+  const [command, subcommand, ...rest] = normalizeCliArgv(argv);
+
+  if (command === "chat") {
+    return await handlers.runChat(
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+  }
+
+  if (command === "init") {
+    if (!subcommand || rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runInit(subcommand);
+    return 0;
+  }
+
+  if (command === "snapshot" && subcommand === "create") {
+    if (rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runSnapshotCreate();
+    return 0;
+  }
+
+  if (command === "check") {
+    if (rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runCheck(subcommand);
+    return 0;
+  }
+
+  if (command === "upgrade") {
+    if (subcommand || rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runUpgrade();
+    return 0;
+  }
+
+  if (command && handlers.runPluginCommand) {
+    const exitCode = await handlers.runPluginCommand(
+      command,
+      subcommand === undefined ? [] : [subcommand, ...rest],
+    );
+    if (exitCode !== undefined) {
+      return exitCode;
+    }
+  }
+
+  io.error(CLI_USAGE);
+  return 1;
+}

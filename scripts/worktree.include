@@ -1,0 +1,8 @@
+# Local development files copied into fresh git worktrees by scripts/worktree.mjs.
+.env
+.env.local
+.env.*.local
+.envrc
+.npmrc
+.vercel/project.json
+apps/example/.vercel/project.json

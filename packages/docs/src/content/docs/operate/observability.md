@@ -1,0 +1,68 @@
+---
+title: Observability
+description: Core signals and queries for webhook, queue, turn, and tool health.
+type: reference
+prerequisites:
+  - /start-here/verify-and-troubleshoot/
+related:
+  - /operate/reliability-runbooks/
+  - /reference/handler-surface/
+---
+
+## Key event signals
+
+- `webhook_handler_failed`
+- `conversation_work_failed`
+- `conversation_work_recovery_failed`
+- `agent_continue_schedule_failed`
+- `agent_turn_failed`
+- `agent_turn_timeout`
+- `agent_tool_call_failed`
+
+## Key spans
+
+- `http.server.request`
+- `queue.enqueue_message`
+- `queue.process_message`
+- `chat.turn`
+- `gen_ai.invoke_agent`
+- `gen_ai.execute_tool`
+
+## High-value attributes
+
+- `http.response.status_code`
+- `url.path`
+- `app.queue.delivery_count`
+- `messaging.message.conversation_id`
+- `gen_ai.request.model`
+- `error.type`
+
+## Starter queries
+
+```text
+event.name:webhook_handler_failed
+```
+
+```text
+event.name:conversation_work_failed OR event.name:conversation_work_recovery_failed
+```
+
+```text
+event.name:conversation_work_pending_requeued OR event.name:conversation_work_lease_expired_requeued
+```
+
+```text
+event.name:agent_continue_schedule_failed OR event.name:agent_continue_lock_busy
+```
+
+```text
+event.name:agent_turn_timeout OR event.name:agent_turn_failed
+```
+
+```text
+event.name:agent_tool_call_failed
+```
+
+## Next step
+
+Use symptom-driven playbooks in [Reliability Runbooks](/operate/reliability-runbooks/).

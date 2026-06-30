@@ -1,0 +1,111 @@
+name: CI
+
+permissions:
+  contents: read
+  actions: write
+  statuses: write
+  pull-requests: read
+
+on:
+  push:
+    branches:
+      - main
+      - release/**
+      - releases/**
+      - release-*
+      - auto-release/**
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm release:check
+      - run: pnpm skills:check
+      - run: pnpm lint
+      - run: pnpm test:ci
+      - run: pnpm test:e2e:dashboard
+      - run: pnpm --filter @sentry/junior-example build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
+      - run: pnpm docs:check
+
+      - name: Upload coverage and test results
+        if: ${{ !cancelled() }}
+        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
+          coverage-format: istanbul
+          disable-search: true
+          junit-xml-pattern: packages/**/coverage/results.junit.xml
+          fail_ci_if_error: false
+          informational-project: true
+          informational-patch: true
+
+      - name: Pack release artifacts
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p artifacts
+          pnpm --filter @sentry/junior pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-plugin-api pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-github pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-notion pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-scheduler pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-maintenance pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-vercel pack --pack-destination artifacts
+          ls -la artifacts
+
+      - name: Upload release artifacts
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.sha }}
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 7

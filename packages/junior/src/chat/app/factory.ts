@@ -1,0 +1,238 @@
+import type { SlackAdapter } from "@chat-adapter/slack";
+import type { Message } from "chat";
+import {
+  createSlackTurnRuntime,
+  type AssistantLifecycleEvent,
+  type SlackTurnRuntime,
+} from "@/chat/runtime/slack-runtime";
+import { createJuniorRuntimeServices } from "@/chat/app/services";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
+import { logException, logWarn, withSpan } from "@/chat/logging";
+import { createReplyToThread } from "@/chat/runtime/reply-executor";
+import {
+  initializeAssistantThread as initializeAssistantThreadImpl,
+  refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
+} from "@/chat/slack/assistant-thread/lifecycle";
+import {
+  getChannelId,
+  getRunId,
+  getThreadId,
+  stripLeadingBotMention,
+} from "@/chat/runtime/thread-context";
+import {
+  getPersistedThreadState,
+  mergeArtifactsState,
+  persistThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
+import {
+  createPrepareTurnState,
+  type PreparedTurnState,
+} from "@/chat/runtime/turn-preparation";
+import type { TurnMessageText } from "@/chat/runtime/turn-input";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
+import {
+  markConversationMessage,
+  updateConversationStats,
+  upsertConversationMessage,
+} from "@/chat/services/conversation-memory";
+import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
+import { botConfig } from "@/chat/config";
+
+export interface CreateSlackRuntimeOptions {
+  getSlackAdapter: () => SlackAdapter;
+  now?: () => number;
+  services?: JuniorRuntimeServiceOverrides;
+}
+
+async function persistAssistantContextChannelId(args: {
+  sourceChannelId: string;
+  threadId: string;
+}): Promise<void> {
+  const currentArtifacts = coerceThreadArtifactsState(
+    await getPersistedThreadState(args.threadId),
+  );
+  const nextArtifacts = mergeArtifactsState(currentArtifacts, {
+    assistantContextChannelId: args.sourceChannelId,
+  });
+  await persistThreadStateById(args.threadId, {
+    artifacts: nextArtifacts,
+  });
+}
+
+function clearSkippedTurnIfActive(
+  conversation: PreparedTurnState["conversation"],
+  messageId: string,
+): void {
+  if (
+    conversation.processing.activeTurnId === buildDeterministicTurnId(messageId)
+  ) {
+    conversation.processing.activeTurnId = undefined;
+  }
+}
+
+function upsertSkippedConversationMessage(
+  conversation: PreparedTurnState["conversation"],
+  args: {
+    decision: SubscribedReplyDecision;
+    message: Message;
+    text: TurnMessageText;
+  },
+): void {
+  const conversationMessage = toConversationMessage({
+    entry: args.message,
+    explicitMention: Boolean(args.message.isMention),
+    text: args.text.userText,
+  });
+  upsertConversationMessage(conversation, {
+    ...conversationMessage,
+    meta: {
+      ...conversationMessage.meta,
+      replied: false,
+      skippedReason: args.decision.reason,
+    },
+  });
+}
+
+export function createSlackRuntime(
+  options: CreateSlackRuntimeOptions,
+): SlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent> {
+  const services = createJuniorRuntimeServices(options.services);
+  const prepareTurnState = createPrepareTurnState({
+    compactConversationIfNeeded:
+      services.conversationMemory.compactConversationIfNeeded,
+    hydrateConversationVisionContext:
+      services.visionContext.hydrateConversationVisionContext,
+  });
+  const replyToThread = createReplyToThread({
+    getSlackAdapter: options.getSlackAdapter,
+    prepareTurnState,
+    resolveUserAttachments: services.visionContext.resolveUserAttachments,
+    services: services.replyExecutor,
+  });
+
+  return createSlackTurnRuntime<PreparedTurnState, AssistantLifecycleEvent>({
+    assistantUserName: botConfig.userName,
+    modelId: botConfig.modelId,
+    now: options.now ?? (() => Date.now()),
+    getThreadId,
+    getChannelId,
+    getRunId,
+    stripLeadingBotMention: (text, stripOptions) =>
+      stripLeadingBotMention(text, {
+        ...stripOptions,
+        botUserId: options.getSlackAdapter().botUserId,
+      }),
+    withSpan,
+    logWarn,
+    logException,
+    prepareTurnState,
+    persistPreparedState: async ({ thread, preparedState }) => {
+      await persistThreadState(thread, {
+        conversation: preparedState.conversation,
+      });
+    },
+    getPreparedConversationContext: (preparedState) =>
+      preparedState.conversationContext,
+    decideSubscribedReply: services.subscribedReplyPolicy,
+    recordSkippedSteeringMessage: async ({
+      thread,
+      message,
+      decision,
+      text,
+    }) => {
+      const conversation = coerceThreadConversationState(await thread.state);
+      upsertSkippedConversationMessage(conversation, {
+        decision,
+        message,
+        text,
+      });
+      updateConversationStats(conversation);
+      await persistThreadState(thread, {
+        conversation,
+      });
+    },
+    recordSkippedSubscribedTurn: async ({
+      thread,
+      message,
+      decision,
+      completedAtMs,
+      text,
+    }) => {
+      const conversation = coerceThreadConversationState(await thread.state);
+      upsertSkippedConversationMessage(conversation, {
+        decision,
+        message,
+        text,
+      });
+      clearSkippedTurnIfActive(conversation, message.id);
+      conversation.processing.lastCompletedAtMs = completedAtMs;
+      updateConversationStats(conversation);
+      await persistThreadState(thread, {
+        conversation,
+      });
+    },
+    onSubscribedMessageSkipped: async ({
+      thread,
+      message,
+      preparedState,
+      decision,
+      completedAtMs,
+    }) => {
+      markConversationMessage(
+        preparedState.conversation,
+        preparedState.userMessageId,
+        {
+          replied: false,
+          skippedReason: decision.reason,
+        },
+      );
+      clearSkippedTurnIfActive(preparedState.conversation, message.id);
+      preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
+      updateConversationStats(preparedState.conversation);
+      await persistThreadState(thread, {
+        conversation: preparedState.conversation,
+      });
+    },
+    replyToThread,
+    initializeAssistantThread: async ({
+      threadId,
+      channelId,
+      threadTs,
+      sourceChannelId,
+    }) => {
+      await initializeAssistantThreadImpl({
+        channelId,
+        threadTs,
+        sourceChannelId,
+        getSlackAdapter: options.getSlackAdapter,
+        onContextChannelResolved: (resolvedSourceChannelId) =>
+          persistAssistantContextChannelId({
+            sourceChannelId: resolvedSourceChannelId,
+            threadId,
+          }),
+      });
+    },
+    refreshAssistantThreadContext: async ({
+      threadId,
+      channelId,
+      threadTs,
+      sourceChannelId,
+    }) => {
+      await refreshAssistantThreadContextImpl({
+        channelId,
+        threadTs,
+        sourceChannelId,
+        getSlackAdapter: options.getSlackAdapter,
+        onContextChannelResolved: (resolvedSourceChannelId) =>
+          persistAssistantContextChannelId({
+            sourceChannelId: resolvedSourceChannelId,
+            threadId,
+          }),
+      });
+    },
+  });
+}

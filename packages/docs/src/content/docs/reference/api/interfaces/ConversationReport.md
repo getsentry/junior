@@ -1,0 +1,42 @@
+---
+editUrl: false
+next: false
+prev: false
+title: "ConversationReport"
+---
+
+Defined in: [junior/src/reporting/conversations.ts:218](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L218)
+
+## Properties
+
+### conversationId
+
+> **conversationId**: `string`
+
+Defined in: [junior/src/reporting/conversations.ts:219](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L219)
+
+---
+
+### displayTitle
+
+> **displayTitle**: `string`
+
+Defined in: [junior/src/reporting/conversations.ts:221](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L221)
+
+Always-populated display title, computed the same way as per-run reports.
+
+---
+
+### generatedAt
+
+> **generatedAt**: `string`
+
+Defined in: [junior/src/reporting/conversations.ts:222](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L222)
+
+---
+
+### runs
+
+> **runs**: [`ConversationRunReport`](/reference/api/interfaces/conversationrunreport/)[]
+
+Defined in: [junior/src/reporting/conversations.ts:223](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L223)
