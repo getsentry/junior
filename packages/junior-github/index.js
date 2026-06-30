@@ -5,7 +5,7 @@ import {
   permissionCapabilities,
   readGrantPermissions,
 } from "./permissions.js";
-import { createGitHubIssueTool } from "./tools.js";
+import { createGitHubTools } from "./tools.js";
 
 const GITHUB_APP_ID_ENV = "GITHUB_APP_ID";
 const GITHUB_APP_PRIVATE_KEY_ENV = "GITHUB_APP_PRIVATE_KEY";
@@ -1126,9 +1126,7 @@ export function githubPlugin(options = {}) {
     },
     hooks: {
       tools(ctx) {
-        return {
-          createIssue: createGitHubIssueTool(ctx),
-        };
+        return createGitHubTools(ctx);
       },
       async sandboxPrepare(ctx) {
         const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;

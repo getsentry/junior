@@ -22,6 +22,7 @@
     "index.js",
     "permissions.js",
     "tools.js",
+    "tools",
     "skills",
     "SETUP.md"
   ],
