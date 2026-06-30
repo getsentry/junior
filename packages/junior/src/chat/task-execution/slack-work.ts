@@ -198,6 +198,9 @@ export function createSlackResourceEventInboundMessage(
       authorId: "UJRNEVENT",
       metadata: {
         kind: "resource_event",
+        installation: {
+          teamId: destination.teamId,
+        },
         platform: "slack",
         route: "subscribed",
         thread,

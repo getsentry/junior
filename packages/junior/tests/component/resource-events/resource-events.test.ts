@@ -117,6 +117,9 @@ describe("resource event subscriptions", () => {
         text: expect.stringContaining("CI failed on workflow test."),
         metadata: {
           kind: "resource_event",
+          installation: {
+            teamId: "T123",
+          },
           route: "subscribed",
           resourceEvent: {
             eventType: "checks.failed",
