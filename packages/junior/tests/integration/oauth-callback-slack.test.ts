@@ -269,6 +269,21 @@ describe("oauth callback slack integration", () => {
                 slackTs: "1700000000.010",
               },
             },
+            {
+              id: "msg.bystander",
+              role: "user",
+              text: "I think those tools are read only",
+              createdAtMs: 3,
+              author: {
+                userId: "U999",
+                userName: "bystander",
+              },
+              meta: {
+                replied: false,
+                skippedReason: "side_conversation:passive side conversation",
+                slackTs: "1700000000.011",
+              },
+            },
           ],
           processing: {
             activeTurnId: undefined,

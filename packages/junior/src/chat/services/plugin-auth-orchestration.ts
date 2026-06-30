@@ -26,6 +26,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
+import { isSlackHumanUserId } from "@/chat/requester";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -52,6 +53,7 @@ export interface PluginAuthOrchestrationInput {
   conversationId?: string;
   sessionId?: string;
   requesterId?: string;
+  requesterIsBot?: boolean;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -260,6 +262,13 @@ export function createPluginAuthOrchestration(
           signal.message ??
             `${formatProviderLabel(provider)} credentials are required but no OAuth flow is available for this provider.`,
         );
+      }
+
+      if (
+        input.requesterIsBot === true ||
+        (input.requesterId && !isSlackHumanUserId(input.requesterId))
+      ) {
+        throw new AuthorizationFlowDisabledError("plugin", provider);
       }
 
       if (!input.requesterId || !input.userTokenStore) {

@@ -892,6 +892,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             effectiveUserText,
             {
               credentialContext,
+              authRequesterIsBot: message.author.isBot === true,
               requester,
               conversationContext: preparedState.conversationContext,
               artifactState: preparedState.artifacts,

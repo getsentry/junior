@@ -112,6 +112,9 @@ export function isPendingAuthLatestRequest(
     if (message?.role !== "user") {
       continue;
     }
+    if (message.meta?.skippedReason) {
+      continue;
+    }
     return buildDeterministicTurnId(message.id) === pendingAuth.sessionId;
   }
 

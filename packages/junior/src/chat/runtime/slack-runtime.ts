@@ -10,6 +10,7 @@ import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
+import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
@@ -808,6 +809,9 @@ export function createSlackTurnRuntime<
           );
           return;
         }
+        if (error instanceof AuthorizationFlowDisabledError) {
+          return;
+        }
         const eventId = deps.logException(
           error,
           "mention_handler_failed",
@@ -1093,6 +1097,9 @@ export function createSlackTurnRuntime<
             { "app.ai.retryable_reason": error.reason },
             "onSubscribedMessage parked turn for auth resume",
           );
+          return;
+        }
+        if (error instanceof AuthorizationFlowDisabledError) {
           return;
         }
         const eventId = deps.logException(

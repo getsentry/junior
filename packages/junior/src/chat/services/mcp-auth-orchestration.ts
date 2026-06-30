@@ -26,6 +26,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { isSlackHumanUserId } from "@/chat/requester";
 
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -42,6 +43,7 @@ export interface McpAuthOrchestrationInput {
   conversationId?: string;
   sessionId?: string;
   requesterId?: string;
+  requesterIsBot?: boolean;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -130,7 +132,11 @@ export function createMcpAuthOrchestration(
         `Missing MCP auth session context for plugin "${provider}"`,
       );
     }
-    if (input.authorizationFlowMode === "disabled") {
+    if (
+      input.authorizationFlowMode === "disabled" ||
+      input.requesterIsBot === true ||
+      !isSlackHumanUserId(requesterId)
+    ) {
       await deleteMcpAuthSession(authSessionId);
       throw new AuthorizationFlowDisabledError("mcp", provider);
     }

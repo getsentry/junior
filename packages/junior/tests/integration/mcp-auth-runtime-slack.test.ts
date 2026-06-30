@@ -736,6 +736,109 @@ describe("mcp auth runtime slack integration", () => {
     });
   });
 
+  it("does not park or deliver auth links for bot-authored subscribed messages", async () => {
+    const threadId = "slack:C129:1700000000.009";
+    const turnId = "turn_bot-message";
+    const { createTestChatRuntime } = chatRuntimeModule;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () =>
+            ({
+              object: {
+                should_reply: true,
+                should_unsubscribe: false,
+                confidence: 1,
+                reason: "integration update needs auth",
+              },
+              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"integration update needs auth"}',
+            }) as never,
+        },
+        visionContext: {
+          listThreadReplies: async () => [],
+        },
+      },
+    });
+
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C129",
+    };
+    const thread = createTestThread({
+      id: threadId,
+      state: {
+        conversation: {
+          messages: [
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: priorBudgetContext,
+              createdAtMs: 1,
+              author: {
+                userName: "junior",
+                isBot: true,
+              },
+            },
+          ],
+        },
+      },
+    });
+    await mirrorThreadStateToAdapter(thread);
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "bot-message",
+        threadId,
+        text: "what did i say about the budget?",
+        isMention: false,
+        author: {
+          userId: "U123",
+          userName: "linear",
+          isBot: true,
+        },
+        raw: {
+          bot_id: "B123456",
+          channel: "C129",
+          team_id: "T123",
+          ts: "1700000000.010",
+          thread_ts: "1700000000.009",
+        },
+      }),
+      { destination },
+    );
+
+    expect(agentProbe.promptCallCount).toBe(1);
+    expect(agentProbe.continueCallCount).toBe(0);
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
+    expect(
+      await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(
+        "U123",
+        EVAL_MCP_AUTH_PROVIDER,
+      ),
+    ).toBeUndefined();
+    expect(
+      await turnSessionStoreModule.getAgentTurnSessionRecord(threadId, turnId),
+    ).toMatchObject({
+      conversationId: threadId,
+      sessionId: turnId,
+      state: "failed",
+      errorMessage: "Agent turn failed before final reply delivery completed",
+    });
+
+    const persistedState =
+      await threadStateModule.getPersistedThreadState(threadId);
+    expect(persistedState).toMatchObject({
+      conversation: {
+        processing: {
+          pendingAuth: undefined,
+        },
+      },
+    });
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
+
   it("parks and resumes an MCP auth challenge from direct provider activation", async () => {
     agentProbe.directProviderSearch = true;
     const threadId = "slack:C125:1700000000.003";

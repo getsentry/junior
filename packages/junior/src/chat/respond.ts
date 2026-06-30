@@ -203,6 +203,7 @@ function waitForAbortSettlement(
 export interface ReplyRequestContext {
   skillDirs?: string[];
   credentialContext?: CredentialContext;
+  authRequesterIsBot?: boolean;
   requester?: Requester;
   source: Source;
   slackConversation?: SlackConversationContext;
@@ -1015,6 +1016,7 @@ async function generateAssistantReplyInPrivacyContext(
       conversationId: sessionConversationId,
       sessionId,
       requesterId: authRequesterId,
+      requesterIsBot: context.authRequesterIsBot,
       channelId: slackChannelId,
       destination: context.destination,
       source: runSource,
@@ -1034,6 +1036,7 @@ async function generateAssistantReplyInPrivacyContext(
       conversationId: sessionConversationId,
       sessionId,
       requesterId: authRequesterId,
+      requesterIsBot: context.authRequesterIsBot,
       channelId: slackChannelId,
       destination: context.destination,
       source: runSource,
