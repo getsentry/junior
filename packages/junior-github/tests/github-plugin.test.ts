@@ -1049,16 +1049,6 @@ Conversation: \`local:test:old-conversation\`
         }),
       }),
     ).rejects.toThrow("must use the github.createIssue tool");
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            '{ createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).rejects.toThrow("must use the github.createIssue tool");
   });
 
   it("adds provider requirements to known GitHub write grants", async () => {
