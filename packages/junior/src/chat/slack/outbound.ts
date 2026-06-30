@@ -112,7 +112,7 @@ export async function postSlackMessage(input: {
       action: "chat.postMessage",
       spanAttributes: {
         "app.slack.channel_id": channelId,
-        "messaging.destination.id": channelId,
+        "messaging.destination.name": channelId,
         ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
       },
     },
@@ -209,7 +209,7 @@ export async function postSlackEphemeralMessage(input: {
       spanAttributes: {
         "app.slack.channel_id": channelId,
         "app.slack.user_id": userId,
-        "messaging.destination.id": channelId,
+        "messaging.destination.name": channelId,
         ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
       },
     },
@@ -263,7 +263,7 @@ export async function uploadFilesToThread(input: {
       spanAttributes: {
         "app.slack.channel_id": channelId,
         "app.slack.thread_ts": threadTs,
-        "messaging.destination.id": channelId,
+        "messaging.destination.name": channelId,
       },
     },
   );
