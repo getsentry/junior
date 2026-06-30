@@ -7,9 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const GITHUB_ISSUE_FOOTER_START = "<!-- junior-session-footer:start -->";
-const GITHUB_ISSUE_FOOTER_END = "<!-- junior-session-footer:end -->";
+import { appendGitHubFooter } from "./footer.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -105,74 +103,6 @@ function parseRepo(value: string): { name: string; owner: string } {
   };
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function sentryConversationUrl(conversationId: string): string | undefined {
-  const dsn = process.env.SENTRY_DSN?.trim();
-  const orgSlug = process.env.SENTRY_ORG_SLUG?.trim();
-  if (!dsn || !orgSlug) {
-    return undefined;
-  }
-
-  let parsed: URL;
-  try {
-    parsed = new URL(dsn);
-  } catch {
-    return undefined;
-  }
-
-  const projectId = parsed.pathname.split("/").filter(Boolean).at(-1);
-  if (!parsed.hostname || !projectId) {
-    return undefined;
-  }
-
-  const encodedConversationId = encodeURIComponent(conversationId);
-  const params = new URLSearchParams({ project: projectId });
-  const path = `explore/conversations/${encodedConversationId}/?${params.toString()}`;
-
-  if (
-    parsed.hostname === "sentry.io" ||
-    parsed.hostname.endsWith(".sentry.io")
-  ) {
-    return `https://${orgSlug}.sentry.io/${path}`;
-  }
-
-  const port = parsed.port ? `:${parsed.port}` : "";
-  return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
-}
-
-function githubIssueConversationFooter(
-  conversationId: string,
-): string | undefined {
-  const id = nonEmptyString(conversationId, "conversationId");
-  const sessionUrl = sentryConversationUrl(id);
-  if (!sessionUrl) {
-    return undefined;
-  }
-  return `${GITHUB_ISSUE_FOOTER_START}\n\n--\n\n[View Junior Session in Sentry](${sessionUrl})\n\n${GITHUB_ISSUE_FOOTER_END}`;
-}
-
-function appendGitHubIssueFooter(body: string, conversationId: string): string {
-  const footer = githubIssueConversationFooter(conversationId);
-  const normalizedBody = body.trimEnd();
-  const existingFooter = new RegExp(
-    `${escapeRegExp(GITHUB_ISSUE_FOOTER_START)}[\\s\\S]*?${escapeRegExp(
-      GITHUB_ISSUE_FOOTER_END,
-    )}`,
-  );
-  if (existingFooter.test(normalizedBody)) {
-    return footer
-      ? normalizedBody.replace(existingFooter, footer)
-      : normalizedBody.replace(existingFooter, "").trimEnd();
-  }
-  if (!footer) {
-    return normalizedBody;
-  }
-  return normalizedBody ? `${normalizedBody}\n\n${footer}` : footer;
-}
-
 async function readJsonResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) {
@@ -237,7 +167,7 @@ function createGitHubIssueRequest(
   );
   const payload = {
     title: nonEmptyString(input.title, "title"),
-    body: appendGitHubIssueFooter(input.body ?? "", conversationId),
+    body: appendGitHubFooter(input.body ?? "", conversationId),
     ...(labels?.length ? { labels } : {}),
   };
   return new Request(
