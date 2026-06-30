@@ -6,9 +6,10 @@ const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
 class GitHubIssueCreateRejectedError extends Error {
-  constructor(message) {
+  constructor(message, status) {
     super(message);
     this.name = "GitHubIssueCreateRejectedError";
+    this.status = status;
   }
 }
 
@@ -158,6 +159,7 @@ async function createGitHubIssue(ctx, request) {
       `GitHub issue creation failed with HTTP ${response.status}: ${githubApiErrorMessage(
         parsed,
       )}`,
+      response.status,
     );
   }
   if (
@@ -230,14 +232,22 @@ export function createGitHubIssueTool(ctx) {
           );
           try {
             const result = await createGitHubIssue(ctx, request);
-            await ctx.state.set(
-              key,
-              { status: "completed", ...result },
-              GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
-            );
+            try {
+              await ctx.state.set(
+                key,
+                { status: "completed", ...result },
+                GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
+              );
+            } catch {
+              return result;
+            }
             return result;
           } catch (error) {
-            if (error instanceof GitHubIssueCreateRejectedError) {
+            if (
+              error instanceof GitHubIssueCreateRejectedError &&
+              error.status >= 400 &&
+              error.status < 500
+            ) {
               await ctx.state.delete(key);
             }
             throw error;

@@ -185,6 +185,7 @@ function githubToolsContext(input?: {
     provider: string;
     request: Request;
   }) => Promise<Response>;
+  stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
   const state = new Map<string, unknown>();
@@ -233,6 +234,7 @@ function githubToolsContext(input?: {
         return state.get(key);
       },
       async set(key: string, value: unknown) {
+        await input?.stateSet?.({ key, value });
         state.set(key, value);
       },
       async setIfNotExists(key: string, value: unknown) {
@@ -627,6 +629,59 @@ Conversation: \`local:test:new-conversation\`
     });
 
     expect(ctx.egressRequests()).toHaveLength(2);
+  });
+
+  it("keeps pending idempotency state after ambiguous GitHub server failure", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(JSON.stringify({ message: "Server error" }), {
+          status: 500,
+        }),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-server-error" }),
+    ).rejects.toThrow("HTTP 500");
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-server-error" }),
+    ).rejects.toThrow("refusing to create a duplicate issue");
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
+  it("returns the created issue when completed idempotency storage fails", async () => {
+    let setCalls = 0;
+    const ctx = githubToolsContext({
+      stateSet: () => {
+        setCalls += 1;
+        if (setCalls === 2) {
+          throw new Error("state unavailable");
+        }
+      },
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed issue",
+        },
+        { toolCallId: "call-completed-storage-fails" },
+      ),
+    ).resolves.toEqual({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(1);
   });
 
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
