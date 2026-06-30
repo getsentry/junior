@@ -84,6 +84,10 @@ function indexLockKey(key: string): string {
   return `${key}:lock`;
 }
 
+function ttlUntil(expiresAtMs: number, nowMs: number): number {
+  return Math.max(1, expiresAtMs - nowMs);
+}
+
 function buildSubscriptionId(input: {
   conversationId: string;
   events: string[];
@@ -116,6 +120,7 @@ async function addToIndex(
   state: StateAdapter,
   key: string,
   subscriptionId: string,
+  nowMs: number,
 ): Promise<void> {
   await withIndexLock(state, key, async () => {
     const existing = (await state.get<string[]>(key)) ?? [];
@@ -125,7 +130,7 @@ async function addToIndex(
     const next = ids.includes(subscriptionId)
       ? ids
       : [...ids, subscriptionId].slice(-INDEX_MAX_LENGTH);
-    await state.set(key, next, JUNIOR_THREAD_STATE_TTL_MS);
+    await state.set(key, next, await indexTtlMs(state, next, nowMs));
   });
 }
 
@@ -133,12 +138,35 @@ async function removeFromIndex(
   state: StateAdapter,
   key: string,
   subscriptionId: string,
+  nowMs: number,
 ): Promise<void> {
   await withIndexLock(state, key, async () => {
     const existing = (await state.get<string[]>(key)) ?? [];
     const next = existing.filter((id) => id !== subscriptionId);
-    await state.set(key, next, JUNIOR_THREAD_STATE_TTL_MS);
+    await state.set(key, next, await indexTtlMs(state, next, nowMs));
   });
+}
+
+async function indexTtlMs(
+  state: StateAdapter,
+  subscriptionIds: string[],
+  nowMs: number,
+): Promise<number> {
+  const records = await Promise.all(
+    subscriptionIds.map(async (id) =>
+      parseSubscription(await state.get(subscriptionKey(id))),
+    ),
+  );
+  const latestExpiresAtMs = Math.max(
+    nowMs,
+    ...records
+      .filter(
+        (record): record is ResourceEventSubscription =>
+          record !== undefined && activeAt(record, nowMs),
+      )
+      .map((record) => record.expiresAtMs),
+  );
+  return ttlUntil(latestExpiresAtMs, nowMs);
 }
 
 function parseSubscription(
@@ -169,6 +197,9 @@ export async function createResourceEventSubscription(
   if (events.length === 0) {
     throw new Error("Resource event subscription requires at least one event");
   }
+  if (input.expiresAtMs <= nowMs) {
+    throw new Error("Resource event subscription expiry must be in the future");
+  }
   const id = buildSubscriptionId({
     conversationId: input.conversationId,
     events,
@@ -193,13 +224,23 @@ export async function createResourceEventSubscription(
     updatedAtMs: nowMs,
   };
   const parsed = subscriptionSchema.parse(record);
-  await state.set(subscriptionKey(id), parsed, JUNIOR_THREAD_STATE_TTL_MS);
+  await state.set(
+    subscriptionKey(id),
+    parsed,
+    ttlUntil(parsed.expiresAtMs, nowMs),
+  );
   await addToIndex(
     state,
     resourceIndexKey(input.provider, input.resourceRef),
     id,
+    nowMs,
   );
-  await addToIndex(state, conversationIndexKey(input.conversationId), id);
+  await addToIndex(
+    state,
+    conversationIndexKey(input.conversationId),
+    id,
+    nowMs,
+  );
   return parsed;
 }
 
@@ -253,10 +294,11 @@ export async function cancelResourceEventSubscription(input: {
     if (!current || current.conversationId !== input.conversationId) {
       return undefined;
     }
+    const nowMs = input.nowMs ?? Date.now();
     const next: ResourceEventSubscription = {
       ...current,
       status: "cancelled",
-      updatedAtMs: input.nowMs ?? Date.now(),
+      updatedAtMs: nowMs,
     };
     await state.set(
       subscriptionKey(input.id),
@@ -267,11 +309,13 @@ export async function cancelResourceEventSubscription(input: {
       state,
       resourceIndexKey(current.provider, current.resourceRef),
       input.id,
+      nowMs,
     );
     await removeFromIndex(
       state,
       conversationIndexKey(current.conversationId),
       input.id,
+      nowMs,
     );
     return next;
   } finally {
@@ -326,15 +370,18 @@ export async function completeResourceEventSubscription(input: {
     status: "completed",
     updatedAtMs: input.nowMs ?? Date.now(),
   };
+  const nowMs = input.nowMs ?? Date.now();
   await state.set(subscriptionKey(input.id), next, JUNIOR_THREAD_STATE_TTL_MS);
   await removeFromIndex(
     state,
     resourceIndexKey(current.provider, current.resourceRef),
     input.id,
+    nowMs,
   );
   await removeFromIndex(
     state,
     conversationIndexKey(current.conversationId),
     input.id,
+    nowMs,
   );
 }

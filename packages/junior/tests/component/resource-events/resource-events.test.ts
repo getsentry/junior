@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { StateAdapter } from "chat";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
@@ -14,11 +16,35 @@ import {
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 
+function createRecordingStateAdapter() {
+  const values = new Map<string, unknown>();
+  const set = vi.fn(async (key: string, value: unknown, _ttlMs?: number) => {
+    values.set(key, value);
+    return undefined;
+  });
+  return {
+    state: {
+      connect: async () => {},
+      disconnect: async () => {},
+      get: async (key: string) => values.get(key),
+      set,
+      acquireLock: async (threadId: string) => ({
+        threadId,
+        token: `lock:${threadId}`,
+        expiresAt: Date.now() + 10_000,
+      }),
+      releaseLock: async () => {},
+    } as unknown as StateAdapter,
+    set,
+  };
+}
+
 function createGithubPrSubscription(input: {
   events: string[];
   expiresAtMs?: number;
   intent?: string;
   nowMs?: number;
+  state?: StateAdapter;
 }) {
   return createResourceEventSubscription(
     {
@@ -39,7 +65,7 @@ function createGithubPrSubscription(input: {
         threadTs: "1712345.0001",
       },
     },
-    { nowMs: input.nowMs ?? 1_000 },
+    { nowMs: input.nowMs ?? 1_000, state: input.state },
   );
 }
 
@@ -216,5 +242,33 @@ describe("resource event subscriptions", () => {
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("stores active records and indexes until the subscription expiry", async () => {
+    const nowMs = 1_000;
+    const expiresAtMs = nowMs + 30 * 24 * 60 * 60 * 1000;
+    const { state, set } = createRecordingStateAdapter();
+
+    await createGithubPrSubscription({
+      events: ["checks.failed"],
+      expiresAtMs,
+      nowMs,
+      state,
+    });
+
+    const ttlValues = set.mock.calls.map((call) => {
+      const ttlMs = call[2];
+      if (ttlMs === undefined) {
+        throw new Error("Expected subscription state write to include a TTL");
+      }
+      return ttlMs;
+    });
+    expect(ttlValues).toHaveLength(3);
+    expect(ttlValues).toEqual([
+      expiresAtMs - nowMs,
+      expiresAtMs - nowMs,
+      expiresAtMs - nowMs,
+    ]);
+    expect(Math.min(...ttlValues)).toBeGreaterThan(JUNIOR_THREAD_STATE_TTL_MS);
   });
 });
