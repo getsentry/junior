@@ -66,15 +66,15 @@ Goal: Confirm required tools are installed and credentials are ready before
 
   node --version && pnpm --version && vercel --version
   vercel whoami
-  [ "$APP_NAME" != "<replace-me>" ] && echo "APP_NAME is set: $APP_NAME"
+  [ -n "$APP_NAME" ] && [ "$APP_NAME" != "<replace-me>" ] && echo "APP_NAME: $APP_NAME"
 
 Success:
   - All three tools print versions without error.
   - vercel whoami shows an authenticated account.
-  - APP_NAME is set to something other than <replace-me>.
+  - APP_NAME is non-empty and not the literal placeholder <replace-me>.
 
-Stop if: Any tool is missing, Vercel is unauthenticated, or APP_NAME is
-         still <replace-me>.
+Stop if: Any tool is missing, Vercel is unauthenticated, APP_NAME is
+         empty, or APP_NAME is still <replace-me>.
 
 ---
 
@@ -181,7 +181,8 @@ Goal: Deploy to production so the webhook endpoint is publicly reachable before
       the Slack app is created. Slack validates request URLs live on creation.
 Ref:  https://junior.sentry.dev/start-here/deploy-to-vercel/
 
-  vercel --prod $VERCEL_SCOPE | tee /tmp/prod-deploy-url.txt
+  vercel --prod $VERCEL_SCOPE > /tmp/prod-deploy-url.txt
+  cat /tmp/prod-deploy-url.txt
 
   The deployment URL is printed to stdout. The stable production domain is
   usually visible in the Vercel dashboard under the linked project → Domains.
@@ -222,27 +223,37 @@ Stop now and send the human this exact message (fill in STABLE_URL):
   │ Use this as the webhook request URL everywhere the guide asks:
   │   https://<STABLE_URL>/api/webhooks/slack
   │
-  │ When the Slack app is installed, set these in your terminal:
-  │   export SLACK_SIGNING_SECRET="xsec-..."
-  │   export SLACK_BOT_TOKEN="xoxb-..."
-  │
-  │ Then reply: Slack credentials are ready
+  │ When done, reply with both values on separate lines:
+  │   SLACK_SIGNING_SECRET=xsec-...
+  │   SLACK_BOT_TOKEN=xoxb-...
   └───────────────────────────────────────────────────────────────────
 
-Do not run any further commands until the human replies:
-  "Slack credentials are ready"
+Do not run any further commands until the human replies with both values.
 
-After the human confirms, verify:
+When the human replies, extract the two values from their reply and assign:
+
+  SLACK_SIGNING_SECRET="<value from human reply>"
+  SLACK_BOT_TOKEN="<value from human reply>"
+
+Note: Junior verifies Slack request signatures before handling the
+url_verification challenge. If Slack reports URL validation failed, it
+may mean the signing secret was not deployed in time. In that case:
+  1. Upload SLACK_SIGNING_SECRET now (without SLACK_BOT_TOKEN): run Phase 7
+     for SLACK_SIGNING_SECRET only, redeploy, then ask the human to retry
+     configuring Event Subscriptions in the Slack app settings.
+  2. Once URL validation passes, continue with SLACK_BOT_TOKEN upload.
+
+Verify both are assigned:
 
   : "${SLACK_SIGNING_SECRET:?SLACK_SIGNING_SECRET is not set}"
   : "${SLACK_BOT_TOKEN:?SLACK_BOT_TOKEN is not set}"
 
 Success:
-  - Human replied "Slack credentials are ready".
+  - Human provided both values.
   - Both shell variables are non-empty.
 
 Stop if: Either variable is missing, or the human reports that Slack URL
-         validation failed.
+         validation failed and the fallback above did not resolve it.
 
 ---
 
