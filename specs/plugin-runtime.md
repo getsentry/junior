@@ -70,6 +70,8 @@ pluginCatalogRuntime.createBroker(provider, deps: PluginBrokerDeps): CredentialB
 
 Plugins with egress credential hooks do not have a generic broker. They declare top-level manifest `domains`, then `grantForEgress` selects plugin-defined grants and `issueCredential` issues short-lived credential leases for those grants. `issueCredential` returns `needed` when user authorization can satisfy the grant, and `unavailable` when plugin setup or runtime state prevents issuing it. A plugin OAuth hook may also resolve provider account metadata after OAuth so stored tokens and permission-denied signals can identify the connected account. App startup fails if egress credential hooks are incomplete, if they are mixed with generic `credentials` or `api-headers`, if the plugin declares egress-only domains without hooks, or if a code manifest declares `oauth` without OAuth bearer credentials and without egress credential hooks.
 
+`grantForEgress` may throw `EgressPolicyDenied` to reject a provider request before credentials are issued. Core maps this denial to HTTP 403 with no auth-required signal and no upstream request; plugins must use this only for deterministic host-owned policy blocks, not missing authorization.
+
 Tests and evals seed credentials through the same stores and plugin env vars used by production paths. Broker selection must not switch to test-only credential behavior.
 
 ## Capability Catalog

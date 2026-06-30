@@ -8,6 +8,7 @@
 import { createPrivateKey, createSign } from "node:crypto";
 import {
   defineJuniorPlugin,
+  EgressPolicyDenied,
   type EgressHookContext,
   type EgressResponseHookContext,
   type IssueCredentialHookContext,
@@ -1002,6 +1003,33 @@ function githubUserReadReason(
 function parseGitHubGraphqlOperation(
   bodyText: string | undefined,
 ): PluginGrantAccess | undefined {
+  const parsed = parseGitHubGraphqlRequest(bodyText);
+  if (!parsed) {
+    return undefined;
+  }
+  const { normalized, operationName } = parsed;
+  if (operationName) {
+    const namedOperation = normalized.match(
+      new RegExp(
+        `\\b(query|mutation|subscription)\\s+${escapeRegExp(operationName)}\\b`,
+      ),
+    )?.[1];
+    return namedOperation ? graphqlOperationAccess(namedOperation) : undefined;
+  }
+  const operation = normalized.match(/\b(query|mutation|subscription)\b/)?.[1];
+  const operationAccess = graphqlOperationAccess(operation);
+  if (operationAccess) {
+    return operationAccess;
+  }
+  if (normalized.startsWith("{")) {
+    return "read";
+  }
+  return undefined;
+}
+
+function parseGitHubGraphqlRequest(
+  bodyText: string | undefined,
+): { normalized: string; operationName?: string } | undefined {
   if (typeof bodyText !== "string" || bodyText.trim().length === 0) {
     return undefined;
   }
@@ -1025,23 +1053,10 @@ function parseGitHubGraphqlOperation(
   const normalized = maskGraphqlStringLiterals(
     query.replace(/^\s*#[^\n\r]*(?:\r?\n|$)/gm, ""),
   ).trim();
-  if (operationName) {
-    const namedOperation = normalized.match(
-      new RegExp(
-        `\\b(query|mutation|subscription)\\s+${escapeRegExp(operationName)}\\b`,
-      ),
-    )?.[1];
-    return namedOperation ? graphqlOperationAccess(namedOperation) : undefined;
-  }
-  const operation = normalized.match(/\b(query|mutation|subscription)\b/)?.[1];
-  const operationAccess = graphqlOperationAccess(operation);
-  if (operationAccess) {
-    return operationAccess;
-  }
-  if (normalized.startsWith("{")) {
-    return "read";
-  }
-  return undefined;
+  return {
+    normalized,
+    ...(operationName ? { operationName } : {}),
+  };
 }
 
 function escapeRegExp(value: string): string {
@@ -1202,6 +1217,63 @@ function githubApiWriteReason(
   return undefined;
 }
 
+function isGitHubIssueCreateRestRequest(
+  method: string,
+  upstreamUrl: URL,
+): boolean {
+  return (
+    method === "POST" &&
+    isGitHubApiUrl(upstreamUrl) &&
+    /^\/repos\/[^/]+\/[^/]+\/issues$/.test(upstreamUrl.pathname.toLowerCase())
+  );
+}
+
+function isGitHubIssueCreateGraphqlMutation(
+  method: string,
+  upstreamUrl: URL,
+  bodyText: string | undefined,
+): boolean {
+  if (method !== "POST" || !isGitHubGraphqlUrl(upstreamUrl)) {
+    return false;
+  }
+  const parsed = parseGitHubGraphqlRequest(bodyText);
+  if (!parsed) {
+    return false;
+  }
+  if (!/\bcreateIssue\b/.test(parsed.normalized)) {
+    return false;
+  }
+  if (!parsed.operationName) {
+    return /\bmutation\b/.test(parsed.normalized);
+  }
+  return new RegExp(
+    `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,
+  ).test(parsed.normalized);
+}
+
+function assertGitHubWriteAllowed(input: {
+  bodyText?: string;
+  method: string;
+  operation?: string;
+  upstreamUrl: URL;
+}): void {
+  if (input.operation === "github.issue.create") {
+    return;
+  }
+  if (
+    isGitHubIssueCreateRestRequest(input.method, input.upstreamUrl) ||
+    isGitHubIssueCreateGraphqlMutation(
+      input.method,
+      input.upstreamUrl,
+      input.bodyText,
+    )
+  ) {
+    throw new EgressPolicyDenied(
+      "GitHub issue creation must use the github.createIssue tool so Junior can own idempotency and the conversation footer.",
+    );
+  }
+}
+
 function grantRequirements(reason: GitHubGrantReason): string[] | undefined {
   if (reason === "github.git-write" || reason === "github.contents-write") {
     return CONTENTS_WRITE_REQUIREMENTS;
@@ -1243,6 +1315,14 @@ async function githubGrantForEgress(
 ): Promise<GitHubGrant> {
   const method = ctx.request.method.toUpperCase();
   const upstreamUrl = new URL(ctx.request.url);
+  assertGitHubWriteAllowed({
+    ...(ctx.request.bodyText !== undefined
+      ? { bodyText: ctx.request.bodyText }
+      : {}),
+    method,
+    ...(ctx.request.operation ? { operation: ctx.request.operation } : {}),
+    upstreamUrl,
+  });
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     return grantForAccess(

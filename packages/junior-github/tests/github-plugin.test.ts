@@ -205,6 +205,7 @@ function mockGitHubRefresh(
 async function grantForEgress(input: {
   bodyText?: string;
   method: string;
+  operation?: string;
   url: string;
 }) {
   const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
@@ -215,6 +216,7 @@ async function grantForEgress(input: {
     request: {
       ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
       method: input.method,
+      ...(input.operation ? { operation: input.operation } : {}),
       url: input.url,
     },
   });
@@ -453,6 +455,7 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "POST",
+        operation: "github.issue.create",
         url: "https://api.github.com/repos/getsentry/junior/issues",
       }),
     ).toMatchObject({
@@ -470,6 +473,15 @@ describe("github plugin", () => {
       access: "write",
       reason: "github.fork-create",
     });
+  });
+
+  it("denies raw GitHub issue creation outside the typed createIssue operation", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/issues",
+      }),
+    ).rejects.toThrow("must use the github.createIssue tool");
   });
 
   it("creates issues through host egress with a deterministic Junior footer", async () => {
@@ -992,23 +1004,8 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/graphql",
         bodyText: JSON.stringify({
-          operationName: "CreateIssue",
           query:
-            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
-        }),
-      }),
-    ).resolves.toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
-    await expect(
-      grantForEgress({
-        method: "POST",
-        url: "https://api.github.com/graphql",
-        bodyText: JSON.stringify({
-          query:
-            'fragment issueFields on Issue { number } mutation Search($query: String!) { createIssue(input: {repositoryId: "repo", title: $query}) { issue { ...issueFields } } }',
+            "fragment prFields on PullRequest { number } mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { ...prFields } } }",
         }),
       }),
     ).resolves.toMatchObject({
@@ -1027,6 +1024,31 @@ Conversation: \`local:test:old-conversation\`
       access: "write",
       reason: "github.graphql-write",
     });
+  });
+
+  it("denies GraphQL createIssue mutations from raw egress", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "CreateIssue",
+          query:
+            'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
+        }),
+      }),
+    ).rejects.toThrow("must use the github.createIssue tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "CreateIssue",
+          query:
+            'fragment createIssueFields on Mutation { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } } mutation CreateIssue { ...createIssueFields }',
+        }),
+      }),
+    ).rejects.toThrow("must use the github.createIssue tool");
   });
 
   it("adds provider requirements to known GitHub write grants", async () => {

@@ -20,7 +20,10 @@ import {
   shouldPropagateSandboxEgressTrace,
   type SandboxEgressTracePropagationConfig,
 } from "@/chat/sandbox/egress/tracing";
-import { EgressAuthRequired } from "@sentry/junior-plugin-api";
+import {
+  EgressAuthRequired,
+  EgressPolicyDenied,
+} from "@sentry/junior-plugin-api";
 
 // Module overview: own credentialed provider forwarding after a caller has
 // authenticated the request source and resolved its provider.
@@ -125,6 +128,18 @@ function authRequiredResponse(input: {
       status: 401,
       headers: {
         "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    },
+  );
+}
+
+function policyDeniedResponse(error: EgressPolicyDenied): Response {
+  return Response.json(
+    { error: error.message },
+    {
+      status: 403,
+      headers: {
         "cache-control": "no-store",
       },
     },
@@ -245,6 +260,13 @@ function isEgressAuthRequired(error: unknown): error is EgressAuthRequired {
   return (
     error instanceof EgressAuthRequired ||
     (error instanceof Error && error.name === "EgressAuthRequired")
+  );
+}
+
+function isEgressPolicyDenied(error: unknown): error is EgressPolicyDenied {
+  return (
+    error instanceof EgressPolicyDenied ||
+    (error instanceof Error && error.name === "EgressPolicyDenied")
   );
 }
 
@@ -551,13 +573,37 @@ export async function executeCredentialedEgressRequest(input: {
   })
     ? await requestBodyBytes(request)
     : undefined;
-  const grantSelection = await selectSandboxEgressGrant({
-    bodyText: requestBodyText(bodyForGrantSelection),
-    ...(operation ? { operation } : {}),
-    provider,
-    method: request.method,
-    upstreamUrl,
-  });
+  let grantSelection: SandboxEgressGrantSelection;
+  try {
+    grantSelection = await selectSandboxEgressGrant({
+      bodyText: requestBodyText(bodyForGrantSelection),
+      ...(operation ? { operation } : {}),
+      provider,
+      method: request.method,
+      upstreamUrl,
+    });
+  } catch (error) {
+    if (isEgressPolicyDenied(error)) {
+      logWarn(
+        "sandbox_egress_policy_denied",
+        {},
+        {
+          ...egressAttributes({
+            egressId: activeEgressId,
+            host: upstreamUrl.hostname,
+            method: request.method,
+            path: upstreamUrl.pathname,
+            provider,
+            status: 403,
+          }),
+          ...routingAttributes(request, upstreamUrl),
+        },
+        error.message,
+      );
+      return policyDeniedResponse(error);
+    }
+    throw error;
+  }
   const issueCredentialLease =
     deps.issueCredentialLease ?? sandboxEgressCredentialLease;
   const clearCredentialLease =

@@ -1045,7 +1045,45 @@ describe("sandbox egress proxy integration", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("keeps GraphQL mutations on GitHub user-write credentials", async () => {
+  it("denies raw GitHub REST issue creation before credential injection", async () => {
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/repos/getsentry/junior/issues",
+        body: JSON.stringify({ title: "test" }),
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "GitHub issue creation must use the github.createIssue tool so Junior can own idempotency and the conversation footer.",
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
+  });
+
+  it("denies raw GitHub GraphQL issue creation before credential injection", async () => {
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
       credentials: { actor: { type: "user", userId: REQUESTER_ID } },
@@ -1076,10 +1114,11 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    expect(response.status).toBe(401);
-    await expect(response.text()).resolves.toContain(
-      "junior-auth-required provider=github grant=user-write access=write",
-    );
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "GitHub issue creation must use the github.createIssue tool so Junior can own idempotency and the conversation footer.",
+    });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 

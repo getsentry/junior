@@ -118,6 +118,14 @@ export class EgressAuthRequired extends Error {
   }
 }
 
+/** Deny provider egress before Junior issues credentials for a disallowed operation. */
+export class EgressPolicyDenied extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, { cause: options?.cause });
+    this.name = "EgressPolicyDenied";
+  }
+}
+
 /** Provider account identity resolved by a plugin OAuth hook. */
 export type PluginProviderAccount = z.output<
   typeof pluginProviderAccountSchema
