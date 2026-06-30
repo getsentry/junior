@@ -51,25 +51,8 @@ const createIssueInputSchema = Type.Object(
 );
 type CreateGitHubIssueInput = Static<typeof createIssueInputSchema>;
 
-interface NormalizedCreateGitHubIssueInput {
-  body: string;
-  labels?: string[];
-  repo: {
-    name: string;
-    owner: string;
-  };
-  title: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
   try {
-    if (!Value.Check(createIssueInputSchema, input)) {
-      throw new Error("Input does not match GitHub createIssue schema.");
-    }
     return Value.Parse(createIssueInputSchema, input);
   } catch (error) {
     throw new PluginToolInputError("Invalid GitHub createIssue input.", {
@@ -94,20 +77,6 @@ function parseRepo(value: string): { name: string; owner: string } {
   return {
     owner: parts[0].trim(),
     name: parts[1].trim(),
-  };
-}
-
-function normalizeCreateIssueInput(
-  input: CreateGitHubIssueInput,
-): NormalizedCreateGitHubIssueInput {
-  const labels = input.labels?.map((label) =>
-    nonEmptyString(label, "labels entry"),
-  );
-  return {
-    repo: parseRepo(input.repo),
-    title: nonEmptyString(input.title, "title"),
-    body: input.body ?? "",
-    ...(labels?.length ? { labels } : {}),
   };
 }
 
@@ -147,8 +116,11 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 }
 
 function githubApiErrorMessage(payload: unknown): string {
-  if (isRecord(payload) && typeof payload.message === "string") {
-    return payload.message;
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const message = (payload as { message?: unknown }).message;
+    if (typeof message === "string") {
+      return message;
+    }
   }
   if (typeof payload === "string" && payload.trim()) {
     return payload.trim();
@@ -157,22 +129,32 @@ function githubApiErrorMessage(payload: unknown): string {
 }
 
 function createIssueResult(value: unknown): GitHubIssueResult | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const result = value as {
+    number?: unknown;
+    status?: unknown;
+    url?: unknown;
+  };
   if (
-    isRecord(value) &&
-    value.status === "completed" &&
-    typeof value.number === "number" &&
-    typeof value.url === "string"
+    result.status === "completed" &&
+    typeof result.number === "number" &&
+    typeof result.url === "string"
   ) {
     return {
-      number: value.number,
-      url: value.url,
+      number: result.number,
+      url: result.url,
     };
   }
   return undefined;
 }
 
 function isPendingCreateIssue(value: unknown): boolean {
-  return isRecord(value) && value.status === "pending";
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  return (value as { status?: unknown }).status === "pending";
 }
 
 function isEgressAuthRequired(error: unknown): boolean {
@@ -195,11 +177,14 @@ function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
 ): Request {
-  const { body, labels, repo, title } = normalizeCreateIssueInput(input);
+  const repo = parseRepo(input.repo);
+  const labels = input.labels?.map((label) =>
+    nonEmptyString(label, "labels entry"),
+  );
   const payload = {
-    title,
-    body: appendGitHubIssueFooter(body, conversationId),
-    ...(labels ? { labels } : {}),
+    title: nonEmptyString(input.title, "title"),
+    body: appendGitHubIssueFooter(input.body ?? "", conversationId),
+    ...(labels?.length ? { labels } : {}),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(
@@ -235,16 +220,16 @@ async function createGitHubIssue(
       response.status,
     );
   }
-  if (
-    !isRecord(parsed) ||
-    typeof parsed.number !== "number" ||
-    typeof parsed.html_url !== "string"
-  ) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("GitHub issue creation returned an invalid response.");
+  }
+  const issue = parsed as { html_url?: unknown; number?: unknown };
+  if (typeof issue.number !== "number" || typeof issue.html_url !== "string") {
     throw new Error("GitHub issue creation returned an invalid response.");
   }
   return {
-    number: parsed.number,
-    url: parsed.html_url,
+    number: issue.number,
+    url: issue.html_url,
   };
 }
 
