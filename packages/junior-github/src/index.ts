@@ -1244,7 +1244,10 @@ function isGitHubIssueCreateGraphqlMutation(
     return false;
   }
   if (!parsed.operationName) {
-    return /\bmutation\b/.test(parsed.normalized);
+    return (
+      /\bmutation\b/.test(parsed.normalized) ||
+      parsed.normalized.startsWith("{")
+    );
   }
   return new RegExp(
     `\\bmutation\\s+${escapeRegExp(parsed.operationName)}\\b`,

@@ -330,14 +330,31 @@ function isGrantSelectionBodyVisible(input: {
   );
 }
 
-function requestBodyText(body: ArrayBuffer | undefined): string | undefined {
-  if (
-    body === undefined ||
-    body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES
-  ) {
+function grantSelectionBodyText(input: {
+  body: ArrayBuffer | undefined;
+  operation?: string;
+  provider: string;
+  request: Request;
+  upstreamUrl: URL;
+}): string | undefined {
+  if (input.body === undefined) {
     return undefined;
   }
-  return new TextDecoder().decode(body);
+  if (input.body.byteLength > GRANT_SELECTION_BODY_TEXT_LIMIT_BYTES) {
+    if (
+      !input.operation &&
+      input.provider === "github" &&
+      input.request.method.toUpperCase() === "POST" &&
+      input.upstreamUrl.hostname.toLowerCase() === "api.github.com" &&
+      input.upstreamUrl.pathname.toLowerCase().endsWith("/graphql")
+    ) {
+      throw new EgressPolicyDenied(
+        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+      );
+    }
+    return undefined;
+  }
+  return new TextDecoder().decode(input.body);
 }
 
 function responseContentLength(upstream: Response): number | undefined {
@@ -576,7 +593,13 @@ export async function executeCredentialedEgressRequest(input: {
   let grantSelection: SandboxEgressGrantSelection;
   try {
     grantSelection = await selectSandboxEgressGrant({
-      bodyText: requestBodyText(bodyForGrantSelection),
+      bodyText: grantSelectionBodyText({
+        body: bodyForGrantSelection,
+        ...(operation ? { operation } : {}),
+        provider,
+        request,
+        upstreamUrl,
+      }),
       ...(operation ? { operation } : {}),
       provider,
       method: request.method,

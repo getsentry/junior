@@ -1122,6 +1122,48 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
+  it("denies oversized raw GitHub GraphQL before credential injection", async () => {
+    await registerGitHubPlugin();
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          query:
+            "mutation CreateIssue($input: CreateIssueInput!) { createIssue(input: $input) { issue { number } } }",
+          variables: {
+            input: { repositoryId: "repo", title: "test" },
+            filler: "x".repeat(70 * 1024),
+          },
+        }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/graphql",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "GitHub GraphQL request body is too large for Junior to inspect before issuing credentials.",
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
   it("records plugin write auth needs over earlier read failures", async () => {
     await registerManagedEgressPlugin({
       issueCredential(ctx) {
