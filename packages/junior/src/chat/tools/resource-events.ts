@@ -1,0 +1,178 @@
+import { Type, type Static } from "@sinclair/typebox";
+import { tool } from "@/chat/tools/definition";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import {
+  cancelResourceEventSubscription,
+  createResourceEventSubscription,
+  listResourceEventSubscriptions,
+} from "@/chat/resource-events/store";
+
+const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const subscribeInputSchema = Type.Object(
+  {
+    resourceRef: Type.String({
+      description:
+        "Opaque resource ref from a subscribable tool result, such as github:pull_request:owner/repo#123.",
+    }),
+    provider: Type.String({
+      description: "Provider that owns the resource ref.",
+    }),
+    resourceType: Type.String({
+      description: "Provider-defined resource type, such as pull_request.",
+    }),
+    label: Type.String({
+      description: "Human-readable resource label from the subscribable hint.",
+    }),
+    events: Type.Array(Type.String(), {
+      description:
+        "High-signal event names to deliver to this conversation when they occur.",
+      minItems: 1,
+    }),
+    intent: Type.String({
+      description:
+        "Concise reason this conversation wants these events, used when an event arrives.",
+    }),
+    ttlMs: Type.Optional(
+      Type.Number({
+        description:
+          "How long to keep the subscription active. Defaults to 14 days and is capped at 30 days.",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const cancelInputSchema = Type.Object(
+  {
+    subscriptionId: Type.String({
+      description:
+        "Subscription id returned by subscribeToResourceEvents or listResourceEventSubscriptions.",
+    }),
+  },
+  { additionalProperties: false },
+);
+
+type SubscribeInput = Static<typeof subscribeInputSchema>;
+type CancelInput = Static<typeof cancelInputSchema>;
+
+function requireConversationContext(context: ToolRuntimeContext): string {
+  if (!context.conversationId) {
+    throw new Error("Resource event subscriptions require a conversation");
+  }
+  if (context.destination.platform !== "slack") {
+    throw new Error(
+      "Resource event subscriptions currently require Slack delivery",
+    );
+  }
+  return context.conversationId;
+}
+
+function cleanStrings(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function ttlMs(input: SubscribeInput): number {
+  if (input.ttlMs === undefined) {
+    return DEFAULT_TTL_MS;
+  }
+  if (!Number.isFinite(input.ttlMs) || input.ttlMs <= 0) {
+    throw new Error("ttlMs must be a positive finite number");
+  }
+  return Math.min(input.ttlMs, MAX_TTL_MS);
+}
+
+/** Create the tool that subscribes the current conversation to resource events. */
+export function createSubscribeToResourceEventsTool(
+  context: ToolRuntimeContext,
+) {
+  return tool({
+    description:
+      "Subscribe the current conversation to high-signal events for a resource returned by a subscribable tool result. Matching events are queued as normal conversation messages; they do not interrupt active work.",
+    inputSchema: subscribeInputSchema,
+    async execute(input: SubscribeInput) {
+      const conversationId = requireConversationContext(context);
+      const events = cleanStrings(input.events);
+      const intent = input.intent.trim();
+      if (!intent) {
+        throw new Error("intent is required");
+      }
+      const nowMs = Date.now();
+      const subscription = await createResourceEventSubscription({
+        conversationId,
+        destination: context.destination,
+        events,
+        expiresAtMs: nowMs + ttlMs(input),
+        intent,
+        label: input.label.trim(),
+        provider: input.provider.trim(),
+        requester: context.requester,
+        resourceRef: input.resourceRef.trim(),
+        resourceType: input.resourceType.trim(),
+        source: context.source,
+      });
+      return {
+        id: subscription.id,
+        status: subscription.status,
+        resourceRef: subscription.resourceRef,
+        events: subscription.events,
+        expiresAtMs: subscription.expiresAtMs,
+      };
+    },
+  });
+}
+
+/** Create the tool that lists active resource subscriptions for this conversation. */
+export function createListResourceEventSubscriptionsTool(
+  context: ToolRuntimeContext,
+) {
+  return tool({
+    description:
+      "List active resource event subscriptions for the current conversation.",
+    inputSchema: Type.Object({}, { additionalProperties: false }),
+    async execute() {
+      const conversationId = requireConversationContext(context);
+      const subscriptions = await listResourceEventSubscriptions({
+        conversationId,
+      });
+      return {
+        subscriptions: subscriptions.map((subscription) => ({
+          id: subscription.id,
+          label: subscription.label,
+          resourceRef: subscription.resourceRef,
+          provider: subscription.provider,
+          resourceType: subscription.resourceType,
+          events: subscription.events,
+          intent: subscription.intent,
+          expiresAtMs: subscription.expiresAtMs,
+        })),
+      };
+    },
+  });
+}
+
+/** Create the tool that cancels a current-conversation resource subscription. */
+export function createCancelResourceEventSubscriptionTool(
+  context: ToolRuntimeContext,
+) {
+  return tool({
+    description:
+      "Cancel a resource event subscription for the current conversation.",
+    inputSchema: cancelInputSchema,
+    async execute(input: CancelInput) {
+      const conversationId = requireConversationContext(context);
+      const subscription = await cancelResourceEventSubscription({
+        conversationId,
+        id: input.subscriptionId,
+      });
+      if (!subscription) {
+        throw new Error("Resource event subscription was not found");
+      }
+      return {
+        id: subscription.id,
+        status: subscription.status,
+      };
+    },
+  });
+}

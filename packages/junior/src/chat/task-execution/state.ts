@@ -48,6 +48,7 @@ export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
 
 export type Source =
   | "api"
+  | "event"
   | "internal"
   | "local"
   | "plugin"
@@ -234,6 +235,7 @@ function uniqueStrings(values: string[]): string[] {
 function normalizeSource(value: unknown): Source | undefined {
   if (
     value === "api" ||
+    value === "event" ||
     value === "internal" ||
     value === "local" ||
     value === "plugin" ||

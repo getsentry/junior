@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-03
+- Last Edited: 2026-06-30
 
 ## Purpose
 
@@ -21,6 +21,10 @@ Define the `plugin.yaml` contract agents need when adding or reviewing provider 
 - Runtime loading order; see [Plugin Runtime Spec](./plugin-runtime.md).
 - Credential issuance behavior; see [Credential Injection Spec](./credential-injection.md).
 - OAuth callback behavior; see [OAuth Flows Spec](./oauth-flows.md).
+- Resource event subscription handlers; see [Resource Event Subscriptions
+  Spec](./resource-event-subscriptions.md). `plugin.yaml` may describe provider
+  domains and credentials, but executable webhook/event behavior belongs in
+  trusted app-code plugin hooks and core-owned subscription tools.
 
 ## Minimal Manifest
 
@@ -178,3 +182,4 @@ Rules:
 - `./plugin-runtime.md`
 - `./credential-injection.md`
 - `./sandbox-snapshots.md`
+- `./resource-event-subscriptions.md`

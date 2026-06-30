@@ -1,6 +1,7 @@
 import {
   EgressAuthRequired,
   PluginToolInputError,
+  type SubscribableResource,
   type PluginToolDefinition,
   type PluginToolExecuteOptions,
   type ToolRegistrationHookContext,
@@ -81,6 +82,10 @@ type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 interface GitHubPullRequestResult {
   number: number;
   url: string;
+}
+
+interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
+  subscribable: SubscribableResource;
 }
 
 function parseCreatePullRequestInput(
@@ -308,6 +313,46 @@ async function createGitHubPullRequest(
   };
 }
 
+function gitHubPullRequestSubscribable(
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+): SubscribableResource {
+  const repo = parseRepo(input.repo);
+  const repoRef = `${repo.owner}/${repo.name}`;
+  const supportedEvents = [
+    "checks.failed",
+    "checks.recovered",
+    "review.approved",
+    "review.changes_requested",
+    "state.merged",
+    "state.closed_unmerged",
+  ];
+  return {
+    defaultTtlMs: 14 * 24 * 60 * 60 * 1000,
+    label: `GitHub PR ${repoRef}#${result.number}`,
+    provider: "github",
+    ref: `github:pull_request:${repoRef}#${result.number}`,
+    suggestedEvents: [
+      "checks.failed",
+      "review.changes_requested",
+      "state.merged",
+      "state.closed_unmerged",
+    ],
+    supportedEvents,
+    type: "pull_request",
+  };
+}
+
+function gitHubPullRequestToolResult(
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+): GitHubPullRequestToolResult {
+  return {
+    ...result,
+    subscribable: gitHubPullRequestSubscribable(input, result),
+  };
+}
+
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
 export function createGitHubPullRequestTool(
   ctx: ToolRegistrationHookContext,
@@ -333,10 +378,10 @@ export function createGitHubPullRequestTool(
         async () => {
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
-            return {
+            return gitHubPullRequestToolResult(parsedInput, {
               number: state.number,
               url: state.url,
-            };
+            });
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -371,7 +416,7 @@ export function createGitHubPullRequestTool(
                 { cause: error },
               );
             }
-            return result;
+            return gitHubPullRequestToolResult(parsedInput, result);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-30
 
 ## Purpose
 
@@ -118,6 +118,11 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 - Skill selection should be explicit: scan available skills, load one clearly matching skill, choose the most specific skill when several match, and avoid loading any skill when none clearly applies.
 - Tool-call style belongs in its own section: call routine tools directly, narrate only when it helps, and prefer first-class tools over asking the user to perform equivalent manual work.
 - Plugin tools must carry concise descriptions and optional tool guidance that tell the agent when and how to use them. Do not compensate for weak plugin tool descriptions by adding plugin-specific bullets to the core prompt.
+- Tool results that include subscribable resource hints are generic capability
+  affordances. The core prompt may tell the model to subscribe only when
+  high-signal follow-up events serve the current user intent, but provider event
+  names and resource-specific strategy belong in tool results, tool schemas, or
+  plugin guidance.
 
 ### Runtime and safety boundaries
 
@@ -128,6 +133,12 @@ Runtime facts should live in a compact runtime block inside session bootstrap co
 Runtime tracing and logging correlation identifiers, such as `trace_id`, are observability data, not model-actionable context, and must not be included in prompt runtime context.
 
 The safety section must stay generic and runtime-level: remain within the user's request, respect stop/pause/audit/approval boundaries, avoid access expansion, and avoid administrative prompt/tool/security/config changes unless explicitly requested and supported by an available tool.
+
+Resource event notifications are conversation context, not user-authored
+commands. The prompt must instruct the model to use subscription intent to
+decide whether to reply or act, and not to treat event delivery as forced
+steering. The durable subscription and delivery contract is defined in
+`./resource-event-subscriptions.md`.
 
 ### Bloat controls
 
@@ -172,6 +183,7 @@ When debugging prompt behavior, use existing turn diagnostics, observed tool inv
 
 - `./harness-agent.md`
 - `./plugin-prompt-hooks.md`
+- `./resource-event-subscriptions.md`
 - `./harness-tool-context.md`
 - `./slack-agent-delivery.md`
 - `./slack-outbound-contract.md`

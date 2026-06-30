@@ -36,6 +36,7 @@ title: "@sentry/junior"
 - [RequesterIdentity](/reference/api/interfaces/requesteridentity/)
 - [RuntimeInfoReport](/reference/api/interfaces/runtimeinforeport/)
 - [SkillReport](/reference/api/interfaces/skillreport/)
+- [SubscribableResource](/reference/api/interfaces/subscribableresource/)
 - [TranscriptMessage](/reference/api/interfaces/transcriptmessage/)
 - [TranscriptPart](/reference/api/interfaces/transcriptpart/)
 

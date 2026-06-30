@@ -72,7 +72,9 @@ This spec follows the domain naming policy in
 nouns are `Conversation`, `Source`, `Destination`, `InboundMessage`,
 `AgentInput`, `AgentRun`, `ExecutionSlice`, `AgentStep`, `Lease`, and
 `Requester`. Use `Source` for where input came from and `Destination` for where
-Junior should send output.
+Junior should send output. `event` source records represent subscribed
+resource-event notifications accepted into the durable mailbox and queued like
+other inbound source records.
 
 ### Architecture Summary
 
@@ -162,7 +164,14 @@ Conceptual type:
 
 ```ts
 type ExecutionStatus = "idle" | "pending" | "running" | "awaiting_resume";
-type Source = "slack" | "local" | "api" | "scheduler" | "plugin" | "internal";
+type Source =
+  | "slack"
+  | "local"
+  | "api"
+  | "scheduler"
+  | "plugin"
+  | "internal"
+  | "event";
 
 type Destination =
   | {

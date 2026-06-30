@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-24
+- Last Edited: 2026-06-30
 
 ## Purpose
 
@@ -45,6 +45,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/context-compaction.md`
 - `specs/advisor-tool.md`
 - `specs/scheduler.md`
+- `specs/resource-event-subscriptions.md`
 - `specs/plugin-heartbeat.md`
 - `specs/plugin-dispatch.md`
 - `specs/plugin-prompt-hooks.md`
@@ -84,6 +85,7 @@ For chat/agent/Slack execution and response behavior:
 - `specs/plugin-tasks.md` owns plugin-owned durable background task registration, queue dispatch, and completed-run projections.
 - `specs/plugin-database.md` owns plugin packaged SQL migration discovery/application and the `ctx.db` hook surface.
 - `specs/plugin-cli.md` owns future plugin-contributed host CLI command discovery, dispatch, admin context, and redaction contracts.
+- `specs/resource-event-subscriptions.md` owns conversation-bound subscriptions to provider resource events, including subscribable tool-result hints, core subscription tools, plugin event normalization boundaries, and queued mailbox delivery.
 - `specs/memory-plugin/index.md` owns the long-term memory plugin's storage, recall, passive learning, tools, visibility, and lifecycle contracts.
 - `specs/local-agent.md` owns local CLI/local adapter user flows, identity, state, delivery, and verification contracts.
 - `specs/agent-turn-handling.md` owns user-message response policy: when Junior answers, stays silent, asks, uses tools, satisfies Slack side effects, handles resumed turns, and considers a turn complete.

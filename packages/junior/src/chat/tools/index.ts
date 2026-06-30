@@ -12,6 +12,11 @@ import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
+import {
+  createCancelResourceEventSubscriptionTool,
+  createListResourceEventSubscriptionsTool,
+  createSubscribeToResourceEventsTool,
+} from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { getSlackToolContext } from "@/chat/tools/slack/context";
@@ -92,6 +97,11 @@ export function createTools(
       onSkillLoaded: hooks.onSkillLoaded,
     }),
     reportProgress: createReportProgressTool(),
+    subscribeToResourceEvents: createSubscribeToResourceEventsTool(context),
+    listResourceEventSubscriptions:
+      createListResourceEventSubscriptionsTool(context),
+    cancelResourceEventSubscription:
+      createCancelResourceEventSubscriptionTool(context),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),
     attachFile: createAttachFileTool(context.sandbox, hooks),

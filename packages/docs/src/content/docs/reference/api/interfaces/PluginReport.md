@@ -5,7 +5,7 @@ prev: false
 title: "PluginReport"
 ---
 
-Defined in: [junior/src/reporting.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L54)
+Defined in: [junior/src/reporting.ts:51](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L51)
 
 ## Properties
 
@@ -13,4 +13,4 @@ Defined in: [junior/src/reporting.ts:54](https://github.com/getsentry/junior/blo
 
 > **name**: `string`
 
-Defined in: [junior/src/reporting.ts:55](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L55)
+Defined in: [junior/src/reporting.ts:52](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L52)

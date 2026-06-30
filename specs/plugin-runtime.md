@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-28
+- Last Edited: 2026-06-30
 
 ## Purpose
 
@@ -21,13 +21,15 @@ Define how plugin manifests, skills, credentials, and MCP tool catalogs are load
 
 - Manifest field syntax; see [Plugin Manifest Spec](./plugin-manifest.md).
 - Provider credential issuance; see [Credential Injection Spec](./credential-injection.md).
-- Plugin prompt, background task, database, CLI, heartbeat, and dispatch hooks; see
+- Plugin prompt, background task, database, CLI, heartbeat, dispatch, and
+  resource event subscription hooks; see
   [Plugin Prompt Hooks Spec](./plugin-prompt-hooks.md),
   [Plugin Background Tasks Spec](./plugin-tasks.md),
   [Plugin Database Spec](./plugin-database.md),
   [Plugin CLI Spec](./plugin-cli.md),
   [Plugin Heartbeat Spec](./plugin-heartbeat.md), and
-  [Plugin Dispatch Spec](./plugin-dispatch.md).
+  [Plugin Dispatch Spec](./plugin-dispatch.md), and
+  [Resource Event Subscriptions Spec](./resource-event-subscriptions.md).
 
 ## Discovery And Loading
 
@@ -154,8 +156,9 @@ retrieval indexes. Current hook contracts are defined in
 [Plugin Database Spec](./plugin-database.md), [Plugin CLI Spec](./plugin-cli.md),
 [Plugin Heartbeat Spec](./plugin-heartbeat.md), [Plugin Dispatch
 Spec](./plugin-dispatch.md), [Plugin Background Tasks
-Spec](./plugin-tasks.md), and [Plugin Prompt Hooks
-Spec](./plugin-prompt-hooks.md). User prompt contexts receive only the narrow
+Spec](./plugin-tasks.md), [Plugin Prompt Hooks
+Spec](./plugin-prompt-hooks.md), and [Resource Event Subscriptions
+Spec](./resource-event-subscriptions.md). User prompt contexts receive only the narrow
 embedding capability needed for retrieval-oriented prompt contributions; they
 do not receive structured completion. Prompt hooks are exported by
 `@sentry/junior-plugin-api` and invoked by Junior core. Plugin tasks are
@@ -165,6 +168,14 @@ core-owned background task queue. Plugin `migrateStorage` hooks are limited to
 request-time runtime hooks and must not dispatch agent work.
 
 Plugins may provide `routes` to mount host-owned HTTP handlers inside `createApp()`. Route handlers receive only the web-standard `Request` and return a `Response`; plugin API types must not expose Hono internals. Core mounts plugin routes after sandbox-egress detection and before Junior's built-in health, webhook, OAuth, and internal routes. `ALL` route methods are exclusive for a path and must not be combined with explicit methods. Route plugins that serve package assets must keep those assets reachable through package-local code imports or static file references; manifest plugin declarations are not the asset-registration path for plugin routes.
+
+Provider plugins may use `routes` to receive provider webhooks for resource
+event subscriptions. Those routes must verify provider signatures and normalize
+payloads before calling the core resource-event ingestion boundary. Plugin
+routes own provider payload parsing and resource ref construction; they must
+not own Junior conversation routing, subscription storage, TTL, cancellation,
+dedupe, or mailbox delivery. See [Resource Event Subscriptions
+Spec](./resource-event-subscriptions.md).
 
 Plugins may provide `dashboardRoutes` to mount a Hono app or fetch-compatible
 app under Junior's authenticated dashboard API namespace. Core owns the mount
@@ -214,3 +225,4 @@ Plugins may also provide `slackConversationLink` to replace the finalized Slack 
 - `./plugin-cli.md`
 - `./plugin-heartbeat.md`
 - `./plugin-dispatch.md`
+- `./resource-event-subscriptions.md`

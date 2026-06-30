@@ -15,6 +15,7 @@ export type {
   PluginTaskContext,
   PluginTaskDefinition,
   PluginTasks,
+  SubscribableResource,
 } from "@sentry/junior-plugin-api";
 export {
   pluginRunContextSchema,

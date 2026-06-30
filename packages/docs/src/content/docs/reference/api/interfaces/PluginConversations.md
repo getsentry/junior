@@ -5,7 +5,7 @@ prev: false
 title: "PluginConversations"
 ---
 
-Defined in: [junior-plugin-api/src/operations.ts:22](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L22)
+Defined in: [junior-plugin-api/src/operations.ts:29](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L29)
 
 ## Methods
 
@@ -13,7 +13,7 @@ Defined in: [junior-plugin-api/src/operations.ts:22](https://github.com/getsentr
 
 > **listRecent**(`options?`): `Promise`\<[`PluginConversationSummary`](/reference/api/interfaces/pluginconversationsummary/)[]\>
 
-Defined in: [junior-plugin-api/src/operations.ts:23](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L23)
+Defined in: [junior-plugin-api/src/operations.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L30)
 
 #### Parameters
 

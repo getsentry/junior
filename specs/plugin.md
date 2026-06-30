@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-06-19
+- Last Edited: 2026-06-30
 
 ## Purpose
 
@@ -14,7 +14,8 @@ Define the plugin model for provider integrations. Plugins package declarative r
 - Plugin package/directory shape.
 - Ownership boundaries between manifests, skills, runtime loading, credentials, and runtime hooks.
 - Links to detailed contracts for manifests, runtime loading, credential
-  injection, plugin CLI, and plugin heartbeat/dispatch behavior.
+  injection, plugin CLI, resource event subscriptions, and plugin
+  heartbeat/dispatch behavior.
 
 ## Non-Goals
 
@@ -40,6 +41,10 @@ Define the plugin model for provider integrations. Plugins package declarative r
     from plugins. Use direct host capabilities unless there is a real
     model-visible, sandbox, credential, external-system, lifecycle, or migration
     boundary.
+11. Resource event subscriptions are core-owned conversation routing state.
+    Plugins may return subscribable resource hints from tools and normalize
+    provider events, but core owns subscription tools, storage, TTL,
+    cancellation, dedupe, and queued conversation delivery.
 
 ## File Shape
 
@@ -65,6 +70,7 @@ plugins/sentry/
 - [Memory Plugin Spec](./memory-plugin/index.md): long-term memory implemented through prompt, background task, database, and tool hooks.
 - [Plugin Heartbeat Spec](./plugin-heartbeat.md): heartbeat and tool hooks.
 - [Plugin Dispatch Spec](./plugin-dispatch.md): durable `ctx.agent.dispatch` contract.
+- [Resource Event Subscriptions Spec](./resource-event-subscriptions.md): conversation-bound provider event subscriptions and queued notification delivery.
 
 ## What Stays Core
 
@@ -79,6 +85,7 @@ plugins/sentry/
 | `CredentialBroker` / `CredentialLease`                  | Shared credential contract                |
 | `ProviderCredentialRouter`                              | Generic egress credential router          |
 | OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                       |
+| Resource event subscription lifecycle                   | Conversation routing and mailbox delivery |
 
 ## Verification
 
@@ -100,4 +107,5 @@ plugins/sentry/
 - `./memory-plugin/index.md`
 - `./plugin-heartbeat.md`
 - `./plugin-dispatch.md`
+- `./resource-event-subscriptions.md`
 - `./sandbox-snapshots.md`
