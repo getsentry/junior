@@ -1012,6 +1012,68 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
+  it("returns legacy stored pull request results without stored input", async () => {
+    const ctx = githubToolsContext();
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    ctx.setState(
+      "createPullRequest:local:test:github-tool:call-legacy-pr-create",
+      {
+        status: "completed",
+        createdAtMs: Date.now(),
+        number: 691,
+        url: "https://github.com/getsentry/junior/pull/691",
+      },
+    );
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+        },
+        { toolCallId: "call-legacy-pr-create" },
+      ),
+    ).resolves.toMatchObject({
+      number: 691,
+      subscribable: {
+        resourceRef: "github:pull_request:getsentry/junior#691",
+      },
+      url: "https://github.com/getsentry/junior/pull/691",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(0);
+  });
+
+  it("refuses legacy pending pull request idempotency state", async () => {
+    const ctx = githubToolsContext();
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    ctx.setState(
+      "createPullRequest:local:test:github-tool:call-legacy-pending-pr-create",
+      {
+        status: "pending",
+        createdAtMs: Date.now(),
+      },
+    );
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+        },
+        { toolCallId: "call-legacy-pending-pr-create" },
+      ),
+    ).rejects.toThrow("refusing to create a duplicate pull request");
+
+    expect(ctx.egressRequests()).toHaveLength(0);
+  });
+
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
     expect(
       await grantForEgress({
