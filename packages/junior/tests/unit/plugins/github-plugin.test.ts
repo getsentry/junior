@@ -699,6 +699,30 @@ Conversation: \`local:test:new-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
+  it("keeps pending idempotency state after ambiguous GitHub throttling", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(JSON.stringify({ message: "Rate limited" }), {
+          status: 403,
+        }),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed issue",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-rate-limited" }),
+    ).rejects.toThrow("HTTP 403");
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-rate-limited" }),
+    ).rejects.toThrow("refusing to create a duplicate issue");
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
   it("returns the created issue when completed idempotency storage fails", async () => {
     let setCalls = 0;
     const ctx = githubToolsContext({

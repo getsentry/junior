@@ -182,6 +182,15 @@ function isEgressAuthRequired(error: unknown): boolean {
   );
 }
 
+function isDefinitiveGitHubIssueCreateRejection(
+  error: unknown,
+): error is GitHubIssueCreateRejectedError {
+  if (!(error instanceof GitHubIssueCreateRejectedError)) {
+    return false;
+  }
+  return [400, 401, 404, 410, 422].includes(error.status);
+}
+
 function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
@@ -299,9 +308,7 @@ export function createGitHubIssueTool(
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
-              (error instanceof GitHubIssueCreateRejectedError &&
-                error.status >= 400 &&
-                error.status < 500)
+              isDefinitiveGitHubIssueCreateRejection(error)
             ) {
               await ctx.state.delete(key);
             }
