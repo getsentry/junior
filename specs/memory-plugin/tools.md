@@ -15,28 +15,29 @@ must not be exposed through this model-visible tool surface.
 
 ## Tool Surface
 
-The plugin exposes memory tools from `tools(ctx)`:
+The plugin exposes local memory tools from `tools(ctx)`. Junior prefixes them at
+the tools hook boundary before showing them to the model:
 
 ```txt
-createMemory
-removeMemory
-listMemories
-searchMemories
+memory_createMemory
+memory_removeMemory
+memory_listMemories
+memory_searchMemories
 ```
 
 Tool schemas must be context-bound. All tools derive requester, source,
 destination, conversation, and tenant/workspace authority from runtime context.
 
-### createMemory
+### memory_createMemory
 
-`createMemory` may accept:
+`memory_createMemory` may accept:
 
 - content
 - optional `expires_at` expiration selector: exact ISO timestamp, or the
   literal `never` for memories with no expiration. Omission also means no
   expiration.
 
-`createMemory` must not accept:
+`memory_createMemory` must not accept:
 
 - requester id
 - actor id
@@ -60,16 +61,16 @@ or canonical stored content.
 Ordinary technical, workflow, communication, tool, language, product,
 repository, or project preferences and opinions are valid candidates when the
 current requester explicitly asks Junior to remember them. The outer agent
-should call `createMemory` for those requests instead of asking the requester
-to rephrase them as safer memory text. The memory agent owns the semantic
-store-or-reject decision and canonical rewrite.
+should call `memory_createMemory` for those requests instead of asking the
+requester to rephrase them as safer memory text. The memory agent owns the
+semantic store-or-reject decision and canonical rewrite.
 
-The outer agent should not call `createMemory` for ordinary organic statements
-that merely reveal a durable task, process, project, channel, or operational
-fact. Those are passive-learning candidates handled by completed-session
-processing, not explicit memory-tool requests. Organic first-person personal
-facts should be stored passively only when they are clearly durable and useful
-beyond the active task.
+The outer agent should not call `memory_createMemory` for ordinary organic
+statements that merely reveal a durable task, process, project, channel, or
+operational fact. Those are passive-learning candidates handled by
+completed-session processing, not explicit memory-tool requests. Organic
+first-person personal facts should be stored passively only when they are
+clearly durable and useful beyond the active task.
 
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the memory agent's explicit-create review path. The memory agent
@@ -98,35 +99,35 @@ echoing sensitive content.
 If memory agent review is unavailable or returns malformed output, the tool
 must fail closed and must not write the candidate.
 
-### removeMemory
+### memory_removeMemory
 
-`removeMemory` accepts a memory id or short id prefix and archives only a memory
-visible in the current context.
+`memory_removeMemory` accepts a memory id or short id prefix and archives only a
+memory visible in the current context.
 
 Ambiguous short prefixes must fail with a model-visible input error rather than
 removing multiple rows.
 
-### listMemories
+### memory_listMemories
 
-`listMemories` lists only active memories visible in the current context. It
-may accept an optional limit, but it must not search across unrelated users or
-conversations. Future install policy must be applied before returning results
+`memory_listMemories` lists only active memories visible in the current context.
+It may accept an optional limit, but it must not search across unrelated users
+or conversations. Future install policy must be applied before returning results
 when that policy surface exists.
 
 The tool may include ids or short ids because explicit removal workflows need a
 handle. Normal automatic memory injection should avoid ids.
 
-### searchMemories
+### memory_searchMemories
 
-`searchMemories` is the model-visible targeted recall path for cases where the
-model needs a more specific lookup than automatic recall supplied.
+`memory_searchMemories` is the model-visible targeted recall path for cases
+where the model needs a more specific lookup than automatic recall supplied.
 
-`searchMemories` may accept:
+`memory_searchMemories` may accept:
 
 - query text
 - optional limit
 
-`searchMemories` must not accept:
+`memory_searchMemories` must not accept:
 
 - requester id
 - actor id
@@ -141,9 +142,9 @@ The tool derives visible scopes from runtime context, applies current install
 policy, and runs the same retrieval pipeline as automatic memory injection.
 Results must be active, visible, policy-allowed memories only.
 
-Unlike `listMemories`, `searchMemories` is relevance-ranked and does not need
-to return every visible memory. It may omit ids unless the model needs a handle
-for a follow-up `removeMemory` request.
+Unlike `memory_listMemories`, `memory_searchMemories` is relevance-ranked and
+does not need to return every visible memory. It may omit ids unless the model
+needs a handle for a follow-up `memory_removeMemory` request.
 
 ## Output Rules
 

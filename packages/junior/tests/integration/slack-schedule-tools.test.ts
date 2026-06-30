@@ -1240,17 +1240,20 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
       });
 
-      expect(tools).toHaveProperty("slackScheduleCreateTask");
+      expect(tools).toHaveProperty("scheduler_slackScheduleCreateTask");
 
       // Create a task through the real wired tool.
-      const result = await executeTool(tools.slackScheduleCreateTask, {
-        task: "Wiring test: post a weekly digest.",
-        schedule: "Every Monday at 9am",
-        schedule_kind: "recurring",
-        timezone: "America/Los_Angeles",
-        next_run_at: "2026-06-09T16:00:00.000Z",
-        recurrence: "weekly",
-      });
+      const result = await executeTool(
+        tools.scheduler_slackScheduleCreateTask,
+        {
+          task: "Wiring test: post a weekly digest.",
+          schedule: "Every Monday at 9am",
+          schedule_kind: "recurring",
+          timezone: "America/Los_Angeles",
+          next_run_at: "2026-06-09T16:00:00.000Z",
+          recurrence: "weekly",
+        },
+      );
 
       expect(result).toMatchObject({ ok: true });
       const taskId = (result as { task: { id: string } }).task.id;
@@ -1295,8 +1298,8 @@ describe("Slack schedule tool execution modes", () => {
     const runNowTool = createSlackScheduleRunTaskNowTool(context);
 
     // Write tools must force sequential execution so a same-turn
-    // slackScheduleListTasks call cannot race ahead of a preceding
-    // slackScheduleCreateTask / update / delete write.
+    // scheduler_slackScheduleListTasks call cannot race ahead of a preceding
+    // scheduler_slackScheduleCreateTask / update / delete write.
     expect(createTool.executionMode).toBe("sequential");
     expect(updateTool.executionMode).toBe("sequential");
     expect(deleteTool.executionMode).toBe("sequential");

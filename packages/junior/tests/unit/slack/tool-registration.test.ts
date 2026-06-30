@@ -129,12 +129,12 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(incomplete).not.toHaveProperty("slackScheduleCreateTask");
-    expect(complete).toHaveProperty("slackScheduleCreateTask");
-    expect(complete).toHaveProperty("slackScheduleListTasks");
-    expect(complete).toHaveProperty("slackScheduleUpdateTask");
-    expect(complete).toHaveProperty("slackScheduleDeleteTask");
-    expect(complete).toHaveProperty("slackScheduleRunTaskNow");
+    expect(incomplete).not.toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(complete).toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(complete).toHaveProperty("scheduler_slackScheduleListTasks");
+    expect(complete).toHaveProperty("scheduler_slackScheduleUpdateTask");
+    expect(complete).toHaveProperty("scheduler_slackScheduleDeleteTask");
+    expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
   });
 
   it("does not register schedule tools without a requester", () => {
@@ -146,11 +146,11 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
-    expect(tools).not.toHaveProperty("slackScheduleListTasks");
-    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
-    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
-    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
+    expect(tools).not.toHaveProperty("scheduler_slackScheduleCreateTask");
+    expect(tools).not.toHaveProperty("scheduler_slackScheduleListTasks");
+    expect(tools).not.toHaveProperty("scheduler_slackScheduleUpdateTask");
+    expect(tools).not.toHaveProperty("scheduler_slackScheduleDeleteTask");
+    expect(tools).not.toHaveProperty("scheduler_slackScheduleRunTaskNow");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {

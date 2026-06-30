@@ -88,8 +88,9 @@ The `processSession` task must:
    sessions and `pub` sources with a stable source key. Non-local `priv`
    sources and sources without stable identity are ignored before model
    extraction.
-5. Skip passive extraction when the completed session called a memory tool
-   (`createMemory`, `removeMemory`, `listMemories`, or `searchMemories`).
+5. Skip passive extraction when the completed session called a model-visible
+   memory tool (`memory_createMemory`, `memory_removeMemory`,
+   `memory_listMemories`, or `memory_searchMemories`).
    Memory tool turns already operate on memory-aware context; passive
    extraction must not reinterpret recalled or listed memories as fresh source
    evidence.
@@ -122,7 +123,8 @@ create duplicate memories.
 Passive run extraction must follow these rules:
 
 1. Extract only from user-authored text and bounded tool-result text.
-2. Prefer explicit `createMemory` tool writes over inferred passive learning.
+2. Prefer explicit `memory_createMemory` tool writes over inferred passive
+   learning.
 3. Store facts, not conversation summaries.
 4. Make content self-contained and perspective-neutral.
 5. Reject unresolved references such as "that", "it", "the thing", "someone",

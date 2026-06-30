@@ -195,14 +195,16 @@ The memory plugin should use the generic prompt hook surface as follows:
 
 1. `userPrompt(ctx)` retrieves memories visible to the current requester and
    source, then returns a concise memory block for the run's triggering prompt.
-2. `tools(ctx)` may expose explicit memory tools such as `createMemory`,
-   `removeMemory`, `listMemories`, and `searchMemories`.
+2. `tools(ctx)` may expose explicit local memory tools such as `createMemory`,
+   `removeMemory`, `listMemories`, and `searchMemories`; the host exposes them
+   to the model as `memory_createMemory`, `memory_removeMemory`,
+   `memory_listMemories`, and `memory_searchMemories`.
 
 Passive memory learning uses the task surface defined in `./plugin-tasks.md`.
 Memory retrieval must not depend on the model choosing a search tool for default
-recall. `searchMemories` remains the explicit model-visible recall path for
-targeted recall and follow-up memory management. Other tools are for explicit
-user management.
+recall. `memory_searchMemories` remains the explicit model-visible recall path
+for targeted recall and follow-up memory management. Other tools are for
+explicit user management.
 
 ### Memory Tool Constraints
 
@@ -282,7 +284,7 @@ Use evals for:
 
 - automatic memory recall without explicit search tool use when automatic memory
   plugin is enabled
-- explicit targeted memory recall through `searchMemories`
+- explicit targeted memory recall through `memory_searchMemories`
 - explicit create/list/remove memory workflows
 - secret rejection in explicit and passive memory paths
 

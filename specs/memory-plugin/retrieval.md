@@ -9,7 +9,7 @@
 
 Define how the memory plugin recalls active visible memories, injects them into
 model-visible user prompts, and exposes explicit recall through
-`searchMemories`.
+`memory_searchMemories`.
 
 ## Automatic Injection Policy
 
@@ -39,17 +39,17 @@ The plugin must:
 
 ## Tool-Mediated Recall
 
-`searchMemories` is the explicit model-visible recall path. It must use the same
-visibility filter, policy checks, ranking pipeline, and result budgets as
-automatic memory injection.
+`memory_searchMemories` is the explicit model-visible recall path. It must use
+the same visibility filter, policy checks, ranking pipeline, and result budgets
+as automatic memory injection.
 
-`searchMemories` may return ids or short ids when useful for follow-up memory
-management, but it should otherwise return concise memory content and avoid
-private metadata. The tool must derive all authority-bearing scopes from
+`memory_searchMemories` may return ids or short ids when useful for follow-up
+memory management, but it should otherwise return concise memory content and
+avoid private metadata. The tool must derive all authority-bearing scopes from
 runtime context, not from model-supplied arguments.
 
-`searchMemories` should not suppress results merely because they may have been
-included by automatic injection in an earlier run.
+`memory_searchMemories` should not suppress results merely because they may have
+been included by automatic injection in an earlier run.
 
 ### Visibility Filter
 

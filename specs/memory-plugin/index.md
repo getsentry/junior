@@ -37,8 +37,8 @@ Explicit tools also support user-directed memory management.
   boundaries.
 - Automatic recall through `userPrompt` when the memory plugin is enabled.
 - Passive learning through the memory plugin's `session.completed` task.
-- Explicit `createMemory`, `removeMemory`, `listMemories`, and
-  `searchMemories` tools.
+- Explicit model-visible `memory_createMemory`, `memory_removeMemory`,
+  `memory_listMemories`, and `memory_searchMemories` tools.
 - Scope, attribution, lifecycle, tool, model, public-content, and secret
   rejection rules.
 - V1 capability boundaries and verification requirements.
@@ -328,10 +328,12 @@ The V1 contract has these implementation dependencies:
    `tools`, `ctx.db`, host model access, and host embedding provider access.
 2. Memory plugin package with manifest, schema, migrations, store, and
    memory agent policy guidance.
-3. Explicit `createMemory`, `listMemories`, `searchMemories`, and
-   `removeMemory` tools with context-bound authority. `createMemory` submits a
-   candidate memory; the memory agent uses the tool-hook model capability to
-   own subject and scope decisions.
+3. Explicit local `createMemory`, `listMemories`, `searchMemories`, and
+   `removeMemory` plugin tools exposed to the model as `memory_createMemory`,
+   `memory_listMemories`, `memory_searchMemories`, and
+   `memory_removeMemory`, with context-bound authority. `memory_createMemory`
+   submits a candidate memory; the memory agent uses the tool-hook model
+   capability to own subject and scope decisions.
 4. Automatic recall from stored memories through `userPrompt`, using lexical
    ranking before embeddings are available.
 5. Embedding provider integration and vector storage.

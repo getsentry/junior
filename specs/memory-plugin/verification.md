@@ -85,14 +85,14 @@ Use integration tests for:
   storing `David is xyz` on David's behalf
 - explicit memory creation is rejected when it violates workplace-sensitive
   category rules
-- `listMemories` returns only memories visible in the current context
-- `searchMemories` returns only relevant memories visible in the current
+- `memory_listMemories` returns only memories visible in the current context
+- `memory_searchMemories` returns only relevant memories visible in the current
   context
-- `searchMemories` cannot search across unrelated users or conversations
-- `removeMemory` archives only visible memories
+- `memory_searchMemories` cannot search across unrelated users or conversations
+- `memory_removeMemory` archives only visible memories
 - `userPrompt` injects visible memories into each fresh triggering prompt
 - memory recall survives a follow-up prompt without requiring a search tool
-- memory recall works through `searchMemories`
+- memory recall works through `memory_searchMemories`
 - lexical recall works when embeddings are unavailable
 - vector recall works after embedding rows are created
 - embedding failures leave memories listable and lexically recallable
@@ -136,7 +136,8 @@ Use evals for:
 
 - explicit "remember this" behavior
 - later recall of stored preferences or facts
-- explicit `searchMemories` recall for targeted recall and memory management
+- explicit `memory_searchMemories` recall for targeted recall and memory
+  management
 - refusal to remember secrets
 - explicit create rejection for policy-disallowed workplace-sensitive facts
 - refusal or policy rejection for workplace-sensitive facts

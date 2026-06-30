@@ -42,7 +42,7 @@ The model may request memory operations, but it cannot choose authority fields.
 Tool arguments can express content, query text, limit, or expiration. They
 cannot express actor ids, workspace ids, channel ids, thread ids, arbitrary
 owner ids, arbitrary conversation ids, requested scope classes, or arbitrary
-scope overrides for `searchMemories`.
+scope overrides for `memory_searchMemories`.
 
 Subject type is stored so the plugin can distinguish user, conversation, and
 general knowledge. Subject keys are runtime-derived when present. Display names,

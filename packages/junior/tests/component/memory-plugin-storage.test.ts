@@ -181,8 +181,10 @@ WHERE table_name = 'junior_memory_memories'
         userText: "remember memory plugin facts",
       });
 
-      expect(tools).toHaveProperty("createMemory");
-      await expect(tools.listMemories.execute!({}, {})).resolves.toMatchObject({
+      expect(tools).toHaveProperty("memory_createMemory");
+      await expect(
+        tools.memory_listMemories.execute!({}, {}),
+      ).resolves.toMatchObject({
         ok: true,
         memories: [
           expect.objectContaining({
@@ -194,7 +196,7 @@ WHERE table_name = 'junior_memory_memories'
         ],
       });
       await expect(
-        tools.searchMemories.execute!({ query: "personal recall" }, {}),
+        tools.memory_searchMemories.execute!({ query: "personal recall" }, {}),
       ).resolves.toMatchObject({
         ok: true,
         memories: [
@@ -204,7 +206,7 @@ WHERE table_name = 'junior_memory_memories'
         ],
       });
       await expect(
-        tools.createMemory.execute!(
+        tools.memory_createMemory.execute!(
           {
             content: "I prefer terse status updates.",
             scope: "conversation",

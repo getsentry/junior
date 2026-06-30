@@ -208,9 +208,9 @@ extraction for the same completed session so the tool path owns its effect.
 
 Automatic memory injection is enabled when the memory plugin is enabled.
 
-`searchMemories` remains the explicit model-visible recall path. It applies the
-same visibility, policy, ranking, and redaction rules as automatic memory
-injection.
+`memory_searchMemories` remains the explicit model-visible recall path. It
+applies the same visibility, policy, ranking, and redaction rules as automatic
+memory injection.
 
 ## Explicit Tools And Policy
 

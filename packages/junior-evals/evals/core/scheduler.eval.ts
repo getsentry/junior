@@ -58,9 +58,9 @@ describeEval("Scheduler", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The observed slackScheduleCreateTask tool call has schedule_kind=one_off.",
-          "The observed slackScheduleCreateTask tool call omits recurrence.",
-          "The observed slackScheduleCreateTask task is the reminder work to perform later, not instructions for how to create or manage a schedule.",
+          "The observed scheduler_slackScheduleCreateTask tool call has schedule_kind=one_off.",
+          "The observed scheduler_slackScheduleCreateTask tool call omits recurrence.",
+          "The observed scheduler_slackScheduleCreateTask task is the reminder work to perform later, not instructions for how to create or manage a schedule.",
         ],
         fail: [
           "Do not store task text that tells Junior to schedule a reminder later.",
