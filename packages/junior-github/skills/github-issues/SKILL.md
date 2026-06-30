@@ -1,12 +1,11 @@
 ---
 name: github-issues
 description: Create, update, comment on, label, and inspect GitHub issues with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for issue operations; do not use for pull requests, branches, pushes, or PR creation order questions.
-allowed-tools: bash createIssue
 ---
 
 # GitHub Issue Operations
 
-Issue create via Junior's `createIssue` tool; update, comment, label, state, and inspection via `gh` CLI.
+Issue create via Junior's `github_createIssue` tool; update, comment, label, state, and inspection via `gh` CLI.
 Use only for GitHub issues. For pull requests, branches, pushes, or PR creation order questions, load `github-code` instead.
 
 ## Reference loading
@@ -79,7 +78,7 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 ### 5. Execute
 
-- Use `createIssue` for new issues so Junior owns idempotency and session-link footers.
+- Use `github_createIssue` for new issues so Junior owns idempotency and session-link footers.
 - Use `gh issue` commands from [references/api-surface.md](references/api-surface.md) for non-create operations.
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
 - Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.

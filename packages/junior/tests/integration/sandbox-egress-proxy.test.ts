@@ -739,10 +739,12 @@ describe("sandbox egress proxy integration", () => {
 
     const agentTools = createAgentTools(tools, new SkillSandbox([], []), {});
     const managedEgressRead = agentTools.find(
-      (candidate) => candidate.name === "managedEgressRead",
+      (candidate) => candidate.name === "managedEgress_managedEgressRead",
     );
     if (!managedEgressRead) {
-      throw new Error("managedEgressRead tool was not registered");
+      throw new Error(
+        "managedEgress_managedEgressRead tool was not registered",
+      );
     }
 
     const result = await managedEgressRead.execute(
@@ -1075,7 +1077,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github.createIssue tool so Junior can own idempotency and the conversation footer.",
+        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1117,7 +1119,108 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github.createIssue tool so Junior can own idempotency and the conversation footer.",
+        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer.",
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+  });
+
+  it("denies raw GitHub pull request creation before credential injection", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        pull_requests: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          title: "test",
+          head: "branch",
+          base: "main",
+          body: "test",
+        }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/repos/getsentry/junior/pulls",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer.",
+    });
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await expect(
+      modules.session.consumeSandboxEgressAuthRequiredSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
+  });
+
+  it("denies raw GitHub GraphQL pull request creation before credential injection", async () => {
+    configureGitHubAppEnv();
+    mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        pull_requests: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn();
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({
+          query:
+            "mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { number } } }",
+          variables: {
+            input: {
+              repositoryId: "repo",
+              title: "test",
+              headRefName: "branch",
+              baseRefName: "main",
+            },
+          },
+        }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath: "/graphql",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });

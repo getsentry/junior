@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses Junior's `createIssue` tool. Other issue operations use `gh` CLI and must be deterministic and non-interactive.
+Issue creation uses Junior's `github_createIssue` tool. Other issue operations use `gh` CLI and must be deterministic and non-interactive.
 
 ## Repo scoping
 
@@ -10,16 +10,16 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## GitHub App permission guidance
 
-| Permission capability | Operations                                                                              |
-| --------------------- | --------------------------------------------------------------------------------------- |
-| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                           |
-| `github.issues.write` | `createIssue`, `gh issue edit`, `gh issue comment`, `gh issue close`, `gh issue reopen` |
+| Permission capability | Operations                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------- |
+| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                                  |
+| `github.issues.write` | `github_createIssue`, `gh issue edit`, `gh issue comment`, `gh issue close`, `gh issue reopen` |
 
 ## Command matrix
 
 | Operation           | Command                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Create issue        | `createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                             |
+| Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                      |
 | Update issue fields | `gh issue edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]`                                   |
 | Close issue         | `gh issue close NUMBER --repo owner/repo [--comment "..."]`                                                   |
 | Reopen issue        | `gh issue reopen NUMBER --repo owner/repo`                                                                    |
@@ -41,6 +41,6 @@ jr-rpc config set github.repo owner/repo
 
 - Prefer `--json` output for machine-readable parsing where available.
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
-- For creation, call `createIssue` directly instead of shelling out to `gh issue create`.
+- For creation, call `github_createIssue` directly instead of shelling out to `gh issue create`.
 - Keep `--repo owner/repo` explicit when working across repositories.
 - Return actionable errors for access, permission, not-found, and validation failures.

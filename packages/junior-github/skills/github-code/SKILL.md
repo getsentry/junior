@@ -1,12 +1,11 @@
 ---
 name: github-code
-description: Clone repositories, inspect source, edit code, and manage pull requests with GitHub CLI. Use for repo implementation questions, cloning/editing, PR inspection/mutation, and PR creation order questions. For PR creation order, answer that the branch must be pushed before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
-allowed-tools: bash
+description: Work with GitHub repositories, source code, branches, commits, pushes, pull requests, reviews, diffs, and CI runs. Use for repo implementation tasks, source-code investigation, cloning/fetching, branch and push workflows, PR creation, PR updates, PR review feedback, and GitHub Actions checks. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 ---
 
 # GitHub Code Operations
 
-Use `gh` and `git` for repository checkout, source investigation, code changes, commits, and pull requests.
+Use `gh` and `git` for repository checkout, source investigation, code changes, commits, and pull request inspection or mutation. Use Junior's `github_createPullRequest` tool for new pull requests.
 
 ## References
 
@@ -110,7 +109,7 @@ Before creating:
 
 1. Changes committed on a non-default branch.
 2. Push the branch explicitly: `git push -u origin BRANCH`.
-3. Create with explicit targeting: `gh pr create --repo owner/repo --head BRANCH ...`.
+3. Create with explicit targeting: `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "main", title: "...", body: "...", draft: true })`.
 
 Defaults:
 

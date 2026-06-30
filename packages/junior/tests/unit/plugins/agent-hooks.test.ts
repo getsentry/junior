@@ -407,8 +407,9 @@ describe("agent plugin hooks", () => {
         sandbox: {} as any,
       });
 
-      expect(tools).toHaveProperty("demoTool");
-      expect(tools.demoTool?.identity).toEqual({
+      expect(tools).toHaveProperty("agentDemo_demoTool");
+      expect(tools.demoTool).toBeUndefined();
+      expect(tools.agentDemo_demoTool?.identity).toEqual({
         id: "agent-demo.demoTool",
         name: "demoTool",
         plugin: "agent-demo",
@@ -444,13 +445,52 @@ describe("agent plugin hooks", () => {
         sandbox: {} as any,
       });
 
-      expect(tools.prototypeTool).toBe(prototypeTool);
-      expect(tools.prototypeTool?.identity).toEqual({
+      expect(tools.agentDemo_prototypeTool).toBe(prototypeTool);
+      expect(tools.prototypeTool).toBeUndefined();
+      expect(tools.agentDemo_prototypeTool?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",
         plugin: "agent-demo",
       });
-      expect(tools.prototypeTool?.execute?.({}, {})).toEqual({ ok: true });
+      expect(tools.agentDemo_prototypeTool?.execute?.({}, {})).toEqual({
+        ok: true,
+      });
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("normalizes hyphen edge cases in plugin tool namespaces", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent--demo-",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              demoTool: tool({
+                description: "Demo tool",
+                inputSchema: Type.Object({}),
+                execute: () => ({ ok: true }),
+              }),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        sandbox: {} as any,
+      });
+
+      expect(tools.agentDemo_demoTool).toBeDefined();
+      expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
     } finally {
       setPlugins(previous);
     }
@@ -491,7 +531,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("rejects plugin tools that conflict with core tools", () => {
+  it("prefixes plugin tools so local names cannot conflict with core tools", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -513,18 +553,18 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() =>
-        createTools(
-          [],
-          {},
-          {
-            destination: LOCAL_DESTINATION,
-            egress: TEST_EGRESS,
-            source: LOCAL_SOURCE,
-            sandbox: {} as any,
-          },
-        ),
-      ).toThrow('Plugin tool "loadSkill" conflicts with a core tool');
+      const tools = createTools(
+        [],
+        {},
+        {
+          destination: LOCAL_DESTINATION,
+          egress: TEST_EGRESS,
+          source: LOCAL_SOURCE,
+          sandbox: {} as any,
+        },
+      );
+      expect(tools.loadSkill).toBeDefined();
+      expect(tools.agentDemo_loadSkill).toBeDefined();
     } finally {
       setPlugins(previous);
     }

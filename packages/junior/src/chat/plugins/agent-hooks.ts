@@ -102,6 +102,15 @@ function basePluginContext(plugin: PluginRegistration) {
   };
 }
 
+/** Convert manifest names into model-facing tool namespaces. */
+function pluginToolNamespace(pluginName: string): string {
+  const parts = pluginName.split("-").filter(Boolean);
+  const [first = "plugin", ...rest] = parts;
+  return `${first}${rest
+    .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+    .join("")}`;
+}
+
 function systemPromptPluginContext(plugin: PluginRegistration) {
   return {
     ...basePluginContext(plugin),
@@ -446,12 +455,14 @@ export function getPluginTools(
       };
     }
     const pluginTools = hook(pluginContext);
-    for (const [name, tool] of Object.entries(pluginTools)) {
-      if (!PLUGIN_TOOL_NAME_RE.test(name)) {
+    const namespace = pluginToolNamespace(pluginName);
+    for (const [localName, tool] of Object.entries(pluginTools)) {
+      if (!PLUGIN_TOOL_NAME_RE.test(localName)) {
         throw new Error(
-          `Plugin tool "${name}" from plugin "${pluginName}" must be a camelCase identifier`,
+          `Plugin tool "${localName}" from plugin "${pluginName}" must be a camelCase identifier`,
         );
       }
+      const name = `${namespace}_${localName}`;
       if (tools[name]) {
         throw new Error(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
@@ -459,8 +470,8 @@ export function getPluginTools(
       }
       const definition = tool as unknown as ToolDefinition<any>;
       definition.identity = {
-        id: `${pluginName}.${name}`,
-        name,
+        id: `${pluginName}.${localName}`,
+        name: localName,
         plugin: pluginName,
       };
       tools[name] = definition;

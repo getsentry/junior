@@ -180,13 +180,16 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | `sandboxPrepare(ctx)`    | Prepare files or runtime state inside a sandbox before agent tools run.                                                           |
 | `beforeToolExecute(ctx)` | Deny or rewrite object-shaped tool input and set non-secret env values before a tool runs.                                        |
-| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be camelCase and cannot shadow core tools.          |
+| `tools(ctx)`             | Return host-registered tool definitions for the current turn. Tool names must be plugin-local camelCase names.                    |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                 |
 | `dashboardRoutes(ctx)`   | Return a Hono or fetch-compatible app mounted under `/api/dashboard/plugins/:pluginName/*` with dashboard auth already applied.   |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`. |
 
 `tools(ctx)` receives the active turn context, `ctx.state`, and `ctx.log`.
-Return tool definitions keyed by the public tool names your plugin owns:
+Return tool definitions keyed by the plugin-local tool names your plugin owns.
+Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
+`pluginNamespace` is derived from the plugin manifest name. For example,
+`my-provider` tool `ping` is exposed as `myProvider_ping`.
 
 ```ts title="index.ts"
 import { Type } from "@sinclair/typebox";
@@ -201,7 +204,7 @@ export function myProviderPlugin() {
     hooks: {
       tools(ctx) {
         return {
-          myProviderPing: {
+          ping: {
             description: "Check my-provider connectivity.",
             inputSchema: Type.Object({}),
             execute: async () => {

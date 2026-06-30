@@ -466,6 +466,17 @@ describe("github plugin", () => {
     expect(
       await grantForEgress({
         method: "POST",
+        operation: "github.pull.create",
+        url: "https://api.github.com/repos/getsentry/junior/pulls",
+      }),
+    ).toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.pull-create",
+    });
+    expect(
+      await grantForEgress({
+        method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
     ).toMatchObject({
@@ -481,7 +492,16 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/issues",
       }),
-    ).rejects.toThrow("must use the github.createIssue tool");
+    ).rejects.toThrow("must use the github_createIssue tool");
+  });
+
+  it("denies raw GitHub pull request creation outside the typed createPullRequest operation", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls",
+      }),
+    ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
   it("creates issues through host egress with a deterministic Junior footer", async () => {
@@ -824,6 +844,142 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
+  it("creates pull requests through host egress with a deterministic Junior footer", async () => {
+    const ctx = githubToolsContext({
+      conversationId: "slack:C123:1712345.0001",
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 691,
+            html_url: "https://github.com/getsentry/junior/pull/691",
+          }),
+          { status: 201 },
+        ),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+          body: "PR body",
+          draft: true,
+        },
+        { toolCallId: "call-create-pull-request" },
+      ),
+    ).resolves.toEqual({
+      number: 691,
+      url: "https://github.com/getsentry/junior/pull/691",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+    const request = ctx.egressRequests()[0];
+    expect(request).toMatchObject({
+      provider: "github",
+      operation: "github.pull.create",
+    });
+    expect(request?.request.method).toBe("POST");
+    expect(request?.request.url).toBe(
+      "https://api.github.com/repos/getsentry/junior/pulls",
+    );
+    expect(
+      Object.fromEntries(request?.request.headers.entries() ?? []),
+    ).toEqual(
+      expect.objectContaining({
+        accept: "application/vnd.github+json",
+        "content-type": "application/json",
+        "x-github-api-version": "2022-11-28",
+      }),
+    );
+    await expect(request?.request.json()).resolves.toEqual({
+      title: "Typed PR",
+      head: "dcramer/gh-660-pr-create",
+      base: "main",
+      body: "PR body",
+      draft: true,
+    });
+  });
+
+  it("adds a Sentry session link to pull request footers when configured", async () => {
+    process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
+    process.env.SENTRY_ORG_SLUG = "acme";
+    const ctx = githubToolsContext({
+      conversationId: "slack:C123:1712345.0001",
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 691,
+            html_url: "https://github.com/getsentry/junior/pull/691",
+          }),
+          { status: 201 },
+        ),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "dcramer/gh-660-pr-create",
+        base: "main",
+        body: "PR body",
+      },
+      { toolCallId: "call-create-pull-request-with-session-link" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: `PR body
+
+<!-- junior-session-footer:start -->
+
+[View Session in Sentry](https://acme.sentry.io/explore/conversations/slack%3AC123%3A1712345.0001/?project=12345)
+
+<!-- junior-session-footer:end -->`,
+    });
+  });
+
+  it("returns the stored pull request result when a createPullRequest tool call is retried", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 691,
+            html_url: "https://github.com/getsentry/junior/pull/691",
+          }),
+          { status: 201 },
+        ),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+    const input = {
+      repo: "getsentry/junior",
+      title: "Typed PR",
+      head: "dcramer/gh-660-pr-create",
+      base: "main",
+    };
+
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
+    ).resolves.toEqual({
+      number: 691,
+      url: "https://github.com/getsentry/junior/pull/691",
+    });
+    await expect(
+      tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
+    ).resolves.toEqual({
+      number: 691,
+      url: "https://github.com/getsentry/junior/pull/691",
+    });
+
+    expect(ctx.egressRequests()).toHaveLength(1);
+  });
+
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
     expect(
       await grantForEgress({
@@ -1005,7 +1161,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/graphql",
         bodyText: JSON.stringify({
           query:
-            "fragment prFields on PullRequest { number } mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { ...prFields } } }",
+            "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
         }),
       }),
     ).resolves.toMatchObject({
@@ -1037,7 +1193,7 @@ Conversation: \`local:test:old-conversation\`
             'query ReadIssues { repository(owner: "getsentry", name: "junior-prod") { issues(first: 1) { nodes { number } } } } mutation CreateIssue { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } }',
         }),
       }),
-    ).rejects.toThrow("must use the github.createIssue tool");
+    ).rejects.toThrow("must use the github_createIssue tool");
     await expect(
       grantForEgress({
         method: "POST",
@@ -1048,7 +1204,32 @@ Conversation: \`local:test:old-conversation\`
             'fragment createIssueFields on Mutation { createIssue(input: {repositoryId: "repo", title: "test"}) { issue { number } } } mutation CreateIssue { ...createIssueFields }',
         }),
       }),
-    ).rejects.toThrow("must use the github.createIssue tool");
+    ).rejects.toThrow("must use the github_createIssue tool");
+  });
+
+  it("denies GraphQL createPullRequest mutations from raw egress", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "OpenPullRequest",
+          query:
+            'query ReadPulls { repository(owner: "getsentry", name: "junior") { pullRequests(first: 1) { nodes { number } } } } mutation OpenPullRequest($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { number } } }',
+        }),
+      }),
+    ).rejects.toThrow("must use the github_createPullRequest tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "OpenPullRequest",
+          query:
+            'fragment createPullRequestFields on Mutation { createPullRequest(input: {repositoryId: "repo", title: "test", headRefName: "branch", baseRefName: "main"}) { pullRequest { number } } } mutation OpenPullRequest { ...createPullRequestFields }',
+        }),
+      }),
+    ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
   it("adds provider requirements to known GitHub write grants", async () => {
