@@ -284,6 +284,22 @@ describe("oauth callback slack integration", () => {
                 slackTs: "1700000000.011",
               },
             },
+            {
+              id: "msg.bot-failed",
+              role: "user",
+              text: "sync this with github",
+              createdAtMs: 4,
+              author: {
+                userId: "UBOT",
+                userName: "github",
+                isBot: true,
+              },
+              meta: {
+                replied: false,
+                skippedReason: "reply failed",
+                slackTs: "1700000000.012",
+              },
+            },
           ],
           processing: {
             activeTurnId: undefined,

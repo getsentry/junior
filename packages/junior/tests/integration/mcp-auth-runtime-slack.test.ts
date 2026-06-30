@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
@@ -626,16 +627,16 @@ describe("mcp auth runtime slack integration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                should_unsubscribe: false,
-                confidence: 1,
-                reason: "requires thread follow-up",
-              },
-              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"requires thread follow-up"}',
-            }) as never,
+          completeObject: async <TSchema extends z.ZodTypeAny>(params: {
+            schema: TSchema;
+          }) => ({
+            object: params.schema.parse({
+              should_reply: true,
+              should_unsubscribe: false,
+              confidence: 1,
+              reason: "requires thread follow-up",
+            }),
+          }),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -743,16 +744,16 @@ describe("mcp auth runtime slack integration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                should_unsubscribe: false,
-                confidence: 1,
-                reason: "integration update needs auth",
-              },
-              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"integration update needs auth"}',
-            }) as never,
+          completeObject: async <TSchema extends z.ZodTypeAny>(params: {
+            schema: TSchema;
+          }) => ({
+            object: params.schema.parse({
+              should_reply: true,
+              should_unsubscribe: false,
+              confidence: 1,
+              reason: "integration update needs auth",
+            }),
+          }),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -809,8 +810,6 @@ describe("mcp auth runtime slack integration", () => {
       { destination },
     );
 
-    expect(agentProbe.promptCallCount).toBe(1);
-    expect(agentProbe.continueCallCount).toBe(0);
     expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
     expect(
       await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(

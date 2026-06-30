@@ -892,7 +892,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             effectiveUserText,
             {
               credentialContext,
-              authRequesterIsBot: message.author.isBot === true,
               requester,
               conversationContext: preparedState.conversationContext,
               artifactState: preparedState.artifacts,
@@ -907,6 +906,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               source,
               destination,
               surface: "slack",
+              authorizationFlowMode:
+                message.author.isBot === true ? "disabled" : undefined,
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
                 conversationId,

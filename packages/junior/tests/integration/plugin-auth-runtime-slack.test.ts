@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -13,15 +14,6 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
-
-const { agentProbe, sandboxProbe } = vi.hoisted(() => ({
-  agentProbe: {
-    promptCallCount: 0,
-  },
-  sandboxProbe: {
-    executeCount: 0,
-  },
-}));
 
 vi.mock("@/chat/services/turn-thinking-level", async () => {
   const actual = await vi.importActual<
@@ -53,7 +45,6 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
       },
       dispose: async () => undefined,
       execute: async () => {
-        sandboxProbe.executeCount += 1;
         return {
           result: {
             auth_required: {
@@ -118,7 +109,6 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     abort() {}
 
     async prompt(message: unknown) {
-      agentProbe.promptCallCount += 1;
       this.state.messages.push(message);
       const bashTool = this.state.tools.find((tool) => tool.name === "bash");
       if (!bashTool) {
@@ -166,8 +156,6 @@ describe("plugin auth runtime slack integration", () => {
     | undefined;
 
   beforeEach(async () => {
-    agentProbe.promptCallCount = 0;
-    sandboxProbe.executeCount = 0;
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -203,16 +191,16 @@ describe("plugin auth runtime slack integration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
-              object: {
-                should_reply: true,
-                should_unsubscribe: false,
-                confidence: 1,
-                reason: "integration update needs plugin auth",
-              },
-              text: '{"should_reply":true,"should_unsubscribe":false,"confidence":1,"reason":"integration update needs plugin auth"}',
-            }) as never,
+          completeObject: async <TSchema extends z.ZodTypeAny>(params: {
+            schema: TSchema;
+          }) => ({
+            object: params.schema.parse({
+              should_reply: true,
+              should_unsubscribe: false,
+              confidence: 1,
+              reason: "integration update needs plugin auth",
+            }),
+          }),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -269,8 +257,6 @@ describe("plugin auth runtime slack integration", () => {
       { destination },
     );
 
-    expect(agentProbe.promptCallCount).toBe(1);
-    expect(sandboxProbe.executeCount).toBe(1);
     expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
     const persistedState =

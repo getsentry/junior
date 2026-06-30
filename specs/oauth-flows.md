@@ -61,6 +61,9 @@ Agent: loads the matching plugin skill and runs the real provider command
   ├─ If credential setup is unavailable or no OAuth authorization metadata is present:
   │    • runtime surfaces the host-provided credential failure message
   │    • runtime does not start a user OAuth flow
+  ├─ If the requester is a Slack bot or other non-human actor:
+  │    • runtime surfaces a terminal authorization failure
+  │    • runtime does not create pending auth or deliver private auth links
   └─ OAuth-paused runs end cleanly; they are not kept as the active in-flight run
   │
   ▼
@@ -95,6 +98,7 @@ Agent: calls an MCP tool from the same plugin
   ├─ Runtime appends `authorization_requested` to the agent session log
   ├─ Historical turn-session record is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
+  ├─ Bot or non-human Slack requesters fail terminally without pending auth or links
   └─ Current run ends cleanly; it is not kept as the active in-flight run
   │
   ▼
@@ -145,6 +149,10 @@ Purpose:
   - deduplicates repeated prompts only when `kind`, `provider`, `requesterId`,
     `scope`, and `sessionId` all match a fresh already-sent private link
   - lets callbacks suppress stale resumes after newer thread activity
+- Callback freshness uses the latest real human request in the thread:
+  - bot-authored messages do not own user authorization and are ignored
+  - skipped `side_conversation:` and `directed_to_other_party:` messages are ignored
+  - failed human turns and thread opt-out messages are newer relevant requests
 - This state is callback routing and dedupe state only. It must not be rendered
   into the prompt as an auth-completion hint. Model-visible authorization
   completion is represented by the agent session log's `authorization_completed`

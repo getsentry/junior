@@ -9,7 +9,6 @@ import { requesterSchema } from "@sentry/junior-plugin-api";
 import { isSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_PATTERN = /^[UW][A-Z0-9]{5,}$/;
-const SLACK_AUTH_USER_ID_PATTERN = /^[UW][A-Z0-9]{2,}$/;
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 const exactStoredStringSchema = z
@@ -80,11 +79,6 @@ function isSyntheticActorUserId(value: string): boolean {
 
 function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_PATTERN.test(value);
-}
-
-/** Return whether a Slack actor id can own user authorization. */
-export function isSlackHumanUserId(value: string): boolean {
-  return SLACK_AUTH_USER_ID_PATTERN.test(value);
 }
 
 function parseSlackTeamId(value: unknown): string | undefined {

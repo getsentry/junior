@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
+import {
+  canReusePendingAuthLink,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
+import type {
+  ConversationPendingAuthState,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
 
 const NOW = 1_700_000_000_000;
 const REUSE_WINDOW_MS = 10 * 60 * 1000;
@@ -20,6 +27,38 @@ function pendingAuth(
     sessionId: "run_1",
     linkSentAtMs: NOW - 60_000,
     ...overrides,
+  };
+}
+
+function conversationWithMessages(
+  messages: ThreadConversationState["messages"],
+): ThreadConversationState {
+  return {
+    schemaVersion: 1,
+    messages,
+    piMessages: [],
+    compactions: [],
+    backfill: {},
+    processing: {},
+    stats: {
+      compactedMessageCount: 0,
+      estimatedContextTokens: 0,
+      totalMessageCount: messages.length,
+      updatedAtMs: NOW,
+    },
+    vision: {
+      byFileId: {},
+    },
+  };
+}
+
+function pendingAuthState(sessionId: string): ConversationPendingAuthState {
+  return {
+    kind: "plugin",
+    provider: "eval-auth",
+    requesterId: "U123",
+    sessionId,
+    linkSentAtMs: NOW,
   };
 }
 
@@ -124,6 +163,181 @@ describe("canReusePendingAuthLink", () => {
         sessionId: "run_1",
         nowMs: NOW,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("isPendingAuthLatestRequest", () => {
+  it("ignores passive skipped bystander messages when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+          },
+          {
+            id: "msg.bystander",
+            role: "user",
+            text: "I think those tools are read only",
+            createdAtMs: NOW + 1,
+            meta: {
+              replied: false,
+              skippedReason: "side_conversation:passive side conversation",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores messages directed to another party when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+          },
+          {
+            id: "msg.other-party",
+            role: "user",
+            text: "@cursor can you check this?",
+            createdAtMs: NOW + 1,
+            meta: {
+              replied: false,
+              skippedReason: "directed_to_other_party:named_mention:Cursor",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats failed user turns as newer requests when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+          },
+          {
+            id: "msg.failed",
+            role: "user",
+            text: "sync this with github",
+            createdAtMs: NOW + 1,
+            meta: {
+              replied: false,
+              skippedReason: "reply failed",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(false);
+  });
+
+  it("ignores failed bot-authored turns when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+            },
+          },
+          {
+            id: "msg.bot-failed",
+            role: "user",
+            text: "sync this with github",
+            createdAtMs: NOW + 1,
+            author: {
+              isBot: true,
+              userId: "UBOT",
+              userName: "github",
+            },
+            meta: {
+              replied: false,
+              skippedReason: "reply failed",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not ignore failed human turns from other users when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+            },
+          },
+          {
+            id: "msg.other-human-failed",
+            role: "user",
+            text: "sync this with github",
+            createdAtMs: NOW + 1,
+            author: {
+              userId: "U999",
+              userName: "human",
+            },
+            meta: {
+              replied: false,
+              skippedReason: "reply failed",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
+    ).toBe(false);
+  });
+
+  it("treats thread opt-out turns as newer requests when checking pending auth freshness", () => {
+    expect(
+      isPendingAuthLatestRequest(
+        conversationWithMessages([
+          {
+            id: "msg.9",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: NOW,
+          },
+          {
+            id: "msg.opt-out",
+            role: "user",
+            text: "stop replying here",
+            createdAtMs: NOW + 1,
+            meta: {
+              replied: false,
+              skippedReason: "thread_opt_out:explicit stop instruction",
+            },
+          },
+        ]),
+        pendingAuthState("turn_msg_9"),
+      ),
     ).toBe(false);
   });
 });
