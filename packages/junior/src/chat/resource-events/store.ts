@@ -382,9 +382,7 @@ export async function deliverResourceEventSubscription(input: {
     SUBSCRIPTION_LOCK_TTL_MS,
   );
   if (!lock) {
-    throw new Error(
-      `Could not acquire subscription lock for ${input.subscription.id}`,
-    );
+    return false;
   }
   try {
     const nowMs = input.nowMs ?? Date.now();

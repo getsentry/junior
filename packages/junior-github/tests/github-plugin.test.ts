@@ -994,7 +994,13 @@ Conversation: \`local:test:old-conversation\`
       url: "https://github.com/getsentry/junior/pull/691",
     });
     await expect(
-      tool?.execute?.(input, { toolCallId: "call-idempotent-pr-create" }),
+      tool?.execute?.(
+        {
+          ...input,
+          repo: "getsentry/other",
+        },
+        { toolCallId: "call-idempotent-pr-create" },
+      ),
     ).resolves.toMatchObject({
       number: 691,
       subscribable: {

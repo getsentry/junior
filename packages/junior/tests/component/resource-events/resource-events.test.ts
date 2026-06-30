@@ -1,7 +1,7 @@
 import type { StateAdapter } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closeDb } from "@/chat/db";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
@@ -249,6 +249,79 @@ describe("resource event subscriptions", () => {
       }),
     ).resolves.toBe(false);
     expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it("continues delivering later subscriptions when one delivery lock is busy", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    let busySubscriptionId: string | undefined;
+    const state = {
+      connect: async () => {
+        await baseState.connect();
+      },
+      disconnect: async () => {
+        await baseState.disconnect();
+      },
+      get: async (key: string) => await baseState.get(key),
+      set: async (key: string, value: unknown, ttlMs?: number) =>
+        await baseState.set(key, value, ttlMs),
+      delete: async (key: string) => await baseState.delete(key),
+      acquireLock: async (key: string, ttlMs?: number) =>
+        busySubscriptionId && key.endsWith(`:${busySubscriptionId}`)
+          ? undefined
+          : await baseState.acquireLock(key, ttlMs ?? 10_000),
+      releaseLock: async (
+        lock: Awaited<ReturnType<StateAdapter["acquireLock"]>>,
+      ) => {
+        if (lock) {
+          await baseState.releaseLock(lock);
+        }
+      },
+    } as StateAdapter;
+    const busySubscription = await createGithubPrSubscription({
+      events: ["checks.failed"],
+      state,
+    });
+    await createResourceEventSubscription(
+      {
+        conversationId: "slack:C456:1712345.0002",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C456",
+        },
+        events: ["checks.failed"],
+        expiresAtMs: 2_000_000,
+        intent: "Watch the PR from the second conversation.",
+        label: "GitHub PR getsentry/junior#691",
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        resourceType: "pull_request",
+      },
+      { nowMs: 1_000, state },
+    );
+    busySubscriptionId = busySubscription.id;
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-5:check-suite-1",
+          eventType: "checks.failed",
+          occurredAtMs: 1_500,
+          provider: "github",
+          resourceRef: "github:pull_request:getsentry/junior#691",
+          trustedSummary: "CI failed on workflow test.",
+        },
+        { nowMs: 1_500, queue, state },
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId: "slack:C456:1712345.0002",
+      }),
+    ]);
   });
 
   it("does not enqueue expired subscriptions", async () => {

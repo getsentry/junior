@@ -1148,6 +1148,46 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           if (isAuthResumeRetryableTurnError(error)) {
+            if (!requester) {
+              const text = `I could not act on this subscribed event because ${error.metadata.authProviderDisplayName} needs user authorization. Ask me in this thread to connect ${error.metadata.authProviderDisplayName} before retrying.`;
+              await postThreadReply(
+                buildSlackOutputMessage(text),
+                "thread_reply",
+              );
+              markConversationMessage(
+                preparedState.conversation,
+                preparedState.userMessageId,
+                {
+                  replied: true,
+                  skippedReason: undefined,
+                },
+              );
+              upsertConversationMessage(preparedState.conversation, {
+                id: generateConversationId("assistant"),
+                role: "assistant",
+                text: normalizeConversationText(text),
+                createdAtMs: Date.now(),
+                author: {
+                  userName: botConfig.userName,
+                  isBot: true,
+                },
+                meta: {
+                  replied: true,
+                },
+              });
+              markTurnClosed({
+                conversation: preparedState.conversation,
+                nowMs: Date.now(),
+                sessionId: turnId,
+                updateConversationStats,
+              });
+              await persistThreadState(thread, {
+                conversation: preparedState.conversation,
+              });
+              persistedAtLeastOnce = true;
+              shouldPersistFailureState = false;
+              return;
+            }
             await postAuthPauseNotice(error.metadata.authProviderDisplayName);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,

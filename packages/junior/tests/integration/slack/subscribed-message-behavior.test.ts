@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { TurnInputCommitLostError } from "@/chat/runtime/turn";
+import {
+  RetryableTurnError,
+  TurnInputCommitLostError,
+} from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createProviderError } from "@/chat/services/provider-retry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -197,6 +200,59 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     ]);
     expect(thread.posts).toHaveLength(1);
+  });
+
+  it("posts an auth-needed reply when a resource-event turn needs user auth", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            throw new Error("resource events bypass subscribed classifier");
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new RetryableTurnError("mcp_auth_resume", "auth required", {
+              authProvider: "github",
+              authProviderDisplayName: "GitHub",
+              conversationId: "slack:C_BEHAVIOR:1700002000.003",
+              sessionId: "resource-event-auth",
+            });
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002000.003" });
+    const message = createTestMessage({
+      id: "resource-event-resub-1-check-suite-auth",
+      text: "[event notification]\n\nA subscribed resource changed.",
+      isMention: false,
+      threadId: thread.id,
+      author: {
+        userId: "UJRNEVENT",
+        userName: "junior-event",
+        fullName: "Junior event",
+        isBot: true,
+      },
+      raw: {
+        channel: "C_BEHAVIOR",
+        event_type: "resource_event",
+        thread_ts: "1700002000.003",
+        ts: "resource-event-resub-1-check-suite-auth",
+        type: "message",
+        user: "UJRNEVENT",
+      },
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message, {
+      destination: createTestDestination(thread),
+    });
+
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "GitHub needs user authorization",
+    );
   });
 
   it("replies when classifier approves a subscribed-thread message", async () => {

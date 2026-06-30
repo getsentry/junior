@@ -58,6 +58,7 @@ const createPullRequestStateSchema = Type.Union([
   Type.Object(
     {
       createdAtMs: Type.Number(),
+      input: createPullRequestInputSchema,
       number: Type.Number(),
       status: Type.Literal("completed"),
       url: Type.String(),
@@ -67,6 +68,7 @@ const createPullRequestStateSchema = Type.Union([
   Type.Object(
     {
       createdAtMs: Type.Number(),
+      input: createPullRequestInputSchema,
       status: Type.Literal("pending"),
     },
     { additionalProperties: false },
@@ -377,7 +379,7 @@ export function createGitHubPullRequestTool(
         async () => {
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
-            return gitHubPullRequestToolResult(parsedInput, {
+            return gitHubPullRequestToolResult(state.input, {
               number: state.number,
               url: state.url,
             });
@@ -394,6 +396,7 @@ export function createGitHubPullRequestTool(
           const pendingState: CreatePullRequestState = {
             status: "pending",
             createdAtMs: Date.now(),
+            input: parsedInput,
           };
           await ctx.state.set(
             key,
