@@ -3,7 +3,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueResourceEventNotification } from "@/chat/resource-events/notification";
 import type { ResourceEventNotification } from "@/chat/resource-events/notification";
 import {
-  completeResourceEventSubscription,
+  deliverResourceEventSubscription,
   findMatchingResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 
@@ -28,19 +28,25 @@ export async function ingestResourceEvent(
   });
   let enqueued = 0;
   for (const subscription of subscriptions) {
-    await enqueueResourceEventNotification({
-      event: input,
-      queue: options.queue,
+    const delivered = await deliverResourceEventSubscription({
+      eventType: input.eventType,
+      provider: input.provider,
+      resourceRef: input.resourceRef,
+      terminal: input.terminal,
+      nowMs,
       state: options.state,
       subscription,
+      deliver: async (current) => {
+        await enqueueResourceEventNotification({
+          event: input,
+          queue: options.queue,
+          state: options.state,
+          subscription: current,
+        });
+      },
     });
-    enqueued += 1;
-    if (input.terminal) {
-      await completeResourceEventSubscription({
-        id: subscription.id,
-        nowMs,
-        state: options.state,
-      });
+    if (delivered) {
+      enqueued += 1;
     }
   }
   return { enqueued };

@@ -8,6 +8,8 @@ import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
+  deliverResourceEventSubscription,
+  findMatchingResourceEventSubscriptions,
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
 import {
@@ -222,6 +224,38 @@ describe("resource event subscriptions", () => {
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);
+  });
+
+  it("does not deliver from a stale match after cancellation", async () => {
+    const subscription = await createGithubPrSubscription({
+      events: ["checks.failed"],
+    });
+    const matches = await findMatchingResourceEventSubscriptions({
+      eventType: "checks.failed",
+      nowMs: 1_500,
+      provider: "github",
+      resourceRef: "github:pull_request:getsentry/junior#691",
+    });
+    expect(matches).toEqual([expect.objectContaining({ id: subscription.id })]);
+
+    await cancelResourceEventSubscription({
+      conversationId: CONVERSATION_ID,
+      id: subscription.id,
+      nowMs: 1_600,
+    });
+
+    const deliver = vi.fn(async () => {});
+    await expect(
+      deliverResourceEventSubscription({
+        deliver,
+        eventType: "checks.failed",
+        nowMs: 1_700,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        subscription: matches[0]!,
+      }),
+    ).resolves.toBe(false);
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("does not enqueue expired subscriptions", async () => {
