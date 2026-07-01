@@ -1735,7 +1735,10 @@ function mergeRequesterDirectories(
     }
     people.set(person.requester.email, {
       active: existing.active + person.active,
-      activeDays: Math.max(existing.activeDays, person.activeDays),
+      activeDays: Math.min(
+        existing.activeDays + person.activeDays,
+        existing.conversations + person.conversations,
+      ),
       conversations: existing.conversations + person.conversations,
       durationMs: existing.durationMs + person.durationMs,
       failed: existing.failed + person.failed,
