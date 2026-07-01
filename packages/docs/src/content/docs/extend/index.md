@@ -355,5 +355,5 @@ Add the package name to `defineJuniorPlugins(...)`, then point
 ## Validate extensions
 
 ```bash
-pnpm skills:check
+pnpm exec junior check
 ```

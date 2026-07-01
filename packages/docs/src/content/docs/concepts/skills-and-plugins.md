@@ -33,7 +33,7 @@ owns the destination domain, the request is not given provider auth.
 ## Validation
 
 ```bash
-pnpm skills:check
+pnpm exec junior check
 ```
 
 Move package installs, CLI bootstraps, MCP server setup, and API-key configuration to `plugin.yaml` so reviewed manifests, not arbitrary skill instructions, control the runtime authority surface.
