@@ -174,6 +174,7 @@ interface EvalEventMessageFixture {
   };
   id?: string;
   is_mention?: boolean;
+  raw?: Record<string, unknown>;
   text?: string;
 }
 
@@ -1066,6 +1067,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     threadTs: event.thread.thread_ts,
     runId: event.thread.run_id,
     raw: {
+      ...(event.message.raw ?? {}),
       channel: event.thread.channel_id,
       ...(event.thread.channel_type
         ? { channel_type: event.thread.channel_type }

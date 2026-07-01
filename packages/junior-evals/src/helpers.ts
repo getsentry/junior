@@ -583,6 +583,79 @@ export function threadMessage(
   };
 }
 
+interface ResourceEventNotificationOptions {
+  eventKey?: string;
+  eventType: string;
+  intent: string;
+  label: string;
+  provider?: string;
+  resourceRef: string;
+  subscriptionId?: string;
+  thread?: ThreadOverrides;
+  trustedSummary: string;
+  untrustedText?: string;
+}
+
+function resourceEventNotificationText(
+  opts: ResourceEventNotificationOptions,
+): string {
+  const lines = [
+    "[event notification]",
+    "",
+    "A subscribed resource changed.",
+    "",
+    "Subscription:",
+    `- resource: ${opts.label}`,
+    `- event: ${opts.eventType}`,
+    `- intent: ${opts.intent}`,
+    "",
+    "Trusted event summary:",
+    opts.trustedSummary,
+  ];
+  if (opts.untrustedText?.trim()) {
+    lines.push("", "Untrusted provider content:", opts.untrustedText.trim());
+  }
+  return lines.join("\n");
+}
+
+/** Builds a runtime-owned subscribed resource-event notification for Slack evals. */
+export function resourceEventNotification(
+  opts: ResourceEventNotificationOptions,
+) {
+  const seq = nextId();
+  const eventKey = opts.eventKey ?? `eval-resource-event-${seq}`;
+  const subscriptionId = opts.subscriptionId ?? `eval-subscription-${seq}`;
+  return {
+    type: "subscribed_message" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts.thread,
+    },
+    message: {
+      id: `resource-event-${subscriptionId}-${eventKey}`,
+      text: resourceEventNotificationText(opts),
+      is_mention: false,
+      author: {
+        user_id: "UJRNEVENT",
+        user_name: "junior-event",
+        full_name: "Junior event",
+        is_me: false,
+        is_bot: true,
+      },
+      raw: {
+        event_type: "resource_event",
+        provider: opts.provider ?? "github",
+        resource_ref: opts.resourceRef,
+        subscription_id: subscriptionId,
+        type: "message",
+        user: "UJRNEVENT",
+      },
+    },
+  };
+}
+
 /** Builds an event for a scheduled task becoming due and dispatching output. */
 export function scheduledTaskDue(
   taskText: string,
