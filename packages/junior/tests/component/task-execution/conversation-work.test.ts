@@ -668,6 +668,9 @@ describe("conversation work execution", () => {
     // Status is "pending" so the in-flight queue message from scheduleAgentContinue
     // will find runnable work when it arrives.
     expect(state?.needsRun).toBe(true);
+    // lastEnqueuedAtMs is still set — the wake recorded by markConversationWorkEnqueued
+    // is preserved so a subsequent heartbeat or worker can see it was queued.
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
     // processConversationWork must NOT have sent its own nudge.
     expect(queue.sentRecords()).toHaveLength(0);
   });
@@ -703,6 +706,8 @@ describe("conversation work execution", () => {
     });
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
+    // The recovery nudge sets lastEnqueuedAtMs.
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
     expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
