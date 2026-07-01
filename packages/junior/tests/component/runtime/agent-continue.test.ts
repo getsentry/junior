@@ -72,6 +72,41 @@ describe("agent continuation scheduling", () => {
     });
   });
 
+  it("coalesces continuation wakes while an accepted nudge is recent", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const conversationId = "slack:C123:1712345.0001";
+
+    await scheduleAgentContinue(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        sessionId: "turn_msg_1",
+        expectedVersion: 3,
+      },
+      { queue, nowMs: 1_000 },
+    );
+    queue.clearSentRecords();
+
+    await scheduleAgentContinue(
+      {
+        conversationId,
+        destination: SLACK_DESTINATION,
+        sessionId: "turn_msg_1",
+        expectedVersion: 4,
+      },
+      { queue, nowMs: 2_000 },
+    );
+
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(
+      getConversationWorkState({ conversationId }),
+    ).resolves.toMatchObject({
+      conversationId,
+      needsRun: true,
+      lastEnqueuedAtMs: 1_000,
+    });
+  });
+
   it("reschedules continuation when the Slack resume lock stays busy", async () => {
     vi.useFakeTimers();
     const conversationId = "slack:C123:1712345.0002";

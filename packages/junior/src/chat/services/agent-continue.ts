@@ -9,7 +9,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  markConversationWorkEnqueued,
+  ensureConversationWake,
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -70,24 +70,17 @@ export async function scheduleAgentContinue(
     state: options.state,
   });
   const queue = options.queue ?? getVercelConversationWorkQueue();
-  await queue.send(
-    {
-      conversationId: request.conversationId,
-      destination: request.destination,
-    },
-    {
-      idempotencyKey: [
-        "agent-continue",
-        request.conversationId,
-        request.sessionId,
-        request.expectedVersion,
-        nowMs,
-      ].join(":"),
-    },
-  );
-  await markConversationWorkEnqueued({
+  await ensureConversationWake({
     conversationId: request.conversationId,
+    idempotencyKey: [
+      "agent-continue",
+      request.conversationId,
+      request.sessionId,
+      request.expectedVersion,
+      nowMs,
+    ].join(":"),
     nowMs,
+    queue,
     state: options.state,
   });
 }

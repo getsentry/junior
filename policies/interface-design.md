@@ -36,6 +36,12 @@ Interfaces should expose the smallest useful capability while keeping ownership,
 - When a term is overloaded in the product or platform, define it once in the
   owning spec and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable boundary.
+- Avoid one-hop wrappers, renamed aliases, and helper layers that only forward
+  arguments, options, or dependencies. Call the owning capability directly
+  unless the intermediate function enforces an invariant, translates a boundary,
+  or owns a lifecycle transition.
+- If a helper exists only to hide parameter threading, inline it or move the
+  repeated call shape to the owner that actually defines the contract.
 
 ## Exceptions
 

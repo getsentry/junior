@@ -1295,6 +1295,37 @@ export async function markConversationWorkEnqueued(args: {
   });
 }
 
+/** Clear a wake marker after its queue delivery finds no runnable work. */
+export async function clearConsumedConversationWake(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state) => {
+    const current = await readConversation(state, args.conversationId);
+    if (
+      !current ||
+      hasRunnableWork(current) ||
+      current.execution.lastEnqueuedAtMs === undefined
+    ) {
+      return false;
+    }
+    await writeConversation(
+      state,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs: undefined,
+        },
+        nowMs,
+      ),
+    );
+    return true;
+  });
+}
+
 /** Try to acquire the durable execution lease for one conversation. */
 export async function startConversationWork(args: {
   conversationId: string;

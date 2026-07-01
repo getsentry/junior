@@ -39,6 +39,15 @@ interface MetadataOptions {
   state?: StateAdapter;
 }
 
+export type EnsureConversationWakeResult =
+  | {
+      queueMessageId?: string;
+      status: "enqueued";
+    }
+  | {
+      status: "already_enqueued" | "no_work";
+    };
+
 function metadataStore(options: MetadataOptions): ConversationStore {
   return options.conversationStore ?? getConversationStore();
 }
@@ -142,6 +151,59 @@ export function hasRunnableConversationWork(
   );
 }
 
+/**
+ * Ensure runnable conversation work has one accepted queue wake-up nudge.
+ *
+ * Ordinary wakes coalesce on a recent accepted marker. Replacement is only for
+ * consumed or known-stale deliveries where another queue nudge must exist.
+ */
+export async function ensureConversationWake(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  delayMs?: number;
+  idempotencyKey: string;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  replaceExistingWake?: true;
+  state?: StateAdapter;
+}): Promise<EnsureConversationWakeResult> {
+  const nowMs = args.nowMs ?? now();
+  const conversation = await workState.getConversation({
+    conversationId: args.conversationId,
+    state: args.state,
+  });
+  if (!conversation || !hasRunnableConversationWork(conversation)) {
+    return { status: "no_work" };
+  }
+  if (!conversation.destination) {
+    return { status: "no_work" };
+  }
+  if (
+    args.replaceExistingWake !== true &&
+    hasRecentEnqueueMarker(conversation, nowMs)
+  ) {
+    return { status: "already_enqueued" };
+  }
+
+  const queueResult = await args.queue.send(
+    {
+      conversationId: args.conversationId,
+      destination: conversation.destination,
+    },
+    {
+      delayMs: args.delayMs,
+      idempotencyKey: args.idempotencyKey,
+    },
+  );
+  await markConversationWorkEnqueued({
+    conversationId: args.conversationId,
+    conversationStore: args.conversationStore,
+    nowMs,
+    state: args.state,
+  });
+  return { status: "enqueued", queueMessageId: queueResult?.messageId };
+}
+
 /** Persist one inbound message idempotently in its conversation mailbox. */
 export async function appendInboundMessage(args: {
   message: InboundMessage;
@@ -158,7 +220,7 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
-/** Persist inbound work and send the queue nudge that wakes a worker. */
+/** Persist inbound work and ensure a worker wake-up. */
 export async function appendAndEnqueueInboundMessage(args: {
   message: InboundMessage;
   conversationStore?: ConversationStore;
@@ -189,23 +251,41 @@ export async function appendAndEnqueueInboundMessage(args: {
     }
     idempotencyKey = duplicateInboundNudgeIdempotencyKey(args.message, nowMs);
   }
-  const queueResult = await args.queue.send(
-    {
-      conversationId: args.message.conversationId,
-      destination: args.message.destination,
-    },
-    { idempotencyKey },
-  );
-  await markConversationWorkEnqueued({
+  const wake = await ensureConversationWake({
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
+    idempotencyKey,
     nowMs,
+    queue: args.queue,
     state: args.state,
   });
+  if (wake.status !== "enqueued") {
+    await recordExecutionMetadata({
+      conversationId: args.message.conversationId,
+      conversationStore: args.conversationStore,
+      state: args.state,
+    });
+  }
   return {
     ...appendResult,
-    queueMessageId: queueResult?.messageId,
+    ...(wake.status === "enqueued"
+      ? { queueMessageId: wake.queueMessageId }
+      : {}),
   };
+}
+
+/** Clear an accepted wake marker after its delivery finds no runnable work. */
+export async function clearConsumedConversationWake(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.clearConsumedConversationWake(args);
+  if (result) {
+    await recordExecutionMetadata(args);
+  }
+  return result;
 }
 
 /** Mark a conversation runnable when there is no new mailbox message. */
@@ -241,7 +321,7 @@ export async function recordConversationActivity(
 }
 
 /** Record that a wake-up nudge was accepted for the conversation. */
-export async function markConversationWorkEnqueued(args: {
+async function markConversationWorkEnqueued(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;

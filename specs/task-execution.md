@@ -117,6 +117,14 @@ Normative rules:
 7. Routine continuation must be silent on platforms where the delivery adapter
    owns progress UX. The agent-owned `reportProgress` path and destination
    status/progress port own user-visible progress.
+8. Production wake-up sends must go through `ensureConversationWake`. Business
+   paths mark durable runnable work; the wake helper sends the disposable queue
+   nudge and records the accepted enqueue marker.
+9. Ordinary wake requests coalesce while `lastEnqueuedAtMs` is recent. Explicit
+   replacement wakes are reserved for consumed or known-stale deliveries, such as
+   active-lease deferral and expired-lease heartbeat recovery.
+10. When a queue delivery finds no runnable work, it clears the consumed wake
+    marker so future inbound work can request a fresh wake immediately.
 
 ### Identity Model
 
@@ -323,9 +331,10 @@ durable handoff:
 4. Set `execution.status = "pending"`, update `lastActivityAtMs`,
    `execution.updatedAtMs`, `pendingCount`, and upsert both conversation
    indexes.
-5. Enqueue `{ conversationId, destination }`.
-6. If enqueue succeeds, record `lastEnqueuedAtMs` and refresh
-   `execution.updatedAtMs`.
+5. Ensure a conversation wake through `ensureConversationWake`.
+6. If a new queue nudge is accepted, record `lastEnqueuedAtMs` and refresh
+   `execution.updatedAtMs`. If the wake is coalesced with an existing accepted
+   nudge, leave the existing enqueue marker intact.
 7. Return the source acknowledgement quickly. For HTTP sources, this is the
    HTTP response. For local CLI, this is returning control to the terminal loop
    after durable handoff or direct local execution setup.

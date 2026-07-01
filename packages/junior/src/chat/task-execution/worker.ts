@@ -11,12 +11,13 @@ import {
 } from "./queue";
 import {
   checkInConversationWork,
+  clearConsumedConversationWake,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   countPendingConversationMessages,
   drainConversationMailbox,
+  ensureConversationWake,
   getConversationWorkState,
-  markConversationWorkEnqueued,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
@@ -73,32 +74,6 @@ function nudgeIdempotencyKey(
   return `${reason}:${conversationId}:${nowMs}`;
 }
 
-async function sendWakeNudge(args: {
-  conversationId: string;
-  destination: Destination;
-  delayMs?: number;
-  idempotencyKey: string;
-  nowMs: number;
-  options: ProcessConversationWorkOptions;
-}): Promise<void> {
-  await args.options.queue.send(
-    {
-      conversationId: args.conversationId,
-      destination: args.destination,
-    },
-    {
-      delayMs: args.delayMs,
-      idempotencyKey: args.idempotencyKey,
-    },
-  );
-  await markConversationWorkEnqueued({
-    conversationId: args.conversationId,
-    conversationStore: args.options.conversationStore,
-    nowMs: args.nowMs,
-    state: args.options.state,
-  });
-}
-
 async function requestLostLeaseRecovery(args: {
   conversationId: string;
   destination: Destination;
@@ -127,16 +102,18 @@ async function requestLostLeaseRecovery(args: {
   if (!released) {
     return;
   }
-  await sendWakeNudge({
+  await ensureConversationWake({
     conversationId: args.conversationId,
-    destination: args.destination,
+    conversationStore: args.options.conversationStore,
     idempotencyKey: nudgeIdempotencyKey(
       "lost_lease",
       args.conversationId,
       args.nowMs,
     ),
     nowMs: args.nowMs,
-    options: args.options,
+    queue: args.options.queue,
+    replaceExistingWake: true,
+    state: args.options.state,
   });
 }
 
@@ -197,6 +174,14 @@ export async function processConversationWork(
       initial.execution.status === "idle" &&
       !initial.execution.lease)
   ) {
+    if (initial) {
+      await clearConsumedConversationWake({
+        conversationId,
+        conversationStore: options.conversationStore,
+        nowMs: now(options),
+        state: options.state,
+      });
+    }
     return { status: "no_work" };
   }
   if (
@@ -218,17 +203,25 @@ export async function processConversationWork(
     state: options.state,
   });
   if (lease.status === "no_work") {
+    await clearConsumedConversationWake({
+      conversationId,
+      conversationStore: options.conversationStore,
+      nowMs: now(options),
+      state: options.state,
+    });
     return { status: "no_work" };
   }
   if (lease.status === "active") {
     const nudgeNowMs = now(options);
-    await sendWakeNudge({
+    await ensureConversationWake({
       conversationId,
-      destination,
+      conversationStore: options.conversationStore,
       delayMs: CONVERSATION_WORK_DEFER_DELAY_MS,
       idempotencyKey: nudgeIdempotencyKey("active", conversationId, nudgeNowMs),
       nowMs: nudgeNowMs,
-      options,
+      queue: options.queue,
+      replaceExistingWake: true,
+      state: options.state,
     });
     logInfo(
       "conversation_work_nudge_deferred_for_active_lease",
@@ -329,16 +322,17 @@ export async function processConversationWork(
       if (!continuationMarked) {
         return { status: "lost_lease" };
       }
-      await sendWakeNudge({
+      await ensureConversationWake({
         conversationId,
-        destination,
+        conversationStore: options.conversationStore,
         idempotencyKey: nudgeIdempotencyKey(
           "yield",
           conversationId,
           yieldNowMs,
         ),
         nowMs: yieldNowMs,
-        options,
+        queue: options.queue,
+        state: options.state,
       });
       await releaseConversationWork({
         conversationId,
@@ -371,18 +365,21 @@ export async function processConversationWork(
     }
     if (completion === "pending") {
       const nudgeNowMs = now(options);
-      await sendWakeNudge({
+      const wake = await ensureConversationWake({
         conversationId,
-        destination,
+        conversationStore: options.conversationStore,
         idempotencyKey: nudgeIdempotencyKey(
           "pending",
           conversationId,
           nudgeNowMs,
         ),
         nowMs: nudgeNowMs,
-        options,
+        queue: options.queue,
+        state: options.state,
       });
-      return { status: "pending_requeued" };
+      return wake.status === "enqueued"
+        ? { status: "pending_requeued" }
+        : { status: "completed" };
     }
 
     logInfo(
@@ -406,16 +403,17 @@ export async function processConversationWork(
         state: options.state,
       });
       if (continuationMarked) {
-        await sendWakeNudge({
+        await ensureConversationWake({
           conversationId,
-          destination,
+          conversationStore: options.conversationStore,
           idempotencyKey: nudgeIdempotencyKey(
             "error",
             conversationId,
             errorNowMs,
           ),
           nowMs: errorNowMs,
-          options,
+          queue: options.queue,
+          state: options.state,
         });
       }
     } catch (requeueError) {

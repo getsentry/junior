@@ -1,14 +1,13 @@
 import type { StateAdapter } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
 import { logException, logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import {
   clearExpiredConversationLease,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  ensureConversationWake,
   getConversationWorkState,
   hasRunnableConversationWork,
   listActiveConversationIds,
-  markConversationWorkEnqueued,
   removeActiveConversation,
 } from "./store";
 
@@ -25,28 +24,6 @@ function heartbeatIdempotencyKey(
   nowMs: number,
 ): string {
   return `heartbeat:${reason}:${conversationId}:${nowMs}`;
-}
-
-async function sendRecoveryNudge(args: {
-  conversationId: string;
-  destination: Destination;
-  idempotencyKey: string;
-  nowMs: number;
-  queue: ConversationWorkQueue;
-  state?: StateAdapter;
-}): Promise<void> {
-  await args.queue.send(
-    {
-      conversationId: args.conversationId,
-      destination: args.destination,
-    },
-    { idempotencyKey: args.idempotencyKey },
-  );
-  await markConversationWorkEnqueued({
-    conversationId: args.conversationId,
-    nowMs: args.nowMs,
-    state: args.state,
-  });
 }
 
 /** Requeue expired leases and stranded mailbox work without running the agent. */
@@ -89,11 +66,6 @@ export async function recoverConversationWork(args: {
         continue;
       }
 
-      const destination = work.destination;
-      if (!destination) {
-        continue;
-      }
-
       if (
         work.execution.lease &&
         work.execution.lease.expiresAtMs <= args.nowMs
@@ -106,9 +78,8 @@ export async function recoverConversationWork(args: {
         if (!cleared) {
           continue;
         }
-        await sendRecoveryNudge({
+        const wake = await ensureConversationWake({
           conversationId,
-          destination,
           idempotencyKey: heartbeatIdempotencyKey(
             "lease",
             conversationId,
@@ -116,32 +87,27 @@ export async function recoverConversationWork(args: {
           ),
           nowMs: args.nowMs,
           queue: args.queue,
+          replaceExistingWake: true,
           state: args.state,
         });
-        result.expiredLeaseCount += 1;
-        logInfo(
-          "conversation_work_lease_expired_requeued",
-          { conversationId },
-          {},
-          "Heartbeat requeued expired conversation work lease",
-        );
+        if (wake.status === "enqueued") {
+          result.expiredLeaseCount += 1;
+          logInfo(
+            "conversation_work_lease_expired_requeued",
+            { conversationId },
+            {},
+            "Heartbeat requeued expired conversation work lease",
+          );
+        }
         continue;
       }
 
       if (work.execution.lease || !hasRunnableConversationWork(work)) {
         continue;
       }
-      if (
-        typeof work.execution.lastEnqueuedAtMs === "number" &&
-        work.execution.lastEnqueuedAtMs + CONVERSATION_WORK_STALE_ENQUEUE_MS >
-          args.nowMs
-      ) {
-        continue;
-      }
 
-      await sendRecoveryNudge({
+      const wake = await ensureConversationWake({
         conversationId,
-        destination,
         idempotencyKey: heartbeatIdempotencyKey(
           "pending",
           conversationId,
@@ -151,13 +117,15 @@ export async function recoverConversationWork(args: {
         queue: args.queue,
         state: args.state,
       });
-      result.pendingCount += 1;
-      logInfo(
-        "conversation_work_pending_requeued",
-        { conversationId },
-        {},
-        "Heartbeat requeued pending conversation work",
-      );
+      if (wake.status === "enqueued") {
+        result.pendingCount += 1;
+        logInfo(
+          "conversation_work_pending_requeued",
+          { conversationId },
+          {},
+          "Heartbeat requeued pending conversation work",
+        );
+      }
     } catch (error) {
       logException(
         error,

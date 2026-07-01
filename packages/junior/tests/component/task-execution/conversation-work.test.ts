@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
@@ -538,6 +539,69 @@ describe("conversation work execution", () => {
     await expect(first).resolves.toEqual({ status: "completed" });
   });
 
+  it("wakes fresh inbound work after a consumed deferred nudge left a recent marker", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+
+    const first = processConversationWork(conversationQueueMessage(), {
+      nowMs: () => currentNowMs,
+      queue,
+      run: async (context) => {
+        await context.drainMailbox(async () => {});
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+    });
+    await entered.promise;
+
+    currentNowMs = 2_000;
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => ({ status: "completed" }),
+      }),
+    ).resolves.toEqual({ status: "active" });
+
+    currentNowMs = 3_000;
+    finish.resolve();
+    await expect(first).resolves.toEqual({ status: "completed" });
+
+    currentNowMs = 4_000;
+    await expect(
+      processConversationWork(queue.takeMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => ({ status: "completed" }),
+      }),
+    ).resolves.toEqual({ status: "no_work" });
+
+    queue.clearSentRecords();
+    currentNowMs = 5_000;
+    await expect(
+      appendAndEnqueueInboundMessage({
+        message: inboundMessage("m2", {
+          createdAtMs: 5_000,
+          receivedAtMs: 5_000,
+        }),
+        nowMs: currentNowMs,
+        queue,
+      }),
+    ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
+
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: "m2",
+      },
+    ]);
+  });
+
   it("rejects queue messages whose destination does not match persisted work", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const run = vi.fn(async () => ({ status: "completed" as const }));
@@ -627,6 +691,107 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("does not send a second nudge when a continuation wake was already queued during the lease", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            destination: context.destination,
+            nowMs: currentNowMs,
+          });
+          await scheduleAgentContinue(
+            {
+              conversationId: context.conversationId,
+              destination: context.destination,
+              expectedVersion: 2,
+              sessionId: "turn-1",
+            },
+            { queue, nowMs: currentNowMs },
+          );
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
+      },
+    ]);
+  });
+
+  it("uses an existing conversation wake for pending mailbox and continuation work", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            destination: context.destination,
+            nowMs: currentNowMs,
+          });
+          await scheduleAgentContinue(
+            {
+              conversationId: context.conversationId,
+              destination: context.destination,
+              expectedVersion: 2,
+              sessionId: "turn-1",
+            },
+            { queue, nowMs: currentNowMs },
+          );
+          await appendInboundMessage({
+            message: inboundMessage("m2", {
+              createdAtMs: 2_100,
+              receivedAtMs: 2_100,
+            }),
+            nowMs: 2_100,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state?.messages.map((message) => message.inboundMessageId)).toEqual([
+      "m2",
+    ]);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
+      },
+    ]);
+  });
+
   it("uses fresh queue idempotency keys for repeated worker requeues", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
@@ -693,6 +858,47 @@ describe("conversation work execution", () => {
       {
         conversationId: CONVERSATION_ID,
         idempotencyKey: `error:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
+  it("does not send a second error nudge when a continuation wake already exists", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          await scheduleAgentContinue(
+            {
+              conversationId: context.conversationId,
+              destination: context.destination,
+              expectedVersion: 2,
+              sessionId: "turn-1",
+            },
+            { queue, nowMs: currentNowMs },
+          );
+          throw new Error("runner failed");
+        },
+      }),
+    ).rejects.toThrow("runner failed");
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    expect(state?.lastEnqueuedAtMs).toBe(2_000);
+    expect(queue.sentRecords()).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
       },
     ]);
   });
