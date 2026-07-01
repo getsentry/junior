@@ -85,7 +85,7 @@ interface GitHubPullRequestResult {
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
-  subscribable: SubscribableResource;
+  subscribable?: SubscribableResource;
 }
 
 function parseCreatePullRequestInput(
@@ -275,6 +275,9 @@ function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
 ): GitHubPullRequestToolResult {
+  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) {
+    return result;
+  }
   return {
     ...result,
     subscribable: gitHubPullRequestSubscribable(input, result),

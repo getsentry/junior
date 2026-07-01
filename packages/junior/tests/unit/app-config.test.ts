@@ -94,6 +94,22 @@ describe("createApp plugin config", () => {
     });
   });
 
+  it("routes GitHub webhooks through the core resource-event handler", async () => {
+    const app = await createApp({
+      plugins: defineJuniorPlugins([]),
+    });
+
+    const response = await app.fetch(
+      new Request("https://example.test/api/webhooks/github", {
+        method: "POST",
+        body: "{}",
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toBe("Unauthorized");
+  });
+
   it("fails loudly when the env plugin package fallback is malformed", async () => {
     process.env.JUNIOR_PLUGIN_PACKAGES = "not-json";
 

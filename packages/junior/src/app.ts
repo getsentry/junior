@@ -41,6 +41,7 @@ import {
 } from "./plugins";
 import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
+import { POST as githubWebhookPOST } from "@/handlers/github-webhook";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
@@ -52,6 +53,8 @@ import {
   registerVercelConversationWorkDevConsumer,
   type VercelConversationWorkCallbackOptions,
 } from "@/chat/task-execution/vercel-callback";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
@@ -645,6 +648,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
+  const getResourceEventQueue = (): ConversationWorkQueue =>
+    getConversationWorkOptions().queue ?? getVercelConversationWorkQueue();
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
@@ -666,6 +671,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/webhooks/slack", (c) => {
     return slackWebhookPOST(c.req.raw, waitUntil, slackWebhookServices);
+  });
+
+  app.post("/api/webhooks/github", (c) => {
+    return githubWebhookPOST(c.req.raw, {
+      queue: getResourceEventQueue,
+      state: () => getConversationWorkOptions().state,
+    });
   });
 
   app.post("/api/webhooks/:platform", (c) => {

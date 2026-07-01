@@ -847,6 +847,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("creates pull requests through host egress with a deterministic Junior footer", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
       conversationId: "slack:C123:1712345.0001",
       egressFetch: async () =>
@@ -926,6 +927,36 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
+  it("omits pull request subscription hints when GitHub webhooks are not configured", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            number: 691,
+            html_url: "https://github.com/getsentry/junior/pull/691",
+          }),
+          { status: 201 },
+        ),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "dcramer/gh-660-pr-create",
+          base: "main",
+        },
+        { toolCallId: "call-create-pull-request-without-webhooks" },
+      ),
+    ).resolves.toEqual({
+      number: 691,
+      url: "https://github.com/getsentry/junior/pull/691",
+    });
+  });
+
   it("adds a Sentry session link to pull request footers when configured", async () => {
     process.env.SENTRY_DSN = "https://public@o450000.ingest.sentry.io/12345";
     process.env.SENTRY_ORG_SLUG = "acme";
@@ -969,6 +1000,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("returns the stored pull request result when a createPullRequest tool call is retried", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
       egressFetch: async () =>
         new Response(
@@ -1017,6 +1049,7 @@ Conversation: \`local:test:old-conversation\`
   });
 
   it("returns legacy stored pull request results without stored input", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext();
     const plugin = githubPlugin();
     const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
