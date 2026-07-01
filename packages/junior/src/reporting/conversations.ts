@@ -221,6 +221,14 @@ export interface ConversationReport {
   displayTitle: string;
   generatedAt: string;
   runs: ConversationRunReport[];
+  /**
+   * Aggregate summary across all runs. Omitted when the conversation has no
+   * run data at all (neither session summaries nor a conversation index entry).
+   * Representative fields (surface, channel, requesterIdentity, sentryConversationUrl,
+   * traceId) come from the newest run; aggregate fields (status, timestamps,
+   * cumulativeDurationMs, cumulativeUsage) are computed across all runs.
+   */
+  summary?: ConversationSummaryReport;
 }
 
 export interface ConversationFeed {
@@ -794,6 +802,117 @@ function newestRun(
       (reportTime(right.lastSeenAt) ?? 0) -
         (reportTime(left.lastSeenAt) ?? 0) || right.id.localeCompare(left.id),
   )[0]!;
+}
+
+function earliestStartedAt(
+  runs: ConversationSummaryReport[],
+): string {
+  return runs.reduce((earliest, run) => {
+    const t = reportTime(run.startedAt);
+    const currentT = reportTime(earliest);
+    return t !== undefined && (currentT === undefined || t < currentT)
+      ? run.startedAt
+      : earliest;
+  }, runs[0]!.startedAt);
+}
+
+function latestIsoField(
+  runs: ConversationSummaryReport[],
+  field: "lastSeenAt" | "lastProgressAt",
+): string {
+  return runs.reduce((latest, run) => {
+    const t = reportTime(run[field]);
+    const currentT = reportTime(latest);
+    return t !== undefined && (currentT === undefined || t > currentT)
+      ? run[field]
+      : latest;
+  }, runs[0]![field]);
+}
+
+/** Aggregate status across runs using the same precedence as the client feed. */
+function conversationAggregateStatus(
+  runs: ConversationSummaryReport[],
+): ConversationSummaryReport["status"] {
+  const signals = statusSignals(runs);
+  if (signals.hung) return "hung";
+  if (signals.active) return "active";
+  if (signals.failed) return "failed";
+  return newestRun(runs).status;
+}
+
+/** Sum ConversationUsage components across independent session runs. */
+function aggregateConversationUsage(
+  runs: ConversationSummaryReport[],
+): ConversationUsage | undefined {
+  let hasAny = false;
+  const result: ConversationUsage = {};
+  const addField = (
+    key: keyof ConversationUsage,
+    value: number | undefined,
+  ) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return;
+    const clamped = Math.max(0, Math.floor(value));
+    result[key] = ((result[key] ?? 0) as number) + clamped;
+    hasAny = true;
+  };
+  for (const run of runs) {
+    const usage = run.cumulativeUsage;
+    if (!usage) continue;
+    addField("inputTokens", usage.inputTokens);
+    addField("outputTokens", usage.outputTokens);
+    addField("cachedInputTokens", usage.cachedInputTokens);
+    addField("cacheCreationTokens", usage.cacheCreationTokens);
+    addField("totalTokens", usage.totalTokens);
+  }
+  return hasAny ? result : undefined;
+}
+
+/**
+ * Build an aggregate ConversationSummaryReport across all runs.
+ * Representative fields come from the newest run; aggregate fields
+ * (status, timestamps, duration, usage) are computed across all runs.
+ * Returns undefined when the runs array is empty.
+ */
+function conversationSummaryFromRuns(
+  runs: ConversationSummaryReport[],
+  options: {
+    conversationId: string;
+    displayTitle: string;
+  },
+): ConversationSummaryReport | undefined {
+  if (runs.length === 0) return undefined;
+
+  const representative = newestRun(runs);
+  const status = conversationAggregateStatus(runs);
+  const isTerminal =
+    status !== "active" && status !== "hung";
+  const completedAts = isTerminal
+    ? runs.flatMap((run) => (run.completedAt ? [run.completedAt] : []))
+    : [];
+  const completedAt =
+    completedAts.length > 0
+      ? completedAts.reduce((latest, ts) => {
+          const t = reportTime(ts);
+          const currentT = reportTime(latest);
+          return t !== undefined && (currentT === undefined || t > currentT)
+            ? ts
+            : latest;
+        })
+      : undefined;
+  const cumulativeUsage = aggregateConversationUsage(runs);
+
+  return {
+    ...representative,
+    conversationId: options.conversationId,
+    displayTitle: options.displayTitle,
+    status,
+    startedAt: earliestStartedAt(runs),
+    lastSeenAt: latestIsoField(runs, "lastSeenAt"),
+    lastProgressAt: latestIsoField(runs, "lastProgressAt"),
+    ...(completedAt !== undefined ? { completedAt } : { completedAt: undefined }),
+    cumulativeDurationMs: conversationDurationMs(runs),
+    ...(cumulativeUsage !== undefined ? { cumulativeUsage } : {}),
+  };
 }
 
 function recentConversationGroups(args: {
@@ -1602,10 +1721,16 @@ export async function readConversationReport(
     displayTitleFromDetails(conversationId, details) ??
     surfaceFallbackLabel(firstRun?.surface ?? "slack");
 
+  const summary = conversationSummaryFromRuns(effectiveRuns, {
+    conversationId,
+    displayTitle,
+  });
+
   return {
     conversationId,
     displayTitle,
     generatedAt: new Date(nowMs).toISOString(),
     runs: effectiveRuns,
+    ...(summary !== undefined ? { summary } : {}),
   };
 }

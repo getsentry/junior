@@ -397,6 +397,138 @@ describe("dashboard reporting", () => {
     });
   });
 
+  it("includes aggregate summary on single-run conversation report", async () => {
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await recordAgentTurnSessionSummary({
+      channelName: "proj-alpha",
+      conversationId: "slack:C1:summary-single",
+      cumulativeDurationMs: 2_000,
+      requester: slackRequester("Avery"),
+      sessionId: "turn-s1",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-04T10:00:00.000Z"),
+      state: "completed",
+      surface: "slack",
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:summary-single",
+    );
+
+    expect(report.summary).toBeDefined();
+    expect(report.summary).toMatchObject({
+      conversationId: "slack:C1:summary-single",
+      displayTitle: report.displayTitle,
+      status: "completed",
+      cumulativeDurationMs: 2_000,
+      surface: "slack",
+    });
+    // id should be the representative run id, not conversationId
+    expect(report.summary?.id).toBe("turn-s1");
+    // timestamps should match the single run
+    expect(report.summary?.startedAt).toBe(report.runs[0]?.startedAt);
+    expect(report.summary?.lastSeenAt).toBe(report.runs[0]?.lastSeenAt);
+  });
+
+  it("includes aggregate summary across multiple runs", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    const earlierMs = Date.parse("2026-06-04T10:00:00.000Z");
+    const laterMs = Date.parse("2026-06-04T11:00:00.000Z");
+
+    await recordAgentTurnSessionSummary({
+      channelName: "proj-alpha",
+      conversationId: "slack:C1:summary-multi",
+      cumulativeDurationMs: 1_000,
+      requester: slackRequester("Avery"),
+      sessionId: "turn-m1",
+      sliceId: 1,
+      startedAtMs: earlierMs,
+      state: "completed",
+      surface: "slack",
+    });
+    await recordAgentTurnSessionSummary({
+      channelName: "proj-alpha",
+      conversationId: "slack:C1:summary-multi",
+      cumulativeDurationMs: 3_000,
+      requester: slackRequester("Avery"),
+      sessionId: "turn-m2",
+      sliceId: 1,
+      startedAtMs: laterMs,
+      state: "failed",
+      surface: "slack",
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:summary-multi",
+    );
+
+    expect(report.runs).toHaveLength(2);
+    expect(report.summary).toBeDefined();
+    expect(report.summary).toMatchObject({
+      conversationId: "slack:C1:summary-multi",
+      displayTitle: report.displayTitle,
+      status: "failed",
+    });
+    // startedAt should be the earliest run
+    const earlierRun = report.runs.find((r) => r.id === "turn-m1");
+    const laterRun = report.runs.find((r) => r.id === "turn-m2");
+    if (earlierRun && laterRun) {
+      expect(report.summary?.startedAt).toBe(earlierRun.startedAt);
+      // lastSeenAt should be from the latest run
+      expect(report.summary?.lastSeenAt).toBe(laterRun.lastSeenAt);
+    }
+    // cumulativeDurationMs should be the sum across runs (1000 + 3000 = 4000)
+    expect(report.summary?.cumulativeDurationMs).toBe(4_000);
+    // id should be from the representative (newest) run
+    expect(report.summary?.id).toBe("turn-m2");
+  });
+
+  it("omits summary when conversation has no runs", async () => {
+    const { createJuniorReporting } = await import("@/reporting");
+
+    // Conversation with no turn summaries and no index entry:
+    // getConversation returns empty runs, summary should be absent
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:no-runs-at-all",
+    );
+
+    expect(report.runs).toHaveLength(0);
+    expect(report.summary).toBeUndefined();
+  });
+
+  it("summary displayTitle matches top-level displayTitle", async () => {
+    const { setConversationTitle } =
+      await import("@/chat/state/conversation-details");
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await setConversationTitle("slack:C1:summary-title", {
+      displayTitle: "Custom Title",
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:summary-title",
+      sessionId: "turn-t1",
+      sliceId: 1,
+      startedAtMs: Date.parse("2026-06-04T10:00:00.000Z"),
+      state: "completed",
+    });
+
+    const report = await createJuniorReporting().getConversation(
+      "slack:C1:summary-title",
+    );
+
+    expect(report.displayTitle).toBe(report.summary?.displayTitle);
+  });
+
   it("reports aggregate conversation stats beyond the session feed cap", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
