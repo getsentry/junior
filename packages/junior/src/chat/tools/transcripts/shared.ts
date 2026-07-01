@@ -216,14 +216,21 @@ function excerptAroundQuery(text: string, query: string | undefined): string {
   return `${start > 0 ? "..." : ""}${compacted.slice(start, end)}${end < compacted.length ? "..." : ""}`;
 }
 
-/** Project a retained live message into the model-visible transcript result shape. */
+/**
+ * Project a retained live message into the model-visible transcript result shape.
+ *
+ * `event_id` is the retained message anchor paired with `message_offset`; it is
+ * not a persisted tracing span id.
+ */
 export function projectMessage(args: {
   link?: string;
   message: ConversationMessage;
+  offset: number;
   query?: string;
 }) {
   return {
-    id: args.message.id,
+    event_id: args.message.id,
+    message_offset: args.offset,
     role: args.message.role,
     text: args.message.text,
     excerpt: excerptAroundQuery(args.message.text, args.query),

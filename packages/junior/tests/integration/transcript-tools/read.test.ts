@@ -191,6 +191,109 @@ describe("transcriptRead", () => {
     }
   });
 
+  it("reads from a live-message event anchor with surrounding context", async () => {
+    const { fixture, store } = await setupFixture();
+    try {
+      await recordSlackTranscript({
+        store,
+        channelId: "CPUBLIC",
+        conversationId: "slack:CPUBLIC:1700000000.000001",
+        title: "Public anchored thread",
+        messages: [
+          message("event-1", "first visible message"),
+          message("event-2", "anchored visible message"),
+          message("event-3", "next visible message"),
+        ],
+      });
+
+      const read = parseContent(
+        await executeTool(
+          createTranscriptReadTool(slackContext(), {
+            conversationStore: store,
+          }),
+          {
+            conversation_id: "slack:CPUBLIC:1700000000.000001",
+            context_before: 5,
+            event_id: "event-3",
+            include_links: false,
+            limit: 2,
+          },
+        ),
+      );
+
+      expect(read).toMatchObject({
+        ok: true,
+        conversation_id: "slack:CPUBLIC:1700000000.000001",
+        offset: 1,
+        count: 2,
+      });
+      expect(
+        read.messages.map((entry: any) => ({
+          event_id: entry.event_id,
+          message_offset: entry.message_offset,
+          text: entry.text,
+        })),
+      ).toEqual([
+        {
+          event_id: "event-2",
+          message_offset: 1,
+          text: "anchored visible message",
+        },
+        {
+          event_id: "event-3",
+          message_offset: 2,
+          text: "next visible message",
+        },
+      ]);
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("keeps the event anchor when leading context exceeds the read character cap", async () => {
+    const { fixture, store } = await setupFixture();
+    try {
+      await recordSlackTranscript({
+        store,
+        channelId: "CPUBLIC",
+        conversationId: "slack:CPUBLIC:1700000000.000001",
+        title: "Public anchored thread",
+        messages: [
+          message("event-1", "x".repeat(41_000)),
+          message("event-2", "anchored visible message"),
+          message("event-3", "next visible message"),
+        ],
+      });
+
+      const read = parseContent(
+        await executeTool(
+          createTranscriptReadTool(slackContext(), {
+            conversationStore: store,
+          }),
+          {
+            conversation_id: "slack:CPUBLIC:1700000000.000001",
+            context_before: 1,
+            event_id: "event-2",
+            include_links: false,
+            limit: 2,
+          },
+        ),
+      );
+
+      expect(read).toMatchObject({
+        ok: true,
+        offset: 1,
+        count: 2,
+      });
+      expect(read.messages.map((entry: any) => entry.event_id)).toEqual([
+        "event-2",
+        "event-3",
+      ]);
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
   it("reads only the current local source transcript", async () => {
     const { fixture, store } = await setupFixture();
     try {

@@ -69,9 +69,12 @@ records or unrelated private/direct conversation state.
 The core model-visible transcript tools are `transcriptList`,
 `transcriptSearch`, and `transcriptRead`. Model-supplied inputs may choose
 keyword queries, result limits, source-link inclusion, and exact
-`conversation_id` message-window reads for already visible results. Reads return
-a bounded page and expose `next_offset` when more retained live messages are
-available, so agents can scan transcripts without dumping whole conversations.
+`conversation_id` message-window reads for already visible results. Live
+message results expose a stable `event_id` and numeric `message_offset` so
+search/list hits can hand off to `transcriptRead`. Reads return a bounded page
+and expose `next_offset` when more retained live messages are available, and
+may start from an `event_id` with optional prior context, so agents can scan
+transcripts without dumping whole conversations.
 They must not accept workspace, channel, requester, or arbitrary
 visibility-scope selectors from the model. Search is lexical keyword search over
 retained visible messages and compaction summaries; semantic transcript search

@@ -47,12 +47,15 @@ function transcriptSummary(args: {
   link?: string;
   state: ThreadConversationState;
 }) {
-  const latestMessage = [...args.state.messages]
-    .reverse()
-    .find((message) => message.text.trim().length > 0);
-  const latest = latestMessage
-    ? projectMessage({ message: latestMessage })
-    : undefined;
+  let latest: ReturnType<typeof projectMessage> | undefined;
+  for (let index = args.state.messages.length - 1; index >= 0; index -= 1) {
+    const message = args.state.messages[index]!;
+    if (message.text.trim().length === 0) {
+      continue;
+    }
+    latest = projectMessage({ message, offset: index });
+    break;
+  }
   return {
     conversation_id: args.access.conversation.conversationId,
     destination: args.access.destination,
@@ -66,6 +69,8 @@ function transcriptSummary(args: {
     ...(latest
       ? {
           latest_message: {
+            event_id: latest.event_id,
+            message_offset: latest.message_offset,
             role: latest.role,
             author: latest.author,
             created_at: latest.created_at,
@@ -83,7 +88,7 @@ export function createTranscriptListTool(
 ) {
   return tool({
     description:
-      "List saved Junior conversation transcripts visible from the current context. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
+      "List saved Junior conversation transcripts visible from the current context. Latest-message summaries include `event_id` and `message_offset` anchors for transcriptRead. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       include_links: includeLinksInput,

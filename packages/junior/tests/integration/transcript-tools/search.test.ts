@@ -186,6 +186,44 @@ describe("transcriptSearch", () => {
     }
   });
 
+  it("returns live-message event anchors for read handoff", async () => {
+    const { fixture, store } = await setupFixture();
+    try {
+      await recordSlackTranscript({
+        store,
+        channelId: "CPUBLIC",
+        conversationId: "slack:CPUBLIC:1700000000.000001",
+        title: "Public release",
+        messages: [
+          message("message-1", "first deploy note"),
+          message("message-2", "needle deploy detail"),
+          message("message-3", "later deploy note"),
+        ],
+      });
+
+      const searched = parseContent(
+        await executeTool(
+          createTranscriptSearchTool(slackContext(), {
+            conversationStore: store,
+          }),
+          { include_links: false, limit: 10, query: "needle deploy" },
+        ),
+      );
+
+      expect(searched.matches[0]).toMatchObject({
+        conversation_id: "slack:CPUBLIC:1700000000.000001",
+        message: {
+          event_id: "message-2",
+          message_offset: 1,
+          text: "needle deploy detail",
+        },
+      });
+      expect(searched.matches[0].message).not.toHaveProperty("id");
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
   it("searches only the current local source transcript", async () => {
     const { fixture, store } = await setupFixture();
     try {

@@ -264,7 +264,12 @@ describe("transcriptList", () => {
         conversation_id: "slack:CPUBLIC:1700000000.000001",
         compaction_count: 1,
         message_count: 1,
+        latest_message: {
+          event_id: "public-1",
+          message_offset: 0,
+        },
       });
+      expect(listed.transcripts[0].latest_message).not.toHaveProperty("id");
     } finally {
       await closeFixture(fixture);
     }

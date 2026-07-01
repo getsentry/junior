@@ -37,7 +37,7 @@ export function createTranscriptSearchTool(
 ) {
   return tool({
     description:
-      "Search saved Junior conversation transcripts by keyword within the current context visibility. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
+      "Search saved Junior conversation transcripts by keyword within the current context visibility. Live message hits include `event_id` and `message_offset` anchors for transcriptRead. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       query: Type.String({
@@ -49,7 +49,8 @@ export function createTranscriptSearchTool(
         Type.Integer({
           minimum: 1,
           maximum: MAX_LIMIT,
-          description: "Maximum number of matching messages to return.",
+          description:
+            "Maximum number of matching transcript events to return.",
         }),
       ),
     }),
@@ -97,7 +98,7 @@ export function createTranscriptSearchTool(
           if (matches.length >= resultLimit) {
             return true;
           }
-          for (const message of state.messages) {
+          for (const [offset, message] of state.messages.entries()) {
             if (!textMatches(message.text, normalizedQuery, queryTerms)) {
               continue;
             }
@@ -116,6 +117,7 @@ export function createTranscriptSearchTool(
               message: projectMessage({
                 link,
                 message,
+                offset,
                 query: trimmedQuery,
               }),
             });
