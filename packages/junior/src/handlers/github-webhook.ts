@@ -5,7 +5,7 @@ import {
   type IngestResourceEventInput,
 } from "@/chat/resource-events/ingest";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { normalizeGitHubCheckSuiteEvent } from "@/handlers/github-webhook/check-suite";
+import { normalizeGitHubCheckSuiteEvents } from "@/handlers/github-webhook/check-suite";
 import { normalizeGitHubPullRequestEvent } from "@/handlers/github-webhook/pull-request";
 import { normalizeGitHubPullRequestReviewEvent } from "@/handlers/github-webhook/pull-request-review";
 
@@ -36,21 +36,28 @@ function verifyGitHubSignature(body: string, signature: string): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-/** Normalize a verified GitHub webhook delivery into a resource event. */
-export function normalizeGitHubResourceEvent(args: {
+/** Normalize a verified GitHub webhook delivery into resource events. */
+export function normalizeGitHubResourceEvents(args: {
   body: unknown;
   deliveryId: string;
   eventName: string;
-}): IngestResourceEventInput | undefined {
+}): IngestResourceEventInput[] {
   switch (args.eventName) {
-    case "pull_request":
-      return normalizeGitHubPullRequestEvent(args.deliveryId, args.body);
-    case "pull_request_review":
-      return normalizeGitHubPullRequestReviewEvent(args.deliveryId, args.body);
+    case "pull_request": {
+      const event = normalizeGitHubPullRequestEvent(args.deliveryId, args.body);
+      return event ? [event] : [];
+    }
+    case "pull_request_review": {
+      const event = normalizeGitHubPullRequestReviewEvent(
+        args.deliveryId,
+        args.body,
+      );
+      return event ? [event] : [];
+    }
     case "check_suite":
-      return normalizeGitHubCheckSuiteEvent(args.deliveryId, args.body);
+      return normalizeGitHubCheckSuiteEvents(args.deliveryId, args.body);
     default:
-      return undefined;
+      return [];
   }
 }
 
@@ -79,22 +86,23 @@ export async function POST(
     return new Response("Malformed GitHub webhook", { status: 400 });
   }
 
-  const event = normalizeGitHubResourceEvent({
+  const events = normalizeGitHubResourceEvents({
     body: parseJson(body),
     deliveryId,
     eventName,
   });
-  if (!event) {
+  if (events.length === 0) {
     return new Response("Ignored", { status: 202 });
   }
 
-  await ingestResourceEvent(
-    { ...event, occurredAtMs: Date.now() },
-    {
-      queue:
-        typeof options.queue === "function" ? options.queue() : options.queue,
-      state: resolveState(options.state),
-    },
-  );
+  const queue =
+    typeof options.queue === "function" ? options.queue() : options.queue;
+  const state = resolveState(options.state);
+  for (const event of events) {
+    await ingestResourceEvent(
+      { ...event, occurredAtMs: Date.now() },
+      { queue, state },
+    );
+  }
   return new Response("Accepted", { status: 202 });
 }

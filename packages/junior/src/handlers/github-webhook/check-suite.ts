@@ -22,17 +22,13 @@ const checkSuiteWebhookSchema = z.object({
 });
 
 /** Normalize GitHub `check_suite` webhooks for subscribed PR check outcomes. */
-export function normalizeGitHubCheckSuiteEvent(
+export function normalizeGitHubCheckSuiteEvents(
   deliveryId: string,
   body: unknown,
-): IngestResourceEventInput | undefined {
+): IngestResourceEventInput[] {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") {
-    return undefined;
-  }
-  const pullRequest = parsed.data.check_suite.pull_requests[0];
-  if (!pullRequest) {
-    return undefined;
+    return [];
   }
   const conclusion = parsed.data.check_suite.conclusion;
   const eventType =
@@ -42,22 +38,27 @@ export function normalizeGitHubCheckSuiteEvent(
         ? "checks.recovered"
         : undefined;
   if (!eventType) {
-    return undefined;
+    return [];
   }
-  const resource = gitHubPullRequestResource({
-    pullRequestNumber: pullRequest.number,
-    repositoryFullName: parsed.data.repository.full_name,
-  });
   const sha = parsed.data.check_suite.head_sha?.slice(0, 12);
-  return {
-    eventKey: gitHubEventKey(deliveryId, eventType),
-    eventType,
-    occurredAtMs: Date.now(),
-    provider: "github",
-    resourceRef: resource.resourceRef,
-    trustedSummary:
-      eventType === "checks.failed"
-        ? `${resource.label} checks failed${sha ? ` for ${sha}` : ""}.`
-        : `${resource.label} checks recovered${sha ? ` for ${sha}` : ""}.`,
-  };
+  return parsed.data.check_suite.pull_requests.map((pullRequest) => {
+    const resource = gitHubPullRequestResource({
+      pullRequestNumber: pullRequest.number,
+      repositoryFullName: parsed.data.repository.full_name,
+    });
+    return {
+      eventKey: gitHubEventKey(
+        deliveryId,
+        `${eventType}:${pullRequest.number}`,
+      ),
+      eventType,
+      occurredAtMs: Date.now(),
+      provider: "github",
+      resourceRef: resource.resourceRef,
+      trustedSummary:
+        eventType === "checks.failed"
+          ? `${resource.label} checks failed${sha ? ` for ${sha}` : ""}.`
+          : `${resource.label} checks recovered${sha ? ` for ${sha}` : ""}.`,
+    };
+  });
 }

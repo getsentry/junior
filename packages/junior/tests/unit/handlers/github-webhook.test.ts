@@ -1,11 +1,11 @@
 import { createHmac } from "node:crypto";
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { POST, normalizeGitHubResourceEvent } from "@/handlers/github-webhook";
+import { POST, normalizeGitHubResourceEvents } from "@/handlers/github-webhook";
 
 const originalGithubWebhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
 
-function signedRequest(body: unknown): Request {
+function signedRequest(body: unknown, eventName = "pull_request"): Request {
   const rawBody = JSON.stringify(body);
   const signature = `sha256=${createHmac("sha256", "test-secret")
     .update(rawBody)
@@ -14,7 +14,7 @@ function signedRequest(body: unknown): Request {
     method: "POST",
     headers: {
       "x-github-delivery": "delivery-1",
-      "x-github-event": "pull_request",
+      "x-github-event": eventName,
       "x-hub-signature-256": signature,
     },
     body: rawBody,
@@ -30,12 +30,12 @@ afterEach(() => {
   }
 });
 
-describe("normalizeGitHubResourceEvent", () => {
+describe("normalizeGitHubResourceEvents", () => {
   it("normalizes merged pull request events", () => {
     vi.setSystemTime(1_000);
 
     expect(
-      normalizeGitHubResourceEvent({
+      normalizeGitHubResourceEvents({
         deliveryId: "delivery-1",
         eventName: "pull_request",
         body: {
@@ -44,22 +44,24 @@ describe("normalizeGitHubResourceEvent", () => {
           pull_request: { number: 691, merged: true },
         },
       }),
-    ).toEqual({
-      eventKey: "github:delivery-1:state.merged",
-      eventType: "state.merged",
-      occurredAtMs: 1_000,
-      provider: "github",
-      resourceRef: "github:pull_request:getsentry/junior#691",
-      terminal: true,
-      trustedSummary: "GitHub PR getsentry/junior#691 was merged.",
-    });
+    ).toEqual([
+      {
+        eventKey: "github:delivery-1:state.merged",
+        eventType: "state.merged",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        terminal: true,
+        trustedSummary: "GitHub PR getsentry/junior#691 was merged.",
+      },
+    ]);
   });
 
   it("normalizes requested-changes review events with untrusted text", () => {
     vi.setSystemTime(1_000);
 
     expect(
-      normalizeGitHubResourceEvent({
+      normalizeGitHubResourceEvents({
         deliveryId: "delivery-2",
         eventName: "pull_request_review",
         body: {
@@ -73,23 +75,25 @@ describe("normalizeGitHubResourceEvent", () => {
           },
         },
       }),
-    ).toEqual({
-      eventKey: "github:delivery-2:review.changes_requested",
-      eventType: "review.changes_requested",
-      occurredAtMs: 1_000,
-      provider: "github",
-      resourceRef: "github:pull_request:getsentry/junior#691",
-      trustedSummary:
-        "GitHub PR getsentry/junior#691 received requested changes from reviewer.",
-      untrustedText: "please handle the edge case",
-    });
+    ).toEqual([
+      {
+        eventKey: "github:delivery-2:review.changes_requested",
+        eventType: "review.changes_requested",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 received requested changes from reviewer.",
+        untrustedText: "please handle the edge case",
+      },
+    ]);
   });
 
   it("normalizes completed check suite events for pull requests", () => {
     vi.setSystemTime(1_000);
 
     expect(
-      normalizeGitHubResourceEvent({
+      normalizeGitHubResourceEvents({
         deliveryId: "delivery-3",
         eventName: "check_suite",
         body: {
@@ -98,24 +102,35 @@ describe("normalizeGitHubResourceEvent", () => {
           check_suite: {
             conclusion: "failure",
             head_sha: "abcdef1234567890",
-            pull_requests: [{ number: 691 }],
+            pull_requests: [{ number: 691 }, { number: 702 }],
           },
         },
       }),
-    ).toEqual({
-      eventKey: "github:delivery-3:checks.failed",
-      eventType: "checks.failed",
-      occurredAtMs: 1_000,
-      provider: "github",
-      resourceRef: "github:pull_request:getsentry/junior#691",
-      trustedSummary:
-        "GitHub PR getsentry/junior#691 checks failed for abcdef123456.",
-    });
+    ).toEqual([
+      {
+        eventKey: "github:delivery-3:checks.failed:691",
+        eventType: "checks.failed",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 checks failed for abcdef123456.",
+      },
+      {
+        eventKey: "github:delivery-3:checks.failed:702",
+        eventType: "checks.failed",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#702",
+        trustedSummary:
+          "GitHub PR getsentry/junior#702 checks failed for abcdef123456.",
+      },
+    ]);
   });
 
   it("ignores unsupported GitHub webhook actions", () => {
     expect(
-      normalizeGitHubResourceEvent({
+      normalizeGitHubResourceEvents({
         deliveryId: "delivery-4",
         eventName: "pull_request",
         body: {
@@ -124,7 +139,7 @@ describe("normalizeGitHubResourceEvent", () => {
           pull_request: { number: 691, merged: false },
         },
       }),
-    ).toBeUndefined();
+    ).toEqual([]);
   });
 });
 
@@ -192,5 +207,40 @@ describe("GitHub webhook handler", () => {
     expect(response.status).toBe(202);
     expect(state.connect).toHaveBeenCalled();
     expect(state.get).toHaveBeenCalled();
+  });
+
+  it("runs subscription lookup for every PR in a check suite event", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const state = {
+      connect: vi.fn(async () => {}),
+      disconnect: vi.fn(async () => {}),
+      get: vi.fn(async () => undefined),
+      set: vi.fn(async () => {}),
+      acquireLock: vi.fn(async () => undefined),
+      releaseLock: vi.fn(async () => {}),
+    } as unknown as StateAdapter;
+
+    const response = await POST(
+      signedRequest(
+        {
+          action: "completed",
+          repository: { full_name: "getsentry/junior" },
+          check_suite: {
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            pull_requests: [{ number: 691 }, { number: 702 }],
+          },
+        },
+        "check_suite",
+      ),
+      {
+        queue: { send: vi.fn(async () => undefined) },
+        state,
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(state.connect).toHaveBeenCalledTimes(2);
+    expect(state.get).toHaveBeenCalledTimes(2);
   });
 });
