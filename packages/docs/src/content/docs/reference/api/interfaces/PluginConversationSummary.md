@@ -5,7 +5,7 @@ prev: false
 title: "PluginConversationSummary"
 ---
 
-Defined in: [junior-plugin-api/src/operations.ts:12](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L12)
+Defined in: [junior-plugin-api/src/operations.ts:14](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L14)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior-plugin-api/src/operations.ts:12](https://github.com/getsentr
 
 > `optional` **channelName?**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:13](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L13)
+Defined in: [junior-plugin-api/src/operations.ts:15](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L15)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior-plugin-api/src/operations.ts:13](https://github.com/getsentr
 
 > **conversationId**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:14](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L14)
+Defined in: [junior-plugin-api/src/operations.ts:16](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L16)
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior-plugin-api/src/operations.ts:14](https://github.com/getsentr
 
 > **displayTitle**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:15](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L15)
+Defined in: [junior-plugin-api/src/operations.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L17)
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior-plugin-api/src/operations.ts:15](https://github.com/getsentr
 
 > **lastActivityAt**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:16](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L16)
+Defined in: [junior-plugin-api/src/operations.ts:18](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L18)
 
 ---
 
@@ -45,7 +45,7 @@ Defined in: [junior-plugin-api/src/operations.ts:16](https://github.com/getsentr
 
 > **lastUpdatedAt**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L17)
+Defined in: [junior-plugin-api/src/operations.ts:19](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L19)
 
 ---
 
@@ -53,7 +53,7 @@ Defined in: [junior-plugin-api/src/operations.ts:17](https://github.com/getsentr
 
 > `optional` **source?**: `"slack"` \| `"plugin"` \| `"local"` \| `"api"` \| `"internal"` \| `"resource_event"` \| `"scheduler"`
 
-Defined in: [junior-plugin-api/src/operations.ts:18](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L18)
+Defined in: [junior-plugin-api/src/operations.ts:20](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L20)
 
 ---
 
@@ -61,4 +61,4 @@ Defined in: [junior-plugin-api/src/operations.ts:18](https://github.com/getsentr
 
 > **status**: [`PluginConversationStatus`](/reference/api/type-aliases/pluginconversationstatus/)
 
-Defined in: [junior-plugin-api/src/operations.ts:26](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L26)
+Defined in: [junior-plugin-api/src/operations.ts:28](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L28)

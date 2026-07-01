@@ -1,26 +1,21 @@
 import { LogOut } from "lucide-react";
-import {
-  Link,
-  Navigate,
-  NavLink,
-  Route,
-  Routes,
-  useParams,
-} from "react-router";
+import type { ReactElement } from "react";
+import { Link, Navigate, NavLink, Route, Routes } from "react-router";
 
-import { useDashboardData } from "./api";
+import { useDashboardCoreData, useDashboardData } from "./api";
 import { Button } from "./components/Button";
 import { LoadingView } from "./components/LoadingView";
-import { conversationPath, setDashboardTimeZone } from "./format";
+import { setDashboardTimeZone } from "./format";
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PluginsPage } from "./pages/PluginsPage";
 import { cn } from "./styles";
+import type { DashboardData } from "./types";
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
-  const query = useDashboardData();
+  const query = useDashboardCoreData();
   const data = query.data;
   if (data) {
     setDashboardTimeZone(data.config.timeZone);
@@ -90,7 +85,12 @@ export function DashboardShell() {
             loading ? (
               <LoadingView label="Loading command center" />
             ) : (
-              <CommandCenter data={data} queryError={query.error} />
+              <DashboardDataRoute
+                label="Loading command center"
+                render={(dashboardData, error) => (
+                  <CommandCenter data={dashboardData} queryError={error} />
+                )}
+              />
             )
           }
           path="/"
@@ -100,7 +100,12 @@ export function DashboardShell() {
             loading ? (
               <LoadingView label="Loading conversations" />
             ) : (
-              <ConversationsPage data={data} />
+              <DashboardDataRoute
+                label="Loading conversations"
+                render={(dashboardData) => (
+                  <ConversationsPage data={dashboardData} />
+                )}
+              />
             )
           }
           path="/conversations"
@@ -110,7 +115,10 @@ export function DashboardShell() {
             loading ? (
               <LoadingView label="Loading plugins" />
             ) : (
-              <PluginsPage data={data} />
+              <DashboardDataRoute
+                label="Loading plugins"
+                render={(dashboardData) => <PluginsPage data={dashboardData} />}
+              />
             )
           }
           path="/plugins"
@@ -120,18 +128,10 @@ export function DashboardShell() {
             loading ? (
               <LoadingView label="Loading conversation" />
             ) : (
-              <ConversationPage data={data} />
+              <ConversationPage />
             )
           }
           path="/conversations/:conversationId"
-        />
-        <Route
-          element={<Navigate replace to="/conversations" />}
-          path="/sessions"
-        />
-        <Route
-          element={<LegacyConversationRedirect />}
-          path="/sessions/:conversationId"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
@@ -139,10 +139,16 @@ export function DashboardShell() {
   );
 }
 
-function LegacyConversationRedirect() {
-  const routeParams = useParams();
-  const conversationId = routeParams.conversationId
-    ? decodeURIComponent(routeParams.conversationId)
-    : "";
-  return <Navigate replace to={conversationPath(conversationId)} />;
+function DashboardDataRoute(props: {
+  label: string;
+  render: (
+    data: DashboardData | undefined,
+    error: Error | null,
+  ) => ReactElement;
+}) {
+  const query = useDashboardData();
+  if (!query.data && !query.error) {
+    return <LoadingView label={props.label} />;
+  }
+  return props.render(query.data, query.error);
 }

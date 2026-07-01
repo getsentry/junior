@@ -3,8 +3,8 @@ import type {
   ConversationStatsItem as DashboardConversationStatsItem,
   ConversationStatsReport as DashboardConversationStatsReport,
   RequesterIdentity as DashboardRequesterIdentity,
-  ConversationFeed as DashboardSessionFeed,
-  ConversationSummaryReport as DashboardSessionReport,
+  ConversationFeed as DashboardConversationFeed,
+  ConversationSummaryReport as DashboardConversationSummary,
   ConversationUsage as DashboardRunUsage,
   TranscriptMessage as DashboardTranscriptMessage,
   ConversationRunReport as DashboardRunReport,
@@ -44,7 +44,7 @@ function sentryTraceUrl(traceId: string): string {
   return `https://sentry.example.com/performance/trace/${traceId}/`;
 }
 
-function sessionFromRun(run: DashboardRunReport): DashboardSessionReport {
+function summaryFromRun(run: DashboardRunReport): DashboardConversationSummary {
   const {
     activity,
     transcript,
@@ -69,6 +69,7 @@ function publicIncidentConversation(
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
     generatedAt: iso(nowMs),
+    sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
     runs: [
       {
         conversationId: INCIDENT_CONVERSATION_ID,
@@ -94,7 +95,6 @@ function publicIncidentConversation(
         },
         channel: "CQA123",
         channelName: "proj-checkout",
-        sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
@@ -193,7 +193,6 @@ function publicIncidentConversation(
         },
         channel: "CQA123",
         channelName: "proj-checkout",
-        sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
@@ -264,6 +263,7 @@ function activeConversation(nowMs: number): DashboardConversationReport {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Deploy rollout watch",
     generatedAt: iso(nowMs),
+    sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
     runs: [
       {
         conversationId: ACTIVE_CONVERSATION_ID,
@@ -287,7 +287,6 @@ function activeConversation(nowMs: number): DashboardConversationReport {
         },
         channel: "CQA123",
         channelName: "proj-checkout",
-        sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
         transcriptAvailable: true,
         transcriptMessageCount: 2,
         transcript: [
@@ -440,6 +439,7 @@ function hungConversation(nowMs: number): DashboardConversationReport {
     conversationId: HUNG_CONVERSATION_ID,
     displayTitle: "Sandbox QA run",
     generatedAt: iso(nowMs),
+    sentryConversationUrl: sentryConversationUrl(HUNG_CONVERSATION_ID),
     runs: [
       {
         conversationId: HUNG_CONVERSATION_ID,
@@ -463,7 +463,6 @@ function hungConversation(nowMs: number): DashboardConversationReport {
         },
         channel: "CQA999",
         channelName: "quality",
-        sentryConversationUrl: sentryConversationUrl(HUNG_CONVERSATION_ID),
         transcriptAvailable: true,
         transcriptMessageCount: 3,
         transcript: [
@@ -517,6 +516,7 @@ function failedConversation(nowMs: number): DashboardConversationReport {
     conversationId: FAILED_CONVERSATION_ID,
     displayTitle: "OAuth callback investigation",
     generatedAt: iso(nowMs),
+    sentryConversationUrl: sentryConversationUrl(FAILED_CONVERSATION_ID),
     runs: [
       {
         conversationId: FAILED_CONVERSATION_ID,
@@ -540,7 +540,6 @@ function failedConversation(nowMs: number): DashboardConversationReport {
         },
         channel: "CQA777",
         channelName: "platform-auth",
-        sentryConversationUrl: sentryConversationUrl(FAILED_CONVERSATION_ID),
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
@@ -839,44 +838,46 @@ function mockConversationMap(
   );
 }
 
-function mockSessionFeed(nowMs: number): DashboardSessionFeed {
+function mockConversationFeed(nowMs: number): DashboardConversationFeed {
   return {
     source: "conversation_index",
     generatedAt: iso(nowMs),
-    sessions: mockConversations(nowMs).flatMap((conversation) =>
-      conversation.runs.map(sessionFromRun),
+    conversations: mockConversations(nowMs).flatMap((conversation) =>
+      conversation.runs.map(summaryFromRun),
     ),
   };
 }
 
-function mergeSessionFeeds(
-  mockFeed: DashboardSessionFeed,
-  realFeed: DashboardSessionFeed,
-): DashboardSessionFeed {
-  const mockSessionKeys = new Set(
-    mockFeed.sessions.map(
-      (session) => `${session.conversationId}:${session.id}`,
+function mergeConversationFeeds(
+  mockFeed: DashboardConversationFeed,
+  realFeed: DashboardConversationFeed,
+): DashboardConversationFeed {
+  const mockSummaryKeys = new Set(
+    mockFeed.conversations.map(
+      (conversation) => `${conversation.conversationId}:${conversation.id}`,
     ),
   );
 
   return {
     source: realFeed.source,
     generatedAt: realFeed.generatedAt,
-    sessions: [
-      ...mockFeed.sessions,
-      ...realFeed.sessions.filter(
-        (session) =>
-          !mockSessionKeys.has(`${session.conversationId}:${session.id}`),
+    conversations: [
+      ...mockFeed.conversations,
+      ...realFeed.conversations.filter(
+        (conversation) =>
+          !mockSummaryKeys.has(
+            `${conversation.conversationId}:${conversation.id}`,
+          ),
       ),
     ],
   };
 }
 
-function conversationStatsReportFromSessions(
+function conversationStatsReportFromSummaries(
   nowMs: number,
-  sessions: DashboardSessionReport[],
+  summaries: DashboardConversationSummary[],
 ): DashboardConversationStatsReport {
-  const conversations = recentConversationGroups(nowMs, sessions);
+  const conversations = recentConversationGroups(nowMs, summaries);
   const requesters = new Map<string, DashboardConversationStatsItem>();
   const locations = new Map<string, DashboardConversationStatsItem>();
   let durationMs = 0;
@@ -941,8 +942,8 @@ function conversationStatsReportFromSessions(
     hung,
     locations: statsItems(locations),
     requesters: statsItems(requesters),
-    sampleLimit: sessions.length,
-    sampleSize: sessions.length,
+    sampleLimit: summaries.length,
+    sampleSize: summaries.length,
     source: "conversation_index",
     ...(tokens !== undefined ? { tokens } : {}),
     truncated: false,
@@ -955,7 +956,7 @@ function conversationStatsReportFromSessions(
 type RunContribution = {
   durationMs: number;
   tokens?: number;
-  run: DashboardSessionReport;
+  run: DashboardConversationSummary;
 };
 
 function reportTime(value: string): number | undefined {
@@ -963,7 +964,9 @@ function reportTime(value: string): number | undefined {
   return Number.isFinite(time) ? time : undefined;
 }
 
-function newestRun(runs: DashboardSessionReport[]): DashboardSessionReport {
+function newestRun(
+  runs: DashboardConversationSummary[],
+): DashboardConversationSummary {
   return [...runs].sort(
     (left, right) =>
       (reportTime(right.lastSeenAt) ?? 0) -
@@ -973,14 +976,14 @@ function newestRun(runs: DashboardSessionReport[]): DashboardSessionReport {
 
 function recentConversationGroups(
   nowMs: number,
-  sessions: DashboardSessionReport[],
-): DashboardSessionReport[][] {
+  summaries: DashboardConversationSummary[],
+): DashboardConversationSummary[][] {
   const startMs = nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
-  const groups = new Map<string, DashboardSessionReport[]>();
-  for (const session of sessions) {
-    groups.set(session.conversationId, [
-      ...(groups.get(session.conversationId) ?? []),
-      session,
+  const groups = new Map<string, DashboardConversationSummary[]>();
+  for (const summary of summaries) {
+    groups.set(summary.conversationId, [
+      ...(groups.get(summary.conversationId) ?? []),
+      summary,
     ]);
   }
 
@@ -1024,7 +1027,9 @@ function usageTokenTotal(usage: DashboardRunUsage | undefined) {
     : undefined;
 }
 
-function runContributions(runs: DashboardSessionReport[]): RunContribution[] {
+function runContributions(
+  runs: DashboardConversationSummary[],
+): RunContribution[] {
   let previousDuration = 0;
   let previousTokens = 0;
   return runs.map((run) => {
@@ -1077,7 +1082,7 @@ function requesterLabel(
   return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
 }
 
-function locationLabel(turn: DashboardSessionReport): string {
+function locationLabel(turn: DashboardConversationSummary): string {
   const channelId = turn.channel;
   const name = turn.channelName?.replace(/^#/, "");
   if (channelId?.startsWith("D")) {
@@ -1120,7 +1125,7 @@ function addItemTokens(
   }
 }
 
-function statusSignals(runs: DashboardSessionReport[]) {
+function statusSignals(runs: DashboardConversationSummary[]) {
   return {
     active: runs.some((turn) => turn.status === "active"),
     failed: runs.some((turn) => turn.status === "failed"),
@@ -1157,10 +1162,13 @@ export function createMockConversationReporting(
     getPlugins: reporting.getPlugins,
     getSkills: reporting.getSkills,
     listRecentConversations: reporting.listRecentConversations,
-    async getSessions() {
-      const mockFeed = mockSessionFeed(Date.now());
+    async listConversations() {
+      const mockFeed = mockConversationFeed(Date.now());
       try {
-        return mergeSessionFeeds(mockFeed, await reporting.getSessions());
+        return mergeConversationFeeds(
+          mockFeed,
+          await reporting.listConversations(),
+        );
       } catch (error) {
         if (!isLocalPersistenceUnavailable(error)) {
           throw error;
@@ -1170,18 +1178,24 @@ export function createMockConversationReporting(
     },
     async getConversationStats() {
       const nowMs = Date.now();
-      const mockFeed = mockSessionFeed(nowMs);
+      const mockFeed = mockConversationFeed(nowMs);
       try {
-        const mergedFeed = mergeSessionFeeds(
+        const mergedFeed = mergeConversationFeeds(
           mockFeed,
-          await reporting.getSessions(),
+          await reporting.listConversations(),
         );
-        return conversationStatsReportFromSessions(nowMs, mergedFeed.sessions);
+        return conversationStatsReportFromSummaries(
+          nowMs,
+          mergedFeed.conversations,
+        );
       } catch (error) {
         if (!isLocalPersistenceUnavailable(error)) {
           throw error;
         }
-        return conversationStatsReportFromSessions(nowMs, mockFeed.sessions);
+        return conversationStatsReportFromSummaries(
+          nowMs,
+          mockFeed.conversations,
+        );
       }
     },
     async getConversation(conversationId: string) {

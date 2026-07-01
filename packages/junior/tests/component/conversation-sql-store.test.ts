@@ -565,7 +565,7 @@ INSERT INTO junior_conversations (
       await expect(
         readConversationFeed({ conversationStore: store }),
       ).resolves.toMatchObject({
-        sessions: [
+        conversations: [
           {
             conversationId: CONVERSATION_ID,
             lastProgressAt: new Date(1_000).toISOString(),

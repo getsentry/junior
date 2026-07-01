@@ -61,11 +61,11 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [{ name: "triage", pluginProvider: "github" }];
     },
-    async getSessions() {
+    async listConversations() {
       return {
         source: "conversation_index",
         generatedAt: "2026-05-29T00:00:00.000Z",
-        sessions: [
+        conversations: [
           {
             conversationId: "slack:C1:123",
             cumulativeDurationMs: 0,
@@ -77,8 +77,6 @@ function reporting(): JuniorReporting {
             surface: "slack",
             displayTitle: "Conversation",
             channel: "C1",
-            sentryConversationUrl:
-              "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
           },
         ],
       };
@@ -142,6 +140,8 @@ function reporting(): JuniorReporting {
         conversationId,
         displayTitle: "Conversation",
         generatedAt: "2026-05-29T00:00:00.000Z",
+        sentryConversationUrl:
+          "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
         runs: [
           {
             conversationId,
@@ -233,14 +233,13 @@ describe("dashboard routes", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/api/dashboard/login",
+      "http://localhost/auth/login",
     );
   });
 
   it("protects sub-routes at root basePath from unauthenticated access", async () => {
     // app.use("/", ...) only matches the exact root in Hono; sub-routes like
-    // /conversations, /plugins, and /sessions must be covered by a wildcard
-    // middleware.
+    // /conversations and /plugins must be covered by a wildcard middleware.
     const app = dashboard(null);
 
     for (const path of [
@@ -248,14 +247,12 @@ describe("dashboard routes", () => {
       "/conversations/slack%3AC1%3A123",
       "/conversations/slack%3AC1%3A123?view=tools",
       "/plugins",
-      "/sessions",
-      "/sessions/some-session",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status, path).toBe(302);
       const location = new URL(response.headers.get("location")!);
       expect(`${location.origin}${location.pathname}`, path).toBe(
-        "http://localhost/api/dashboard/login",
+        "http://localhost/auth/login",
       );
       expect(location.searchParams.get("next"), path).toBe(path);
     }
@@ -313,6 +310,24 @@ describe("dashboard routes", () => {
     );
   });
 
+  it("starts sign-in when the auth prefix overlaps the login route", async () => {
+    const app = createDashboardApp({
+      allowedEmails: ["admin@example.com"],
+      auth: auth(null),
+      authPath: "/auth",
+      reporting: reporting(),
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/auth/login"),
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+  });
+
   it("falls back to the dashboard root for unsafe login return paths", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
@@ -325,7 +340,7 @@ describe("dashboard routes", () => {
 
     const response = await app.fetch(
       new Request(
-        "http://localhost/api/dashboard/login?next=https%3A%2F%2Fevil.example%2Fconversations",
+        "http://localhost/auth/login?next=https%3A%2F%2Fevil.example%2Fconversations",
       ),
     );
 
@@ -354,7 +369,7 @@ describe("dashboard routes", () => {
 
     const response = await app.fetch(
       new Request(
-        "http://localhost/api/dashboard/login?next=%2Fconversations%2Fslack%253AC1%253A123",
+        "http://localhost/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123",
       ),
     );
 
@@ -375,9 +390,7 @@ describe("dashboard routes", () => {
     const page = await app.fetch(new Request("http://localhost/"));
     expect(page.status).toBe(200);
 
-    const me = await app.fetch(
-      new Request("http://localhost/api/dashboard/me"),
-    );
+    const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
@@ -388,27 +401,31 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("rejects unauthenticated dashboard API requests without diagnostics", async () => {
+  it("rejects unauthenticated product API requests without diagnostics", async () => {
     const app = dashboard(null);
 
     for (const path of [
-      "/api/dashboard/health",
-      "/api/dashboard/runtime",
-      "/api/dashboard/plugins",
-      "/api/dashboard/skills",
-      "/api/dashboard/sessions",
-      "/api/dashboard/conversation-stats",
-      "/api/dashboard/plugin-reports",
-      "/api/dashboard/conversations/slack%3AC1%3A123",
-      "/api/dashboard/config",
-      "/api/dashboard/me",
-      "/api/dashboard/info",
-      "/api/dashboard/client.js",
+      "/api/health",
+      "/api/runtime",
+      "/api/plugins",
+      "/api/skills",
+      "/api/conversations",
+      "/api/conversations/stats",
+      "/api/plugin-reports",
+      "/api/conversations/slack%3AC1%3A123",
+      "/api/config",
+      "/api/me",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status, path).toBe(401);
       expect(await response.json(), path).toEqual({ error: "unauthenticated" });
     }
+
+    const client = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/client.js"),
+    );
+    expect(client.status).toBe(302);
+    expect(client.headers.get("location")).toBe("http://localhost/auth/login");
   });
 
   it("allows verified users from an allowed Google hosted domain", async () => {
@@ -421,7 +438,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/info"),
+      new Request("http://localhost/api/runtime"),
     );
 
     expect(response.status).toBe(200);
@@ -447,7 +464,7 @@ describe("dashboard routes", () => {
     expect(html).toContain("<title>Junior</title>");
     expect(html).toContain("Loading Junior");
     expect(html).toContain("junior-rainbow-flow");
-    expect(html).toMatch(/\/api\/dashboard\/client\.js\?v=[a-z0-9]+/);
+    expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
   });
 
@@ -480,7 +497,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/client.js"),
+      new Request("http://localhost/_junior/dashboard/client.js"),
     );
 
     expect(response.status).toBe(200);
@@ -512,7 +529,7 @@ describe("dashboard routes", () => {
     });
 
     const runtime = await app.fetch(
-      new Request("http://localhost/api/dashboard/runtime"),
+      new Request("http://localhost/api/runtime"),
     );
     expect(runtime.status).toBe(200);
     expect(await runtime.json()).toMatchObject({
@@ -521,21 +538,19 @@ describe("dashboard routes", () => {
     });
 
     const plugins = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugins"),
+      new Request("http://localhost/api/plugins"),
     );
     expect(plugins.status).toBe(200);
     expect(await plugins.json()).toEqual([{ name: "github" }]);
 
-    const skills = await app.fetch(
-      new Request("http://localhost/api/dashboard/skills"),
-    );
+    const skills = await app.fetch(new Request("http://localhost/api/skills"));
     expect(skills.status).toBe(200);
     expect(await skills.json()).toEqual([
       { name: "triage", pluginProvider: "github" },
     ]);
 
     const conversationStats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
     expect(conversationStats.status).toBe(200);
     expect(await conversationStats.json()).toMatchObject({
@@ -549,7 +564,7 @@ describe("dashboard routes", () => {
     });
 
     const pluginReports = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugin-reports"),
+      new Request("http://localhost/api/plugin-reports"),
     );
     expect(pluginReports.status).toBe(200);
     expect(await pluginReports.json()).toMatchObject({
@@ -579,7 +594,7 @@ describe("dashboard routes", () => {
     );
 
     const conversationStats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
 
     expect(conversationStats.status).toBe(200);
@@ -612,7 +627,7 @@ describe("dashboard routes", () => {
     );
 
     const conversationStats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
 
     expect(conversationStats.status).toBe(500);
@@ -639,7 +654,7 @@ describe("dashboard routes", () => {
     );
 
     const pluginReports = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugin-reports"),
+      new Request("http://localhost/api/plugin-reports"),
     );
 
     expect(pluginReports.status).toBe(200);
@@ -668,7 +683,7 @@ describe("dashboard routes", () => {
     );
 
     const pluginReports = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugin-reports"),
+      new Request("http://localhost/api/plugin-reports"),
     );
 
     expect(pluginReports.status).toBe(500);
@@ -677,7 +692,7 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("returns the signed-in identity and session feed", async () => {
+  it("returns the signed-in identity and conversation feed", async () => {
     const app = dashboard({
       session: {
         token: "secret-session-token",
@@ -690,9 +705,7 @@ describe("dashboard routes", () => {
       },
     } as DashboardSession);
 
-    const me = await app.fetch(
-      new Request("http://localhost/api/dashboard/me"),
-    );
+    const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
@@ -703,17 +716,15 @@ describe("dashboard routes", () => {
       },
     });
 
-    const sessions = await app.fetch(
-      new Request("http://localhost/api/dashboard/sessions"),
+    const conversations = await app.fetch(
+      new Request("http://localhost/api/conversations"),
     );
-    expect(sessions.status).toBe(200);
-    expect(await sessions.json()).toMatchObject({
-      sessions: [
+    expect(conversations.status).toBe(200);
+    expect(await conversations.json()).toMatchObject({
+      conversations: [
         {
           conversationId: "slack:C1:123",
           id: "turn-1",
-          sentryConversationUrl:
-            "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
           status: "active",
         },
       ],
@@ -731,9 +742,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request(
-        "http://localhost/api/dashboard/conversations/slack%3AC1%3A123",
-      ),
+      new Request("http://localhost/api/conversations/slack%3AC1%3A123"),
     );
 
     expect(response.status).toBe(200);
@@ -795,9 +804,7 @@ describe("dashboard routes", () => {
     );
 
     const response = await app.fetch(
-      new Request(
-        "http://localhost/api/dashboard/conversations/slack%3AD1%3A123",
-      ),
+      new Request("http://localhost/api/conversations/slack%3AD1%3A123"),
     );
 
     expect(response.status).toBe(200);
@@ -828,7 +835,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/config"),
+      new Request("http://localhost/api/config"),
     );
 
     expect(response.status).toBe(200);
@@ -853,7 +860,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/info"),
+      new Request("http://localhost/api/runtime"),
     );
 
     expect(response.status).toBe(403);
@@ -888,7 +895,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/info"),
+      new Request("http://localhost/api/runtime"),
     );
 
     expect(response.status).toBe(200);
@@ -904,41 +911,10 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/info"),
+      new Request("http://localhost/api/runtime"),
     );
 
     expect(response.status).toBe(403);
-  });
-
-  it("does not intercept Junior runtime routes with route-scoped dispatch", async () => {
-    const dashboardApp = dashboard(null);
-    const juniorApp = await createApp();
-    const fetch = (request: Request) => {
-      const pathname = new URL(request.url).pathname;
-      if (
-        pathname === "/" ||
-        pathname === "/conversations" ||
-        pathname.startsWith("/conversations/") ||
-        pathname === "/plugins" ||
-        pathname === "/sessions" ||
-        pathname.startsWith("/sessions/") ||
-        pathname.startsWith("/api/dashboard/") ||
-        pathname.startsWith("/api/auth/")
-      ) {
-        return dashboardApp.fetch(request);
-      }
-      return juniorApp.fetch(request);
-    };
-
-    const health = await fetch(new Request("http://localhost/health"));
-    expect(health.status).toBe(200);
-    expect(await health.json()).toMatchObject({
-      status: "ok",
-      service: "junior",
-    });
-
-    const oldInfo = await fetch(new Request("http://localhost/api/info"));
-    expect(oldInfo.status).toBe(404);
   });
 
   it("mounts dashboard routes through core app config", async () => {
@@ -956,9 +932,7 @@ describe("dashboard routes", () => {
     expect(dashboard.status).toBe(200);
     expect(await dashboard.text()).toContain("dashboard-root");
 
-    const info = await app.fetch(
-      new Request("http://localhost/api/dashboard/info"),
-    );
+    const info = await app.fetch(new Request("http://localhost/api/runtime"));
     expect(info.status).toBe(200);
     expect(await info.json()).toMatchObject({
       descriptionText: "Dashboard test",
@@ -970,9 +944,12 @@ describe("dashboard routes", () => {
       status: "ok",
       service: "junior",
     });
+
+    const oldInfo = await app.fetch(new Request("http://localhost/api/info"));
+    expect(oldInfo.status).toBe(404);
   });
 
-  it("mounts plugin dashboard route apps under the authenticated namespace", async () => {
+  it("mounts plugin API route apps under the authenticated namespace", async () => {
     mockDashboardVirtualConfig();
     const pluginApp = new Hono();
     pluginApp.get("/memories", (c) => {
@@ -993,7 +970,7 @@ describe("dashboard routes", () => {
             description: "Memory plugin",
           },
           hooks: {
-            dashboardRoutes() {
+            apiRoutes() {
               return pluginApp;
             },
           },
@@ -1002,7 +979,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/memory/memories"),
     );
 
     expect(response.status).toBe(200);
@@ -1015,7 +992,7 @@ describe("dashboard routes", () => {
     expect(health.status).toBe(200);
   });
 
-  it("protects plugin dashboard route apps with dashboard auth", async () => {
+  it("protects plugin API route apps with dashboard auth", async () => {
     const pluginApp = new Hono();
     pluginApp.get("/memories", (c) => {
       return c.json({ path: c.req.path, ok: true });
@@ -1029,7 +1006,7 @@ describe("dashboard routes", () => {
     });
 
     const denied = await unauthenticated.fetch(
-      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/memory/memories"),
     );
 
     expect(denied.status).toBe(401);
@@ -1051,13 +1028,57 @@ describe("dashboard routes", () => {
     });
 
     const allowed = await authenticated.fetch(
-      new Request("http://localhost/api/dashboard/plugins/memory/memories"),
+      new Request("http://localhost/api/plugins/memory/memories"),
     );
 
     expect(allowed.status).toBe(200);
     await expect(allowed.json()).resolves.toEqual({
       path: "/memories",
       ok: true,
+    });
+  });
+
+  it("passes sanitized auth context to plugin API route apps", async () => {
+    let pluginContext: unknown;
+    const authenticated = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+          name: "Person",
+        },
+      }),
+      pluginRoutes: [
+        {
+          app: {
+            fetch(_request, context) {
+              pluginContext = context;
+              return Response.json({ ok: true });
+            },
+          },
+          pluginName: "memory",
+        },
+      ],
+      reporting: reporting(),
+    });
+
+    const response = await authenticated.fetch(
+      new Request("http://localhost/api/plugins/memory/memories"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pluginContext).toEqual({
+      auth: {
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          hostedDomain: "sentry.io",
+          name: "Person",
+        },
+      },
+      pluginName: "memory",
     });
   });
 
@@ -1081,7 +1102,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/config"),
+      new Request("http://localhost/api/config"),
     );
 
     expect(response.status).toBe(200);
@@ -1172,7 +1193,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await auth.signInWithGoogle(
-      new Request("http://localhost/api/dashboard/login"),
+      new Request("http://localhost/auth/login"),
       "http://localhost/",
     );
 

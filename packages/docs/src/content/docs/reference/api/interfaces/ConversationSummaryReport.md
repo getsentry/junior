@@ -103,19 +103,11 @@ Defined in: [junior/src/reporting/conversations.ts:117](https://github.com/getse
 
 ---
 
-### sentryConversationUrl?
-
-> `optional` **sentryConversationUrl?**: `string`
-
-Defined in: [junior/src/reporting/conversations.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L120)
-
----
-
 ### sentryTraceUrl?
 
 > `optional` **sentryTraceUrl?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:121](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L121)
+Defined in: [junior/src/reporting/conversations.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L120)
 
 ---
 
@@ -147,4 +139,4 @@ Defined in: [junior/src/reporting/conversations.ts:116](https://github.com/getse
 
 > `optional` **traceId?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:122](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L122)
+Defined in: [junior/src/reporting/conversations.ts:121](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L121)

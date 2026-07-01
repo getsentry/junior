@@ -9,7 +9,7 @@ import {
 describe("transcript markdown links", () => {
   it("finds safe markdown links, bare links, and skips unsafe destinations", () => {
     const text =
-      'See [trace](https://sentry.example/trace), https://docs.example/path)., [local](/api/dashboard/me), [titled](https://docs.example/titled "Docs"), and [bad](javascript:https://unsafe.example).';
+      'See [trace](https://sentry.example/trace), https://docs.example/path)., [local](/api/me), [titled](https://docs.example/titled "Docs"), and [bad](javascript:https://unsafe.example).';
 
     expect(findTranscriptMarkdownLinks(text)).toEqual([
       {
@@ -25,10 +25,10 @@ describe("transcript markdown links", () => {
         start: 43,
       },
       {
-        end: 144,
+        end: 134,
         href: "https://docs.example/titled",
         label: "titled",
-        start: 100,
+        start: 90,
       },
     ]);
   });
@@ -86,7 +86,7 @@ describe("transcript markdown links", () => {
 
   it("builds Shiki anchor decorations without losing markdown highlighting", async () => {
     const text =
-      "## Trace summary\n- `span.op` is in [the trace](https://sentry.example/trace/abc).\n- `[literal](https://literal.example)` and \\[escaped](https://escaped.example).\n- [broken [real](https://nested.example/ok).\n- [local](/api/dashboard/me) and [bad](javascript:alert).";
+      "## Trace summary\n- `span.op` is in [the trace](https://sentry.example/trace/abc).\n- `[literal](https://literal.example)` and \\[escaped](https://escaped.example).\n- [broken [real](https://nested.example/ok).\n- [local](/api/me) and [bad](javascript:alert).";
     const links = findTranscriptMarkdownLinks(text);
     const highlighted = await codeToHtml(text, {
       decorations: buildTranscriptMarkdownDecorations(links),
@@ -110,15 +110,15 @@ describe("transcript markdown links", () => {
     expect(highlighted).not.toContain('href="https://literal.example"');
     expect(highlighted).not.toContain('href="https://escaped.example"');
     expect(highlighted).toContain("local");
-    expect(highlighted).toContain("/api/dashboard/me");
+    expect(highlighted).toContain("/api/me");
     expect(highlighted).toContain("javascript:alert");
-    expect(highlighted).not.toContain('href="/api/dashboard/me"');
+    expect(highlighted).not.toContain('href="/api/me"');
     expect(highlighted).not.toContain('href="javascript:alert"');
   });
 
   it("does not autolink bare URLs inside ignored markdown destinations", () => {
     const text =
-      "Ignore [local](/api/dashboard/https://internal.example), [bad](javascript:https://unsafe.example), and keep https://safe.example.";
+      "Ignore [local](/api/internal/https://internal.example), [bad](javascript:https://unsafe.example), and keep https://safe.example.";
 
     expect(
       findTranscriptMarkdownLinks(text).map(({ href, label }) => ({

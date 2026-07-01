@@ -44,11 +44,7 @@ export function buildConversationMarkdown(
     "Usage",
     formatUsageTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
   );
-  addMetaLine(
-    lines,
-    "Sentry conversation",
-    conversation?.sentryConversationUrl ?? firstTurn?.sentryConversationUrl,
-  );
+  addMetaLine(lines, "Sentry conversation", detail.sentryConversationUrl);
 
   if (detail.runs.length === 0) {
     lines.push("", "## Transcript", "", "No transcript is available.");

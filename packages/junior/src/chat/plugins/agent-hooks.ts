@@ -56,7 +56,7 @@ export interface PluginRouteRegistration extends PluginRoute {
   pluginName: string;
 }
 
-export interface PluginDashboardRouteRegistration {
+export interface PluginApiRouteRegistration {
   app: PluginRouteApp;
   pluginName: string;
 }
@@ -574,13 +574,13 @@ export function getPluginRoutes(): PluginRouteRegistration[] {
   return routes;
 }
 
-/** Collect dashboard-scoped route apps exposed by plugins. */
-export function getPluginDashboardRoutes(): PluginDashboardRouteRegistration[] {
-  const routes: PluginDashboardRouteRegistration[] = [];
+/** Collect authenticated product API route apps exposed by plugins. */
+export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
+  const routes: PluginApiRouteRegistration[] = [];
 
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
-    const hook = plugin.hooks?.dashboardRoutes;
+    const hook = plugin.hooks?.apiRoutes;
     if (!hook) {
       continue;
     }
@@ -592,7 +592,7 @@ export function getPluginDashboardRoutes(): PluginDashboardRouteRegistration[] {
     }
     if (!isRecord(app) || typeof app.fetch !== "function") {
       throw new Error(
-        `Plugin dashboardRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
+        `Plugin apiRoutes hook from plugin "${pluginName}" must return a fetch-compatible app`,
       );
     }
     routes.push({ app, pluginName });

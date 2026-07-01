@@ -13,10 +13,10 @@ export function CommandCenter(props: {
   data?: DashboardData;
   queryError: Error | null;
 }) {
-  const sessions = props.data?.sessions.sessions ?? [];
+  const summaries = props.data?.conversations.conversations ?? [];
   const nowMs = Date.now();
   const conversations = filterRecentConversations(
-    buildConversations(sessions),
+    buildConversations(summaries),
     nowMs,
   );
 
@@ -32,8 +32,8 @@ export function CommandCenter(props: {
         />
 
         <ConversationDurationChart
+          conversationSummaries={summaries}
           nowMs={nowMs}
-          sessions={sessions}
           timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
         />
 

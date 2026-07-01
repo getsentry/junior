@@ -5,7 +5,7 @@ prev: false
 title: "JuniorDashboardOptions"
 ---
 
-Defined in: [junior/src/app.ts:101](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L101)
+Defined in: [junior/src/app.ts:104](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L104)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/app.ts:101](https://github.com/getsentry/junior/blob/mai
 
 > `optional` **allowedEmails?**: `string`[]
 
-Defined in: [junior/src/app.ts:107](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L107)
+Defined in: [junior/src/app.ts:110](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L110)
 
 Exact Google account emails allowed to open the dashboard.
 
@@ -23,7 +23,7 @@ Exact Google account emails allowed to open the dashboard.
 
 > `optional` **allowedGoogleDomains?**: `string`[]
 
-Defined in: [junior/src/app.ts:109](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L109)
+Defined in: [junior/src/app.ts:112](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L112)
 
 Google Workspace domains allowed to open the dashboard.
 
@@ -33,7 +33,7 @@ Google Workspace domains allowed to open the dashboard.
 
 > `optional` **authPath?**: `string`
 
-Defined in: [junior/src/app.ts:103](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L103)
+Defined in: [junior/src/app.ts:106](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L106)
 
 Browser auth route prefix used by Better Auth.
 
@@ -43,7 +43,7 @@ Browser auth route prefix used by Better Auth.
 
 > `optional` **authRequired?**: `boolean`
 
-Defined in: [junior/src/app.ts:105](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L105)
+Defined in: [junior/src/app.ts:108](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L108)
 
 Require a dashboard browser session before serving dashboard pages and APIs.
 
@@ -53,7 +53,7 @@ Require a dashboard browser session before serving dashboard pages and APIs.
 
 > `optional` **basePath?**: `string`
 
-Defined in: [junior/src/app.ts:111](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L111)
+Defined in: [junior/src/app.ts:114](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L114)
 
 Browser route prefix for the dashboard shell.
 
@@ -63,7 +63,7 @@ Browser route prefix for the dashboard shell.
 
 > `optional` **baseURL?**: `string`
 
-Defined in: [junior/src/app.ts:113](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L113)
+Defined in: [junior/src/app.ts:116](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L116)
 
 Public deployment origin used for auth callbacks and external links.
 
@@ -73,7 +73,7 @@ Public deployment origin used for auth callbacks and external links.
 
 > `optional` **disabled?**: `boolean`
 
-Defined in: [junior/src/app.ts:115](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L115)
+Defined in: [junior/src/app.ts:118](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L118)
 
 Disable dashboard route mounting while preserving serializable config shape.
 
@@ -83,7 +83,7 @@ Disable dashboard route mounting while preserving serializable config shape.
 
 > `optional` **mockConversations?**: `boolean`
 
-Defined in: [junior/src/app.ts:117](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L117)
+Defined in: [junior/src/app.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L120)
 
 Overlay dashboard visual-QA fixture conversations onto real reporting data.
 
@@ -93,9 +93,9 @@ Overlay dashboard visual-QA fixture conversations onto real reporting data.
 
 > `optional` **reporting?**: [`JuniorReporting`](/reference/api/interfaces/juniorreporting/)
 
-Defined in: [junior/src/app.ts:119](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L119)
+Defined in: [junior/src/app.ts:122](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L122)
 
-Reporting implementation used by dashboard APIs. Defaults to core reporting.
+Reporting implementation used by authenticated product APIs. Defaults to core reporting.
 
 ---
 
@@ -103,7 +103,7 @@ Reporting implementation used by dashboard APIs. Defaults to core reporting.
 
 > `optional` **sessionMaxAgeSeconds?**: `number`
 
-Defined in: [junior/src/app.ts:121](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L121)
+Defined in: [junior/src/app.ts:124](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L124)
 
 Browser session lifetime in seconds.
 
@@ -113,6 +113,6 @@ Browser session lifetime in seconds.
 
 > `optional` **trustedOrigins?**: `string`[]
 
-Defined in: [junior/src/app.ts:123](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L123)
+Defined in: [junior/src/app.ts:126](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L126)
 
 Additional trusted origins accepted by Better Auth.

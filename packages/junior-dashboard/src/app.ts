@@ -8,6 +8,11 @@ import type {
 } from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
 import { initSentry } from "@sentry/junior/instrumentation";
+import type {
+  PluginApiRouteRequestContext,
+  PluginRouteApp,
+} from "@sentry/junior-plugin-api";
+import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
 import { dashboardClientAsset, dashboardTailwindAsset } from "./assets";
 import {
   createDashboardAuth,
@@ -22,6 +27,7 @@ import { createMockConversationReporting } from "./mock-conversations";
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
+const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 const LOGIN_NEXT_PARAM = "next";
 
 export interface JuniorDashboardOptions {
@@ -43,14 +49,12 @@ interface DashboardRuntimeOptions extends JuniorDashboardOptions {
 }
 
 interface DashboardPluginRoute {
-  app: {
-    fetch(request: Request): Promise<Response> | Response;
-  };
+  app: PluginRouteApp;
   pluginName: string;
 }
 
 type Variables = {
-  dashboardSession: DashboardSession;
+  authSession: DashboardSession;
 };
 
 function hasSentryConversationLinks(): boolean {
@@ -187,13 +191,17 @@ function requestedReturnPath(url: URL, basePath: string): string | undefined {
 function dashboardLoginUrl(request: Request, basePath: string): string {
   const requestUrl = new URL(request.url);
   const url = new URL(request.url);
-  url.pathname = "/api/dashboard/login";
+  url.pathname = dashboardLoginPath(basePath);
   url.search = "";
   const returnPath = dashboardReturnPath(requestUrl, basePath);
   if (returnPath) {
     url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
   }
   return url.toString();
+}
+
+function dashboardLoginPath(basePath: string): string {
+  return basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 }
 
 function emptyPluginReportFeed(): PluginOperationalReportFeed {
@@ -316,7 +324,7 @@ function forbidden(request: Request): Response {
   return Response.json({ error: "forbidden" }, { status: 403 });
 }
 
-function dashboardSessionBypass(): DashboardSession {
+function localAuthBypassSession(): DashboardSession {
   return {
     user: {
       email: "local-dashboard@localhost",
@@ -378,7 +386,6 @@ function dashboardPagePaths(basePath: string): string[] {
     basePath,
     basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     basePath === "/" ? "/plugins" : `${basePath}/plugins`,
-    basePath === "/" ? "/sessions" : `${basePath}/sessions`,
   ];
 }
 
@@ -449,7 +456,7 @@ function renderDashboard(basePath: string): Response {
       });
     })();
   </script>
-  <script type="module" src="/api/dashboard/client.js?v=${DASHBOARD_CLIENT_VERSION}"></script>
+  <script type="module" src="${DASHBOARD_CLIENT_PATH}?v=${DASHBOARD_CLIENT_VERSION}"></script>
 </body>
 </html>`,
     {
@@ -469,7 +476,7 @@ function renderFavicon(): Response {
 }
 
 function pluginRoutePrefix(pluginName: string): string {
-  return `/api/dashboard/plugins/${pluginName}`;
+  return `/api/plugins/${pluginName}`;
 }
 
 /** Strip the core-owned plugin prefix before dispatching to a plugin app. */
@@ -480,6 +487,25 @@ function pluginRouteRequest(request: Request, prefix: string): Request {
     pathname === prefix ? "/" : pathname.slice(prefix.length) || "/";
   url.pathname = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
   return new Request(url, request);
+}
+
+/** Build the sanitized per-request context passed into plugin API route apps. */
+function pluginRouteContext(
+  pluginName: string,
+  session: DashboardSession,
+): PluginApiRouteRequestContext {
+  const { email, emailVerified, hostedDomain, name } = session.user;
+  return {
+    auth: {
+      user: {
+        email,
+        emailVerified,
+        hostedDomain,
+        name,
+      },
+    },
+    pluginName,
+  } satisfies PluginApiRouteRequestContext;
 }
 
 /** Create the authenticated dashboard Hono app mounted by Nitro. */
@@ -531,13 +557,7 @@ export function createDashboardApp(
     : baseReporting;
   const app = new Hono<{ Variables: Variables }>();
 
-  if (auth) {
-    app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
-  }
-
-  app.get("/favicon.ico", () => renderFavicon());
-
-  app.get("/api/dashboard/login", async (c) => {
+  app.get(dashboardLoginPath(basePath), async (c) => {
     const returnUrl = callbackUrl(c.req.raw, basePath);
     if (!auth) {
       return Response.redirect(returnUrl, 302);
@@ -549,12 +569,22 @@ export function createDashboardApp(
     return auth.signInWithGoogle(c.req.raw, returnUrl);
   });
 
-  const requireDashboardSession = async (
+  if (auth) {
+    app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
+  }
+
+  app.get("/favicon.ico", () => renderFavicon());
+
+  /**
+   * Require dashboard auth for every later route; login, Better Auth callbacks,
+   * and favicon are the only registration-order bypasses.
+   */
+  const requireAuth = async (
     c: Context<{ Variables: Variables }>,
     next: Next,
   ) => {
     if (!authRequired) {
-      c.set("dashboardSession", dashboardSessionBypass());
+      c.set("authSession", localAuthBypassSession());
       await next();
       return;
     }
@@ -569,20 +599,11 @@ export function createDashboardApp(
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw);
     }
-    c.set("dashboardSession", sanitizeDashboardSession(session));
+    c.set("authSession", sanitizeDashboardSession(session));
     await next();
   };
 
-  if (basePath === "/") {
-    // When mounted at root, a wildcard is required to cover all sub-routes
-    // (e.g. /conversations, /plugins, /sessions). `app.use("/", ...)` only
-    // matches the exact root path in Hono and leaves those routes unprotected.
-    app.use("/*", requireDashboardSession);
-  } else {
-    app.use(basePath, requireDashboardSession);
-    app.use(`${basePath}/*`, requireDashboardSession);
-  }
-  app.use("/api/dashboard/*", requireDashboardSession);
+  app.use("*", requireAuth);
 
   for (const path of dashboardPagePaths(basePath)) {
     app.get(path, () => renderDashboard(basePath));
@@ -590,29 +611,34 @@ export function createDashboardApp(
       app.get(`${path}/*`, () => renderDashboard(basePath));
     }
   }
-  app.get("/api/dashboard/health", async () => {
+  app.get("/api/health", async () => {
     return Response.json(await reporting.getHealth());
   });
-  app.get("/api/dashboard/runtime", async () => {
+  app.get("/api/runtime", async () => {
     return Response.json(await reporting.getRuntimeInfo());
   });
-  app.get("/api/dashboard/plugins", async () => {
+  app.get("/api/plugins", async () => {
     return Response.json(await reporting.getPlugins());
   });
-  app.get("/api/dashboard/skills", async () => {
+  app.get("/api/skills", async () => {
     return Response.json(await reporting.getSkills());
   });
-  app.get("/api/dashboard/sessions", async () => {
-    return Response.json(await reporting.getSessions());
+  app.get("/api/conversations", async () => {
+    return Response.json(await reporting.listConversations());
   });
   for (const route of options.pluginRoutes ?? []) {
     const prefix = pluginRoutePrefix(route.pluginName);
     const handler = (c: Context<{ Variables: Variables }>) =>
-      route.app.fetch(pluginRouteRequest(c.req.raw, prefix));
+      route.app.fetch(
+        pluginRouteRequest(c.req.raw, prefix),
+        pluginApiRouteRequestContextSchema.parse(
+          pluginRouteContext(route.pluginName, c.get("authSession")),
+        ),
+      );
     app.all(prefix, handler);
     app.all(`${prefix}/*`, handler);
   }
-  app.get("/api/dashboard/conversation-stats", async () => {
+  app.get("/api/conversations/stats", async () => {
     try {
       return Response.json(await readConversationStats(reporting));
     } catch {
@@ -622,7 +648,7 @@ export function createDashboardApp(
       );
     }
   });
-  app.get("/api/dashboard/plugin-reports", async () => {
+  app.get("/api/plugin-reports", async () => {
     try {
       return Response.json(await readPluginReports(reporting));
     } catch {
@@ -632,14 +658,14 @@ export function createDashboardApp(
       );
     }
   });
-  app.get("/api/dashboard/conversations/:conversationId", async (c) => {
+  app.get("/api/conversations/:conversationId", async (c) => {
     return Response.json(
       await reporting.getConversation(
         decodeURIComponent(c.req.param("conversationId")),
       ),
     );
   });
-  app.get("/api/dashboard/config", () => {
+  app.get("/api/config", () => {
     return Response.json({
       allowedEmailCount: allowedEmails.length,
       allowedGoogleDomainCount: allowedDomains.length,
@@ -650,13 +676,10 @@ export function createDashboardApp(
       timeZone: dashboardTimeZone(),
     });
   });
-  app.get("/api/dashboard/me", (c) => {
-    return Response.json(c.get("dashboardSession"));
+  app.get("/api/me", (c) => {
+    return Response.json(c.get("authSession"));
   });
-  app.get("/api/dashboard/info", async () => {
-    return Response.json(await reporting.getRuntimeInfo());
-  });
-  app.get("/api/dashboard/client.js", () => {
+  app.get(DASHBOARD_CLIENT_PATH, () => {
     return new Response(readDashboardClient(), {
       headers: {
         "cache-control": "no-store",

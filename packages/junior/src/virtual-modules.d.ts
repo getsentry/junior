@@ -3,14 +3,13 @@ declare module "#junior/config" {
   import type { PluginCatalogConfig } from "@/chat/plugins/types";
   import type { JuniorDashboardOptions } from "@/app";
   import type { JuniorPluginSet } from "@/plugins";
+  import type { PluginRouteApp } from "@sentry/junior-plugin-api";
 
   type VirtualDashboardConfig = Omit<JuniorDashboardOptions, "reporting">;
 
   interface VirtualDashboardOptions extends VirtualDashboardConfig {
     pluginRoutes?: Array<{
-      app: {
-        fetch(request: Request): Promise<Response> | Response;
-      };
+      app: PluginRouteApp;
       pluginName: string;
     }>;
   }

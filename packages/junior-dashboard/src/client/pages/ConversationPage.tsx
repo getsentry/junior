@@ -10,6 +10,7 @@ import {
   buildConversations,
   conversationIdentityMeta,
   conversationDisplayTitle,
+  conversationFromDetail,
   formatConversationDuration,
   formatRelativeTime,
   formatTime,
@@ -40,10 +41,13 @@ export function ConversationPage(props: { data?: DashboardData }) {
   const conversationId = routeParams.conversationId
     ? decodeURIComponent(routeParams.conversationId)
     : undefined;
-  const sessions = props.data?.sessions.sessions ?? [];
-  const conversations = buildConversations(sessions);
-  const conversation = conversations.find((item) => item.id === conversationId);
+  const summaries = props.data?.conversations.conversations ?? [];
+  const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
+  const feedConversation = conversations.find(
+    (item) => item.id === conversationId,
+  );
+  const conversation = conversationFromDetail(detail.data) ?? feedConversation;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
@@ -63,6 +67,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
+                detail={detail.data}
               />
             </div>
           </div>
@@ -155,16 +160,17 @@ function CopyMarkdownButton(props: {
 function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
+  detail: ConversationDetailFeed | undefined;
 }) {
   return (
     <>
       {conversationIdentityMeta(props.conversation, props.conversationId)}
-      {props.conversation?.sentryConversationUrl ? (
+      {props.detail?.sentryConversationUrl ? (
         <>
           {" · "}
           <a
             className="text-white no-underline hover:underline"
-            href={props.conversation.sentryConversationUrl}
+            href={props.detail.sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
           >

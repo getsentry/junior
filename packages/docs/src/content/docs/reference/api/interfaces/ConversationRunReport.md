@@ -5,7 +5,7 @@ prev: false
 title: "ConversationRunReport"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L167)
+Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L166)
 
 ## Extends
 
@@ -17,7 +17,7 @@ Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getse
 
 > `optional` **activity?**: [`ConversationActivityReport`](/reference/api/type-aliases/conversationactivityreport/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:168](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L168)
+Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L167)
 
 ---
 
@@ -155,23 +155,11 @@ Defined in: [junior/src/reporting/conversations.ts:117](https://github.com/getse
 
 ---
 
-### sentryConversationUrl?
-
-> `optional` **sentryConversationUrl?**: `string`
-
-Defined in: [junior/src/reporting/conversations.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L120)
-
-#### Inherited from
-
-[`ConversationSummaryReport`](/reference/api/interfaces/conversationsummaryreport/).[`sentryConversationUrl`](/reference/api/interfaces/conversationsummaryreport/#sentryconversationurl)
-
----
-
 ### sentryTraceUrl?
 
 > `optional` **sentryTraceUrl?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:121](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L121)
+Defined in: [junior/src/reporting/conversations.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L120)
 
 #### Inherited from
 
@@ -219,7 +207,7 @@ Defined in: [junior/src/reporting/conversations.ts:116](https://github.com/getse
 
 > `optional` **traceId?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:122](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L122)
+Defined in: [junior/src/reporting/conversations.ts:121](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L121)
 
 #### Inherited from
 
@@ -231,7 +219,7 @@ Defined in: [junior/src/reporting/conversations.ts:122](https://github.com/getse
 
 > **transcript**: [`TranscriptMessage`](/reference/api/interfaces/transcriptmessage/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:174](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L174)
+Defined in: [junior/src/reporting/conversations.ts:173](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L173)
 
 ---
 
@@ -239,7 +227,7 @@ Defined in: [junior/src/reporting/conversations.ts:174](https://github.com/getse
 
 > **transcriptAvailable**: `boolean`
 
-Defined in: [junior/src/reporting/conversations.ts:169](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L169)
+Defined in: [junior/src/reporting/conversations.ts:168](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L168)
 
 ---
 
@@ -247,7 +235,7 @@ Defined in: [junior/src/reporting/conversations.ts:169](https://github.com/getse
 
 > `optional` **transcriptMessageCount?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:171](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L171)
+Defined in: [junior/src/reporting/conversations.ts:170](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L170)
 
 ---
 
@@ -255,7 +243,7 @@ Defined in: [junior/src/reporting/conversations.ts:171](https://github.com/getse
 
 > `optional` **transcriptMetadata?**: [`TranscriptMessage`](/reference/api/interfaces/transcriptmessage/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:170](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L170)
+Defined in: [junior/src/reporting/conversations.ts:169](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L169)
 
 ---
 
@@ -263,7 +251,7 @@ Defined in: [junior/src/reporting/conversations.ts:170](https://github.com/getse
 
 > `optional` **transcriptRedacted?**: `boolean`
 
-Defined in: [junior/src/reporting/conversations.ts:172](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L172)
+Defined in: [junior/src/reporting/conversations.ts:171](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L171)
 
 ---
 
@@ -271,4 +259,4 @@ Defined in: [junior/src/reporting/conversations.ts:172](https://github.com/getse
 
 > `optional` **transcriptRedactionReason?**: `"non_public_conversation"`
 
-Defined in: [junior/src/reporting/conversations.ts:173](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L173)
+Defined in: [junior/src/reporting/conversations.ts:172](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L172)

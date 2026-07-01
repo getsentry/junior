@@ -11,7 +11,7 @@ import type {
   HeartbeatHookContext,
   HeartbeatResult,
   OperationalReportHookContext,
-  DashboardRouteRegistrationHookContext,
+  ApiRouteRegistrationHookContext,
   PluginOperationalReportContent,
   PluginRoute,
   PluginRouteApp,
@@ -57,9 +57,8 @@ export interface PluginHooks {
     | Promise<PluginOperationalReportContent | undefined>
     | PluginOperationalReportContent
     | undefined;
-  dashboardRoutes?(
-    ctx: DashboardRouteRegistrationHookContext,
-  ): PluginRouteApp | undefined;
+  /** Return plugin-owned product API routes mounted under Junior's authenticated plugin namespace. */
+  apiRoutes?(ctx: ApiRouteRegistrationHookContext): PluginRouteApp | undefined;
   resolveOAuthAccount?(
     ctx: ResolveOAuthAccountHookContext,
   ):

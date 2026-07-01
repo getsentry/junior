@@ -98,8 +98,8 @@ export interface JuniorReporting {
   getPlugins(): Promise<PluginReport[]>;
   /** Read discovered skill names for reporting consumers. */
   getSkills(): Promise<SkillReport[]>;
-  /** Read recent conversation summaries for reporting consumers. */
-  getSessions(): Promise<ConversationFeed>;
+  /** List recent conversation summaries for reporting consumers. */
+  listConversations(): Promise<ConversationFeed>;
   /** Read aggregate conversation stats for reporting consumers. */
   getConversationStats?(): Promise<ConversationStatsReport>;
   /** Read recent conversation summaries without transcript payloads. */
@@ -182,7 +182,7 @@ export function createJuniorReporting(): JuniorReporting & {
     },
     getPlugins: readPlugins,
     getSkills: readSkills,
-    getSessions: () => readConversationFeed({ conversationStore }),
+    listConversations: () => readConversationFeed({ conversationStore }),
     getConversationStats: () =>
       readConversationStatsReport({ conversationStore }),
     listRecentConversations: listRecent,

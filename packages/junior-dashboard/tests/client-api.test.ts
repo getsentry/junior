@@ -6,7 +6,7 @@ describe("dashboard client API", () => {
     vi.unstubAllGlobals();
   });
 
-  it("restarts Google sign-in when dashboard API auth expires", async () => {
+  it("restarts Google sign-in when product API auth expires", async () => {
     const assign = vi.fn();
     const fetchMock = vi.fn(async () =>
       Response.json({ error: "unauthenticated" }, { status: 401 }),
@@ -22,19 +22,19 @@ describe("dashboard client API", () => {
     });
 
     await expect(readConversationData("slack:C1:123")).rejects.toThrow(
-      "/api/dashboard/conversations/slack%3AC1%3A123 returned 401",
+      "/api/conversations/slack%3AC1%3A123 returned 401",
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/dashboard/conversations/slack%3AC1%3A123",
+      "/api/conversations/slack%3AC1%3A123",
       { credentials: "same-origin" },
     );
     expect(assign).toHaveBeenCalledWith(
-      "/api/dashboard/login?next=%2Fconversations%3Ffilter%3Drecent",
+      "/auth/login?next=%2Fconversations%3Ffilter%3Drecent",
     );
   });
 
-  it("does not redirect for non-auth dashboard API failures", async () => {
+  it("does not redirect for non-auth product API failures", async () => {
     const assign = vi.fn();
     vi.stubGlobal(
       "fetch",
@@ -49,7 +49,7 @@ describe("dashboard client API", () => {
     });
 
     await expect(readConversationData("slack:C1:123")).rejects.toThrow(
-      "/api/dashboard/conversations/slack%3AC1%3A123 returned 403",
+      "/api/conversations/slack%3AC1%3A123 returned 403",
     );
 
     expect(assign).not.toHaveBeenCalled();

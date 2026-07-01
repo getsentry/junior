@@ -6,7 +6,7 @@ import {
 import type { Conversation } from "../types";
 import { StatusBadge } from "./StatusBadge";
 
-/** Render the shared conversation title, identity, status, and Sentry link. */
+/** Render the shared conversation title, identity, and status. */
 export function ConversationSummary(props: { conversation: Conversation }) {
   const visualStatus = visualStatusForConversation(props.conversation);
 
@@ -20,20 +20,6 @@ export function ConversationSummary(props: { conversation: Conversation }) {
       </div>
       <div className="mt-1 break-words text-[0.86rem] leading-relaxed text-[#b8b8b8] md:truncate">
         {conversationIdentityMeta(props.conversation, props.conversation.id)}
-        {props.conversation.sentryConversationUrl ? (
-          <>
-            {" · "}
-            <a
-              className="border-b border-white/30 text-[0.86rem] leading-relaxed text-white no-underline hover:border-white"
-              href={props.conversation.sentryConversationUrl}
-              onClick={(event) => event.stopPropagation()}
-              rel="noreferrer"
-              target="_blank"
-            >
-              View in Sentry
-            </a>
-          </>
-        ) : null}
       </div>
     </div>
   );

@@ -3,11 +3,12 @@ import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
 import type {
   CodeBlock,
   Conversation,
+  ConversationDetailFeed,
   ConversationTurn,
+  ConversationFilter,
+  ConversationSummary,
   MarkupNode,
   RequesterIdentity,
-  Session,
-  SessionFilter,
   TranscriptViewMessage,
   TranscriptViewPart,
   TurnUsage,
@@ -28,31 +29,33 @@ function displayTimeZone(): string {
   return dashboardTimeZone;
 }
 
-function isActiveSession(session: Session): boolean {
-  return session.status === "active";
+function isActiveSummary(summary: ConversationSummary): boolean {
+  return summary.status === "active";
 }
 
-/** Identify turn summaries that should appear in failed conversation filters. */
-export function isFailedSession(session: Session): boolean {
-  return session.status === "failed";
+/** Identify summaries that should appear in failed conversation filters. */
+export function isFailedConversationSummary(
+  summary: ConversationSummary,
+): boolean {
+  return summary.status === "failed";
 }
 
-function isHungSession(session: Session): boolean {
-  return session.status === "hung";
+function isHungSummary(summary: ConversationSummary): boolean {
+  return summary.status === "hung";
 }
 
 function isActiveConversation(conversation: Conversation): boolean {
   return conversation.runs.some(
-    (turn) => visualStatusForSession(turn) === "active",
+    (turn) => visualStatusForSummary(turn) === "active",
   );
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
-  return conversation.runs.some(isFailedSession);
+  return conversation.runs.some(isFailedConversationSummary);
 }
 
 function isHungConversation(conversation: Conversation): boolean {
-  return conversation.runs.some(isHungSession);
+  return conversation.runs.some(isHungSummary);
 }
 
 function parseTime(value: string | undefined): number | null {
@@ -549,9 +552,9 @@ export function conversationRuntimeMs(
   return contributionDurationTotal(turnContributions(conversation.runs));
 }
 
-/** Resolve the owning conversation id for a turn/session summary. */
-export function conversationIdForSession(session: Session): string {
-  return session.conversationId;
+/** Resolve the owning conversation id for a run summary. */
+export function conversationIdForSummary(summary: ConversationSummary): string {
+  return summary.conversationId;
 }
 
 function compareTimeDesc(a: string | undefined, b: string | undefined): number {
@@ -599,7 +602,7 @@ export function conversationIdentityMeta(
 
 /** Convert Slack channel ids and names into user-facing location labels. */
 export function slackLocationLabel(
-  input: Pick<Session, "channel" | "channelName">,
+  input: Pick<ConversationSummary, "channel" | "channelName">,
   options: { includeId?: boolean } = {},
 ): string | undefined {
   const channelId = input.channel;
@@ -624,11 +627,13 @@ export function slackLocationLabel(
   return name ? `${name}${idSuffix}` : channelId;
 }
 
-/** Collapse raw turn states into the dashboard's visual status language. */
-export function visualStatusForSession(session: Session): VisualStatus {
-  if (isHungSession(session)) return "hung";
-  if (isFailedSession(session)) return "failed";
-  if (isActiveSession(session)) return "active";
+/** Collapse raw summary states into the dashboard's visual status language. */
+export function visualStatusForSummary(
+  summary: ConversationSummary,
+): VisualStatus {
+  if (isHungSummary(summary)) return "hung";
+  if (isFailedConversationSummary(summary)) return "failed";
+  if (isActiveSummary(summary)) return "active";
   return "idle";
 }
 
@@ -647,7 +652,7 @@ export function unavailableTranscriptLabel(turn: ConversationTurn): string {
   if (turn.transcriptRedacted) {
     return "Transcript hidden because this conversation is not public.";
   }
-  const status = visualStatusForSession(turn);
+  const status = visualStatusForSummary(turn);
   if (status === "active") {
     return "Transcript pending while this conversation is active.";
   }
@@ -881,12 +886,14 @@ function markupNodeFromDom(node: ChildNode): MarkupNode {
   return { type: "text", text: node.textContent ?? "" };
 }
 
-/** Group recent turn summaries into conversation rows. */
-export function buildConversations(sessions: Session[]): Conversation[] {
-  const byId = new Map<string, Session[]>();
-  for (const session of sessions) {
-    const id = conversationIdForSession(session);
-    byId.set(id, [...(byId.get(id) ?? []), session]);
+/** Group recent run summaries into conversation rows. */
+export function buildConversations(
+  summaries: ConversationSummary[],
+): Conversation[] {
+  const byId = new Map<string, ConversationSummary[]>();
+  for (const summary of summaries) {
+    const id = conversationIdForSummary(summary);
+    byId.set(id, [...(byId.get(id) ?? []), summary]);
   }
 
   return [...byId.entries()]
@@ -904,11 +911,11 @@ export function buildConversations(sessions: Session[]): Conversation[] {
           ? next
           : current,
       );
-      const status = sortedTurns.some(isHungSession)
+      const status = sortedTurns.some(isHungSummary)
         ? "hung"
-        : sortedTurns.some(isActiveSession)
+        : sortedTurns.some(isActiveSummary)
           ? "active"
-          : sortedTurns.some(isFailedSession)
+          : sortedTurns.some(isFailedConversationSummary)
             ? "failed"
             : newest.status;
       const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
@@ -920,7 +927,6 @@ export function buildConversations(sessions: Session[]): Conversation[] {
         lastProgressAt: newest.lastProgressAt,
         lastSeenAt: newest.lastSeenAt,
         requesterIdentity: requesterTurn?.requesterIdentity,
-        sentryConversationUrl: newest.sentryConversationUrl,
         sentryTraceUrl: newest.sentryTraceUrl,
         startedAt: oldest.startedAt,
         status,
@@ -932,7 +938,18 @@ export function buildConversations(sessions: Session[]): Conversation[] {
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }
 
-function durationSnapshot(turn: Session): number | undefined {
+/** Build a conversation row from a detail report so permalinks do not depend on the feed. */
+export function conversationFromDetail(
+  detail: ConversationDetailFeed | undefined,
+): Conversation | undefined {
+  if (!detail) return undefined;
+  const conversation = buildConversations(detail.runs)[0];
+  return conversation
+    ? { ...conversation, displayTitle: detail.displayTitle }
+    : undefined;
+}
+
+function durationSnapshot(turn: ConversationSummary): number | undefined {
   const duration = turn.cumulativeDurationMs;
   return typeof duration === "number" && Number.isFinite(duration)
     ? Math.max(0, Math.floor(duration))
@@ -941,10 +958,10 @@ function durationSnapshot(turn: Session): number | undefined {
 
 type TurnContribution = {
   durationMs: number;
-  turn: Session;
+  turn: ConversationSummary;
 };
 
-function turnContributions(turns: Session[]): TurnContribution[] {
+function turnContributions(turns: ConversationSummary[]): TurnContribution[] {
   let previousDuration = 0;
   return turns.map((turn) => {
     const duration = durationSnapshot(turn);
@@ -970,7 +987,7 @@ function contributionDurationTotal(contributions: TurnContribution[]): number {
 /** Apply the dashboard conversation filter to grouped conversation rows. */
 export function filterConversations(
   conversations: Conversation[],
-  filter: SessionFilter,
+  filter: ConversationFilter,
 ): Conversation[] {
   if (filter === "all") return conversations;
   if (filter === "active") return conversations.filter(isActiveConversation);
@@ -980,7 +997,7 @@ export function filterConversations(
 }
 
 /** Normalize URL filter params to the supported dashboard filter set. */
-export function getFilter(value: string | null): SessionFilter {
+export function getFilter(value: string | null): ConversationFilter {
   return value === "active" ||
     value === "hung" ||
     value === "failed" ||

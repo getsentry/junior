@@ -25,7 +25,6 @@ export type MockRunOptions = {
   lastProgressAt?: string;
   lastSeenAt?: string;
   requesterIdentity?: RequesterIdentity;
-  sentryConversationUrl?: string;
   sentryTraceUrl?: string;
   startedAt?: string;
   status?: ConversationReportStatus;
@@ -68,9 +67,6 @@ export function mockRun(options: MockRunOptions = {}): ConversationRunReport {
     ...(options.requesterIdentity !== undefined
       ? { requesterIdentity: options.requesterIdentity }
       : {}),
-    ...(options.sentryConversationUrl !== undefined
-      ? { sentryConversationUrl: options.sentryConversationUrl }
-      : {}),
     ...(options.sentryTraceUrl !== undefined
       ? { sentryTraceUrl: options.sentryTraceUrl }
       : {}),
@@ -95,6 +91,7 @@ export type MockConversationOptions = {
   displayTitle?: string;
   generatedAt?: string;
   runs?: ConversationRunReport[];
+  sentryConversationUrl?: string;
 };
 
 /** Build a conversation report constrained to the reporting API shape. */
@@ -107,6 +104,9 @@ export function mockConversation(
     conversationId,
     displayTitle,
     generatedAt: options.generatedAt ?? mockIso(),
+    ...(options.sentryConversationUrl !== undefined
+      ? { sentryConversationUrl: options.sentryConversationUrl }
+      : {}),
     runs: options.runs ?? [
       mockRun({
         conversationId,

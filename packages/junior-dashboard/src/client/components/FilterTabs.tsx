@@ -1,12 +1,12 @@
 import { ToggleButton } from "./Button";
-import type { SessionFilter } from "../types";
+import type { ConversationFilter } from "../types";
 
 /** Render conversation filters while keeping URL state owned by the page. */
 export function FilterTabs(props: {
-  current: SessionFilter;
-  onChange(filter: SessionFilter): void;
+  current: ConversationFilter;
+  onChange(filter: ConversationFilter): void;
 }) {
-  const filters: SessionFilter[] = [
+  const filters: ConversationFilter[] = [
     "recent",
     "active",
     "hung",

@@ -7,4 +7,4 @@ title: "TranscriptPartType"
 
 > **TranscriptPartType** = `"text"` \| `"thinking"` \| `"tool_call"` \| `"tool_result"` \| `"unknown"`
 
-Defined in: [junior/src/reporting/conversations.ts:125](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L125)
+Defined in: [junior/src/reporting/conversations.ts:124](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L124)

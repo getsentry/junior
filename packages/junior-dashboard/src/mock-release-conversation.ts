@@ -536,6 +536,7 @@ export function longReleaseConversation(
     conversationId: LONG_CONVERSATION_ID,
     displayTitle: "Package release and self-update",
     generatedAt: iso(nowMs),
+    sentryConversationUrl: sentryConversationUrl(LONG_CONVERSATION_ID),
     runs: [
       {
         conversationId: LONG_CONVERSATION_ID,
@@ -561,7 +562,6 @@ export function longReleaseConversation(
         },
         channel: "CQA456",
         channelName: "proj-release",
-        sentryConversationUrl: sentryConversationUrl(LONG_CONVERSATION_ID),
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,
@@ -592,7 +592,6 @@ export function longReleaseConversation(
         },
         channel: "CQA456",
         channelName: "proj-release",
-        sentryConversationUrl: sentryConversationUrl(LONG_CONVERSATION_ID),
         sentryTraceUrl: sentryTraceUrl(traceId),
         traceId,
         transcriptAvailable: true,

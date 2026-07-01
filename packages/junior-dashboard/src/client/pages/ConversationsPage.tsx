@@ -11,21 +11,21 @@ import {
   formatTime,
   getFilter,
 } from "../format";
-import type { DashboardData, SessionFilter } from "../types";
+import type { ConversationFilter, DashboardData } from "../types";
 
 /** Render the searchable conversation index from reporting data. */
 export function ConversationsPage(props: { data?: DashboardData }) {
   const [params, setParams] = useSearchParams();
   const filter = getFilter(params.get("filter"));
-  const sessions = props.data?.sessions.sessions ?? [];
-  const conversations = buildConversations(sessions);
+  const summaries = props.data?.conversations.conversations ?? [];
+  const conversations = buildConversations(summaries);
   const visibleConversations = filterConversations(conversations, filter);
   const search = params.toString();
-  const feedMeta = props.data?.sessions
-    ? `${conversations.length} conversations / ${formatTime(props.data.sessions.generatedAt)}`
+  const feedMeta = props.data?.conversations
+    ? `${conversations.length} conversations / ${formatTime(props.data.conversations.generatedAt)}`
     : "waiting for conversation feed";
 
-  function updateFilter(nextFilter: SessionFilter) {
+  function updateFilter(nextFilter: ConversationFilter) {
     const next = new URLSearchParams(params);
     next.set("filter", nextFilter);
     setParams(next);

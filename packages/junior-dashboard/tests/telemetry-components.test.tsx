@@ -20,9 +20,9 @@ import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
   ConversationDetailFeed,
+  ConversationSummary,
   ConversationTurn,
   DashboardData,
-  Session,
 } from "../src/client/types";
 
 afterEach(() => {
@@ -30,7 +30,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function dashboardData(sessions: Session[]): DashboardData {
+function dashboardData(
+  conversationSummaries: ConversationSummary[],
+): DashboardData {
   return {
     config: {
       allowedEmailCount: 0,
@@ -87,9 +89,9 @@ function dashboardData(sessions: Session[]): DashboardData {
       providers: [],
       skills: [],
     },
-    sessions: {
+    conversations: {
       generatedAt: "2026-01-01T00:00:00.000Z",
-      sessions,
+      conversations: conversationSummaries,
       source: "conversation_index",
     },
     skills: [],
@@ -295,7 +297,7 @@ describe("dashboard telemetry components", () => {
           parts: [
             {
               type: "text",
-              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [broken [real](https://nested.example/ok), [local](/api/dashboard/me), and [bad](javascript:alert).",
+              text: "See [the trace](https://sentry.example/trace/abc), [wiki](https://en.wikipedia.org/wiki/Foo_(bar)), https://docs.example/Foo_(bar)., https://., https://after-invalid.example/ok, [broken [real](https://nested.example/ok), [local](/api/me), and [bad](javascript:alert).",
             },
           ],
         },
@@ -324,9 +326,9 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain('href="https://nested.example/ok"');
     expect(html).toContain(">real</a>");
     expect(html).not.toContain(">broken [real</a>");
-    expect(html).toContain("[local](/api/dashboard/me)");
+    expect(html).toContain("[local](/api/me)");
     expect(html).toContain("[bad](javascript:alert)");
-    expect(html).not.toContain('href="/api/dashboard/me"');
+    expect(html).not.toContain('href="/api/me"');
     expect(html).not.toContain('href="javascript:alert"');
   });
 
@@ -380,14 +382,14 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "slack",
       displayTitle: "Conversation",
-    } satisfies Session;
+    } satisfies ConversationSummary;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <MemoryRouter>
           <ConversationDurationChart
             nowMs={Date.parse("2026-01-05T00:00:00.000Z")}
-            sessions={[session]}
+            conversationSummaries={[session]}
             timeZone="UTC"
           />
         </MemoryRouter>
@@ -422,7 +424,7 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "internal",
       displayTitle: "Conversation",
-    } satisfies Session;
+    } satisfies ConversationSummary;
     const detail = {
       conversationId: "conversation-1",
       displayTitle: session.displayTitle,
@@ -454,7 +456,7 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "internal",
       displayTitle: "Conversation",
-    } satisfies Session;
+    } satisfies ConversationSummary;
     const detail = {
       conversationId: "conversation-1",
       displayTitle: session.displayTitle,
@@ -501,6 +503,42 @@ describe("dashboard telemetry components", () => {
     );
   });
 
+  it("uses the detail report for the View in Sentry conversation link", () => {
+    const summary = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+    } satisfies ConversationSummary;
+    const detail = {
+      conversationId: "conversation-1",
+      displayTitle: summary.displayTitle,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      sentryConversationUrl:
+        "https://sentry.example/explore/conversations/conversation-1/?project=1",
+      runs: [
+        {
+          ...summary,
+          transcript: [],
+          transcriptAvailable: true,
+        },
+      ],
+    } satisfies ConversationDetailFeed;
+    client.setQueryData(["conversation", "conversation-1"], detail);
+
+    const html = renderConversationPage(dashboardData([summary]));
+
+    expect(html).toContain("View in Sentry");
+    expect(html).toContain(
+      "https://sentry.example/explore/conversations/conversation-1/?project=1",
+    );
+  });
+
   it("caps dashboard route pages at a readable width", () => {
     const session = {
       conversationId: "conversation-1",
@@ -512,7 +550,7 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "slack",
       displayTitle: "Readable transcript",
-    } satisfies Session;
+    } satisfies ConversationSummary;
 
     const data = dashboardData([session]);
     const conversation = renderConversationPage(data);
@@ -542,7 +580,7 @@ describe("dashboard telemetry components", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
 
-    const sessions: Session[] = [
+    const conversationSummaries: ConversationSummary[] = [
       {
         channel: "C1",
         channelName: "proj-alpha",
@@ -585,7 +623,7 @@ describe("dashboard telemetry components", () => {
         displayTitle: "Old thread",
       },
     ];
-    const data = dashboardData(sessions);
+    const data = dashboardData(conversationSummaries);
     data.conversationStats = {
       active: 0,
       conversations: 2,
@@ -794,7 +832,7 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "slack",
       displayTitle: "Readable transcript",
-    } satisfies Session;
+    } satisfies ConversationSummary;
     const detail = {
       conversationId: "conversation-1",
       displayTitle: session.displayTitle,

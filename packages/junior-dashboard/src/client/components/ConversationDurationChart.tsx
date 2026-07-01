@@ -31,8 +31,8 @@ import {
 import { cn } from "../styles";
 import type {
   Conversation,
+  ConversationSummary,
   ConversationDetailFeed,
-  Session,
   VisualStatus,
 } from "../types";
 import { MetricValue } from "./Metric";
@@ -48,8 +48,8 @@ import { statusBorderClass } from "./statusStyles";
 
 /** Render recent conversations by activity time and duration. */
 export function ConversationDurationChart(props: {
+  conversationSummaries: ConversationSummary[];
   nowMs: number;
-  sessions: Session[];
   timeZone: string;
 }) {
   const navigate = useNavigate();
@@ -62,10 +62,10 @@ export function ConversationDurationChart(props: {
   const conversations = useMemo(
     () =>
       filterRecentConversations(
-        buildConversations(props.sessions),
+        buildConversations(props.conversationSummaries),
         props.nowMs,
       ),
-    [props.nowMs, props.sessions],
+    [props.conversationSummaries, props.nowMs],
   );
   const points = conversations
     .map((conversation) => conversationPoint(conversation, props.timeZone))

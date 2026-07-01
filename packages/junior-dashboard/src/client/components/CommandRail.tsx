@@ -1,4 +1,8 @@
-import { formatTime, isFailedSession, visualStatusForSession } from "../format";
+import {
+  formatTime,
+  isFailedConversationSummary,
+  visualStatusForSummary,
+} from "../format";
 import type { DashboardData } from "../types";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
@@ -10,14 +14,14 @@ export function CommandRail(props: {
   data?: DashboardData;
   error: Error | null;
 }) {
-  const sessions = props.data?.sessions.sessions ?? [];
-  const activeSessions = sessions.filter(
-    (session) => visualStatusForSession(session) === "active",
+  const summaries = props.data?.conversations.conversations ?? [];
+  const activeSummaries = summaries.filter(
+    (summary) => visualStatusForSummary(summary) === "active",
   );
-  const hungSessions = sessions.filter(
-    (session) => visualStatusForSession(session) === "hung",
+  const hungSummaries = summaries.filter(
+    (summary) => visualStatusForSummary(summary) === "hung",
   );
-  const failedSessions = sessions.filter(isFailedSession);
+  const failedSummaries = summaries.filter(isFailedConversationSummary);
 
   return (
     <aside className="min-w-0">
@@ -51,9 +55,9 @@ export function CommandRail(props: {
         <div className="flex flex-wrap border-t border-white/10">
           <Stat label="plugins" value={props.data?.plugins.length ?? 0} />
           <Stat label="skills" value={props.data?.skills.length ?? 0} />
-          <Stat label="active" value={activeSessions.length} />
-          <Stat label="hung" value={hungSessions.length} />
-          <Stat label="failed" value={failedSessions.length} />
+          <Stat label="active" value={activeSummaries.length} />
+          <Stat label="hung" value={hungSummaries.length} />
+          <Stat label="failed" value={failedSummaries.length} />
         </div>
       </Section>
     </aside>

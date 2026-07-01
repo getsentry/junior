@@ -231,7 +231,7 @@ Core owns prompt rendering:
 3. Core applies per-contribution and total prompt extension size limits.
 4. Core omits empty contributions.
 5. Core records safe metadata about accepted contributions without exposing raw
-   private prompt text through logs, traces, or dashboard APIs.
+   private prompt text through logs, traces, or authenticated product APIs.
 6. Core must fail closed when prompt contribution rendering, validation, or
    schema validation fails.
 
@@ -272,7 +272,7 @@ Use integration tests for:
 - user prompt hooks run when resuming a record captured before the prompt
   checkpoint
 - private conversation prompt contribution payloads are redacted from logs,
-  traces, and dashboard APIs
+  traces, and authenticated product APIs
 
 Use unit tests for:
 

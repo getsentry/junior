@@ -746,7 +746,7 @@ describe("createApp plugin config", () => {
     ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
   });
 
-  it("forwards virtual plugin dashboard route apps into dashboard setup", async () => {
+  it("forwards virtual plugin API route apps into dashboard setup", async () => {
     const pluginRouteApp = {
       fetch: () => new Response("memory"),
     };
@@ -760,9 +760,7 @@ describe("createApp plugin config", () => {
         fetch(request: Request) {
           const pathname = new URL(request.url).pathname;
           const route = options.pluginRoutes?.find((candidate) =>
-            pathname.startsWith(
-              `/api/dashboard/plugins/${candidate.pluginName}`,
-            ),
+            pathname.startsWith(`/api/plugins/${candidate.pluginName}`),
           );
           return route?.app.fetch(request) ?? new Response("dashboard");
         },
@@ -782,7 +780,7 @@ describe("createApp plugin config", () => {
             description: "Memory plugin",
           },
           hooks: {
-            dashboardRoutes() {
+            apiRoutes() {
               return pluginRouteApp;
             },
           },
@@ -795,7 +793,7 @@ describe("createApp plugin config", () => {
     const app = await createApp();
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/plugins/memory"),
+      new Request("http://localhost/api/plugins/memory"),
     );
 
     expect(response.status).toBe(200);
@@ -804,7 +802,8 @@ describe("createApp plugin config", () => {
 
   it("rejects app-level plugin routes that conflict with core dashboard routes", async () => {
     for (const path of [
-      "/api/dashboard/*",
+      "/api/plugins/*",
+      "/api/conversations/*",
       "/*",
       "/api/*",
       "/:slug",

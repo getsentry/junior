@@ -103,20 +103,6 @@ Read authenticated runtime discovery data for reporting consumers.
 
 ---
 
-### getSessions()
-
-> **getSessions**(): `Promise`\<[`ConversationFeed`](/reference/api/interfaces/conversationfeed/)\>
-
-Defined in: [junior/src/reporting.ts:102](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L102)
-
-Read recent conversation summaries for reporting consumers.
-
-#### Returns
-
-`Promise`\<[`ConversationFeed`](/reference/api/interfaces/conversationfeed/)\>
-
----
-
 ### getSkills()
 
 > **getSkills**(): `Promise`\<[`SkillReport`](/reference/api/interfaces/skillreport/)[]\>
@@ -128,6 +114,20 @@ Read discovered skill names for reporting consumers.
 #### Returns
 
 `Promise`\<[`SkillReport`](/reference/api/interfaces/skillreport/)[]\>
+
+---
+
+### listConversations()
+
+> **listConversations**(): `Promise`\<[`ConversationFeed`](/reference/api/interfaces/conversationfeed/)\>
+
+Defined in: [junior/src/reporting.ts:102](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L102)
+
+List recent conversation summaries for reporting consumers.
+
+#### Returns
+
+`Promise`\<[`ConversationFeed`](/reference/api/interfaces/conversationfeed/)\>
 
 ---
 

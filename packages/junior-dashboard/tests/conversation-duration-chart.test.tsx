@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { client } from "../src/client/api";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
-import type { Session } from "../src/client/types";
+import type { ConversationSummary } from "../src/client/types";
 
 const chartState = vi.hoisted(() => ({
   scatterData: [] as Array<Record<string, unknown>>,
@@ -35,13 +35,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderChart(sessions: Session[], nowMs: number): string {
+function renderChart(
+  conversationSummaries: ConversationSummary[],
+  nowMs: number,
+): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <ConversationDurationChart
+          conversationSummaries={conversationSummaries}
           nowMs={nowMs}
-          sessions={sessions}
           timeZone="UTC"
         />
       </MemoryRouter>
@@ -55,7 +58,7 @@ describe("conversation duration chart", () => {
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
     const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
-    const sessions: Session[] = [
+    const conversationSummaries: ConversationSummary[] = [
       {
         completedAt: "2026-06-02T09:05:00.000Z",
         conversationId: "conversation-1",
@@ -116,7 +119,7 @@ describe("conversation duration chart", () => {
         displayTitle: "Conversation",
       },
     ];
-    const html = renderChart(sessions, nowMs);
+    const html = renderChart(conversationSummaries, nowMs);
 
     expect(chartState.scatterData).toHaveLength(2);
     expect(chartState.scatterData[0]).toMatchObject({

@@ -397,7 +397,7 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("reports aggregate conversation stats beyond the session feed cap", async () => {
+  it("reports aggregate conversation stats beyond the conversation feed cap", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const { recordAgentTurnSessionSummary } =
@@ -418,10 +418,10 @@ describe("dashboard reporting", () => {
     }
 
     const reporting = createJuniorReporting();
-    const sessions = await reporting.getSessions();
+    const feed = await reporting.listConversations();
     const stats = await reporting.getConversationStats();
 
-    expect(sessions.sessions).toHaveLength(50);
+    expect(feed.conversations).toHaveLength(50);
     expect(stats).toMatchObject({
       conversations: 55,
       requesters: [
@@ -543,14 +543,16 @@ describe("dashboard reporting", () => {
       state: "completed",
     });
 
-    const feed = await createJuniorReporting().getSessions();
+    const feed = await createJuniorReporting().listConversations();
 
-    expect(feed.sessions.map((session) => session.requesterIdentity)).toEqual([
+    expect(
+      feed.conversations.map((conversation) => conversation.requesterIdentity),
+    ).toEqual([
       expect.objectContaining({
         fullName: "Origin Requester",
       }),
     ]);
-    expect(feed.sessions).toEqual([
+    expect(feed.conversations).toEqual([
       expect.objectContaining({
         channelName: "proj-alpha",
       }),

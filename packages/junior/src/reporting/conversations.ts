@@ -117,7 +117,6 @@ export interface ConversationSummaryReport {
   requesterIdentity?: RequesterIdentity;
   channel?: string;
   channelName?: string;
-  sentryConversationUrl?: string;
   sentryTraceUrl?: string;
   traceId?: string;
 }
@@ -220,11 +219,12 @@ export interface ConversationReport {
   /** Always-populated display title, computed the same way as per-run reports. */
   displayTitle: string;
   generatedAt: string;
+  sentryConversationUrl?: string;
   runs: ConversationRunReport[];
 }
 
 export interface ConversationFeed {
-  sessions: ConversationSummaryReport[];
+  conversations: ConversationSummaryReport[];
   source: "conversation_index";
   generatedAt: string;
 }
@@ -390,9 +390,6 @@ function sessionReportFromSummary(
   const requesterIdentity =
     requesterIdentityReport(details?.originRequester) ??
     sessionRequesterIdentityReport(summary.requester);
-  const sentryConversationUrl = buildSentryConversationUrl(
-    summary.conversationId,
-  );
   const sentryTraceUrl = summary.traceId
     ? buildSentryTraceUrl(summary.traceId)
     : undefined;
@@ -414,7 +411,6 @@ function sessionReportFromSummary(
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
-    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
     ...(summary.traceId ? { traceId: summary.traceId } : {}),
     ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
   };
@@ -558,9 +554,6 @@ function sessionReportFromConversation(
   const surface =
     details?.originSurface ??
     surfaceFromSource(conversation.source, conversation.conversationId);
-  const sentryConversationUrl = buildSentryConversationUrl(
-    conversation.conversationId,
-  );
   const requesterIdentity = requesterIdentityReport(
     details?.originRequester ?? conversation.requester,
   );
@@ -581,7 +574,6 @@ function sessionReportFromConversation(
     ...(requesterIdentity ? { requesterIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
-    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
   };
 }
 
@@ -798,14 +790,14 @@ function newestRun(
 
 function recentConversationGroups(args: {
   nowMs: number;
-  sessions: ConversationSummaryReport[];
+  summaries: ConversationSummaryReport[];
 }): ConversationSummaryReport[][] {
   const startMs = args.nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
   const groups = new Map<string, ConversationSummaryReport[]>();
-  for (const session of args.sessions) {
-    groups.set(session.conversationId, [
-      ...(groups.get(session.conversationId) ?? []),
-      session,
+  for (const summary of args.summaries) {
+    groups.set(summary.conversationId, [
+      ...(groups.get(summary.conversationId) ?? []),
+      summary,
     ]);
   }
 
@@ -840,7 +832,7 @@ function buildConversationStatsReport(args: {
   nowMs: number;
   sampleLimit: number;
   sampleSize: number;
-  sessions: ConversationSummaryReport[];
+  summaries: ConversationSummaryReport[];
   truncated: boolean;
 }): ConversationStatsReport {
   const conversations = recentConversationGroups(args);
@@ -1404,7 +1396,7 @@ export async function readConversationFeed(
   return {
     source: "conversation_index",
     generatedAt: new Date(nowMs).toISOString(),
-    sessions: conversations.map((conversation) =>
+    conversations: conversations.map((conversation) =>
       newestRun(
         reportsByConversation.get(conversation.conversationId) ?? [
           sessionReportFromConversation(
@@ -1430,7 +1422,7 @@ export async function readConversationStatsReport(
   });
   const truncated = conversations.length > CONVERSATION_STATS_LIMIT;
   const sampledConversations = conversations.slice(0, CONVERSATION_STATS_LIMIT);
-  const sessions = sampledConversations.map((conversation) =>
+  const summaries = sampledConversations.map((conversation) =>
     sessionReportFromConversation(conversation, nowMs),
   );
   return buildConversationStatsReport({
@@ -1438,7 +1430,7 @@ export async function readConversationStatsReport(
     nowMs,
     sampleLimit: CONVERSATION_STATS_LIMIT,
     sampleSize: sampledConversations.length,
-    sessions,
+    summaries,
     truncated,
   });
 }
@@ -1601,11 +1593,13 @@ export async function readConversationReport(
     firstRun?.displayTitle ??
     displayTitleFromDetails(conversationId, details) ??
     surfaceFallbackLabel(firstRun?.surface ?? "slack");
+  const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
   return {
     conversationId,
     displayTitle,
     generatedAt: new Date(nowMs).toISOString(),
+    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
     runs: effectiveRuns,
   };
 }

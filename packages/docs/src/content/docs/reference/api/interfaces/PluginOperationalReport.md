@@ -5,7 +5,7 @@ prev: false
 title: "PluginOperationalReport"
 ---
 
-Defined in: [junior-plugin-api/src/operations.ts:93](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L93)
+Defined in: [junior-plugin-api/src/operations.ts:95](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L95)
 
 ## Extends
 
@@ -17,7 +17,7 @@ Defined in: [junior-plugin-api/src/operations.ts:93](https://github.com/getsentr
 
 > `optional` **generatedAt?**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L87)
+Defined in: [junior-plugin-api/src/operations.ts:89](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L89)
 
 #### Inherited from
 
@@ -29,7 +29,7 @@ Defined in: [junior-plugin-api/src/operations.ts:87](https://github.com/getsentr
 
 > `optional` **metrics?**: `PluginOperationalMetric`[]
 
-Defined in: [junior-plugin-api/src/operations.ts:88](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L88)
+Defined in: [junior-plugin-api/src/operations.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L90)
 
 #### Inherited from
 
@@ -41,7 +41,7 @@ Defined in: [junior-plugin-api/src/operations.ts:88](https://github.com/getsentr
 
 > **pluginName**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:94](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L94)
+Defined in: [junior-plugin-api/src/operations.ts:96](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L96)
 
 ---
 
@@ -49,7 +49,7 @@ Defined in: [junior-plugin-api/src/operations.ts:94](https://github.com/getsentr
 
 > `optional` **recordSets?**: `PluginOperationalRecordSet`[]
 
-Defined in: [junior-plugin-api/src/operations.ts:89](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L89)
+Defined in: [junior-plugin-api/src/operations.ts:91](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L91)
 
 #### Inherited from
 
@@ -61,7 +61,7 @@ Defined in: [junior-plugin-api/src/operations.ts:89](https://github.com/getsentr
 
 > `optional` **title?**: `string`
 
-Defined in: [junior-plugin-api/src/operations.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L90)
+Defined in: [junior-plugin-api/src/operations.ts:92](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L92)
 
 #### Inherited from
 

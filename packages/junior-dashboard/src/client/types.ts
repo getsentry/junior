@@ -36,7 +36,7 @@ export type RequesterIdentity = ReportingRequesterIdentity;
 
 export type TurnUsage = ConversationUsage;
 
-export type Session = ConversationSummaryReport;
+export type ConversationSummary = ConversationSummaryReport;
 
 export type TranscriptPart =
   ConversationRunReport["transcript"][number]["parts"][number];
@@ -111,16 +111,15 @@ export type Conversation = {
   lastProgressAt: string;
   lastSeenAt: string;
   requesterIdentity?: RequesterIdentity;
-  sentryConversationUrl?: string;
   sentryTraceUrl?: string;
   startedAt: string;
-  status: Session["status"];
-  surface: Session["surface"];
+  status: ConversationSummary["status"];
+  surface: ConversationSummary["surface"];
   traceId?: string;
-  runs: Session[];
+  runs: ConversationSummary[];
 };
 
-export type SessionFeed = ReportingConversationFeed;
+export type ConversationFeed = ReportingConversationFeed;
 
 export type Identity = { user: { email?: string; hostedDomain?: string } };
 
@@ -146,11 +145,16 @@ export type DashboardData = {
   pluginReportsLoading: boolean;
   plugins: Plugin[];
   runtime: Runtime;
-  sessions: SessionFeed;
+  conversations: ConversationFeed;
   skills: Skill[];
 };
 
-export type SessionFilter = "active" | "recent" | "hung" | "failed" | "all";
+export type ConversationFilter =
+  | "active"
+  | "recent"
+  | "hung"
+  | "failed"
+  | "all";
 
 export type VisualStatus = "active" | "failed" | "hung" | "idle";
 

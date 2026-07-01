@@ -74,38 +74,39 @@ You can also provide the same authorization policy through deployment environmen
 
 The dashboard package owns these routes:
 
-| Route              | Purpose                                 |
-| ------------------ | --------------------------------------- |
-| `/`                | Authenticated command-center UI.        |
-| `/conversations`   | Authenticated conversation-history UI.  |
-| `/plugins`         | Authenticated plugin reporting UI.      |
-| `/api/dashboard/*` | Authenticated dashboard JSON APIs.      |
-| `/api/auth/*`      | Better Auth Google login and callbacks. |
+| Route                          | Purpose                                 |
+| ------------------------------ | --------------------------------------- |
+| `/`                            | Authenticated command-center UI.        |
+| `/conversations`               | Authenticated conversation-history UI.  |
+| `/plugins`                     | Authenticated plugin reporting UI.      |
+| `/_junior/dashboard/client.js` | Authenticated dashboard browser bundle. |
+| `/auth/login`                  | Dashboard Google login starter.         |
+| `/api/auth/*`                  | Better Auth Google login and callbacks. |
 
 `/health` remains the public minimal Junior runtime health response.
 
-The current dashboard API slices are:
+The current authenticated product API slices are:
 
-| Endpoint                                     | Purpose                                                                                |
-| -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `/api/dashboard/health`                      | Health status for the command center pulse.                                            |
-| `/api/dashboard/runtime`                     | Runtime paths, providers, skills, and packages.                                        |
-| `/api/dashboard/plugins`                     | Loaded plugin list.                                                                    |
-| `/api/dashboard/plugins/:plugin/*`           | Authenticated, namespaced dashboard API routes contributed by enabled plugins.         |
-| `/api/dashboard/skills`                      | Discovered skill list.                                                                 |
-| `/api/dashboard/sessions`                    | Recent conversation feed from the conversation activity index.                         |
-| `/api/dashboard/conversation-stats`          | Aggregate conversation stats, people/place leaderboards, and sampling metadata.        |
-| `/api/dashboard/plugin-reports`              | Sanitized plugin operational summaries.                                                |
-| `/api/dashboard/conversations/:conversation` | Expiring conversation transcript; private conversations return redacted metadata only. |
-| `/api/dashboard/config`                      | Safe dashboard config signals and feature readiness.                                   |
-| `/api/dashboard/me`                          | Signed-in dashboard identity.                                                          |
+| Endpoint                           | Purpose                                                                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `/api/health`                      | Health status for the command center pulse.                                                                |
+| `/api/runtime`                     | Runtime paths, providers, skills, and packages.                                                            |
+| `/api/plugins`                     | Loaded plugin list.                                                                                        |
+| `/api/plugins/:plugin/*`           | Authenticated, namespaced API routes contributed by enabled plugins.                                       |
+| `/api/skills`                      | Discovered skill list.                                                                                     |
+| `/api/conversations`               | Recent conversation feed from the conversation activity index.                                             |
+| `/api/conversations/stats`         | Aggregate conversation stats, people/place leaderboards, and sampling metadata.                            |
+| `/api/plugin-reports`              | Sanitized plugin operational summaries.                                                                    |
+| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private conversations return redacted metadata only. |
+| `/api/config`                      | Safe dashboard config signals and feature readiness.                                                       |
+| `/api/me`                          | Signed-in dashboard identity.                                                                              |
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query to poll dashboard APIs. `/` shows command-center health, aggregate conversation stats, and recent run durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and run/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
-The conversation feed is backed by the bounded conversation activity index. Conversation detail joins run metadata and transcript data from expiring session stores, so old transcripts disappear when session state expires. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation rows include a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` shows command-center health, aggregate conversation stats, and recent run durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and run/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The conversation feed is backed by the bounded conversation activity index. Conversation detail joins header metadata, run metadata, and transcript data from expiring session stores, so old transcripts disappear when session state expires. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 The conversation stats endpoint is separate from the recent feed and includes `sampleLimit`, `sampleSize`, and `truncated` fields so the UI can mark bounded aggregates. Stats are built from durable conversation-index records for fast SQL-backed counts, locations, requesters, and latest status. Run duration and token totals appear on feed and detail responses until Junior stores durable SQL run summaries.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.
 
-For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real session records.
+For local dashboard visual QA, pass `mockConversations: true` in the dashboard config or set `JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true` for the env-configured path. The sample conversations are read-only reporting fixtures and appear before real conversation records.
 
 ## Configure Google auth
 

@@ -37,11 +37,11 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [{ name: "triage", pluginProvider: "github" }];
     },
-    async getSessions() {
+    async listConversations() {
       return {
         source: "conversation_index",
         generatedAt: "2026-05-29T00:00:00.000Z",
-        sessions: [
+        conversations: [
           {
             conversationId: "slack:C1:123",
             cumulativeDurationMs: 0,
@@ -118,8 +118,8 @@ describe("dashboard mock conversation routes", () => {
   });
 
   it("overlays mock conversations for local dashboard visual QA", async () => {
-    // Pin time to match the hardcoded session dates in the mock reporting fixture.
-    // Without this, recentConversationGroups filters out sessions older than 7 days.
+    // Pin time to match the hardcoded conversation dates in the mock reporting fixture.
+    // Without this, recentConversationGroups filters out conversations older than 7 days.
     vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
@@ -128,39 +128,45 @@ describe("dashboard mock conversation routes", () => {
       reporting: reporting(),
     });
 
-    const sessions = await app.fetch(
-      new Request("http://localhost/api/dashboard/sessions"),
+    const conversations = await app.fetch(
+      new Request("http://localhost/api/conversations"),
     );
-    expect(sessions.status).toBe(200);
-    const sessionBody = (await sessions.json()) as {
-      sessions: Array<{
+    expect(conversations.status).toBe(200);
+    const conversationBody = (await conversations.json()) as {
+      conversations: Array<{
         activity?: unknown;
         conversationId: string;
         cumulativeDurationMs: number;
         id: string;
       }>;
     };
-    expect(sessionBody.sessions[0]?.conversationId).toBe(
+    expect(conversationBody.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
     expect(
-      sessionBody.sessions.map((session) => session.conversationId),
+      conversationBody.conversations.map(
+        (conversation) => conversation.conversationId,
+      ),
     ).toContain("slack:C1:123");
     expect(
-      sessionBody.sessions.map((session) => session.conversationId),
+      conversationBody.conversations.map(
+        (conversation) => conversation.conversationId,
+      ),
     ).toContain("slack:CQA456:1770021600.000600");
     expect(
-      sessionBody.sessions.map((session) => session.conversationId),
+      conversationBody.conversations.map(
+        (conversation) => conversation.conversationId,
+      ),
     ).toContain(DASHBOARD_QA_CONVERSATION_ID);
-    const qaActivityOnlySession = sessionBody.sessions.find(
-      (session) =>
-        session.conversationId === DASHBOARD_QA_CONVERSATION_ID &&
-        session.id === "mock-dashboard-qa-activity-only",
+    const qaActivityOnlySession = conversationBody.conversations.find(
+      (conversation) =>
+        conversation.conversationId === DASHBOARD_QA_CONVERSATION_ID &&
+        conversation.id === "mock-dashboard-qa-activity-only",
     );
     expect(qaActivityOnlySession).toBeDefined();
     expect(qaActivityOnlySession).not.toHaveProperty("activity");
     const conversationStats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
     expect(conversationStats.status).toBe(200);
     const statsBody = (await conversationStats.json()) as {
@@ -171,20 +177,22 @@ describe("dashboard mock conversation routes", () => {
     };
     expect(statsBody).toMatchObject({
       conversations: new Set(
-        sessionBody.sessions.map((session) => session.conversationId),
+        conversationBody.conversations.map(
+          (conversation) => conversation.conversationId,
+        ),
       ).size,
-      sampleSize: sessionBody.sessions.length,
+      sampleSize: conversationBody.conversations.length,
       truncated: false,
     });
-    const rawDurationMs = sessionBody.sessions.reduce(
-      (sum, session) => sum + session.cumulativeDurationMs,
+    const rawDurationMs = conversationBody.conversations.reduce(
+      (sum, conversation) => sum + conversation.cumulativeDurationMs,
       0,
     );
     expect(statsBody.durationMs).toBeLessThan(rawDurationMs);
 
     const activeConversation = await app.fetch(
       new Request(
-        "http://localhost/api/dashboard/conversations/slack%3ACQA123%3A1770003600.000200",
+        "http://localhost/api/conversations/slack%3ACQA123%3A1770003600.000200",
       ),
     );
     expect(activeConversation.status).toBe(200);
@@ -204,7 +212,7 @@ describe("dashboard mock conversation routes", () => {
 
     const qaConversation = await app.fetch(
       new Request(
-        `http://localhost/api/dashboard/conversations/${encodeURIComponent(
+        `http://localhost/api/conversations/${encodeURIComponent(
           DASHBOARD_QA_CONVERSATION_ID,
         )}`,
       ),
@@ -281,7 +289,7 @@ describe("dashboard mock conversation routes", () => {
 
     const longConversation = await app.fetch(
       new Request(
-        "http://localhost/api/dashboard/conversations/slack%3ACQA456%3A1770021600.000600",
+        "http://localhost/api/conversations/slack%3ACQA456%3A1770021600.000600",
       ),
     );
     expect(longConversation.status).toBe(200);
@@ -334,18 +342,18 @@ describe("dashboard mock conversation routes", () => {
 
     const conversation = await app.fetch(
       new Request(
-        "http://localhost/api/dashboard/conversations/slack%3ADQA123%3A1770007200.000300",
+        "http://localhost/api/conversations/slack%3ADQA123%3A1770007200.000300",
       ),
     );
     expect(conversation.status).toBe(200);
-    const conversationBody = (await conversation.json()) as {
+    const redactedConversationBody = (await conversation.json()) as {
       runs: Array<{
         transcriptAvailable: boolean;
         transcriptMetadata?: Array<{ role: string }>;
         transcriptRedacted?: boolean;
       }>;
     };
-    expect(conversationBody).toMatchObject({
+    expect(redactedConversationBody).toMatchObject({
       conversationId: "slack:DQA123:1770007200.000300",
       runs: [
         {
@@ -355,14 +363,14 @@ describe("dashboard mock conversation routes", () => {
         },
       ],
     });
-    expect(conversationBody.runs[0]?.transcriptMetadata?.[0]?.role).toBe(
-      "user",
-    );
+    expect(
+      redactedConversationBody.runs[0]?.transcriptMetadata?.[0]?.role,
+    ).toBe("user");
   });
 
   it("serves mock conversations when local persistence is unavailable", async () => {
     const mockReporting = reporting();
-    mockReporting.getSessions = async () => {
+    mockReporting.listConversations = async () => {
       throw new Error("REDIS_URL is required for durable Slack thread state");
     };
     const app = createDashboardApp({
@@ -373,21 +381,21 @@ describe("dashboard mock conversation routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/api/dashboard/sessions"),
+      new Request("http://localhost/api/conversations"),
     );
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      sessions: Array<{ conversationId: string; status: string }>;
+      conversations: Array<{ conversationId: string; status: string }>;
       source: string;
     };
     expect(body.source).toBe("conversation_index");
-    expect(body.sessions[0]).toMatchObject({
+    expect(body.conversations[0]).toMatchObject({
       conversationId: "slack:CQA123:1770003600.000200",
       status: "active",
     });
     const stats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
     expect(stats.status).toBe(200);
     expect(await stats.json()).toMatchObject({
@@ -396,14 +404,14 @@ describe("dashboard mock conversation routes", () => {
     });
   });
 
-  it("excludes stale real sessions from mock aggregate stats", async () => {
+  it("excludes stale real conversations from mock aggregate stats", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const mockReporting = reporting();
-    mockReporting.getSessions = async () => ({
+    mockReporting.listConversations = async () => ({
       source: "conversation_index",
       generatedAt: "2026-06-04T12:00:00.000Z",
-      sessions: [
+      conversations: [
         {
           conversationId: "slack:COLD:111",
           cumulativeDurationMs: 1_000_000,
@@ -424,24 +432,24 @@ describe("dashboard mock conversation routes", () => {
       reporting: mockReporting,
     });
 
-    const sessions = await app.fetch(
-      new Request("http://localhost/api/dashboard/sessions"),
+    const conversations = await app.fetch(
+      new Request("http://localhost/api/conversations"),
     );
-    const sessionBody = (await sessions.json()) as {
-      sessions: Array<{ conversationId: string; lastSeenAt: string }>;
+    const conversationBody = (await conversations.json()) as {
+      conversations: Array<{ conversationId: string; lastSeenAt: string }>;
     };
     expect(
-      sessionBody.sessions.map((session) => session.conversationId),
+      conversationBody.conversations.map((session) => session.conversationId),
     ).toContain("slack:COLD:111");
 
     const stats = await app.fetch(
-      new Request("http://localhost/api/dashboard/conversation-stats"),
+      new Request("http://localhost/api/conversations/stats"),
     );
     const statsBody = (await stats.json()) as { conversations: number };
     const windowStartMs =
       Date.parse("2026-06-04T12:00:00.000Z") - 7 * 24 * 60 * 60 * 1000;
     const recentConversationIds = new Set(
-      sessionBody.sessions
+      conversationBody.conversations
         .filter((session) => Date.parse(session.lastSeenAt) >= windowStartMs)
         .map((session) => session.conversationId),
     );
@@ -451,12 +459,12 @@ describe("dashboard mock conversation routes", () => {
 
   it("does not hide unexpected reporting errors in mock mode", async () => {
     const mockReporting = reporting();
-    mockReporting.getSessions = async () => {
+    mockReporting.listConversations = async () => {
       throw new Error("session index corrupted");
     };
 
     await expect(
-      createMockConversationReporting(mockReporting).getSessions(),
+      createMockConversationReporting(mockReporting).listConversations(),
     ).rejects.toThrow("session index corrupted");
   });
 });

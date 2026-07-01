@@ -119,7 +119,7 @@ This policy applies to:
 - Conversation, model, and tool payload redaction is governed by
   `./data-redaction-policy.md`; private conversations must not expose raw
   message text, thinking output, tool arguments, or tool results in logs,
-  traces, or dashboard APIs.
+  traces, or authenticated product APIs.
 
 ## Verification requirements
 

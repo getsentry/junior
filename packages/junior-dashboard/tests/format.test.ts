@@ -4,6 +4,7 @@ import {
   buildConversations,
   canRenderStructuredMarkup,
   conversationDisplayTitle,
+  conversationFromDetail,
   conversationIdentityMeta,
   conversationRequesterLabel,
   formatConversationDuration,
@@ -18,7 +19,11 @@ import {
   summarizeUsage,
   turnMessageCount,
 } from "../src/client/format";
-import type { ConversationTurn, Session } from "../src/client/types";
+import type {
+  ConversationDetailFeed,
+  ConversationSummary,
+  ConversationTurn,
+} from "../src/client/types";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -301,7 +306,7 @@ describe("dashboard token formatting", () => {
   });
 
   it("uses the API-supplied displayTitle directly", () => {
-    const sessions: Session[] = [
+    const conversations: ConversationSummary[] = [
       {
         channel: "C1",
         conversationId: "slack:C1:123",
@@ -319,7 +324,7 @@ describe("dashboard token formatting", () => {
         surface: "slack",
       },
     ];
-    const [conversation] = buildConversations(sessions);
+    const [conversation] = buildConversations(conversations);
 
     expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
@@ -366,6 +371,53 @@ describe("dashboard token formatting", () => {
     expect(conversationDisplayTitle(conversation)).toBe("Newer title");
   });
 
+  it("builds permalink header metadata from conversation detail reports", () => {
+    const conversation = conversationFromDetail({
+      conversationId: "slack:C1:123",
+      displayTitle: "Detail Title",
+      generatedAt: "2026-06-01T11:06:00.000Z",
+      sentryConversationUrl: "https://sentry.example/conversations/123",
+      runs: [
+        {
+          channel: "C1",
+          channelName: "proj-alpha",
+          conversationId: "slack:C1:123",
+          cumulativeDurationMs: 0,
+          displayTitle: "Older title",
+          id: "turn-1",
+          lastProgressAt: "2026-06-01T10:05:00.000Z",
+          lastSeenAt: "2026-06-01T10:05:00.000Z",
+          requesterIdentity: { email: "alice@example.com" },
+          startedAt: "2026-06-01T10:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          transcriptAvailable: true,
+          transcript: [],
+        },
+        {
+          channel: "C1",
+          conversationId: "slack:C1:123",
+          cumulativeDurationMs: 0,
+          displayTitle: "Newest turn title",
+          id: "turn-2",
+          lastProgressAt: "2026-06-01T11:05:00.000Z",
+          lastSeenAt: "2026-06-01T11:05:00.000Z",
+          startedAt: "2026-06-01T11:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+          transcriptAvailable: true,
+          transcript: [],
+        },
+      ],
+    } satisfies ConversationDetailFeed);
+
+    expect(conversationDisplayTitle(conversation)).toBe("Detail Title");
+    expect(conversation?.channelName).toBe("proj-alpha");
+    expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
+      "alice@example.com · slack:C1:123",
+    );
+  });
+
   it("keeps the newest visible channel name when the newest turn omits it", () => {
     const [conversation] = buildConversations([
       {
@@ -400,7 +452,7 @@ describe("dashboard token formatting", () => {
   });
 
   it("keeps requester labels even when the title matches", () => {
-    const sessions: Session[] = [
+    const conversations: ConversationSummary[] = [
       {
         channel: "C1",
         channelName: "alice",
@@ -419,7 +471,7 @@ describe("dashboard token formatting", () => {
         surface: "slack",
       },
     ];
-    const [conversation] = buildConversations(sessions);
+    const [conversation] = buildConversations(conversations);
 
     expect(conversationRequesterLabel(conversation)).toBe("alice");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(

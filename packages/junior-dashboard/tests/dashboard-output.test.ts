@@ -101,7 +101,7 @@ describe.sequential("dashboard Nitro production output", () => {
       };
 
       const client = await app.fetch(
-        new Request("http://localhost/api/dashboard/client.js"),
+        new Request("http://localhost/_junior/dashboard/client.js"),
         {},
       );
       expect(client.status).toBe(200);

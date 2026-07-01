@@ -16,8 +16,8 @@ import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/eg
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
   type PluginRouteRegistration,
-  type PluginDashboardRouteRegistration,
-  getPluginDashboardRoutes,
+  type PluginApiRouteRegistration,
+  getPluginApiRoutes,
   getPluginRoutes,
   setPlugins,
   validatePlugins,
@@ -118,7 +118,7 @@ export interface JuniorDashboardOptions {
   disabled?: boolean;
   /** Overlay dashboard visual-QA fixture conversations onto real reporting data. */
   mockConversations?: boolean;
-  /** Reporting implementation used by dashboard APIs. Defaults to core reporting. */
+  /** Reporting implementation used by authenticated product APIs. Defaults to core reporting. */
   reporting?: JuniorReporting;
   /** Browser session lifetime in seconds. */
   sessionMaxAgeSeconds?: number;
@@ -127,7 +127,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
-  pluginRoutes?: PluginDashboardRouteRegistration[];
+  pluginRoutes?: PluginApiRouteRegistration[];
 }
 
 type JuniorVirtualDashboardOptions = Omit<JuniorDashboardOptions, "reporting">;
@@ -278,7 +278,7 @@ function validateBuildIncludesPluginRuntimeRegistrations(
 async function createDashboardRouteRegistrations(args: {
   dashboard: JuniorDashboardOptions | undefined;
   createDashboardApp: CreateDashboardApp | undefined;
-  pluginRoutes: PluginDashboardRouteRegistration[];
+  pluginRoutes: PluginApiRouteRegistration[];
 }): Promise<HostRouteRegistration[]> {
   if (!args.dashboard || args.dashboard.disabled) {
     return [];
@@ -353,27 +353,31 @@ function normalizeDashboardPath(
   return stripTrailingSlashes(withSlash);
 }
 
+/** List every route path core forwards to the dashboard app and reserves from plugin routes. */
 function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
   const basePath = normalizeDashboardPath(dashboard.basePath, "/");
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
   const pagePaths =
     basePath === "/"
-      ? [
-          "/",
-          "/conversations",
-          "/conversations/*",
-          "/plugins",
-          "/plugins/*",
-          "/sessions",
-          "/sessions/*",
-        ]
+      ? ["/", "/conversations", "/conversations/*", "/plugins", "/plugins/*"]
       : [basePath, `${basePath}/*`];
+  const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
   return [
     ...pagePaths,
     "/favicon.ico",
-    "/api/dashboard",
-    "/api/dashboard/*",
+    "/_junior/dashboard/client.js",
+    loginPath,
+    "/api/health",
+    "/api/runtime",
+    "/api/plugins",
+    "/api/plugins/*",
+    "/api/plugin-reports",
+    "/api/skills",
+    "/api/conversations",
+    "/api/conversations/*",
+    "/api/config",
+    "/api/me",
     authPath,
     `${authPath}/*`,
   ];
@@ -455,7 +459,7 @@ function dashboardOwnedRoutePath(
 function dashboardRouteRegistrations(args: {
   dashboard: JuniorDashboardOptions;
   createDashboardApp: CreateDashboardApp;
-  pluginRoutes: PluginDashboardRouteRegistration[];
+  pluginRoutes: PluginApiRouteRegistration[];
 }): HostRouteRegistration[] {
   let app: DashboardApp | undefined;
   const fetch = (request: Request) => {
@@ -537,7 +541,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let pluginRoutes: PluginRouteRegistration[] = [];
-  let pluginDashboardRoutes: PluginDashboardRouteRegistration[] = [];
+  let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =
@@ -558,7 +562,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginRoutes = getPluginRoutes();
     validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
     if (dashboard && !dashboard.disabled) {
-      pluginDashboardRoutes = getPluginDashboardRoutes();
+      pluginApiRoutes = getPluginApiRoutes();
     }
   } catch (error) {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
@@ -604,7 +608,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     await createDashboardRouteRegistrations({
       dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
-      pluginRoutes: pluginDashboardRoutes,
+      pluginRoutes: pluginApiRoutes,
     }),
   );
 

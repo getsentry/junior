@@ -43,7 +43,7 @@ Raw payloads include:
 - generated conversation titles for private conversations
 - private Slack channel names or DM participant-derived titles
 
-Private conversations must not expose raw payloads through dashboard APIs,
+Private conversations must not expose raw payloads through authenticated product APIs,
 logs, traces, or span attributes.
 
 ## Safe Metadata

@@ -20,7 +20,7 @@ import {
   turnMessageCount,
   stringifyPartValue,
   unavailableTranscriptLabel,
-  visualStatusForSession,
+  visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
 import { turnTranscriptMessages } from "../transcriptActivity";
@@ -75,7 +75,7 @@ export function ConversationTranscriptSegment(props: {
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
-  const status = visualStatusForSession(props.turn);
+  const status = visualStatusForSummary(props.turn);
 
   return (
     <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 border-t border-white/10 py-4 first:border-t-0">
@@ -92,7 +92,7 @@ export function ConversationTranscriptSegment(props: {
 }
 
 function turnMarkerClass(
-  status: ReturnType<typeof visualStatusForSession>,
+  status: ReturnType<typeof visualStatusForSummary>,
 ): string {
   return cn(
     "size-2.5 shrink-0 border",
@@ -195,7 +195,7 @@ function TranscriptMessageHeader(props: {
 }
 
 function SegmentHeader(props: { turn: ConversationTurn }) {
-  const status = visualStatusForSession(props.turn);
+  const status = visualStatusForSummary(props.turn);
 
   return (
     <div className="flex items-start justify-between gap-3 max-md:flex-col">

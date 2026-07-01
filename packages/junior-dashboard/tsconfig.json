@@ -13,6 +13,7 @@
     "allowJs": false,
     "noEmit": true,
     "paths": {
+      "@sentry/junior": ["../junior/src/app.ts"],
       "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
       "@sentry/junior/reporting": ["../junior/src/reporting.ts"],
       "@sentry/junior-dashboard": ["./src/index.ts"],
@@ -20,5 +21,11 @@
     },
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+  "include": [
+    "../junior/src/virtual-modules.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ]
 }

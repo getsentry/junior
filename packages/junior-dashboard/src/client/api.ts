@@ -3,6 +3,7 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 import type {
   ConversationStatsReport,
   ConversationDetailFeed,
+  ConversationFeed,
   DashboardConfig,
   DashboardData,
   Health,
@@ -10,18 +11,14 @@ import type {
   Plugin,
   PluginReportFeed,
   Runtime,
-  SessionFeed,
   Skill,
 } from "./types";
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
-const CORE_DASHBOARD_REFETCH_INTERVAL_MS = 5_000;
-const CONVERSATION_STATS_REFETCH_INTERVAL_MS = 30_000;
-const PLUGIN_REPORT_REFETCH_INTERVAL_MS = 30_000;
-
 type DashboardCoreData = Omit<
   DashboardData,
+  | "conversations"
   | "conversationStats"
   | "conversationStatsError"
   | "conversationStatsLoading"
@@ -44,7 +41,8 @@ function restartDashboardSignIn(): void {
     return;
   }
 
-  const loginPath = "/api/dashboard/login";
+  const basePath = window.__JUNIOR_DASHBOARD_BASE_PATH__ ?? "/";
+  const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
   if (window.location.pathname !== loginPath) {
     const returnPath = `${window.location.pathname}${
       window.location.search || ""
@@ -99,57 +97,73 @@ function emptyConversationStatsReport(): ConversationStatsReport {
   };
 }
 
+function emptyConversationFeed(): ConversationFeed {
+  return {
+    conversations: [],
+    generatedAt: new Date().toISOString(),
+    source: "conversation_index",
+  };
+}
+
+async function readConversationFeed(): Promise<ConversationFeed> {
+  return await read<ConversationFeed>("/api/conversations");
+}
+
 async function readConversationStats(): Promise<ConversationStatsReport> {
-  return await read<ConversationStatsReport>(
-    "/api/dashboard/conversation-stats",
-  );
+  return await read<ConversationStatsReport>("/api/conversations/stats");
 }
 
 async function readPluginReports(): Promise<PluginReportFeed> {
-  return await read<PluginReportFeed>("/api/dashboard/plugin-reports");
+  return await read<PluginReportFeed>("/api/plugin-reports");
 }
 
-/** Poll the dashboard summary feed used by command center and conversation lists. */
-export function useDashboardData() {
-  const coreQuery = useQuery({
+/** Fetch dashboard shell data shared across browser routes. */
+export function useDashboardCoreData() {
+  return useQuery({
     queryKey: ["dashboard", "core"],
     queryFn: async (): Promise<DashboardCoreData> => {
-      const [health, runtime, plugins, skills, sessions, me, config] =
-        await Promise.all([
-          read<Health>("/api/dashboard/health"),
-          read<Runtime>("/api/dashboard/runtime"),
-          read<Plugin[]>("/api/dashboard/plugins"),
-          read<Skill[]>("/api/dashboard/skills"),
-          read<SessionFeed>("/api/dashboard/sessions"),
-          read<Identity>("/api/dashboard/me"),
-          read<DashboardConfig>("/api/dashboard/config"),
-        ]);
+      const [health, runtime, plugins, skills, me, config] = await Promise.all([
+        read<Health>("/api/health"),
+        read<Runtime>("/api/runtime"),
+        read<Plugin[]>("/api/plugins"),
+        read<Skill[]>("/api/skills"),
+        read<Identity>("/api/me"),
+        read<DashboardConfig>("/api/config"),
+      ]);
       return {
         config,
         health,
         runtime,
         plugins,
         skills,
-        sessions,
         me,
       };
     },
-    refetchInterval: CORE_DASHBOARD_REFETCH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
     retry: false,
   });
+}
+
+/** Fetch the conversation summary feed used by list-oriented dashboard routes. */
+export function useConversationsData() {
+  return useQuery({
+    queryKey: ["dashboard", "conversations"],
+    queryFn: readConversationFeed,
+    retry: false,
+  });
+}
+
+/** Fetch dashboard data needed by command center and list-oriented routes. */
+export function useDashboardData() {
+  const coreQuery = useDashboardCoreData();
+  const conversationsQuery = useConversationsData();
   const conversationStatsQuery = useQuery({
     queryKey: ["dashboard", "conversation-stats"],
     queryFn: readConversationStats,
-    refetchInterval: CONVERSATION_STATS_REFETCH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
     retry: false,
   });
   const pluginReportsQuery = useQuery({
     queryKey: ["dashboard", "plugin-reports"],
     queryFn: readPluginReports,
-    refetchInterval: PLUGIN_REPORT_REFETCH_INTERVAL_MS,
-    refetchIntervalInBackground: false,
     retry: false,
   });
   return {
@@ -166,21 +180,20 @@ export function useDashboardData() {
           pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
           pluginReportsLoading:
             pluginReportsQuery.isPending && !pluginReportsQuery.data,
+          conversations: conversationsQuery.data ?? emptyConversationFeed(),
         }
       : undefined,
-    error: coreQuery.error,
+    error: coreQuery.error ?? conversationsQuery.error,
   };
 }
 
-/** Poll one conversation transcript while preserving route-level disabled state. */
+/** Fetch one conversation transcript while preserving route-level disabled state. */
 export function useConversationData(conversationId: string | undefined) {
   return useQuery({
     enabled: Boolean(conversationId),
     queryKey: ["conversation", conversationId],
     queryFn: async (): Promise<ConversationDetailFeed> =>
       readConversationData(conversationId!),
-    refetchInterval: 5_000,
-    refetchIntervalInBackground: false,
     retry: false,
   });
 }
@@ -190,6 +203,6 @@ export function readConversationData(
   conversationId: string,
 ): Promise<ConversationDetailFeed> {
   return read<ConversationDetailFeed>(
-    `/api/dashboard/conversations/${encodeURIComponent(conversationId)}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
 }

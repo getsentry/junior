@@ -43,10 +43,10 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [];
     },
-    async getSessions() {
+    async listConversations() {
       return {
+        conversations: [],
         generatedAt: "2026-06-12T00:00:00.000Z",
-        sessions: [],
         source: "conversation_index",
       };
     },

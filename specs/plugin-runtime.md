@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-06-30
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -177,17 +177,18 @@ not own Junior conversation routing, subscription storage, TTL, cancellation,
 dedupe, or mailbox delivery. See [Resource Event Subscriptions
 Spec](./resource-event-subscriptions.md).
 
-Plugins may provide `dashboardRoutes` to mount a Hono app or fetch-compatible
-app under Junior's authenticated dashboard API namespace. Core owns the mount
-path and auth boundary:
+Plugins may provide `apiRoutes` to mount a Hono app or fetch-compatible app
+under Junior's authenticated product API namespace. Core owns the mount path
+and auth boundary:
 
 ```text
-/api/dashboard/plugins/:pluginName/*
+/api/plugins/:pluginName/*
 ```
 
-Dashboard route apps must not claim app-global routes. They are only available
-when the core dashboard is enabled and inherit the dashboard's browser-session
-authorization policy.
+Plugin API route apps must not claim app-global routes. They are only available
+when the core dashboard is enabled, inherit the dashboard browser-session
+authorization policy, and receive a sanitized per-request auth context as the
+second `fetch` argument.
 
 Plugins may also provide `slackConversationLink` to replace the finalized Slack footer conversation URL. The hook receives only the opaque conversation id and returns an absolute HTTP(S) URL; it does not expose dashboard data, Slack credentials, or model-facing tools.
 

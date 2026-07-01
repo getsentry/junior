@@ -1,5 +1,7 @@
+import { z } from "zod";
 import type { PluginContext } from "./context";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 
 export type PluginConversationStatus =
@@ -120,13 +122,40 @@ export interface PluginRoute {
   path: string;
 }
 
+/** Fetch-compatible plugin HTTP app mounted by Junior. */
 export type PluginRouteApp = {
-  fetch(request: Request): Promise<Response> | Response;
+  fetch(
+    request: Request,
+    context?: PluginApiRouteRequestContext,
+  ): Promise<Response> | Response;
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {}
 
-export interface DashboardRouteRegistrationHookContext extends PluginContext {}
+export interface ApiRouteRegistrationHookContext extends PluginContext {}
+
+/** Per-request context Junior passes to authenticated plugin product API routes. */
+export const pluginApiRouteRequestContextSchema = z
+  .object({
+    auth: z
+      .object({
+        user: z
+          .object({
+            email: z.string().nullable().optional(),
+            emailVerified: z.boolean().optional(),
+            hostedDomain: z.string().nullable().optional(),
+            name: z.string().nullable().optional(),
+          })
+          .strict(),
+      })
+      .strict(),
+    pluginName: nonBlankStringSchema,
+  })
+  .strict();
+
+export type PluginApiRouteRequestContext = z.output<
+  typeof pluginApiRouteRequestContextSchema
+>;
 
 export interface SlackConversationLink {
   url: string;
