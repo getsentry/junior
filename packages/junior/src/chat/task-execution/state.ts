@@ -40,11 +40,28 @@ class InvalidConversationRecordError extends Error {
   }
 }
 
+/** Return whether an error means a stored conversation record failed validation. */
+export function isInvalidConversationRecordError(
+  error: unknown,
+): error is InvalidConversationRecordError {
+  return error instanceof InvalidConversationRecordError;
+}
+
+class ConversationMutationFencedError extends Error {
+  constructor(conversationId: string) {
+    super(
+      `Conversation mutation lock was lost before write for ${conversationId}`,
+    );
+    this.name = "ConversationMutationFencedError";
+  }
+}
+
 export const CONVERSATION_BY_ACTIVITY_INDEX_KEY = `${CONVERSATION_PREFIX}:by-activity`;
 export const CONVERSATION_ACTIVE_INDEX_KEY = `${CONVERSATION_PREFIX}:active`;
 export const CONVERSATION_WORK_LEASE_TTL_MS = 90_000;
 export const CONVERSATION_WORK_CHECK_IN_INTERVAL_MS = 15_000;
 export const CONVERSATION_WORK_STALE_ENQUEUE_MS = 60_000;
+export const CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS = 5;
 
 export type Source =
   | "api"
@@ -70,6 +87,7 @@ export interface AgentInput {
 }
 
 export interface InboundMessage {
+  attemptCount?: number;
   conversationId: string;
   createdAtMs: number;
   destination: Destination;
@@ -208,6 +226,28 @@ function compareMessages(left: InboundMessage, right: InboundMessage): number {
   );
 }
 
+function inputHasAttachments(input: AgentInput): boolean {
+  return Array.isArray(input.attachments) && input.attachments.length > 0;
+}
+
+/**
+ * Upgrade a still-pending payload when a duplicate source event carries file
+ * attachments the stored copy lacks (Slack `app_mention`/`message` twins),
+ * keeping the stored ordering timestamps and delivery attempts.
+ */
+function upgradedPendingMessage(
+  stored: InboundMessage,
+  duplicate: InboundMessage,
+): InboundMessage {
+  if (
+    !inputHasAttachments(duplicate.input) ||
+    inputHasAttachments(stored.input)
+  ) {
+    return stored;
+  }
+  return { ...stored, input: duplicate.input };
+}
+
 function compareIndexDescending(
   left: ConversationIndexEntry,
   right: ConversationIndexEntry,
@@ -318,7 +358,17 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
     receivedAtMs,
     input,
     injectedAtMs: toOptionalNumber(value.injectedAtMs),
+    attemptCount: toOptionalNumber(value.attemptCount),
   };
+}
+
+/** Whether one more failed delivery would consume the message as poison work. */
+export function isFinalConversationDeliveryAttempt(
+  message: Pick<InboundMessage, "attemptCount">,
+): boolean {
+  return (
+    (message.attemptCount ?? 0) >= CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS - 1
+  );
 }
 
 function normalizeRequester(value: unknown): StoredSlackRequester | undefined {
@@ -872,12 +922,12 @@ async function withConversationMutation<T>(
     conversationId: string;
     state?: StateAdapter;
   },
-  callback: (state: StateAdapter) => Promise<T>,
+  callback: (state: StateAdapter, lock: Lock) => Promise<T>,
 ): Promise<T> {
   const state = await getConnectedState(args.state);
   const lock = await acquireMutationLock(state, args.conversationId);
   try {
-    return await callback(state);
+    return await callback(state, lock);
   } finally {
     await state.releaseLock(lock);
   }
@@ -900,9 +950,15 @@ async function readConversation(
 
 /**
  * Persist a conversation and refresh its reporting and active-recovery indexes.
+ *
+ * Conversation writes are lock-serialized blind whole-record writes, so the
+ * mutation lock is re-validated (and extended) immediately before the write:
+ * a stalled mutator that lost its lock must fail loudly instead of clobbering
+ * a newer record with a stale copy.
  */
 async function writeConversation(
   state: StateAdapter,
+  lock: Lock,
   conversation: Conversation,
 ): Promise<void> {
   const execution = executionWithPendingMessages(
@@ -913,6 +969,13 @@ async function writeConversation(
     ...conversation,
     execution,
   };
+  const fenced = await state.extendLock(
+    lock,
+    CONVERSATION_MUTATION_LOCK_TTL_MS,
+  );
+  if (!fenced) {
+    throw new ConversationMutationFencedError(next.conversationId);
+  }
   await state.set(
     conversationKey(next.conversationId),
     next,
@@ -1016,7 +1079,7 @@ export async function appendInboundMessage(args: {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(
     { conversationId: args.message.conversationId, state: args.state },
-    async (state) => {
+    async (state, lock) => {
       const current =
         (await readConversation(state, args.message.conversationId)) ??
         emptyConversation({
@@ -1046,11 +1109,18 @@ export async function appendInboundMessage(args: {
             : current.execution.status;
         await writeConversation(
           state,
+          lock,
           withExecutionUpdate(
             current,
             {
               ...current.execution,
               status: nextStatus,
+              pendingMessages: current.execution.pendingMessages.map(
+                (message) =>
+                  message.inboundMessageId === args.message.inboundMessageId
+                    ? upgradedPendingMessage(message, args.message)
+                    : message,
+              ),
             },
             nowMs,
           ),
@@ -1072,6 +1142,7 @@ export async function appendInboundMessage(args: {
       };
       await writeConversation(
         state,
+        lock,
         withExecutionUpdate(
           next,
           {
@@ -1102,7 +1173,7 @@ export async function requestConversationWork(args: {
   state?: StateAdapter;
 }): Promise<RequestConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
     if (existing) {
       assertSameConversationDestination({
@@ -1121,6 +1192,7 @@ export async function requestConversationWork(args: {
     const status = current.execution.lease ? "awaiting_resume" : "pending";
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         {
           ...current,
@@ -1151,7 +1223,7 @@ export async function recordConversationActivity(args: {
 }): Promise<void> {
   const nowMs = args.nowMs ?? now();
   const activityAtMs = args.activityAtMs ?? nowMs;
-  await withConversationMutation(args, async (state) => {
+  await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
     if (existing && args.destination) {
       assertSameConversationDestination({
@@ -1168,7 +1240,7 @@ export async function recordConversationActivity(args: {
         nowMs,
         source: args.source,
       });
-    await writeConversation(state, {
+    await writeConversation(state, lock, {
       ...current,
       ...((current.destination ?? args.destination)
         ? { destination: current.destination ?? args.destination }
@@ -1216,7 +1288,7 @@ export async function recordConversationExecution(args: {
   updatedAtMs: number;
 }): Promise<void> {
   const nowMs = args.updatedAtMs;
-  await withConversationMutation(args, async (state) => {
+  await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
     if (existing && args.destination) {
       assertSameConversationDestination({
@@ -1235,6 +1307,7 @@ export async function recordConversationExecution(args: {
       });
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         {
           ...current,
@@ -1276,13 +1349,14 @@ export async function markConversationWorkEnqueued(args: {
   state?: StateAdapter;
 }): Promise<void> {
   const nowMs = args.nowMs ?? now();
-  await withConversationMutation(args, async (state) => {
+  await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
       return;
     }
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1302,7 +1376,7 @@ export async function clearConsumedConversationWake(args: {
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (
       !current ||
@@ -1313,6 +1387,7 @@ export async function clearConsumedConversationWake(args: {
     }
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1333,7 +1408,7 @@ export async function startConversationWork(args: {
   state?: StateAdapter;
 }): Promise<StartConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current) {
       return { status: "no_work" };
@@ -1356,6 +1431,7 @@ export async function startConversationWork(args: {
     };
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1384,13 +1460,14 @@ export async function checkInConversationWork(args: {
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return false;
     }
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1450,7 +1527,7 @@ export async function drainConversationMailbox(args: {
     acknowledgedIds ?? pending.map((message) => message.inboundMessageId),
   );
 
-  await withConversationMutation(args, async (state) => {
+  await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       throw new Error(
@@ -1462,6 +1539,7 @@ export async function drainConversationMailbox(args: {
     );
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1490,7 +1568,7 @@ export async function markConversationMessagesInjected(args: {
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
   const inboundMessageIds = new Set(args.inboundMessageIds);
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return false;
@@ -1508,6 +1586,7 @@ export async function markConversationMessagesInjected(args: {
 
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1530,7 +1609,7 @@ export async function requestConversationContinuation(args: {
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return false;
@@ -1542,6 +1621,7 @@ export async function requestConversationContinuation(args: {
     });
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1563,13 +1643,14 @@ export async function releaseConversationWork(args: {
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return false;
     }
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1595,7 +1676,7 @@ export async function completeConversationWork(args: {
   state?: StateAdapter;
 }): Promise<"completed" | "lost_lease" | "pending"> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
       return "lost_lease";
@@ -1605,6 +1686,7 @@ export async function completeConversationWork(args: {
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {
@@ -1620,6 +1702,121 @@ export async function completeConversationWork(args: {
   });
 }
 
+export interface ConversationWorkFailureRecord {
+  pendingCount: number;
+  poisonedMessages: InboundMessage[];
+  status: "lost_lease" | "recorded" | "skipped";
+}
+
+/**
+ * Record one failed delivery attempt for the pending messages a run was
+ * offered, consuming messages that reach the poison limit so a deterministic
+ * failure cannot requeue forever.
+ *
+ * Attempts are counted only when the run made no durable progress: if any
+ * offered message left the mailbox, the remaining pending entries may be
+ * deliberate deferrals and are left untouched. Consumed message ids stay in
+ * `inboundMessageIds` so source retries remain duplicates.
+ */
+export async function recordConversationWorkFailure(args: {
+  conversationId: string;
+  inboundMessageIds: string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<ConversationWorkFailureRecord> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return { status: "lost_lease", pendingCount: 0, poisonedMessages: [] };
+    }
+    const pendingIds = new Set(
+      current.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
+    );
+    if (
+      args.inboundMessageIds.length === 0 ||
+      args.inboundMessageIds.some((id) => !pendingIds.has(id))
+    ) {
+      return {
+        status: "skipped",
+        pendingCount: current.execution.pendingMessages.length,
+        poisonedMessages: [],
+      };
+    }
+
+    const offered = new Set(args.inboundMessageIds);
+    const poisonedMessages: InboundMessage[] = [];
+    const pendingMessages: InboundMessage[] = [];
+    for (const message of current.execution.pendingMessages) {
+      if (!offered.has(message.inboundMessageId)) {
+        pendingMessages.push(message);
+        continue;
+      }
+      const attempted = {
+        ...message,
+        attemptCount: (message.attemptCount ?? 0) + 1,
+      };
+      if (attempted.attemptCount >= CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS) {
+        poisonedMessages.push(attempted);
+        continue;
+      }
+      pendingMessages.push(attempted);
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          pendingMessages,
+        },
+        nowMs,
+      ),
+    );
+    return {
+      status: "recorded",
+      pendingCount: pendingMessages.length,
+      poisonedMessages,
+    };
+  });
+}
+
+/** Record a terminal failure completion for a leased conversation. */
+export async function failConversationWork(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<"failed" | "lost_lease" | "pending"> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return "lost_lease";
+    }
+    const runnable = pendingMessages(current).length > 0;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lease: undefined,
+          status: runnable ? "pending" : "failed",
+          runId: runnable ? current.execution.runId : undefined,
+        },
+        nowMs,
+      ),
+    );
+    return runnable ? "pending" : "failed";
+  });
+}
+
 /** Clear an expired durable lease so a later worker can resume safely. */
 export async function clearExpiredConversationLease(args: {
   conversationId: string;
@@ -1627,7 +1824,7 @@ export async function clearExpiredConversationLease(args: {
   state?: StateAdapter;
 }): Promise<boolean> {
   const nowMs = args.nowMs ?? now();
-  return await withConversationMutation(args, async (state) => {
+  return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (
       !current?.execution.lease ||
@@ -1637,6 +1834,7 @@ export async function clearExpiredConversationLease(args: {
     }
     await writeConversation(
       state,
+      lock,
       withExecutionUpdate(
         current,
         {

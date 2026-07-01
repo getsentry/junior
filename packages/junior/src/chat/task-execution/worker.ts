@@ -17,10 +17,15 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   ensureConversationWake,
+  failConversationWork,
   getConversationWorkState,
+  isInvalidConversationRecordError,
+  recordConversationWorkFailure,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
+  type ConversationWorkFailureRecord,
+  type ConversationWorkState,
   type InboundMessage,
 } from "./store";
 
@@ -46,6 +51,7 @@ export interface ConversationWorkProcessResult {
   status:
     | "active"
     | "completed"
+    | "failed"
     | "lost_lease"
     | "no_work"
     | "pending_requeued"
@@ -117,6 +123,51 @@ async function requestLostLeaseRecovery(args: {
   });
 }
 
+/**
+ * Record one failed delivery attempt and surface consumed poison messages.
+ *
+ * Consumption is logged here so every poisoned message leaves a
+ * `conversation_work_poisoned` trail with its terminal attempt count.
+ */
+async function recordFailedDeliveryAttempt(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs: number;
+  offeredInboundMessageIds: string[];
+  options: ProcessConversationWorkOptions;
+}): Promise<ConversationWorkFailureRecord> {
+  const failure = await recordConversationWorkFailure({
+    conversationId: args.conversationId,
+    inboundMessageIds: args.offeredInboundMessageIds,
+    leaseToken: args.leaseToken,
+    conversationStore: args.options.conversationStore,
+    nowMs: args.nowMs,
+    state: args.options.state,
+  });
+  for (const message of failure.poisonedMessages) {
+    logWarn(
+      "conversation_work_poisoned",
+      { conversationId: args.conversationId },
+      {
+        "app.conversation.source": message.source,
+        "app.inbound.attempt_count": message.attemptCount ?? 0,
+        "app.inbound.message_id": message.inboundMessageId,
+        "app.inbound.pending_count": failure.pendingCount,
+      },
+      "Conversation work message consumed after exceeding the delivery attempt limit",
+    );
+  }
+  return failure;
+}
+
+function isTerminalFailure(failure: ConversationWorkFailureRecord): boolean {
+  return (
+    failure.status === "recorded" &&
+    failure.poisonedMessages.length > 0 &&
+    failure.pendingCount === 0
+  );
+}
+
 function startLeaseCheckIn(args: {
   conversationId: string;
   leaseToken: string;
@@ -164,10 +215,24 @@ export async function processConversationWork(
   options: ProcessConversationWorkOptions,
 ): Promise<ConversationWorkProcessResult> {
   const conversationId = message.conversationId;
-  const initial = await getConversationWorkState({
-    conversationId,
-    state: options.state,
-  });
+  let initial: ConversationWorkState | undefined;
+  try {
+    initial = await getConversationWorkState({
+      conversationId,
+      state: options.state,
+    });
+  } catch (error) {
+    // Redelivery cannot repair a permanently invalid record, so the delivery
+    // is acknowledged as rejected instead of retried until retention expiry.
+    if (isInvalidConversationRecordError(error)) {
+      throw new ConversationQueueMessageRejectedError(
+        "invalid_record",
+        `Conversation record failed validation for ${conversationId}`,
+        { conversationId },
+      );
+    }
+    throw error;
+  }
   if (
     !initial ||
     (countPendingConversationMessages(initial) === 0 &&
@@ -238,6 +303,9 @@ export async function processConversationWork(
   const softYieldDeadlineMs =
     startedAtMs +
     (options.softYieldAfterMs ?? CONVERSATION_WORK_SOFT_YIELD_AFTER_MS);
+  const offeredInboundMessageIds = initial.messages.map(
+    (message) => message.inboundMessageId,
+  );
   let leaseLost = false;
   const markLeaseLost = (): void => {
     leaseLost = true;
@@ -353,6 +421,29 @@ export async function processConversationWork(
       return { status: "yielded" };
     }
 
+    // A run that returns without durably handling any offered message is a
+    // failed delivery attempt, even when the runner swallowed its error:
+    // completing would requeue the untouched mailbox forever.
+    if (offeredInboundMessageIds.length > 0) {
+      const failure = await recordFailedDeliveryAttempt({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        nowMs: now(options),
+        offeredInboundMessageIds,
+        options,
+      });
+      if (isTerminalFailure(failure)) {
+        await failConversationWork({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: now(options),
+          state: options.state,
+        });
+        return { status: "failed" };
+      }
+    }
+
     const completion = await completeConversationWork({
       conversationId,
       leaseToken: lease.leaseToken,
@@ -393,53 +484,69 @@ export async function processConversationWork(
     return { status: "completed" };
   } catch (error) {
     const errorNowMs = now(options);
+    // A failed run must not both NACK the queue delivery and schedule a
+    // recovery nudge. Once durable recovery state is recorded and one nudge is
+    // sent, the delivery is acknowledged; only when recording recovery state
+    // itself fails is the error rethrown so plain redelivery retries it.
+    let recoveryRecorded = false;
     try {
-      const continuationMarked = await requestConversationContinuation({
-        conversationId,
-        destination,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: errorNowMs,
-        state: options.state,
-      });
-      if (continuationMarked) {
-        await ensureConversationWake({
+      const failure =
+        offeredInboundMessageIds.length > 0
+          ? await recordFailedDeliveryAttempt({
+              conversationId,
+              leaseToken: lease.leaseToken,
+              nowMs: errorNowMs,
+              offeredInboundMessageIds,
+              options,
+            })
+          : undefined;
+      if (failure && isTerminalFailure(failure)) {
+        await failConversationWork({
           conversationId,
+          leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
-          idempotencyKey: nudgeIdempotencyKey(
-            "error",
-            conversationId,
-            errorNowMs,
-          ),
           nowMs: errorNowMs,
-          queue: options.queue,
+          state: options.state,
+        });
+      } else {
+        const continuationMarked = await requestConversationContinuation({
+          conversationId,
+          destination,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: errorNowMs,
+          state: options.state,
+        });
+        if (continuationMarked) {
+          await ensureConversationWake({
+            conversationId,
+            conversationStore: options.conversationStore,
+            idempotencyKey: nudgeIdempotencyKey(
+              "error",
+              conversationId,
+              errorNowMs,
+            ),
+            nowMs: errorNowMs,
+            queue: options.queue,
+            state: options.state,
+          });
+        }
+        await releaseConversationWork({
+          conversationId,
+          leaseToken: lease.leaseToken,
+          conversationStore: options.conversationStore,
+          nowMs: errorNowMs,
           state: options.state,
         });
       }
-    } catch (requeueError) {
+      recoveryRecorded = true;
+    } catch (recoveryError) {
       logException(
-        requeueError,
+        recoveryError,
         "conversation_work_requeue_failed",
         { conversationId },
         {},
-        "Conversation work requeue failed after runner error",
-      );
-    }
-    try {
-      await releaseConversationWork({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        nowMs: errorNowMs,
-        state: options.state,
-      });
-    } catch (releaseError) {
-      logException(
-        releaseError,
-        "conversation_work_release_failed",
-        { conversationId },
-        {},
-        "Conversation work release failed after runner error",
+        "Conversation work recovery failed after runner error",
       );
     }
     if (!isProviderRetryError(error)) {
@@ -453,7 +560,10 @@ export async function processConversationWork(
         "Conversation work failed",
       );
     }
-    throw error;
+    if (!recoveryRecorded) {
+      throw error;
+    }
+    return { status: "failed" };
   } finally {
     clearInterval(timer);
   }

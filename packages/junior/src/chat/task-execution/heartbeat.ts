@@ -7,8 +7,10 @@ import {
   ensureConversationWake,
   getConversationWorkState,
   hasRunnableConversationWork,
+  isInvalidConversationRecordError,
   listActiveConversationIds,
   removeActiveConversation,
+  type ConversationWorkState,
 } from "./store";
 
 const DEFAULT_RECOVERY_LIMIT = 25;
@@ -45,11 +47,32 @@ export async function recoverConversationWork(args: {
   });
 
   for (const conversationId of ids) {
+    let work: ConversationWorkState | undefined;
     try {
-      const work = await getConversationWorkState({
+      work = await getConversationWorkState({
         conversationId,
         state: args.state,
       });
+    } catch (error) {
+      logException(
+        error,
+        "conversation_work_recovery_failed",
+        { conversationId },
+        {},
+        "Conversation work heartbeat recovery failed",
+      );
+      // An invalid record can never become runnable again; drop it from the
+      // bounded oldest-first scan so it cannot starve recovery for every
+      // other conversation.
+      if (isInvalidConversationRecordError(error)) {
+        await removeActiveConversation({
+          conversationId,
+          state: args.state,
+        });
+      }
+      continue;
+    }
+    try {
       if (!work) {
         await removeActiveConversation({
           conversationId,

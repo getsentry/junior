@@ -35,6 +35,7 @@ function createRecordingStateAdapter() {
         token: `lock:${threadId}`,
         expiresAt: Date.now() + 10_000,
       }),
+      extendLock: async () => true,
       releaseLock: async () => {},
     } as unknown as StateAdapter,
     set,
@@ -271,6 +272,10 @@ describe("resource event subscriptions", () => {
         busySubscriptionId && key.endsWith(`:${busySubscriptionId}`)
           ? undefined
           : await baseState.acquireLock(key, ttlMs ?? 10_000),
+      extendLock: async (
+        lock: Parameters<StateAdapter["extendLock"]>[0],
+        ttlMs: number,
+      ) => await baseState.extendLock(lock, ttlMs),
       releaseLock: async (
         lock: Awaited<ReturnType<StateAdapter["acquireLock"]>>,
       ) => {

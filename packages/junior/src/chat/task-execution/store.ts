@@ -9,12 +9,16 @@ export {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_LEASE_TTL_MS,
+  CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  isFinalConversationDeliveryAttempt,
+  isInvalidConversationRecordError,
   type AgentInput,
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type Conversation,
   type ConversationExecution,
+  type ConversationWorkFailureRecord,
   type ConversationWorkLease,
   type ConversationWorkState,
   type ExecutionStatus,
@@ -422,6 +426,35 @@ export async function completeConversationWork(args: {
   state?: StateAdapter;
 }) {
   const result = await workState.completeConversationWork(args);
+  await recordExecutionMetadata(args);
+  return result;
+}
+
+/** Record one failed delivery attempt and consume poisoned mailbox messages. */
+export async function recordConversationWorkFailure(args: {
+  conversationId: string;
+  inboundMessageIds: string[];
+  leaseToken: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.recordConversationWorkFailure(args);
+  if (result.status === "recorded") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
+/** Record a terminal failure completion for a leased conversation. */
+export async function failConversationWork(args: {
+  conversationId: string;
+  leaseToken: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.failConversationWork(args);
   await recordExecutionMetadata(args);
   return result;
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { StateAdapter } from "chat";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
@@ -10,6 +11,7 @@ import {
   CONVERSATION_BY_ACTIVITY_INDEX_KEY,
   completeConversationWork,
   CONVERSATION_WORK_LEASE_TTL_MS,
+  CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
@@ -61,6 +63,7 @@ const CONVERSATION_WORK_STATE_KEY = `junior:conversation:${CONVERSATION_ID}`;
 function failingMetadataStore(): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
+    getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       throw new Error("metadata unavailable");
@@ -72,6 +75,7 @@ function failingMetadataStore(): ConversationStore {
 function metadataEventsStore(events: string[]): ConversationStore {
   return {
     get: vi.fn(async () => undefined),
+    getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       events.push("metadata");
@@ -229,6 +233,46 @@ describe("conversation work execution", () => {
       },
     ]);
     expect(queue.sentRecords()).toEqual(queue.sendAttempts());
+  });
+
+  it("upgrades a still-pending twin payload that adds file attachments", async () => {
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    const twinWithFiles = inboundMessage("m1", {
+      receivedAtMs: 2_000,
+      input: {
+        text: "message m1",
+        authorId: "U123",
+        attachments: [{ id: "F123" }],
+        metadata: { platform: "slack", hasFiles: true },
+      },
+    });
+    await expect(
+      appendInboundMessage({ message: twinWithFiles, nowMs: 2_000 }),
+    ).resolves.toEqual({ status: "duplicate" });
+
+    let work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages).toEqual([
+      expect.objectContaining({
+        inboundMessageId: "m1",
+        receivedAtMs: 1_100,
+        input: expect.objectContaining({
+          attachments: [{ id: "F123" }],
+          metadata: { platform: "slack", hasFiles: true },
+        }),
+      }),
+    ]);
+
+    // A later attachment-less twin must not downgrade the stored payload.
+    await expect(
+      appendInboundMessage({ message: inboundMessage("m1"), nowMs: 3_000 }),
+    ).resolves.toEqual({ status: "duplicate" });
+    work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages[0]?.input.attachments).toEqual([{ id: "F123" }]);
   });
 
   it("retries transient conversation work index lock contention", async () => {
@@ -828,7 +872,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("nudges failed worker runs before releasing runnable work", async () => {
+  it("acknowledges failed worker runs after one nudge instead of a queue retry", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await requestConversationWork({
@@ -846,7 +890,7 @@ describe("conversation work execution", () => {
           throw new Error("runner failed");
         },
       }),
-    ).rejects.toThrow("runner failed");
+    ).resolves.toEqual({ status: "failed" });
 
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -886,7 +930,7 @@ describe("conversation work execution", () => {
           throw new Error("runner failed");
         },
       }),
-    ).rejects.toThrow("runner failed");
+    ).resolves.toEqual({ status: "failed" });
 
     const state = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
@@ -901,6 +945,96 @@ describe("conversation work execution", () => {
         idempotencyKey: `agent-continue:${CONVERSATION_ID}:turn-1:2:2000`,
       },
     ]);
+  });
+
+  it("consumes a message that exceeds the delivery attempt limit as poison work", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    // Deterministic pre-input-commit failure: the runner returns without
+    // durably handling the offered message, which requeued forever before
+    // attempts were bounded.
+    const runSlice = () =>
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async () => ({ status: "completed" }),
+      });
+
+    for (
+      let attempt = 1;
+      attempt < CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS;
+      attempt += 1
+    ) {
+      currentNowMs = attempt * 1_000;
+      await expect(runSlice()).resolves.toEqual({
+        status: "pending_requeued",
+      });
+      const state = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(state?.messages).toEqual([
+        expect.objectContaining({
+          inboundMessageId: "m1",
+          attemptCount: attempt,
+        }),
+      ]);
+    }
+
+    queue.clearSentRecords();
+    currentNowMs = 9_000;
+    await expect(runSlice()).resolves.toEqual({ status: "failed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.messages).toEqual([]);
+    expect(state?.execution.inboundMessageIds).toEqual(["m1"]);
+    expect(state?.execution.status).toBe("failed");
+    expect(state?.needsRun).toBe(false);
+    expect(state?.lease).toBeUndefined();
+    expect(queue.sentRecords()).toEqual([]);
+    await expect(listActiveConversationIds()).resolves.toEqual([]);
+
+    // Source retries of the consumed message stay duplicates.
+    await expect(
+      appendInboundMessage({ message: inboundMessage("m1"), nowMs: 10_000 }),
+    ).resolves.toEqual({ status: "duplicate" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({ messages: [] });
+  });
+
+  it("acknowledges deliveries for conversation records that fail validation as rejected", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(CONVERSATION_WORK_STATE_KEY, {
+      schemaVersion: 1,
+      conversationId: CONVERSATION_ID,
+      createdAtMs: 1_000,
+      destination: SLACK_DESTINATION,
+      execution: { status: "bogus" },
+      lastActivityAtMs: 1_000,
+      updatedAtMs: 1_000,
+    });
+    const run = vi.fn(async () => ({ status: "completed" as const }));
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run,
+        state,
+      }),
+    ).rejects.toMatchObject({
+      name: "ConversationQueueMessageRejectedError",
+      reason: "invalid_record",
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(run).not.toHaveBeenCalled();
+    expect(queue.sendAttempts()).toEqual([]);
   });
 
   it("releases and requeues runnable work when the runner reports lost lease", async () => {
@@ -1002,15 +1136,23 @@ describe("conversation work execution", () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
+    let drainError: unknown;
     await expect(
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => ["different-message"]);
+          try {
+            await context.drainMailbox(async () => ["different-message"]);
+          } catch (error) {
+            drainError = error;
+            throw error;
+          }
           return { status: "completed" };
         },
       }),
-    ).rejects.toThrow(
+    ).resolves.toEqual({ status: "failed" });
+
+    expect(String(drainError)).toContain(
       "Conversation mailbox acknowledgement is not pending for",
     );
 
@@ -1245,6 +1387,95 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords().map((send) => send.idempotencyKey)).toEqual([
       `heartbeat:pending:${CONVERSATION_ID}:62000`,
       `heartbeat:pending:${CONVERSATION_ID}:122001`,
+    ]);
+  });
+
+  it("removes unreadable conversation records from the active index and repairs the rest", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const unreadableConversationId = "slack:C123:9999.0001";
+
+    await requestConversationWork({
+      conversationId: unreadableConversationId,
+      destination: SLACK_DESTINATION,
+      nowMs: 500,
+      state,
+    });
+    await state.set(`junior:conversation:${unreadableConversationId}`, {
+      schemaVersion: 1,
+      conversationId: unreadableConversationId,
+      createdAtMs: 500,
+      destination: SLACK_DESTINATION,
+      execution: { status: "bogus" },
+      lastActivityAtMs: 500,
+      updatedAtMs: 500,
+    });
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+
+    await expect(
+      recoverConversationWork({ nowMs: 62_000, queue, state }),
+    ).resolves.toEqual({ expiredLeaseCount: 0, pendingCount: 1 });
+
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId: CONVERSATION_ID }),
+    ]);
+    const activeIds = await listActiveConversationIds({ state });
+    expect(activeIds).not.toContain(unreadableConversationId);
+    expect(activeIds).toContain(CONVERSATION_ID);
+  });
+
+  it("refuses a stale conversation write after the mutation lock is lost", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    await appendInboundMessage({
+      message: inboundMessage("m1"),
+      nowMs: 1_000,
+      state,
+    });
+
+    let stealLockOnNextRead = false;
+    const proxied = new Proxy(state, {
+      get(target, prop, receiver) {
+        if (prop === "get") {
+          return async (key: string) => {
+            const value = await target.get(key);
+            if (stealLockOnNextRead && key === CONVERSATION_WORK_STATE_KEY) {
+              stealLockOnNextRead = false;
+              await target.forceReleaseLock(
+                `junior:conversation:mutation:${CONVERSATION_ID}`,
+              );
+            }
+            return value;
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+
+    stealLockOnNextRead = true;
+    await expect(
+      appendInboundMessage({
+        message: inboundMessage("m2", {
+          createdAtMs: 2_000,
+          receivedAtMs: 2_100,
+        }),
+        nowMs: 2_000,
+        state: proxied,
+      }),
+    ).rejects.toThrow("Conversation mutation lock was lost before write");
+
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages.map((message) => message.inboundMessageId)).toEqual([
+      "m1",
     ]);
   });
 

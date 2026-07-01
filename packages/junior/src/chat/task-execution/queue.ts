@@ -8,6 +8,7 @@ export interface ConversationQueueMessage {
 export type ConversationQueueMessageRejectReason =
   | "destination_mismatch"
   | "expired"
+  | "invalid_record"
   | "malformed"
   | "signature_mismatch";
 
