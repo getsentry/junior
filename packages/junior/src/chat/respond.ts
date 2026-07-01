@@ -536,7 +536,14 @@ function buildUserTurnInput(args: {
   return { routerBlocks, userContentParts };
 }
 
-function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
+/**
+ * Convert a mid-run user message into the Pi user message shape used for
+ * steering injection and parked-conversation session-log appends, so both
+ * paths store identical durable history.
+ */
+export function buildSteeringPiMessage(
+  message: ReplySteeringMessage,
+): PiMessage {
   const { userContentParts } = buildUserTurnInput({
     userTurnText: message.text,
     userAttachments: message.userAttachments,
@@ -795,14 +802,29 @@ async function generateAssistantReplyInPrivacyContext(
       ) {
         return;
       }
-      await recordToolExecutionStarted({
-        conversationId: sessionConversationId,
-        sessionId,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: event.args,
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
+      try {
+        await recordToolExecutionStarted({
+          conversationId: sessionConversationId,
+          sessionId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.args,
+          ttlMs: THREAD_STATE_TTL_MS,
+        });
+      } catch (error) {
+        // Host-only activity events are best-effort reporting writes; a
+        // failed append must not abort the in-flight model turn.
+        logWarn(
+          "agent_turn_session_log_append_failed",
+          spanContext,
+          {
+            "gen_ai.tool.name": event.toolName,
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to record host-only tool execution start",
+        );
+      }
     };
     const persistedConfigurationValues = context.channelConfiguration
       ? await context.channelConfiguration.resolveValues()
@@ -1259,15 +1281,16 @@ async function generateAssistantReplyInPrivacyContext(
       resumedFromSessionRecord &&
       existingSessionRecord?.turnStartMessageIndex !== undefined;
     const shouldPromptAgent = !resumedFromSessionRecord || !hasPromptCheckpoint;
-    const promptHistoryMessages =
-      shouldPromptAgent && resumedFromSessionRecord
-        ? withoutTrailingUncheckpointedUserPrompt(
-            priorPiMessages,
-            userContentParts,
-          )
-        : shouldPromptAgent
-          ? (priorPiMessages ?? [])
-          : existingSessionRecord!.piMessages;
+    // Every re-prompt shape must trim a trailing checkpointed copy of the same
+    // user prompt, including redelivery of the same inbound message after a
+    // lost input commit against a still-`running` record; otherwise the prompt
+    // appears twice in Pi history.
+    const promptHistoryMessages = shouldPromptAgent
+      ? withoutTrailingUncheckpointedUserPrompt(
+          priorPiMessages,
+          userContentParts,
+        )
+      : existingSessionRecord!.piMessages;
     const needsBootstrapContextForPrompt =
       shouldPromptAgent && !hasRuntimeTurnContext(promptHistoryMessages);
     const systemPromptContributions =
@@ -1578,11 +1601,11 @@ async function generateAssistantReplyInPrivacyContext(
     try {
       if (resumedFromSessionRecord) {
         agent.state.messages = shouldPromptAgent
-          ? (promptHistoryMessages ?? [])
+          ? promptHistoryMessages
           : existingSessionRecord!.piMessages;
         turnStartMessageIndex = existingSessionRecord!.turnStartMessageIndex;
-      } else if (context.piMessages && context.piMessages.length > 0) {
-        agent.state.messages = [...context.piMessages];
+      } else if (promptHistoryMessages.length > 0) {
+        agent.state.messages = [...promptHistoryMessages];
       }
       beforeMessageCount = agent.state.messages.length;
       if (shouldPromptAgent) {
@@ -1984,9 +2007,11 @@ async function generateAssistantReplyInPrivacyContext(
       "generateAssistantReply failed",
     );
 
+    // Raw exception text is diagnostics-only; the failure-response service
+    // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);
     return {
-      text: `Error: ${message}`,
+      text: "",
       ...getSandboxMetadata(),
       diagnostics: {
         outcome: "provider_error",

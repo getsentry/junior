@@ -6,7 +6,9 @@
  * queued messages, compaction, status updates, and Slack posting meet; agent
  * internals stay behind the reply generator.
  */
+import { THREAD_STATE_TTL_MS } from "chat";
 import type { Message, SentMessage, Thread } from "chat";
+import { isDeepStrictEqual } from "node:util";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
@@ -29,6 +31,7 @@ import {
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
+  buildSteeringPiMessage,
   generateAssistantReply as generateAssistantReplyImpl,
   type ReplySteeringMessage,
 } from "@/chat/respond";
@@ -109,6 +112,7 @@ import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
+  abandonAgentTurnSessionRecord,
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
@@ -117,7 +121,7 @@ import {
   initConversationContext,
   setConversationTitle,
 } from "@/chat/state/conversation-details";
-import { loadProjection } from "@/chat/state/session-log";
+import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -480,6 +484,86 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
+        const resolveSteeringMessages = async (
+          queuedMessages: QueuedTurnMessage[],
+        ): Promise<ReplySteeringMessage[]> => {
+          return await Promise.all(
+            queuedMessages.map(async (queued) => {
+              const attachments = queued.message.attachments;
+              return {
+                text: queued.userText,
+                timestampMs: queued.message.metadata.dateSent.getTime(),
+                omittedImageAttachmentCount:
+                  !isVisionEnabled() && hasPotentialImageAttachment(attachments)
+                    ? countPotentialImageAttachments(attachments)
+                    : 0,
+                userAttachments: await deps.resolveUserAttachments(
+                  attachments,
+                  {
+                    threadId,
+                    requesterId: isResourceEventMessage(queued.message)
+                      ? undefined
+                      : queued.message.author.userId,
+                    channelId,
+                    runId,
+                    conversation: preparedState.conversation,
+                    messageTs: getSlackMessageTs(queued.message),
+                  },
+                ),
+              };
+            }),
+          );
+        };
+        /**
+         * Durably append this turn's user input to the session log at the
+         * parked safe boundary so the resumed `continue()` sees it. The
+         * awaiting record pins the log session and materializes the projection
+         * tail, so the append needs no record mutation. Must complete before
+         * `onInputCommitted` consumes the mailbox record.
+         */
+        const appendParkedTurnInput = async (
+          parkedSessionId: string,
+        ): Promise<void> => {
+          if (!conversationId) {
+            return;
+          }
+          const parkedMessages = [
+            ...(options.queuedMessages ?? []),
+            {
+              explicitMention: Boolean(
+                options.explicitMention || message.isMention,
+              ),
+              message,
+              rawText: currentText.rawText,
+              userText: currentText.userText,
+            },
+          ].filter(
+            // Redelivery of the parked turn's own message must not duplicate
+            // the prompt that already started the session.
+            (queued) =>
+              buildDeterministicTurnId(queued.message.id) !== parkedSessionId,
+          );
+          if (parkedMessages.length === 0) {
+            return;
+          }
+          const piMessages = (
+            await resolveSteeringMessages(parkedMessages)
+          ).map(buildSteeringPiMessage);
+          const projection = await loadProjection({ conversationId });
+          if (
+            piMessages.length <= projection.length &&
+            isDeepStrictEqual(projection.slice(-piMessages.length), piMessages)
+          ) {
+            // A prior delivery already appended this input durably.
+            return;
+          }
+          await commitMessages({
+            conversationId,
+            messages: [...projection, ...piMessages],
+            requester: storedRequester,
+            ttlMs: THREAD_STATE_TTL_MS,
+          });
+        };
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
@@ -496,6 +580,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sessionId: activeTurnId,
             });
           if (resumeRequest) {
+            // Durable session-log append first: rescheduling a continuation
+            // does not consume the message, and `onInputCommitted` may only
+            // fire after the input is model-visible.
+            await appendParkedTurnInput(resumeRequest.sessionId);
             try {
               await deps.services.scheduleAgentContinue(resumeRequest);
             } catch (error) {
@@ -528,29 +616,43 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
           if (sessionRecord?.state === "awaiting_resume") {
             if (sessionRecord.resumeReason === "auth") {
-              await persistThreadState(thread, {
-                conversation: preparedState.conversation,
+              // A user follow-up supersedes the auth-parked run: answer it
+              // now as a fresh turn instead of consuming it into a pause that
+              // may never resume. The parked prompt stays model-visible via
+              // the session-log projection, pendingAuth state keeps the
+              // authorization link reusable, and the abandoned record turns a
+              // late OAuth callback into a stale no-op instead of a competing
+              // run.
+              await abandonAgentTurnSessionRecord({
+                conversationId,
+                sessionId: activeTurnId,
+                errorMessage:
+                  "Auth-parked session superseded by a new user message",
               });
-              await options.onTurnStatePersisted?.();
-              await options.onInputCommitted?.();
-              return;
+              markTurnClosed({
+                conversation: preparedState.conversation,
+                nowMs: Date.now(),
+                sessionId: activeTurnId,
+                updateConversationStats,
+              });
+              activeTurnId = undefined;
+            } else {
+              await failAgentTurnSessionRecord({
+                conversationId,
+                expectedVersion: sessionRecord.version,
+                sessionId: activeTurnId,
+                errorMessage:
+                  "Awaiting agent continuation metadata could not be materialized",
+              });
+              markTurnFailed({
+                conversation: preparedState.conversation,
+                nowMs: Date.now(),
+                sessionId: activeTurnId,
+                markConversationMessage,
+                updateConversationStats,
+              });
+              activeTurnId = undefined;
             }
-
-            await failAgentTurnSessionRecord({
-              conversationId,
-              expectedVersion: sessionRecord.version,
-              sessionId: activeTurnId,
-              errorMessage:
-                "Awaiting agent continuation metadata could not be materialized",
-            });
-            markTurnFailed({
-              conversation: preparedState.conversation,
-              nowMs: Date.now(),
-              sessionId: activeTurnId,
-              markConversationMessage,
-              updateConversationStats,
-            });
-            activeTurnId = undefined;
           }
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
@@ -846,37 +948,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const resolveSteeringMessages = async (
-            queuedMessages: QueuedTurnMessage[],
-          ): Promise<ReplySteeringMessage[]> => {
-            return await Promise.all(
-              queuedMessages.map(async (queued) => {
-                const attachments = queued.message.attachments;
-                return {
-                  text: queued.userText,
-                  timestampMs: queued.message.metadata.dateSent.getTime(),
-                  omittedImageAttachmentCount:
-                    !isVisionEnabled() &&
-                    hasPotentialImageAttachment(attachments)
-                      ? countPotentialImageAttachments(attachments)
-                      : 0,
-                  userAttachments: await deps.resolveUserAttachments(
-                    attachments,
-                    {
-                      threadId,
-                      requesterId: isResourceEventMessage(queued.message)
-                        ? undefined
-                        : queued.message.author.userId,
-                      channelId,
-                      runId,
-                      conversation: preparedState.conversation,
-                      messageTs: getSlackMessageTs(queued.message),
-                    },
-                  ),
-                };
-              }),
-            );
-          };
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
                 inject: (messages: ReplySteeringMessage[]) => Promise<void>,

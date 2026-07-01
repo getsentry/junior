@@ -73,6 +73,12 @@ export interface ReplyHooks {
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
   onTurnStatePersisted?: () => Promise<void>;
   shouldYield?: () => boolean;
+  /**
+   * Whether a failed turn for this delivery will be redelivered by the durable
+   * mailbox. When true, the handler suppresses the visible failure reply so a
+   * bounded retry sequence posts at most one fallback (on the final attempt).
+   */
+  willRetryOnFailure?: () => boolean;
 }
 
 interface SteeringDrainContext {
@@ -838,6 +844,11 @@ export function createSlackTurnRuntime<
           {},
           "onNewMention failed",
         );
+        if (hooks.willRetryOnFailure?.()) {
+          // The mailbox redelivers this message; only the final bounded
+          // attempt posts the visible failure reply.
+          return;
+        }
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for mention_handler_failed",
@@ -1146,6 +1157,11 @@ export function createSlackTurnRuntime<
           {},
           "onSubscribedMessage failed",
         );
+        if (hooks.willRetryOnFailure?.()) {
+          // The mailbox redelivers this message; only the final bounded
+          // attempt posts the visible failure reply.
+          return;
+        }
         if (!eventId) {
           throw new Error(
             "Sentry did not return an event ID for subscribed_message_handler_failed",

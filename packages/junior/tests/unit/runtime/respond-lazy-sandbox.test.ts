@@ -646,7 +646,9 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
     const reply = await generateLocalReply("attach the report");
 
-    expect(reply.text).toContain("Error: agent exploded");
+    // Raw exception text stays in diagnostics; it is never reply text.
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.errorMessage).toContain("agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.sandboxId).toBe("sandbox-test");
     expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
@@ -660,7 +662,9 @@ describe("generateAssistantReply lazy sandbox boot", () => {
       onSandboxAcquired,
     });
 
-    expect(reply.text).toContain("Error: agent exploded");
+    // Raw exception text stays in diagnostics; it is never reply text.
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.errorMessage).toContain("agent exploded");
     expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
     expect(onSandboxAcquired).toHaveBeenCalledWith({
       sandboxId: "sandbox-test",
@@ -673,7 +677,9 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
     const reply = await generateLocalReply("run pwd");
 
-    expect(reply.text).toContain("Error: agent exploded");
+    // Raw exception text stays in diagnostics; it is never reply text.
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.errorMessage).toContain("agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.sandboxId).toBe("sandbox-test");
     expect(reply.sandboxDependencyProfileHash).toBe("hash-test");

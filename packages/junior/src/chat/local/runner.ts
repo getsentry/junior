@@ -33,6 +33,7 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
+import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -282,6 +283,14 @@ export async function runLocalAgentTurn(
       onToolResult: async (result) => {
         await deps.onToolResult?.(result);
       },
+    });
+
+    // Failed turns deliver the sanitized fallback (or genuine partial model
+    // text), never raw exception strings and never silence.
+    reply = finalizeFailedTurnReply({
+      reply,
+      logException,
+      context: { conversationId: input.conversationId },
     });
 
     completedState = buildDeliveredTurnStatePatch({

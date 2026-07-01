@@ -130,8 +130,13 @@ export function finalizeFailedTurnReply(args: {
     capture.eventName,
   );
 
+  // Only text derived from actual assistant messages may be delivered as
+  // partial output. Synthesized failure replies (runtime catch-alls) report
+  // zero assistant messages, so raw exception text never reaches the user;
+  // the sanitized fallback with its event id owns the visible failure.
   const providerPartialText =
-    args.reply.diagnostics.outcome === "provider_error"
+    args.reply.diagnostics.outcome === "provider_error" &&
+    args.reply.diagnostics.assistantMessageCount > 0
       ? args.reply.text.trim()
       : "";
 

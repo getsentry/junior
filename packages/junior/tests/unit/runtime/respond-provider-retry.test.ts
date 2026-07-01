@@ -4,17 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 
-const { agentMode, counters } = vi.hoisted(() => ({
+const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
   agentMode: {
     value: "providerRetry" as
       | "providerRetry"
       | "cooperativeYield"
       | "steering"
-      | "steeringSteerThrows",
+      | "steeringSteerThrows"
+      | "toolActivity",
   },
   counters: {
     continueCalls: 0,
     promptCalls: 0,
+  },
+  sessionLogState: {
+    failToolExecutionAppend: false,
+    toolExecutionAppendCalls: 0,
   },
 }));
 
@@ -43,6 +48,23 @@ async function advanceUntilContinueCall(maxMs: number): Promise<void> {
   throw new Error("Expected provider retry continuation to start");
 }
 
+vi.mock("@/chat/state/session-log", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/chat/state/session-log")>();
+  return {
+    ...actual,
+    recordToolExecutionStarted: async (
+      ...args: Parameters<typeof actual.recordToolExecutionStarted>
+    ) => {
+      sessionLogState.toolExecutionAppendCalls += 1;
+      if (sessionLogState.failToolExecutionAppend) {
+        throw new Error("redis blip during host-only append");
+      }
+      return actual.recordToolExecutionStarted(...args);
+    },
+  };
+});
+
 vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
     state: {
@@ -53,6 +75,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     };
     private prepareNextTurn?: () => Promise<unknown> | unknown;
     private steeringMessages: unknown[] = [];
+    private subscribers: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
       initialState: {
@@ -71,8 +94,13 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       this.prepareNextTurn = input.prepareNextTurn;
     }
 
-    subscribe() {
-      return () => undefined;
+    subscribe(subscriber: (event: unknown) => unknown) {
+      this.subscribers.push(subscriber);
+      return () => {
+        this.subscribers = this.subscribers.filter(
+          (candidate) => candidate !== subscriber,
+        );
+      };
     }
 
     steer(message: unknown) {
@@ -102,6 +130,41 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
+      if (agentMode.value === "toolActivity") {
+        // Pi surfaces subscriber rejections as run failures; a host-only
+        // activity append that rejects must not reach this path.
+        try {
+          await Promise.all(
+            this.subscribers.map((subscriber) =>
+              subscriber({
+                type: "tool_execution_start",
+                toolCallId: "call_1",
+                toolName: "bash",
+                args: { cmd: "ls" },
+              }),
+            ),
+          );
+        } catch (error) {
+          this.recordRunFailure(error);
+          return {};
+        }
+        this.state.messages.push({
+          role: "toolResult",
+          toolName: "bash",
+          isError: false,
+          content: [{ type: "text", text: "ok" }],
+        });
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "Tool done." }],
+          stopReason: "stop",
+          usage: {
+            input: 2,
+            output: 2,
+          },
+        });
+        return {};
+      }
       if (
         agentMode.value === "cooperativeYield" ||
         agentMode.value === "steering" ||
@@ -282,6 +345,8 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "providerRetry";
     counters.continueCalls = 0;
     counters.promptCalls = 0;
+    sessionLogState.failToolExecutionAppend = false;
+    sessionLogState.toolExecutionAppendCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
     await getConversationStore().listByActivity({ limit: 1 });
@@ -561,6 +626,74 @@ describe("generateAssistantReply provider retry", () => {
         "turn-yield-persist-failure",
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it("swallows failed host-only activity appends without killing the turn", async () => {
+    agentMode.value = "toolActivity";
+    sessionLogState.failToolExecutionAppend = true;
+
+    const reply = await generateAssistantReply("run the tool", {
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      correlation: {
+        conversationId: "conversation-tool-activity",
+        turnId: "turn-tool-activity",
+        channelId: "C123",
+        threadTs: "1712345.0006",
+      },
+    });
+
+    expect(sessionLogState.toolExecutionAppendCalls).toBe(1);
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.text).toBe("Tool done.");
+  });
+
+  it("does not duplicate the user prompt when a lost input commit replays against a running record", async () => {
+    agentMode.value = "steering";
+    const conversationId = "conversation-replay";
+    const sessionId = "turn-replay";
+    const checkpointedPrompt = {
+      role: "user",
+      content: [{ type: "text", text: "help me" }],
+      timestamp: 5,
+    } satisfies PiMessage;
+    await turnSessionState.upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "running",
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      piMessages: [checkpointedPrompt],
+      turnStartMessageIndex: 0,
+    });
+
+    const reply = await generateAssistantReply("help me", {
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      piMessages: [checkpointedPrompt],
+      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      correlation: {
+        conversationId,
+        turnId: sessionId,
+        channelId: "C123",
+        threadTs: "1712345.0007",
+      },
+    });
+
+    expect(reply.diagnostics.outcome).toBe("success");
+    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+      conversationId,
+      sessionId,
+    );
+    const userMessages =
+      sessionRecord?.piMessages.filter((message) => message.role === "user") ??
+      [];
+    expect(userMessages).toHaveLength(1);
+    expect(
+      JSON.stringify(sessionRecord?.piMessages).split("help me"),
+    ).toHaveLength(2);
   });
 
   it("rejects steering injection when Pi steer fails", async () => {

@@ -1062,6 +1062,51 @@ describe("Slack conversation work execution", () => {
     });
   });
 
+  it("exposes mailbox retry state to the runtime failure path", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    const observed: Array<boolean | undefined> = [];
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: {
+          handleNewMention: async (_thread, _message, hooks) => {
+            // Before input commit a failure leaves the record pending, so the
+            // mailbox retries and the visible failure reply is suppressed.
+            observed.push(hooks.willRetryOnFailure?.());
+            await hooks.onInputCommitted?.();
+            // After input commit no redelivery happens: the failure is final.
+            observed.push(hooks.willRetryOnFailure?.());
+          },
+          handleSubscribedMessage: async () => {
+            throw new Error("unexpected subscribed route");
+          },
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(observed).toEqual([true, false]);
+  });
+
   it("keeps Slack mailbox records pending when input commit fails", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();

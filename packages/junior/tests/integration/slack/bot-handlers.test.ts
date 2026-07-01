@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { ReplyRequestContext } from "@/chat/respond";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { loadProjection } from "@/chat/state/session-log";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
@@ -64,6 +65,14 @@ function createRuntime(
         ...(services.visionContext ?? {}),
       },
     },
+  });
+}
+
+function createSlackSourceForTest(channelId: string) {
+  return createSlackSource({
+    teamId: "T123",
+    channelId,
+    threadTs: "1700000000.000",
   });
 }
 
@@ -1011,11 +1020,21 @@ describe("bot handlers (integration)", () => {
     expect(followUp?.meta?.skippedReason).toBeUndefined();
   });
 
-  it("parks auth-paused active turns without starting a new follow-up turn", async () => {
+  it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
     const conversationId = "slack:C_AUTH_PARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
-    const generateAssistantReply = vi.fn();
-    const onTurnStatePersisted = vi.fn();
+    const generateAssistantReply = vi.fn().mockResolvedValue({
+      text: "Fresh answer without the provider.",
+      diagnostics: {
+        assistantMessageCount: 1,
+        modelId: "test-model",
+        outcome: "success" as const,
+        toolCalls: [],
+        toolErrorCount: 0,
+        toolResultCount: 0,
+        usedPrimaryText: true,
+      },
+    });
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId: activeSessionId,
@@ -1045,34 +1064,185 @@ describe("bot handlers (integration)", () => {
         text: "any update?",
         isMention: true,
       }),
-      {
-        destination: createTestDestination(thread),
-        onTurnStatePersisted,
-      },
+      { destination: createTestDestination(thread) },
     );
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
-    expect(onTurnStatePersisted).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([]);
+    // The follow-up supersedes the pause: it must be answered, not consumed
+    // into a resume that only happens if the user ever authorizes.
+    expect(generateAssistantReply).toHaveBeenCalledOnce();
+    expect(generateAssistantReply.mock.calls[0]?.[0]).toContain("any update?");
+    expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
+      true,
+    );
+    await expect(
+      getAgentTurnSessionRecord(conversationId, activeSessionId),
+    ).resolves.toMatchObject({
+      state: "abandoned",
+      errorMessage: "Auth-parked session superseded by a new user message",
+    });
     const state = thread.getState();
     const conversation = (
       state as {
-        conversation?: {
-          messages?: Array<{
-            id?: string;
-            meta?: { replied?: boolean; skippedReason?: string };
-          }>;
-          processing?: { activeTurnId?: string };
-        };
+        conversation?: { processing?: { activeTurnId?: string } };
       }
     ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe(activeSessionId);
-    const followUp = conversation?.messages?.find(
-      (message) => message.id === "msg-auth-follow-up",
+    expect(conversation?.processing?.activeTurnId).toBeUndefined();
+  });
+
+  it("appends a parked-conversation follow-up to the session log before consuming it", async () => {
+    const conversationId = "slack:C9PARKEDLOG:1700000000.000";
+    const destination = slackDestination("C9PARKEDLOG");
+    const activeSessionId = "turn_msg-original";
+    const storedSource = createSlackSourceForTest("C9PARKEDLOG");
+    const parkedRecord = await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      destination,
+      source: storedSource,
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
+    });
+    const projectionAtScheduleTime: string[] = [];
+    const scheduleAgentContinue = vi.fn(async () => {
+      projectionAtScheduleTime.push(
+        JSON.stringify(await loadProjection({ conversationId })),
+      );
+    });
+    const generateAssistantReply = vi.fn();
+    const onInputCommitted = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply,
+          scheduleAgentContinue,
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+    const followUp = createTestMessage({
+      id: "msg-parked-follow-up",
+      threadId: conversationId,
+      text: "also check the logs",
+      isMention: true,
+    });
+
+    await slackRuntime.handleNewMention(thread, followUp, {
+      destination,
+      onInputCommitted,
+    });
+
+    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(thread.posts).toEqual([]);
+    expect(onInputCommitted).toHaveBeenCalledOnce();
+    expect(scheduleAgentContinue).toHaveBeenCalledWith({
+      conversationId,
+      destination,
+      sessionId: activeSessionId,
+      // The append is a log-only write: the resume request stays valid.
+      expectedVersion: parkedRecord.version,
+    });
+    // The durable append happened before the continuation was scheduled.
+    expect(projectionAtScheduleTime[0]).toContain("also check the logs");
+
+    // The resumed continue() replays the record's Pi history, which must now
+    // end with the follow-up at a continuable user boundary.
+    const record = await getAgentTurnSessionRecord(
+      conversationId,
+      activeSessionId,
     );
-    expect(followUp).toBeDefined();
-    expect(followUp?.meta?.replied).toBeUndefined();
-    expect(followUp?.meta?.skippedReason).toBeUndefined();
+    expect(record?.state).toBe("awaiting_resume");
+    const lastMessage = record?.piMessages.at(-1) as
+      | { content?: Array<{ text?: string }>; role?: string }
+      | undefined;
+    expect(lastMessage?.role).toBe("user");
+    expect(JSON.stringify(lastMessage?.content)).toContain(
+      "also check the logs",
+    );
+
+    // Redelivery of the same follow-up must not duplicate the append.
+    await slackRuntime.handleNewMention(thread, followUp, {
+      destination,
+      onInputCommitted,
+    });
+    const projection = await loadProjection({ conversationId });
+    expect(
+      JSON.stringify(projection).split("also check the logs"),
+    ).toHaveLength(2);
+  });
+
+  it("suppresses the visible failure reply when the mailbox will retry the delivery", async () => {
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new Error("transient turn failure");
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_RETRYQUIET:1700000000.000",
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-retryable-failure",
+        threadId: "slack:C_RETRYQUIET:1700000000.000",
+        text: "do work",
+        isMention: true,
+      }),
+      {
+        destination: createTestDestination(thread),
+        willRetryOnFailure: () => true,
+      },
+    );
+
+    expect(thread.posts).toEqual([]);
+  });
+
+  it("posts the failure fallback on the final delivery attempt", async () => {
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new Error("persistent turn failure");
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_RETRYFINAL:1700000000.000",
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-final-failure",
+        threadId: "slack:C_RETRYFINAL:1700000000.000",
+        text: "do work",
+        isMention: true,
+      }),
+      {
+        destination: createTestDestination(thread),
+        willRetryOnFailure: () => false,
+      },
+    );
+
+    expect(thread.posts).toEqual([
+      expect.stringContaining(
+        "I ran into an internal error while processing that.",
+      ),
+    ]);
   });
 
   it("fails malformed awaiting continuations before handling the follow-up", async () => {

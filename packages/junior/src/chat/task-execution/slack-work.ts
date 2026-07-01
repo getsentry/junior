@@ -487,6 +487,11 @@ export function createSlackConversationWorker(
             );
           }
         };
+        // Failures before input commit leave the records pending, so the
+        // worker redelivers them; suppress visible failure replies until the
+        // final bounded attempt.
+        const willRetryOnFailure = (): boolean =>
+          !initialMessagesPersisted && !isFinalSlackDeliveryAttempt(records);
         // Restore stored mailbox entries as Slack steering candidates; the
         // runtime returns only the inbound ids it handled durably.
         const drainSteeringMessages = async (
@@ -523,6 +528,7 @@ export function createSlackConversationWorker(
               drainSteeringMessages,
               onInputCommitted,
               shouldYield: context.shouldYield,
+              willRetryOnFailure,
             });
             return;
           }
@@ -533,6 +539,7 @@ export function createSlackConversationWorker(
             drainSteeringMessages,
             onInputCommitted,
             shouldYield: context.shouldYield,
+            willRetryOnFailure,
           });
         } catch (error) {
           if (isCooperativeTurnYieldError(error)) {
