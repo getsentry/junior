@@ -46,6 +46,15 @@ function ctx(channelId?: string): ToolRuntimeContext {
   };
 }
 
+function expectTranscriptTools(tools: ReturnType<typeof createTools>): void {
+  expect(tools).toHaveProperty("transcriptList");
+  expect(tools).toHaveProperty("transcriptSearch");
+  expect(tools).toHaveProperty("transcriptRead");
+  expect(tools).not.toHaveProperty("slackTranscriptList");
+  expect(tools).not.toHaveProperty("slackTranscriptSearch");
+  expect(tools).not.toHaveProperty("slackTranscriptRead");
+}
+
 describe("Slack tool registration", () => {
   beforeEach(() => {
     setPlugins([schedulerPlugin()]);
@@ -59,6 +68,7 @@ describe("Slack tool registration", () => {
   it("does not register channel-scope tools in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
+    expectTranscriptTools(tools);
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
@@ -68,6 +78,7 @@ describe("Slack tool registration", () => {
   it("registers channel-scope tools in shared channel context", () => {
     const tools = createTools([], {}, ctx("C12345"));
 
+    expectTranscriptTools(tools);
     expect(tools).toHaveProperty("slackChannelPostMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
@@ -84,6 +95,7 @@ describe("Slack tool registration", () => {
       },
     );
 
+    expectTranscriptTools(tools);
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackThreadRead");
@@ -103,6 +115,7 @@ describe("Slack tool registration", () => {
       },
     );
 
+    expectTranscriptTools(tools);
     expect(tools).toHaveProperty("slackChannelPostMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
@@ -156,6 +169,7 @@ describe("Slack tool registration", () => {
   it("does not register canvas create when channel context is unavailable", () => {
     const tools = createTools([], {}, ctx());
 
+    expectTranscriptTools(tools);
     expect(tools).not.toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("slackCanvasRead");
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
@@ -178,6 +192,7 @@ describe("Slack tool registration", () => {
       },
     );
 
+    expectTranscriptTools(tools);
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);

@@ -28,6 +28,9 @@ import {
   createSlackCanvasReadTool,
   createSlackCanvasWriteTool,
 } from "@/chat/tools/slack/canvas-tools";
+import { createTranscriptListTool } from "@/chat/tools/transcripts/list";
+import { createTranscriptReadTool } from "@/chat/tools/transcripts/read";
+import { createTranscriptSearchTool } from "@/chat/tools/transcripts/search";
 import {
   createSlackListAddItemsTool,
   createSlackListCreateTool,
@@ -113,6 +116,9 @@ export function createTools(
       hooks,
       hooks.toolOverrides?.imageGenerate,
     ),
+    transcriptList: createTranscriptListTool(context),
+    transcriptSearch: createTranscriptSearchTool(context),
+    transcriptRead: createTranscriptReadTool(context),
   };
 
   if (context.advisor) {

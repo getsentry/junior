@@ -56,6 +56,23 @@ SQL records may reference transcript authorities by `conversationId`,
 `sessionId`, message count, or summary fields, but must not duplicate full
 transcript payloads as the normal read path.
 
+Model-visible transcript query tools may join SQL conversation metadata to the
+state-backed `thread-state:<conversationId>` transcript body. They are core
+transcript tools, not source-specific tools, and must derive visibility from
+the current runtime source. Public Slack channel transcripts in the same
+workspace are visible, while private Slack channels, DMs, and local
+conversations are visible only when they match the current source identity.
+Transcript tools must not expose cross-workspace records or unrelated
+private/direct conversation state.
+
+The core model-visible transcript tools are `transcriptList`,
+`transcriptSearch`, and `transcriptRead`. Model-supplied inputs may choose
+keyword queries, result limits, source-link inclusion, and exact
+`conversation_id` reads for already visible results. They must not accept
+workspace, channel, requester, or arbitrary visibility-scope selectors from the
+model. Search is lexical keyword search over retained visible messages and
+compaction summaries; semantic transcript search is a separate future feature.
+
 The transient task-execution authorities from `./task-execution.md` also remain
 state-backed:
 

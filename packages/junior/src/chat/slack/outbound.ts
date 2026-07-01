@@ -6,6 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import { getSlackMessagePermalinkBestEffort } from "@/chat/slack/permalink";
 import { parseActorUserId } from "@/chat/requester";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
@@ -47,32 +48,6 @@ function requireSlackMessageText(text: string, action: string): string {
     );
   }
   return text;
-}
-
-async function getPermalinkBestEffort(args: {
-  channelId: string;
-  messageTs: string;
-}): Promise<string | undefined> {
-  try {
-    const response = await withSlackRetries(
-      () =>
-        getSlackClient().chat.getPermalink({
-          channel: args.channelId,
-          message_ts: args.messageTs,
-        }),
-      3,
-      {
-        action: "chat.getPermalink",
-        spanAttributes: {
-          "app.slack.channel_id": args.channelId,
-          "app.slack.message_ts": args.messageTs,
-        },
-      },
-    );
-    return response.permalink;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
@@ -125,7 +100,7 @@ export async function postSlackMessage(input: {
     ts: response.ts,
     ...(input.includePermalink
       ? {
-          permalink: await getPermalinkBestEffort({
+          permalink: await getSlackMessagePermalinkBestEffort({
             channelId,
             messageTs: response.ts,
           }),
