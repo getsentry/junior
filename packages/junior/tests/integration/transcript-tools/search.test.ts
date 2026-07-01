@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createTranscriptSearchTool } from "@/chat/tools/transcripts/search";
+import { createTranscriptSearchTool } from "@/chat/tools/transcripts/transcript-search";
 import {
   closeFixture,
   compaction,

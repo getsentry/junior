@@ -25,14 +25,14 @@ import {
 } from "@/chat/tools/transcripts/projection";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-/** Create a tool that reads one saved Junior transcript by conversation id. */
+/** Create a tool that reads a bounded window from one saved Junior transcript. */
 export function createTranscriptReadTool(
   context: ToolRuntimeContext,
   deps?: TranscriptToolDeps,
 ) {
   return tool({
     description:
-      "Read one saved Junior conversation transcript by `conversation_id` returned from transcriptList or transcriptSearch. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
+      "Read a bounded message window from one saved Junior conversation transcript by `conversation_id` returned from transcriptList or transcriptSearch. Use `offset` and `next_offset` to scan through retained live messages. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       conversation_id: Type.String({
@@ -45,13 +45,15 @@ export function createTranscriptReadTool(
         Type.Integer({
           minimum: 1,
           maximum: MAX_READ_LIMIT,
-          description: "Maximum number of transcript messages to return.",
+          description:
+            "Maximum number of retained live transcript messages to return in this window.",
         }),
       ),
       offset: Type.Optional(
         Type.Integer({
           minimum: 0,
-          description: "Message offset within the saved transcript.",
+          description:
+            "Message offset for scanning through retained live transcript messages.",
         }),
       ),
     }),

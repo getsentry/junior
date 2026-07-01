@@ -28,9 +28,9 @@ import {
   createSlackCanvasReadTool,
   createSlackCanvasWriteTool,
 } from "@/chat/tools/slack/canvas-tools";
-import { createTranscriptListTool } from "@/chat/tools/transcripts/list";
-import { createTranscriptReadTool } from "@/chat/tools/transcripts/read";
-import { createTranscriptSearchTool } from "@/chat/tools/transcripts/search";
+import { createTranscriptListTool } from "@/chat/tools/transcripts/transcript-list";
+import { createTranscriptReadTool } from "@/chat/tools/transcripts/transcript-read";
+import { createTranscriptSearchTool } from "@/chat/tools/transcripts/transcript-search";
 import {
   createSlackListAddItemsTool,
   createSlackListCreateTool,

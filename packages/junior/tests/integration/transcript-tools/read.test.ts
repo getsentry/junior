@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createTranscriptReadTool } from "@/chat/tools/transcripts/read";
+import { createTranscriptReadTool } from "@/chat/tools/transcripts/transcript-read";
 import {
   TRANSCRIPT_UNAVAILABLE_ERROR,
   closeFixture,

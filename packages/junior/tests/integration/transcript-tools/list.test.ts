@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createTranscriptListTool } from "@/chat/tools/transcripts/list";
+import { createTranscriptListTool } from "@/chat/tools/transcripts/transcript-list";
 import {
   closeFixture,
   compaction,
