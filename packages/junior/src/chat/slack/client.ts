@@ -21,6 +21,7 @@ export type SlackActionErrorCode =
   | "not_in_channel"
   | "already_reacted"
   | "no_reaction"
+  | "read_only_channel"
   | "internal_error";
 
 export class SlackActionError extends Error {
@@ -229,6 +230,10 @@ function mapSlackError(error: unknown): SlackActionError {
 
   if (apiError === "not_in_channel") {
     return new SlackActionError(message, "not_in_channel", baseOptions);
+  }
+
+  if (apiError === "restricted_action_read_only_channel") {
+    return new SlackActionError(message, "read_only_channel", baseOptions);
   }
 
   if (apiError === "already_reacted") {

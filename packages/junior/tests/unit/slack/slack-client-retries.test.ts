@@ -187,3 +187,23 @@ describe("withSlackRetries", () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("mapSlackError - read_only_channel", () => {
+  it("maps restricted_action_read_only_channel as read_only_channel", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "restricted_action_read_only_channel",
+      },
+      message: "An API error occurred: restricted_action_read_only_channel",
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "read_only_channel",
+        apiError: "restricted_action_read_only_channel",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+});

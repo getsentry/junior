@@ -11,6 +11,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
+import { SlackActionError } from "@/chat/slack/client";
 import {
   isCooperativeTurnYieldError,
   isTurnInputCommitLostError,
@@ -812,6 +813,24 @@ export function createSlackTurnRuntime<
         if (error instanceof AuthorizationFlowDisabledError) {
           return;
         }
+        if (
+          error instanceof SlackActionError &&
+          error.code === "read_only_channel"
+        ) {
+          deps.logWarn(
+            "mention_handler_read_only_channel",
+            logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: requesterUserName(message),
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message),
+            }),
+            {},
+            "Skipping reply to read-only channel",
+          );
+          return;
+        }
         const eventId = deps.logException(
           error,
           "mention_handler_failed",
@@ -1100,6 +1119,24 @@ export function createSlackTurnRuntime<
           return;
         }
         if (error instanceof AuthorizationFlowDisabledError) {
+          return;
+        }
+        if (
+          error instanceof SlackActionError &&
+          error.code === "read_only_channel"
+        ) {
+          deps.logWarn(
+            "subscribed_message_handler_read_only_channel",
+            logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: requesterUserName(message),
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message),
+            }),
+            {},
+            "Skipping reply to read-only channel",
+          );
           return;
         }
         const eventId = deps.logException(
