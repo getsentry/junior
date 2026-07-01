@@ -32,7 +32,7 @@ export function createTranscriptReadTool(
 ) {
   return tool({
     description:
-      "Read one saved Junior conversation transcript by `conversation_id` returned from transcriptList or transcriptSearch. Public workspace channels may be visible; private, direct, and local transcripts are limited to the current source.",
+      "Read one saved Junior conversation transcript by `conversation_id` returned from transcriptList or transcriptSearch. Public Slack channels in the workspace may be visible; private and direct Slack transcripts are limited to the current Slack source or same-workspace destination channel, and local transcripts are limited to the current local source.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       conversation_id: Type.String({

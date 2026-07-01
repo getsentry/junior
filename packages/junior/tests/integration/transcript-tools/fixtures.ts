@@ -19,7 +19,7 @@ import {
 } from "../../fixtures/sql";
 
 export const TRANSCRIPT_UNAVAILABLE_ERROR =
-  "Transcript was not found or is not available from the current source context.";
+  "Transcript was not found or is not available from the current context.";
 
 const noopSandbox = {} as any;
 const noopEgress = {
@@ -117,12 +117,13 @@ export async function recordSlackTranscript(args: {
   channelId: string;
   compactions?: ConversationCompaction[];
   conversationId: string;
+  lastActivityAtMs?: number;
   messages: ConversationMessage[];
   store: ConversationStore;
   teamId?: string;
   title: string;
 }) {
-  const nowMs = Date.parse("2026-06-11T12:00:00.000Z");
+  const nowMs = args.lastActivityAtMs ?? Date.parse("2026-06-11T12:00:00.000Z");
   await args.store.recordExecution({
     conversationId: args.conversationId,
     destination: {

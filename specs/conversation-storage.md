@@ -59,11 +59,12 @@ transcript payloads as the normal read path.
 Model-visible transcript query tools may join SQL conversation metadata to the
 state-backed `thread-state:<conversationId>` transcript body. They are core
 transcript tools, not source-specific tools, and must derive visibility from
-the current runtime source. Public Slack channel transcripts in the same
-workspace are visible, while private Slack channels, DMs, and local
-conversations are visible only when they match the current source identity.
-Transcript tools must not expose cross-workspace records or unrelated
-private/direct conversation state.
+the current runtime context. Public Slack channel transcripts in the same
+workspace are visible. Private Slack channels and DMs are visible only when
+they match the current Slack source channel or the same-workspace runtime
+destination channel. Local conversations are visible only when they match the
+current local source identity. Transcript tools must not expose cross-workspace
+records or unrelated private/direct conversation state.
 
 The core model-visible transcript tools are `transcriptList`,
 `transcriptSearch`, and `transcriptRead`. Model-supplied inputs may choose

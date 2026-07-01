@@ -50,7 +50,12 @@ function slackConversationAccess(
   }
   const access = checkSlackChannelReadAccess({
     targetChannelId: channelId,
-    currentChannelIds: [context.source.channelId],
+    currentChannelIds: [
+      context.source.channelId,
+      context.destination.teamId === context.source.teamId
+        ? context.destination.channelId
+        : undefined,
+    ],
   });
   if (!access.allowed) {
     return undefined;
@@ -86,11 +91,12 @@ function isSlackRuntimeToolContext(
 }
 
 /**
- * Resolve transcript visibility from the active source only.
+ * Resolve transcript visibility from the active runtime context.
  *
  * Slack access is limited to the same workspace plus public-channel or current
- * private/DM channel rules. Local access requires the exact current local
- * conversation. Callers must pass this gate before loading thread state.
+ * source/destination private/DM channel rules. Local access requires the exact
+ * current local conversation. Callers must pass this gate before loading thread
+ * state.
  */
 export function transcriptAccess(
   conversation: Conversation,

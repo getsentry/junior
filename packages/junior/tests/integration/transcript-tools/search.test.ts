@@ -65,7 +65,7 @@ describe("transcriptSearch", () => {
     }
   });
 
-  it("uses Slack source channel, not destination channel, for private access", async () => {
+  it("uses Slack source and destination channels for private access", async () => {
     const { fixture, store } = await setupFixture();
     try {
       await recordSlackTranscript({
@@ -94,9 +94,54 @@ describe("transcriptSearch", () => {
         ),
       );
 
-      expect(
-        searched.matches.map((entry: any) => entry.conversation_id),
-      ).toEqual(["slack:GSOURCE:1700000000.000001"]);
+      const conversationIds = searched.matches
+        .map((entry: any) => entry.conversation_id)
+        .sort();
+      expect(conversationIds).toEqual([
+        "slack:GDEST:1700000000.000002",
+        "slack:GSOURCE:1700000000.000001",
+      ]);
+    } finally {
+      await closeFixture(fixture);
+    }
+  });
+
+  it("continues scanning when inaccessible rows fill the first SQL page", async () => {
+    const { fixture, store } = await setupFixture();
+    try {
+      const baseMs = Date.parse("2026-06-11T12:00:00.000Z");
+      for (let index = 0; index < 101; index += 1) {
+        await recordSlackTranscript({
+          store,
+          channelId: "GOTHER",
+          conversationId: `slack:GOTHER:1700000000.${String(index).padStart(6, "0")}`,
+          lastActivityAtMs: baseMs + 101 - index,
+          title: `Other private thread ${index}`,
+          messages: [message(`hidden-${index}`, "hidden keyword note")],
+        });
+      }
+      await recordSlackTranscript({
+        store,
+        channelId: "GPRIVATE",
+        conversationId: "slack:GPRIVATE:1700000000.999999",
+        lastActivityAtMs: baseMs,
+        title: "Older visible private thread",
+        messages: [message("visible-1", "older visible keyword note")],
+      });
+
+      const searched = parseContent(
+        await executeTool(
+          createTranscriptSearchTool(slackContext(), {
+            conversationStore: store,
+          }),
+          { include_links: false, limit: 1, query: "keyword" },
+        ),
+      );
+
+      expect(searched.matches).toHaveLength(1);
+      expect(searched.matches[0]).toMatchObject({
+        conversation_id: "slack:GPRIVATE:1700000000.999999",
+      });
     } finally {
       await closeFixture(fixture);
     }

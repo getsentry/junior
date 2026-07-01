@@ -78,7 +78,7 @@ describe("transcriptRead", () => {
     }
   });
 
-  it("uses Slack source channel, not destination channel, for private access", async () => {
+  it("uses Slack source and destination channels for private access", async () => {
     const { fixture, store } = await setupFixture();
     try {
       await recordSlackTranscript({
@@ -95,6 +95,13 @@ describe("transcriptRead", () => {
         title: "Destination private thread",
         messages: [message("dest-1", "destination visibility note")],
       });
+      await recordSlackTranscript({
+        store,
+        channelId: "GOTHER",
+        conversationId: "slack:GOTHER:1700000000.000003",
+        title: "Other private thread",
+        messages: [message("other-1", "other visibility note")],
+      });
 
       const context = slackContext({
         sourceChannelId: "GSOURCE",
@@ -109,14 +116,24 @@ describe("transcriptRead", () => {
           include_links: false,
         }),
       );
+      const destination = parseContent(
+        await executeTool(tool, {
+          conversation_id: "slack:GDEST:1700000000.000002",
+          include_links: false,
+        }),
+      );
       const blocked = await executeTool(tool, {
-        conversation_id: "slack:GDEST:1700000000.000002",
+        conversation_id: "slack:GOTHER:1700000000.000003",
         include_links: false,
       });
 
       expect(allowed).toMatchObject({
         ok: true,
         conversation_id: "slack:GSOURCE:1700000000.000001",
+      });
+      expect(destination).toMatchObject({
+        ok: true,
+        conversation_id: "slack:GDEST:1700000000.000002",
       });
       expect(blocked).toEqual({
         ok: false,
