@@ -221,6 +221,7 @@ export interface ConversationReport {
   displayTitle: string;
   generatedAt: string;
   runs: ConversationRunReport[];
+  sentryConversationUrl?: string;
 }
 
 export interface ConversationFeed {
@@ -1602,10 +1603,13 @@ export async function readConversationReport(
     displayTitleFromDetails(conversationId, details) ??
     surfaceFallbackLabel(firstRun?.surface ?? "slack");
 
+  const sentryConversationUrl = buildSentryConversationUrl(conversationId);
+
   return {
     conversationId,
     displayTitle,
     generatedAt: new Date(nowMs).toISOString(),
     runs: effectiveRuns,
+    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
   };
 }

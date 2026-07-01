@@ -63,6 +63,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
+                detail={detail.data}
               />
             </div>
           </div>
@@ -155,16 +156,20 @@ function CopyMarkdownButton(props: {
 function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
+  detail: ConversationDetailFeed | undefined;
 }) {
+  const sentryConversationUrl =
+    props.conversation?.sentryConversationUrl ??
+    props.detail?.sentryConversationUrl;
   return (
     <>
       {conversationIdentityMeta(props.conversation, props.conversationId)}
-      {props.conversation?.sentryConversationUrl ? (
+      {sentryConversationUrl ? (
         <>
           {" · "}
           <a
             className="text-white no-underline hover:underline"
-            href={props.conversation.sentryConversationUrl}
+            href={sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
           >
