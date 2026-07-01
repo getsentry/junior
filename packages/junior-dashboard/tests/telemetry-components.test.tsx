@@ -743,6 +743,10 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "slack",
       displayTitle: "Conversation",
+      requesterIdentity: {
+        email: "avery@example.com",
+        fullName: "Avery Example",
+      },
     } satisfies ConversationSummary;
     const detail = {
       conversationId: "conversation-1",
@@ -762,6 +766,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderConversationPage(dashboardData([summary]));
 
+    expect(html).toContain('href="/people/avery%40example.com"');
     expect(html).toContain("View in Sentry");
     expect(html).toContain(
       "https://sentry.example/explore/conversations/conversation-1/?project=1",

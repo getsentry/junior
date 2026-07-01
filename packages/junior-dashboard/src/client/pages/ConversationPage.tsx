@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
@@ -8,12 +8,13 @@ import { Button } from "../components/Button";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
-  conversationIdentityMeta,
   conversationDisplayTitle,
   conversationFromDetail,
+  conversationRequesterLabel,
   formatConversationDuration,
   formatRelativeTime,
   formatTime,
+  peoplePath,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
@@ -176,9 +177,28 @@ function ConversationIdentity(props: {
   conversationId: string | undefined;
   detail: ConversationDetailFeed | undefined;
 }) {
+  const email = props.conversation?.requesterIdentity?.email?.trim();
+  const owner = conversationRequesterLabel(props.conversation);
+  const id = props.conversationId ?? props.conversation?.id;
+
   return (
     <>
-      {conversationIdentityMeta(props.conversation, props.conversationId)}
+      {owner ? (
+        <>
+          {email ? (
+            <Link
+              className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+              to={peoplePath(email)}
+            >
+              {owner}
+            </Link>
+          ) : (
+            owner
+          )}
+          {id ? <>{" · "}</> : null}
+        </>
+      ) : null}
+      {id ?? null}
       {props.detail?.sentryConversationUrl ? (
         <>
           {" · "}

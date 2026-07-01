@@ -1537,7 +1537,8 @@ function requesterDirectoryFromFeed(
   feed: DashboardConversationFeed,
 ): DashboardRequesterDirectoryReport {
   const people = new Map<string, MockRequesterAccumulator>();
-  for (const runs of summaryGroups(feed.conversations)) {
+  const groups = summaryGroups(feed.conversations);
+  for (const runs of groups) {
     const newest = newestRun(runs);
     const requester = identityWithEmail(newest.requesterIdentity);
     if (!requester) continue;
@@ -1578,8 +1579,8 @@ function requesterDirectoryFromFeed(
             (reportTime(left.lastSeenAt) ?? 0) ||
           left.requester.email.localeCompare(right.requester.email),
       ),
-    sampleLimit: feed.conversations.length,
-    sampleSize: feed.conversations.length,
+    sampleLimit: groups.length,
+    sampleSize: groups.length,
     source: "conversation_index",
     truncated: false,
   };
@@ -1623,7 +1624,8 @@ function requesterProfileFromFeed(
   feed: DashboardConversationFeed,
 ): DashboardRequesterProfileReport {
   const normalized = normalizeEmail(email) ?? email;
-  const matchingGroups = summaryGroups(feed.conversations).filter((runs) =>
+  const groups = summaryGroups(feed.conversations);
+  const matchingGroups = groups.filter((runs) =>
     runs.some(
       (run) => normalizeEmail(run.requesterIdentity?.email) === normalized,
     ),
@@ -1709,8 +1711,8 @@ function requesterProfileFromFeed(
       )
       .slice(0, 25),
     requester: requester ?? { email: normalized },
-    sampleLimit: feed.conversations.length,
-    sampleSize: feed.conversations.length,
+    sampleLimit: groups.length,
+    sampleSize: groups.length,
     source: "conversation_index",
     surfaces: statsItems(surfaces),
     totals,
