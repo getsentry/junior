@@ -1572,6 +1572,17 @@ export async function completeConversationWork(args: {
     const hasPending = pendingMessages(current).length > 0;
     const needsRun = current.execution.status === "awaiting_resume";
     const runnable = needsRun || hasPending;
+    // "awaiting_resume" is set by paths (e.g. scheduleAgentContinue) that
+    // already enqueue their own wake nudge via markConversationWorkEnqueued.
+    // Returning "pending" here causes processConversationWork to enqueue a
+    // second distinct nudge (idempotency key includes nowMs), which amplifies
+    // the queue and can produce a runaway loop when continuations repeatedly
+    // fail and reschedule.  Only request a new nudge when actual mailbox
+    // messages need processing, or when no accepted enqueue was recorded
+    // during this lease (the queue.send may have failed before
+    // markConversationWorkEnqueued ran, so a recovery nudge is correct).
+    const hasQueuedWake = current.execution.lastEnqueuedAtMs !== undefined;
+    const shouldNudge = hasPending || (needsRun && !hasQueuedWake);
     await writeConversation(
       state,
       withExecutionUpdate(
@@ -1585,7 +1596,7 @@ export async function completeConversationWork(args: {
         nowMs,
       ),
     );
-    return runnable ? "pending" : "completed";
+    return shouldNudge ? "pending" : "completed";
   });
 }
 

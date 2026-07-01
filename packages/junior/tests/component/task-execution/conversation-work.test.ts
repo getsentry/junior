@@ -16,6 +16,7 @@ import {
   listConversationsByActivity,
   markConversationMessagesInjected,
   recordConversationActivity,
+  markConversationWorkEnqueued,
   requestConversationContinuation,
   requestConversationWork,
   releaseConversationWork,
@@ -619,6 +620,89 @@ describe("conversation work execution", () => {
     expect(state?.lease).toBeUndefined();
     expect(state?.needsRun).toBe(true);
     expect(state ? countPendingConversationMessages(state) : 0).toBe(0);
+    expect(queue.sentRecords()).toMatchObject([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `pending:${CONVERSATION_ID}:2000`,
+      },
+    ]);
+  });
+
+  it("does not send extra nudge when continuation wake was already queued via markConversationWorkEnqueued", async () => {
+    // Regression: scheduleAgentContinue calls requestConversationWork (sets
+    // "awaiting_resume") + queue.send + markConversationWorkEnqueued during an
+    // active worker run.  completeConversationWork must not enqueue a second
+    // wake nudge, as the in-flight message already covers the continuation.
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          // Simulate the full scheduleAgentContinue call sequence:
+          // requestConversationWork sets "awaiting_resume"; markConversationWorkEnqueued
+          // records that an accepted wake is outstanding.
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            destination: context.destination,
+            nowMs: currentNowMs,
+          });
+          await markConversationWorkEnqueued({
+            conversationId: context.conversationId,
+            nowMs: currentNowMs,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    // Status is "pending" so the in-flight queue message from scheduleAgentContinue
+    // will find runnable work when it arrives.
+    expect(state?.needsRun).toBe(true);
+    // processConversationWork must NOT have sent its own nudge.
+    expect(queue.sentRecords()).toHaveLength(0);
+  });
+
+  it("sends recovery nudge when awaiting_resume but no enqueue was recorded", async () => {
+    // If requestConversationWork set "awaiting_resume" but queue.send failed
+    // (markConversationWorkEnqueued never ran), completeConversationWork must
+    // still return "pending" so processConversationWork sends a recovery nudge.
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          // Only requestConversationWork — no markConversationWorkEnqueued (queue.send failed).
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            destination: context.destination,
+            nowMs: currentNowMs,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
     expect(queue.sentRecords()).toMatchObject([
       {
         conversationId: CONVERSATION_ID,
