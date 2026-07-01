@@ -333,8 +333,17 @@ describe("Slack behavior: durable turn steering", () => {
     }
 
     releaseAgent.resolve();
-    await expect(activeTurn).resolves.toEqual({ status: "pending_requeued" });
-    expect(queue.sentRecords()).toHaveLength(6);
+    await expect(activeTurn).resolves.toEqual({ status: "completed" });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: `slack:T123:${conversationId}:${THREAD_TS}`,
+      }),
+      expect.objectContaining({
+        conversationId,
+        idempotencyKey: `slack:T123:${conversationId}:1712345.000200`,
+      }),
+    ]);
 
     expect(agentCalls).toEqual([
       {
