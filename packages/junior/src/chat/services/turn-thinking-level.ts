@@ -1,6 +1,7 @@
 import type { ThinkingLevel as AgentThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel as ProviderThinkingLevel } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
@@ -136,11 +137,7 @@ function buildClassifierPrompt(args: {
     }
   }
 
-  sections.push(
-    "<current-instruction>",
-    args.messageText.trim() || "[empty]",
-    "</current-instruction>",
-  );
+  sections.push(renderCurrentInstruction(args.messageText.trim() || "[empty]"));
 
   for (const block of args.currentTurnBlocks ?? []) {
     const trimmed = block.trim();

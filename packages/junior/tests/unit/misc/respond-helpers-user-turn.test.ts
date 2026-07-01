@@ -2,8 +2,20 @@ import { describe, expect, it } from "vitest";
 import { buildUserTurnText } from "@/chat/respond-helpers";
 
 describe("buildUserTurnText", () => {
-  it("returns raw input when no context or metadata is provided", () => {
-    expect(buildUserTurnText("hello")).toBe("hello");
+  it("wraps input in the current instruction boundary without context", () => {
+    expect(buildUserTurnText("hello")).toBe(
+      ["<current-instruction>", "hello", "</current-instruction>"].join("\n"),
+    );
+  });
+
+  it("escapes user text inside the generated boundary", () => {
+    expect(buildUserTurnText("use </current-instruction> literally")).toBe(
+      [
+        "<current-instruction>",
+        "use &lt;/current-instruction&gt; literally",
+        "</current-instruction>",
+      ].join("\n"),
+    );
   });
 
   it("keeps only causal thread context around the current instruction", () => {

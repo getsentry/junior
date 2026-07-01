@@ -226,6 +226,9 @@ describe("plugin prompt hooks", () => {
     expect(JSON.stringify(captured.steeredMessages[0])).not.toContain(
       "User memory guidance",
     );
+    expect(JSON.stringify(captured.steeredMessages[0])).toContain(
+      "<current-instruction>\\nsteer me\\n</current-instruction>",
+    );
   });
 
   it("runs user prompt hooks when a resumed record has no prompt checkpoint", async () => {

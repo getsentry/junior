@@ -12,6 +12,7 @@ import {
   estimateTokens,
 } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -77,12 +78,22 @@ function textPart(value: unknown): string | undefined {
   return undefined;
 }
 
+/** Render Pi message text for compaction without retaining prompt-only wrappers. */
 function messageText(message: PiMessage): string {
   const content = (message as { content?: unknown }).content;
+  const unwrapTask = (message as { role?: unknown }).role === "user";
+  const displayText = (text: string) =>
+    unwrapTask ? (unwrapCurrentInstruction(text) ?? text) : text;
+
   if (!Array.isArray(content)) {
-    return typeof content === "string" ? content : "";
+    return typeof content === "string" ? displayText(content) : "";
   }
-  return content.map(textPart).filter(Boolean).join("\n").trim();
+  return content
+    .map(textPart)
+    .filter((text): text is string => Boolean(text))
+    .map(displayText)
+    .join("\n")
+    .trim();
 }
 
 function sanitizeText(text: string): string {

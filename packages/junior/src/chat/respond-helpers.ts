@@ -8,6 +8,7 @@ import type {
   AssistantMessage,
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Skill } from "@/chat/skills";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
@@ -160,25 +161,23 @@ function renderThreadContextForPrompt(context: string): string {
 }
 
 /**
- * Put prior thread text before the current instruction when no Pi history
- * exists. Structured thread XML is already a top-level prompt block.
+ * Keep thread text separate from the canonical active task boundary.
  */
 export function buildUserTurnText(
   userInput: string,
   conversationContext?: string,
 ): string {
   const trimmedContext = conversationContext?.trim();
+  const currentInstruction = renderCurrentInstruction(userInput);
 
   if (!trimmedContext) {
-    return userInput;
+    return currentInstruction;
   }
 
   return [
     renderThreadContextForPrompt(trimmedContext),
     "",
-    "<current-instruction>",
-    userInput,
-    "</current-instruction>",
+    currentInstruction,
   ].join("\n");
 }
 

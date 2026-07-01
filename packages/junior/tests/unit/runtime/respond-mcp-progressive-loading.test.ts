@@ -895,7 +895,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
           type: "text",
           text: "<runtime-turn-context>\nTurn context\n</runtime-turn-context>",
         },
-        { type: "text", text: "current follow-up" },
+        {
+          type: "text",
+          text: "<current-instruction>\ncurrent follow-up\n</current-instruction>",
+        },
       ],
     });
     expect(resumeTurnContextCounts).toEqual([]);
@@ -948,7 +951,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const rawCurrentPrompt = {
       role: "user",
-      content: [{ type: "text", text: "continue after auth" }],
+      content: [
+        {
+          type: "text",
+          text: "<runtime-turn-context>\nlegacy bootstrap\n</runtime-turn-context>",
+        },
+        { type: "text", text: "continue after auth" },
+      ],
       timestamp: 2,
     } as PiMessage;
     const storedMessages = [

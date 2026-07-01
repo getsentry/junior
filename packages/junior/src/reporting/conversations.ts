@@ -10,6 +10,7 @@ import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
 } from "@/chat/conversation-privacy";
+import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
 import type {
@@ -1389,9 +1390,16 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
   return undefined;
 }
 
-function normalizeTranscriptPart(part: unknown): TranscriptPart {
+/** Normalize Pi content parts for user-facing transcript output. */
+function normalizeTranscriptPart(
+  part: unknown,
+  options: { unwrapCurrentTask?: boolean } = {},
+): TranscriptPart {
+  const displayText = (text: string) =>
+    options.unwrapCurrentTask ? (unwrapCurrentInstruction(text) ?? text) : text;
+
   if (typeof part === "string") {
-    return textPart(part);
+    return textPart(displayText(part));
   }
   if (!isRecord(part)) {
     return { type: "unknown", output: part };
@@ -1401,7 +1409,9 @@ function normalizeTranscriptPart(part: unknown): TranscriptPart {
   if (rawType === "text") {
     const text = recordField(part, ["text", "content"]);
     return textPart(
-      typeof text === "string" ? text : (JSON.stringify(text) ?? ""),
+      typeof text === "string"
+        ? displayText(text)
+        : (JSON.stringify(text) ?? ""),
     );
   }
   if (rawType === "toolCall") {
@@ -1473,8 +1483,16 @@ function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
       role === "toolResult"
         ? [normalizeToolResultMessage(record)]
         : Array.isArray(content)
-          ? content.map(normalizeTranscriptPart)
-          : [normalizeTranscriptPart(content)],
+          ? content.map((part) =>
+              normalizeTranscriptPart(part, {
+                unwrapCurrentTask: role === "user",
+              }),
+            )
+          : [
+              normalizeTranscriptPart(content, {
+                unwrapCurrentTask: role === "user",
+              }),
+            ],
   };
 }
 

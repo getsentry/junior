@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-06-30
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -63,6 +63,12 @@ Context blocks describe facts. Operating-rule and output sections carry instruct
 Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile requester, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in session bootstrap context.
 
 Trusted deployment-authored Markdown files, such as `SOUL.md` and `WORLD.md`, should render as Markdown sections rather than raw XML payloads. XML-style tags are appropriate for generated runtime blocks whose dynamic values are escaped. Do not add generic wrapper markers that only repeat child-section meaning, such as wrapping all operating rule sections in an additional behavior tag or wrapping all capability blocks in an additional capabilities tag.
+
+### Current Task Declaration
+
+Every model-visible active user task assembled by the Junior turn runtime must render the user-authored task text inside `<current-instruction>`. This wrapper is required even when there is no thread background, dispatch metadata, plugin contribution, attachment, or runtime context. It applies to Slack turns, local turns, dispatched or scheduled work that enters the shared reply boundary, and queued steering messages injected during an active turn.
+
+Thread background, runtime context, plugin prompt contributions, requester/configuration metadata, and attachments must remain outside `<current-instruction>` as sibling blocks or content parts. Internal helper prompts and subagent/tool prompts may use task-specific wrappers when they are not model-visible Junior user turns.
 
 Session bootstrap context is injected on the first model-visible user message in each Pi session. Ordinary follow-up messages in the same session must not duplicate that bootstrap context. When compaction creates a replacement projection, the replacement history must omit the old bootstrap context; the next user turn starts a new Pi session projection and receives fresh bootstrap context exactly once.
 

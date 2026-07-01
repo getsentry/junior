@@ -10,6 +10,7 @@
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
+import { z } from "zod";
 import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
@@ -29,6 +30,7 @@ import {
   buildSystemPrompt,
   buildTurnContextPrompt,
 } from "@/chat/prompt";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
@@ -106,6 +108,7 @@ import {
   getSessionIdentifiers,
   hasRuntimeTurnContext,
   isAssistantMessage,
+  stripRuntimeTurnContext,
   summarizeMessageText,
   toObservablePromptPart,
   upsertActiveSkill,
@@ -295,6 +298,13 @@ const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 type UserTurnContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
+
+const legacyStoredTextPartSchema = z
+  .object({
+    text: z.string(),
+    type: z.literal("text"),
+  })
+  .strict();
 
 type UserTurnAttachment = NonNullable<
   ReplyRequestContext["userAttachments"]
@@ -538,7 +548,7 @@ function buildUserTurnInput(args: {
 
 function buildSteeringPiMessage(message: ReplySteeringMessage): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: message.text,
+    userTurnText: buildUserTurnText(message.text),
     userAttachments: message.userAttachments,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
@@ -563,12 +573,48 @@ function withoutTrailingUncheckpointedUserPrompt(
   if (lastMessage?.role !== "user") {
     return messages;
   }
+  const comparableLastMessage = stripRuntimeTurnContext([
+    lastMessage as PiMessage,
+  ])[0] as { content?: unknown } | undefined;
   if (
-    JSON.stringify(lastMessage.content) !== JSON.stringify(userContentParts)
+    !userPromptContentMatches(comparableLastMessage?.content, userContentParts)
   ) {
     return messages;
   }
   return messages.slice(0, -1);
+}
+
+/** Match stored resume prompts against the current wrapped prompt shape. */
+function userPromptContentMatches(
+  storedContent: unknown,
+  currentContent: UserTurnContentPart[],
+): boolean {
+  if (JSON.stringify(storedContent) === JSON.stringify(currentContent)) {
+    return true;
+  }
+  if (!Array.isArray(storedContent)) {
+    return false;
+  }
+  if (storedContent.length !== currentContent.length) {
+    return false;
+  }
+
+  return storedContent.every((storedPart, index) => {
+    const currentPart = currentContent[index];
+    if (index === 0 && currentPart?.type === "text") {
+      const legacyTextPart = legacyStoredTextPartSchema.safeParse(storedPart);
+      if (legacyTextPart.success) {
+        // TODO(v0.84.0): Remove legacy unwrapped resume prompt matching after
+        // pre-current-instruction session records expire.
+        return (
+          renderCurrentInstruction(legacyTextPart.data.text) ===
+          currentPart.text
+        );
+      }
+    }
+
+    return JSON.stringify(storedPart) === JSON.stringify(currentPart);
+  });
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */

@@ -706,7 +706,20 @@ describe("dashboard reporting", () => {
         },
         {
           role: "user",
-          content: [{ type: "text", text: "current question" }],
+          content: [
+            {
+              type: "text",
+              text: [
+                "<thread-background>",
+                "prior context",
+                "</thread-background>",
+                "",
+                "<current-instruction>",
+                "current question",
+                "</current-instruction>",
+              ].join("\n"),
+            },
+          ],
           timestamp: 3,
         },
         {

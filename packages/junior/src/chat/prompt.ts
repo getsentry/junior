@@ -814,7 +814,7 @@ export function buildTurnContextPrompt(
   const sections = [
     `<${TURN_CONTEXT_TAG}>`,
     TURN_CONTEXT_HEADER,
-    "The current user instruction appears after this block in the same message.",
+    "The current user instruction appears after this block in `<current-instruction>` in the same message.",
     ...runtimeSections,
     `</${TURN_CONTEXT_TAG}>`,
   ].filter((section): section is string => Boolean(section));

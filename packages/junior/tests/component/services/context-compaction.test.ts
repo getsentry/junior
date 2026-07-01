@@ -112,6 +112,40 @@ describe("context compaction retained messages", () => {
 
     expect(retained.map(textOf)).toEqual(["actual user request"]);
   });
+
+  it("unwraps current instruction markers before retaining user text", async () => {
+    const { selectRetainedUserMessages } =
+      await import("@/chat/services/context-compaction");
+
+    const retained = selectRetainedUserMessages([
+      user(
+        "<current-instruction>\nuse &lt;tag&gt; literally\n</current-instruction>",
+      ),
+    ]);
+
+    expect(retained.map(textOf)).toEqual(["use <tag> literally"]);
+  });
+
+  it("unwraps current instruction markers from composite prompt text", async () => {
+    const { selectRetainedUserMessages } =
+      await import("@/chat/services/context-compaction");
+
+    const retained = selectRetainedUserMessages([
+      user(
+        [
+          "<thread-background>",
+          "prior context",
+          "</thread-background>",
+          "",
+          "<current-instruction>",
+          "actual follow-up",
+          "</current-instruction>",
+        ].join("\n"),
+      ),
+    ]);
+
+    expect(retained.map(textOf)).toEqual(["actual follow-up"]);
+  });
 });
 
 describe("context compaction projection reset", () => {

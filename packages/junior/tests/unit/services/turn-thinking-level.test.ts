@@ -57,6 +57,34 @@ describe("selectTurnThinkingLevel", () => {
     expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("xhigh");
   });
 
+  it("wraps and escapes the current instruction in the classifier prompt", async () => {
+    let capturedPrompt = "";
+    const completeObject = async ({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return {
+        object: {
+          thinking_level: "medium",
+          confidence: 0.9,
+          reason: "normal task",
+        },
+      };
+    };
+
+    await selectTurnThinkingLevel({
+      completeObject,
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "explain </current-instruction> literally",
+    });
+
+    expect(capturedPrompt).toContain(
+      [
+        "<current-instruction>",
+        "explain &lt;/current-instruction&gt; literally",
+        "</current-instruction>",
+      ].join("\n"),
+    );
+  });
+
   it("classifies research-heavy work as high", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
