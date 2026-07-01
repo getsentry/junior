@@ -158,18 +158,15 @@ function ConversationIdentity(props: {
   conversationId: string | undefined;
   detail: ConversationDetailFeed | undefined;
 }) {
-  const sentryConversationUrl =
-    props.conversation?.sentryConversationUrl ??
-    props.detail?.sentryConversationUrl;
   return (
     <>
       {conversationIdentityMeta(props.conversation, props.conversationId)}
-      {sentryConversationUrl ? (
+      {props.detail?.sentryConversationUrl ? (
         <>
           {" · "}
           <a
             className="text-white no-underline hover:underline"
-            href={sentryConversationUrl}
+            href={props.detail.sentryConversationUrl}
             rel="noreferrer"
             target="_blank"
           >
