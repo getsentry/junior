@@ -24,6 +24,7 @@ import { commitMessages, loadMessages, loadProjection } from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
   ConversationStore,
@@ -359,6 +360,8 @@ async function appendAgentTurnSessionSummary(
 /** Store run summary metadata in the configured conversation store. */
 async function recordConversationActivityMetadata(args: {
   conversationStore?: ConversationStore;
+  /** Source-confirmed destination visibility from the current event's signal. */
+  destinationVisibility?: ConversationPrivacy;
   nowMs: number;
   summary: AgentTurnSessionSummary;
 }): Promise<void> {
@@ -376,6 +379,7 @@ async function recordConversationActivityMetadata(args: {
       nowMs: args.nowMs,
       requester: sessionLogRequester(args.summary.requester),
       source,
+      visibility: args.destinationVisibility,
     });
     await conversationStore.recordExecution({
       channelName: args.summary.channelName,
@@ -387,6 +391,7 @@ async function recordConversationActivityMetadata(args: {
       requester: sessionLogRequester(args.summary.requester),
       source,
       updatedAtMs: args.nowMs,
+      visibility: args.destinationVisibility,
     });
   } catch (error) {
     logWarn(
@@ -777,6 +782,12 @@ export async function recordAgentTurnSessionSummary(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  /**
+   * Source-confirmed destination visibility from the current event's signal
+   * (Slack `channel_type`). Leave unset when no live signal exists so the
+   * stored destination stays unconfirmed.
+   */
+  destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
@@ -845,6 +856,7 @@ export async function recordAgentTurnSessionSummary(args: {
   await appendAgentTurnSessionSummary(summary, ttlMs);
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
+    destinationVisibility: args.destinationVisibility,
     nowMs,
     summary,
   });

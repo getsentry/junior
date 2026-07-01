@@ -610,6 +610,15 @@ export function conversationIdentityMeta(
   return owner ? `${owner} · ${id}` : id;
 }
 
+const REDACTED_CHANNEL_LABELS = new Set([
+  "Public Channel",
+  "Private Channel",
+  "Group DM",
+  "Direct Message",
+  "Private Channel or Group DM",
+  "Private Conversation",
+]);
+
 /** Convert Slack channel ids and names into user-facing location labels. */
 export function slackLocationLabel(
   input: Pick<ConversationSummary, "channel" | "channelName">,
@@ -619,8 +628,13 @@ export function slackLocationLabel(
   if (!channelId) return undefined;
 
   const includeId = options.includeId ?? true;
-  const name = input.channelName?.replace(/^#/, "");
   const idSuffix = includeId ? ` (${channelId})` : "";
+  // Privacy-redacted conversations carry a generic type label instead of a
+  // channel name; render it as-is rather than formatting it like a name.
+  if (input.channelName && REDACTED_CHANNEL_LABELS.has(input.channelName)) {
+    return `${input.channelName}${idSuffix}`;
+  }
+  const name = input.channelName?.replace(/^#/, "");
   if (channelId.startsWith("D")) {
     return `Direct Message${idSuffix}`;
   }

@@ -582,6 +582,9 @@ export async function generateAssistantReply(
       context.correlation?.conversationId ??
       context.correlation?.threadId ??
       context.correlation?.runId,
+    // Source-confirmed visibility from the live event's channel_type; without
+    // it the turn fails closed to private telemetry capture.
+    visibility: context.slackConversation?.visibility,
   });
   return runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
     generateAssistantReplyInPrivacyContext(

@@ -1,9 +1,10 @@
 import { Type } from "@sinclair/typebox";
-import {
-  SlackActionError,
-  normalizeSlackConversationId,
-} from "@/chat/slack/client";
+import { SlackActionError } from "@/chat/slack/client";
 import { listThreadReplies } from "@/chat/slack/channel";
+import {
+  checkSlackChannelReadAccess,
+  type DestinationVisibilityReader,
+} from "@/chat/tools/slack/channel-access";
 import { tool } from "@/chat/tools/definition";
 import {
   SLACK_TS_PATTERN,
@@ -67,47 +68,14 @@ function truncateMessages(
   return { messages: kept, omitted: messages.length - kept.length };
 }
 
-/**
- * Check whether reading the target channel is allowed using only local
- * channel ID conventions — no Slack API call needed.
- *
- * Public channels (C-prefix) are always readable. Private channels (G-prefix)
- * and DMs (D-prefix) are only allowed when the target matches the channel the
- * user is currently messaging from.
- */
-function checkChannelAccess(
-  targetChannelId: string,
-  currentChannelId: string | undefined,
-): { allowed: true } | { allowed: false; error: string } {
-  const target = normalizeSlackConversationId(targetChannelId);
-  const current = normalizeSlackConversationId(currentChannelId);
-
-  if (!target) {
-    return { allowed: false, error: "Invalid Slack channel ID." };
-  }
-
-  // Public channels — any workspace member can see.
-  if (target.startsWith("C")) {
-    return { allowed: true };
-  }
-
-  // Private channels / DMs — only if user is messaging from that channel.
-  if (target === current) {
-    return { allowed: true };
-  }
-
-  return {
-    allowed: false,
-    error:
-      "Cannot read private channels or DMs unless the link is from the current conversation.",
-  };
-}
-
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool(context: SlackToolContext) {
+export function createSlackThreadReadTool(
+  context: SlackToolContext,
+  deps: { visibilityStore?: DestinationVisibilityReader } = {},
+) {
   return tool({
     description:
-      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Public channel links can be read if the bot has access; private channels and DMs are only readable when they are the current conversation.",
+      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and channels Junior has confirmed as public in this workspace are readable.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       url: Type.Optional(
@@ -173,11 +141,18 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         };
       }
 
-      // Restrict private-thread reads to the active Slack delivery context.
-      const access = checkChannelAccess(
-        channelId,
-        context.destinationChannelId,
-      );
+      // Cross-conversation reads require persisted confirmed-public
+      // visibility in the current workspace; the active delivery context is
+      // always readable.
+      const access = await checkSlackChannelReadAccess({
+        currentChannelIds: [
+          context.destinationChannelId,
+          context.sourceChannelId,
+        ],
+        store: deps.visibilityStore,
+        targetChannelId: channelId,
+        teamId: context.teamId,
+      });
       if (!access.allowed) {
         return {
           ok: false,

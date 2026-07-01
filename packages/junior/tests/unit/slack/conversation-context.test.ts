@@ -18,6 +18,7 @@ describe("Slack conversation prompt context", () => {
     ).toEqual({
       type: "public_channel",
       name: "#engineering",
+      visibility: "public",
     });
   });
 
@@ -28,21 +29,33 @@ describe("Slack conversation prompt context", () => {
         channelName: "private-roadmap",
         channelType: "group",
       }),
-    ).toEqual({ type: "private_channel", name: "#private-roadmap" });
+    ).toEqual({
+      type: "private_channel",
+      name: "#private-roadmap",
+      visibility: "private",
+    });
     expect(
       resolveSlackConversationContext({
         channelId: "G456",
         channelName: "mpdm-alice--bob-1",
         channelType: "mpim",
       }),
-    ).toEqual({ type: "group_dm", name: "mpdm-alice--bob-1" });
+    ).toEqual({
+      type: "group_dm",
+      name: "mpdm-alice--bob-1",
+      visibility: "private",
+    });
     expect(
       resolveSlackConversationContext({
         channelId: "D123",
         channelName: "alice",
         channelType: "im",
       }),
-    ).toEqual({ type: "direct_message", name: "alice" });
+    ).toEqual({
+      type: "direct_message",
+      name: "alice",
+      visibility: "private",
+    });
   });
 
   it("uses a conservative type when only a G-prefixed ID is known", () => {
@@ -51,7 +64,30 @@ describe("Slack conversation prompt context", () => {
         channelId: "G123",
         channelName: "maybe-private",
       }),
-    ).toEqual({ type: "private_channel_or_group_dm", name: "#maybe-private" });
+    ).toEqual({
+      type: "private_channel_or_group_dm",
+      name: "#maybe-private",
+      visibility: "private",
+    });
+  });
+
+  it("classifies a C-prefixed channel private when Slack reports channel_type group", () => {
+    expect(
+      resolveSlackConversationContext({
+        channelId: "C123",
+        channelName: "actually-private",
+        channelType: "group",
+      }),
+    ).toMatchObject({ visibility: "private" });
+  });
+
+  it("leaves visibility unconfirmed for C-prefixed ids without a signal", () => {
+    expect(
+      resolveSlackConversationContext({
+        channelId: "C123",
+        channelName: "maybe-public",
+      }),
+    ).toEqual({ type: "public_channel", name: "#maybe-public" });
   });
 
   it("extracts Slack channel type from message-like raw payloads", () => {

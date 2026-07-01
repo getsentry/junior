@@ -77,6 +77,7 @@ import {
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import {
+  conversationVisibilityFromSlackChannelType,
   resolveSlackChannelTypeFromMessage,
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
@@ -318,6 +319,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       channelName,
       channelType: slackChannelType,
     });
+    // Source-confirmed visibility for destination persistence; undefined when
+    // the event carries no channel_type so stored rows stay unconfirmed.
+    const destinationVisibility =
+      conversationVisibilityFromSlackChannelType(slackChannelType);
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
@@ -328,6 +333,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const teamId = destination.teamId;
     const source = createSlackSource({
       channelId: channelId ?? destination.channelId,
+      channelType: slackChannelType,
       messageTs,
       teamId,
       threadTs,
@@ -603,6 +609,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             surface: "slack",
             requester,
             destination,
+            destinationVisibility,
             source,
             traceId: getActiveTraceId(),
           }).catch((error) => {
@@ -1108,6 +1115,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               state: "completed",
               requester,
               destination,
+              destinationVisibility,
               source,
               traceId: getActiveTraceId(),
             });
@@ -1326,6 +1334,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   state: "failed",
                   requester,
                   destination,
+                  destinationVisibility,
                   source,
                   traceId: getActiveTraceId(),
                 });

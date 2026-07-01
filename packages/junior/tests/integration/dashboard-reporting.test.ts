@@ -47,6 +47,9 @@ function fixedConversationStore(
         (conversation) => conversation.conversationId === args.conversationId,
       );
     },
+    async getDestinationVisibility() {
+      return undefined;
+    },
     async recordActivity() {},
     async recordExecution() {},
     async listByActivity(args = {}) {
@@ -92,6 +95,22 @@ async function createStateReportingReader() {
     readConversationReport,
     readConversationStatsReport,
   };
+}
+
+/**
+ * Record a source-confirmed public destination so reads may expose raw
+ * content, mirroring a live event whose channel_type was "channel".
+ */
+async function confirmPublicSlackConversation(
+  conversationId: string,
+  channelId = "C1",
+) {
+  const { getConversationStore } = await import("@/chat/db");
+  await getConversationStore().recordActivity({
+    conversationId,
+    destination: { platform: "slack", teamId: "T1", channelId },
+    visibility: "public",
+  });
 }
 
 describe("dashboard reporting", () => {
@@ -198,9 +217,11 @@ describe("dashboard reporting", () => {
     await conversationStore.recordActivity({
       conversationId: "slack:C1:111",
       channelName: "incidents",
+      destination: { platform: "slack", teamId: "T1", channelId: "C1" },
       nowMs: 1_000,
       source: "slack",
       title: "Incident follow-up",
+      visibility: "public",
     });
 
     const reporting = createJuniorReporting();
@@ -266,6 +287,53 @@ describe("dashboard reporting", () => {
       conversationId: "slack:G1:222",
       status: "completed",
     });
+  });
+
+  it("redacts C-prefixed conversations Slack reports as private", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { createJuniorReporting } = await import("@/reporting");
+    const conversationStore = getConversationStore();
+
+    // Modern Slack private channels use C-prefixed ids; the event said
+    // channel_type: group, so the destination is confirmed private.
+    await conversationStore.recordActivity({
+      conversationId: "slack:C9:333",
+      channelName: "stealth-project",
+      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
+      nowMs: 1_000,
+      source: "slack",
+      title: "Stealth planning",
+      visibility: "private",
+    });
+
+    const summaries = await createJuniorReporting().listRecentConversations();
+
+    expect(JSON.stringify(summaries)).not.toContain("stealth-project");
+    expect(JSON.stringify(summaries)).not.toContain("Stealth planning");
+    expect(summaries[0]).toMatchObject({
+      conversationId: "slack:C9:333",
+    });
+  });
+
+  it("redacts C-prefixed conversations without confirmed visibility", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { createJuniorReporting } = await import("@/reporting");
+    const conversationStore = getConversationStore();
+
+    // Legacy-style row: no live signal ever confirmed this channel public.
+    await conversationStore.recordActivity({
+      conversationId: "slack:C9:444",
+      channelName: "maybe-private-room",
+      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
+      nowMs: 1_000,
+      source: "slack",
+      title: "Unconfirmed visibility",
+    });
+
+    const summaries = await createJuniorReporting().listRecentConversations();
+
+    expect(JSON.stringify(summaries)).not.toContain("maybe-private-room");
+    expect(JSON.stringify(summaries)).not.toContain("Unconfirmed visibility");
   });
 
   it("refreshes conversation context ttl without replacing origin context", async () => {
@@ -344,6 +412,7 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/conversation-details");
     const { createJuniorReporting } = await import("@/reporting");
 
+    await confirmPublicSlackConversation("slack:C1:details-only");
     await initConversationContext("slack:C1:details-only", {
       channelName: "proj-alpha",
       originSurface: "slack",
@@ -357,11 +426,15 @@ describe("dashboard reporting", () => {
       "slack:C1:details-only",
     );
 
+    // The confirmed-public destination record surfaces as an index-only run;
+    // the details title may only appear because the conversation is public.
     expect(report).toMatchObject({
       conversationId: "slack:C1:details-only",
       displayTitle: "Details Only Title",
-      runs: [],
     });
+    expect(report.runs.every((run) => run.transcriptAvailable === false)).toBe(
+      true,
+    );
   });
 
   it("reports conversation-index detail when turn summaries are absent", async () => {
@@ -465,6 +538,7 @@ describe("dashboard reporting", () => {
           lastActivityAtMs: Date.parse("2026-06-01T10:04:00.000Z"),
           requester: { fullName: "Blake" },
           source: "slack",
+          visibility: "public",
         }),
         indexedConversation({
           conversationId: "slack:D1:200",
@@ -537,6 +611,8 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:100",
       cumulativeDurationMs: 1_000,
+      destination: { platform: "slack", teamId: "T1", channelId: "C1" },
+      destinationVisibility: "public",
       requester: slackRequester("Later Requester"),
       sessionId: "turn-1",
       sliceId: 1,
@@ -688,6 +764,7 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
+    await confirmPublicSlackConversation("slack:C1:222");
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:222",
       sessionId: "turn-current",
@@ -888,6 +965,7 @@ describe("dashboard reporting", () => {
 
     const conversationId = "slack:C1:advisor-slices";
     const runId = "turn-advisor-slices";
+    await confirmPublicSlackConversation(conversationId);
     const advisorSessionKey = `junior:${conversationId}:advisor_session`;
     const advisorMessages = [
       {
@@ -1212,6 +1290,7 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
+    await confirmPublicSlackConversation("slack:C1:steering-transcript");
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:steering-transcript",
       sessionId: "turn-steering",
@@ -1291,6 +1370,17 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { conversationStore, readConversationReport } =
       await createStateReportingReader();
+    // The state-backed store cannot persist confirmed visibility; present the
+    // conversation as source-confirmed public for this read.
+    const publicConversationStore: ConversationStore = {
+      ...conversationStore,
+      get: async (args) => {
+        const conversation = await conversationStore.get(args);
+        return conversation
+          ? { ...conversation, visibility: "public" as const }
+          : conversation;
+      },
+    };
 
     await upsertAgentTurnSessionRecord({
       conversationStore,
@@ -1341,7 +1431,7 @@ describe("dashboard reporting", () => {
     }
 
     const report = await readConversationReport("slack:C1:999", {
-      conversationStore,
+      conversationStore: publicConversationStore,
     });
 
     expect(report.runs).toHaveLength(1);
@@ -1364,6 +1454,7 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
+    await confirmPublicSlackConversation("slack:C1:333");
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:333",
       destination: {

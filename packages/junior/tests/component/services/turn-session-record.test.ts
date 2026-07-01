@@ -30,6 +30,7 @@ function userMessage(text: string): PiMessage {
 function failingConversationStore(): ConversationStore {
   return {
     get: vi.fn(),
+    getDestinationVisibility: vi.fn(async () => undefined),
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
     }),

@@ -76,7 +76,7 @@ describe("conversation SQL migrations", () => {
     expect(executor.statements[0]).toContain(
       "CREATE TABLE IF NOT EXISTS junior_schema_migrations",
     );
-    expect(executor.transactions).toHaveLength(1);
+    expect(executor.transactions).toHaveLength(2);
     expect(executor.transactions[0]).toEqual(
       expect.arrayContaining([
         expect.stringContaining("CREATE TABLE IF NOT EXISTS junior_identities"),
@@ -89,11 +89,19 @@ describe("conversation SQL migrations", () => {
         expect.stringContaining("INSERT INTO junior_schema_migrations"),
       ]),
     );
+    expect(executor.transactions[1]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "ADD COLUMN IF NOT EXISTS visibility_confirmed_at",
+        ),
+      ]),
+    );
   });
 
   it("does not reapply migrations already recorded with the same checksum", async () => {
-    const migration = migrations[0];
-    const executor = new FakeSqlExecutor([[migration.id, migration.checksum]]);
+    const executor = new FakeSqlExecutor(
+      migrations.map((migration) => [migration.id, migration.checksum]),
+    );
 
     await migrateSchema(executor);
 

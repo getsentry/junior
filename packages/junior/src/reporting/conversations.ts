@@ -9,6 +9,7 @@ import { isRecord } from "@/chat/coerce";
 import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
+  type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
@@ -441,10 +442,12 @@ function sessionReportFromSummary(
   summary: AgentTurnSessionSummary,
   nowMs = Date.now(),
   details?: ConversationDetailsRecord,
+  visibility?: ConversationPrivacy,
 ): ConversationSummaryReport {
   const slackThread = parseSlackThreadId(summary.conversationId);
   const privacy = resolveConversationPrivacy({
     conversationId: summary.conversationId,
+    visibility,
   });
   const effectiveChannelName = details?.channelName ?? summary.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
@@ -537,6 +540,7 @@ function titleFromConversation(args: {
   const privateLabel =
     resolveConversationPrivacy({
       conversationId: args.conversation.conversationId,
+      visibility: args.conversation.visibility,
     }) !== "public"
       ? slackConversation
         ? formatSlackConversationRedactedLabel(slackConversation)
@@ -570,6 +574,7 @@ function channelNameFromConversation(
   if (
     resolveConversationPrivacy({
       conversationId: conversation.conversationId,
+      visibility: conversation.visibility,
     }) !== "public"
   ) {
     return (
@@ -761,11 +766,26 @@ function requesterLabel(
   return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
 }
 
+const REDACTED_LOCATION_LABELS = new Set([
+  "Public Channel",
+  "Private Channel",
+  "Group DM",
+  "Direct Message",
+  "Private Channel or Group DM",
+  PRIVATE_CONVERSATION_LABEL,
+]);
+
 function slackStatsLocationLabel(
   input: Pick<ConversationSummaryReport, "channel" | "channelName">,
 ): string | undefined {
   const channelId = input.channel;
   if (!channelId) return undefined;
+
+  // Privacy-redacted rows carry a generic type label instead of a channel
+  // name; keep it as-is instead of formatting it like a channel name.
+  if (input.channelName && REDACTED_LOCATION_LABELS.has(input.channelName)) {
+    return input.channelName;
+  }
 
   const name = input.channelName?.replace(/^#/, "");
   if (channelId.startsWith("D")) {
@@ -791,6 +811,7 @@ function surfaceFallbackLabel(surface: ConversationSurface): string {
 function displayTitleFromDetails(
   conversationId: string,
   details: ConversationDetailsRecord | undefined,
+  visibility?: ConversationPrivacy,
 ): string | undefined {
   if (!details) return undefined;
   const slackThread = parseSlackThreadId(conversationId);
@@ -799,7 +820,7 @@ function displayTitleFromDetails(
     channelName: details.channelName,
   });
   const privateLabel =
-    resolveConversationPrivacy({ conversationId }) !== "public"
+    resolveConversationPrivacy({ conversationId, visibility }) !== "public"
       ? (formatSlackConversationRedactedLabel(slackConversation) ??
         PRIVATE_CONVERSATION_LABEL)
       : undefined;
@@ -1370,9 +1391,11 @@ export async function readRequesterProfileReport(
 
 function canExposeConversationTranscript(
   summary: AgentTurnSessionSummary,
+  visibility: ConversationPrivacy | undefined,
 ): boolean {
   return canExposeConversationPayload({
     conversationId: summary.conversationId,
+    visibility,
   });
 }
 
@@ -1939,7 +1962,12 @@ async function reportsFromConversations(args: {
               conversation,
               details,
               nowMs: args.nowMs,
-              report: sessionReportFromSummary(summary, args.nowMs, details),
+              report: sessionReportFromSummary(
+                summary,
+                args.nowMs,
+                details,
+                conversation.visibility,
+              ),
             }),
           )
         : [sessionReportFromConversation(conversation, args.nowMs, details)];
@@ -2087,7 +2115,10 @@ export async function readConversationReport(
             sessionRecord.turnStartMessageIndex,
           )
         : { messages: [], startsAtRunBoundary: false };
-      const canExposeTranscript = canExposeConversationTranscript(summary);
+      const canExposeTranscript = canExposeConversationTranscript(
+        summary,
+        conversation?.visibility,
+      );
       const normalizedTranscript = scopedMessages.messages.map(
         normalizeTranscriptMessage,
       );
@@ -2117,7 +2148,12 @@ export async function readConversationReport(
         (canExposeTranscript ? traceIdFromTranscript(transcript) : undefined);
       const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
       const report: ConversationRunReport = {
-        ...sessionReportFromSummary(summary, nowMs, details),
+        ...sessionReportFromSummary(
+          summary,
+          nowMs,
+          details,
+          conversation?.visibility,
+        ),
         ...(traceId ? { traceId } : {}),
         ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
         activity,
@@ -2163,7 +2199,11 @@ export async function readConversationReport(
   const firstRun = effectiveRuns[0];
   const displayTitle =
     firstRun?.displayTitle ??
-    displayTitleFromDetails(conversationId, details) ??
+    displayTitleFromDetails(
+      conversationId,
+      details,
+      conversation?.visibility,
+    ) ??
     surfaceFallbackLabel(firstRun?.surface ?? "slack");
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
@@ -2181,9 +2221,13 @@ export async function readConversationSubagentTranscriptReport(
   conversationId: string,
   runId: string,
   subagentId: string,
+  options: ConversationReaderOptions = {},
 ): Promise<ConversationSubagentTranscriptReport> {
-  const summaries =
-    await listAgentTurnSessionSummariesForConversation(conversationId);
+  const store = conversationStore(options);
+  const [summaries, conversation] = await Promise.all([
+    listAgentTurnSessionSummariesForConversation(conversationId),
+    store.get({ conversationId }),
+  ]);
   const summary = summaries.find((candidate) => candidate.sessionId === runId);
   if (!summary) {
     return {
@@ -2230,7 +2274,10 @@ export async function readConversationSubagentTranscriptReport(
     };
   }
 
-  const canExposeTranscript = canExposeConversationTranscript(summary);
+  const canExposeTranscript = canExposeConversationTranscript(
+    summary,
+    conversation?.visibility,
+  );
   const activity = subagentActivity(start, { canExposeTranscript, end });
   const conversationFields = subagentConversationFields(start.transcriptRef);
   if (!canExposeTranscript) {

@@ -56,7 +56,7 @@ describe("conversation SQL store", () => {
         fixture.sql.query(
           "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
         ),
-      ).resolves.toHaveLength(1);
+      ).resolves.toHaveLength(2);
     } finally {
       await fixture.close();
     }
@@ -175,6 +175,122 @@ describe("conversation SQL store", () => {
           requesterTenant: "T123",
         },
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("persists visibility only from source-confirmed signals and converges on newer signals", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+      const destination = inboundMessage("visibility").destination;
+
+      // Slack reports this C-prefixed channel private (channel_type: group).
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        visibility: "private",
+        nowMs: 1_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({ visibility: "private" });
+      await expect(
+        store.getDestinationVisibility({
+          provider: "slack",
+          providerTenantId: "T123",
+          providerDestinationId: "C123",
+        }),
+      ).resolves.toBe("private");
+
+      // A signal-less write must not clobber the confirmed value.
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        nowMs: 2_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({ visibility: "private" });
+
+      // A channel converted private -> public converges on the next signal.
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        visibility: "public",
+        nowMs: 3_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({ visibility: "public" });
+      await expect(
+        store.getDestinationVisibility({
+          provider: "slack",
+          providerTenantId: "T123",
+          providerDestinationId: "C123",
+        }),
+      ).resolves.toBe("public");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("treats unsigned and legacy prefix-derived destinations as unconfirmed", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
+      // A write without a live source signal stays unconfirmed even though
+      // the channel id is C-prefixed.
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("unsigned").destination,
+        nowMs: 1_000,
+      });
+      const conversation = await store.get({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(conversation?.visibility).toBeUndefined();
+      await expect(
+        store.getDestinationVisibility({
+          provider: "slack",
+          providerTenantId: "T123",
+          providerDestinationId: "C123",
+        }),
+      ).resolves.toBeUndefined();
+
+      // A legacy row whose visibility was derived from the id prefix has no
+      // confirmation timestamp and must read as unconfirmed.
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_destinations (
+  id, provider, provider_tenant_id, provider_destination_id,
+  kind, visibility, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`,
+        [
+          "legacy-destination",
+          "slack",
+          "T999",
+          "C_LEGACY",
+          "channel",
+          "public",
+          new Date(1_000).toISOString(),
+          new Date(1_000).toISOString(),
+        ],
+      );
+      await expect(
+        store.getDestinationVisibility({
+          provider: "slack",
+          providerTenantId: "T999",
+          providerDestinationId: "C_LEGACY",
+        }),
+      ).resolves.toBeUndefined();
     } finally {
       await fixture.close();
     }

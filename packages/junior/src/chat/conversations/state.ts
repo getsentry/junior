@@ -13,6 +13,9 @@ export function createStateConversationStore(
 ): ConversationStore {
   return {
     get: (args) => getTaskConversation({ ...args, state }),
+    // Task-execution state has no destination records, so visibility is never
+    // source-confirmed here and cross-context reads fail closed to private.
+    getDestinationVisibility: async () => undefined,
     recordActivity: (args) =>
       recordTaskConversationActivity({ ...args, state }),
     recordExecution: (args) =>

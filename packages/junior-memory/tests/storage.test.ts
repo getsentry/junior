@@ -268,6 +268,9 @@ function slackContext(
     source: createSlackSource({
       teamId,
       channelId,
+      // Only channel_type can mark a source public; C-prefixed test channels
+      // model public channels unless a test overrides this.
+      ...(channelId.startsWith("C") ? { channelType: "channel" as const } : {}),
       messageTs: threadTs,
       threadTs,
     }),

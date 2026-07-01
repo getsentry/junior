@@ -156,8 +156,25 @@ CREATE INDEX IF NOT EXISTS junior_conversations_origin_idx
 `,
 ] as const;
 
+/**
+ * Expand-only: adds a nullable confirmation timestamp so readers can
+ * distinguish source-confirmed visibility from legacy prefix-derived values.
+ * Legacy rows keep a NULL confirmation and must read as private until a live
+ * source signal re-confirms them.
+ */
+const destinationVisibilityConfirmationStatements = [
+  `
+ALTER TABLE junior_destinations
+  ADD COLUMN IF NOT EXISTS visibility_confirmed_at TIMESTAMPTZ
+`,
+] as const;
+
 export const migrations = [
   defineMigration("0001_conversation_core", coreMetadataStatements),
+  defineMigration(
+    "0002_destination_visibility_confirmation",
+    destinationVisibilityConfirmationStatements,
+  ),
 ] as const;
 
 export { schema };

@@ -32,6 +32,13 @@ export const juniorDestinations = pgTable(
     metadata: jsonb("metadata_json"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
+    /**
+     * Set only when `visibility` came from a source-provided signal (Slack
+     * `channel_type` / `conversations.info` `is_private`). NULL rows —
+     * including legacy prefix-derived values — are unconfirmed and must read
+     * as private. Appended last to match the expand-only migration order.
+     */
+    visibilityConfirmedAt: timestamptz("visibility_confirmed_at"),
   },
   (table) => [
     uniqueIndex("junior_destinations_provider_destination_uidx").on(

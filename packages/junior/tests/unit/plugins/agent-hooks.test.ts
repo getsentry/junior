@@ -123,14 +123,23 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
-  it("infers Slack source visibility from channel ID prefixes", () => {
+  it("classifies Slack source visibility from the channel_type signal", () => {
+    expect(
+      createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        channelType: "channel",
+        threadTs: "1718800000.000000",
+      }).type,
+    ).toBe("pub");
+    // Without a signal, C-prefixed channels fail closed to private.
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
         threadTs: "1718800000.000000",
       }).type,
-    ).toBe("pub");
+    ).toBe("priv");
     expect(
       createSlackSource({
         teamId: "T123",

@@ -88,16 +88,25 @@ export interface LocalInvocationContext extends BaseInvocationContext {
 
 export type InvocationContext = LocalInvocationContext | SlackInvocationContext;
 
+/** Slack Events API channel_type values accepted as source visibility signals. */
+export type SlackSourceChannelType = "channel" | "group" | "im" | "mpim";
+
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
   channelId: string;
+  /**
+   * Slack Events API `channel_type` for the inbound event. This is the only
+   * signal that can mark a source public; without it the source fails closed
+   * to private.
+   */
+  channelType?: SlackSourceChannelType;
   messageTs?: string;
   teamId: string;
   threadTs?: string;
 }): SlackSource {
   return {
     platform: "slack",
-    type: slackSourceType(input.channelId),
+    type: slackSourceType(input.channelId, input.channelType),
     teamId: input.teamId,
     channelId: input.channelId,
     ...(input.messageTs ? { messageTs: input.messageTs } : {}),
@@ -105,11 +114,24 @@ export function createSlackSource(input: {
   };
 }
 
-/** Classify Slack's documented C/D/G channel id prefixes into source visibility. */
-function slackSourceType(channelId: string): SourceType {
-  if (channelId.startsWith("C")) return "pub";
-  if (channelId.startsWith("D") || channelId.startsWith("G")) return "priv";
-  throw new Error(`Unsupported Slack channel ID prefix: ${channelId}`);
+/**
+ * Classify Slack source visibility from the event's channel_type signal.
+ *
+ * Channel-id prefixes cannot prove a conversation public — modern Slack
+ * private channels also use `C`-prefixed ids — so prefixes may only narrow
+ * toward private and unsigned `C` sources fail closed to private.
+ */
+function slackSourceType(
+  channelId: string,
+  channelType: SlackSourceChannelType | undefined,
+): SourceType {
+  if (channelId.startsWith("D") || channelId.startsWith("G")) {
+    return "priv";
+  }
+  if (!channelId.startsWith("C")) {
+    throw new Error(`Unsupported Slack channel ID prefix: ${channelId}`);
+  }
+  return channelType === "channel" ? "pub" : "priv";
 }
 
 /** Build a normalized local source from a local conversation id. */

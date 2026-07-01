@@ -1,4 +1,5 @@
 import type { Destination } from "@sentry/junior-plugin-api";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackRequester } from "@/chat/requester";
 
 export type ConversationSource =
@@ -37,11 +38,27 @@ export interface Conversation {
   source?: ConversationSource;
   title?: string;
   updatedAtMs: number;
+  /**
+   * Source-confirmed destination visibility. Undefined means unconfirmed —
+   * legacy prefix-derived rows included — and readers must treat it as
+   * private.
+   */
+  visibility?: ConversationPrivacy;
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
+  /**
+   * Read persisted source-confirmed visibility for one destination, used by
+   * cross-conversation privacy gates. Undefined means unconfirmed and must be
+   * treated as private.
+   */
+  getDestinationVisibility(args: {
+    provider: string;
+    providerDestinationId: string;
+    providerTenantId?: string;
+  }): Promise<ConversationPrivacy | undefined>;
   recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;
@@ -51,6 +68,8 @@ export interface ConversationStore {
     requester?: StoredSlackRequester;
     source?: ConversationSource;
     title?: string;
+    /** Source-confirmed visibility from the current event's signal only. */
+    visibility?: ConversationPrivacy;
   }): Promise<void>;
   /** Store task-execution metadata for long-term conversation history. */
   recordExecution(args: {
@@ -64,6 +83,8 @@ export interface ConversationStore {
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
+    /** Source-confirmed visibility from the current event's signal only. */
+    visibility?: ConversationPrivacy;
   }): Promise<void>;
   listByActivity(args?: {
     limit?: number;

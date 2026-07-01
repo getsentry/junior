@@ -12,10 +12,19 @@ export type SlackConversationType =
   | "direct_message"
   | "private_channel_or_group_dm";
 
+/** Conversation visibility classification derived from source-provided signals. */
+export type SlackConversationVisibility = "public" | "private";
+
 /** Slack conversation facts available to the bot for runtime context. */
 export interface SlackConversationContext {
   type: SlackConversationType;
   name?: string;
+  /**
+   * Visibility proven by a source signal (`channel_type`) or narrowed toward
+   * private by a `D`/`G` id prefix. Undefined for `C`-prefixed conversations
+   * without a signal, which may be public or private.
+   */
+  visibility?: SlackConversationVisibility;
 }
 
 function normalizeConversationName(
@@ -74,6 +83,30 @@ function toSlackEventChannelType(
   return undefined;
 }
 
+/**
+ * Map Slack's Events API channel_type to a source-confirmed visibility.
+ *
+ * This is the only mapping allowed to classify a Slack conversation public;
+ * channel-id prefixes may only narrow classification toward private.
+ */
+export function conversationVisibilityFromSlackChannelType(
+  channelType: SlackEventChannelType | undefined,
+): SlackConversationVisibility | undefined {
+  if (!channelType) return undefined;
+  return channelType === "channel" ? "public" : "private";
+}
+
+function visibilityFromChannelIdPrefix(
+  channelId: string | undefined,
+): SlackConversationVisibility | undefined {
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return undefined;
+  if (normalized.startsWith("D") || normalized.startsWith("G")) {
+    return "private";
+  }
+  return undefined;
+}
+
 /** Resolve Slack's raw event channel type from a Chat SDK message-like object. */
 export function resolveSlackChannelTypeFromMessage(
   message: unknown,
@@ -101,10 +134,14 @@ export function resolveSlackConversationContext(input: {
   if (!type) return undefined;
 
   const name = normalizeConversationName(type, input.channelName);
+  const visibility =
+    conversationVisibilityFromSlackChannelType(input.channelType) ??
+    visibilityFromChannelIdPrefix(input.channelId);
 
   return {
     type,
     ...(name ? { name } : {}),
+    ...(visibility ? { visibility } : {}),
   };
 }
 

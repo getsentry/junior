@@ -367,6 +367,14 @@ describe("generateAssistantReply provider retry", () => {
       },
     ] satisfies PiMessage[];
 
+    // Reading the transcript below requires a source-confirmed public
+    // destination; a bare C prefix no longer proves the channel public.
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C123:1712345.0001",
+      destination: TEST_DESTINATION,
+      visibility: "public",
+    });
+
     const reply = await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
