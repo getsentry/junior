@@ -213,6 +213,9 @@ describe("advisor tool", () => {
       "listDir",
       "readFile",
       "systemTime",
+      "transcriptList",
+      "transcriptRead",
+      "transcriptSearch",
       "webFetch",
       "webSearch",
     ]);
