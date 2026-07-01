@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-06-11
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -93,19 +93,20 @@ Normative rules:
 
 Data authority by stage:
 
-| Data                                    | Authority                                              | Notes                                                                                                                              |
-| --------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Platform event shape                    | Source adapter ingress modules                         | Parse platform IDs and attachments before runtime; do not infer agent behavior here.                                               |
-| Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                  | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                                 |
-| Conversation reporting rows             | `ConversationStore` / `./conversation-storage.md`      | Source for dashboard/API conversation lists; do not rebuild the primary list by grouping agent-run rows.                           |
-| Active execution discovery              | `conversation:active` index + conversation record      | Heartbeat discovers stale active conversations here, then uses the record to decide whether to enqueue a nudge.                    |
-| Conversation transcript                 | Persisted thread state                                 | Source for visible user/assistant thread history; assistant messages are added only after final destination delivery.              |
-| Active work routing                     | Conversation mailbox and lease                         | Pending messages are drained into the active conversation at safe boundaries for mailbox-backed paths.                             |
-| Pi execution transcript                 | Junior agent session log keyed by conversation id      | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible conversation transcript. |
-| Sandbox/artifact state                  | Persisted thread state                                 | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                               |
-| Pending auth                            | Auth-owned callback state plus session-log pause event | Auth pauses end the live run after private link delivery and are resumed by callback.                                              |
-| Final destination reply                 | Destination delivery port acceptance                   | Completion is persisted only after the destination accepts the final visible reply.                                                |
-| Routine continuation progress           | Assistant status and `reportProgress`                  | Cooperative yields do not post filler thread messages.                                                                             |
+| Data                                    | Authority                                                  | Notes                                                                                                                              |
+| --------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Platform event shape                    | Source adapter ingress modules                             | Parse platform IDs and attachments before runtime; do not infer agent behavior here.                                               |
+| Queue wake-up and duplicate suppression | Conversation mailbox worker and lease                      | Queue messages are nudges; mailbox state and leases decide whether work exists and who may run it.                                 |
+| Conversation reporting rows             | `ConversationStore` / `./conversation-storage.md`          | Source for dashboard/API conversation lists; do not rebuild the primary list by grouping agent-run rows.                           |
+| Active execution discovery              | `conversation:active` index + conversation record          | Heartbeat discovers stale active conversations here, then uses the record to decide whether to enqueue a nudge.                    |
+| Conversation transcript                 | Persisted thread state                                     | Source for visible user/assistant thread history; assistant messages are added only after final destination delivery.              |
+| Active work routing                     | Conversation mailbox and lease                             | Pending messages are drained into the active conversation at safe boundaries for mailbox-backed paths.                             |
+| Pi execution transcript                 | Junior agent session log keyed by conversation id          | Append-only model-execution log with a deterministic Pi-message projection; not a replacement for visible conversation transcript. |
+| Sandbox/artifact state                  | Persisted thread state                                     | Persist eagerly as it changes so a resumed slice can rebuild the same runtime world.                                               |
+| Pending auth                            | Auth-owned callback state plus session-log pause event     | Auth pauses end the live run after private link delivery and are resumed by callback.                                              |
+| Final destination reply                 | Destination delivery port acceptance                       | Completion is persisted only after the destination accepts the final visible reply.                                                |
+| Routine continuation progress           | Assistant status and `reportProgress`                      | Cooperative yields do not post filler thread messages.                                                                             |
+| Conversation visibility                 | Persisted destination record / `./conversation-storage.md` | Captured from source signals at ingress; consumed by redaction, transcript access, and reporting. Id prefixes never prove public.  |
 
 Related contract ownership:
 

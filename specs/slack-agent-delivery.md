@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-06-27
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -30,23 +30,28 @@ This spec exists so Slack behavior is described in one place instead of being in
 - Re-specifying OAuth token security or MCP credential handling
 - Defining conversational quality criteria that belong to evals
 - Making Slack-native text streaming part of Junior's correctness contract
+- Reconciling message edits and deletions beyond the newly-added-mention entry path
 
 ## Contracts
 
 ### 1. Entry Surfaces
 
-Junior currently supports four Slack entry paths:
+Junior currently supports five Slack entry paths:
 
 1. Direct messages route through the explicit-mention path and must always be treated as reply-eligible.
 2. Channel or thread `@mentions` route through the explicit-mention path.
 3. Subscribed-thread follow-ups route through the subscribed-message path and may reply or stay silent based on the subscribed-thread policy.
-4. Slack assistant lifecycle events (`assistant_thread_started`, `assistant_thread_context_changed`) initialize or refresh assistant-thread metadata and context.
+4. Messages edited to newly mention Junior route through the explicit-mention path. Other edits and `message_deleted` events are not entry surfaces and are not reconciled into persisted context.
+5. Slack assistant lifecycle events (`assistant_thread_started`, `assistant_thread_context_changed`) initialize or refresh assistant-thread metadata and context.
 
 Implications:
 
 - DM traffic must not be silently treated like passive subscribed-thread traffic.
 - Explicit mentions bypass passive no-reply classification.
 - Assistant-thread lifecycle handling is part of the production surface even when the main conversational UX still happens in normal threads.
+- Every message entry path — including edited-message mentions — applies one shared author gate before persistence. Junior-authored, unparsable-author, and Slack Connect external-user messages are dropped by the same check on every path; no path may synthesize author flags that bypass it.
+- Entry classification requires resolved bot identity (the bot user id). If bot identity cannot be resolved, event handling must fail retryably. It must not degrade for the process lifetime into missed mention detection or disabled self-message filtering.
+- When Slack delivers both `app_mention` and `message` events for the same message, dedupe must preserve the richer payload: files and attachments must survive regardless of which event arrived first.
 
 ### 2. Context Sourcing Contract
 
@@ -238,7 +243,7 @@ Required split:
 
 1. Slack status-update failures are best effort and must not by themselves fail the turn.
 2. Slack thread-post or final delivery failures are turn failures because the visible reply contract was not satisfied.
-3. Junior must not persist assistant conversation state for a turn until final Slack delivery succeeds.
+3. Junior must not persist assistant conversation state for a turn until final Slack delivery succeeds. This includes the durable session-log/Pi transcript: an undelivered assistant reply must not surface to later turns as delivered conversation history.
 4. If a reply normalizes to empty and no files exist, Junior must post an explicit fallback message rather than silently succeeding.
 5. If a chunked reply overflows a code fence boundary, fence integrity must still be preserved in the delivered Slack posts.
 
@@ -271,7 +276,9 @@ Required verification coverage for this contract:
 4. Integration: file-only replies, suppressed-thread-text file delivery, and resume-path file parity.
 5. Integration: image attachments surviving edited-message ingress and skipped passive-thread hydration.
 6. Integration: assistant-thread lifecycle metadata initialization.
-7. Evals: realistic user-visible multi-turn Slack behaviors when model interpretation is part of the contract.
+7. Integration: edited-message mentions apply the shared author gate; external-user and bot-authored edits do not start turns.
+8. Integration: a mention delivered as both `app_mention` and `message` keeps its file attachments regardless of event arrival order.
+9. Evals: realistic user-visible multi-turn Slack behaviors when model interpretation is part of the contract.
 
 ## Related Specs
 

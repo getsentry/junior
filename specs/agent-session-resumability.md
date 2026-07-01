@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-06-08
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -111,6 +111,13 @@ messages are marked injected in the mailbox. Queue delivery acknowledgement must
 happen only after the worker has durably committed final completion, safe
 cooperative yield, or a no-work result.
 
+Marking a mailbox message injected without a corresponding durable session-log
+append (or a persisted skip decision) is a contract violation. This applies
+equally while a conversation is `awaiting_resume`: a message that arrives while
+a run is parked either steers the resumed run at its next safe boundary or is
+appended to the session log before the resumed `continue()`. Rescheduling a
+continuation does not consume the message.
+
 ### Agent Session Log Contract
 
 The durable agent session log is the canonical state log for model execution. It is the source used to reconstruct `agent.state.messages`, derive model-visible runtime handles, and resume an interrupted session.
@@ -129,6 +136,12 @@ The session log has one clear projection into Pi messages:
 3. Projection must preserve chronological order and safe continuation boundaries.
 4. Projection must not invent loaded skills, provider activation, tool results, or assistant/user messages that were not represented in the durable log.
 5. Storage writes are append-only. If recovery must roll the active Pi projection back to a prior safe boundary, the writer appends an explicit projection-reset event instead of trimming or rewriting the stored list.
+
+Session-log writes are fenced by conversation ownership: a writer that no
+longer holds the conversation lease or resume lock must not append entries or
+reset the projection. Read-compute-append sequences must revalidate ownership
+before the append so an expired-lease slice cannot duplicate or roll back
+another writer's entries.
 
 The schema must be a strongly typed discriminated union with runtime validation
 at the storage boundary. The TypeScript type and the runtime parser must come
@@ -225,6 +238,10 @@ Host-only activity events (`tool_execution_started`, `subagent_started`, and
 `subagent_ended`) must not contribute to Pi replay or resume history. They are
 durable reporting facts for activity timelines and diagnostics; the Pi
 projection reducer must ignore them when constructing `agent.state.messages`.
+
+Host-only activity events are best-effort reporting writes. A failed append is
+logged and swallowed; it must not abort the model turn, end the run, or be
+classified as a provider failure.
 
 `authorization_completed` is a host-authored event that projects to one concise
 Pi-compatible observation in chronological order:
@@ -376,6 +393,14 @@ The implementation should not persist a separate `running` lease state in the
 session log. Conversation execution leases are mailbox-worker state owned by
 `./task-execution.md`.
 
+Generation completing is not delivery. A session must not be recorded in a
+terminal completed/delivered state before the destination accepts the final
+reply; until acceptance it remains resumable or is terminally failed with the
+standard visible fallback. Resume and redelivery paths must check the
+delivered marker before posting so duplicate deliveries of the same finalized
+reply are suppressed. An assistant reply that was never delivered must not be
+presented to later turns as delivered conversation history.
+
 ### Safe Resume Boundary Contract
 
 A pause boundary is resumable only when all conditions are true:
@@ -504,6 +529,13 @@ The worker must:
 4. Restore Pi messages with `agent.state.messages = ...`.
 5. Resume with `continue()`.
 
+Recovery must cover every non-terminal session, not only `awaiting_resume`.
+When the mailbox is empty and the newest session is `running` under an expired
+lease (hard worker death), the worker resumes it from the latest durable safe
+boundary; if no resumable boundary exists, it terminally fails the session and
+delivers the standard failure fallback. A lease-expired `running` session must
+never be silently dropped.
+
 ### Slice Lifecycle
 
 1. User message resolves a predictable `conversation_id`.
@@ -512,7 +544,9 @@ The worker must:
 3. If the reduced conversation projection already contains session bootstrap
    context, runtime loads and reduces it, restores Pi from the projected
    messages, and appends the new user input without duplicating bootstrap
-   context.
+   context. This dedupe applies to every replay shape, including redelivery of
+   the same inbound message after a lost input commit against a `running`
+   record: the same user prompt must not appear twice in Pi history.
 4. The queue worker runs and eagerly persists sandbox/artifact state as those values change.
 5. If Slack accepts the final assistant reply, append `assistant_reply_delivered`.
 6. If MCP auth pauses at a safe boundary, append `auth_paused`; the OAuth callback later consults auth-owned state before resuming.
@@ -529,6 +563,8 @@ The worker must:
 4. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
 5. Repeated cooperative yields before visible output may produce further execution chunks, but timeout continuation must stop at the configured high-water slice cap and mark the session failed instead of scheduling another queue nudge.
 6. A later user message after an ungraceful crash may build its prompt history from the active session's latest reduced Pi projection. If the prior session produced assistant text that was not committed to visible thread state, that trailing assistant text must be trimmed from the fresh-run history view.
+7. Hard worker death mid-slice leaves a `running` session with an expired lease: queue redelivery or heartbeat requeues the conversation, and the next worker resumes it from the latest durable boundary or terminally fails it with a visible fallback. The interrupted request must not die silently.
+8. Delivery fails after generation completed: the session is not delivered. It must remain resumable for redelivery or be terminally failed with a visible fallback, and the undelivered assistant reply must not surface as prior conversation history for later turns.
 
 ## Observability
 
@@ -563,6 +599,10 @@ Required attributes when available:
 8. Manual/eval: once assistant text is already visible, recovery does not auto-reconcile partial thread output.
 9. Component/integration: transient provider failures retry with `continue()` from a safe boundary and do not duplicate prior tool execution.
 10. Component/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
+11. Component/integration: a user message arriving while a session is `awaiting_resume` reaches Pi history (steered or appended) and receives an answer; it is never marked injected without a session-log append.
+12. Component/integration: a lease-expired `running` session is resumed or terminally failed with a visible fallback; it never no-ops.
+13. Component: redelivery after a lost input commit does not duplicate the user prompt or bootstrap context in Pi history.
+14. Component: a failed host-only activity append is swallowed and the model turn continues.
 
 ## Related Specs
 

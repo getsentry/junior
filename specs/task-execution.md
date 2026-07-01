@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-06-12
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -210,6 +210,7 @@ interface InboundMessage {
   receivedAtMs: number;
   input: AgentInput;
   injectedAtMs?: number;
+  attemptCount?: number;
 }
 
 interface Lease {
@@ -360,6 +361,9 @@ record remains the public execution summary. The contract is:
   idempotent
 - messages that arrive while a worker is active remain pending until the worker
   drains them at a safe boundary or a later worker resumes the conversation
+- conversation record writes are fenced: a mutator that no longer holds the
+  mutation lock or lease must not overwrite the record. Blind read-modify-write
+  that can clobber a newer record with a stale copy is a contract violation.
 
 The `InboundMessage` and `ConversationExecution` shapes are defined in the
 conversation record above.
@@ -446,7 +450,7 @@ Initial timing defaults:
 ```text
 worker check-in interval: 15s
 lease ttl: 90s
-heartbeat scan interval: 30s
+heartbeat scan interval: 60s (production one-minute cron)
 recovery trigger: lease.expiresAtMs <= now
 ```
 
@@ -607,6 +611,10 @@ Rules specific to the mailbox worker:
 6. Slack delivery remains best effort around process death. First pass does not
    add a generalized receipt or reconciliation system beyond persisted
    conversation completion state.
+7. Any ingress failure before durable mailbox append — including installation
+   or token resolution and routing-state reads — must return a retryable
+   non-2xx response so Slack redelivers. Acknowledging without persistence is
+   allowed only for events classified as ignorable.
 
 ### Heartbeat Contract
 
@@ -625,6 +633,11 @@ On each bounded scan, heartbeat must:
    `{ conversationId, destination }` when there is no recent `lastEnqueuedAtMs`.
 6. Update `lastEnqueuedAtMs`, `execution.updatedAtMs`, and the active index score
    after a repair nudge is accepted.
+
+7. Conversation records that fail to load or validate must not stall the scan.
+   Heartbeat removes them from `junior:conversation:active` after recording the
+   failure, so unreadable records cannot permanently occupy the bounded scan
+   window and starve recovery for every other conversation.
 
 Heartbeat must not run the agent inline. It only repairs durable state and sends
 queue wake-up nudges.
@@ -647,16 +660,35 @@ selection remain owned by their domain specs. Once claimed, execution should use
 the same mailbox, lease, session-log, and delivery contracts as interactive
 work.
 
+### Poison Work And Retry Bounds
+
+Retries must be bounded so one bad message cannot loop forever or spam the
+destination.
+
+1. Each inbound message carries a durable delivery attempt count. A worker
+   failure that leaves the message pending increments it.
+2. When a message exceeds the configured attempt limit, the worker consumes
+   it: record a terminal failure, deliver at most one visible fallback reply
+   for the affected request, and remove the message from `pendingMessages`
+   while keeping its id in `inboundMessageIds`.
+3. A failed run must not both NACK the queue delivery and schedule a recovery
+   nudge. Record durable recovery state, send one nudge, and acknowledge the
+   delivery.
+4. A visible failure reply is posted at most once per inbound message.
+   Requeued work for a message that already produced a failure reply must not
+   post another one.
+5. A queue delivery whose conversation record cannot be loaded or validated is
+   acknowledged as rejected after recording the failure. Redelivery cannot
+   repair a permanently invalid record.
+
 ### TODO Guardrails
 
-The first pass intentionally avoids extra looping controls. After the mailbox
-worker is proven in production, add policy for:
+Remaining looping controls deferred until the mailbox worker has more
+production history:
 
 - maximum wall-clock age for one active conversation run
-- maximum consecutive recoveries without a new session-log boundary
 - explicit cancel/stop semantics for user messages that should abandon active
   work
-- duplicate final-delivery suppression if duplicate replies are observed
 
 These guardrails must not complicate the first-pass mailbox/lease design.
 
@@ -686,6 +718,12 @@ These guardrails must not complicate the first-pass mailbox/lease design.
    and does not add special reconciliation beyond persisted completion state.
 10. Heartbeat misses one scan: Vercel Queue redelivery or the next heartbeat can
     still recover because leases and mailbox messages are durable.
+11. A message fails deterministically on every attempt: the attempt limit
+    consumes it with a terminal failure record and one visible fallback reply
+    instead of an unbounded requeue loop.
+12. A conversation record becomes unparsable: queue deliveries for it are
+    acknowledged as rejected and heartbeat drops it from the active index; it
+    cannot starve recovery for other conversations.
 
 ## Observability
 
@@ -700,6 +738,7 @@ Required event names should distinguish normal progress from repair:
 - `conversation_work_pending_requeued`
 - `conversation_work_recovery_failed`
 - `conversation_work_failed`
+- `conversation_work_poisoned` (attempt limit reached, message consumed)
 
 Required attributes when available:
 
@@ -756,6 +795,10 @@ Required invariants, using the lowest layer that proves the contract:
 17. Integration: realistic multi-message Slack follow-ups during long work
     preserve user intent by interrupting active requests and deferring passive
     reply-eligible messages according to the Slack delivery contract.
+18. Component: a message exceeding the delivery attempt limit is consumed with
+    a terminal failure record and at most one visible fallback reply.
+19. Component: heartbeat removes unreadable conversation records from the
+    active index and continues repairing the remaining backlog.
 
 ## Related Specs
 

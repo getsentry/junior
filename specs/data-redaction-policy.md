@@ -22,13 +22,22 @@ dashboard reporting, logs, traces, and operational metadata.
 
 Junior classifies conversations as `public` or `private`.
 
-- Slack channels whose id starts with `C` are public.
-- Slack direct messages whose id starts with `D` are private.
-- Slack private channels and group DMs whose id starts with `G` are private.
-- Unknown or unparsable conversation ids are private.
+- Visibility comes from source-provided signals, not identifier shape. For
+  Slack, the accepted signals are the Events API `channel_type` (`channel` is
+  public; `group`, `im`, and `mpim` are private) and `conversations.info`
+  `is_private`.
+- Channel-id prefixes must not be used to prove a conversation public. Modern
+  Slack private channels also use `C`-prefixed ids. A prefix may only narrow
+  classification toward private (`D`, `G`).
+- Confirmed visibility is persisted on the destination record
+  (`./conversation-storage.md`). Persisted visibility is the authority for any
+  read that happens outside the originating event context: transcript tools,
+  dashboard reporting, and telemetry capture.
+- Unknown, unparsable, or unconfirmed visibility is private.
 
-Privacy checks must fail closed. A missing channel id, unknown conversation
-shape, or unsupported platform must not expose raw payloads.
+Privacy checks must fail closed. A missing channel id, missing visibility
+signal, unknown conversation shape, or unsupported platform must not expose
+raw payloads.
 
 ## Raw Payloads
 
@@ -63,6 +72,20 @@ debuggability and does not reveal raw content:
 
 Safe metadata must stay low-cardinality and bounded. Do not include arbitrary
 payload previews or nested values.
+
+## Model-Facing Transcript Access
+
+Transcript query tools expose stored conversation content to the model, so they
+are an exposure surface governed by the same visibility classification.
+
+- A conversation's transcript is always readable from that conversation's own
+  context.
+- Cross-conversation reads require persisted destination visibility of
+  `public` and the same provider tenant (Slack workspace) as the requesting
+  context.
+- Conversations with missing destinations or unconfirmed visibility are not
+  readable across contexts.
+- Local and Slack contexts must not read each other's transcripts.
 
 ## Dashboard Reporting
 
@@ -110,6 +133,10 @@ attribute.
 - Tool execution tests prove private tool arguments, results, and MCP error
   payloads are not exposed through reporting or telemetry capture paths.
 - Unknown conversation ids are treated as private.
+- Conversations Slack reports as private (`channel_type: group` or
+  `is_private: true`) are classified private regardless of a `C` id prefix.
+- Cross-context transcript reads are denied for conversations without
+  confirmed public visibility, including legacy rows classified by id prefix.
 
 ## Related Specs
 

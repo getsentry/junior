@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-30
-- Last Edited: 2026-06-08
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -71,21 +71,25 @@ Scenarios:
 
 Junior must avoid responding to messages authored by itself so Slack delivery, retries, and bot-authored follow-ups do not create reply loops.
 
-Scenario:
+Scenarios:
 
 1. Junior-authored message is observed:
    - When Junior observes a message whose author is Junior itself, Junior must not start a normal assistant turn for that message.
+2. Bot-authored passive message:
+   - When a subscribed thread receives a message authored by another bot and no human directed Junior to act, Junior must not reply. Bot-authored passive traffic fails closed to silence so two bots cannot enter a reply loop.
 
 ### 4. Queued And Skipped User Input
 
-Junior must preserve user-authored messages that arrive while a turn is active and include them in the next handled turn according to the Chat SDK queue contract.
+Junior must preserve user-authored messages that arrive while a turn is active or parked and make them model-visible in the same conversation according to the mailbox contract in `./task-execution.md`.
 
 Scenarios:
 
 1. Multiple messages arrive during an active turn:
-   - When users send one or more messages while the per-thread handler is still processing an earlier message, Junior must combine the queued user text with the dispatched message text for the next eligible turn.
+   - When users send one or more messages while an earlier message is still being processed, Junior must combine the queued user text with the dispatched message text for the next eligible turn.
 2. Skipped passive message later becomes relevant:
    - When Junior skips a passive subscribed-thread message and a later explicit mention asks about the same thread context, Junior must make the skipped message available as prior conversation context when building the later turn.
+3. Message arrives while a turn awaits continuation:
+   - When a user message arrives while the conversation is parked awaiting a timeout, yield, or auth continuation, Junior must make the message model-visible — steered into the resumed run or handled as the next turn — and answer or acknowledge it. Consuming the message without model visibility is a contract violation.
 
 ### 5. In-Turn Execution Policy
 
@@ -168,6 +172,8 @@ Scenarios:
 3. Junior-authored messages must not start recursive turns.
 4. Slack side effects must not be reported as successful unless the tool succeeded in the same turn.
 5. Empty model output is not a successful final answer unless a successful side effect, file-only reply, or runtime-owned pause already satisfied the turn.
+6. User-visible failure text is the sanitized fallback response with its correlation/event id. Raw exception messages, stack traces, and internal error strings must not be delivered as reply text. Partial output may be delivered only when it is genuine model-authored text.
+7. Repeated failures for the same inbound message are bounded by the poison-work contract in `./task-execution.md`; one inbound message produces at most one visible failure reply.
 
 ## Observability
 

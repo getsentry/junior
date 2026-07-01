@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-16
-- Last Edited: 2026-04-30
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -35,6 +35,7 @@ Slack outbound behavior is split into two explicit boundaries:
 2. `packages/junior/src/chat/slack/outbound.ts` owns direct Slack Web API writes for message posts, ephemeral posts, file uploads, and reactions.
 3. Callers must not duplicate Slack outbound behavior with direct `getSlackClient().chat.postMessage(...)`, `chat.postEphemeral(...)`, `filesUploadV2(...)`, or `reactions.*(...)` outside `slack/outbound.ts`.
 4. Delivery modules must send already-rendered Slack text and must not apply their own Slack formatting rules after `slack/output.ts` has rendered it.
+5. Outbound writes resolve their token from the destination's workspace installation. A process-global token is a valid resolution only for single-workspace deployments; a write must never reach one workspace with another workspace's credentials.
 
 ### 2. Reply-Text Translation Contract
 
@@ -90,15 +91,17 @@ Current rules:
 
 Current rules:
 
-1. Slack rate limits are retried through `withSlackRetries`.
-2. Permanent Slack API failures are mapped into `SlackActionError` codes before surfacing.
-3. Error mapping must preserve the Slack API error string when available so callers and logs can distinguish specific platform failures.
-4. Idempotent success cases (`already_reacted`, `no_reaction`) are mapped explicitly so outbound callers can handle them intentionally.
+1. Slack rate limits are retried through `withSlackRetries`, honoring `Retry-After` bounded by the worker's remaining execution budget.
+2. Connection-phase network failures (the request is known not to have reached Slack) and Slack 5xx responses are retryable.
+3. Request timeouts where Slack may have accepted a message post are not retried, because a retry could duplicate a visible message. Reads and idempotent operations may retry timeouts.
+4. Permanent Slack API failures are mapped into `SlackActionError` codes before surfacing.
+5. Error mapping must preserve the Slack API error string when available so callers and logs can distinguish specific platform failures.
+6. Idempotent success cases (`already_reacted`, `no_reaction`) are mapped explicitly so outbound callers can handle them intentionally.
 
 ## Failure Model
 
 1. Invalid local inputs (missing channel IDs, empty text, empty file batches, invalid emoji aliases) fail before Slack is called.
-2. Rate-limited Slack writes may be retried.
+2. Rate-limited writes, connection-phase failures, and Slack 5xx responses may be retried; a transient network error on final delivery must not be surfaced as a turn failure before retries are exhausted.
 3. Non-retryable Slack failures surface as `SlackActionError` values unless the contract explicitly defines them as idempotent success.
 4. Best-effort follow-on work, such as permalink lookup, must not retroactively fail a successful message post.
 5. Message deletion used for post-delivery cleanup goes through the shared outbound boundary.
