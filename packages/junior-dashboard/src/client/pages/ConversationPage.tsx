@@ -29,6 +29,10 @@ import {
 } from "../components/TelemetryMetrics";
 import { Transcript } from "../components/Transcript";
 import { TranscriptLoading } from "../components/TranscriptLoading";
+import {
+  SubagentTranscriptDrawer,
+  type SubagentTranscriptTarget,
+} from "../components/SubagentTranscriptDrawer";
 import type {
   Conversation,
   ConversationDetailFeed,
@@ -37,6 +41,8 @@ import type {
 
 /** Render one permalinkable conversation transcript route. */
 export function ConversationPage(props: { data?: DashboardData }) {
+  const [subagentTarget, setSubagentTarget] =
+    useState<SubagentTranscriptTarget>();
   const routeParams = useParams();
   const conversationId = routeParams.conversationId
     ? decodeURIComponent(routeParams.conversationId)
@@ -53,9 +59,9 @@ export function ConversationPage(props: { data?: DashboardData }) {
     : undefined;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-5 md:px-8">
+    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
       <section className="min-w-0">
-        <header className="mb-6 grid gap-3 border-l-4 border-[#beaaff]/70 pl-4 md:grid-cols-[minmax(0,1fr)_auto]">
+        <header className="mb-3 grid gap-2 border-l-4 border-[#beaaff]/70 pl-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="m-0 text-2xl font-bold leading-tight tracking-normal">
@@ -63,7 +69,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
               </h2>
               <StatusBadge status={visualStatus} />
             </div>
-            <div className="mt-1 break-words text-[0.88rem] leading-relaxed text-[#b8b8b8]">
+            <div className="mt-1 break-words text-[0.86rem] leading-snug text-[#b8b8b8]">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
@@ -71,7 +77,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
               />
             </div>
           </div>
-          <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.82rem] leading-relaxed text-[#b8b8b8] md:items-end md:text-right">
+          <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.8rem] leading-snug text-[#b8b8b8] md:items-end md:text-right">
             <div className="break-words">
               updated{" "}
               {formatRelativeTime(
@@ -97,10 +103,18 @@ export function ConversationPage(props: { data?: DashboardData }) {
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
+            onOpenSubagentTranscript={({ part, turn }) => {
+              if (!conversationId) return;
+              setSubagentTarget({ conversationId, part, turn });
+            }}
             turns={detail.data?.runs ?? []}
           />
         )}
       </section>
+      <SubagentTranscriptDrawer
+        onClose={() => setSubagentTarget(undefined)}
+        target={subagentTarget}
+      />
     </div>
   );
 }

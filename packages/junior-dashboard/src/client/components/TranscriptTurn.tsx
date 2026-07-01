@@ -28,6 +28,7 @@ import type {
   ConversationTurn,
   TranscriptViewMessage,
   TranscriptViewPart,
+  TranscriptViewSubagentPart,
 } from "../types";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
@@ -72,6 +73,10 @@ type TranscriptToolEntry = Extract<TranscriptEntry, { kind: "tool" }>;
 
 /** Render one conversation transcript segment as actor messages and tool events. */
 export function ConversationTranscriptSegment(props: {
+  onOpenSubagentTranscript?: (args: {
+    part: TranscriptViewSubagentPart;
+    turn: ConversationTurn;
+  }) => void;
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
@@ -85,7 +90,11 @@ export function ConversationTranscriptSegment(props: {
       </div>
       <div className="min-w-0">
         <SegmentHeader turn={props.turn} />
-        <SegmentEvents turn={props.turn} view={props.view} />
+        <SegmentEvents
+          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          turn={props.turn}
+          view={props.view}
+        />
       </div>
     </section>
   );
@@ -105,7 +114,7 @@ function turnMarkerClass(
 
 function transcriptRoleLabel(role: string, turn: ConversationTurn): string {
   const kind = transcriptRoleKind(role);
-  if (kind === "assistant") return "Junior";
+  if (kind === "assistant") return turn.assistantLabel ?? "Junior";
   if (kind === "user") return turnActorLabel(turn);
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -211,6 +220,10 @@ function SegmentHeader(props: { turn: ConversationTurn }) {
 }
 
 function SegmentEvents(props: {
+  onOpenSubagentTranscript?: (args: {
+    part: TranscriptViewSubagentPart;
+    turn: ConversationTurn;
+  }) => void;
   turn: ConversationTurn;
   view: TranscriptViewMode;
 }) {
@@ -220,14 +233,19 @@ function SegmentEvents(props: {
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
       {props.turn.transcriptAvailable ? (
         <VisibleTranscriptEntries
+          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={transcript}
           turn={props.turn}
           view={props.view}
         />
       ) : props.turn.transcriptRedacted && transcript.length > 0 ? (
-        <RedactedTranscriptView turn={props.turn} />
+        <RedactedTranscriptView
+          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          turn={props.turn}
+        />
       ) : transcript.length > 0 ? (
         <VisibleTranscriptEntries
+          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={transcript}
           turn={props.turn}
           view={props.view}
@@ -242,6 +260,10 @@ function SegmentEvents(props: {
 }
 
 function VisibleTranscriptEntries(props: {
+  onOpenSubagentTranscript?: (args: {
+    part: TranscriptViewSubagentPart;
+    turn: ConversationTurn;
+  }) => void;
   transcript: TranscriptViewMessage[];
   turn: ConversationTurn;
   view: TranscriptViewMode;
@@ -261,6 +283,9 @@ function VisibleTranscriptEntries(props: {
       renderSubagent={(entry, index) => (
         <TranscriptSubagentView
           key={`${props.turn.id}:subagent:${index}`}
+          onOpenTranscript={(part) =>
+            props.onOpenSubagentTranscript?.({ part, turn: props.turn })
+          }
           part={entry.part}
           timestamp={entry.timestamp}
         />
@@ -351,7 +376,13 @@ function TranscriptEntryList(props: {
   return <>{rows}</>;
 }
 
-function RedactedTranscriptView(props: { turn: ConversationTurn }) {
+function RedactedTranscriptView(props: {
+  onOpenSubagentTranscript?: (args: {
+    part: TranscriptViewSubagentPart;
+    turn: ConversationTurn;
+  }) => void;
+  turn: ConversationTurn;
+}) {
   return (
     <TranscriptEntryList
       entries={groupTranscriptMessages(turnTranscriptMessages(props.turn))}
@@ -366,6 +397,9 @@ function RedactedTranscriptView(props: { turn: ConversationTurn }) {
       renderSubagent={(entry, index) => (
         <TranscriptSubagentView
           key={`${props.turn.id}:redacted:subagent:${index}`}
+          onOpenTranscript={(part) =>
+            props.onOpenSubagentTranscript?.({ part, turn: props.turn })
+          }
           part={entry.part}
           timestamp={entry.timestamp}
         />

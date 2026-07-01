@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JuniorReporting } from "@sentry/junior/reporting";
+import type {
+  ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscript,
+  JuniorReporting,
+} from "@sentry/junior/reporting";
 import { createDashboardApp } from "../src/app";
 import {
   createMockConversationReporting,
@@ -107,6 +110,22 @@ function reporting(): JuniorReporting {
             transcript: [],
           },
         ],
+      };
+    },
+    async getConversationSubagentTranscript(
+      _conversationId,
+      _runId,
+      subagentId,
+    ) {
+      return {
+        type: "subagent",
+        createdAt: "2026-05-29T00:00:00.000Z",
+        id: subagentId,
+        status: "error",
+        subagentKind: "unknown",
+        transcript: [],
+        transcriptAvailable: false,
+        unavailableReason: "not_found",
       };
     },
   };
@@ -265,27 +284,84 @@ describe("dashboard mock conversation routes", () => {
       invertedRun?.transcript[0]?.timestamp ?? 0,
     );
     const advisorRun = qaConversationBody.runs[2];
-    expect(advisorRun?.id).toBe("mock-dashboard-qa-advisor-subagent");
+    expect(advisorRun?.id).toBe("mock-dashboard-qa-advisor-code-change");
     expect(
       advisorRun?.transcript
         .flatMap((message) => message.parts)
         .filter((part) => part.name === "advisor")
         .map((part) => part.type),
-    ).toEqual(["tool_call", "tool_result"]);
+    ).toEqual(["tool_call", "tool_result", "tool_call", "tool_result"]);
     expect(advisorRun?.activity?.[0]).toMatchObject({
       type: "tool_execution",
       status: "completed",
-      toolCallId: "toolu_mock_dashboard_advisor",
+      toolCallId: "toolu_mock_dashboard_advisor_plan",
       toolName: "advisor",
       subagents: [
         {
           type: "subagent",
           status: "completed",
           subagentKind: "advisor",
-          parentToolCallId: "toolu_mock_dashboard_advisor",
+          parentToolCallId: "toolu_mock_dashboard_advisor_plan",
+          transcriptAvailable: true,
         },
       ],
     });
+    expect(advisorRun?.activity?.[3]).toMatchObject({
+      type: "tool_execution",
+      status: "completed",
+      toolCallId: "toolu_mock_dashboard_advisor_review",
+      toolName: "advisor",
+      subagents: [
+        {
+          type: "subagent",
+          status: "completed",
+          subagentKind: "advisor",
+          parentToolCallId: "toolu_mock_dashboard_advisor_review",
+          transcriptAvailable: true,
+        },
+      ],
+    });
+
+    const firstAdvisorTranscript = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(
+          DASHBOARD_QA_CONVERSATION_ID,
+        )}/runs/mock-dashboard-qa-advisor-code-change/subagents/toolu_mock_dashboard_advisor_plan`,
+      ),
+    );
+    expect(firstAdvisorTranscript.status).toBe(200);
+    const firstAdvisorBody =
+      (await firstAdvisorTranscript.json()) as DashboardConversationSubagentTranscript;
+    expect(firstAdvisorBody.subagentConversationId).toBe(
+      "junior:internal:dashboard-qa:advisor_session",
+    );
+    expect(firstAdvisorBody.subagentSentryConversationUrl).toContain(
+      encodeURIComponent("junior:internal:dashboard-qa:advisor_session"),
+    );
+    expect(firstAdvisorBody.transcriptAvailable).toBe(true);
+    expect(JSON.stringify(firstAdvisorBody.transcript)).toContain(
+      "Review the dashboard plan before editing",
+    );
+    expect(JSON.stringify(firstAdvisorBody.transcript)).not.toContain(
+      "Review the implementation after the first advisor pass",
+    );
+
+    const secondAdvisorTranscript = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(
+          DASHBOARD_QA_CONVERSATION_ID,
+        )}/runs/mock-dashboard-qa-advisor-code-change/subagents/toolu_mock_dashboard_advisor_review`,
+      ),
+    );
+    expect(secondAdvisorTranscript.status).toBe(200);
+    const secondAdvisorBody =
+      (await secondAdvisorTranscript.json()) as DashboardConversationSubagentTranscript;
+    expect(JSON.stringify(secondAdvisorBody.transcript)).toContain(
+      "Review the dashboard plan before editing",
+    );
+    expect(JSON.stringify(secondAdvisorBody.transcript)).toContain(
+      "Review the implementation after the first advisor pass",
+    );
 
     const longConversation = await app.fetch(
       new Request(

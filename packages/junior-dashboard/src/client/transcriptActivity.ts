@@ -81,6 +81,9 @@ function subagentPart(activity: SubagentActivity): TranscriptViewSubagentPart {
       ? { parentToolCallId: activity.parentToolCallId }
       : {}),
     ...(activity.endedAt ? { endedAt: activity.endedAt } : {}),
+    ...(activity.transcriptAvailable !== undefined
+      ? { transcriptAvailable: activity.transcriptAvailable }
+      : {}),
   };
 }
 

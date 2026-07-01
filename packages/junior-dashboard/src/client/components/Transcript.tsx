@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Search } from "lucide-react";
 
-import type { ConversationTurn } from "../types";
+import type { ConversationTurn, TranscriptViewSubagentPart } from "../types";
 import { cn } from "../styles";
 import { Button } from "./Button";
 import { TranscriptHeader } from "./TranscriptHeader";
@@ -12,15 +12,16 @@ import {
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
-import {
-  TranscriptSearchProvider,
-  turnHasMatch,
-} from "./transcriptSearch";
+import { TranscriptSearchProvider, turnHasMatch } from "./transcriptSearch";
 
 /** Render ordered conversation transcript segments as message and tool events. */
 export function Transcript(props: {
   actions?: ReactNode;
   live?: boolean;
+  onOpenSubagentTranscript?: (args: {
+    part: TranscriptViewSubagentPart;
+    turn: ConversationTurn;
+  }) => void;
   turns: ConversationTurn[];
 }) {
   const [view, setView] = useState<TranscriptViewMode>("rich");
@@ -81,6 +82,7 @@ export function Transcript(props: {
           visibleTurns.map((turn) => (
             <ConversationTranscriptSegment
               key={turn.id}
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
               turn={turn}
               view={view}
             />
@@ -90,7 +92,11 @@ export function Transcript(props: {
             No events match your search.
           </div>
         ) : null}
-        <div aria-hidden="true" className="h-px" ref={bottomPinning.anchorRef} />
+        <div
+          aria-hidden="true"
+          className="h-px"
+          ref={bottomPinning.anchorRef}
+        />
         <JumpToLatestButton
           hasPendingUpdate={bottomPinning.hasPendingUpdate}
           onClick={bottomPinning.jumpToBottom}

@@ -7,10 +7,11 @@ import { HighlightText } from "./transcriptSearch";
 
 /** Render a child-agent lifecycle event inside the transcript stream. */
 export function TranscriptSubagentView(props: {
+  onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
   part: TranscriptViewSubagentPart;
   timestamp?: number;
 }) {
-  const label = `${props.part.subagentKind} subagent`;
+  const label = props.part.subagentKind;
   const endedAt = props.part.endedAt
     ? Date.parse(props.part.endedAt)
     : undefined;
@@ -25,15 +26,12 @@ export function TranscriptSubagentView(props: {
   const meta = [
     status,
     duration,
-    props.part.parentToolCallId
-      ? `parent ${props.part.parentToolCallId}`
-      : undefined,
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)
       : undefined,
   ].filter(isString);
 
-  return (
+  const frame = (
     <ToolFrame
       meta={meta}
       mobileSummaryMeta={status}
@@ -49,17 +47,40 @@ export function TranscriptSubagentView(props: {
           <strong className="min-w-0 break-words font-bold text-cyan-100">
             <HighlightText text={label} />
           </strong>
+          {props.part.status === "running" ? (
+            <span
+              aria-hidden="true"
+              className="mt-px size-1.5 shrink-0 animate-pulse rounded-full bg-cyan-300"
+            />
+          ) : null}
         </>
       }
     />
   );
+
+  if (!props.onOpenTranscript || props.part.status === "running") {
+    return frame;
+  }
+
+  return (
+    <button
+      aria-label={`Open ${props.part.subagentKind} transcript`}
+      className="block w-full min-w-0 text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
+      onClick={() => props.onOpenTranscript?.(props.part)}
+      type="button"
+    >
+      {frame}
+    </button>
+  );
 }
 
 function statusLabel(part: TranscriptViewSubagentPart): string | undefined {
-  if (part.outcome === "success") return "completed";
   if (part.outcome === "error") return "error";
   if (part.outcome === "aborted") return "aborted";
-  return part.status === "running" ? "running" : part.status;
+  if (part.status === "error" || part.status === "aborted") {
+    return part.status;
+  }
+  return undefined;
 }
 
 function isString(value: string | undefined): value is string {

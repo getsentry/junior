@@ -359,7 +359,15 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
   const pagePaths =
     basePath === "/"
-      ? ["/", "/conversations", "/conversations/*", "/plugins", "/plugins/*"]
+      ? [
+          "/",
+          "/conversations",
+          "/conversations/*",
+          "/people",
+          "/people/*",
+          "/plugins",
+          "/plugins/*",
+        ]
       : [basePath, `${basePath}/*`];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
@@ -376,6 +384,8 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/skills",
     "/api/conversations",
     "/api/conversations/*",
+    "/api/people",
+    "/api/people/*",
     "/api/config",
     "/api/me",
     authPath,

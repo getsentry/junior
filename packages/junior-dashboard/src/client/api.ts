@@ -2,6 +2,7 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 
 import type {
   ConversationStatsReport,
+  ConversationSubagentTranscript,
   ConversationDetailFeed,
   ConversationFeed,
   DashboardConfig,
@@ -10,6 +11,8 @@ import type {
   Identity,
   Plugin,
   PluginReportFeed,
+  RequesterDirectory,
+  RequesterProfile,
   Runtime,
   Skill,
 } from "./types";
@@ -117,6 +120,10 @@ async function readPluginReports(): Promise<PluginReportFeed> {
   return await read<PluginReportFeed>("/api/plugin-reports");
 }
 
+async function readRequesterDirectory(): Promise<RequesterDirectory> {
+  return await read<RequesterDirectory>("/api/people");
+}
+
 /** Fetch dashboard shell data shared across browser routes. */
 export function useDashboardCoreData() {
   return useQuery({
@@ -148,6 +155,26 @@ export function useConversationsData() {
   return useQuery({
     queryKey: ["dashboard", "conversations"],
     queryFn: readConversationFeed,
+    retry: false,
+  });
+}
+
+/** Fetch the requester directory used by the People dashboard route. */
+export function useRequesterDirectoryData() {
+  return useQuery({
+    queryKey: ["dashboard", "people"],
+    queryFn: readRequesterDirectory,
+    retry: false,
+  });
+}
+
+/** Fetch one requester profile for the People detail dashboard route. */
+export function useRequesterProfileData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email],
+    queryFn: async (): Promise<RequesterProfile> =>
+      read<RequesterProfile>(`/api/people/${encodeURIComponent(email!)}`),
     retry: false,
   });
 }
@@ -205,4 +232,36 @@ export function readConversationData(
   return read<ConversationDetailFeed>(
     `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
+}
+
+/** Fetch one child-agent transcript for the conversation detail drawer. */
+export function useConversationSubagentTranscriptData(
+  params:
+    | {
+        conversationId: string;
+        runId: string;
+        subagentId: string;
+      }
+    | undefined,
+) {
+  return useQuery({
+    enabled: Boolean(params),
+    queryKey: [
+      "conversation-subagent",
+      params?.conversationId,
+      params?.runId,
+      params?.subagentId,
+    ],
+    queryFn: async (): Promise<ConversationSubagentTranscript> => {
+      const active = params!;
+      return await read<ConversationSubagentTranscript>(
+        `/api/conversations/${encodeURIComponent(
+          active.conversationId,
+        )}/runs/${encodeURIComponent(active.runId)}/subagents/${encodeURIComponent(
+          active.subagentId,
+        )}`,
+      );
+    },
+    retry: false,
+  });
 }

@@ -9,7 +9,13 @@ import { Button } from "../src/client/components/Button";
 import { FilterTabs } from "../src/client/components/FilterTabs";
 import { PluginReports } from "../src/client/components/PluginReports";
 import { StatusBadge } from "../src/client/components/StatusBadge";
+import {
+  SubagentTranscriptDrawer,
+  type SubagentTranscriptTarget,
+} from "../src/client/components/SubagentTranscriptDrawer";
+import { ToolValueInspector } from "../src/client/components/ToolValueInspector";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
+import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { ConversationTranscriptSegment } from "../src/client/components/TranscriptTurn";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
@@ -17,12 +23,14 @@ import { client } from "../src/client/api";
 import { CommandCenter } from "../src/client/pages/CommandCenter";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
+import { Profile } from "../src/client/pages/PeoplePage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
   ConversationDetailFeed,
   ConversationSummary,
   ConversationTurn,
   DashboardData,
+  RequesterProfile,
 } from "../src/client/types";
 
 afterEach(() => {
@@ -174,6 +182,201 @@ describe("dashboard telemetry components", () => {
     expect(transcript).not.toContain(">Transcript<");
     expect(transcript.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
     expect(transcript.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
+  });
+
+  it("renders transcript-backed subagent rows as inspectable events", () => {
+    const html = renderToStaticMarkup(
+      <TranscriptSubagentView
+        onOpenTranscript={() => {}}
+        part={{
+          id: "advisor-call",
+          outcome: "success",
+          parentToolCallId: "advisor-call",
+          status: "success",
+          subagentKind: "advisor",
+          transcriptAvailable: true,
+          type: "subagent",
+        }}
+        timestamp={Date.parse("2026-01-01T00:00:00.000Z")}
+      />,
+    );
+
+    expect(html).toContain("advisor");
+    expect(html).not.toContain("advisor subagent");
+    expect(html).toContain('aria-label="Open advisor transcript"');
+  });
+
+  it("renders advisor drawer headers with conversation identity", () => {
+    const target = {
+      conversationId: "parent-conversation",
+      part: {
+        id: "advisor-call",
+        outcome: "success",
+        parentToolCallId: "advisor-call",
+        status: "success",
+        subagentKind: "advisor",
+        transcriptAvailable: true,
+        type: "subagent",
+      },
+      turn: {
+        conversationId: "parent-conversation",
+        cumulativeDurationMs: 1000,
+        displayTitle: "Parent conversation",
+        id: "turn-1",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:01.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        surface: "internal",
+        transcript: [],
+        transcriptAvailable: true,
+      },
+    } satisfies SubagentTranscriptTarget;
+    client.setQueryData(
+      [
+        "conversation-subagent",
+        "parent-conversation",
+        "turn-1",
+        "advisor-call",
+      ],
+      {
+        type: "subagent",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        endedAt: "2026-01-01T00:00:01.000Z",
+        id: "advisor-call",
+        outcome: "success",
+        parentToolCallId: "advisor-call",
+        status: "success",
+        subagentConversationId: "junior:parent-conversation:advisor_session",
+        subagentKind: "advisor",
+        subagentSentryConversationUrl:
+          "https://sentry.example/explore/conversations/advisor",
+        transcript: [],
+        transcriptAvailable: false,
+      },
+    );
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain(">advisor<");
+    expect(html).not.toContain("advisor subagent");
+    expect(html).toContain("Conversation ID");
+    expect(html).toContain("junior:parent-conversation:advisor_session");
+    expect(html).toContain("View in Sentry");
+    expect(html).toContain(
+      "https://sentry.example/explore/conversations/advisor",
+    );
+  });
+
+  it("renders requester profiles with activity and recent conversations", () => {
+    const profile: RequesterProfile = {
+      activityDays: [
+        {
+          active: 0,
+          conversations: 0,
+          date: "2026-01-01",
+          durationMs: 0,
+          failed: 0,
+          hung: 0,
+          runs: 0,
+        },
+        {
+          active: 0,
+          conversations: 2,
+          date: "2026-01-02",
+          durationMs: 1_200,
+          failed: 0,
+          hung: 0,
+          runs: 2,
+        },
+      ],
+      generatedAt: "2026-01-02T00:00:00.000Z",
+      locations: [
+        {
+          active: 0,
+          conversations: 2,
+          durationMs: 1_200,
+          failed: 0,
+          hung: 0,
+          label: "#proj-alpha",
+          runs: 2,
+        },
+      ],
+      recentConversations: [
+        {
+          conversationId: "slack:C1:123",
+          cumulativeDurationMs: 1_200,
+          displayTitle: "Incident triage",
+          id: "turn-1",
+          lastProgressAt: "2026-01-02T00:00:00.000Z",
+          lastSeenAt: "2026-01-02T00:00:00.000Z",
+          requesterIdentity: {
+            email: "avery@example.com",
+            fullName: "Avery Example",
+          },
+          startedAt: "2026-01-02T00:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+        },
+      ],
+      requester: {
+        email: "avery@example.com",
+        fullName: "Avery Example",
+        slackUserName: "avery",
+      },
+      sampleLimit: 10,
+      sampleSize: 1,
+      source: "conversation_index",
+      surfaces: [
+        {
+          active: 0,
+          conversations: 2,
+          durationMs: 1_200,
+          failed: 0,
+          hung: 0,
+          label: "Conversation",
+          runs: 2,
+        },
+      ],
+      totals: {
+        active: 0,
+        activeDays: 1,
+        conversations: 2,
+        durationMs: 1_200,
+        failed: 0,
+        hung: 0,
+        runs: 2,
+      },
+      truncated: false,
+      windowEnd: "2026-01-02T00:00:00.000Z",
+      windowStart: "2025-01-02T00:00:00.000Z",
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <Profile profile={profile} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Avery Example");
+    expect(html).toContain("avery@example.com");
+    expect(html).toContain("Activity");
+    expect(html).toContain("Incident triage");
+    expect(html).toContain("Daily Junior conversation activity");
+    expect(html).toContain(">Jan<");
+    expect(html).toContain(">Less<");
+    expect(html).toContain(">More<");
+    expect(html).toContain('href="/people/avery%40example.com"');
+    expect(html).toContain('aria-label="Search recent conversations"');
+    expect(html).not.toContain(">Places<");
+    expect(html).not.toContain(">active days<");
+    expect(html).not.toContain(">runs<");
+    expect(html).not.toContain(">attention<");
+    expect(html).not.toContain(">People</a>");
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {
@@ -496,7 +699,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain('aria-label="Execution activity"');
     expect(html).not.toContain("Execution Activity");
     expect(html).toContain("advisor");
-    expect(html).toContain("advisor subagent");
+    expect(html).not.toContain("advisor subagent");
     expect(html).toContain("running");
     expect(html.indexOf("advisor")).toBeGreaterThan(
       html.indexOf('aria-label="Transcript view"'),
@@ -574,6 +777,57 @@ describe("dashboard telemetry components", () => {
     expect(conversations).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
     expect(command).toContain("mx-auto grid w-full min-w-0 max-w-screen-xl");
     expect(plugins).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
+  });
+
+  it("filters the conversation list with search and facets", () => {
+    const data = dashboardData([
+      {
+        channel: "C1",
+        channelName: "proj-checkout",
+        conversationId: "slack:C1:100",
+        cumulativeDurationMs: 1_000,
+        displayTitle: "Checkout latency triage",
+        id: "turn-1",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:02.000Z",
+        requesterIdentity: {
+          email: "morgan@example.com",
+          fullName: "Morgan",
+        },
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+      {
+        conversationId: "internal:memory:200",
+        cumulativeDurationMs: 2_000,
+        displayTitle: "Memory cleanup",
+        id: "turn-2",
+        lastProgressAt: "2026-01-01T00:02:01.000Z",
+        lastSeenAt: "2026-01-01T00:02:02.000Z",
+        requesterIdentity: { fullName: "Casey" },
+        startedAt: "2026-01-01T00:02:00.000Z",
+        status: "completed",
+        surface: "internal",
+      },
+    ]);
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter
+        initialEntries={[
+          "/conversations?q=checkout&source=slack&requester=morgan%40example.com",
+        ]}
+      >
+        <ConversationsPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('aria-label="Search conversations"');
+    expect(html).toContain('aria-label="Source"');
+    expect(html).toContain('aria-label="Requester"');
+    expect(html).toContain("Checkout latency triage");
+    expect(html).toContain("1 of 2 conversations");
+    expect(html).not.toContain("Memory cleanup");
   });
 
   it("renders aggregate stats and plugin reports", () => {
@@ -690,8 +944,8 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(commandHtml).toContain(">Stats<");
-    expect(commandHtml).toContain(">People<");
-    expect(commandHtml).toContain("Avery");
+    expect(commandHtml).not.toContain(">People<");
+    expect(commandHtml).not.toContain(">Places<");
     expect(commandHtml).not.toContain("Casey");
     expect(commandHtml).not.toContain("Old thread");
     expect(pluginHtml).toContain(">Plugins<");
@@ -910,6 +1164,68 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("<details");
   });
 
+  it("renders expanded tool payloads as structured key/value rows", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptToolView
+          call={{
+            input: {
+              filters: { environment: "production", release: "2026.1.0" },
+              query: "checkout latency",
+              teams: ["growth", "payments"],
+            },
+            name: "sentry.search_traces",
+            type: "tool_call",
+          }}
+          result={{
+            name: "sentry.search_traces",
+            output: {
+              rows: [
+                { count: 12, endpoint: "/checkout", p95: 842 },
+                { count: 5, endpoint: "/cart", p95: 310 },
+              ],
+              summary: "Checkout p95 regressed after deploy.",
+            },
+            type: "tool_result",
+          }}
+          resultTimestamp={10}
+          timestamp={0}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain(">arguments<");
+    expect(html).toContain(">result<");
+    expect(html).toContain("checkout latency");
+    expect(html).toContain("environment");
+    expect(html).toContain("production");
+    expect(html).toContain("<table");
+    expect(html).toContain("/checkout");
+    expect(html).not.toContain("language-json");
+  });
+
+  it("renders generic tool values without dumping one JSON blob", () => {
+    const html = renderToStaticMarkup(
+      <ToolValueInspector
+        value={{
+          command: "pnpm test",
+          files: [
+            { added: 12, path: "src/a.ts" },
+            { added: 4, path: "src/b.ts" },
+          ],
+          stdout: "line one\nline two",
+        }}
+      />,
+    );
+
+    expect(html).toContain("command");
+    expect(html).toContain("pnpm test");
+    expect(html).toContain("<table");
+    expect(html).toContain("src/a.ts");
+    expect(html).toContain("line one");
+    expect(html).not.toContain("{&quot;command&quot;");
+  });
+
   it("does not highlight static tool summaries as expandable", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
@@ -981,22 +1297,24 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Checking MCP output");
   });
 
-  it("collapses four consecutive tool calls to a reveal divider", () => {
+  it("renders four consecutive tool calls behind a reveal disclosure", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <ConversationTranscriptSegment turn={toolRunTurn(4)} view="rich" />
       </QueryClientProvider>,
     );
 
+    expect(html).toContain('<details class="min-w-0"><summary');
     expect(html).toContain("show 4 tool calls");
     expect(html).not.toContain("collapse");
+    expect(html).not.toContain('aria-expanded="false"');
     expect(html).toContain("cursor-pointer");
     expect(html).toContain("py-1.5 text-left font-mono");
     expect(html).not.toContain("pl-3 text-left font-mono");
-    expect(html).not.toContain("tool-0");
-    expect(html).not.toContain("tool-1");
-    expect(html).not.toContain("tool-2");
-    expect(html).not.toContain("tool-3");
+    expect(html).toContain("tool-0");
+    expect(html).toContain("tool-1");
+    expect(html).toContain("tool-2");
+    expect(html).toContain("tool-3");
   });
 
   it("keeps three consecutive tool calls expanded", () => {

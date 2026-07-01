@@ -874,6 +874,263 @@ describe("dashboard reporting", () => {
     );
   });
 
+  it("loads advisor subagent transcript history from a shared advisor session", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const {
+      recordSubagentEnded,
+      recordSubagentStarted,
+      recordToolExecutionStarted,
+    } = await import("@/chat/state/session-log");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    const conversationId = "slack:C1:advisor-slices";
+    const runId = "turn-advisor-slices";
+    const advisorSessionKey = `junior:${conversationId}:advisor_session`;
+    const advisorMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "first advisor question" }],
+        timestamp: 10,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "first advisor answer" }],
+        timestamp: 20,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "second advisor question" }],
+        timestamp: 30,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "second advisor answer" }],
+        timestamp: 40,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "third advisor question" }],
+        timestamp: 50,
+      },
+    ] as PiMessage[];
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(advisorSessionKey, advisorMessages, 60_000);
+
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: runId,
+      sliceId: 1,
+      state: "completed",
+      turnStartMessageIndex: 0,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "make dashboard change" }],
+          timestamp: 1,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "advisor-plan",
+          name: "advisor",
+          content: [{ type: "text", text: "plan result" }],
+          timestamp: 25,
+        },
+        {
+          role: "toolResult",
+          toolCallId: "advisor-review",
+          name: "advisor",
+          content: [{ type: "text", text: "review result" }],
+          timestamp: 45,
+        },
+      ] as PiMessage[],
+    });
+
+    for (const toolCallId of ["advisor-plan", "advisor-review"]) {
+      await recordToolExecutionStarted({
+        conversationId,
+        sessionId: runId,
+        createdAtMs: toolCallId === "advisor-plan" ? 2 : 30,
+        toolCallId,
+        toolName: "advisor",
+        args: { question: toolCallId },
+        ttlMs: 60_000,
+      });
+      await recordSubagentStarted({
+        conversationId,
+        sessionId: runId,
+        createdAtMs: toolCallId === "advisor-plan" ? 3 : 31,
+        historyMode: "shared",
+        parentConversationId: conversationId,
+        parentSessionId: runId,
+        parentToolCallId: toolCallId,
+        subagentInvocationId: toolCallId,
+        subagentKind: "advisor",
+        transcriptRef: {
+          type: "advisor_session",
+          parentConversationId: conversationId,
+          key: advisorSessionKey,
+        },
+        ttlMs: 60_000,
+      });
+      await recordSubagentEnded({
+        conversationId,
+        sessionId: runId,
+        createdAtMs: toolCallId === "advisor-plan" ? 25 : 45,
+        outcome: "success",
+        subagentInvocationId: toolCallId,
+        transcriptStartMessageIndex: toolCallId === "advisor-plan" ? 0 : 2,
+        transcriptEndMessageIndex: toolCallId === "advisor-plan" ? 2 : 4,
+        ttlMs: 60_000,
+      });
+    }
+
+    const reporting = createJuniorReporting();
+    const report = await reporting.getConversation(conversationId);
+    expect(report.runs[0]?.activity?.[0]).toMatchObject({
+      toolCallId: "advisor-plan",
+      subagents: [
+        expect.objectContaining({
+          id: "advisor-plan",
+          transcriptAvailable: true,
+        }),
+      ],
+    });
+
+    const first = await reporting.getConversationSubagentTranscript(
+      conversationId,
+      runId,
+      "advisor-plan",
+    );
+    const second = await reporting.getConversationSubagentTranscript(
+      conversationId,
+      runId,
+      "advisor-review",
+    );
+
+    expect(first.subagentConversationId).toBe(advisorSessionKey);
+    const encodedAdvisorSessionKey = encodeURIComponent(advisorSessionKey);
+    expect(
+      first.subagentSentryConversationUrl === undefined ||
+        first.subagentSentryConversationUrl.includes(encodedAdvisorSessionKey),
+    ).toBe(true);
+    expect(JSON.stringify(first.transcript)).toContain(
+      "first advisor question",
+    );
+    expect(JSON.stringify(first.transcript)).not.toContain(
+      "second advisor question",
+    );
+    expect(JSON.stringify(second.transcript)).toContain("first advisor answer");
+    expect(JSON.stringify(second.transcript)).toContain(
+      "second advisor answer",
+    );
+    expect(JSON.stringify(second.transcript)).not.toContain(
+      "third advisor question",
+    );
+  });
+
+  it("redacts advisor subagent transcript history for private conversations", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const {
+      recordSubagentEnded,
+      recordSubagentStarted,
+      recordToolExecutionStarted,
+    } = await import("@/chat/state/session-log");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    const conversationId = "slack:D1:advisor-private";
+    const runId = "turn-advisor-private";
+    const toolCallId = "advisor-private";
+    const advisorSessionKey = `junior:${conversationId}:advisor_session`;
+    const privateAdvisorText = "private advisor question";
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(
+      advisorSessionKey,
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: privateAdvisorText }],
+          timestamp: 10,
+        },
+      ] as PiMessage[],
+      60_000,
+    );
+
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: runId,
+      sliceId: 1,
+      state: "completed",
+      turnStartMessageIndex: 0,
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "private parent request" }],
+          timestamp: 1,
+        },
+      ] as PiMessage[],
+    });
+    await recordToolExecutionStarted({
+      conversationId,
+      sessionId: runId,
+      createdAtMs: 2,
+      toolCallId,
+      toolName: "advisor",
+      args: { question: privateAdvisorText },
+      ttlMs: 60_000,
+    });
+    await recordSubagentStarted({
+      conversationId,
+      sessionId: runId,
+      createdAtMs: 3,
+      historyMode: "shared",
+      parentConversationId: conversationId,
+      parentSessionId: runId,
+      parentToolCallId: toolCallId,
+      subagentInvocationId: toolCallId,
+      subagentKind: "advisor",
+      transcriptRef: {
+        type: "advisor_session",
+        parentConversationId: conversationId,
+        key: advisorSessionKey,
+      },
+      ttlMs: 60_000,
+    });
+    await recordSubagentEnded({
+      conversationId,
+      sessionId: runId,
+      createdAtMs: 10,
+      outcome: "success",
+      subagentInvocationId: toolCallId,
+      transcriptStartMessageIndex: 0,
+      transcriptEndMessageIndex: 1,
+      ttlMs: 60_000,
+    });
+
+    const reporting = createJuniorReporting();
+    const parent = await reporting.getConversation(conversationId);
+    expect(JSON.stringify(parent.runs[0]?.activity ?? [])).not.toContain(
+      "transcriptAvailable",
+    );
+
+    const transcript = await reporting.getConversationSubagentTranscript(
+      conversationId,
+      runId,
+      toolCallId,
+    );
+
+    expect(transcript.subagentConversationId).toBe(advisorSessionKey);
+    expect(transcript.transcriptAvailable).toBe(false);
+    expect(transcript.transcriptRedacted).toBe(true);
+    expect(transcript.transcript).toEqual([]);
+    expect(JSON.stringify(transcript)).not.toContain(privateAdvisorText);
+  });
+
   it("derives unfinished subagent status from completed parent tool results", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

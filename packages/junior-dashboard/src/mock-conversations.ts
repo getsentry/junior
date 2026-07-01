@@ -2,7 +2,13 @@ import type {
   ConversationReport as DashboardConversationReport,
   ConversationStatsItem as DashboardConversationStatsItem,
   ConversationStatsReport as DashboardConversationStatsReport,
+  ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscriptReport,
+  RequesterActivityDayReport as DashboardRequesterActivityDayReport,
+  RequesterDirectoryReport as DashboardRequesterDirectoryReport,
   RequesterIdentity as DashboardRequesterIdentity,
+  RequesterProfileReport as DashboardRequesterProfileReport,
+  RequesterSummaryReport as DashboardRequesterSummaryReport,
+  RequesterTotalsReport as DashboardRequesterTotalsReport,
   ConversationFeed as DashboardConversationFeed,
   ConversationSummaryReport as DashboardConversationSummary,
   ConversationUsage as DashboardRunUsage,
@@ -30,6 +36,7 @@ const HUNG_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function iso(nowMs: number, offsetMs = 0): string {
@@ -89,6 +96,7 @@ function publicIncidentConversation(
         },
         surface: "slack",
         requesterIdentity: {
+          email: "avery@sentry.io",
           fullName: "Avery Stone",
           slackUserId: "UQA111",
           slackUserName: "avery",
@@ -187,6 +195,7 @@ function publicIncidentConversation(
         },
         surface: "slack",
         requesterIdentity: {
+          email: "morgan@sentry.io",
           fullName: "Morgan Lee",
           slackUserId: "UQA222",
           slackUserName: "morgan",
@@ -281,6 +290,7 @@ function activeConversation(nowMs: number): DashboardConversationReport {
         },
         surface: "slack",
         requesterIdentity: {
+          email: "sam@sentry.io",
           fullName: "Sam Rivera",
           slackUserId: "UQA333",
           slackUserName: "sam",
@@ -351,6 +361,7 @@ function privateConversation(nowMs: number): DashboardConversationReport {
         },
         surface: "slack",
         requesterIdentity: {
+          email: "private-user@sentry.io",
           slackUserId: "UQA444",
           slackUserName: "private-user",
         },
@@ -457,6 +468,7 @@ function hungConversation(nowMs: number): DashboardConversationReport {
         },
         surface: "slack",
         requesterIdentity: {
+          email: "dana@sentry.io",
           fullName: "Dana Chen",
           slackUserId: "UQA555",
           slackUserName: "dana",
@@ -534,6 +546,7 @@ function failedConversation(nowMs: number): DashboardConversationReport {
         },
         surface: "slack",
         requesterIdentity: {
+          email: "riley@sentry.io",
           fullName: "Riley Patel",
           slackUserId: "UQA666",
           slackUserName: "riley",
@@ -652,8 +665,10 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
   const transcriptStartedAt = iso(nowMs, -10 * 60_000);
   const runningToolId = "toolu_mock_dashboard_running";
   const invertedToolId = "toolu_mock_dashboard_inverted";
-  const advisorToolId = "toolu_mock_dashboard_advisor";
-  const advisorSubagentId = "subagent_mock_dashboard_advisor";
+  const advisorPlanToolId = "toolu_mock_dashboard_advisor_plan";
+  const advisorReviewToolId = "toolu_mock_dashboard_advisor_review";
+  const readFileToolId = "toolu_mock_dashboard_read_file";
+  const editFileToolId = "toolu_mock_dashboard_edit_file";
 
   return mockConversation({
     conversationId,
@@ -734,16 +749,16 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
       mockRun({
         conversationId,
         displayTitle,
-        id: "mock-dashboard-qa-advisor-subagent",
+        id: "mock-dashboard-qa-advisor-code-change",
         status: "completed",
         startedAt: iso(nowMs, -8 * 60_000),
-        lastProgressAt: iso(nowMs, -7 * 60_000),
-        lastSeenAt: iso(nowMs, -7 * 60_000),
-        completedAt: iso(nowMs, -7 * 60_000),
-        cumulativeDurationMs: 90_000,
+        lastProgressAt: iso(nowMs, -5 * 60_000),
+        lastSeenAt: iso(nowMs, -5 * 60_000),
+        completedAt: iso(nowMs, -5 * 60_000),
+        cumulativeDurationMs: 180_000,
         surface: "internal",
         transcriptAvailable: true,
-        transcriptMessageCount: 3,
+        transcriptMessageCount: 7,
         transcript: [
           mockTranscriptMessage({
             role: "user",
@@ -751,7 +766,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             parts: [
               {
                 type: "text",
-                text: "Use an advisor to review the dashboard transcript ordering.",
+                text: "Add a people profile page to the dashboard and make conversation emails link to the profile. Be careful with privacy and keep the UI practical.",
               },
             ],
           }),
@@ -760,51 +775,216 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             timestamp: nowMs - 8 * 60_000 + 4_000,
             parts: [
               mockToolCallPart({
-                id: advisorToolId,
+                id: advisorPlanToolId,
                 name: "advisor",
                 input: {
                   question:
-                    "Check whether tool calls, tool results, and subagent activity render together.",
+                    "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
                 },
               }),
             ],
           }),
           mockTranscriptMessage({
             role: "toolResult",
-            timestamp: nowMs - 7 * 60_000,
+            timestamp: nowMs - 8 * 60_000 + 35_000,
             parts: [
               mockToolResultPart({
-                id: advisorToolId,
+                id: advisorPlanToolId,
                 name: "advisor",
                 output: {
-                  verdict: "ok",
+                  verdict: "proceed",
                   summary:
-                    "Tool call, advisor result, and subagent activity are visible.",
+                    "Use trusted requesterIdentity.email, keep metrics to conversations/runtime/tokens, and make profile activity scannable before adding heavier analytics.",
                 },
               }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "assistant",
+            timestamp: nowMs - 7 * 60_000 + 5_000,
+            parts: [
+              mockToolCallPart({
+                id: readFileToolId,
+                name: "readFile",
+                input: {
+                  path: "packages/junior-dashboard/src/client/pages/ConversationPage.tsx",
+                },
+              }),
+              mockToolCallPart({
+                id: editFileToolId,
+                name: "editFile",
+                input: {
+                  path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+                  operations: [
+                    {
+                      action: "insert",
+                      anchor: "ProfileMetrics",
+                      lines: 42,
+                    },
+                    {
+                      action: "replace",
+                      anchor: "RecentConversationList",
+                      lines: 18,
+                    },
+                  ],
+                  summary:
+                    "Add requester activity grid, recent conversations, and email profile links.",
+                },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "toolResult",
+            timestamp: nowMs - 6 * 60_000 + 10_000,
+            parts: [
+              mockToolResultPart({
+                id: readFileToolId,
+                name: "readFile",
+                output: {
+                  lines: 260,
+                  result: "Conversation detail component inspected.",
+                  imports: [
+                    "Transcript",
+                    "ConversationStats",
+                    "ConversationIdentity",
+                  ],
+                  risks: {
+                    auth: "dashboard routes remain authenticated",
+                    privacy:
+                      "requester emails are trusted from normalized reporting identity",
+                  },
+                },
+              }),
+              mockToolResultPart({
+                id: editFileToolId,
+                name: "editFile",
+                output: {
+                  filesChanged: [
+                    {
+                      path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+                      added: 216,
+                      removed: 0,
+                    },
+                    {
+                      path: "packages/junior-dashboard/src/client/components/ConversationSummary.tsx",
+                      added: 18,
+                      removed: 4,
+                    },
+                  ],
+                  checks: {
+                    typecheck: "passed",
+                    visualQa: "needs browser review",
+                  },
+                  notes:
+                    "The profile page uses a contribution-style activity grid, compact stat row, and searchable recent conversations. Keep the grid cell size stable so long month labels do not shift the layout.",
+                },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "assistant",
+            timestamp: nowMs - 6 * 60_000 + 20_000,
+            parts: [
+              mockToolCallPart({
+                id: advisorReviewToolId,
+                name: "advisor",
+                input: {
+                  question:
+                    "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
+                },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "toolResult",
+            timestamp: nowMs - 5 * 60_000 + 20_000,
+            parts: [
+              mockToolResultPart({
+                id: advisorReviewToolId,
+                name: "advisor",
+                output: {
+                  verdict: "revise",
+                  summary:
+                    "Remove low-signal attention widgets, add list search/filtering, and verify the activity grid fills the available width.",
+                },
+              }),
+            ],
+          }),
+          mockTranscriptMessage({
+            role: "assistant",
+            timestamp: nowMs - 5 * 60_000 + 30_000,
+            parts: [
+              {
+                type: "text",
+                text: "Implemented the people profile route, linked requester emails, and tightened the dashboard widgets based on the advisor review.",
+              },
             ],
           }),
         ],
         activity: [
           mockToolActivity({
-            id: advisorToolId,
-            toolCallId: advisorToolId,
+            id: advisorPlanToolId,
+            toolCallId: advisorPlanToolId,
             toolName: "advisor",
             createdAt: iso(nowMs, -8 * 60_000 + 4_000),
             status: "completed",
             args: {
               question:
-                "Check whether tool calls, tool results, and subagent activity render together.",
+                "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
             },
             subagents: [
               mockSubagentActivity({
-                id: advisorSubagentId,
-                parentToolCallId: advisorToolId,
+                id: advisorPlanToolId,
+                parentToolCallId: advisorPlanToolId,
                 subagentKind: "advisor",
                 createdAt: iso(nowMs, -8 * 60_000 + 6_000),
-                endedAt: iso(nowMs, -7 * 60_000),
+                endedAt: iso(nowMs, -8 * 60_000 + 35_000),
                 status: "completed",
                 outcome: "success",
+                transcriptAvailable: true,
+              }),
+            ],
+          }),
+          mockToolActivity({
+            id: readFileToolId,
+            toolCallId: readFileToolId,
+            toolName: "readFile",
+            createdAt: iso(nowMs, -7 * 60_000 + 5_000),
+            status: "completed",
+            args: {
+              path: "packages/junior-dashboard/src/client/pages/ConversationPage.tsx",
+            },
+          }),
+          mockToolActivity({
+            id: editFileToolId,
+            toolCallId: editFileToolId,
+            toolName: "editFile",
+            createdAt: iso(nowMs, -7 * 60_000 + 20_000),
+            status: "completed",
+            args: {
+              path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+            },
+          }),
+          mockToolActivity({
+            id: advisorReviewToolId,
+            toolCallId: advisorReviewToolId,
+            toolName: "advisor",
+            createdAt: iso(nowMs, -6 * 60_000 + 20_000),
+            status: "completed",
+            args: {
+              question:
+                "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
+            },
+            subagents: [
+              mockSubagentActivity({
+                id: advisorReviewToolId,
+                parentToolCallId: advisorReviewToolId,
+                subagentKind: "advisor",
+                createdAt: iso(nowMs, -6 * 60_000 + 25_000),
+                endedAt: iso(nowMs, -5 * 60_000 + 20_000),
+                status: "completed",
+                outcome: "success",
+                transcriptAvailable: true,
               }),
             ],
           }),
@@ -812,6 +992,90 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
       }),
     ],
   });
+}
+
+function dashboardQaAdvisorTranscript(
+  nowMs: number,
+  subagentId: string,
+): DashboardConversationSubagentTranscriptReport | undefined {
+  const createdAt =
+    subagentId === "toolu_mock_dashboard_advisor_plan"
+      ? iso(nowMs, -8 * 60_000 + 6_000)
+      : subagentId === "toolu_mock_dashboard_advisor_review"
+        ? iso(nowMs, -6 * 60_000 + 25_000)
+        : undefined;
+  const endedAt =
+    subagentId === "toolu_mock_dashboard_advisor_plan"
+      ? iso(nowMs, -8 * 60_000 + 35_000)
+      : subagentId === "toolu_mock_dashboard_advisor_review"
+        ? iso(nowMs, -5 * 60_000 + 20_000)
+        : undefined;
+  if (!createdAt || !endedAt) return undefined;
+
+  const sharedAdvisorSession: DashboardTranscriptMessage[] = [
+    mockTranscriptMessage({
+      role: "user",
+      timestamp: Date.parse(createdAt),
+      parts: [
+        {
+          type: "text",
+          text: "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
+        },
+      ],
+    }),
+    mockTranscriptMessage({
+      role: "assistant",
+      timestamp: Date.parse(createdAt) + 23_000,
+      parts: [
+        {
+          type: "text",
+          text: "Requester identity email is a reasonable profile key because reporting already normalizes trusted identities. Keep the first cut narrow: total conversations, runtime, token volume, recent conversations, and a contribution-style activity grid. Avoid attention widgets until there is an explicit operator workflow.",
+        },
+      ],
+    }),
+    mockTranscriptMessage({
+      role: "user",
+      timestamp: Date.parse(iso(nowMs, -6 * 60_000 + 25_000)),
+      parts: [
+        {
+          type: "text",
+          text: "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
+        },
+      ],
+    }),
+    mockTranscriptMessage({
+      role: "assistant",
+      timestamp: Date.parse(endedAt),
+      parts: [
+        {
+          type: "text",
+          text: "The implementation is directionally right, but it should be more aggressive about removing weak dashboard widgets. Conversation and profile search are more useful than top-N summaries. The activity grid should use smaller fixed cells and fill the row without sparse-looking gaps.",
+        },
+      ],
+    }),
+  ];
+  const slice =
+    subagentId === "toolu_mock_dashboard_advisor_plan"
+      ? sharedAdvisorSession.slice(0, 2)
+      : sharedAdvisorSession.slice(0, 4);
+
+  return {
+    type: "subagent",
+    createdAt,
+    endedAt,
+    id: subagentId,
+    outcome: "success",
+    parentToolCallId: subagentId,
+    status: "success",
+    subagentConversationId: DASHBOARD_QA_ADVISOR_CONVERSATION_ID,
+    subagentKind: "advisor",
+    subagentSentryConversationUrl: sentryConversationUrl(
+      DASHBOARD_QA_ADVISOR_CONVERSATION_ID,
+    ),
+    transcript: slice,
+    transcriptAvailable: true,
+    transcriptMessageCount: 2,
+  };
 }
 
 function mockConversations(nowMs: number): DashboardConversationReport[] {
@@ -1143,6 +1407,340 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   );
 }
 
+function surfaceLabel(turn: DashboardConversationSummary): string {
+  if (turn.surface === "scheduler") return "Scheduler";
+  if (turn.surface === "api") return "API";
+  if (turn.surface === "internal") return "Internal";
+  return "Conversation";
+}
+
+function normalizeEmail(email: string | undefined): string | undefined {
+  const normalized = email?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function identityWithEmail(
+  requester: DashboardRequesterIdentity | undefined,
+): (DashboardRequesterIdentity & { email: string }) | undefined {
+  const email = normalizeEmail(requester?.email);
+  if (!email) return undefined;
+  return {
+    email,
+    ...(requester?.fullName ? { fullName: requester.fullName } : {}),
+    ...(requester?.slackUserId ? { slackUserId: requester.slackUserId } : {}),
+    ...(requester?.slackUserName
+      ? { slackUserName: requester.slackUserName }
+      : {}),
+  };
+}
+
+function mergeIdentity(
+  current: DashboardRequesterIdentity & { email: string },
+  next: DashboardRequesterIdentity & { email: string },
+): DashboardRequesterIdentity & { email: string } {
+  return {
+    email: current.email,
+    ...((current.fullName ?? next.fullName)
+      ? { fullName: current.fullName ?? next.fullName }
+      : {}),
+    ...((current.slackUserId ?? next.slackUserId)
+      ? { slackUserId: current.slackUserId ?? next.slackUserId }
+      : {}),
+    ...((current.slackUserName ?? next.slackUserName)
+      ? { slackUserName: current.slackUserName ?? next.slackUserName }
+      : {}),
+  };
+}
+
+function reportDate(value: string): string | undefined {
+  const time = reportTime(value);
+  if (time === undefined) return undefined;
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function emptyRequesterTotals(): DashboardRequesterTotalsReport {
+  return {
+    active: 0,
+    activeDays: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    runs: 0,
+  };
+}
+
+function addRequesterTokens(
+  target: Pick<DashboardRequesterTotalsReport, "tokens">,
+  tokens: number | undefined,
+): void {
+  if (tokens !== undefined) {
+    target.tokens = (target.tokens ?? 0) + tokens;
+  }
+}
+
+function addSignals(
+  target: Pick<DashboardRequesterTotalsReport, "active" | "failed" | "hung">,
+  signals: ReturnType<typeof statusSignals>,
+): void {
+  target.active += signals.active ? 1 : 0;
+  target.failed += signals.failed ? 1 : 0;
+  target.hung += signals.hung ? 1 : 0;
+}
+
+type MockRequesterAccumulator = DashboardRequesterTotalsReport & {
+  activeDates: Set<string>;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  requester: DashboardRequesterIdentity & { email: string };
+};
+
+function summaryGroups(
+  summaries: DashboardConversationSummary[],
+): DashboardConversationSummary[][] {
+  const groups = new Map<string, DashboardConversationSummary[]>();
+  for (const summary of summaries) {
+    groups.set(summary.conversationId, [
+      ...(groups.get(summary.conversationId) ?? []),
+      summary,
+    ]);
+  }
+  return [...groups.values()].map((runs) =>
+    [...runs].sort(
+      (left, right) =>
+        (reportTime(left.startedAt) ?? 0) -
+          (reportTime(right.startedAt) ?? 0) || left.id.localeCompare(right.id),
+    ),
+  );
+}
+
+function directoryItem(
+  accumulator: MockRequesterAccumulator,
+): DashboardRequesterSummaryReport {
+  return {
+    active: accumulator.active,
+    activeDays: accumulator.activeDates.size,
+    conversations: accumulator.conversations,
+    durationMs: accumulator.durationMs,
+    failed: accumulator.failed,
+    firstSeenAt: new Date(accumulator.firstSeenMs).toISOString(),
+    hung: accumulator.hung,
+    lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
+    requester: accumulator.requester,
+    runs: accumulator.runs,
+    ...(accumulator.tokens !== undefined ? { tokens: accumulator.tokens } : {}),
+  };
+}
+
+function requesterDirectoryFromFeed(
+  nowMs: number,
+  feed: DashboardConversationFeed,
+): DashboardRequesterDirectoryReport {
+  const people = new Map<string, MockRequesterAccumulator>();
+  for (const runs of summaryGroups(feed.conversations)) {
+    const newest = newestRun(runs);
+    const requester = identityWithEmail(newest.requesterIdentity);
+    if (!requester) continue;
+    const contributions = runContributions(runs);
+    const signals = statusSignals(runs);
+    const date = reportDate(newest.lastSeenAt);
+    const firstSeenMs =
+      reportTime(runs[0]?.startedAt ?? newest.startedAt) ?? nowMs;
+    const lastSeenMs = reportTime(newest.lastSeenAt) ?? nowMs;
+    const accumulator =
+      people.get(requester.email) ??
+      ({
+        ...emptyRequesterTotals(),
+        activeDates: new Set<string>(),
+        firstSeenMs,
+        lastSeenMs,
+        requester,
+      } satisfies MockRequesterAccumulator);
+    accumulator.requester = mergeIdentity(accumulator.requester, requester);
+    accumulator.conversations += 1;
+    accumulator.runs += runs.length;
+    accumulator.durationMs += contributionDurationTotal(contributions);
+    addRequesterTokens(accumulator, contributionTokenTotal(contributions));
+    addSignals(accumulator, signals);
+    accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
+    accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);
+    if (date) accumulator.activeDates.add(date);
+    people.set(requester.email, accumulator);
+  }
+
+  return {
+    generatedAt: feed.generatedAt,
+    people: [...people.values()]
+      .map(directoryItem)
+      .sort(
+        (left, right) =>
+          (reportTime(right.lastSeenAt) ?? 0) -
+            (reportTime(left.lastSeenAt) ?? 0) ||
+          left.requester.email.localeCompare(right.requester.email),
+      ),
+    sampleLimit: feed.conversations.length,
+    sampleSize: feed.conversations.length,
+    source: "conversation_index",
+    truncated: false,
+  };
+}
+
+function emptyActivityDay(date: string): DashboardRequesterActivityDayReport {
+  return {
+    active: 0,
+    conversations: 0,
+    date,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    runs: 0,
+  };
+}
+
+function profileActivityDays(
+  nowMs: number,
+  days: Map<string, DashboardRequesterActivityDayReport>,
+): DashboardRequesterActivityDayReport[] {
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 365);
+  const items: DashboardRequesterActivityDayReport[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    items.push(days.get(date) ?? emptyActivityDay(date));
+  }
+  return items;
+}
+
+function requesterProfileFromFeed(
+  nowMs: number,
+  email: string,
+  feed: DashboardConversationFeed,
+): DashboardRequesterProfileReport {
+  const normalized = normalizeEmail(email) ?? email;
+  const matchingGroups = summaryGroups(feed.conversations).filter((runs) =>
+    runs.some(
+      (run) => normalizeEmail(run.requesterIdentity?.email) === normalized,
+    ),
+  );
+  let requester: (DashboardRequesterIdentity & { email: string }) | undefined;
+  const totals = emptyRequesterTotals();
+  const activeDates = new Set<string>();
+  const activityDays = new Map<string, DashboardRequesterActivityDayReport>();
+  const locations = new Map<string, DashboardConversationStatsItem>();
+  const surfaces = new Map<string, DashboardConversationStatsItem>();
+  const recentConversations: DashboardConversationSummary[] = [];
+
+  for (const runs of matchingGroups) {
+    const newest = newestRun(runs);
+    const identity = identityWithEmail(newest.requesterIdentity);
+    if (identity) {
+      requester = requester ? mergeIdentity(requester, identity) : identity;
+    }
+    recentConversations.push(newest);
+
+    const contributions = runContributions(runs);
+    const signals = statusSignals(runs);
+    const durationMs = contributionDurationTotal(contributions);
+    const tokens = contributionTokenTotal(contributions);
+    const date = reportDate(newest.lastSeenAt);
+
+    totals.conversations += 1;
+    totals.runs += runs.length;
+    totals.durationMs += durationMs;
+    addRequesterTokens(totals, tokens);
+    addSignals(totals, signals);
+
+    if (date) {
+      activeDates.add(date);
+      const day = activityDays.get(date) ?? emptyActivityDay(date);
+      day.conversations += 1;
+      day.runs += runs.length;
+      day.durationMs += durationMs;
+      addRequesterTokens(day, tokens);
+      addSignals(day, signals);
+      activityDays.set(date, day);
+    }
+
+    const location = locationLabel(newest);
+    const locationItem = locations.get(location) ?? emptyStatsItem(location);
+    locationItem.conversations += 1;
+    locationItem.runs += runs.length;
+    locationItem.durationMs += durationMs;
+    addItemTokens(locationItem, tokens);
+    locationItem.active += signals.active ? 1 : 0;
+    locationItem.failed += signals.failed ? 1 : 0;
+    locationItem.hung += signals.hung ? 1 : 0;
+    locations.set(location, locationItem);
+
+    const surface = surfaceLabel(newest);
+    const surfaceItem = surfaces.get(surface) ?? emptyStatsItem(surface);
+    surfaceItem.conversations += 1;
+    surfaceItem.runs += runs.length;
+    surfaceItem.durationMs += durationMs;
+    addItemTokens(surfaceItem, tokens);
+    surfaceItem.active += signals.active ? 1 : 0;
+    surfaceItem.failed += signals.failed ? 1 : 0;
+    surfaceItem.hung += signals.hung ? 1 : 0;
+    surfaces.set(surface, surfaceItem);
+  }
+
+  totals.activeDays = activeDates.size;
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 365);
+
+  return {
+    activityDays: profileActivityDays(nowMs, activityDays),
+    generatedAt: feed.generatedAt,
+    locations: statsItems(locations),
+    recentConversations: recentConversations
+      .sort(
+        (left, right) =>
+          (reportTime(right.lastSeenAt) ?? 0) -
+            (reportTime(left.lastSeenAt) ?? 0) ||
+          right.conversationId.localeCompare(left.conversationId),
+      )
+      .slice(0, 25),
+    requester: requester ?? { email: normalized },
+    sampleLimit: feed.conversations.length,
+    sampleSize: feed.conversations.length,
+    source: "conversation_index",
+    surfaces: statsItems(surfaces),
+    totals,
+    truncated: false,
+    windowEnd: end.toISOString(),
+    windowStart: start.toISOString(),
+  };
+}
+
+function mergeRequesterDirectories(
+  mockDirectory: DashboardRequesterDirectoryReport,
+  realDirectory: DashboardRequesterDirectoryReport,
+): DashboardRequesterDirectoryReport {
+  const emails = new Set(
+    mockDirectory.people.map((person) => person.requester.email),
+  );
+  return {
+    ...realDirectory,
+    generatedAt: realDirectory.generatedAt,
+    people: [
+      ...mockDirectory.people,
+      ...realDirectory.people.filter(
+        (person) => !emails.has(person.requester.email),
+      ),
+    ],
+    sampleSize: mockDirectory.sampleSize + realDirectory.sampleSize,
+    truncated: mockDirectory.truncated || realDirectory.truncated,
+  };
+}
+
 function isLocalPersistenceUnavailable(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -1198,12 +1796,63 @@ export function createMockConversationReporting(
         );
       }
     },
+    async listRequesters() {
+      const nowMs = Date.now();
+      const mockDirectory = requesterDirectoryFromFeed(
+        nowMs,
+        mockConversationFeed(nowMs),
+      );
+      try {
+        if (!reporting.listRequesters) {
+          return mockDirectory;
+        }
+        return mergeRequesterDirectories(
+          mockDirectory,
+          await reporting.listRequesters(),
+        );
+      } catch (error) {
+        if (!isLocalPersistenceUnavailable(error)) {
+          throw error;
+        }
+        return mockDirectory;
+      }
+    },
+    async getRequesterProfile(email: string) {
+      const nowMs = Date.now();
+      const mockProfile = requesterProfileFromFeed(
+        nowMs,
+        email,
+        mockConversationFeed(nowMs),
+      );
+      if (mockProfile.totals.conversations > 0) {
+        return mockProfile;
+      }
+      if (reporting.getRequesterProfile) {
+        return await reporting.getRequesterProfile(email);
+      }
+      return mockProfile;
+    },
     async getConversation(conversationId: string) {
       const conversation = mockConversationMap(Date.now()).get(conversationId);
       if (conversation) {
         return conversation;
       }
       return reporting.getConversation(conversationId);
+    },
+    async getConversationSubagentTranscript(
+      conversationId: string,
+      _runId: string,
+      subagentId: string,
+    ) {
+      if (conversationId === DASHBOARD_QA_CONVERSATION_ID) {
+        const transcript = dashboardQaAdvisorTranscript(Date.now(), subagentId);
+        if (transcript) return transcript;
+      }
+      return reporting.getConversationSubagentTranscript(
+        conversationId,
+        _runId,
+        subagentId,
+      );
     },
   };
   if (reporting.getPluginOperationalReports) {

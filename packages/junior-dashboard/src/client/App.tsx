@@ -9,6 +9,7 @@ import { setDashboardTimeZone } from "./format";
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
+import { PeoplePage, PersonProfilePage } from "./pages/PeoplePage";
 import { PluginsPage } from "./pages/PluginsPage";
 import { cn } from "./styles";
 import type { DashboardData } from "./types";
@@ -60,6 +61,9 @@ export function DashboardShell() {
               </NavLink>
               <NavLink className={navLinkClass} to="/conversations">
                 Conversations
+              </NavLink>
+              <NavLink className={navLinkClass} to="/people">
+                People
               </NavLink>
               <NavLink className={navLinkClass} to="/plugins">
                 Plugins
@@ -122,6 +126,22 @@ export function DashboardShell() {
             )
           }
           path="/plugins"
+        />
+        <Route
+          element={
+            loading ? <LoadingView label="Loading people" /> : <PeoplePage />
+          }
+          path="/people"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading profile" />
+            ) : (
+              <PersonProfilePage />
+            )
+          }
+          path="/people/:email"
         />
         <Route
           element={

@@ -798,12 +798,24 @@ describe("createApp plugin config", () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("memory");
+
+    const peoplePage = await app.fetch(new Request("http://localhost/people"));
+    expect(peoplePage.status).toBe(200);
+    await expect(peoplePage.text()).resolves.toBe("dashboard");
+
+    const peopleApi = await app.fetch(
+      new Request("http://localhost/api/people"),
+    );
+    expect(peopleApi.status).toBe(200);
+    await expect(peopleApi.text()).resolves.toBe("dashboard");
   });
 
   it("rejects app-level plugin routes that conflict with core dashboard routes", async () => {
     for (const path of [
       "/api/plugins/*",
       "/api/conversations/*",
+      "/api/people/*",
+      "/people/*",
       "/*",
       "/api/*",
       "/:slug",

@@ -15,13 +15,16 @@ import { statusBorderClass } from "./statusStyles";
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {
   conversations: Conversation[];
+  emptyLabel?: string;
   selectedId?: string;
   search?: string;
 }) {
   if (props.conversations.length === 0) {
     return (
       <div className="grid gap-2 p-3">
-        <EmptyTelemetry>No matching conversation telemetry.</EmptyTelemetry>
+        <EmptyTelemetry>
+          {props.emptyLabel ?? "No conversations to show."}
+        </EmptyTelemetry>
       </div>
     );
   }

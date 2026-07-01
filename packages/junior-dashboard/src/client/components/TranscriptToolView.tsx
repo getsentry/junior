@@ -10,6 +10,7 @@ import {
 import { cn } from "../styles";
 import type { TranscriptViewPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
+import { ToolValueInspector } from "./ToolValueInspector";
 import { isPreviewableValue } from "./transcriptPreview";
 import { HighlightText } from "./transcriptSearch";
 
@@ -27,8 +28,8 @@ export function TranscriptToolView(props: {
     props.call?.id ??
     props.result?.id ??
     "unknown";
-  const input = props.call?.input;
-  const output = props.result?.output;
+  const input = toolInputPayload(props.call);
+  const output = toolOutputPayload(props.result);
   const outputBytes = props.result
     ? new TextEncoder().encode(stringifyPartValue(output)).length
     : undefined;
@@ -98,22 +99,57 @@ export function TranscriptToolView(props: {
     >
       {props.call ? (
         <ToolBodySection label="arguments">
-          <HighlightedCode
-            code={stringifyPartValue(input) || "{}"}
-            language="json"
-          />
+          <ToolValueInspector emptyLabel="No arguments" value={input} />
         </ToolBodySection>
       ) : null}
       {props.result ? (
         <ToolBodySection label="result">
-          <HighlightedCode
-            code={stringifyPartValue(output) || "{}"}
-            language="json"
-          />
+          <ToolValueInspector emptyLabel="No result payload" value={output} />
         </ToolBodySection>
       ) : null}
     </ToolFrame>
   );
+}
+
+function toolInputPayload(part: TranscriptViewPart | undefined): unknown {
+  if (!part) return undefined;
+  if (part.redacted) {
+    return redactedPayload("input", part);
+  }
+  return part.input;
+}
+
+function toolOutputPayload(part: TranscriptViewPart | undefined): unknown {
+  if (!part) return undefined;
+  if (part.redacted) {
+    return redactedPayload("output", part);
+  }
+  return part.output;
+}
+
+function redactedPayload(
+  kind: "input" | "output",
+  part: TranscriptViewPart,
+): Record<string, unknown> {
+  return {
+    redacted: true,
+    ...(kind === "input" && part.inputKeys ? { keys: part.inputKeys } : {}),
+    ...(kind === "output" && part.outputKeys ? { keys: part.outputKeys } : {}),
+    ...(kind === "input" && part.inputType ? { type: part.inputType } : {}),
+    ...(kind === "output" && part.outputType ? { type: part.outputType } : {}),
+    ...(kind === "input" && part.inputSizeBytes !== undefined
+      ? { sizeBytes: part.inputSizeBytes }
+      : {}),
+    ...(kind === "output" && part.outputSizeBytes !== undefined
+      ? { sizeBytes: part.outputSizeBytes }
+      : {}),
+    ...(kind === "input" && part.inputSizeChars !== undefined
+      ? { sizeChars: part.inputSizeChars }
+      : {}),
+    ...(kind === "output" && part.outputSizeChars !== undefined
+      ? { sizeChars: part.outputSizeChars }
+      : {}),
+  };
 }
 
 function ToolBodySection(props: {
@@ -129,7 +165,7 @@ function ToolBodySection(props: {
       )}
     >
       {props.label ? (
-        <div className="pb-2 font-mono text-[0.78rem] leading-none text-[#888]">
+        <div className="pb-2 font-mono text-[0.68rem] font-bold uppercase leading-none text-[#9a8fd0]">
           {props.label}
         </div>
       ) : null}

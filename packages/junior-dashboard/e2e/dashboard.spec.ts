@@ -85,6 +85,22 @@ function reporting(): JuniorReporting {
         transcriptAvailable: true,
       };
     },
+    async getConversationSubagentTranscript(
+      _conversationId,
+      _runId,
+      subagentId,
+    ) {
+      return {
+        type: "subagent",
+        createdAt: "2026-06-12T00:00:00.000Z",
+        id: subagentId,
+        status: "error",
+        subagentKind: "unknown",
+        transcript: [],
+        transcriptAvailable: false,
+        unavailableReason: "not_found",
+      };
+    },
   };
 }
 

@@ -135,6 +135,8 @@ const subagentEndedEntrySchema = z.object({
     z.literal("aborted"),
   ]),
   errorCode: z.string().min(1).optional(),
+  transcriptEndMessageIndex: z.number().int().nonnegative().optional(),
+  transcriptStartMessageIndex: z.number().int().nonnegative().optional(),
   createdAtMs: z.number().int().nonnegative(),
 });
 
@@ -453,6 +455,8 @@ function subagentEndedEntry(args: {
   outcome: "success" | "error" | "aborted";
   sessionId: string;
   subagentInvocationId: string;
+  transcriptEndMessageIndex?: number;
+  transcriptStartMessageIndex?: number;
 }): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
@@ -461,6 +465,12 @@ function subagentEndedEntry(args: {
     subagentInvocationId: args.subagentInvocationId,
     outcome: args.outcome,
     ...(args.errorCode ? { errorCode: args.errorCode } : {}),
+    ...(args.transcriptEndMessageIndex !== undefined
+      ? { transcriptEndMessageIndex: args.transcriptEndMessageIndex }
+      : {}),
+    ...(args.transcriptStartMessageIndex !== undefined
+      ? { transcriptStartMessageIndex: args.transcriptStartMessageIndex }
+      : {}),
     createdAtMs: args.createdAtMs,
   };
 }
@@ -914,6 +924,8 @@ export async function recordSubagentEnded(
     sessionId?: string;
     store?: SessionLogStore;
     subagentInvocationId: string;
+    transcriptEndMessageIndex?: number;
+    transcriptStartMessageIndex?: number;
     ttlMs: number;
   },
 ): Promise<void> {
@@ -929,6 +941,8 @@ export async function recordSubagentEnded(
         outcome: args.outcome,
         sessionId,
         subagentInvocationId: args.subagentInvocationId,
+        transcriptEndMessageIndex: args.transcriptEndMessageIndex,
+        transcriptStartMessageIndex: args.transcriptStartMessageIndex,
       }),
     ],
     ttlMs: args.ttlMs,

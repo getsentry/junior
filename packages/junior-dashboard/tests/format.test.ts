@@ -7,6 +7,9 @@ import {
   conversationFromDetail,
   conversationIdentityMeta,
   conversationRequesterLabel,
+  conversationRequesterOptions,
+  conversationSourceOptions,
+  filterConversationList,
   formatConversationDuration,
   formatDurationTotal,
   formatDurationTick,
@@ -477,6 +480,63 @@ describe("dashboard token formatting", () => {
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
       "alice · slack:C1:123",
     );
+  });
+
+  it("filters conversation rows by text, source, and requester", () => {
+    const conversations = buildConversations([
+      {
+        channel: "C1",
+        channelName: "proj-checkout",
+        conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
+        displayTitle: "Checkout latency triage",
+        id: "turn-1",
+        lastProgressAt: "2026-06-01T10:05:00.000Z",
+        lastSeenAt: "2026-06-01T10:05:00.000Z",
+        requesterIdentity: {
+          email: "morgan@example.com",
+          fullName: "Morgan Lee",
+        },
+        startedAt: "2026-06-01T10:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+      {
+        conversationId: "internal:memory:456",
+        cumulativeDurationMs: 0,
+        displayTitle: "Memory cleanup",
+        id: "turn-2",
+        lastProgressAt: "2026-06-01T11:05:00.000Z",
+        lastSeenAt: "2026-06-01T11:05:00.000Z",
+        requesterIdentity: { fullName: "Casey" },
+        startedAt: "2026-06-01T11:00:00.000Z",
+        status: "completed",
+        surface: "internal",
+      },
+    ]);
+
+    expect(conversationSourceOptions(conversations)).toEqual([
+      { label: "internal", value: "internal" },
+      { label: "slack", value: "slack" },
+    ]);
+    expect(conversationRequesterOptions(conversations)).toEqual([
+      { label: "Casey", value: "Casey" },
+      { label: "Morgan Lee", value: "morgan@example.com" },
+    ]);
+    expect(
+      filterConversationList(conversations, {
+        query: "checkout",
+        requester: "morgan@example.com",
+        source: "slack",
+      }).map((conversation) => conversation.id),
+    ).toEqual(["slack:C1:123"]);
+    expect(
+      filterConversationList(conversations, {
+        query: "checkout",
+        requester: "Casey",
+        source: "slack",
+      }),
+    ).toEqual([]);
   });
 
   it("formats conversation spans with the compact conversation duration rules", () => {

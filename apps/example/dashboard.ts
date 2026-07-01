@@ -1,4 +1,7 @@
 function isVercelEnvironment(): boolean {
+  if (process.env.NODE_ENV === "development") {
+    return false;
+  }
   return Boolean(
     process.env.VERCEL?.trim() ||
     process.env.VERCEL_ENV?.trim() ||

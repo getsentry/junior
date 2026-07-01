@@ -12,9 +12,18 @@ import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
 
 /** Render the compact latest-conversation stack on the command center. */
-export function ConversationStack(props: { conversations: Conversation[] }) {
+export function ConversationStack(props: {
+  conversations: Conversation[];
+  emptyLabel?: string;
+}) {
   if (props.conversations.length === 0) {
-    return <EmptyTelemetry>No conversation telemetry yet.</EmptyTelemetry>;
+    return (
+      <div className="p-3">
+        <EmptyTelemetry>
+          {props.emptyLabel ?? "No conversation telemetry yet."}
+        </EmptyTelemetry>
+      </div>
+    );
   }
 
   return (

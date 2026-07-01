@@ -10,12 +10,18 @@ import { getConversationStore } from "@/chat/db";
 import {
   readConversationFeed,
   readConversationReport,
+  readConversationSubagentTranscriptReport,
   readConversationStatsReport,
+  readRequesterDirectoryReport,
+  readRequesterProfileReport,
   listRecentConversationSummaries,
   type ConversationFeed,
   type PluginConversationSummary,
   type ConversationReport,
+  type ConversationSubagentTranscriptReport,
   type ConversationStatsReport,
+  type RequesterDirectoryReport,
+  type RequesterProfileReport,
 } from "./reporting/conversations";
 
 export type {
@@ -29,13 +35,19 @@ export type {
   ConversationReportStatus,
   ConversationRunReport,
   ConversationSubagentActivityReport,
+  ConversationSubagentTranscriptReport,
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationSurface,
   ConversationToolActivityReport,
   ConversationUsage,
+  RequesterActivityDayReport,
+  RequesterDirectoryReport,
   RequesterIdentity,
+  RequesterProfileReport,
+  RequesterSummaryReport,
+  RequesterTotalsReport,
   TranscriptMessage,
   TranscriptPart,
   TranscriptPartType,
@@ -102,6 +114,10 @@ export interface JuniorReporting {
   listConversations(): Promise<ConversationFeed>;
   /** Read aggregate conversation stats for reporting consumers. */
   getConversationStats?(): Promise<ConversationStatsReport>;
+  /** List requester profiles derived from trusted conversation requester emails. */
+  listRequesters?(): Promise<RequesterDirectoryReport>;
+  /** Read one requester profile derived from trusted conversation requester emails. */
+  getRequesterProfile?(email: string): Promise<RequesterProfileReport>;
   /** Read recent conversation summaries without transcript payloads. */
   listRecentConversations?(options?: {
     limit?: number;
@@ -116,6 +132,12 @@ export interface JuniorReporting {
    * source. Avoid adding fields that require Redis-only transcript internals.
    */
   getConversation(conversationId: string): Promise<ConversationReport>;
+  /** Load a child-agent transcript only when an operator opens that subagent. */
+  getConversationSubagentTranscript(
+    conversationId: string,
+    runId: string,
+    subagentId: string,
+  ): Promise<ConversationSubagentTranscriptReport>;
 }
 
 function readDescriptionText(): string | undefined {
@@ -152,6 +174,8 @@ async function readPlugins(): Promise<PluginReport[]> {
 /** Create the read-only reporting boundary used by plugins and other consumers. */
 export function createJuniorReporting(): JuniorReporting & {
   getConversationStats(): Promise<ConversationStatsReport>;
+  listRequesters(): Promise<RequesterDirectoryReport>;
+  getRequesterProfile(email: string): Promise<RequesterProfileReport>;
   listRecentConversations(options?: {
     limit?: number;
   }): Promise<PluginConversationSummary[]>;
@@ -185,6 +209,9 @@ export function createJuniorReporting(): JuniorReporting & {
     listConversations: () => readConversationFeed({ conversationStore }),
     getConversationStats: () =>
       readConversationStatsReport({ conversationStore }),
+    listRequesters: () => readRequesterDirectoryReport({ conversationStore }),
+    getRequesterProfile: (email) =>
+      readRequesterProfileReport(email, { conversationStore }),
     listRecentConversations: listRecent,
     getPluginOperationalReports: async () => {
       const nowMs = Date.now();
@@ -198,5 +225,11 @@ export function createJuniorReporting(): JuniorReporting & {
     },
     getConversation: (conversationId) =>
       readConversationReport(conversationId, { conversationStore }),
+    getConversationSubagentTranscript: (conversationId, runId, subagentId) =>
+      readConversationSubagentTranscriptReport(
+        conversationId,
+        runId,
+        subagentId,
+      ),
   };
 }

@@ -1,6 +1,9 @@
+import { Link } from "react-router";
+
 import {
   conversationDisplayTitle,
-  conversationIdentityMeta,
+  conversationRequesterLabel,
+  peoplePath,
   visualStatusForConversation,
 } from "../format";
 import type { Conversation } from "../types";
@@ -19,8 +22,35 @@ export function ConversationSummary(props: { conversation: Conversation }) {
         <StatusBadge status={visualStatus} />
       </div>
       <div className="mt-1 break-words text-[0.86rem] leading-relaxed text-[#b8b8b8] md:truncate">
-        {conversationIdentityMeta(props.conversation, props.conversation.id)}
+        <ConversationIdentity conversation={props.conversation} />
       </div>
     </div>
+  );
+}
+
+function ConversationIdentity(props: { conversation: Conversation }) {
+  const email = props.conversation.requesterIdentity?.email?.trim();
+  const owner = conversationRequesterLabel(props.conversation);
+  const id = props.conversation.id;
+
+  if (!owner) return id;
+
+  return (
+    <>
+      {email ? (
+        <Link
+          className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          to={peoplePath(email)}
+        >
+          {owner}
+        </Link>
+      ) : (
+        owner
+      )}
+      {" · "}
+      {id}
+    </>
   );
 }

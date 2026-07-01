@@ -3,9 +3,15 @@ import type {
   ConversationStatsItem as ReportingConversationStatsItem,
   ConversationStatsReport as ReportingConversationStatsReport,
   ConversationReport as ReportingConversationReport,
+  ConversationSubagentTranscriptReport as ReportingConversationSubagentTranscriptReport,
   PluginOperationalReportFeed,
   PluginOperationalReport,
+  RequesterActivityDayReport,
+  RequesterDirectoryReport,
   RequesterIdentity as ReportingRequesterIdentity,
+  RequesterProfileReport,
+  RequesterSummaryReport,
+  RequesterTotalsReport,
   ConversationFeed as ReportingConversationFeed,
   ConversationSummaryReport,
   ConversationRunReport,
@@ -30,9 +36,22 @@ export type PluginReportFeed = PluginOperationalReportFeed;
 
 export type ConversationStatsReport = ReportingConversationStatsReport;
 
+export type ConversationSubagentTranscript =
+  ReportingConversationSubagentTranscriptReport;
+
 export type ConversationStatsItem = ReportingConversationStatsItem;
 
 export type RequesterIdentity = ReportingRequesterIdentity;
+
+export type RequesterActivityDay = RequesterActivityDayReport;
+
+export type RequesterDirectory = RequesterDirectoryReport;
+
+export type RequesterProfile = RequesterProfileReport;
+
+export type RequesterSummary = RequesterSummaryReport;
+
+export type RequesterTotals = RequesterTotalsReport;
 
 export type TurnUsage = ConversationUsage;
 
@@ -86,6 +105,7 @@ export type TranscriptViewSubagentPart = {
   redacted?: boolean;
   status: TranscriptActivityStatus;
   subagentKind: string;
+  transcriptAvailable?: boolean;
   text?: never;
   type: "subagent";
 };
@@ -99,7 +119,9 @@ export type TranscriptViewMessage = Omit<TranscriptMessage, "parts"> & {
   parts: TranscriptViewPart[];
 };
 
-export type ConversationTurn = ConversationRunReport;
+export type ConversationTurn = ConversationRunReport & {
+  assistantLabel?: string;
+};
 
 export type ConversationDetailFeed = ReportingConversationReport;
 

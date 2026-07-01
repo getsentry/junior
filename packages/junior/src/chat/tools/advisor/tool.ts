@@ -197,6 +197,10 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
       const endSubagent = async (
         outcome: "success" | "error" | "aborted",
         errorCode?: AdvisorErrorCode,
+        transcriptRange?: {
+          endMessageIndex: number;
+          startMessageIndex: number;
+        },
       ) =>
         recordSubagentEnded({
           conversationId,
@@ -204,6 +208,12 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           subagentInvocationId,
           outcome,
           ...(errorCode ? { errorCode } : {}),
+          ...(transcriptRange
+            ? {
+                transcriptEndMessageIndex: transcriptRange.endMessageIndex,
+                transcriptStartMessageIndex: transcriptRange.startMessageIndex,
+              }
+            : {}),
           ttlMs: THREAD_STATE_TTL_MS,
         });
       await recordSubagentStarted({
@@ -342,7 +352,10 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               "Advisor guidance is unavailable because advisor history could not be saved. Retry the advisor call or continue without assuming advisor history.",
             );
           }
-          await endSubagent("success");
+          await endSubagent("success", undefined, {
+            endMessageIndex: advisorAgent.state.messages.length,
+            startMessageIndex: beforeMessageCount,
+          });
           setSpanStatus("ok");
           return success(memo);
         },

@@ -14,6 +14,7 @@ export type MockSubagentActivityOptions = {
   parentToolCallId?: string;
   status?: ConversationActivityStatus;
   subagentKind?: string;
+  transcriptAvailable?: boolean;
 };
 
 /** Build a subagent activity record constrained to the reporting API shape. */
@@ -30,6 +31,9 @@ export function mockSubagentActivity(
     ...(options.outcome !== undefined ? { outcome: options.outcome } : {}),
     ...(options.parentToolCallId !== undefined
       ? { parentToolCallId: options.parentToolCallId }
+      : {}),
+    ...(options.transcriptAvailable !== undefined
+      ? { transcriptAvailable: options.transcriptAvailable }
       : {}),
   } satisfies ConversationSubagentActivityReport;
 }

@@ -77,6 +77,10 @@ function reporting(): JuniorReporting {
             surface: "slack",
             displayTitle: "Conversation",
             channel: "C1",
+            requesterIdentity: {
+              email: "person@sentry.io",
+              fullName: "Person Example",
+            },
           },
         ],
       };
@@ -123,6 +127,107 @@ function reporting(): JuniorReporting {
     async listRecentConversations() {
       return [];
     },
+    async listRequesters() {
+      return {
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        people: [
+          {
+            active: 1,
+            activeDays: 1,
+            conversations: 1,
+            durationMs: 0,
+            failed: 0,
+            firstSeenAt: "2026-05-29T00:00:00.000Z",
+            hung: 0,
+            lastSeenAt: "2026-05-29T00:00:01.000Z",
+            requester: {
+              email: "person@sentry.io",
+              fullName: "Person Example",
+            },
+            runs: 1,
+          },
+        ],
+        sampleLimit: 1,
+        sampleSize: 1,
+        source: "conversation_index",
+        truncated: false,
+      };
+    },
+    async getRequesterProfile(email: string) {
+      return {
+        activityDays: [
+          {
+            active: 1,
+            conversations: 1,
+            date: "2026-05-29",
+            durationMs: 0,
+            failed: 0,
+            hung: 0,
+            runs: 1,
+          },
+        ],
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        locations: [
+          {
+            active: 1,
+            conversations: 1,
+            durationMs: 0,
+            failed: 0,
+            hung: 0,
+            label: "Public Channel",
+            runs: 1,
+          },
+        ],
+        recentConversations: [
+          {
+            conversationId: "slack:C1:123",
+            cumulativeDurationMs: 0,
+            id: "turn-1",
+            status: "active",
+            startedAt: "2026-05-29T00:00:00.000Z",
+            lastSeenAt: "2026-05-29T00:00:01.000Z",
+            lastProgressAt: "2026-05-29T00:00:01.000Z",
+            surface: "slack",
+            displayTitle: "Conversation",
+            channel: "C1",
+            requesterIdentity: {
+              email,
+              fullName: "Person Example",
+            },
+          },
+        ],
+        requester: {
+          email,
+          fullName: "Person Example",
+        },
+        sampleLimit: 1,
+        sampleSize: 1,
+        source: "conversation_index",
+        surfaces: [
+          {
+            active: 1,
+            conversations: 1,
+            durationMs: 0,
+            failed: 0,
+            hung: 0,
+            label: "Conversation",
+            runs: 1,
+          },
+        ],
+        totals: {
+          active: 1,
+          activeDays: 1,
+          conversations: 1,
+          durationMs: 0,
+          failed: 0,
+          hung: 0,
+          runs: 1,
+        },
+        truncated: false,
+        windowEnd: "2026-05-29T00:00:00.000Z",
+        windowStart: "2025-05-29T00:00:00.000Z",
+      };
+    },
     async getPluginOperationalReports() {
       return {
         source: "plugins",
@@ -168,6 +273,30 @@ function reporting(): JuniorReporting {
                 ],
               },
             ],
+          },
+        ],
+      };
+    },
+    async getConversationSubagentTranscript(
+      _conversationId,
+      _runId,
+      subagentId,
+    ) {
+      return {
+        type: "subagent",
+        createdAt: "2026-05-29T00:00:01.000Z",
+        endedAt: "2026-05-29T00:00:02.000Z",
+        id: subagentId,
+        outcome: "success",
+        parentToolCallId: "advisor-call",
+        status: "success",
+        subagentKind: "advisor",
+        transcriptAvailable: true,
+        transcriptMessageCount: 1,
+        transcript: [
+          {
+            role: "assistant",
+            parts: [{ type: "text", text: "Advisor transcript." }],
           },
         ],
       };
@@ -411,8 +540,11 @@ describe("dashboard routes", () => {
       "/api/skills",
       "/api/conversations",
       "/api/conversations/stats",
+      "/api/people",
+      "/api/people/person%40sentry.io",
       "/api/plugin-reports",
       "/api/conversations/slack%3AC1%3A123",
+      "/api/conversations/slack%3AC1%3A123/runs/turn-1/subagents/advisor-call",
       "/api/config",
       "/api/me",
     ]) {
@@ -477,14 +609,19 @@ describe("dashboard routes", () => {
       },
     });
 
-    const response = await app.fetch(
-      new Request("http://localhost/conversations"),
-    );
+    for (const path of [
+      "/conversations",
+      "/people",
+      "/people/person%40sentry.io",
+      "/plugins",
+    ]) {
+      const response = await app.fetch(new Request(`http://localhost${path}`));
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("text/html");
-    const html = await response.text();
-    expect(html).toContain("<title>Junior</title>");
+      expect(response.status, path).toBe(200);
+      expect(response.headers.get("content-type"), path).toContain("text/html");
+      const html = await response.text();
+      expect(html, path).toContain("<title>Junior</title>");
+    }
   });
 
   it("serves the dashboard client bundle without browser caching", async () => {
@@ -575,6 +712,38 @@ describe("dashboard routes", () => {
         },
       ],
       source: "plugins",
+    });
+
+    const people = await app.fetch(new Request("http://localhost/api/people"));
+    expect(people.status).toBe(200);
+    expect(await people.json()).toMatchObject({
+      people: [
+        {
+          conversations: 1,
+          requester: {
+            email: "person@sentry.io",
+          },
+        },
+      ],
+      source: "conversation_index",
+    });
+
+    const profile = await app.fetch(
+      new Request("http://localhost/api/people/person%40sentry.io"),
+    );
+    expect(profile.status).toBe(200);
+    expect(await profile.json()).toMatchObject({
+      recentConversations: [
+        {
+          conversationId: "slack:C1:123",
+        },
+      ],
+      requester: {
+        email: "person@sentry.io",
+      },
+      totals: {
+        conversations: 1,
+      },
     });
   });
 
@@ -761,6 +930,36 @@ describe("dashboard routes", () => {
               ],
             },
           ],
+        },
+      ],
+    });
+  });
+
+  it("returns authenticated subagent transcript details", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/conversations/slack%3AC1%3A123/runs/turn-1/subagents/advisor-call",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "advisor-call",
+      parentToolCallId: "advisor-call",
+      subagentKind: "advisor",
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "assistant",
+          parts: [{ type: "text", text: "Advisor transcript." }],
         },
       ],
     });

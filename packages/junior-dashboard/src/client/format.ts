@@ -589,6 +589,16 @@ export function conversationRequesterLabel(
   return requesterLabel(conversation?.requesterIdentity);
 }
 
+/** Return the stable requester key used by dashboard list filters. */
+export function conversationRequesterKey(
+  conversation: Conversation | undefined,
+): string | undefined {
+  return (
+    conversation?.requesterIdentity?.email?.trim() ||
+    conversationRequesterLabel(conversation)
+  );
+}
+
 /** Format the owner and permalink id line shared by conversation rows and headers. */
 export function conversationIdentityMeta(
   conversation: Conversation | undefined,
@@ -665,6 +675,11 @@ export function unavailableTranscriptLabel(turn: ConversationTurn): string {
 /** Build the canonical permalink route for a conversation id. */
 export function conversationPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}`;
+}
+
+/** Build the canonical requester profile route for a trusted email address. */
+export function peoplePath(email: string): string {
+  return `/people/${encodeURIComponent(email)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {
@@ -994,6 +1009,99 @@ export function filterConversations(
   if (filter === "hung") return conversations.filter(isHungConversation);
   if (filter === "failed") return conversations.filter(isFailedConversation);
   return conversations;
+}
+
+export type ConversationListFilters = {
+  query?: string;
+  requester?: string;
+  source?: string;
+};
+
+export type ConversationListFilterOption = {
+  label: string;
+  value: string;
+};
+
+function uniqueConversationOptions(
+  conversations: Conversation[],
+  valueForConversation: (conversation: Conversation) => string | undefined,
+  labelForConversation: (conversation: Conversation, value: string) => string,
+): ConversationListFilterOption[] {
+  const options = new Map<string, string>();
+  for (const conversation of conversations) {
+    const value = valueForConversation(conversation)?.trim();
+    if (!value || options.has(value)) continue;
+    options.set(value, labelForConversation(conversation, value));
+  }
+  return [...options.entries()]
+    .map(([value, label]) => ({ label, value }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function conversationSearchHaystack(conversation: Conversation): string {
+  const requester = conversation.requesterIdentity;
+  return [
+    conversation.displayTitle,
+    conversation.id,
+    conversation.channel,
+    conversation.channelName,
+    conversation.status,
+    conversation.surface,
+    requester?.email,
+    requester?.fullName,
+    requester?.slackUserId,
+    requester?.slackUserName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+/** Return source filter options present in the loaded conversation rows. */
+export function conversationSourceOptions(
+  conversations: Conversation[],
+): ConversationListFilterOption[] {
+  return uniqueConversationOptions(
+    conversations,
+    (conversation) => conversation.surface,
+    (_conversation, value) => value,
+  );
+}
+
+/** Return requester filter options present in the loaded conversation rows. */
+export function conversationRequesterOptions(
+  conversations: Conversation[],
+): ConversationListFilterOption[] {
+  return uniqueConversationOptions(
+    conversations,
+    conversationRequesterKey,
+    (conversation, value) =>
+      conversation.requesterIdentity?.fullName?.trim() ||
+      conversation.requesterIdentity?.email?.trim() ||
+      conversation.requesterIdentity?.slackUserName?.trim() ||
+      value,
+  );
+}
+
+/** Apply lightweight client-side search and facet filters to conversations. */
+export function filterConversationList(
+  conversations: Conversation[],
+  filters: ConversationListFilters,
+): Conversation[] {
+  const query = filters.query?.trim().toLowerCase();
+  const source = filters.source?.trim();
+  const requester = filters.requester?.trim();
+
+  return conversations.filter((conversation) => {
+    if (source && conversation.surface !== source) return false;
+    if (requester && conversationRequesterKey(conversation) !== requester) {
+      return false;
+    }
+    if (query && !conversationSearchHaystack(conversation).includes(query)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /** Normalize URL filter params to the supported dashboard filter set. */

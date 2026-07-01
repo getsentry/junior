@@ -22,6 +22,7 @@ import {
   buildSentryConversationUrl,
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
+import { z } from "zod";
 import {
   formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
@@ -41,6 +42,7 @@ import {
   loadActivityEntries,
   type SessionActivityEntry,
 } from "@/chat/state/session-log";
+import { getStateAdapter } from "@/chat/state/adapter";
 import {
   toStoredSlackRequester,
   type Requester,
@@ -65,6 +67,9 @@ const SAFE_METADATA_KEY_LIMIT = 20;
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 const CONVERSATION_FEED_LIMIT = 50;
 const CONVERSATION_STATS_LIMIT = 5_000;
+const REQUESTER_PROFILE_SAMPLE_LIMIT = 5_000;
+const REQUESTER_PROFILE_RECENT_LIMIT = 25;
+const REQUESTER_PROFILE_ACTIVITY_DAYS = 366;
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface ConversationReaderOptions {
@@ -196,6 +201,7 @@ export interface ConversationSubagentActivityReport {
   parentToolCallId?: string;
   status: ConversationActivityStatus;
   subagentKind: string;
+  transcriptAvailable?: boolean;
 }
 
 export interface ConversationToolActivityReport extends ActivityPayloadMetadata {
@@ -221,6 +227,28 @@ export interface ConversationReport {
   generatedAt: string;
   sentryConversationUrl?: string;
   runs: ConversationRunReport[];
+}
+
+export interface ConversationSubagentTranscriptReport {
+  type: "subagent";
+  createdAt: string;
+  endedAt?: string;
+  id: string;
+  outcome?: "success" | "error" | "aborted";
+  parentToolCallId?: string;
+  status: ConversationActivityStatus;
+  subagentConversationId?: string;
+  subagentKind: string;
+  subagentSentryConversationUrl?: string;
+  transcript: TranscriptMessage[];
+  transcriptAvailable: boolean;
+  transcriptMessageCount?: number;
+  transcriptRedacted?: boolean;
+  transcriptRedactionReason?: "non_public_conversation";
+  unavailableReason?:
+    | "missing_transcript_range"
+    | "missing_transcript_ref"
+    | "not_found";
 }
 
 export interface ConversationFeed {
@@ -255,6 +283,59 @@ export interface ConversationStatsReport {
   tokens?: number;
   truncated: boolean;
   runs: number;
+  windowEnd: string;
+  windowStart: string;
+}
+
+export interface RequesterActivityDayReport {
+  active: number;
+  conversations: number;
+  date: string;
+  durationMs: number;
+  failed: number;
+  hung: number;
+  runs: number;
+  tokens?: number;
+}
+
+export interface RequesterTotalsReport {
+  active: number;
+  activeDays: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  hung: number;
+  runs: number;
+  tokens?: number;
+}
+
+export interface RequesterSummaryReport extends RequesterTotalsReport {
+  firstSeenAt: string;
+  lastSeenAt: string;
+  requester: RequesterIdentity & { email: string };
+}
+
+export interface RequesterDirectoryReport {
+  generatedAt: string;
+  people: RequesterSummaryReport[];
+  sampleLimit: number;
+  sampleSize: number;
+  source: "conversation_index";
+  truncated: boolean;
+}
+
+export interface RequesterProfileReport {
+  activityDays: RequesterActivityDayReport[];
+  generatedAt: string;
+  locations: ConversationStatsItem[];
+  recentConversations: ConversationSummaryReport[];
+  requester: RequesterIdentity & { email: string };
+  sampleLimit: number;
+  sampleSize: number;
+  source: "conversation_index";
+  surfaces: ConversationStatsItem[];
+  totals: RequesterTotalsReport;
+  truncated: boolean;
   windowEnd: string;
   windowStart: string;
 }
@@ -913,6 +994,364 @@ function buildConversationStatsReport(args: {
   };
 }
 
+function normalizeRequesterEmail(
+  email: string | undefined,
+): string | undefined {
+  const normalized = email?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function requesterIdentityWithEmail(
+  requester: RequesterIdentity | undefined,
+): (RequesterIdentity & { email: string }) | undefined {
+  const email = normalizeRequesterEmail(requester?.email);
+  if (!email) return undefined;
+  return {
+    email,
+    ...(requester?.fullName ? { fullName: requester.fullName } : {}),
+    ...(requester?.slackUserId ? { slackUserId: requester.slackUserId } : {}),
+    ...(requester?.slackUserName
+      ? { slackUserName: requester.slackUserName }
+      : {}),
+  };
+}
+
+function mergeRequesterIdentity(
+  current: RequesterIdentity & { email: string },
+  next: RequesterIdentity & { email: string },
+): RequesterIdentity & { email: string } {
+  return {
+    email: current.email,
+    ...((current.fullName ?? next.fullName)
+      ? { fullName: current.fullName ?? next.fullName }
+      : {}),
+    ...((current.slackUserId ?? next.slackUserId)
+      ? { slackUserId: current.slackUserId ?? next.slackUserId }
+      : {}),
+    ...((current.slackUserName ?? next.slackUserName)
+      ? { slackUserName: current.slackUserName ?? next.slackUserName }
+      : {}),
+  };
+}
+
+function reportDate(value: string): string | undefined {
+  const time = reportTime(value);
+  if (time === undefined) return undefined;
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+function emptyRequesterTotals(): RequesterTotalsReport {
+  return {
+    active: 0,
+    activeDays: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    runs: 0,
+  };
+}
+
+function addRequesterTokens(
+  target: Pick<RequesterTotalsReport, "tokens">,
+  tokens: number | undefined,
+): void {
+  if (tokens !== undefined) {
+    target.tokens = (target.tokens ?? 0) + tokens;
+  }
+}
+
+function addStatsSignals(
+  item: ConversationStatsItem,
+  signals: ReturnType<typeof statusSignals>,
+): void {
+  item.active += signals.active ? 1 : 0;
+  item.failed += signals.failed ? 1 : 0;
+  item.hung += signals.hung ? 1 : 0;
+}
+
+function addConversationSignals(
+  target: Pick<RequesterTotalsReport, "active" | "failed" | "hung">,
+  signals: ReturnType<typeof statusSignals>,
+): void {
+  target.active += signals.active ? 1 : 0;
+  target.failed += signals.failed ? 1 : 0;
+  target.hung += signals.hung ? 1 : 0;
+}
+
+type RequesterDirectoryAccumulator = RequesterTotalsReport & {
+  activeDates: Set<string>;
+  firstSeenMs: number;
+  lastSeenMs: number;
+  requester: RequesterIdentity & { email: string };
+};
+
+function directoryItem(
+  accumulator: RequesterDirectoryAccumulator,
+): RequesterSummaryReport {
+  return {
+    active: accumulator.active,
+    activeDays: accumulator.activeDates.size,
+    conversations: accumulator.conversations,
+    durationMs: accumulator.durationMs,
+    failed: accumulator.failed,
+    firstSeenAt: new Date(accumulator.firstSeenMs).toISOString(),
+    hung: accumulator.hung,
+    lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
+    requester: accumulator.requester,
+    runs: accumulator.runs,
+    ...(accumulator.tokens !== undefined ? { tokens: accumulator.tokens } : {}),
+  };
+}
+
+function emptyRequesterActivityDay(date: string): RequesterActivityDayReport {
+  return {
+    active: 0,
+    conversations: 0,
+    date,
+    durationMs: 0,
+    failed: 0,
+    hung: 0,
+    runs: 0,
+  };
+}
+
+function requesterActivityDays(args: {
+  days: Map<string, RequesterActivityDayReport>;
+  nowMs: number;
+}): RequesterActivityDayReport[] {
+  const items: RequesterActivityDayReport[] = [];
+  const end = new Date(args.nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (REQUESTER_PROFILE_ACTIVITY_DAYS - 1));
+
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    items.push(args.days.get(date) ?? emptyRequesterActivityDay(date));
+  }
+  return items;
+}
+
+async function requesterSample(options: ConversationReaderOptions = {}) {
+  const conversations = await conversationStore(options).listByActivity({
+    limit: REQUESTER_PROFILE_SAMPLE_LIMIT + 1,
+  });
+  return {
+    conversations: conversations.slice(0, REQUESTER_PROFILE_SAMPLE_LIMIT),
+    truncated: conversations.length > REQUESTER_PROFILE_SAMPLE_LIMIT,
+  };
+}
+
+/** Read the requester directory from durable conversation metadata. */
+export async function readRequesterDirectoryReport(
+  options: ConversationReaderOptions = {},
+): Promise<RequesterDirectoryReport> {
+  const nowMs = Date.now();
+  const { conversations, truncated } = await requesterSample(options);
+  const detailsByConversationId = await getConversationDetailsForIds(
+    conversations.map((conversation) => conversation.conversationId),
+  );
+  const people = new Map<string, RequesterDirectoryAccumulator>();
+
+  for (const conversation of conversations) {
+    const report = sessionReportFromConversation(
+      conversation,
+      nowMs,
+      detailsByConversationId.get(conversation.conversationId),
+    );
+    const requester = requesterIdentityWithEmail(report.requesterIdentity);
+    if (!requester) continue;
+
+    const lastSeenMs =
+      reportTime(report.lastSeenAt) ?? conversation.lastActivityAtMs;
+    const firstSeenMs =
+      reportTime(report.startedAt) ?? conversation.createdAtMs;
+    const signals = statusSignals([report]);
+    const date = reportDate(report.lastSeenAt);
+    const email = requester.email;
+    const accumulator =
+      people.get(email) ??
+      ({
+        ...emptyRequesterTotals(),
+        activeDates: new Set<string>(),
+        firstSeenMs,
+        lastSeenMs,
+        requester,
+      } satisfies RequesterDirectoryAccumulator);
+
+    accumulator.requester = mergeRequesterIdentity(
+      accumulator.requester,
+      requester,
+    );
+    accumulator.conversations += 1;
+    accumulator.runs += 1;
+    accumulator.durationMs += report.cumulativeDurationMs;
+    addRequesterTokens(accumulator, usageTokenTotal(report.cumulativeUsage));
+    addConversationSignals(accumulator, signals);
+    accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
+    accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);
+    if (date) accumulator.activeDates.add(date);
+    people.set(email, accumulator);
+  }
+
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    people: [...people.values()]
+      .map(directoryItem)
+      .sort(
+        (left, right) =>
+          (reportTime(right.lastSeenAt) ?? 0) -
+            (reportTime(left.lastSeenAt) ?? 0) ||
+          right.conversations - left.conversations ||
+          left.requester.email.localeCompare(right.requester.email),
+      ),
+    sampleLimit: REQUESTER_PROFILE_SAMPLE_LIMIT,
+    sampleSize: conversations.length,
+    source: "conversation_index",
+    truncated,
+  };
+}
+
+/** Read one requester profile without exposing transcript payloads. */
+export async function readRequesterProfileReport(
+  email: string,
+  options: ConversationReaderOptions = {},
+): Promise<RequesterProfileReport> {
+  const nowMs = Date.now();
+  const normalizedEmail = normalizeRequesterEmail(email) ?? email;
+  const { conversations, truncated } = await requesterSample(options);
+  const detailsByConversationId = await getConversationDetailsForIds(
+    conversations.map((conversation) => conversation.conversationId),
+  );
+  const reportsByConversation = await reportsFromConversations({
+    conversations,
+    detailsByConversationId,
+    nowMs,
+  });
+  const matchingConversations = conversations.filter((conversation) => {
+    const reports =
+      reportsByConversation.get(conversation.conversationId) ?? [];
+    const report =
+      reports.length > 0
+        ? newestRun(reports)
+        : sessionReportFromConversation(
+            conversation,
+            nowMs,
+            detailsByConversationId.get(conversation.conversationId),
+          );
+    return (
+      requesterIdentityWithEmail(report.requesterIdentity)?.email ===
+      normalizedEmail
+    );
+  });
+
+  let requester: (RequesterIdentity & { email: string }) | undefined;
+  const totals = emptyRequesterTotals();
+  const activeDates = new Set<string>();
+  const activityDays = new Map<string, RequesterActivityDayReport>();
+  const locations = new Map<string, ConversationStatsItem>();
+  const surfaces = new Map<string, ConversationStatsItem>();
+  const recentConversations: ConversationSummaryReport[] = [];
+
+  for (const conversation of matchingConversations) {
+    const reports = [
+      ...(reportsByConversation.get(conversation.conversationId) ?? [
+        sessionReportFromConversation(
+          conversation,
+          nowMs,
+          detailsByConversationId.get(conversation.conversationId),
+        ),
+      ]),
+    ].sort(
+      (left, right) =>
+        (reportTime(left.startedAt) ?? 0) -
+          (reportTime(right.startedAt) ?? 0) || left.id.localeCompare(right.id),
+    );
+    const newest = newestRun(reports);
+    const identity = requesterIdentityWithEmail(newest.requesterIdentity);
+    if (identity) {
+      requester = requester
+        ? mergeRequesterIdentity(requester, identity)
+        : identity;
+    }
+    recentConversations.push(newest);
+
+    const contributions = runContributions(reports);
+    const signals = statusSignals(reports);
+    const durationMs = contributionDurationTotal(contributions);
+    const tokens = contributionTokenTotal(contributions);
+    const date = reportDate(newest.lastSeenAt);
+
+    totals.conversations += 1;
+    totals.runs += reports.length;
+    totals.durationMs += durationMs;
+    addRequesterTokens(totals, tokens);
+    addConversationSignals(totals, signals);
+    if (date) {
+      activeDates.add(date);
+      const day = activityDays.get(date) ?? emptyRequesterActivityDay(date);
+      day.conversations += 1;
+      day.runs += reports.length;
+      day.durationMs += durationMs;
+      addRequesterTokens(day, tokens);
+      addConversationSignals(day, signals);
+      activityDays.set(date, day);
+    }
+
+    const location = locationLabel(newest);
+    const locationItem = locations.get(location) ?? emptyStatsItem(location);
+    locationItem.conversations += 1;
+    locationItem.runs += reports.length;
+    locationItem.durationMs += durationMs;
+    addItemTokens(locationItem, tokens);
+    addStatsSignals(locationItem, signals);
+    locations.set(location, locationItem);
+
+    const surface = surfaceFallbackLabel(newest.surface);
+    const surfaceItem = surfaces.get(surface) ?? emptyStatsItem(surface);
+    surfaceItem.conversations += 1;
+    surfaceItem.runs += reports.length;
+    surfaceItem.durationMs += durationMs;
+    addItemTokens(surfaceItem, tokens);
+    addStatsSignals(surfaceItem, signals);
+    surfaces.set(surface, surfaceItem);
+  }
+
+  totals.activeDays = activeDates.size;
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (REQUESTER_PROFILE_ACTIVITY_DAYS - 1));
+
+  return {
+    activityDays: requesterActivityDays({ days: activityDays, nowMs }),
+    generatedAt: new Date(nowMs).toISOString(),
+    locations: statsItems(locations),
+    recentConversations: recentConversations
+      .sort(
+        (left, right) =>
+          (reportTime(right.lastSeenAt) ?? 0) -
+            (reportTime(left.lastSeenAt) ?? 0) ||
+          right.conversationId.localeCompare(left.conversationId),
+      )
+      .slice(0, REQUESTER_PROFILE_RECENT_LIMIT),
+    requester: requester ?? { email: normalizedEmail },
+    sampleLimit: REQUESTER_PROFILE_SAMPLE_LIMIT,
+    sampleSize: conversations.length,
+    source: "conversation_index",
+    surfaces: statsItems(surfaces),
+    totals,
+    truncated,
+    windowEnd: end.toISOString(),
+    windowStart: start.toISOString(),
+  };
+}
+
 function canExposeConversationTranscript(
   summary: AgentTurnSessionSummary,
 ): boolean {
@@ -1151,6 +1590,7 @@ function activityPayloadFields(
 function subagentActivity(
   entry: Extract<SessionActivityEntry, { type: "subagent_started" }>,
   options: {
+    canExposeTranscript: boolean;
     end?: Extract<SessionActivityEntry, { type: "subagent_ended" }>;
     parentStatus?: ConversationActivityStatus;
   },
@@ -1169,6 +1609,11 @@ function subagentActivity(
           endedAt: new Date(end.createdAtMs).toISOString(),
           outcome: end.outcome,
           status: end.outcome,
+          ...(options.canExposeTranscript &&
+          end.transcriptStartMessageIndex !== undefined &&
+          end.transcriptEndMessageIndex !== undefined
+            ? { transcriptAvailable: true }
+            : {}),
         }
       : { status: options.parentStatus ?? "running" }),
   };
@@ -1204,6 +1649,7 @@ function buildConversationActivity(args: {
       ? toolStatuses.get(entry.parentToolCallId)
       : undefined;
     const activity = subagentActivity(entry, {
+      canExposeTranscript: args.canExposePayload,
       end: subagentEnds.get(entry.subagentInvocationId),
       parentStatus,
     });
@@ -1331,6 +1777,116 @@ function traceIdFromTranscript(
     }
   }
   return undefined;
+}
+
+function subagentTranscriptReport(
+  activity: ConversationSubagentActivityReport,
+  options: {
+    subagentConversationId?: string;
+    subagentSentryConversationUrl?: string;
+    transcript?: TranscriptMessage[];
+    transcriptMessageCount?: number;
+    transcriptRedacted?: boolean;
+    transcriptRedactionReason?: "non_public_conversation";
+    unavailableReason?: ConversationSubagentTranscriptReport["unavailableReason"];
+  } = {},
+): ConversationSubagentTranscriptReport {
+  return {
+    type: "subagent",
+    ...(options.subagentConversationId
+      ? { subagentConversationId: options.subagentConversationId }
+      : {}),
+    createdAt: activity.createdAt,
+    id: activity.id,
+    status: activity.status,
+    ...(options.subagentSentryConversationUrl
+      ? { subagentSentryConversationUrl: options.subagentSentryConversationUrl }
+      : {}),
+    subagentKind: activity.subagentKind,
+    transcript: options.transcript ?? [],
+    transcriptAvailable: Boolean(options.transcript?.length),
+    ...(activity.endedAt ? { endedAt: activity.endedAt } : {}),
+    ...(activity.outcome ? { outcome: activity.outcome } : {}),
+    ...(activity.parentToolCallId
+      ? { parentToolCallId: activity.parentToolCallId }
+      : {}),
+    ...(options.transcriptMessageCount !== undefined
+      ? { transcriptMessageCount: options.transcriptMessageCount }
+      : {}),
+    ...(options.transcriptRedacted
+      ? { transcriptRedacted: options.transcriptRedacted }
+      : {}),
+    ...(options.transcriptRedactionReason
+      ? { transcriptRedactionReason: options.transcriptRedactionReason }
+      : {}),
+    ...(options.unavailableReason
+      ? { unavailableReason: options.unavailableReason }
+      : {}),
+  };
+}
+
+function subagentConversationFields(
+  ref: Extract<
+    SessionActivityEntry,
+    { type: "subagent_started" }
+  >["transcriptRef"],
+): Pick<
+  ConversationSubagentTranscriptReport,
+  "subagentConversationId" | "subagentSentryConversationUrl"
+> {
+  if (ref.type !== "advisor_session") {
+    return {};
+  }
+  const subagentConversationId = ref.key;
+  const subagentSentryConversationUrl = buildSentryConversationUrl(
+    subagentConversationId,
+  );
+  return {
+    subagentConversationId,
+    ...(subagentSentryConversationUrl ? { subagentSentryConversationUrl } : {}),
+  };
+}
+
+const piMessageSchema = z
+  .object({
+    content: z.array(z.unknown()),
+    role: z.string().min(1),
+  })
+  .passthrough()
+  .transform((value) => value as unknown as PiMessage);
+
+async function readTranscriptRefMessages(
+  ref: Extract<
+    SessionActivityEntry,
+    { type: "subagent_started" }
+  >["transcriptRef"],
+): Promise<PiMessage[]> {
+  if (ref.type !== "advisor_session") {
+    return [];
+  }
+
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const value = await stateAdapter.get<unknown>(ref.key);
+  const parsed = z.array(piMessageSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+function transcriptSliceBounds(
+  end: Extract<SessionActivityEntry, { type: "subagent_ended" }> | undefined,
+): { end: number; start: number } | undefined {
+  if (
+    end?.transcriptStartMessageIndex === undefined ||
+    end.transcriptEndMessageIndex === undefined ||
+    end.transcriptEndMessageIndex < end.transcriptStartMessageIndex
+  ) {
+    return undefined;
+  }
+
+  return {
+    end: end.transcriptEndMessageIndex,
+    start: end.transcriptStartMessageIndex,
+  };
 }
 
 async function summariesByConversation(
@@ -1602,4 +2158,96 @@ export async function readConversationReport(
     ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
     runs: effectiveRuns,
   };
+}
+
+/** Read one child-agent transcript through its parent conversation run. */
+export async function readConversationSubagentTranscriptReport(
+  conversationId: string,
+  runId: string,
+  subagentId: string,
+): Promise<ConversationSubagentTranscriptReport> {
+  const summaries =
+    await listAgentTurnSessionSummariesForConversation(conversationId);
+  const summary = summaries.find((candidate) => candidate.sessionId === runId);
+  if (!summary) {
+    return {
+      type: "subagent",
+      createdAt: new Date(0).toISOString(),
+      id: subagentId,
+      status: "error",
+      subagentKind: "unknown",
+      transcript: [],
+      transcriptAvailable: false,
+      unavailableReason: "not_found",
+    };
+  }
+
+  const entries = await loadActivityEntries({
+    conversationId,
+    sessionId: runId,
+  });
+  const start = entries.find(
+    (
+      entry,
+    ): entry is Extract<SessionActivityEntry, { type: "subagent_started" }> =>
+      entry.type === "subagent_started" &&
+      entry.subagentInvocationId === subagentId,
+  );
+  const end = entries.find(
+    (
+      entry,
+    ): entry is Extract<SessionActivityEntry, { type: "subagent_ended" }> =>
+      entry.type === "subagent_ended" &&
+      entry.subagentInvocationId === subagentId,
+  );
+
+  if (!start) {
+    return {
+      type: "subagent",
+      createdAt: new Date(0).toISOString(),
+      id: subagentId,
+      status: "error",
+      subagentKind: "unknown",
+      transcript: [],
+      transcriptAvailable: false,
+      unavailableReason: "not_found",
+    };
+  }
+
+  const canExposeTranscript = canExposeConversationTranscript(summary);
+  const activity = subagentActivity(start, { canExposeTranscript, end });
+  const conversationFields = subagentConversationFields(start.transcriptRef);
+  if (!canExposeTranscript) {
+    return subagentTranscriptReport(activity, {
+      ...conversationFields,
+      transcriptRedacted: true,
+      transcriptRedactionReason: "non_public_conversation",
+    });
+  }
+
+  const bounds = transcriptSliceBounds(end);
+  if (!bounds) {
+    return subagentTranscriptReport(activity, {
+      ...conversationFields,
+      unavailableReason: "missing_transcript_range",
+    });
+  }
+
+  const messages = await readTranscriptRefMessages(start.transcriptRef);
+  if (messages.length === 0) {
+    return subagentTranscriptReport(activity, {
+      ...conversationFields,
+      unavailableReason: "missing_transcript_ref",
+    });
+  }
+
+  const transcript = messages
+    .slice(0, bounds.end)
+    .map(normalizeTranscriptMessage);
+
+  return subagentTranscriptReport(activity, {
+    ...conversationFields,
+    transcript,
+    transcriptMessageCount: countConversationMessages(transcript),
+  });
 }

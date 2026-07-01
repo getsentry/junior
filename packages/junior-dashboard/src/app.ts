@@ -5,6 +5,8 @@ import type {
   ConversationStatsReport,
   PluginOperationalReportFeed,
   JuniorReporting,
+  RequesterDirectoryReport,
+  RequesterProfileReport,
 } from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -233,6 +235,48 @@ function emptyConversationStatsReport(): ConversationStatsReport {
   };
 }
 
+function emptyRequesterDirectoryReport(): RequesterDirectoryReport {
+  return {
+    generatedAt: new Date().toISOString(),
+    people: [],
+    sampleLimit: 0,
+    sampleSize: 0,
+    source: "conversation_index",
+    truncated: false,
+  };
+}
+
+function emptyRequesterProfileReport(email: string): RequesterProfileReport {
+  const nowMs = Date.now();
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 365);
+  return {
+    activityDays: [],
+    generatedAt: new Date(nowMs).toISOString(),
+    locations: [],
+    recentConversations: [],
+    requester: { email },
+    sampleLimit: 0,
+    sampleSize: 0,
+    source: "conversation_index",
+    surfaces: [],
+    totals: {
+      active: 0,
+      activeDays: 0,
+      conversations: 0,
+      durationMs: 0,
+      failed: 0,
+      hung: 0,
+      runs: 0,
+    },
+    truncated: false,
+    windowEnd: end.toISOString(),
+    windowStart: start.toISOString(),
+  };
+}
+
 async function readConversationStats(
   reporting: JuniorReporting,
 ): Promise<ConversationStatsReport> {
@@ -249,6 +293,25 @@ async function readPluginReports(
     return emptyPluginReportFeed();
   }
   return await reporting.getPluginOperationalReports();
+}
+
+async function readRequesterDirectory(
+  reporting: JuniorReporting,
+): Promise<RequesterDirectoryReport> {
+  if (!reporting.listRequesters) {
+    return emptyRequesterDirectoryReport();
+  }
+  return await reporting.listRequesters();
+}
+
+async function readRequesterProfile(
+  reporting: JuniorReporting,
+  email: string,
+): Promise<RequesterProfileReport> {
+  if (!reporting.getRequesterProfile) {
+    return emptyRequesterProfileReport(email);
+  }
+  return await reporting.getRequesterProfile(email);
 }
 
 function callbackUrl(request: Request, basePath: string): string {
@@ -385,6 +448,7 @@ function dashboardPagePaths(basePath: string): string[] {
   return [
     basePath,
     basePath === "/" ? "/conversations" : `${basePath}/conversations`,
+    basePath === "/" ? "/people" : `${basePath}/people`,
     basePath === "/" ? "/plugins" : `${basePath}/plugins`,
   ];
 }
@@ -648,6 +712,31 @@ export function createDashboardApp(
       );
     }
   });
+  app.get("/api/people", async () => {
+    try {
+      return Response.json(await readRequesterDirectory(reporting));
+    } catch {
+      return Response.json(
+        { error: "People failed to load." },
+        { status: 500 },
+      );
+    }
+  });
+  app.get("/api/people/:email", async (c) => {
+    try {
+      return Response.json(
+        await readRequesterProfile(
+          reporting,
+          decodeURIComponent(c.req.param("email")),
+        ),
+      );
+    } catch {
+      return Response.json(
+        { error: "Profile failed to load." },
+        { status: 500 },
+      );
+    }
+  });
   app.get("/api/plugin-reports", async () => {
     try {
       return Response.json(await readPluginReports(reporting));
@@ -665,6 +754,18 @@ export function createDashboardApp(
       ),
     );
   });
+  app.get(
+    "/api/conversations/:conversationId/runs/:runId/subagents/:subagentId",
+    async (c) => {
+      return Response.json(
+        await reporting.getConversationSubagentTranscript(
+          decodeURIComponent(c.req.param("conversationId")),
+          decodeURIComponent(c.req.param("runId")),
+          decodeURIComponent(c.req.param("subagentId")),
+        ),
+      );
+    },
+  );
   app.get("/api/config", () => {
     return Response.json({
       allowedEmailCount: allowedEmails.length,

@@ -55,8 +55,15 @@ export interface JuniorReporting {
   getSkills(): Promise<SkillReport[]>;
   listConversations(): Promise<ConversationFeed>;
   getConversationStats?(): Promise<ConversationStatsReport>;
+  listRequesters?(): Promise<RequesterDirectoryReport>;
+  getRequesterProfile?(email: string): Promise<RequesterProfileReport>;
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   getConversation(conversationId: string): Promise<ConversationReport>;
+  getConversationSubagentTranscript(
+    conversationId: string,
+    runId: string,
+    subagentId: string,
+  ): Promise<ConversationSubagentTranscriptReport>;
 }
 
 export function createJuniorReporting(): JuniorReporting;
@@ -115,6 +122,8 @@ The dashboard package owns browser-facing routes:
 | `GET /`                            | Better Auth session unless auth is explicitly disabled | React command-center UI.            |
 | `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.      |
 | `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React conversation-detail UI.       |
+| `GET /people`                      | Better Auth session unless auth is explicitly disabled | React requester-directory UI.       |
+| `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React requester-profile UI.         |
 | `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.          |
 | `GET /_junior/dashboard/client.js` | Better Auth session unless auth is explicitly disabled | Dashboard browser bundle.           |
 | `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks. |
@@ -124,19 +133,22 @@ Junior's product APIs are REST-style and authenticated by default when they are
 owned by the dashboard package. Only the auth callback/login paths and explicit
 public health route bypass dashboard auth.
 
-| Route                                  | Contract                                                                |
-| -------------------------------------- | ----------------------------------------------------------------------- |
-| `GET /api/health`                      | Command-center health pulse.                                            |
-| `GET /api/runtime`                     | Sanitized runtime paths, packages, and providers.                       |
-| `GET /api/plugins`                     | Loaded plugin inventory.                                                |
-| `GET /api/skills`                      | Discovered skill inventory.                                             |
-| `GET /api/conversations`               | Conversation feed from `conversation:by-activity`.                      |
-| `GET /api/conversations/stats`         | Aggregate conversation stats, leaderboards, and sampling metadata.      |
-| `GET /api/plugin-reports`              | Sanitized plugin operational summaries.                                 |
-| `/api/plugins/:plugin/**`              | Authenticated plugin-contributed APIs.                                  |
-| `GET /api/conversations/:conversation` | Conversation header metadata and transcript from expiring session logs. |
-| `GET /api/config`                      | Safe config counts, timezone, and feature signals.                      |
-| `GET /api/me`                          | Signed-in dashboard identity.                                           |
+| Route                                                                | Contract                                                                |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `GET /api/health`                                                    | Command-center health pulse.                                            |
+| `GET /api/runtime`                                                   | Sanitized runtime paths, packages, and providers.                       |
+| `GET /api/plugins`                                                   | Loaded plugin inventory.                                                |
+| `GET /api/skills`                                                    | Discovered skill inventory.                                             |
+| `GET /api/conversations`                                             | Conversation feed from `conversation:by-activity`.                      |
+| `GET /api/conversations/stats`                                       | Aggregate conversation stats, leaderboards, and sampling metadata.      |
+| `GET /api/people`                                                    | Requester directory derived from trusted requester emails.              |
+| `GET /api/people/:email`                                             | Requester profile activity, stats, and recent conversation summaries.   |
+| `GET /api/plugin-reports`                                            | Sanitized plugin operational summaries.                                 |
+| `/api/plugins/:plugin/**`                                            | Authenticated plugin-contributed APIs.                                  |
+| `GET /api/conversations/:conversation`                               | Conversation header metadata and transcript from expiring session logs. |
+| `GET /api/conversations/:conversation/runs/:run/subagents/:subagent` | Child-agent transcript loaded on demand from the parent run activity.   |
+| `GET /api/config`                                                    | Safe config counts, timezone, and feature signals.                      |
+| `GET /api/me`                                                        | Signed-in dashboard identity.                                           |
 
 Conversation transcript responses may synthesize the static system prompt only
 when the exposed transcript begins at a model run boundary. Follow-up run
