@@ -1,29 +1,43 @@
 import { Type } from "@sinclair/typebox";
+import type { ThreadConversationState } from "@/chat/state/conversation";
 import { tool } from "@/chat/tools/definition";
 import { transcriptAccess } from "@/chat/tools/transcripts/access";
 import {
   DEFAULT_READ_LIMIT,
-  MAX_READ_CHARS,
   MAX_READ_LIMIT,
   TRANSCRIPT_UNAVAILABLE_ERROR,
   includeLinksInput,
-} from "@/chat/tools/transcripts/constants";
-import {
-  loadTranscriptState,
-  resolveTranscriptToolDeps,
-  type TranscriptToolDeps,
-} from "@/chat/tools/transcripts/deps";
-import { limit, offset } from "@/chat/tools/transcripts/limits";
-import { linkForMessage } from "@/chat/tools/transcripts/links";
-import {
   inputError,
   isoTime,
+  limit,
+  linkForMessage,
+  loadTranscriptState,
   projectCompaction,
   projectMessage,
+  resolveTranscriptToolDeps,
   resultContent,
-  retainedMessageCount,
-} from "@/chat/tools/transcripts/projection";
+  type TranscriptToolDeps,
+} from "@/chat/tools/transcripts/shared";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+const MAX_READ_CHARS = 40_000;
+
+function messageOffset(value: number | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function retainedMessageCount(state: ThreadConversationState): number {
+  return (
+    state.messages.length +
+    state.compactions.reduce(
+      (total, compaction) => total + compaction.coveredMessageIds.length,
+      0,
+    )
+  );
+}
 
 /** Create a tool that reads a bounded window from one saved Junior transcript. */
 export function createTranscriptReadTool(
@@ -77,7 +91,7 @@ export function createTranscriptReadTool(
 
       const state = await loadTranscriptState(resolvedDeps, conversation_id);
       const resultLimit = limit(inputLimit, DEFAULT_READ_LIMIT, MAX_READ_LIMIT);
-      const resultOffset = offset(inputOffset);
+      const resultOffset = messageOffset(inputOffset);
       const selected = state.messages.slice(
         resultOffset,
         resultOffset + resultLimit,

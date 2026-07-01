@@ -1,56 +1,33 @@
 import { Type } from "@sinclair/typebox";
-import type {
-  ConversationCompaction,
-  ConversationMessage,
-} from "@/chat/state/conversation";
 import { tool } from "@/chat/tools/definition";
 import {
   DEFAULT_SEARCH_LIMIT,
   MAX_LIMIT,
   includeLinksInput,
-} from "@/chat/tools/transcripts/constants";
-import {
-  loadTranscriptState,
-  resolveTranscriptToolDeps,
-  type TranscriptToolDeps,
-} from "@/chat/tools/transcripts/deps";
-import { limit } from "@/chat/tools/transcripts/limits";
-import { linkForMessage } from "@/chat/tools/transcripts/links";
-import {
   inputError,
   isoTime,
+  limit,
+  linkForMessage,
   projectCompaction,
   projectMessage,
   resultContent,
-} from "@/chat/tools/transcripts/projection";
-import { visitVisibleTranscripts } from "@/chat/tools/transcripts/scan";
+  type TranscriptToolDeps,
+  loadTranscriptState,
+  resolveTranscriptToolDeps,
+  visitVisibleTranscripts,
+} from "@/chat/tools/transcripts/shared";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-function messageMatches(message: ConversationMessage, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  const text = message.text.toLowerCase();
-  if (text.includes(normalizedQuery)) {
-    return true;
-  }
-  return normalizedQuery
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((term) => text.includes(term));
-}
-
-function compactionMatches(
-  compaction: ConversationCompaction,
-  query: string,
+function textMatches(
+  text: string,
+  normalizedQuery: string,
+  terms: string[],
 ): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  const summary = compaction.summary.toLowerCase();
-  if (summary.includes(normalizedQuery)) {
+  const normalizedText = text.toLowerCase();
+  if (normalizedText.includes(normalizedQuery)) {
     return true;
   }
-  return normalizedQuery
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((term) => summary.includes(term));
+  return terms.every((term) => normalizedText.includes(term));
 }
 
 /** Create a tool that searches saved Junior transcripts visible from the current runtime context. */
@@ -81,6 +58,8 @@ export function createTranscriptSearchTool(
       if (!trimmedQuery) {
         return inputError("Transcript search query is required.");
       }
+      const normalizedQuery = trimmedQuery.toLowerCase();
+      const queryTerms = normalizedQuery.split(/\s+/).filter(Boolean);
 
       const resolvedDeps = resolveTranscriptToolDeps(deps);
       const resultLimit = limit(inputLimit, DEFAULT_SEARCH_LIMIT);
@@ -97,7 +76,7 @@ export function createTranscriptSearchTool(
             conversation.conversationId,
           );
           for (const compaction of state.compactions) {
-            if (!compactionMatches(compaction, trimmedQuery)) {
+            if (!textMatches(compaction.summary, normalizedQuery, queryTerms)) {
               continue;
             }
             matches.push({
@@ -119,7 +98,7 @@ export function createTranscriptSearchTool(
             return true;
           }
           for (const message of state.messages) {
-            if (!messageMatches(message, trimmedQuery)) {
+            if (!textMatches(message.text, normalizedQuery, queryTerms)) {
               continue;
             }
             const link = await linkForMessage({

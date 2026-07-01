@@ -1,23 +1,80 @@
 import { Type } from "@sinclair/typebox";
+import type { ThreadConversationState } from "@/chat/state/conversation";
 import { tool } from "@/chat/tools/definition";
+import type { TranscriptAccess } from "@/chat/tools/transcripts/access";
 import {
   DEFAULT_LIST_LIMIT,
   MAX_LIMIT,
   includeLinksInput,
-} from "@/chat/tools/transcripts/constants";
-import {
+  isoTime,
+  limit,
   loadTranscriptState,
+  projectMessage,
   resolveTranscriptToolDeps,
-  type TranscriptToolDeps,
-} from "@/chat/tools/transcripts/deps";
-import { limit } from "@/chat/tools/transcripts/limits";
-import { linkForConversation } from "@/chat/tools/transcripts/links";
-import {
   resultContent,
-  transcriptSummary,
-} from "@/chat/tools/transcripts/projection";
-import { visitVisibleTranscripts } from "@/chat/tools/transcripts/scan";
+  type TranscriptToolDeps,
+  type TranscriptToolResolvedDeps,
+  visitVisibleTranscripts,
+} from "@/chat/tools/transcripts/shared";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+
+function threadTsFromConversationId(
+  conversationId: string,
+): string | undefined {
+  const match = /^slack:[^:]+:(.+)$/.exec(conversationId);
+  return match?.[1];
+}
+
+async function linkForConversation(args: {
+  access: TranscriptAccess;
+  deps: TranscriptToolResolvedDeps;
+  includeLinks: boolean;
+}): Promise<string | undefined> {
+  const messageTs = threadTsFromConversationId(
+    args.access.conversation.conversationId,
+  );
+  if (!args.includeLinks || !args.access.slackChannelId || !messageTs) {
+    return undefined;
+  }
+  return await args.deps.getSlackLink({
+    channelId: args.access.slackChannelId,
+    messageTs,
+  });
+}
+
+function transcriptSummary(args: {
+  access: TranscriptAccess;
+  link?: string;
+  state: ThreadConversationState;
+}) {
+  const latestMessage = [...args.state.messages]
+    .reverse()
+    .find((message) => message.text.trim().length > 0);
+  const latest = latestMessage
+    ? projectMessage({ message: latestMessage })
+    : undefined;
+  return {
+    conversation_id: args.access.conversation.conversationId,
+    destination: args.access.destination,
+    display_name: args.access.conversation.channelName,
+    title: args.access.conversation.title,
+    created_at: isoTime(args.access.conversation.createdAtMs),
+    last_activity_at: isoTime(args.access.conversation.lastActivityAtMs),
+    message_count: args.state.messages.length,
+    compaction_count: args.state.compactions.length,
+    ...(args.link ? { link: args.link } : {}),
+    ...(latest
+      ? {
+          latest_message: {
+            role: latest.role,
+            author: latest.author,
+            created_at: latest.created_at,
+            excerpt: latest.excerpt,
+          },
+        }
+      : {}),
+  };
+}
 
 /** Create a tool that lists saved Junior transcripts visible from the current runtime context. */
 export function createTranscriptListTool(
