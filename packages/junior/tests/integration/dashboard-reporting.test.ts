@@ -21,7 +21,13 @@ const SYSTEM_MESSAGE = {
 const AGENT_TURN_SESSION_INDEX_KEY = "junior:agent_turn_session:index";
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const ORIGINAL_ENV = { ...process.env };
-const USE_POSTGRES_HARNESS = Boolean(process.env.DATABASE_URL);
+const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
+
+if (!TEST_DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL is required for dashboard reporting integration tests",
+  );
+}
 
 function slackRequester(fullName: string, userId = "U1") {
   return {
@@ -92,10 +98,8 @@ describe("dashboard reporting", () => {
   beforeEach(async () => {
     process.env = {
       ...ORIGINAL_ENV,
+      DATABASE_URL: TEST_DATABASE_URL,
       JUNIOR_STATE_ADAPTER: "memory",
-      DATABASE_URL: USE_POSTGRES_HARNESS
-        ? ORIGINAL_ENV.DATABASE_URL
-        : undefined,
     };
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
