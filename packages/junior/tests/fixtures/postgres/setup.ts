@@ -11,7 +11,6 @@ const TEST_DATABASE_RESET_LOCK_ID = 287442;
 const schemaName = "public";
 const harnessConfig = inject("juniorPostgresHarness");
 const originalDatabaseUrl = process.env.DATABASE_URL;
-const originalJuniorDatabaseUrl = process.env.JUNIOR_DATABASE_URL;
 const originalJuniorDatabaseDriver = process.env.JUNIOR_DATABASE_DRIVER;
 let resetPool: pg.Pool | undefined;
 
@@ -30,7 +29,6 @@ if (harnessConfig) {
   );
   assertLocalDatabaseUrl(databaseUrl);
   process.env.DATABASE_URL = databaseUrl;
-  delete process.env.JUNIOR_DATABASE_URL;
   process.env.JUNIOR_DATABASE_DRIVER = "postgres";
   resetPool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -125,11 +123,6 @@ afterAll(async () => {
     delete process.env.DATABASE_URL;
   } else {
     process.env.DATABASE_URL = originalDatabaseUrl;
-  }
-  if (originalJuniorDatabaseUrl === undefined) {
-    delete process.env.JUNIOR_DATABASE_URL;
-  } else {
-    process.env.JUNIOR_DATABASE_URL = originalJuniorDatabaseUrl;
   }
   if (originalJuniorDatabaseDriver === undefined) {
     delete process.env.JUNIOR_DATABASE_DRIVER;

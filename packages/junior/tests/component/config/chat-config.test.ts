@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
+const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 
 async function loadConfig() {
   vi.resetModules();
@@ -8,6 +9,11 @@ async function loadConfig() {
 }
 
 describe("chat config", () => {
+  beforeEach(() => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
+    delete process.env.JUNIOR_DATABASE_DRIVER;
+  });
+
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
     vi.resetModules();
@@ -81,17 +87,7 @@ describe("chat config", () => {
     );
   });
 
-  it("reads the optional Junior SQL database URL override", async () => {
-    process.env.JUNIOR_DATABASE_URL = "postgres://user:pass@example.test/neon";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.databaseUrl).toBe(
-      "postgres://user:pass@example.test/neon",
-    );
-  });
-
-  it("uses the standard Neon database URL by default", async () => {
-    delete process.env.JUNIOR_DATABASE_URL;
+  it("reads the standard database URL", async () => {
     process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 
     const { getChatConfig } = await loadConfig();
@@ -100,24 +96,18 @@ describe("chat config", () => {
     );
   });
 
-  it("prefers the explicit Junior SQL URL over standard database URLs", async () => {
-    process.env.JUNIOR_DATABASE_URL =
-      "postgres://user:pass@metadata.example.test/neon";
-    process.env.DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
-
-    const { getChatConfig } = await loadConfig();
-    expect(getChatConfig().sql.databaseUrl).toBe(
-      "postgres://user:pass@metadata.example.test/neon",
-    );
-  });
-
   it("uses Neon as the default SQL driver", async () => {
     delete process.env.JUNIOR_DATABASE_DRIVER;
-    delete process.env.JUNIOR_DATABASE_URL;
-    delete process.env.DATABASE_URL;
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
 
     const { getChatConfig } = await loadConfig();
     expect(getChatConfig().sql.driver).toBe("neon");
+  });
+
+  it("throws when no SQL database URL is configured", async () => {
+    delete process.env.DATABASE_URL;
+
+    await expect(loadConfig()).rejects.toThrow("DATABASE_URL is required");
   });
 
   it("defaults localhost database URLs to the node-postgres SQL driver", async () => {
@@ -137,6 +127,7 @@ describe("chat config", () => {
   });
 
   it("throws when the SQL driver is invalid", async () => {
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
     process.env.JUNIOR_DATABASE_DRIVER = "sqlite";
 
     await expect(loadConfig()).rejects.toThrow(

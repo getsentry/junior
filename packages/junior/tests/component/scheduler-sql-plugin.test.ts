@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
@@ -18,12 +18,14 @@ import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const NEON = vi.hoisted(() => ({
+  originalDatabaseUrl: process.env.DATABASE_URL,
   sql: undefined as
     | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
     | undefined,
 }));
 
 vi.hoisted(() => {
+  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
@@ -88,6 +90,14 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
 }
 
 describe("scheduler SQL plugin storage", () => {
+  afterAll(() => {
+    if (NEON.originalDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = NEON.originalDatabaseUrl;
+    }
+  });
+
   afterEach(async () => {
     NEON.sql = undefined;
     await disconnectStateAdapter();
@@ -466,7 +476,6 @@ describe("scheduler SQL plugin storage", () => {
         migratePluginsToSql({
           io: { info: () => {} },
           pluginCatalogConfig: { packages: ["@sentry/junior-scheduler"] },
-          sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
       ).resolves.toEqual({
@@ -492,7 +501,6 @@ describe("scheduler SQL plugin storage", () => {
         migratePluginsToSql({
           io: { info: () => {} },
           pluginSet: defineJuniorPlugins([schedulerPlugin()]),
-          sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
       ).resolves.toEqual({
@@ -529,7 +537,6 @@ describe("scheduler SQL plugin storage", () => {
             "@sentry/junior-scheduler",
             schedulerPlugin(),
           ]),
-          sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
       ).resolves.toEqual({

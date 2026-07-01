@@ -7,7 +7,7 @@ import {
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "./store";
 
-/** Create the no-SQL conversation record store backed by task-execution state. */
+/** Create the legacy-import conversation record store backed by task-execution state. */
 export function createStateConversationStore(
   state?: StateAdapter,
 ): ConversationStore {

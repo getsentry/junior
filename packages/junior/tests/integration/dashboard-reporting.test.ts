@@ -96,9 +96,6 @@ describe("dashboard reporting", () => {
       DATABASE_URL: USE_POSTGRES_HARNESS
         ? ORIGINAL_ENV.DATABASE_URL
         : undefined,
-      JUNIOR_DATABASE_URL: USE_POSTGRES_HARNESS
-        ? ORIGINAL_ENV.JUNIOR_DATABASE_URL
-        : undefined,
     };
     vi.resetModules();
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
@@ -593,7 +590,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports failed local/no-SQL conversation stats from the conversation index", async () => {
+  it("reports failed conversation stats from SQL conversation records", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const { recordAgentTurnSessionSummary } =

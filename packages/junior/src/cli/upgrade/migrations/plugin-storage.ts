@@ -48,13 +48,13 @@ export async function runPluginStorageMigrations(
   }
 
   const previousConfig = pluginCatalogRuntime.setConfig(pluginCatalogConfig);
-  const ownedExecutor =
-    context.db || !context.sqlDatabaseUrl
-      ? undefined
-      : createJuniorSqlExecutor({
-          connectionString: context.sqlDatabaseUrl,
-          driver: context.sqlDriver ?? getChatConfig().sql.driver,
-        });
+  const sql = getChatConfig().sql;
+  const ownedExecutor = context.db
+    ? undefined
+    : createJuniorSqlExecutor({
+        connectionString: sql.databaseUrl,
+        driver: sql.driver,
+      });
   const sqlUrlDb = ownedExecutor ? ownedExecutor.db() : undefined;
   try {
     let result = emptyResult();

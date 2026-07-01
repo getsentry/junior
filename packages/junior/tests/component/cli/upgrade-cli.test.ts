@@ -25,11 +25,11 @@ import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
-    JUNIOR_DATABASE_URL: process.env.JUNIOR_DATABASE_URL,
+    DATABASE_URL: process.env.DATABASE_URL,
     JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
   };
+  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
-  delete process.env.JUNIOR_DATABASE_URL;
   return original;
 });
 const ORIGINAL_CWD = process.cwd();
@@ -75,6 +75,7 @@ async function persistActiveTurn(
 
 describe("upgrade CLI migrations", () => {
   beforeEach(async () => {
+    process.env.DATABASE_URL = "postgres://configured.example.test/neon";
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
   });
@@ -82,7 +83,7 @@ describe("upgrade CLI migrations", () => {
   afterEach(async () => {
     process.chdir(ORIGINAL_CWD);
     await disconnectStateAdapter();
-    restoreEnv("JUNIOR_DATABASE_URL", ORIGINAL_ENV.JUNIOR_DATABASE_URL);
+    restoreEnv("DATABASE_URL", ORIGINAL_ENV.DATABASE_URL);
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
     vi.restoreAllMocks();
   });
@@ -134,7 +135,6 @@ export const plugins = {
     try {
       const context = {
         io: { info: () => {} },
-        sqlDatabaseUrl: "postgres://configured.example.test/neon",
         stateAdapter,
       };
       const results = [
@@ -202,7 +202,6 @@ export const plugins = {
         migrateConversationsToSql(
           {
             io: { info: () => {} },
-            sqlDatabaseUrl: "postgres://configured.example.test/neon",
             stateAdapter,
           },
           { batchSize: 2, target: sqlStore },
@@ -456,7 +455,6 @@ export const plugins = {
     try {
       const context = {
         io: { info: () => {} },
-        sqlDatabaseUrl: "postgres://configured.example.test/neon",
         stateAdapter,
       };
       const results = [

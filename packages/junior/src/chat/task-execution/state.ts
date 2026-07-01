@@ -4,8 +4,8 @@
  * The conversation record owns pending inbound work, execution status, and the
  * lease. `conversation:active` feeds heartbeat recovery and contains every
  * non-idle conversation until the lease/status path makes it idle.
- * `conversation:by-activity` supports local/no-SQL reporting and legacy SQL
- * import only; SQL owns durable conversation metadata in configured runtime.
+ * `conversation:by-activity` supports legacy SQL import only; SQL owns durable
+ * conversation metadata in configured runtime.
  */
 import { randomUUID } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
@@ -1195,7 +1195,7 @@ export async function recordConversationActivity(args: {
   });
 }
 
-/** Store task-execution metadata for local/no-SQL reporting. */
+/** Store task-execution metadata for legacy SQL import. */
 export async function recordConversationExecution(args: {
   channelName?: string;
   conversationId: string;

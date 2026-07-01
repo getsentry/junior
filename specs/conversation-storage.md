@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-11
-- Last Edited: 2026-06-12
+- Last Edited: 2026-07-01
 
 ## Purpose
 
@@ -168,9 +168,8 @@ production functions by HTTP GET. Junior SQL schema and conversation backfills a
 applied by `junior upgrade`, not by request handlers.
 
 Vercel projects using Neon normally receive a standard `DATABASE_URL` from the
-integration. Projects that need a Junior-specific database set
-`JUNIOR_DATABASE_URL`; otherwise Junior uses `DATABASE_URL`. Junior deployments
-use the Neon serverless client by default. Set
+integration. `DATABASE_URL` is required for every Junior runtime. Junior
+deployments use the Neon serverless client by default. Set
 `JUNIOR_DATABASE_DRIVER=postgres` for local Postgres, node-postgres deployments,
 or test harnesses that need pooled Postgres semantics. Driver selection must
 come from configuration, not hostname inference from the database URL. Vercel
@@ -209,13 +208,10 @@ steady-state storage model.
 3. The legacy import reads only a bounded newest-first slice of the old Redis
    activity index. SQL reporting starts from the copied metadata plus any new
    and updated conversation metadata written directly to SQL after cutover.
-4. The runtime and dashboard use the canonical conversation store interface. Junior
-   points that interface at Neon-backed SQL when it can resolve a SQL database
-   URL from `JUNIOR_DATABASE_URL` or `DATABASE_URL`, in that order. The explicit
-   Junior variable remains the override for projects where the default
-   application database is not the Junior SQL database. Leaving both database
-   URL variables unset keeps the state-backed local/default store. During the
-   migration deployment, enable the SQL conversation store once required schema and
+4. The runtime and dashboard use the canonical conversation store interface.
+   Junior points that interface at SQL using `DATABASE_URL`. Leaving
+   `DATABASE_URL` unset is a startup configuration error. During the migration
+   deployment, enable the SQL conversation store once required schema and
    migration completion checks pass.
 
 Transcript keys are excluded from this backfill unless a separate transcript
@@ -225,6 +221,8 @@ storage spec changes their authority.
 
 - If schema migration fails during `junior upgrade`, the deployment must fail
   before the new runtime serves traffic.
+- If the runtime cannot resolve a SQL database URL, startup must fail before
+  accepting work.
 - If `junior upgrade` cannot resolve a SQL database URL, the command must fail.
   Do not silently skip SQL conversation metadata setup.
 - If a migration lock is held by another upgrade process, the command waits or

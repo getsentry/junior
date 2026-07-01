@@ -9,19 +9,6 @@ import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const CONVERSATION_BACKFILL_LIMIT = 10_000;
-const REQUIRED_SQL_DATABASE_URL_MESSAGE =
-  "Junior SQL database URL is required for conversation metadata upgrade. Set JUNIOR_DATABASE_URL or DATABASE_URL.";
-
-/** Return the SQL URL required by conversation metadata upgrade. */
-export function requireConversationSqlDatabaseUrl(
-  context: MigrationContext,
-): string {
-  const databaseUrl = context.sqlDatabaseUrl ?? getChatConfig().sql.databaseUrl;
-  if (!databaseUrl) {
-    throw new Error(REQUIRED_SQL_DATABASE_URL_MESSAGE);
-  }
-  return databaseUrl;
-}
 
 /** Copy retained conversation records into the configured SQL store. */
 export async function migrateConversationsToSql(
@@ -35,10 +22,10 @@ export async function migrateConversationsToSql(
   let target = options.target;
   let closeTarget: (() => Promise<void>) | undefined;
   if (!target) {
-    const databaseUrl = requireConversationSqlDatabaseUrl(context);
+    const { sql } = getChatConfig();
     const executor = createJuniorSqlExecutor({
-      connectionString: databaseUrl,
-      driver: context.sqlDriver ?? getChatConfig().sql.driver,
+      connectionString: sql.databaseUrl,
+      driver: sql.driver,
     });
     target = createSqlStore(executor);
     closeTarget = () => executor.close();

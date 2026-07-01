@@ -78,7 +78,7 @@ records remain because global setup already migrated the worker template.
 
 Normal integration and component tests should not need a SQL fixture to use the
 test database. They should import product code normally and rely on
-`JUNIOR_DATABASE_URL` being pointed at the worker database by setup.
+`DATABASE_URL` being pointed at the worker database by setup.
 
 `createMigratedJuniorSqlFixture()` is for tests that specifically need a pinned
 rollback-only transaction. It uses a worker-scoped database cloned from the

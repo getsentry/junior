@@ -63,7 +63,7 @@ export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
   sql: {
-    databaseUrl?: string;
+    databaseUrl: string;
     driver: SqlDriver;
   };
   slack: {
@@ -260,17 +260,15 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   };
 }
 
-function readJuniorDatabaseUrl(env: NodeJS.ProcessEnv): string | undefined {
-  return (
-    toOptionalTrimmed(env.JUNIOR_DATABASE_URL) ??
-    toOptionalTrimmed(env.DATABASE_URL)
-  );
+function readDatabaseUrl(env: NodeJS.ProcessEnv): string {
+  const databaseUrl = toOptionalTrimmed(env.DATABASE_URL);
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required");
+  }
+  return databaseUrl;
 }
 
-function isLocalDatabaseUrl(databaseUrl: string | undefined): boolean {
-  if (!databaseUrl) {
-    return false;
-  }
+function isLocalDatabaseUrl(databaseUrl: string): boolean {
   try {
     const { hostname } = new URL(databaseUrl);
     return (
@@ -283,10 +281,7 @@ function isLocalDatabaseUrl(databaseUrl: string | undefined): boolean {
   }
 }
 
-function readSqlDriver(
-  env: NodeJS.ProcessEnv,
-  databaseUrl: string | undefined,
-): SqlDriver {
+function readSqlDriver(env: NodeJS.ProcessEnv, databaseUrl: string): SqlDriver {
   const value = toOptionalTrimmed(env.JUNIOR_DATABASE_DRIVER);
   if (value === undefined) {
     if (isLocalDatabaseUrl(databaseUrl)) {
@@ -304,7 +299,7 @@ function readSqlDriver(
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): ChatConfig {
-  const databaseUrl = readJuniorDatabaseUrl(env);
+  const databaseUrl = readDatabaseUrl(env);
   return {
     bot: readBotConfig(env),
     functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),

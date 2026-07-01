@@ -38,9 +38,7 @@ After the project is linked, create one from the Vercel dashboard:
 
 Vercel Marketplace storage providers inject database credentials into the
 project environment. For Neon and other Postgres providers, confirm the project
-has a `DATABASE_URL` value before the first production deploy. Set
-`JUNIOR_DATABASE_URL` only when Junior should use a different database than the
-project default.
+has a `DATABASE_URL` value before the first production deploy.
 
 ## Configure build command
 
@@ -62,7 +60,7 @@ New scaffolded apps run Junior upgrades before the normal build:
 pnpm exec junior upgrade && pnpm build
 ```
 
-Keep that Vercel build command unless you have an older install without Junior's SQL database configured. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
+Keep that Vercel build command. Older installs should configure Junior's SQL database before enabling `junior upgrade`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
 
 ## Enable Junior's Nitro deployment module
 
@@ -96,8 +94,7 @@ Set the core runtime variables in Vercel:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack requests.                                                       |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts replies and calls Slack APIs.                                            |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
-| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
-| `JUNIOR_DATABASE_URL`                       | No          | Override when Junior should use a different SQL database than `DATABASE_URL`.  |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                   |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox requester context.                        |
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |

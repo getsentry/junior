@@ -25,14 +25,6 @@ function createDb(args: {
 
 function getSqlExecutor(): JuniorSqlExecutor {
   const { sql } = getChatConfig();
-  if (!sql.databaseUrl) {
-    if (current) {
-      const previous = current;
-      current = undefined;
-      void previous.db.close().catch(() => undefined);
-    }
-    throw new Error("DATABASE_URL or JUNIOR_DATABASE_URL is required");
-  }
   if (
     current?.databaseUrl !== sql.databaseUrl ||
     current.driver !== sql.driver

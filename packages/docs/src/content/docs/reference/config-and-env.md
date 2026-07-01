@@ -17,8 +17,7 @@ related:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                    |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                            |
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                        |
-| `DATABASE_URL`                              | No          | Standard Neon/Vercel Postgres URL. When set, Junior uses SQL for queryable records and reporting.                                                     |
-| `JUNIOR_DATABASE_URL`                       | No          | Optional override for the Junior SQL database when it should differ from `DATABASE_URL`.                                                              |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                               |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.       |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress requester context.                                                                          |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |

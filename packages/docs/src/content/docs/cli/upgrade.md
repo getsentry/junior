@@ -28,13 +28,13 @@ The command takes no extra arguments.
 `junior upgrade` runs registered migrations sequentially. Current migrations:
 
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.
-- Backfill retained conversation records into the shared Junior SQL database. The upgrade requires `JUNIOR_DATABASE_URL` or Neon/Vercel's standard `DATABASE_URL`.
+- Backfill retained conversation records into the shared Junior SQL database. The upgrade requires `DATABASE_URL`.
 
 The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. The SQL conversation backfill copies a bounded legacy slice of Redis conversation metadata; after cutover, durable conversation metadata is written to SQL while Redis remains the transcript and execution/cache store.
 
 ## Vercel deploys
 
-Run `junior upgrade` from the Vercel build command when the deployment has access to the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and database URL variables used by production. Neon's Vercel integration provides `DATABASE_URL`; set `JUNIOR_DATABASE_URL` only when Junior should use a different SQL database.
+Run `junior upgrade` from the Vercel build command when the deployment has access to the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and `DATABASE_URL` used by production.
 
 Use a build command like:
 
@@ -71,7 +71,7 @@ If the configured state store is unavailable or a legacy record is malformed, th
 junior command failed: Legacy conversation work state is invalid for slack:C123:1712345.0001
 ```
 
-Treat that as a deploy blocker for the affected environment. Check `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, the database URL variables, and the reported legacy record before retrying.
+Treat that as a deploy blocker for the affected environment. Check `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, `DATABASE_URL`, and the reported legacy record before retrying.
 
 ## Verification
 

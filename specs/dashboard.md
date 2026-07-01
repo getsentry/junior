@@ -139,7 +139,7 @@ public health route bypass dashboard auth.
 | `GET /api/runtime`                                                   | Sanitized runtime paths, packages, and providers.                       |
 | `GET /api/plugins`                                                   | Loaded plugin inventory.                                                |
 | `GET /api/skills`                                                    | Discovered skill inventory.                                             |
-| `GET /api/conversations`                                             | Conversation feed from `conversation:by-activity`.                      |
+| `GET /api/conversations`                                             | Conversation feed from SQL `ConversationStore` records.                 |
 | `GET /api/conversations/stats`                                       | Aggregate conversation stats, leaderboards, and sampling metadata.      |
 | `GET /api/people`                                                    | Requester directory derived from trusted requester emails.              |
 | `GET /api/people/:email`                                             | Requester profile activity, stats, and recent conversation summaries.   |
@@ -266,9 +266,9 @@ Public health responses must not include runtime discovery data such as cwd, hom
 
 Conversation list and stats APIs should read durable conversation records
 through the SQL-backed `ConversationStore` defined in
-`./conversation-storage.md`. In local/no-SQL mode and during the one-time
-legacy SQL import, the state-backed store can read the expiring activity index
-defined in `./task-execution.md`:
+`./conversation-storage.md`. During the one-time legacy SQL import, the
+state-backed store can read the expiring activity index defined in
+`./task-execution.md`:
 
 ```text
 junior:conversation:by-activity

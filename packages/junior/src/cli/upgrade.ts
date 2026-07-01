@@ -4,10 +4,7 @@ import {
 } from "@/chat/state/adapter";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
-import {
-  requireConversationSqlDatabaseUrl,
-  sqlConversationMigration,
-} from "./upgrade/migrations/conversations-sql";
+import { sqlConversationMigration } from "./upgrade/migrations/conversations-sql";
 import { pluginStorageMigration } from "./upgrade/migrations/plugin-storage";
 import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
 import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
@@ -84,8 +81,6 @@ export async function runUpgradeMigrations(
 ): Promise<MigrationResult[]> {
   const plugins = await resolveUpgradePlugins(context);
   const migrationContext = { ...context, ...plugins };
-  migrationContext.sqlDatabaseUrl ??=
-    requireConversationSqlDatabaseUrl(migrationContext);
   const results: MigrationResult[] = [];
   for (const migration of MIGRATIONS) {
     migrationContext.io.info(`Running migration ${migration.name}...`);

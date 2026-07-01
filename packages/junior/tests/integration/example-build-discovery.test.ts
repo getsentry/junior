@@ -117,7 +117,7 @@ describe.sequential("example build discovery integration", () => {
   }, 60_000);
 
   beforeEach(() => {
-    process.env.JUNIOR_DATABASE_URL ??= exampleDatabaseUrl;
+    process.env.DATABASE_URL ??= exampleDatabaseUrl;
   });
 
   afterEach(() => {

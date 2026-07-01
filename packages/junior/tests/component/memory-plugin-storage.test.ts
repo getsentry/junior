@@ -21,11 +21,11 @@ const NEON = vi.hoisted(() => ({
   sql: undefined as
     | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
     | undefined,
-  originalJuniorDatabaseUrl: process.env.JUNIOR_DATABASE_URL,
+  originalDatabaseUrl: process.env.DATABASE_URL,
 }));
 
 vi.hoisted(() => {
-  process.env.JUNIOR_DATABASE_URL = "postgres://configured.example.test/neon";
+  process.env.DATABASE_URL = "postgres://configured.example.test/neon";
 });
 
 vi.mock("@/chat/sql/executor", () => ({
@@ -63,11 +63,11 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 afterAll(() => {
-  if (NEON.originalJuniorDatabaseUrl === undefined) {
-    delete process.env.JUNIOR_DATABASE_URL;
-    return;
+  if (NEON.originalDatabaseUrl === undefined) {
+    delete process.env.DATABASE_URL;
+  } else {
+    process.env.DATABASE_URL = NEON.originalDatabaseUrl;
   }
-  process.env.JUNIOR_DATABASE_URL = NEON.originalJuniorDatabaseUrl;
 });
 
 function memoryMigrationsDir(): string {
@@ -102,7 +102,6 @@ describe("memory plugin host wiring", () => {
         migratePluginsToSql({
           io: { info: () => {} },
           pluginSet: defineJuniorPlugins([createMemoryPlugin()]),
-          sqlDatabaseUrl: "postgres://configured.example.test/neon",
           stateAdapter,
         }),
       ).resolves.toEqual({

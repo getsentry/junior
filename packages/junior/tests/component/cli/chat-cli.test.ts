@@ -12,8 +12,11 @@ import type {
 const runner = vi.hoisted(() => ({
   runLocalAgentTurn: vi.fn(),
 }));
+const testDb = vi.hoisted(() => ({
+  requiredDatabaseConnection: true,
+}));
 const db = vi.hoisted(() => ({
-  getDb: vi.fn(() => ({})),
+  getDb: vi.fn(() => testDb),
 }));
 
 vi.mock("@/chat/local/runner", () => ({
@@ -27,7 +30,6 @@ vi.mock("@/chat/db", () => ({
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 const ORIGINAL_REDIS_URL = process.env.REDIS_URL;
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
-const ORIGINAL_JUNIOR_DATABASE_URL = process.env.JUNIOR_DATABASE_URL;
 const ORIGINAL_CWD = process.cwd();
 
 function reply(outcome: LocalAgentTurnResult["outcome"]): {
@@ -60,7 +62,8 @@ async function waitForMockCalls(
 describe("chat cli", () => {
   beforeEach(() => {
     runner.runLocalAgentTurn.mockReset();
-    db.getDb.mockClear();
+    db.getDb.mockReset();
+    db.getDb.mockImplementation(() => testDb);
   });
 
   afterEach(() => {
@@ -68,7 +71,6 @@ describe("chat cli", () => {
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_STATE_ADAPTER);
     restoreEnv("REDIS_URL", ORIGINAL_REDIS_URL);
     restoreEnv("DATABASE_URL", ORIGINAL_DATABASE_URL);
-    restoreEnv("JUNIOR_DATABASE_URL", ORIGINAL_JUNIOR_DATABASE_URL);
     vi.resetModules();
   });
 
@@ -181,11 +183,10 @@ describe("chat cli", () => {
     expect(getChatConfig().state.adapter).toBe("memory");
   });
 
-  it("fails local chat for hook plugins without SQL configuration", async () => {
+  it("fails local chat for hook plugins when database access fails", async () => {
     delete process.env.DATABASE_URL;
-    delete process.env.JUNIOR_DATABASE_URL;
     db.getDb.mockImplementationOnce(() => {
-      throw new Error("DATABASE_URL or JUNIOR_DATABASE_URL is required");
+      throw new Error("DATABASE_URL is required");
     });
     const tempDir = mkdtempSync(path.join(tmpdir(), "junior-chat-plugins-"));
     writeFileSync(
@@ -216,9 +217,7 @@ describe("chat cli", () => {
       };
 
       expect(await runChat(["-p", "hello"], io)).toBe(1);
-      expect(io.error).toHaveBeenCalledWith(
-        "DATABASE_URL or JUNIOR_DATABASE_URL is required",
-      );
+      expect(io.error).toHaveBeenCalledWith("DATABASE_URL is required");
       expect(runner.runLocalAgentTurn).not.toHaveBeenCalled();
     } finally {
       process.chdir(ORIGINAL_CWD);
