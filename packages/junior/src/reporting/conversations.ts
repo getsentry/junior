@@ -1156,23 +1156,39 @@ export async function readRequesterDirectoryReport(
   const detailsByConversationId = await getConversationDetailsForIds(
     conversations.map((conversation) => conversation.conversationId),
   );
+  const reportsByConversation = await reportsFromConversations({
+    conversations,
+    detailsByConversationId,
+    nowMs,
+  });
   const people = new Map<string, RequesterDirectoryAccumulator>();
 
   for (const conversation of conversations) {
-    const report = sessionReportFromConversation(
-      conversation,
-      nowMs,
-      detailsByConversationId.get(conversation.conversationId),
+    const reports = [
+      ...(reportsByConversation.get(conversation.conversationId) ?? [
+        sessionReportFromConversation(
+          conversation,
+          nowMs,
+          detailsByConversationId.get(conversation.conversationId),
+        ),
+      ]),
+    ].sort(
+      (left, right) =>
+        (reportTime(left.startedAt) ?? 0) -
+          (reportTime(right.startedAt) ?? 0) || left.id.localeCompare(right.id),
     );
-    const requester = requesterIdentityWithEmail(report.requesterIdentity);
+    const newest = newestRun(reports);
+    const requester = requesterIdentityWithEmail(newest.requesterIdentity);
     if (!requester) continue;
 
     const lastSeenMs =
-      reportTime(report.lastSeenAt) ?? conversation.lastActivityAtMs;
+      reportTime(newest.lastSeenAt) ?? conversation.lastActivityAtMs;
     const firstSeenMs =
-      reportTime(report.startedAt) ?? conversation.createdAtMs;
-    const signals = statusSignals([report]);
-    const date = reportDate(report.lastSeenAt);
+      reportTime(reports[0]?.startedAt ?? newest.startedAt) ??
+      conversation.createdAtMs;
+    const contributions = runContributions(reports);
+    const signals = statusSignals(reports);
+    const date = reportDate(newest.lastSeenAt);
     const email = requester.email;
     const accumulator =
       people.get(email) ??
@@ -1189,9 +1205,9 @@ export async function readRequesterDirectoryReport(
       requester,
     );
     accumulator.conversations += 1;
-    accumulator.runs += 1;
-    accumulator.durationMs += report.cumulativeDurationMs;
-    addRequesterTokens(accumulator, usageTokenTotal(report.cumulativeUsage));
+    accumulator.runs += reports.length;
+    accumulator.durationMs += contributionDurationTotal(contributions);
+    addRequesterTokens(accumulator, contributionTokenTotal(contributions));
     addConversationSignals(accumulator, signals);
     accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
     accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);

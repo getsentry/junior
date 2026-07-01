@@ -370,6 +370,17 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">Jan<");
     expect(html).toContain(">Less<");
     expect(html).toContain(">More<");
+    const activityStart = html.indexOf(
+      'aria-label="Daily Junior conversation activity"',
+    );
+    expect(
+      html
+        .slice(
+          activityStart,
+          html.indexOf('aria-label="2026-01-01: 0 conversations"'),
+        )
+        .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
+    ).toHaveLength(4);
     expect(html).toContain('href="/people/avery%40example.com"');
     expect(html).toContain('aria-label="Search recent conversations"');
     expect(html).not.toContain(">Places<");

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getConversationDetailsForIds } from "@/chat/state/conversation-details";
+import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
 import type {
   Conversation,
   ConversationStore,
@@ -85,6 +86,8 @@ function indexedConversation(
 }
 
 afterEach(() => {
+  vi.mocked(getConversationDetailsForIds).mockResolvedValue(new Map());
+  vi.mocked(listAgentTurnSessionSummariesForConversation).mockResolvedValue([]);
   if (ORIGINAL_SENTRY_ORG_SLUG === undefined) {
     delete process.env.SENTRY_ORG_SLUG;
   } else {
@@ -250,5 +253,80 @@ describe("conversation reporting", () => {
     expect(
       profile.recentConversations.map((item) => item.conversationId),
     ).toEqual(["slack:C1:456", "slack:C1:999", "slack:C1:123"]);
+  });
+
+  it("aligns requester directory totals with stored turn summaries", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const startedAtMs = Date.parse("2026-06-15T11:00:00.000Z");
+    const conversationStore = fixedConversationStore([
+      indexedConversation({
+        conversationId: "slack:C1:turns",
+        createdAtMs: startedAtMs,
+        lastActivityAtMs: startedAtMs + 2_000,
+        requester: {
+          email: "avery@example.com",
+          fullName: "Avery",
+          platform: "slack",
+          slackUserId: "U1",
+          teamId: "T1",
+        },
+        source: "slack",
+      }),
+    ]);
+    vi.mocked(
+      listAgentTurnSessionSummariesForConversation,
+    ).mockResolvedValueOnce([
+      {
+        conversationId: "slack:C1:turns",
+        cumulativeDurationMs: 1_000,
+        lastProgressAtMs: startedAtMs + 500,
+        requester: {
+          email: "avery@example.com",
+          fullName: "Avery",
+          platform: "slack",
+          teamId: "T1",
+          userId: "U1",
+        },
+        sessionId: "turn-1",
+        sliceId: 1,
+        startedAtMs,
+        state: "completed",
+        updatedAtMs: startedAtMs + 500,
+        version: 1,
+      },
+      {
+        conversationId: "slack:C1:turns",
+        cumulativeDurationMs: 2_000,
+        lastProgressAtMs: startedAtMs + 2_000,
+        requester: {
+          email: "avery@example.com",
+          fullName: "Avery",
+          platform: "slack",
+          teamId: "T1",
+          userId: "U1",
+        },
+        sessionId: "turn-2",
+        sliceId: 1,
+        startedAtMs: startedAtMs + 1_000,
+        state: "completed",
+        updatedAtMs: startedAtMs + 2_000,
+        version: 1,
+      },
+    ]);
+
+    const directory = await readRequesterDirectoryReport({
+      conversationStore,
+    });
+
+    expect(directory.people).toHaveLength(1);
+    expect(directory.people[0]).toMatchObject({
+      conversations: 1,
+      durationMs: 2_000,
+      requester: {
+        email: "avery@example.com",
+      },
+      runs: 2,
+    });
   });
 });

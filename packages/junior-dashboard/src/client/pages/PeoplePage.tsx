@@ -398,8 +398,16 @@ function ProfileMetrics(props: { totals: RequesterTotals }) {
 function ContributionGrid(props: { days: RequesterActivityDay[] }) {
   const max = Math.max(1, ...props.days.map((day) => day.conversations));
   const weeks: Array<Array<RequesterActivityDay | null>> = [];
-  for (let index = 0; index < props.days.length; index += 7) {
-    const week: Array<RequesterActivityDay | null> = props.days.slice(
+  const leadingDays = props.days[0]
+    ? new Date(`${props.days[0].date}T00:00:00Z`).getUTCDay()
+    : 0;
+  const cells: Array<RequesterActivityDay | null> = [
+    ...Array.from({ length: leadingDays }, () => null),
+    ...props.days,
+  ];
+  while (cells.length > 0 && cells.length % 7 !== 0) cells.push(null);
+  for (let index = 0; index < cells.length; index += 7) {
+    const week: Array<RequesterActivityDay | null> = cells.slice(
       index,
       index + 7,
     );

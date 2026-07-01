@@ -1724,19 +1724,48 @@ function mergeRequesterDirectories(
   mockDirectory: DashboardRequesterDirectoryReport,
   realDirectory: DashboardRequesterDirectoryReport,
 ): DashboardRequesterDirectoryReport {
-  const emails = new Set(
-    mockDirectory.people.map((person) => person.requester.email),
+  const people = new Map(
+    mockDirectory.people.map((person) => [person.requester.email, person]),
   );
+  for (const person of realDirectory.people) {
+    const existing = people.get(person.requester.email);
+    if (!existing) {
+      people.set(person.requester.email, person);
+      continue;
+    }
+    people.set(person.requester.email, {
+      active: existing.active + person.active,
+      activeDays: Math.max(existing.activeDays, person.activeDays),
+      conversations: existing.conversations + person.conversations,
+      durationMs: existing.durationMs + person.durationMs,
+      failed: existing.failed + person.failed,
+      firstSeenAt:
+        (reportTime(existing.firstSeenAt) ?? 0) <=
+        (reportTime(person.firstSeenAt) ?? 0)
+          ? existing.firstSeenAt
+          : person.firstSeenAt,
+      hung: existing.hung + person.hung,
+      lastSeenAt:
+        (reportTime(existing.lastSeenAt) ?? 0) >=
+        (reportTime(person.lastSeenAt) ?? 0)
+          ? existing.lastSeenAt
+          : person.lastSeenAt,
+      requester: mergeIdentity(existing.requester, person.requester),
+      runs: existing.runs + person.runs,
+      ...(existing.tokens !== undefined || person.tokens !== undefined
+        ? { tokens: (existing.tokens ?? 0) + (person.tokens ?? 0) }
+        : {}),
+    });
+  }
+  const mergedPeople = [...people.values()];
   return {
     ...realDirectory,
     generatedAt: realDirectory.generatedAt,
-    people: [
-      ...mockDirectory.people,
-      ...realDirectory.people.filter(
-        (person) => !emails.has(person.requester.email),
-      ),
-    ],
-    sampleSize: mockDirectory.sampleSize + realDirectory.sampleSize,
+    people: mergedPeople,
+    sampleSize: mergedPeople.reduce(
+      (total, person) => total + person.conversations,
+      0,
+    ),
     truncated: mockDirectory.truncated || realDirectory.truncated,
   };
 }
