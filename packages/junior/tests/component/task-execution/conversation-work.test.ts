@@ -716,6 +716,57 @@ describe("conversation work execution", () => {
     ]);
   });
 
+  it("does not send extra nudge when pending mailbox + continuation + recorded wake coexist", async () => {
+    // Adversarial case: hasPending=true, needsRun=true, hasQueuedWake=true.
+    // An extra nudge from completeConversationWork would recreate the double-
+    // enqueue loop pattern. Any accepted wake is conversation-level and can
+    // drain the mailbox and process the continuation, so no extra nudge is needed.
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_000;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          // Drain the initial message.
+          await context.drainMailbox(async () => {});
+          currentNowMs = 2_000;
+          // Schedule a continuation: sets "awaiting_resume" + records wake.
+          await requestConversationWork({
+            conversationId: context.conversationId,
+            destination: context.destination,
+            nowMs: currentNowMs,
+          });
+          await markConversationWorkEnqueued({
+            conversationId: context.conversationId,
+            nowMs: currentNowMs,
+          });
+          // A new inbound message also arrives (pending at completion time).
+          await appendInboundMessage({
+            message: inboundMessage("m2", {
+              createdAtMs: 2_100,
+              receivedAtMs: 2_100,
+            }),
+            nowMs: 2_100,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const state = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(state?.lease).toBeUndefined();
+    expect(state?.needsRun).toBe(true);
+    // processConversationWork must NOT have sent its own nudge — the wake
+    // recorded by markConversationWorkEnqueued covers both pending messages
+    // and the continuation.
+    expect(queue.sentRecords()).toHaveLength(0);
+  });
+
   it("uses fresh queue idempotency keys for repeated worker requeues", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;

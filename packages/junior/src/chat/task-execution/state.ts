@@ -1586,7 +1586,13 @@ export async function completeConversationWork(args: {
     // may have failed before markConversationWorkEnqueued ran, so a recovery
     // nudge is still correct).
     const hasQueuedWake = current.execution.lastEnqueuedAtMs !== undefined;
-    const shouldNudge = hasPending || (needsRun && !hasQueuedWake);
+    // Use runnable (not hasPending alone) so that any accepted conversation
+    // wake — which is conversation-level and can process both mailbox messages
+    // and continuation resumes — suppresses the extra nudge. Treating pending
+    // mailbox messages as an unconditional nudge reason would allow the same
+    // double-enqueue pattern when hasPending is true alongside needsRun and a
+    // recorded wake.
+    const shouldNudge = runnable && !hasQueuedWake;
     await writeConversation(
       state,
       withExecutionUpdate(
