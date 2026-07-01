@@ -23,7 +23,7 @@ import { client } from "../src/client/api";
 import { CommandCenter } from "../src/client/pages/CommandCenter";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
-import { Profile } from "../src/client/pages/PeoplePage";
+import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
   ConversationDetailFeed,
@@ -377,6 +377,21 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain(">runs<");
     expect(html).not.toContain(">attention<");
     expect(html).not.toContain(">People</a>");
+  });
+
+  it("renders people load failures separately from empty telemetry", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PeoplePageContent
+          data={undefined}
+          error={new Error("people failed")}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("People failed to load");
+    expect(html).toContain("People telemetry is unavailable");
+    expect(html).not.toContain("No requester telemetry with trusted email");
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {

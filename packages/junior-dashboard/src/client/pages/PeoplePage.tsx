@@ -67,12 +67,22 @@ function runtimeLabel(durationMs: number, conversations: number): string {
 /** Render the requester directory from dashboard reporting data. */
 export function PeoplePage() {
   const query = useRequesterDirectoryData();
+  return <PeoplePageContent data={query.data} error={query.error} />;
+}
+
+/** Render loaded, failed, and empty requester directory states. */
+export function PeoplePageContent({
+  data,
+  error,
+}: {
+  data: RequesterDirectory | undefined;
+  error: unknown;
+}) {
   const [peopleSearch, setPeopleSearch] = useState("");
   const [sort, setSort] = useState<PeopleSort>("recent");
-  if (!query.data && !query.error) {
+  if (!data && !error) {
     return <LoadingView label="Loading people" />;
   }
-  const data = query.data;
   const people = data ? filterPeople(data.people, peopleSearch, sort) : [];
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
@@ -87,7 +97,13 @@ export function PeoplePage() {
             </div>
           </div>
         </SectionHeader>
-        {data?.people.length ? (
+        {error ? (
+          <div className="p-3">
+            <EmptyTelemetry>
+              People telemetry is unavailable. Try refreshing the dashboard.
+            </EmptyTelemetry>
+          </div>
+        ) : data?.people.length ? (
           <>
             <PeopleToolbar
               query={peopleSearch}
