@@ -63,6 +63,7 @@ async function getPermalinkBestEffort(args: {
       3,
       {
         action: "chat.getPermalink",
+        idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": args.channelId,
           "app.slack.message_ts": args.messageTs,
@@ -157,6 +158,7 @@ export async function deleteSlackMessage(input: {
     3,
     {
       action: "chat.delete",
+      idempotent: true,
       spanAttributes: {
         "app.slack.channel_id": channelId,
         "app.slack.message_ts": timestamp,
@@ -296,6 +298,7 @@ export async function addReactionToMessage(input: {
       3,
       {
         action: "reactions.add",
+        idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
           "app.slack.message_ts": timestamp,
@@ -343,6 +346,7 @@ export async function removeReactionFromMessage(input: {
       3,
       {
         action: "reactions.remove",
+        idempotent: true,
         spanAttributes: {
           "app.slack.channel_id": channelId,
           "app.slack.message_ts": timestamp,

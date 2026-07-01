@@ -284,7 +284,12 @@ async function handleMessageChanged(args: {
   }
   const botUserId = args.adapter.botUserId;
   if (!botUserId) {
-    return false;
+    // Entry classification requires resolved bot identity; degrading into
+    // silently dropped edited-mention events would hide the outage. Throwing
+    // makes the webhook return a retryable non-2xx so Slack redelivers.
+    throw new Error(
+      "Slack bot identity is unresolved; cannot classify message_changed event",
+    );
   }
 
   const result = extractMessageChangedMention(
@@ -292,7 +297,7 @@ async function handleMessageChanged(args: {
     botUserId,
     args.adapter,
   );
-  if (!result) {
+  if (!result || shouldIgnoreMessage(result.message)) {
     return true;
   }
 
@@ -678,12 +683,15 @@ export async function handleSlackWebhook(args: {
       try {
         await eventTask;
       } catch (error) {
-        if (!(error instanceof SlackEventPersistenceError)) {
-          logException(error, "slack_event_enqueue_failed");
-          return new Response("ok", { status: 200 });
+        // Any failure before durable mailbox append — installation/token
+        // resolution, routing-state reads, persistence — must be retryable.
+        // Acking 200 here would silently drop the user's message.
+        if (error instanceof SlackEventPersistenceError) {
+          logException(error.cause, "slack_event_persist_failed");
+        } else {
+          logException(error, "slack_event_routing_failed");
         }
-        logException(error.cause, "slack_event_persist_failed");
-        return new Response("Slack event persistence failed", { status: 503 });
+        return new Response("Slack event handling failed", { status: 503 });
       }
     } else {
       enqueue(

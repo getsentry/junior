@@ -1,5 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { ChatInstance, StateAdapter } from "chat";
+import { runWithSlackInstallationToken } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 interface SlackAdapterInternals {
@@ -53,6 +54,14 @@ export async function ensureSlackAdapterInitialized(args: {
   await args.adapter.initialize({
     getState: () => state,
   } as unknown as ChatInstance);
+  const internals = args.adapter as unknown as SlackAdapterInternals;
+  if (internals.defaultBotTokenProvider && !args.adapter.botUserId) {
+    // A single-workspace adapter that failed `auth.test` has no bot identity,
+    // which disables self-message filtering and mention detection. Caching it
+    // would lock that broken state in for the process lifetime, so fail
+    // retryably and let the next event re-attempt initialization.
+    throw new Error("Slack adapter initialized without a resolved bot user id");
+  }
   initializedAdapters.add(args.adapter);
 }
 
@@ -119,6 +128,6 @@ export async function runWithSlackInstallation<T>(args: {
       enterpriseId: args.installation.enterpriseId,
       isEnterpriseInstall: args.installation.isEnterpriseInstall,
     },
-    args.task,
+    () => runWithSlackInstallationToken(tokenContext.token, args.task),
   );
 }

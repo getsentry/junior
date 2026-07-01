@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import {
   slackOk,
+  authTestOk,
   canvasesAccessSetOk,
   canvasesCreateOk,
   canvasesEditOk,
@@ -30,6 +31,7 @@ const PRIVATE_FILE_DOWNLOAD_KEY = "__files.download.private__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setStatus",
+  "auth.test",
   "assistant.threads.setSuggestedPrompts",
   "assistant.threads.setTitle",
   "chat.postMessage",
@@ -185,6 +187,8 @@ function defaultSlackApiResponse(
     case "assistant.threads.setSuggestedPrompts":
     case "assistant.threads.setTitle":
       return { body: slackOk() };
+    case "auth.test":
+      return { body: authTestOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
     case "chat.delete":

@@ -24,6 +24,7 @@ interface SlackMessageChangedEvent {
     subtype: "message_changed";
     channel: string;
     message: {
+      bot_id?: string;
       files?: SlackEditedMessageFile[];
       source_team?: string;
       text?: string;
@@ -144,6 +145,8 @@ export function extractMessageChangedMention(
     typeof event.message.source_team === "string"
       ? event.message.source_team
       : undefined;
+  const botId =
+    typeof event.message.bot_id === "string" ? event.message.bot_id : undefined;
 
   const raw: Record<string, unknown> = {
     channel: channelId,
@@ -153,6 +156,7 @@ export function extractMessageChangedMention(
     ...(teamId ? { team_id: teamId } : {}),
     ...(userTeam ? { user_team: userTeam } : {}),
     ...(sourceTeam ? { source_team: sourceTeam } : {}),
+    ...(botId ? { bot_id: botId } : {}),
   };
 
   const message = new Message({
@@ -169,8 +173,11 @@ export function extractMessageChangedMention(
       // Raw message_changed payloads do not include profile fields.
       userName: "",
       fullName: "",
-      isBot: false,
-      isMe: false,
+      // Mirror the fresh-message parse so the shared ingress author gate
+      // applies: synthesized flags must never launder a bot-authored or
+      // self-authored edit into a routable user message.
+      isBot: Boolean(botId),
+      isMe: userId === botUserId,
     },
   });
 

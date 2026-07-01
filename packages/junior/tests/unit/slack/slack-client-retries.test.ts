@@ -25,6 +25,123 @@ describe("withSlackRetries", () => {
     expect(task).toHaveBeenCalledTimes(2);
   });
 
+  it("caps a huge Retry-After header instead of honoring it verbatim", async () => {
+    vi.useFakeTimers();
+    const task = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce({
+        code: "slack_webapi_rate_limited_error",
+        statusCode: 429,
+        retryAfter: 3600,
+        message: "rate limited",
+      })
+      .mockResolvedValue("ok");
+
+    const promise = withSlackRetries(task, 3);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(promise).resolves.toBe("ok");
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops retrying once the total retry delay budget is exhausted", async () => {
+    vi.useFakeTimers();
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      code: "slack_webapi_rate_limited_error",
+      statusCode: 429,
+      retryAfter: 3600,
+      message: "rate limited",
+    });
+
+    const outcome = withSlackRetries(task, 5).catch((error: unknown) => error);
+    // Two capped 10s pauses spend the 20s budget; the third failure is final
+    // even though attempts remain.
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await expect(outcome).resolves.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "rate_limited",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries connection-phase network failures that never reached Slack", async () => {
+    vi.useFakeTimers();
+    const task = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce({
+        code: "slack_webapi_request_error",
+        message: "A request error occurred: socket hang up",
+        original: { code: "ECONNRESET", message: "socket hang up" },
+      })
+      .mockResolvedValue("ok");
+
+    const promise = withSlackRetries(task, 3, { action: "chat.postMessage" });
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(promise).resolves.toBe("ok");
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries Slack 5xx responses", async () => {
+    vi.useFakeTimers();
+    const task = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce({
+        code: "slack_webapi_http_error",
+        statusCode: 503,
+        message: "An HTTP protocol error occurred: statusCode = 503",
+      })
+      .mockResolvedValue("ok");
+
+    const promise = withSlackRetries(task, 3, { action: "chat.postMessage" });
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(promise).resolves.toBe("ok");
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a timed-out post that Slack may have accepted", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      code: "slack_webapi_request_error",
+      message: "A request error occurred: ETIMEDOUT",
+      original: { code: "ETIMEDOUT" },
+    });
+
+    await expect(
+      withSlackRetries(task, 3, { action: "chat.postMessage" }),
+    ).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "internal_error",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a timed-out idempotent read", async () => {
+    vi.useFakeTimers();
+    const task = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce({
+        code: "slack_webapi_request_error",
+        message: "A request error occurred: ETIMEDOUT",
+        original: { code: "ETIMEDOUT" },
+      })
+      .mockResolvedValue("ok");
+
+    const promise = withSlackRetries(task, 3, {
+      action: "conversations.replies",
+      idempotent: true,
+    });
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(promise).resolves.toBe("ok");
+    expect(task).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry non-retryable API errors", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {

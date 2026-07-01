@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { WebClient } from "@slack/web-api";
 import { getSlackBotToken } from "@/chat/config";
 import {
@@ -6,6 +7,7 @@ import {
   setSpanStatus,
   withSpan,
 } from "@/chat/logging";
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
 // so this module owns direct Web API calls for artifact actions.
@@ -72,6 +74,14 @@ export class SlackActionError extends Error {
 interface SlackRetryContext {
   action?: string;
   attributes?: Record<string, string | number | boolean>;
+  /**
+   * Whether repeating the operation cannot produce a duplicate user-visible
+   * effect (reads, deletes, reactions). Request timeouts are ambiguous — Slack
+   * may have accepted the write — so they are only retried when the caller
+   * marks the operation idempotent. Defaults to false (never risk a duplicate
+   * post).
+   */
+  idempotent?: boolean;
   /** Extra attributes forwarded onto the per-attempt Sentry span. */
   spanAttributes?: Record<string, string | number | boolean>;
 }
@@ -159,7 +169,61 @@ function parseSlackCanvasDetail(detail: unknown): {
   return parsed;
 }
 
-let client: WebClient | null = null;
+/**
+ * Ambient destination-installation token for Slack outbound calls, bound by
+ * installation-scoped entry points so writes carry the destination
+ * workspace's credentials instead of the process-global env token.
+ */
+const installationTokenStorage = new AsyncLocalStorage<{ token: string }>();
+
+const clientsByToken = new Map<string, WebClient>();
+
+/**
+ * Bind a workspace installation token for all Slack Web API calls inside
+ * `fn`, so multi-workspace outbound writes use the destination workspace's
+ * credentials rather than the env fallback token.
+ */
+export function runWithSlackInstallationToken<T>(
+  token: string,
+  fn: () => T,
+): T {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    throw new SlackActionError(
+      "Slack installation token binding requires a non-empty token",
+      "missing_token",
+    );
+  }
+  return installationTokenStorage.run({ token: trimmed }, fn);
+}
+
+function resolveSlackToken(): string {
+  const ambientToken = installationTokenStorage.getStore()?.token;
+  if (ambientToken) {
+    return ambientToken;
+  }
+
+  // The env token mirrors the Slack adapter's single-workspace mode: when a
+  // default bot token is configured, installation-scoped entry points do not
+  // bind a per-team token because the env token is the workspace's token.
+  const envToken = getSlackBotToken();
+  if (envToken) {
+    return envToken;
+  }
+
+  const teamId = getWorkspaceTeamId();
+  if (teamId) {
+    throw new SlackActionError(
+      `Slack call is scoped to workspace ${teamId} but no installation token is bound and no default bot token is configured`,
+      "missing_token",
+    );
+  }
+
+  throw new SlackActionError(
+    "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack Web API actions in this service",
+    "missing_token",
+  );
+}
 
 export function normalizeSlackConversationId(
   channelId: string | undefined,
@@ -179,18 +243,20 @@ export function normalizeSlackConversationId(
 }
 
 function getClient(): WebClient {
-  if (client) return client;
-
-  const token = getSlackBotToken();
-  if (!token) {
-    throw new SlackActionError(
-      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack canvas/list actions in this service",
-      "missing_token",
-    );
+  const token = resolveSlackToken();
+  let cached = clientsByToken.get(token);
+  if (!cached) {
+    // withSlackRetries owns retry classification for this boundary. The
+    // WebClient's built-in policy would re-post timed-out writes (duplicate
+    // message hazard) and sleep for the full unbounded Retry-After inside the
+    // request, so both internal behaviors are disabled here.
+    cached = new WebClient(token, {
+      retryConfig: { retries: 0 },
+      rejectRateLimitedCalls: true,
+    });
+    clientsByToken.set(token, cached);
   }
-
-  client = new WebClient(token);
-  return client;
+  return cached;
 }
 
 function mapSlackError(error: unknown): SlackActionError {
@@ -296,12 +362,105 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Retry pauses are bounded so a hostile or huge Retry-After header cannot eat
+// the remaining serverless execution slice during final delivery.
+const MAX_RETRY_DELAY_MS = 10_000;
+const MAX_TOTAL_RETRY_DELAY_MS = 20_000;
+
+// Connection-phase failures: the request is known not to have reached Slack,
+// so retrying can never duplicate a write.
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
+
+// Timeouts are ambiguous: Slack may have accepted the request before the
+// deadline elapsed, so these are only retried for idempotent operations.
+const TIMEOUT_ERROR_CODES = new Set([
+  "ETIMEDOUT",
+  "ECONNABORTED",
+  "ESOCKETTIMEDOUT",
+]);
+
+type SlackRetryClass =
+  | "rate_limited"
+  | "connection"
+  | "timeout"
+  | "server_error"
+  | "none";
+
+function findNetworkErrorCode(error: unknown, depth = 0): string | undefined {
+  if (!error || typeof error !== "object" || depth > 4) {
+    return undefined;
+  }
+  const candidate = error as {
+    code?: unknown;
+    original?: unknown;
+    cause?: unknown;
+  };
+  if (
+    typeof candidate.code === "string" &&
+    (CONNECTION_ERROR_CODES.has(candidate.code) ||
+      TIMEOUT_ERROR_CODES.has(candidate.code))
+  ) {
+    return candidate.code;
+  }
+  return (
+    findNetworkErrorCode(candidate.original, depth + 1) ??
+    findNetworkErrorCode(candidate.cause, depth + 1)
+  );
+}
+
+function hasSocketHangUpMessage(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.toLowerCase().includes("socket hang up")
+  );
+}
+
+function classifySlackRetry(
+  raw: unknown,
+  mapped: SlackActionError,
+): SlackRetryClass {
+  if (mapped.code === "rate_limited") {
+    return "rate_limited";
+  }
+  if (mapped.statusCode !== undefined && mapped.statusCode >= 500) {
+    return "server_error";
+  }
+  const networkCode = findNetworkErrorCode(raw);
+  if (networkCode && CONNECTION_ERROR_CODES.has(networkCode)) {
+    return "connection";
+  }
+  if (networkCode && TIMEOUT_ERROR_CODES.has(networkCode)) {
+    return "timeout";
+  }
+  // A hang-up before any response was received never reached Slack's API
+  // layer, so it is safe to retry alongside other connection-phase failures.
+  if (hasSocketHangUpMessage(raw)) {
+    return "connection";
+  }
+  return "none";
+}
+
+/**
+ * Run a Slack Web API call with bounded retries so transient platform
+ * failures do not surface as turn failures, while non-idempotent posts are
+ * never re-sent when Slack may already have accepted them.
+ *
+ * Retry classes: rate limits (bounded Retry-After), connection-phase network
+ * failures, and Slack 5xx responses always retry; request timeouts retry only
+ * when the caller marks the operation `idempotent`.
+ */
 export async function withSlackRetries<T>(
   task: () => Promise<T>,
   maxAttempts = 3,
   context: SlackRetryContext = {},
 ): Promise<T> {
   let attempt = 0;
+  let totalDelayMs = 0;
 
   const action = context.action ?? "unknown";
 
@@ -354,7 +513,13 @@ export async function withSlackRetries<T>(
       );
     } catch (error) {
       const mapped = mapSlackError(error);
-      const isRetryable = mapped.code === "rate_limited";
+      const retryClass = classifySlackRetry(error, mapped);
+      const isRetryable =
+        retryClass === "rate_limited" ||
+        retryClass === "connection" ||
+        retryClass === "server_error" ||
+        (retryClass === "timeout" && context.idempotent === true);
+      const remainingDelayBudgetMs = MAX_TOTAL_RETRY_DELAY_MS - totalDelayMs;
       const baseLogAttributes: Record<string, string | number | boolean> = {
         "app.slack.action": action,
         "app.slack.error_code": mapped.code,
@@ -375,7 +540,11 @@ export async function withSlackRetries<T>(
         ...(context.attributes ?? {}),
       };
 
-      if (!isRetryable || attempt >= maxAttempts) {
+      if (
+        !isRetryable ||
+        attempt >= maxAttempts ||
+        remainingDelayBudgetMs <= 0
+      ) {
         logWarn(
           "slack_action_failed",
           {},
@@ -396,18 +565,25 @@ export async function withSlackRetries<T>(
         {
           ...baseLogAttributes,
           "app.slack.retry_attempt": attempt,
+          "app.slack.retry_class": retryClass,
         },
         "Retrying Slack action after transient failure",
       );
 
       const retryAfterMs =
-        mapped.code === "rate_limited" &&
+        retryClass === "rate_limited" &&
         mapped.retryAfterSeconds &&
         mapped.retryAfterSeconds > 0
           ? mapped.retryAfterSeconds * 1000
           : undefined;
       const backoffMs = Math.min(2000, 250 * 2 ** (attempt - 1));
-      await sleep(retryAfterMs ?? backoffMs);
+      const delayMs = Math.min(
+        retryAfterMs ?? backoffMs,
+        MAX_RETRY_DELAY_MS,
+        remainingDelayBudgetMs,
+      );
+      totalDelayMs += delayMs;
+      await sleep(delayMs);
     }
   }
 
@@ -417,6 +593,13 @@ export async function withSlackRetries<T>(
   );
 }
 
+/**
+ * Slack Web API client for the current destination workspace: the ambient
+ * installation token when one is bound, otherwise the env bot token for
+ * single-workspace deployments. Fails instead of falling back when the call
+ * is workspace-scoped and no installation token can be resolved, so a write
+ * never goes out with another workspace's credentials.
+ */
 export function getSlackClient(): WebClient {
   return getClient();
 }
@@ -466,6 +649,7 @@ export async function getFilePermalink(
     3,
     {
       action: "files.info",
+      idempotent: true,
       spanAttributes: { "app.slack.file_id": fileId },
     },
   );
@@ -474,13 +658,9 @@ export async function getFilePermalink(
 }
 
 export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
-  const token = getSlackBotToken();
-  if (!token) {
-    throw new SlackActionError(
-      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack file downloads in this service",
-      "missing_token",
-    );
-  }
+  // Private file URLs are workspace-scoped, so downloads use the same
+  // destination-installation token resolution as Web API calls.
+  const token = resolveSlackToken();
 
   return withSpan(
     "GET files.slack.com",

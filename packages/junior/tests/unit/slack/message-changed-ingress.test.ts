@@ -14,6 +14,7 @@ const fakeAdapter = {} as Adapter;
 function makeEnvelope(overrides: {
   newText: string;
   prevText: string;
+  botId?: string;
   channel?: string;
   messageTs?: string;
   threadTs?: string;
@@ -31,6 +32,7 @@ function makeEnvelope(overrides: {
         ts: overrides.messageTs ?? MESSAGE_TS,
         thread_ts: overrides.threadTs ?? THREAD_TS,
         user: overrides.user ?? "U_SENDER",
+        ...(overrides.botId ? { bot_id: overrides.botId } : {}),
       },
       previous_message: {
         text: overrides.prevText,
@@ -99,6 +101,34 @@ describe("extractMessageChangedMention", () => {
     });
     expect(serialized?.author.userName).toBe("");
     expect(serialized?.author.fullName).toBe("");
+  });
+
+  it("derives bot author flags from the edited payload", () => {
+    const body = makeEnvelope({
+      newText: `<@${BOT_USER_ID}> please help`,
+      prevText: "please help",
+      botId: "B_APP",
+    });
+
+    const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
+
+    expect(result?.message.author.isBot).toBe(true);
+    expect(result?.message.author.isMe).toBe(false);
+    expect(
+      (result?.message.raw as { bot_id?: string } | undefined)?.bot_id,
+    ).toBe("B_APP");
+  });
+
+  it("marks self-authored edits with isMe", () => {
+    const body = makeEnvelope({
+      newText: `<@${BOT_USER_ID}> please help`,
+      prevText: "please help",
+      user: BOT_USER_ID,
+    });
+
+    const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
+
+    expect(result?.message.author.isMe).toBe(true);
   });
 
   it("returns null when bot mention was already in the previous message", () => {
