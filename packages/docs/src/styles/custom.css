@@ -22,6 +22,10 @@
   width: 2rem;
 }
 
+:root:not([data-has-sidebar]) .hero {
+  padding-block: clamp(1.5rem, 0.5rem + 5vmin, 5rem);
+}
+
 :root:not([data-has-sidebar]) .hero :is(h1, [data-page-title]) {
   max-width: 46rem;
 }
@@ -65,7 +69,7 @@
 }
 
 .jr-home {
-  margin-top: 2rem;
+  margin-top: 1rem;
 }
 
 .slk-window {
