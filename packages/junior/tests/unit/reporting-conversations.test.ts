@@ -241,7 +241,8 @@ describe("conversation reporting", () => {
       locations: [
         expect.objectContaining({
           conversations: 2,
-          label: "Public Channel",
+          failed: 1,
+          label: "Private Conversation",
         }),
         expect.objectContaining({
           conversations: 1,
