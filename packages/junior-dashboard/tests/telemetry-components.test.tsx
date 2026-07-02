@@ -18,6 +18,7 @@ import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { ConversationTranscriptSegment } from "../src/client/components/TranscriptTurn";
+import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
 import { CommandCenter } from "../src/client/pages/CommandCenter";
@@ -1361,7 +1362,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("tool-2");
   });
 
-  it("moves thinking metadata out of mobile summaries", () => {
+  it("renders thinking rows as collapsed disclosures", () => {
     const turn = {
       conversationId: "conversation-1",
       id: "turn-1",
@@ -1397,12 +1398,21 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("py-1.5 text-[0.84rem] leading-relaxed");
     expect(html).toContain("grid-cols-[1rem_minmax(0,1fr)]");
     expect(html).toContain("inline-flex size-4 shrink-0 items-center");
+    expect(html).toContain(">thinking<");
     expect(html).toContain("not-italic text-[#777] max-md:hidden");
     expect(html).toContain("hidden min-w-0 grid-cols-[1rem_minmax(0,1fr)]");
     expect(html).toContain("not-italic leading-snug text-[#777]");
+    expect(html).not.toContain("<details open");
+
+    const summary = html.slice(
+      html.indexOf("<summary"),
+      html.indexOf("</summary>"),
+    );
+    expect(summary).not.toContain("checking the rollout");
+    expect(summary).not.toContain("listing deploy windows");
   });
 
-  it("keeps fully visible thinking rows static until layout clips them", () => {
+  it("collapses short thinking rows by default", () => {
     const turn = {
       conversationId: "conversation-1",
       id: "turn-1",
@@ -1428,11 +1438,52 @@ describe("dashboard telemetry components", () => {
       </QueryClientProvider>,
     );
 
-    expect(html).not.toContain("<details");
-    expect(html).not.toContain("cursor-pointer");
+    expect(html).toContain("<details");
+    expect(html).toContain(">thinking<");
     expect(html).toContain("checking the rollout");
-    expect(html).toContain(
-      "pointer-events-none invisible absolute inset-x-0 top-0 block truncate",
+
+    const summary = html.slice(
+      html.indexOf("<summary"),
+      html.indexOf("</summary>"),
     );
+    expect(summary).not.toContain("checking the rollout");
+  });
+
+  it("expands thinking rows during transcript search", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            {
+              type: "thinking",
+              output: "checking the rollout\nlisting deploy windows",
+            },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <TranscriptSearchProvider query="deploy">
+          <ConversationTranscriptSegment turn={turn} view="rich" />
+        </TranscriptSearchProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("checking the rollout");
+    expect(html).toContain("listing <mark");
+    expect(html).toContain(">deploy<");
   });
 });
