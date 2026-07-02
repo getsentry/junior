@@ -270,7 +270,7 @@ function slackContext(
       channelId,
       // The Slack boundary supplies normalized public visibility for these
       // C-prefixed test channels unless a test overrides the channel id.
-      ...(channelId.startsWith("C") ? { type: "pub" as const } : {}),
+      type: channelId.startsWith("C") ? "pub" : "priv",
       messageTs: threadTs,
       threadTs,
     }),
