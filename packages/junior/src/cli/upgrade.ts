@@ -9,6 +9,7 @@ import { pluginStorageMigration } from "./upgrade/migrations/plugin-storage";
 import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
 import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
+import { slackDestinationVisibilityRepairMigration } from "./upgrade/migrations/slack-destination-visibility-repair";
 import type {
   MigrationContext,
   MigrationResult,
@@ -27,6 +28,7 @@ const MIGRATIONS: UpgradeMigration[] = [
   sqlConversationMigration,
   sqlPluginMigration,
   pluginStorageMigration,
+  slackDestinationVisibilityRepairMigration,
 ];
 
 function isMissingVirtualConfig(error: unknown): boolean {
