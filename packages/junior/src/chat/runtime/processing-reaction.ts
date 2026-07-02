@@ -8,6 +8,7 @@ import {
 import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
 import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
 import { getChatConfig } from "@/chat/config";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
 
 /** Controls the automatic Slack processing reaction lifecycle for one message. */
 export interface ProcessingReactionSession {
@@ -25,7 +26,8 @@ const noProcessingReaction: ProcessingReactionSession = {
 function isProcessingReactionEmoji(value: unknown): boolean {
   return (
     typeof value === "string" &&
-    normalizeSlackEmojiName(value) === getChatConfig().slack.processingReactionEmoji
+    normalizeSlackEmojiName(value) ===
+      getChatConfig().slack.processingReactionEmoji
   );
 }
 
@@ -73,7 +75,7 @@ export async function startSlackProcessingReaction(args: {
 /** Start Junior's automatic Slack processing reaction for a known Slack message. */
 export async function startSlackProcessingReactionForMessage(args: {
   channelId: string;
-  timestamp: string;
+  timestamp: SlackMessageTs;
   logException: (
     error: unknown,
     eventName: string,

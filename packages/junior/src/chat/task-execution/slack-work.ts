@@ -132,6 +132,10 @@ function slackSerializedThread(input: {
   };
 }
 
+/**
+ * Serialize a synthetic resource-event mailbox message without a native Slack
+ * message timestamp so Slack Web API calls cannot target the internal id.
+ */
 function slackSerializedResourceEventMessage(input: {
   channelId: string;
   id: string;
@@ -159,7 +163,6 @@ function slackSerializedResourceEventMessage(input: {
       channel: input.channelId,
       event_type: "resource_event",
       thread_ts: input.threadTs,
-      ts: input.id,
       type: "message",
       user: "UJRNEVENT",
     },

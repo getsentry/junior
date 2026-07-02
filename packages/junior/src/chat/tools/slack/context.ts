@@ -2,13 +2,17 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { SlackDestination } from "@sentry/junior-plugin-api";
 import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackRequester } from "@/chat/requester";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 export interface SlackToolContext {
   destination: SlackDestination;
   source: SlackSource;
   requester?: SlackRequester;
   destinationChannelId: string;
-  messageTs?: string;
+  messageTs?: SlackMessageTs;
   sourceChannelId: string;
   teamId: string;
   threadTs?: string;
@@ -30,7 +34,7 @@ export function getSlackToolContext(
     requester:
       context.requester?.platform === "slack" ? context.requester : undefined,
     destinationChannelId: context.destination.channelId,
-    messageTs: context.source.messageTs,
+    messageTs: parseSlackMessageTs(context.source.messageTs),
     sourceChannelId: context.source.channelId,
     teamId: context.source.teamId,
     threadTs: context.source.threadTs,

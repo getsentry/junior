@@ -26,6 +26,7 @@ export function toConversationMessage(
   args: ConversationMessageInput,
 ): ConversationMessage {
   const actor = getMessageActorIdentity(args.entry);
+  const slackTs = getSlackMessageTs(args.entry);
   const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
     args.entry.attachments,
   );
@@ -53,7 +54,7 @@ export function toConversationMessage(
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
-      slackTs: getSlackMessageTs(args.entry),
+      ...(slackTs ? { slackTs } : {}),
     },
   };
 }

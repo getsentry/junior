@@ -7,6 +7,10 @@ import {
 } from "@/chat/slack/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { parseActorUserId } from "@/chat/requester";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
@@ -29,8 +33,8 @@ function requireSlackThreadTimestamp(threadTs: string, action: string): string {
 function requireSlackMessageTimestamp(
   timestamp: string,
   action: string,
-): string {
-  const normalized = timestamp.trim();
+): SlackMessageTs {
+  const normalized = parseSlackMessageTs(timestamp);
   if (!normalized) {
     throw new Error(`${action} requires a target message timestamp`);
   }
@@ -51,7 +55,7 @@ function requireSlackMessageText(text: string, action: string): string {
 
 async function getPermalinkBestEffort(args: {
   channelId: string;
-  messageTs: string;
+  messageTs: SlackMessageTs;
 }): Promise<string | undefined> {
   try {
     const response = await withSlackRetries(
@@ -83,7 +87,7 @@ export async function postSlackMessage(input: {
   text: string;
   threadTs?: string;
   includePermalink?: boolean;
-}): Promise<{ ts: string; permalink?: string }> {
+}): Promise<{ ts: SlackMessageTs; permalink?: string }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack message posting",
@@ -118,17 +122,18 @@ export async function postSlackMessage(input: {
     },
   );
 
-  if (!response.ts) {
+  const messageTs = parseSlackMessageTs(response.ts);
+  if (!messageTs) {
     throw new Error("Slack message posted without ts");
   }
 
   return {
-    ts: response.ts,
+    ts: messageTs,
     ...(input.includePermalink
       ? {
           permalink: await getPermalinkBestEffort({
             channelId,
-            messageTs: response.ts,
+            messageTs,
           }),
         }
       : {}),
@@ -138,7 +143,7 @@ export async function postSlackMessage(input: {
 /** Delete a previously posted Slack message through the shared outbound boundary. */
 export async function deleteSlackMessage(input: {
   channelId: string;
-  timestamp: string;
+  timestamp: SlackMessageTs;
 }): Promise<void> {
   const channelId = requireSlackConversationId(
     input.channelId,
@@ -271,7 +276,7 @@ export async function uploadFilesToThread(input: {
 /** Add a reaction to a Slack message, treating `already_reacted` as idempotent success. */
 export async function addReactionToMessage(input: {
   channelId: string;
-  timestamp: string;
+  timestamp: SlackMessageTs;
   emoji: string;
 }): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(
@@ -319,7 +324,7 @@ export async function addReactionToMessage(input: {
 /** Remove a reaction from a Slack message, treating `no_reaction` as idempotent success. */
 export async function removeReactionFromMessage(input: {
   channelId: string;
-  timestamp: string;
+  timestamp: SlackMessageTs;
   emoji: string;
 }): Promise<{ ok: true }> {
   const channelId = requireSlackConversationId(

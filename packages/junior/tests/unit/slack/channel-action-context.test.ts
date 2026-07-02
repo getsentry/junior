@@ -29,6 +29,15 @@ import {
   removeReactionFromMessage,
   slackOutboundPolicy,
 } from "@/chat/slack/outbound";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+
+function slackTs(value: string) {
+  const ts = parseSlackMessageTs(value);
+  if (!ts) {
+    throw new Error(`Invalid test Slack message timestamp: ${value}`);
+  }
+  return ts;
+}
 
 describe("slack outbound boundary", () => {
   beforeEach(() => {
@@ -50,7 +59,7 @@ describe("slack outbound boundary", () => {
 
     await addReactionToMessage({
       channelId: "C123",
-      timestamp: "1700000000.100",
+      timestamp: slackTs("1700000000.100"),
       emoji: "thumbsup",
     });
 
@@ -84,7 +93,7 @@ describe("slack outbound boundary", () => {
 
     await removeReactionFromMessage({
       channelId: "C123",
-      timestamp: "1700000000.100",
+      timestamp: slackTs("1700000000.100"),
       emoji: "eyes",
     });
 
@@ -113,7 +122,7 @@ describe("slack outbound boundary", () => {
 
     await addReactionToMessage({
       channelId: "C123",
-      timestamp: "1700000000.100",
+      timestamp: slackTs("1700000000.100"),
       emoji: ":thumbsup::skin-tone-6:",
     });
 
@@ -132,7 +141,7 @@ describe("slack outbound boundary", () => {
     await expect(
       addReactionToMessage({
         channelId: "C123",
-        timestamp: "1700000000.100",
+        timestamp: slackTs("1700000000.100"),
         emoji: "thumbsup",
       }),
     ).resolves.toEqual({ ok: true });
@@ -146,7 +155,7 @@ describe("slack outbound boundary", () => {
     await expect(
       removeReactionFromMessage({
         channelId: "C123",
-        timestamp: "1700000000.100",
+        timestamp: slackTs("1700000000.100"),
         emoji: "thumbsup",
       }),
     ).resolves.toEqual({ ok: true });

@@ -5,13 +5,16 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   calculateContextCompactionTargetTokens,
   estimateTextTokens,
   getConversationContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 import { escapeXml } from "@/chat/xml";
 
 const CONTEXT_MIN_LIVE_MESSAGES = 12;
@@ -463,8 +466,9 @@ export function isHumanConversationMessage(
   return message.role === "user" && message.author?.isBot !== true;
 }
 
+/** Return the native Slack timestamp for a persisted conversation message. */
 export function getConversationMessageSlackTs(
   message: ConversationMessage,
-): string | undefined {
-  return message.meta?.slackTs ?? toOptionalString(message.id);
+): SlackMessageTs | undefined {
+  return parseSlackMessageTs(message.meta?.slackTs);
 }

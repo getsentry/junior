@@ -5,6 +5,7 @@ import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-po
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 import type { ToolState } from "@/chat/tools/types";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
   chatGetPermalinkOk,
   chatPostMessageOk,
@@ -42,6 +43,10 @@ function createContext(
   const sourceChannelId = overrides.sourceChannelId ?? "C123";
   const destinationChannelId =
     overrides.destinationChannelId ?? sourceChannelId;
+  const messageTs = parseSlackMessageTs("1700000000.321");
+  if (!messageTs) {
+    throw new Error("Test message timestamp must be a valid Slack ts");
+  }
   return {
     destination: {
       platform: "slack",
@@ -51,12 +56,12 @@ function createContext(
     source: createSlackSource({
       teamId: "T123",
       channelId: sourceChannelId,
-      messageTs: "1700000000.321",
+      messageTs,
 
       type: "priv",
     }),
     destinationChannelId,
-    messageTs: "1700000000.321",
+    messageTs,
     sourceChannelId,
     teamId: "T123",
     ...overrides,

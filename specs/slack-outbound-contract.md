@@ -86,6 +86,7 @@ Current rules:
 2. `already_reacted` is treated as idempotent success for add-reaction operations.
 3. `no_reaction` is treated as idempotent success for remove-reaction operations.
 4. Other Slack reaction failures still surface as action failures.
+5. Message-targeting Slack Web API timestamp fields must come from parsed native Slack message timestamps. Synthetic mailbox ids, including resource-event notification ids, must never be used as Slack `ts` or `message_ts` targets.
 
 ### 7. Retry and Error Mapping Contract
 

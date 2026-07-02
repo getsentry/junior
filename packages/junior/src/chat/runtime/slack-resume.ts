@@ -48,6 +48,7 @@ import {
   startSlackProcessingReactionForMessage,
   type ProcessingReactionSession,
 } from "@/chat/runtime/processing-reaction";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 
@@ -137,7 +138,7 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   channelId: string;
   threadTs: string;
-  messageTs?: string;
+  messageTs?: SlackMessageTs;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   initialText?: string;
@@ -573,7 +574,7 @@ export async function resumeAuthorizedRequest(args: {
   messageText: string;
   channelId: string;
   threadTs: string;
-  messageTs?: string;
+  messageTs?: SlackMessageTs;
   connectedText: string;
   replyContext?: ResumeReplyContext;
   lockKey?: string;

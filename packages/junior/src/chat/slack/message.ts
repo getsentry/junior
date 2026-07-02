@@ -1,8 +1,8 @@
 import type { Message } from "chat";
-
-function isSlackMessageTs(value: string): boolean {
-  return /^\d+(?:\.\d+)?$/.test(value.trim());
-}
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 /**
  * Preserve the native Slack message timestamp when a synthetic message ID is
@@ -10,17 +10,15 @@ function isSlackMessageTs(value: string): boolean {
  */
 export function getSlackMessageTs(
   message: Pick<Message, "id" | "raw">,
-): string {
-  if (isSlackMessageTs(message.id)) {
-    return message.id;
+): SlackMessageTs | undefined {
+  const idTs = parseSlackMessageTs(message.id);
+  if (idTs) {
+    return idTs;
   }
 
   if (message.raw && typeof message.raw === "object") {
-    const ts = (message.raw as Record<string, unknown>).ts;
-    if (typeof ts === "string" && ts.length > 0) {
-      return ts;
-    }
+    return parseSlackMessageTs((message.raw as Record<string, unknown>).ts);
   }
 
-  return message.id;
+  return undefined;
 }

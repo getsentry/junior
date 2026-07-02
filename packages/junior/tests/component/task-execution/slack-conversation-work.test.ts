@@ -200,6 +200,7 @@ describe("Slack conversation work execution", () => {
     expect(lookupSlackUser).not.toHaveBeenCalled();
     expect(calls).toHaveLength(1);
     expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
+    expect(calls[0]?.raw).not.toHaveProperty("ts");
     expect(getMessageActorIdentity(calls[0]!)).toEqual({
       userId: "UJRNEVENT",
     });

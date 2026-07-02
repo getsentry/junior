@@ -11,6 +11,7 @@ import {
   postSlackMessage,
   uploadFilesToThread,
 } from "@/chat/slack/outbound";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -165,9 +166,14 @@ describe("Slack contract: outbound normalization", () => {
   });
 
   it("normalizes adapter-scoped ids before reactions.add", async () => {
+    const timestamp = parseSlackMessageTs("1700000000.000100");
+    if (!timestamp) {
+      throw new Error("Test message timestamp must be a valid Slack ts");
+    }
+
     await addReactionToMessage({
       channelId: "slack:C123",
-      timestamp: "1700000000.000100",
+      timestamp,
       emoji: ":wave:",
     });
 

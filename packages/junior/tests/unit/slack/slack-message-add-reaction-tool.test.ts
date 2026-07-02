@@ -3,12 +3,18 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 const addReactionToMessage = vi.fn();
 
 vi.mock("@/chat/slack/outbound", () => ({
   addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
 }));
+
+const TEST_MESSAGE_TS = parseSlackMessageTs("1700000000.100");
+if (!TEST_MESSAGE_TS) {
+  throw new Error("Test message timestamp must be a valid Slack ts");
+}
 
 const TEST_SLACK_CONTEXT: SlackToolContext = {
   destination: {
@@ -19,12 +25,12 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
   source: createSlackSource({
     teamId: "T123",
     channelId: "C123",
-    messageTs: "1700000000.100",
+    messageTs: TEST_MESSAGE_TS,
 
     type: "priv",
   }),
   destinationChannelId: "C123",
-  messageTs: "1700000000.100",
+  messageTs: TEST_MESSAGE_TS,
   sourceChannelId: "C123",
   teamId: "T123",
 };

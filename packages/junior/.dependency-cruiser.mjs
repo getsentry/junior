@@ -27,13 +27,14 @@ export default {
     {
       name: "no-chat-services-to-slack",
       comment:
-        "Service modules must depend on small injected ports, not Slack infrastructure.",
+        "Service modules must depend on small injected ports, not Slack infrastructure; Slack timestamp value objects are the only exception.",
       severity: "error",
       from: {
         path: "^src/chat/services/",
       },
       to: {
         path: "^src/chat/slack/",
+        pathNot: "^src/chat/slack/timestamp\\.ts$",
       },
     },
     {

@@ -244,6 +244,11 @@ Rules:
    delivered to Slack conversations.
 4. Runtime prompt guidance must tell the agent to use subscription intent to
    decide whether a reply or follow-up action is warranted.
+5. Slack event notifications are synthetic mailbox messages, not native Slack
+   messages. Their internal message ids must not be written to Slack `ts`,
+   `message_ts`, or other Slack Web API timestamp fields, and they must not
+   drive message-targeting Slack side effects such as automatic processing
+   reactions.
 
 ### GitHub Pull Request MVP
 

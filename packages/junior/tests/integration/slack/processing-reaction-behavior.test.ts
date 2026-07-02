@@ -182,6 +182,57 @@ describe("Slack behavior: processing reaction", () => {
     ]);
   });
 
+  it("does not react to synthetic resource-event notifications", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+            return {
+              text: "Done.",
+              diagnostics: successDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_PROCESSING:1700007160.000000",
+    });
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "resource-event-resub-1-check-suite-1",
+        text: "[event notification]\n\nA subscribed resource changed.",
+        isMention: false,
+        threadId: thread.id,
+        author: {
+          userId: "UJRNEVENT",
+          userName: "junior-event",
+          fullName: "Junior event",
+          isBot: true,
+        },
+        raw: {
+          channel: "C_PROCESSING",
+          event_type: "resource_event",
+          thread_ts: "1700007160.000000",
+          // Historical malformed records used the synthetic mailbox id as raw.ts.
+          // It must still never be treated as a Slack Web API message target.
+          ts: "resource-event-resub-1-check-suite-1",
+          type: "message",
+          user: "UJRNEVENT",
+        },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(thread.posts).toHaveLength(1);
+    expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+    expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+  });
+
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {

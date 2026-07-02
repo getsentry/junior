@@ -134,7 +134,7 @@ Junior must acknowledge Slack messages it is handling with an automatic processi
 Current rules:
 
 1. DM and explicit-mention handlers add `:eyes:` before turn preparation or assistant execution.
-2. Subscribed-thread handlers add `:eyes:` only after preflight and passive reply routing return `shouldReply: true`, immediately before assistant execution.
+2. Subscribed-thread handlers add `:eyes:` only after preflight and passive reply routing return `shouldReply: true`, immediately before assistant execution. Synthetic resource-event notifications are not native Slack messages and do not receive automatic processing reactions.
 3. Batched or steered Slack messages that Junior durably accepts into an active turn also get `:eyes:` so each handled user message has the same visible acknowledgement.
 4. When the accepted message completes with a final delivered reply or successful side effect, Junior replaces the automatic `:eyes:` with `:white_check_mark:`.
 5. Skipped subscribed-thread messages, including passive no-reply and opt-out decisions, do not add or remove an automatic reaction.

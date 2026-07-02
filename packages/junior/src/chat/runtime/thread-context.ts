@@ -9,6 +9,10 @@ import {
   resolveSlackChannelIdFromThreadId,
   resolveSlackChannelIdFromMessage,
 } from "@/chat/slack/context";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 function toSlackTeamId(value: unknown): string | undefined {
   const candidate = toOptionalString(value);
@@ -126,12 +130,14 @@ export function getAssistantThreadContext(
   return parsedThreadId;
 }
 
-export function getMessageTs(message: Message): string | undefined {
+/** Resolve the native Slack timestamp for a message that can target Slack APIs. */
+export function getMessageTs(message: Message): SlackMessageTs | undefined {
   const directTs = toOptionalString(
     (message as unknown as { ts?: unknown }).ts,
   );
-  if (directTs) {
-    return directTs;
+  const parsedDirectTs = parseSlackMessageTs(directTs);
+  if (parsedDirectTs) {
+    return parsedDirectTs;
   }
 
   const raw = (message as unknown as { raw?: unknown }).raw;
@@ -140,11 +146,17 @@ export function getMessageTs(message: Message): string | undefined {
   }
 
   const rawRecord = raw as Record<string, unknown>;
-  return (
-    toOptionalString(rawRecord.ts) ??
-    toOptionalString(rawRecord.event_ts) ??
-    toOptionalString((rawRecord.message as { ts?: unknown } | undefined)?.ts)
-  );
+  const candidates = [
+    rawRecord.ts,
+    (rawRecord.message as { ts?: unknown } | undefined)?.ts,
+  ];
+  for (const candidate of candidates) {
+    const ts = parseSlackMessageTs(candidate);
+    if (ts) {
+      return ts;
+    }
+  }
+  return undefined;
 }
 
 /** Resolve the Slack workspace/team id from the raw inbound message payload. */
