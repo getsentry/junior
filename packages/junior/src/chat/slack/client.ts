@@ -197,6 +197,11 @@ export function runWithSlackInstallationToken<T>(
   return installationTokenStorage.run({ token: trimmed }, fn);
 }
 
+/**
+ * Token precedence: ambient installation token, then env token, then a hard
+ * failure for team-scoped calls — a call scoped to one workspace must never
+ * silently fall through to another workspace's credentials.
+ */
 function resolveSlackToken(): string {
   const ambientToken = installationTokenStorage.getStore()?.token;
   if (ambientToken) {
@@ -242,14 +247,17 @@ export function normalizeSlackConversationId(
   return parts[1]?.trim() || undefined;
 }
 
+/**
+ * Return the per-token cached WebClient. `withSlackRetries` owns retry
+ * classification for this boundary: the WebClient's built-in policy would
+ * re-post timed-out writes (a duplicate-message hazard) and sleep for the
+ * full unbounded Retry-After inside the request, so both internal behaviors
+ * are disabled here.
+ */
 function getClient(): WebClient {
   const token = resolveSlackToken();
   let cached = clientsByToken.get(token);
   if (!cached) {
-    // withSlackRetries owns retry classification for this boundary. The
-    // WebClient's built-in policy would re-post timed-out writes (duplicate
-    // message hazard) and sleep for the full unbounded Retry-After inside the
-    // request, so both internal behaviors are disabled here.
     cached = new WebClient(token, {
       retryConfig: { retries: 0 },
       rejectRateLimitedCalls: true,
@@ -420,6 +428,12 @@ function hasSocketHangUpMessage(error: unknown): boolean {
   );
 }
 
+/**
+ * Classify a failed Slack call for retry: rate limits, Slack 5xx, and
+ * connection-phase failures are always retryable; timeouts are retried only
+ * for idempotent operations because Slack may already have accepted the
+ * request.
+ */
 function classifySlackRetry(
   raw: unknown,
   mapped: SlackActionError,
@@ -606,8 +620,9 @@ export function getSlackClient(): WebClient {
 
 /**
  * Slack channel ID prefixes:
- * - C: public channel
- * - G: private channel / group DM
+ * - C: channel — modern private channels also use C, so the prefix never
+ *   proves a channel is public
+ * - G: legacy private channel / group DM
  * - D: direct message (1:1)
  */
 export function isDmChannel(channelId: string): boolean {

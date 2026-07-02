@@ -432,6 +432,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:details-only",
       displayTitle: "Details Only Title",
     });
+    expect(report.runs.length).toBeGreaterThan(0);
     expect(report.runs.every((run) => run.transcriptAvailable === false)).toBe(
       true,
     );

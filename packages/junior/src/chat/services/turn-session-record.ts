@@ -228,12 +228,20 @@ export async function persistCompletedSessionRecord(args: {
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
-  const sliceIdForLog = args.sliceId ?? 1;
+  let sliceId = args.sliceId;
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
+    sliceId = sliceId ?? latestSessionRecord?.sliceId;
+    if (sliceId === undefined) {
+      // Never fabricate a slice-1 completion: a completion without a known
+      // slice is a caller bug and must surface as the standard failure path.
+      throw new Error(
+        "Completed session record requires a slice id from the caller or the latest stored record",
+      );
+    }
     await upsertAgentTurnSessionRecord({
       ...((args.channelName ?? latestSessionRecord?.channelName)
         ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -257,7 +265,7 @@ export async function persistCompletedSessionRecord(args: {
         ? { destinationVisibility: args.destinationVisibility }
         : {}),
       sessionId: args.sessionId,
-      sliceId: args.sliceId ?? latestSessionRecord?.sliceId ?? 1,
+      sliceId,
       state: "completed",
       piMessages: args.allMessages,
       ...((args.surface ?? latestSessionRecord?.surface)
@@ -289,9 +297,7 @@ export async function persistCompletedSessionRecord(args: {
       recordError,
       "agent_turn_completed_session_record_failed",
       args,
-      {
-        "app.ai.resume_slice_id": sliceIdForLog,
-      },
+      sliceId !== undefined ? { "app.ai.resume_slice_id": sliceId } : {},
       "Failed to persist completed turn session record",
     );
   }

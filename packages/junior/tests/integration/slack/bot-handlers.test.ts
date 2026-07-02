@@ -5,7 +5,8 @@ import type { ReplyRequestContext } from "@/chat/respond";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { RetryableTurnError } from "@/chat/runtime/turn";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { loadProjection } from "@/chat/state/session-log";
 import {
   getAgentTurnSessionRecord,
@@ -1294,6 +1295,121 @@ describe("bot handlers (integration)", () => {
     expect(
       JSON.stringify(projection).split("also check the logs"),
     ).toHaveLength(2);
+  });
+
+  it("appends only the missing parked messages on a partial-overlap redelivery", async () => {
+    const conversationId = "slack:C9PARKEDPART:1700000000.000";
+    const destination = slackDestination("C9PARKEDPART");
+    const activeSessionId = "turn_msg-original";
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      destination,
+      source: createSlackSourceForTest("C9PARKEDPART"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
+    });
+    const scheduleAgentContinue = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: vi.fn(),
+          scheduleAgentContinue,
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+    const first = createTestMessage({
+      id: "msg-parked-first",
+      threadId: conversationId,
+      text: "first follow-up",
+      isMention: true,
+    });
+    const second = createTestMessage({
+      id: "msg-parked-second",
+      threadId: conversationId,
+      text: "second follow-up",
+      isMention: true,
+    });
+
+    // First delivery durably appends the first follow-up.
+    await slackRuntime.handleNewMention(thread, first, { destination });
+
+    // Redelivery arrives carrying the already-appended message plus a new
+    // one; only the missing message may be appended.
+    await slackRuntime.handleNewMention(thread, second, {
+      destination,
+      messageContext: { skipped: [first], totalSinceLastHandler: 1 },
+    });
+
+    const serialized = JSON.stringify(await loadProjection({ conversationId }));
+    expect(serialized.split("first follow-up")).toHaveLength(2);
+    expect(serialized.split("second follow-up")).toHaveLength(2);
+  });
+
+  it("leaves the parked follow-up unconsumed while a live resume holds the thread lock", async () => {
+    const conversationId = "slack:C9PARKEDLOCK:1700000000.000";
+    const destination = slackDestination("C9PARKEDLOCK");
+    const activeSessionId = "turn_msg-original";
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      destination,
+      source: createSlackSourceForTest("C9PARKEDLOCK"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
+    });
+    const scheduleAgentContinue = vi.fn();
+    const onInputCommitted = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: vi.fn(),
+          scheduleAgentContinue,
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+    const followUp = createTestMessage({
+      id: "msg-parked-locked",
+      threadId: conversationId,
+      text: "also check the logs",
+      isMention: true,
+    });
+
+    // Simulate a live resume: it holds the thread resume lock for its run.
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const lock = await acquireActiveLock(stateAdapter, conversationId);
+    expect(lock).not.toBeNull();
+    try {
+      await slackRuntime.handleNewMention(thread, followUp, {
+        destination,
+        onInputCommitted,
+      });
+    } finally {
+      await stateAdapter.releaseLock(lock!);
+    }
+
+    // The message was not consumed and nothing was appended or scheduled: it
+    // stays pending in the mailbox for the next drain.
+    expect(onInputCommitted).not.toHaveBeenCalled();
+    expect(scheduleAgentContinue).not.toHaveBeenCalled();
+    expect(
+      JSON.stringify(await loadProjection({ conversationId })),
+    ).not.toContain("also check the logs");
   });
 
   it("suppresses the visible failure reply when the mailbox will retry the delivery", async () => {

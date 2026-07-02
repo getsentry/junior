@@ -42,6 +42,7 @@ import {
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -127,12 +128,6 @@ async function persistRuntimePatch(args: {
   });
 }
 
-const DELIVERED_PATCH_PERSIST_ATTEMPTS = 3;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * Persist the post-delivery dispatch state with a short retry so a transient
  * state write does not drop the delivered marker that suppresses re-posts.
@@ -140,23 +135,7 @@ function sleep(ms: number): Promise<void> {
 async function persistRuntimePatchWithRetry(
   args: Parameters<typeof persistRuntimePatch>[0],
 ): Promise<void> {
-  let lastError: unknown;
-  for (
-    let attempt = 1;
-    attempt <= DELIVERED_PATCH_PERSIST_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      await persistRuntimePatch(args);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < DELIVERED_PATCH_PERSIST_ATTEMPTS) {
-        await sleep(attempt * 100);
-      }
-    }
-  }
-  throw lastError;
+  await persistWithRetry(() => persistRuntimePatch(args));
 }
 
 async function markDispatch(args: {

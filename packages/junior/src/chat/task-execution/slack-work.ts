@@ -378,19 +378,6 @@ function getPendingRecords(
   return work.execution.pendingMessages.sort(compareInboundMessages);
 }
 
-/**
- * Whether the restored records are on their final bounded delivery attempt.
- *
- * Records carry the durable `attemptCount` from the conversation mailbox; the
- * Slack runtime uses this seam to post a visible failure reply only on the
- * final attempt instead of once per retried delivery.
- */
-export function isFinalSlackDeliveryAttempt(
-  records: InboundMessage[],
-): boolean {
-  return records.some((record) => isFinalConversationDeliveryAttempt(record));
-}
-
 /** Build the worker run function for queued Slack conversation work. */
 export function createSlackConversationWorker(
   options: CreateSlackConversationWorkerOptions,
@@ -491,7 +478,8 @@ export function createSlackConversationWorker(
         // worker redelivers them; suppress visible failure replies until the
         // final bounded attempt.
         const willRetryOnFailure = (): boolean =>
-          !initialMessagesPersisted && !isFinalSlackDeliveryAttempt(records);
+          !initialMessagesPersisted &&
+          !records.some((record) => isFinalConversationDeliveryAttempt(record));
         // Restore stored mailbox entries as Slack steering candidates; the
         // runtime returns only the inbound ids it handled durably.
         const drainSteeringMessages = async (

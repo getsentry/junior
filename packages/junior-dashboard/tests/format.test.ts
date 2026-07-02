@@ -17,6 +17,7 @@ import {
   formatUsageTotal,
   parseMarkdownBlocks,
   requesterLabel,
+  slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -752,5 +753,39 @@ describe("canRenderStructuredMarkup", () => {
     const [block] = parseMarkdownBlocks("<foo>bar</foo>", { outputOnly: true });
     expect(block?.language).toBe("markdown");
     expect(canRenderStructuredMarkup(block!)).toBe(false);
+  });
+});
+
+describe("slackLocationLabel redacted labels", () => {
+  const redactedLabels = [
+    "Public Channel",
+    "Private Channel",
+    "Group DM",
+    "Direct Message",
+    "Private Channel or Group DM",
+    "Private Conversation",
+  ];
+
+  it("returns redacted type labels verbatim instead of formatting them as channel names", () => {
+    for (const label of redactedLabels) {
+      expect(slackLocationLabel({ channel: "C123", channelName: label })).toBe(
+        `${label} (C123)`,
+      );
+      expect(
+        slackLocationLabel(
+          { channel: "C123", channelName: label },
+          { includeId: false },
+        ),
+      ).toBe(label);
+    }
+  });
+
+  it("still formats real channel names with a # prefix", () => {
+    expect(
+      slackLocationLabel(
+        { channel: "C123", channelName: "proj-alpha" },
+        { includeId: false },
+      ),
+    ).toBe("#proj-alpha");
   });
 });

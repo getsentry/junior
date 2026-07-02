@@ -347,6 +347,9 @@ export async function runLocalAgentTurn(
     await persistCompletedSessionRecord({
       conversationId: input.conversationId,
       sessionId: turnId,
+      // Local turns are single-slice by design: there is no local resume
+      // machinery, so a completion here is always slice 1.
+      sliceId: 1,
       allMessages: reply.piMessages,
       currentDurationMs: reply.diagnostics.durationMs,
       currentUsage: reply.diagnostics.usage,

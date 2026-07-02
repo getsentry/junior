@@ -96,6 +96,7 @@ export function conversationVisibilityFromSlackChannelType(
   return channelType === "channel" ? "public" : "private";
 }
 
+// Narrows toward private only; never asserts public.
 function visibilityFromChannelIdPrefix(
   channelId: string | undefined,
 ): SlackConversationVisibility | undefined {
@@ -167,6 +168,21 @@ export function formatSlackConversationTypeLabel(
   if (type === "direct_message") return "Direct Message";
   return "Private Channel or Group DM";
 }
+
+/**
+ * Every redacted conversation-type label this module can emit, so consumers
+ * that must treat redacted labels differently from channel names (e.g.
+ * reporting) stay in sync with the formatter instead of duplicating strings.
+ */
+export const SLACK_REDACTED_CONVERSATION_LABELS: readonly string[] = (
+  [
+    "public_channel",
+    "private_channel",
+    "group_dm",
+    "direct_message",
+    "private_channel_or_group_dm",
+  ] satisfies SlackConversationType[]
+).map(formatSlackConversationTypeLabel);
 
 /** Render a Slack conversation label for surfaces allowed to expose names. */
 export function formatSlackConversationContextLabel(

@@ -813,13 +813,12 @@ async function generateAssistantReplyInPrivacyContext(
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a
         // failed append must not abort the in-flight model turn.
-        logWarn(
+        logException(
+          error,
           "agent_turn_session_log_append_failed",
           spanContext,
           {
             "gen_ai.tool.name": event.toolName,
-            "exception.message":
-              error instanceof Error ? error.message : String(error),
           },
           "Failed to record host-only tool execution start",
         );

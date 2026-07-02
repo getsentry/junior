@@ -8,7 +8,6 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { Message, SentMessage, Thread } from "chat";
-import { isDeepStrictEqual } from "node:util";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
@@ -123,17 +122,14 @@ import {
   setConversationTitle,
 } from "@/chat/state/conversation-details";
 import { commitMessages, loadProjection } from "@/chat/state/session-log";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { requireSlackDestination } from "@/chat/destination";
-
-const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Persist post-delivery thread state with a short retry so a transient state
@@ -143,23 +139,7 @@ async function persistThreadStateWithRetry(
   thread: Thread,
   patch: Parameters<typeof persistThreadState>[1],
 ): Promise<void> {
-  let lastError: unknown;
-  for (
-    let attempt = 1;
-    attempt <= DELIVERED_STATE_PERSIST_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      await persistThreadState(thread, patch);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < DELIVERED_STATE_PERSIST_ATTEMPTS) {
-        await sleep(attempt * 100);
-      }
-    }
-  }
-  throw lastError;
+  await persistWithRetry(() => persistThreadState(thread, patch));
 }
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
@@ -173,6 +153,24 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
 
 function turnRequester(requester: SlackRequester): StoredSlackRequester {
   return toStoredSlackRequester(requester);
+}
+
+/**
+ * Identity key for parked-input dedupe: the inbound timestamp plus the user
+ * turn text (always the first content part). Attachment resolution may differ
+ * across queue redeliveries, so resolved attachment parts must not decide
+ * whether the same inbound message was already appended.
+ */
+function parkedInputKey(message: PiMessage): string | undefined {
+  if (message.role !== "user") {
+    return undefined;
+  }
+  const first = Array.isArray(message.content) ? message.content[0] : undefined;
+  const text =
+    first && typeof first === "object" && "text" in first
+      ? String((first as { text?: unknown }).text ?? "")
+      : "";
+  return `${message.timestamp}:${text}`;
 }
 
 function isResourceEventMessage(message: Message): boolean {
@@ -554,12 +552,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
          * awaiting record pins the log session and materializes the projection
          * tail, so the append needs no record mutation. Must complete before
          * `onInputCommitted` consumes the mailbox record.
+         *
+         * The read-compute-append races a concurrently-resumed slice, which
+         * runs under the thread resume lock; take the same lock so the two
+         * writers never interleave. Returns false when the lock is busy (a
+         * live resume owns the session log): the caller must leave the
+         * mailbox message pending for the next drain instead of consuming it.
          */
         const appendParkedTurnInput = async (
           parkedSessionId: string,
-        ): Promise<void> => {
+        ): Promise<boolean> => {
           if (!conversationId) {
-            return;
+            return true;
           }
           const parkedMessages = [
             ...(options.queuedMessages ?? []),
@@ -578,25 +582,45 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               buildDeterministicTurnId(queued.message.id) !== parkedSessionId,
           );
           if (parkedMessages.length === 0) {
-            return;
+            return true;
           }
-          const piMessages = (
-            await resolveSteeringMessages(parkedMessages)
-          ).map(buildSteeringPiMessage);
-          const projection = await loadProjection({ conversationId });
-          if (
-            piMessages.length <= projection.length &&
-            isDeepStrictEqual(projection.slice(-piMessages.length), piMessages)
-          ) {
-            // A prior delivery already appended this input durably.
-            return;
+          const stateAdapter = getStateAdapter();
+          await stateAdapter.connect();
+          const lock = await acquireActiveLock(stateAdapter, conversationId);
+          if (!lock) {
+            return false;
           }
-          await commitMessages({
-            conversationId,
-            messages: [...projection, ...piMessages],
-            requester: storedRequester,
-            ttlMs: THREAD_STATE_TTL_MS,
-          });
+          try {
+            const piMessages = (
+              await resolveSteeringMessages(parkedMessages)
+            ).map(buildSteeringPiMessage);
+            const projection = await loadProjection({ conversationId });
+            // Dedupe per message: a partial-overlap redelivery (some messages
+            // already appended before a schedule failure) must append only
+            // the missing ones.
+            const appendedKeys = new Set(
+              projection
+                .map(parkedInputKey)
+                .filter((key): key is string => key !== undefined),
+            );
+            const missing = piMessages.filter((piMessage) => {
+              const key = parkedInputKey(piMessage);
+              return key === undefined || !appendedKeys.has(key);
+            });
+            if (missing.length === 0) {
+              // A prior delivery already appended this input durably.
+              return true;
+            }
+            await commitMessages({
+              conversationId,
+              messages: [...projection, ...missing],
+              requester: storedRequester,
+              ttlMs: THREAD_STATE_TTL_MS,
+            });
+            return true;
+          } finally {
+            await stateAdapter.releaseLock(lock);
+          }
         };
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
@@ -617,7 +641,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             // Durable session-log append first: rescheduling a continuation
             // does not consume the message, and `onInputCommitted` may only
             // fire after the input is model-visible.
-            await appendParkedTurnInput(resumeRequest.sessionId);
+            if (!(await appendParkedTurnInput(resumeRequest.sessionId))) {
+              // A live resume holds the thread lock; leave the mailbox
+              // message pending so the next drain re-delivers it after the
+              // resume completes.
+              return;
+            }
             try {
               await deps.services.scheduleAgentContinue(resumeRequest);
             } catch (error) {
@@ -1183,7 +1212,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               !firstPlannedMessageHasFiles &&
               isRedundantReactionAckText(reply.text)
             ) {
-              await sent.delete();
+              try {
+                await sent.delete();
+              } catch (error) {
+                // Best effort: the turn is already delivered, and a thrown
+                // delete here would skip the completed-record commit below
+                // and leave the session record stuck running.
+                logException(
+                  error,
+                  "slack_redundant_ack_delete_failed",
+                  turnTraceContext,
+                  messageTs ? { "messaging.message.id": messageTs } : {},
+                  "Failed to delete redundant reaction-ack reply",
+                );
+              }
             }
           }
           // Zero planned posts means there is nothing to deliver; treat the

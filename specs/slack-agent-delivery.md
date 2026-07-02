@@ -276,8 +276,8 @@ Required verification coverage for this contract:
 4. Integration: file-only replies, suppressed-thread-text file delivery, and resume-path file parity.
 5. Integration: image attachments surviving edited-message ingress and skipped passive-thread hydration.
 6. Integration: assistant-thread lifecycle metadata initialization.
-7. Integration: edited-message mentions apply the shared author gate; external-user and bot-authored edits do not start turns.
-8. Integration: a mention delivered as both `app_mention` and `message` keeps its file attachments regardless of event arrival order.
+7. Integration: edited-message mentions apply the shared author gate; external-user and Junior-authored edits do not start turns.
+8. Component: a mention delivered as both `app_mention` and `message` keeps its file attachments regardless of event arrival order (mailbox twin-payload dedupe, `tests/component/task-execution/conversation-work.test.ts`).
 9. Evals: realistic user-visible multi-turn Slack behaviors when model interpretation is part of the contract.
 
 ## Related Specs

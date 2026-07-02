@@ -35,7 +35,7 @@ type ConversationRow = typeof juniorConversations.$inferSelect;
 interface ConversationReadRow {
   conversation: ConversationRow;
   destinationVisibility: JuniorDestinationVisibility | null;
-  destinationVisibilityConfirmedAt: Date | string | null;
+  destinationVisibilityConfirmedAt: Date | null;
 }
 
 interface IdentityUpsert {
@@ -259,10 +259,7 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
 function confirmedVisibilityFromRow(
   row: ConversationReadRow,
 ): ConversationPrivacy | undefined {
-  if (
-    row.destinationVisibilityConfirmedAt === null ||
-    row.destinationVisibilityConfirmedAt === undefined
-  ) {
+  if (row.destinationVisibilityConfirmedAt === null) {
     return undefined;
   }
   return row.destinationVisibility === "public" ? "public" : "private";

@@ -1702,6 +1702,7 @@ export async function completeConversationWork(args: {
   });
 }
 
+/** Failure outcome: `lost_lease` (another owner took over), `recorded` (attempt counted), or `skipped` (durable progress was made). */
 export interface ConversationWorkFailureRecord {
   pendingCount: number;
   poisonedMessages: InboundMessage[];

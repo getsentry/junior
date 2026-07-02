@@ -160,6 +160,7 @@ async function recordFailedDeliveryAttempt(args: {
   return failure;
 }
 
+/** True only when this attempt poisoned messages and left no further pending work. */
 function isTerminalFailure(failure: ConversationWorkFailureRecord): boolean {
   return (
     failure.status === "recorded" &&

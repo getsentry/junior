@@ -137,11 +137,14 @@ The session log has one clear projection into Pi messages:
 4. Projection must not invent loaded skills, provider activation, tool results, or assistant/user messages that were not represented in the durable log.
 5. Storage writes are append-only. If recovery must roll the active Pi projection back to a prior safe boundary, the writer appends an explicit projection-reset event instead of trimming or rewriting the stored list.
 
-Session-log writes are fenced by conversation ownership: a writer that no
-longer holds the conversation lease or resume lock must not append entries or
-reset the projection. Read-compute-append sequences must revalidate ownership
-before the append so an expired-lease slice cannot duplicate or roll back
-another writer's entries.
+Session-log writers are serialized by conversation ownership at their call
+sites: conversation-record writes are fenced in the store (an expired lease
+surfaces as `ConversationMutationFencedError` via `extendLock`), and
+session-log read-compute-append sequences run under the conversation lease or
+the thread resume lock (including the parked-input append, which takes the
+resume lock). The session-log store itself does not implement a general
+in-store compare-and-swap; a writer that no longer holds its lease or lock
+must not append entries or reset the projection.
 
 The schema must be a strongly typed discriminated union with runtime validation
 at the storage boundary. The TypeScript type and the runtime parser must come
@@ -610,8 +613,8 @@ Required attributes when available:
 10. Component/integration: successful provider activation appends one `mcp_provider_connected` event, and resume restores providers from those events. Legacy Pi-message inference is allowed only while pre-event session logs still exist.
 11. Component/integration: a user message arriving while a session is `awaiting_resume` reaches Pi history (steered or appended) and receives an answer; it is never marked injected without a session-log append.
 12. Component/integration: a lease-expired `running` session is resumed or terminally failed with a visible fallback; it never no-ops.
-13. Component: redelivery after a lost input commit does not duplicate the user prompt or bootstrap context in Pi history.
-14. Component: a failed host-only activity append is swallowed and the model turn continues.
+13. Unit: redelivery after a lost input commit does not duplicate the user prompt or bootstrap context in Pi history.
+14. Unit: a failed host-only activity append is swallowed and the model turn continues.
 
 ## Related Specs
 

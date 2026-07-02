@@ -25,6 +25,7 @@ import {
 } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
+  SLACK_REDACTED_CONVERSATION_LABELS,
   formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
@@ -767,11 +768,7 @@ function requesterLabel(
 }
 
 const REDACTED_LOCATION_LABELS = new Set([
-  "Public Channel",
-  "Private Channel",
-  "Group DM",
-  "Direct Message",
-  "Private Channel or Group DM",
+  ...SLACK_REDACTED_CONVERSATION_LABELS,
   PRIVATE_CONVERSATION_LABEL,
 ]);
 

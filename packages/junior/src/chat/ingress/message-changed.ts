@@ -23,6 +23,7 @@ interface SlackMessageChangedEvent {
     type: "message";
     subtype: "message_changed";
     channel: string;
+    channel_type?: string;
     message: {
       bot_id?: string;
       files?: SlackEditedMessageFile[];
@@ -147,9 +148,14 @@ export function extractMessageChangedMention(
       : undefined;
   const botId =
     typeof event.message.bot_id === "string" ? event.message.bot_id : undefined;
+  // Preserve the event's channel_type so visibility confirmation still works
+  // for channels whose only Junior traffic is edited mentions.
+  const channelType =
+    typeof event.channel_type === "string" ? event.channel_type : undefined;
 
   const raw: Record<string, unknown> = {
     channel: channelId,
+    ...(channelType ? { channel_type: channelType } : {}),
     ts: messageTs,
     thread_ts: threadTs,
     user: userId,

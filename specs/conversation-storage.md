@@ -162,8 +162,10 @@ names.
   window owned by `./agent-session-resumability.md`. One constant owns each
   transcript key's TTL; writers must not apply divergent retention to the same
   key.
-- The conversation store must support deleting one conversation row together
-  with its now-unreferenced identity rows so erasure requests can be honored.
+- Deferred: single-conversation erasure (deleting one conversation row
+  together with its now-unreferenced identity rows) is a requirement the
+  store does not implement yet; it must be added before erasure requests can
+  be honored.
 - Bulk retention policy for SQL metadata is deployment-owned and out of scope
   here.
 
