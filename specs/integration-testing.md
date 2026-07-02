@@ -5,125 +5,45 @@
 - Created: 2026-03-03
 - Last Edited: 2026-07-02
 
-## Intent
+## Purpose
 
-Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. Use this layer when the contract depends on production composition, handler routing, external transport behavior, or user-visible runtime outcomes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
+Integration tests cover product/runtime behavior through real wiring with a
+deterministic fake agent boundary when needed. Layer-selection judgment lives in
+`../policies/testing.md`.
 
-When integration can prove the same runtime/product behavior as a unit test,
-prefer the integration test and do not add parallel unit coverage for the helper
-branch. The integration test should own the contract.
+## Use For
 
-## Scope
+- Slack event ingestion, routing, delivery, and HTTP contracts.
+- Auth callback and resume flows.
+- Runtime orchestration with real persistence/routing.
+- User-visible behavior that does not require model interpretation.
+- API or handler behavior through the real app path.
 
-In scope:
+## Mechanics
 
-- Slack event ingestion and routing behavior.
-- Runtime orchestration and state interactions.
-- Slack HTTP contracts (request shape, retries, error mapping) through MSW.
-- Auth callback and resume flows, persisted thread recovery, and other user-visible product wiring.
-- Behavior outcomes from real runtime flow using deterministic fake-agent outputs.
+- Preferred path: `packages/junior/tests/integration/**`.
+- Use real app/runtime modules for behavior paths.
+- Use MSW handlers and Slack fixtures for outbound Slack HTTP.
+- Substitute only the approved fake-agent/composition boundary for behavior
+  tests.
+- Assert user-visible output or external contract effects before internal
+  context details.
 
-## Non-Goals
+## Behavior vs Transport Contract
 
-- Pure algorithmic invariants better covered by unit tests.
-- Deterministic service/runtime contracts better covered by component tests.
-- Judge-scored conversational quality (belongs to evals).
+- Behavior tests assert scenario outcomes first.
+- Slack transport-contract tests may assert request payload shape, ordering, or
+  recipient metadata when that shape is the external contract.
+- Keep low-level Slack request assertions in dedicated contract-focused tests or
+  clearly separated suites.
 
-## Required Runtime Shape
+## Do Not Use
 
-1. Use real app/runtime modules for behavior paths.
-2. Use MSW handlers and Slack fixtures for outbound Slack HTTP.
-3. Keep persistence/routing code real unless the test is explicitly categorized as unit.
+- Runtime module mocks for behavior paths.
+- Ad hoc Slack HTTP stubs when MSW can express the contract.
+- Fake persistence and fake delivery together to simulate a product workflow.
 
-## Substitution Policy
+## Related Harness Docs
 
-Allowed:
-
-- Fake agent or service substitution at the composition boundary only (`createSlackRuntime(...)`, `createTestChatRuntime(...)`, or approved thin wrapper helpers over them).
-
-Disallowed in integration behavior tests:
-
-- Mutable runtime-global behavior seams or singleton patching for core chat behavior.
-- `vi.mock` for runtime behavior modules (`@/chat/state/*`, workflow router/runtime handlers, ingress binding/router paths, etc.).
-- Ad-hoc stubbing of Slack HTTP fetch/webclient internals in test files.
-- Ad-hoc fake persistence or fake Slack delivery layers when the shared memory adapter + MSW harness can prove the same contract.
-
-## Fixture and Harness Rules
-
-1. Use `packages/junior/tests/fixtures/slack/*` factories and harness helpers.
-2. Use `packages/junior/tests/msw/*` handler utilities for Slack API sequencing and assertions.
-3. Prefer scenario-style tests that drive events and assert resulting user-visible outputs + captured Slack API calls.
-
-## Behavior vs Transport-Contract Tests
-
-Both of the following remain integration tests when they use the real runtime path:
-
-1. Behavior integration tests:
-   - describe the scenario in user/runtime terms
-   - assert user-visible outcomes first
-   - avoid framing the test around internal call choreography
-2. Slack transport-contract integration tests:
-   - assert request payload shape, stream lifecycle, recipient metadata, or other Slack API details when those details are the real external contract
-   - should live in dedicated `*contract*.test.ts` files or clearly separated contract-focused suites
-
-Do not let low-level stream ordering or request-shape assertions dominate general `*-behavior.test.ts` files.
-
-## Classification Guidance
-
-If a test relies on runtime module mocks to drive control-flow branches, classify it as unit or component instead of integration.
-
-If the behavior under test depends on natural-language interpretation, continuity, or model choice, classify it as eval instead of integration.
-
-If a product/runtime change can be proven only by real wiring plus a deterministic fake agent, integration is the right answer. If the contract is a deterministic store, worker, queue-port, lease, or service-coordination invariant, prefer a component test.
-
-Do not keep a scenario in integration solely because a fake classifier fixture is easier than writing the corresponding eval. When the real contract is ambiguous natural-language behavior or reply quality, promote it to eval.
-
-If the behavior is user-visible or crosses runtime boundaries, do not demote it
-to unit tests just because the fix happens in a small helper. Exercise the
-production path and let helper internals remain refactorable.
-
-## Core Scenarios to Cover
-
-1. Mention and subscribed-thread routing behavior.
-2. Rapid same-thread message ordering/continuity.
-3. Error handling that remains user-visible and non-silent.
-4. Slack API contract correctness for tools/actions used by runtime paths.
-5. Context-bound tool targeting behavior (harness-resolved targets, no model-selected destination overrides).
-
-## Workflow Coverage Requirements
-
-Integration tests that cover workflow ingress/execution must assert workflow-boundary behavior, not just handler internals:
-
-1. Verify ingress payloads sent to workflow routing are serializable and contain serialized `chat:Message` / `chat:Thread` data (no function-valued fields).
-2. Exercise the real message-kind routing behavior (`new_mention` vs `subscribed_message`) through `routeIncomingMessageToWorkflow(...)`.
-3. Validate de-dup behavior on ingress and de-dup behavior in workflow stream processing.
-
-## Context-Bound Tool Coverage Requirements
-
-For tools governed by harness context (for example Slack channel/canvas/list operations):
-
-1. Assert destination/target comes from harness/runtime context rather than model-supplied IDs.
-2. Assert missing context fails safely with actionable error responses.
-3. Assert disallowed fallback scopes (for example bot-private artifacts for shared deliverables) are not used.
-
-## Scope Discipline (Do Not Over-Test)
-
-Integration tests should prove wiring and external behavior contracts, not exhaust every edge-case permutation.
-
-Required approach:
-
-1. Cover one representative happy path per runtime contract.
-2. Add failure-path coverage only for distinct, realistic regressions.
-3. Add edge-case coverage when:
-   - the behavior has caused production bugs before, or
-   - the edge case changes routing/safety semantics.
-
-Avoid:
-
-1. Duplicating the same assertion across multiple near-identical payload variants.
-2. Asserting internal call choreography that is not part of the contract. If request ordering is the contract, move it into a dedicated transport-contract integration test instead of a general behavior file.
-3. Encoding speculative edge cases with no concrete bug history or risk signal.
-
-## Enforcement
-
-`pnpm lint` enforces integration boundary policy for designated behavior integration tests.
+- Slack MSW and fixtures: `./slack-http-mocking.md`
+- Harness tool targeting: `./harness-tool-context.md`

@@ -1,95 +1,44 @@
-# Slack HTTP Mocking Spec (MSW + Fixtures)
+# Slack HTTP Mocking Spec
 
 ## Metadata
 
 - Created: 2026-03-02
-- Last Edited: 2026-05-28
+- Last Edited: 2026-07-02
 
 ## Purpose
 
-Define the Slack HTTP contract testing model used by integration tests.
-This spec is subordinate to `specs/integration-testing.md`.
+Document the Slack MSW and fixture harness used by integration tests.
 
-## Summary
+## Runtime
 
-- Use MSW in Node test runtime as the default interception layer for Slack HTTP.
-- Use shared factories/fixtures for Slack API responses and inbound webhook/event payloads.
-- Do not stub Slack HTTP directly in test files.
-- Integration behavior tests keep runtime wiring real and only substitute the agent boundary.
+- Vitest runs Slack HTTP tests in Node.
+- `packages/junior/tests/msw/setup.ts` starts/stops MSW.
+- `packages/junior/tests/msw/server.ts` owns strict unhandled Slack request
+  behavior.
+- Slack SDK and native `fetch` calls to Slack endpoints are intercepted by MSW.
 
-## Goals
+## Fixtures And Handlers
 
-- Deterministic, network-isolated Slack contract tests.
-- High-confidence request/response coverage for Slack-facing actions.
-- Reusable fixtures and consistent test setup across files.
+- Slack handlers: `packages/junior/tests/msw/handlers/slack-api.ts`
+- Slack webhook handlers: `packages/junior/tests/msw/handlers/slack-webhooks.ts`
+- API factories: `packages/junior/tests/fixtures/slack/factories/api.ts`
+- Event factories: `packages/junior/tests/fixtures/slack/factories/events.ts`
+- ID factories: `packages/junior/tests/fixtures/slack/factories/ids.ts`
 
-## Non-goals
+Handlers cover success responses, Slack error envelopes, pagination, rate
+limits, and contract validation for Slack-only request shapes.
 
-- Replacing live Slack transport/integration tests.
-- Defining unit-test mocking policy (see `unit.md`).
-- Defining eval authoring policy (see `evals.md`).
+## Test Rules
 
-## Runtime and Compatibility
-
-- Test runtime: Vitest (`environment: "node"`).
-- MSW runtime: `msw/node`.
-- Slack SDK compatibility:
-  - `@slack/web-api` HTTP calls are intercepted by MSW handlers.
-  - Native `fetch` calls to Slack endpoints are intercepted by MSW handlers.
-
-## Architecture
-
-### 1) Global MSW lifecycle
-
-- `packages/junior/tests/msw/setup.ts` starts and stops MSW for test/eval runs.
-- `packages/junior/tests/msw/server.ts` configures strict unhandled Slack request behavior.
-- Setup is wired in `vitest.config.ts` and `vitest.evals.config.ts`.
-
-### 2) Centralized Slack handlers
-
-- `packages/junior/tests/msw/handlers/slack-api.ts`
-- `packages/junior/tests/msw/handlers/slack-webhooks.ts`
-
-Handlers support:
-
-- success responses
-- Slack API error envelopes
-- pagination cursors
-- rate limit responses and retry paths
-- contract validation for Slack-only request shapes that matter in production, including rejecting adapter-scoped `slack:<channel>` IDs where Slack expects raw conversation IDs
-
-### 3) Shared fixture/factory layer
-
-- `packages/junior/tests/fixtures/slack/factories/api.ts`
-- `packages/junior/tests/fixtures/slack/factories/events.ts`
-- `packages/junior/tests/fixtures/slack/factories/ids.ts`
-
-Conventions:
-
-- deterministic defaults
-- narrow payloads with fields consumed by app/test assertions
-- override-friendly builders
-
-## Test Authoring Rules
-
-1. Use MSW handlers for outbound Slack HTTP contract assertions.
-2. Use fixture factories for inbound payload construction.
-3. Do not directly stub Slack `fetch` endpoints in tests.
+1. Use MSW handlers for Slack HTTP assertions.
+2. Use fixture factories for inbound Slack payloads.
+3. Do not stub Slack `fetch` endpoints directly in tests.
 4. Do not use broad `vi.mock("@slack/web-api")` in integration tests.
-5. In behavior integration tests, do not mock runtime modules; control behavior through the fake-agent seam.
+5. In behavior integration tests, keep runtime wiring real and control behavior
+   through the fake-agent seam.
 
-## Required Slack Contract Scenarios
+## Acceptance
 
-- Success flow for each supported Slack API area.
-- Error mapping coverage (`missing_scope`, `not_in_channel`, `invalid_arguments`, `not_found`, etc.).
-- Retry coverage for rate limits (`429`, retry-after).
-- Pagination coverage where list/history APIs are used.
-- Failure on adapter-scoped `slack:<channel>` conversation IDs for endpoints that require raw Slack conversation IDs.
-- Failure on unhandled Slack request paths.
-
-## Acceptance Criteria
-
-- Slack tests run without real Slack network access.
-- Shared fixtures/factories are used consistently.
-- Contract assertions remain explicit and endpoint-specific.
-- Any fallback away from MSW is narrowly scoped and documented in the test file.
+- Tests must not access real Slack network endpoints.
+- Contract assertions should be endpoint-specific.
+- Any fallback away from MSW must be narrow and documented in the test file.
