@@ -55,7 +55,6 @@ import {
   groupTranscriptMessages,
   groupTranscriptParts,
   messageRawText,
-  type RenderedThinkingEntry,
   type RenderedToolRunEntry,
   type RenderedTranscriptPart,
   type TranscriptViewMode,
@@ -334,38 +333,14 @@ function TranscriptEntryList(props: {
         props.entries[index]?.kind === "tool" ||
         props.entries[index]?.kind === "thinking"
       ) {
-        runEntries.push(
-          props.entries[index] as RenderedToolRunEntry,
-        );
+        runEntries.push(props.entries[index] as RenderedToolRunEntry);
         index += 1;
       }
-
-      // Pure-thinking runs render individually (no reveal group).
-      const hasTool = runEntries.some((e) => e.kind === "tool");
-      if (!hasTool) {
-        for (let i = 0; i < runEntries.length; i += 1) {
-          const thinkingEntry = runEntries[i] as TranscriptThinkingEntry;
-          if (
-            !search.active ||
-            entryMatchesSearch(thinkingEntry, search.normalizedQuery)
-          ) {
-            rows.push(
-              <Fragment key={`${props.keyPrefix}:thinking:${startIndex + i}`}>
-                {props.renderThinking(thinkingEntry, startIndex + i)}
-              </Fragment>,
-            );
-          }
-        }
-        continue;
-      }
-
-      // Mixed or tool-only runs: filter per-entry and pass to TranscriptToolRun.
       const visibleEntries = search.active
         ? runEntries.filter((e) =>
             entryMatchesSearch(e, search.normalizedQuery),
           )
         : runEntries;
-
       if (visibleEntries.length > 0) {
         rows.push(
           <TranscriptToolRun

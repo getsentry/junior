@@ -59,7 +59,7 @@ function renderRunEntries(
   return entries.map((entry, offset) => {
     const index = startIndex + offset;
     return (
-      <Fragment key={`${keyPrefix}:run:${index}`}>
+      <Fragment key={`${keyPrefix}:${entry.kind}:${index}`}>
         {entry.kind === "thinking"
           ? renderThinking(entry, index)
           : renderTool(entry, index)}

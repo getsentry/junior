@@ -1604,8 +1604,8 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("show 5 tool calls and 2 thinking entries");
   });
 
-  it("renders pure-thinking runs individually without a reveal group", () => {
-    // 4 consecutive thinking entries — no tools, so no consolidation
+  it("collapses four consecutive pure-thinking entries behind a reveal", () => {
+    // 4 consecutive thinking entries collapse the same as tool runs
     const turn = {
       conversationId: "conversation-1",
       id: "turn-1",
@@ -1636,8 +1636,8 @@ describe("dashboard telemetry components", () => {
       </QueryClientProvider>,
     );
 
-    // No reveal group — pure thinking runs stay as individual collapsed rows.
-    expect(html).not.toContain("show");
+    expect(html).toContain('<details class="min-w-0"><summary');
+    expect(html).toContain("show 4 thinking entries");
     expect(html).toContain("thought 1");
     expect(html).toContain("thought 4");
   });
