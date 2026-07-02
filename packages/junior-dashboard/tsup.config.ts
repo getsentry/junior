@@ -77,5 +77,13 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   esbuildPlugins: [dashboardAssetsPlugin()],
-  external: ["@sentry/junior", "better-auth", "hono"],
+  external: [
+    "@sentry/junior",
+    "@sentry/junior/api/people/list",
+    "@sentry/junior/api/people/profile",
+    "@sentry/junior/instrumentation",
+    "@sentry/junior/reporting",
+    "better-auth",
+    "hono",
+  ],
 });

@@ -28,6 +28,14 @@
       "types": "./dist/nitro.d.ts",
       "default": "./dist/nitro.js"
     },
+    "./api/people/list": {
+      "types": "./dist/api/people/list.d.ts",
+      "default": "./dist/api/people/list.js"
+    },
+    "./api/people/profile": {
+      "types": "./dist/api/people/profile.d.ts",
+      "default": "./dist/api/people/profile.js"
+    },
     "./reporting": {
       "types": "./dist/reporting.d.ts",
       "default": "./dist/reporting.js"

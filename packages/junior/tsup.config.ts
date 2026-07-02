@@ -12,6 +12,8 @@ export default defineConfig({
     "cli/check": "src/cli/check.ts",
     "cli/upgrade": "src/cli/upgrade.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
+    "api/people/list": "src/api/people/list.ts",
+    "api/people/profile": "src/api/people/profile.ts",
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",
     reporting: "src/reporting.ts",

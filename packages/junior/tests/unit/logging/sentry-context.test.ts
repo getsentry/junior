@@ -40,7 +40,7 @@ describe("Sentry context", () => {
       slackThreadId: "thread_123",
       slackUserId: "U123",
       slackUserName: "alice",
-      slackUserEmail: "alice@example.com",
+      slackUserEmail: "Alice@Example.COM",
       slackChannelId: "C123",
       runId: "run_123",
       assistantUserName: "junior",
@@ -95,7 +95,7 @@ describe("Sentry context", () => {
         conversationId: "thread_123",
         slackUserId: "U123",
         slackUserName: "alice",
-        slackUserEmail: "alice@example.com",
+        slackUserEmail: "Alice@Example.COM",
         modelId: "openai/gpt-5.4",
       },
     );
@@ -135,7 +135,7 @@ describe("Sentry context", () => {
       {
         slackUserId: "U123",
         slackUserName: "alice",
-        slackUserEmail: "alice@example.com",
+        slackUserEmail: "Alice@Example.COM",
         modelId: "openai/gpt-5.4",
       },
       {},

@@ -6,12 +6,6 @@ import type {
   ConversationSubagentTranscriptReport as ReportingConversationSubagentTranscriptReport,
   PluginOperationalReportFeed,
   PluginOperationalReport,
-  RequesterActivityDayReport,
-  RequesterDirectoryReport,
-  RequesterIdentity as ReportingRequesterIdentity,
-  RequesterProfileReport,
-  RequesterSummaryReport,
-  RequesterTotalsReport,
   ConversationFeed as ReportingConversationFeed,
   ConversationSummaryReport,
   ConversationRunReport,
@@ -21,6 +15,16 @@ import type {
   RuntimeInfoReport,
   SkillReport,
 } from "@sentry/junior/reporting";
+import type {
+  RequesterDirectoryReport,
+  RequesterIdentity as ApiRequesterIdentity,
+  RequesterSummaryReport,
+  RequesterTotalsReport,
+} from "@sentry/junior/api/people/list";
+import type {
+  RequesterActivityDayReport,
+  RequesterProfileReport,
+} from "@sentry/junior/api/people/profile";
 
 export type Health = HealthReport;
 
@@ -41,7 +45,7 @@ export type ConversationSubagentTranscript =
 
 export type ConversationStatsItem = ReportingConversationStatsItem;
 
-export type RequesterIdentity = ReportingRequesterIdentity;
+export type RequesterIdentity = ApiRequesterIdentity;
 
 export type RequesterActivityDay = RequesterActivityDayReport;
 

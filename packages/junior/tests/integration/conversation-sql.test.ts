@@ -70,9 +70,14 @@ ORDER BY indexname ASC
           "junior_conversations_requester_activity_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
+          "junior_identities_kind_provider_idx",
           "junior_identities_pkey",
           "junior_identities_provider_subject_uidx",
+          "junior_identities_user_idx",
+          "junior_identities_verified_email_idx",
           "junior_schema_migrations_pkey",
+          "junior_users_pkey",
+          "junior_users_primary_email_normalized_uidx",
         ]),
       );
 

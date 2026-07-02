@@ -3,6 +3,7 @@ import { backfillToSql } from "@/chat/conversations/sql/backfill";
 import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
 import { createSqlStore, SqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
+import { upsertIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -16,6 +17,7 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
+  juniorUsers,
 } from "@/chat/sql/schema";
 import { eq } from "drizzle-orm";
 import {
@@ -57,7 +59,7 @@ describe("conversation SQL store", () => {
         fixture.sql.query(
           "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
         ),
-      ).resolves.toHaveLength(2);
+      ).resolves.toHaveLength(3);
     } finally {
       await fixture.close();
     }
@@ -87,6 +89,114 @@ describe("conversation SQL store", () => {
       await expect(store.migrate()).rejects.toThrow("transient schema failure");
       await expect(store.migrate()).resolves.toBeUndefined();
       expect(attempts).toBe(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills legacy verified identities to shared users", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await fixture.sql.execute(`
+CREATE TABLE IF NOT EXISTS junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      for (const migration of migrations.slice(0, 2)) {
+        await fixture.sql.transaction(async () => {
+          for (const statement of migration.statements) {
+            await fixture.sql.execute(statement);
+          }
+          await fixture.sql.execute(
+            "INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)",
+            [migration.id, migration.checksum],
+          );
+        });
+      }
+
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_identities (
+  id,
+  kind,
+  provider,
+  provider_tenant_id,
+  provider_subject_id,
+  display_name,
+  handle,
+  email,
+  avatar_url,
+  metadata_json,
+  created_at,
+  updated_at
+)
+VALUES ($1, 'user', 'slack', 'T123', 'U123', 'Legacy User', 'legacy', 'Legacy@Example.com', NULL, NULL, $2, $2)
+`,
+        ["legacy-identity", new Date(1_000)],
+      );
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_identities (
+  id,
+  kind,
+  provider,
+  provider_tenant_id,
+  provider_subject_id,
+  display_name,
+  handle,
+  email,
+  avatar_url,
+  metadata_json,
+  created_at,
+  updated_at
+)
+VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Example.com', NULL, NULL, $2, $2)
+`,
+        ["manual-identity", new Date(1_000)],
+      );
+
+      await migrateSchema(fixture.sql);
+
+      await expect(
+        fixture.sql.db().select().from(juniorUsers),
+      ).resolves.toMatchObject([
+        {
+          displayName: "Legacy User",
+          id: "identity:legacy-identity",
+          primaryEmail: "Legacy@Example.com",
+          primaryEmailNormalized: "legacy@example.com",
+        },
+      ]);
+      await expect(
+        fixture.sql
+          .db()
+          .select({
+            emailNormalized: juniorIdentities.emailNormalized,
+            emailVerified: juniorIdentities.emailVerified,
+            provider: juniorIdentities.provider,
+            userId: juniorIdentities.userId,
+          })
+          .from(juniorIdentities)
+          .orderBy(juniorIdentities.id),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          {
+            emailNormalized: "legacy@example.com",
+            emailVerified: true,
+            provider: "slack",
+            userId: "identity:legacy-identity",
+          },
+          {
+            emailNormalized: "manual@example.com",
+            emailVerified: false,
+            provider: "manual",
+            userId: null,
+          },
+        ]),
+      );
     } finally {
       await fixture.close();
     }
@@ -174,6 +284,223 @@ describe("conversation SQL store", () => {
           requesterProvider: "slack",
           requesterProviderSubject: "U123",
           requesterTenant: "T123",
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("links requester identities to users by case-insensitive verified email", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
+      const identity = await upsertIdentity(
+        fixture.sql,
+        {
+          kind: "user",
+          provider: "slack",
+          providerTenantId: "T123",
+          providerSubjectId: "U123",
+          email: "Alice@Example.COM",
+          emailVerified: true,
+          displayName: "Alice Example",
+          handle: "alice",
+        },
+        1_000,
+      );
+
+      await upsertIdentity(
+        fixture.sql,
+        {
+          kind: "user",
+          provider: "slack",
+          providerTenantId: "T123",
+          providerSubjectId: "U123",
+          email: "alice@example.com",
+          emailVerified: true,
+          displayName: "Changed Name",
+        },
+        2_000,
+      );
+      const secondIdentity = await upsertIdentity(
+        fixture.sql,
+        {
+          kind: "user",
+          provider: "slack",
+          providerTenantId: "T123",
+          providerSubjectId: "U456",
+          email: "ALICE@example.com",
+          emailVerified: true,
+          displayName: "Alice Other Device",
+        },
+        2_500,
+      );
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("identity").destination,
+        requester: {
+          platform: "slack",
+          slackUserId: "U123",
+          teamId: "T123",
+        },
+        source: "slack",
+        nowMs: 3_000,
+      });
+
+      const users = await fixture.sql
+        .db()
+        .select({
+          displayName: juniorUsers.displayName,
+          email: juniorUsers.primaryEmail,
+          emailNormalized: juniorUsers.primaryEmailNormalized,
+          id: juniorUsers.id,
+        })
+        .from(juniorUsers);
+      expect(users).toEqual([
+        {
+          displayName: "Alice Example",
+          email: "Alice@Example.COM",
+          emailNormalized: "alice@example.com",
+          id: identity.userId,
+        },
+      ]);
+      expect(secondIdentity.userId).toBe(identity.userId);
+
+      const requesterConversations = await store.listByActivity({ limit: 5 });
+      expect(requesterConversations).toMatchObject([
+        {
+          conversationId: CONVERSATION_ID,
+          requester: {
+            email: "alice@example.com",
+            fullName: "Alice Example",
+            slackUserId: "U123",
+            slackUserName: "alice",
+          },
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("preserves an existing verified identity email when linking its user", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "legacy-identity",
+          kind: "user",
+          provider: "slack",
+          providerTenantId: "T123",
+          providerSubjectId: "U123",
+          displayName: "Legacy Name",
+          handle: "legacy",
+          email: "Legacy@Example.com",
+          emailNormalized: "legacy@example.com",
+          emailVerified: true,
+          avatarUrl: null,
+          metadata: null,
+          createdAt: new Date(1_000),
+          updatedAt: new Date(1_000),
+          userId: null,
+        });
+
+      const identity = await upsertIdentity(
+        fixture.sql,
+        {
+          kind: "user",
+          provider: "slack",
+          providerTenantId: "T123",
+          providerSubjectId: "U123",
+          email: "changed@example.com",
+          emailVerified: true,
+          displayName: "Changed Name",
+        },
+        2_000,
+      );
+
+      await expect(
+        fixture.sql.db().select().from(juniorUsers),
+      ).resolves.toMatchObject([
+        {
+          displayName: "Legacy Name",
+          primaryEmail: "Legacy@Example.com",
+          primaryEmailNormalized: "legacy@example.com",
+        },
+      ]);
+      await expect(
+        fixture.sql
+          .db()
+          .select({
+            email: juniorIdentities.email,
+            emailNormalized: juniorIdentities.emailNormalized,
+            userId: juniorIdentities.userId,
+          })
+          .from(juniorIdentities)
+          .where(eq(juniorIdentities.id, "legacy-identity")),
+      ).resolves.toEqual([
+        {
+          email: "Legacy@Example.com",
+          emailNormalized: "legacy@example.com",
+          userId: identity.userId,
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("fills missing requester identity from later trusted profile observations", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("identity-fill").destination,
+        requester: {
+          platform: "slack",
+          slackUserId: "U123",
+          teamId: "T123",
+        },
+        source: "slack",
+        nowMs: 1_000,
+      });
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("identity-fill").destination,
+        requester: {
+          email: "Casey@Example.com",
+          fullName: "Casey Example",
+          platform: "slack",
+          slackUserId: "U123",
+          teamId: "T123",
+        },
+        source: "slack",
+        nowMs: 2_000,
+      });
+
+      await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
+        {
+          conversationId: CONVERSATION_ID,
+          requester: {
+            email: "casey@example.com",
+            fullName: "Casey Example",
+            slackUserId: "U123",
+          },
         },
       ]);
     } finally {

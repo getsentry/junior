@@ -15,6 +15,7 @@ import type {
   LogLevel as ChatSdkLogLevel,
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
@@ -1450,10 +1451,11 @@ function sentryUserIdentityFromContext(
   context: LogContext,
 ): SentryUserIdentity | undefined {
   if (context.slackUserId) {
+    const email = normalizeIdentityEmail(context.slackUserEmail);
     return {
       id: context.slackUserId,
       ...(context.slackUserName ? { username: context.slackUserName } : {}),
-      ...(context.slackUserEmail ? { email: context.slackUserEmail } : {}),
+      ...(email ? { email } : {}),
     };
   }
   return undefined;

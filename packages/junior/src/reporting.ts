@@ -12,16 +12,12 @@ import {
   readConversationReport,
   readConversationSubagentTranscriptReport,
   readConversationStatsReport,
-  readRequesterDirectoryReport,
-  readRequesterProfileReport,
   listRecentConversationSummaries,
   type ConversationFeed,
   type PluginConversationSummary,
   type ConversationReport,
   type ConversationSubagentTranscriptReport,
   type ConversationStatsReport,
-  type RequesterDirectoryReport,
-  type RequesterProfileReport,
 } from "./reporting/conversations";
 
 export type {
@@ -42,12 +38,7 @@ export type {
   ConversationSurface,
   ConversationToolActivityReport,
   ConversationUsage,
-  RequesterActivityDayReport,
-  RequesterDirectoryReport,
   RequesterIdentity,
-  RequesterProfileReport,
-  RequesterSummaryReport,
-  RequesterTotalsReport,
   TranscriptMessage,
   TranscriptPart,
   TranscriptPartType,
@@ -114,10 +105,6 @@ export interface JuniorReporting {
   listConversations(): Promise<ConversationFeed>;
   /** Read aggregate conversation stats for reporting consumers. */
   getConversationStats?(): Promise<ConversationStatsReport>;
-  /** List requester profiles derived from trusted conversation requester emails. */
-  listRequesters?(): Promise<RequesterDirectoryReport>;
-  /** Read one requester profile derived from trusted conversation requester emails. */
-  getRequesterProfile?(email: string): Promise<RequesterProfileReport>;
   /** Read recent conversation summaries without transcript payloads. */
   listRecentConversations?(options?: {
     limit?: number;
@@ -174,8 +161,6 @@ async function readPlugins(): Promise<PluginReport[]> {
 /** Create the read-only reporting boundary used by plugins and other consumers. */
 export function createJuniorReporting(): JuniorReporting & {
   getConversationStats(): Promise<ConversationStatsReport>;
-  listRequesters(): Promise<RequesterDirectoryReport>;
-  getRequesterProfile(email: string): Promise<RequesterProfileReport>;
   listRecentConversations(options?: {
     limit?: number;
   }): Promise<PluginConversationSummary[]>;
@@ -209,9 +194,6 @@ export function createJuniorReporting(): JuniorReporting & {
     listConversations: () => readConversationFeed({ conversationStore }),
     getConversationStats: () =>
       readConversationStatsReport({ conversationStore }),
-    listRequesters: () => readRequesterDirectoryReport({ conversationStore }),
-    getRequesterProfile: (email) =>
-      readRequesterProfileReport(email, { conversationStore }),
     listRecentConversations: listRecent,
     getPluginOperationalReports: async () => {
       const nowMs = Date.now();

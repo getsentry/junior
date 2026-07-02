@@ -3,6 +3,8 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
+import { upsertIdentity } from "@/chat/identities/sql";
+import type { IdentityUpsert } from "@/chat/identities/identity";
 import {
   parseStoredSlackRequester,
   type StoredSlackRequester,
@@ -28,24 +30,14 @@ import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
 } from "./schema/destinations";
-import type { JuniorIdentityKind } from "./schema/identities";
 
 type ConversationRow = typeof juniorConversations.$inferSelect;
+type IdentityRow = typeof juniorIdentities.$inferSelect;
 
 interface ConversationReadRow {
   conversation: ConversationRow;
   destinationVisibility: JuniorDestinationVisibility | null;
-}
-
-interface IdentityUpsert {
-  email?: string;
-  displayName?: string;
-  handle?: string;
-  kind: JuniorIdentityKind;
-  metadata?: Record<string, unknown>;
-  provider: string;
-  providerSubjectId: string;
-  providerTenantId?: string;
+  requesterIdentity: IdentityRow | null;
 }
 
 interface DestinationUpsert {
@@ -69,10 +61,6 @@ function dateFromMs(ms: number): Date {
   return new Date(ms);
 }
 
-function tenantId(value: string | undefined): string {
-  return value ?? "";
-}
-
 function msFromDate(
   value: Date | string | null | undefined,
 ): number | undefined {
@@ -89,6 +77,10 @@ function requiredMsFromDate(value: Date | string): number {
     throw new Error("Conversation record timestamp is invalid");
   }
   return ms;
+}
+
+function tenantId(value: string | undefined): string {
+  return value ?? "";
 }
 
 function sourceFromValue(value: unknown): ConversationSource | undefined {
@@ -119,7 +111,7 @@ function identityFromRequester(
     providerSubjectId: requester.slackUserId,
     ...(requester.fullName ? { displayName: requester.fullName } : {}),
     ...(requester.slackUserName ? { handle: requester.slackUserName } : {}),
-    ...(requester.email ? { email: requester.email } : {}),
+    ...(requester.email ? { email: requester.email, emailVerified: true } : {}),
     metadata: { platform: "slack" },
   };
 }
@@ -231,7 +223,6 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   throw new Error("Conversation record execution status is invalid");
 }
 
-/** Project joined destination columns into conversation privacy. */
 function privacyFromRow(
   row: ConversationReadRow,
 ): ConversationPrivacy | undefined {
@@ -239,6 +230,30 @@ function privacyFromRow(
     return undefined;
   }
   return row.destinationVisibility === "public" ? "public" : "private";
+}
+
+function requesterFromIdentityRow(
+  identity: IdentityRow | null,
+  fallback: StoredSlackRequester | undefined,
+): StoredSlackRequester | undefined {
+  if (!identity || identity.provider !== "slack") {
+    return fallback;
+  }
+  return {
+    ...(fallback ?? {}),
+    ...(identity.emailNormalized
+      ? { email: identity.emailNormalized }
+      : identity.email
+        ? { email: identity.email }
+        : {}),
+    ...(identity.displayName ? { fullName: identity.displayName } : {}),
+    platform: "slack",
+    slackUserId: identity.providerSubjectId,
+    ...(identity.handle ? { slackUserName: identity.handle } : {}),
+    ...(identity.providerTenantId || fallback?.teamId
+      ? { teamId: identity.providerTenantId || fallback?.teamId }
+      : {}),
+  };
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
@@ -252,7 +267,10 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     row.destination === undefined || row.destination === null
       ? undefined
       : parseDestination(row.destination);
-  const requester = parseStoredSlackRequester(row.requester);
+  const requester = requesterFromIdentityRow(
+    readRow.requesterIdentity,
+    parseStoredSlackRequester(row.requester),
+  );
   if (
     row.destination !== undefined &&
     row.destination !== null &&
@@ -327,6 +345,46 @@ function assertSameConversationDestination(args: {
   throw new Error(
     `Conversation destination changed for ${args.conversationId}`,
   );
+}
+
+function mergeRequester(
+  current: StoredSlackRequester | undefined,
+  next: StoredSlackRequester | undefined,
+): StoredSlackRequester | undefined {
+  if (!current) {
+    return next;
+  }
+  if (!next) {
+    return current;
+  }
+  if (
+    current.slackUserId &&
+    next.slackUserId &&
+    current.slackUserId !== next.slackUserId
+  ) {
+    return current;
+  }
+  return {
+    ...current,
+    ...((current.email ?? next.email)
+      ? { email: current.email ?? next.email }
+      : {}),
+    ...((current.fullName ?? next.fullName)
+      ? { fullName: current.fullName ?? next.fullName }
+      : {}),
+    ...((current.platform ?? next.platform)
+      ? { platform: current.platform ?? next.platform }
+      : {}),
+    ...((current.slackUserId ?? next.slackUserId)
+      ? { slackUserId: current.slackUserId ?? next.slackUserId }
+      : {}),
+    ...((current.slackUserName ?? next.slackUserName)
+      ? { slackUserName: current.slackUserName ?? next.slackUserName }
+      : {}),
+    ...((current.teamId ?? next.teamId)
+      ? { teamId: current.teamId ?? next.teamId }
+      : {}),
+  };
 }
 
 export class SqlStore implements ConversationStore {
@@ -404,7 +462,7 @@ export class SqlStore implements ConversationStore {
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
           channelName: current.channelName ?? args.channelName,
-          requester: current.requester ?? args.requester,
+          requester: mergeRequester(current.requester, args.requester),
           title: current.title ?? args.title,
           lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
           updatedAtMs: nowMs,
@@ -512,11 +570,16 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
+        requesterIdentity: juniorIdentities,
       })
       .from(juniorConversations)
       .leftJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .leftJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
       )
       .orderBy(
         desc(juniorConversations.lastActivityAt),
@@ -581,11 +644,16 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
+        requesterIdentity: juniorIdentities,
       })
       .from(juniorConversations)
       .leftJoin(
         juniorDestinations,
         eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .leftJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
       )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
@@ -610,14 +678,24 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const requesterIdentityId = await this.upsertIdentity(
-      identityFromRequester(conversation.requester),
-      conversation.updatedAtMs,
+    const requesterIdentityObservation = identityFromRequester(
+      conversation.requester,
     );
-    const actorIdentityId = await this.upsertIdentity(
-      actorIdentityForConversation(conversation),
-      conversation.updatedAtMs,
-    );
+    const requesterIdentity = requesterIdentityObservation
+      ? await upsertIdentity(
+          this.executor,
+          requesterIdentityObservation,
+          conversation.updatedAtMs,
+        )
+      : undefined;
+    const actorIdentityObservation = actorIdentityForConversation(conversation);
+    const actorIdentity = actorIdentityObservation
+      ? await upsertIdentity(
+          this.executor,
+          actorIdentityObservation,
+          conversation.updatedAtMs,
+        )
+      : undefined;
     await this.executor
       .db()
       .insert(juniorConversations)
@@ -630,8 +708,8 @@ export class SqlStore implements ConversationStore {
         originRunId: null,
         destinationId: destinationId ?? null,
         destination: conversation.destination ?? null,
-        actorIdentityId: actorIdentityId ?? null,
-        requesterIdentityId: requesterIdentityId ?? null,
+        actorIdentityId: actorIdentity?.id ?? null,
+        requesterIdentityId: requesterIdentity?.id ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
         requester: conversation.requester ?? null,
@@ -681,50 +759,6 @@ export class SqlStore implements ConversationStore {
           lastEnqueuedAt: sql`case when ${incomingExecutionIsFresh} then coalesce(excluded.last_enqueued_at, ${juniorConversations.lastEnqueuedAt}) else ${juniorConversations.lastEnqueuedAt} end`,
         },
       });
-  }
-
-  private async upsertIdentity(
-    identity: IdentityUpsert | undefined,
-    nowMs: number,
-  ): Promise<string | undefined> {
-    if (!identity) {
-      return undefined;
-    }
-    const rows = await this.executor
-      .db()
-      .insert(juniorIdentities)
-      .values({
-        id: randomUUID(),
-        kind: identity.kind,
-        provider: identity.provider,
-        providerTenantId: tenantId(identity.providerTenantId),
-        providerSubjectId: identity.providerSubjectId,
-        displayName: identity.displayName ?? null,
-        handle: identity.handle ?? null,
-        email: identity.email ?? null,
-        avatarUrl: null,
-        metadata: identity.metadata ?? null,
-        createdAt: dateFromMs(nowMs),
-        updatedAt: dateFromMs(nowMs),
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorIdentities.provider,
-          juniorIdentities.providerTenantId,
-          juniorIdentities.providerSubjectId,
-        ],
-        set: {
-          kind: sql`excluded.kind`,
-          displayName: sql`coalesce(excluded.display_name, ${juniorIdentities.displayName})`,
-          handle: sql`coalesce(excluded.handle, ${juniorIdentities.handle})`,
-          email: sql`coalesce(excluded.email, ${juniorIdentities.email})`,
-          avatarUrl: sql`coalesce(excluded.avatar_url, ${juniorIdentities.avatarUrl})`,
-          metadata: sql`coalesce(excluded.metadata_json, ${juniorIdentities.metadata})`,
-          updatedAt: sql`excluded.updated_at`,
-        },
-      })
-      .returning({ id: juniorIdentities.id });
-    return rows[0]?.id;
   }
 
   private async upsertDestination(

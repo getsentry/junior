@@ -209,22 +209,6 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(statsBody.durationMs).toBeLessThan(rawDurationMs);
 
-    const people = await app.fetch(new Request("http://localhost/api/people"));
-    expect(people.status).toBe(200);
-    const peopleBody = (await people.json()) as {
-      sampleSize: number;
-    };
-    expect(peopleBody.sampleSize).toBe(
-      new Set(
-        conversationBody.conversations.map(
-          (conversation) => conversation.conversationId,
-        ),
-      ).size - 1,
-    );
-    expect(peopleBody.sampleSize).toBeLessThan(
-      conversationBody.conversations.length,
-    );
-
     const activeConversation = await app.fetch(
       new Request(
         "http://localhost/api/conversations/slack%3ACQA123%3A1770003600.000200",

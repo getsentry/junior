@@ -14,6 +14,10 @@
     "noEmit": true,
     "paths": {
       "@sentry/junior": ["../junior/src/app.ts"],
+      "@sentry/junior/api/people/list": ["../junior/src/api/people/list.ts"],
+      "@sentry/junior/api/people/profile": [
+        "../junior/src/api/people/profile.ts"
+      ],
       "@sentry/junior/instrumentation": ["../junior/src/instrumentation.ts"],
       "@sentry/junior/reporting": ["../junior/src/reporting.ts"],
       "@sentry/junior-dashboard": ["./src/index.ts"],

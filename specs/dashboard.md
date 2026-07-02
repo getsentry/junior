@@ -7,7 +7,8 @@
 
 ## Purpose
 
-Define Junior's authenticated dashboard route, browser-session auth model, and read-only reporting boundary.
+Define Junior's authenticated dashboard route, browser-session auth model, and
+read-only dashboard data boundaries.
 
 ## Scope
 
@@ -15,6 +16,7 @@ Define Junior's authenticated dashboard route, browser-session auth model, and r
 - Better Auth configuration for browser sessions.
 - Google domain and email authorization policy.
 - In-process reporting interfaces exported by `@sentry/junior`.
+- SQL-backed dashboard API modules for product-owned views.
 - Core route integration for mounting dashboard routes into Junior's Hono app.
 - Authenticated, namespaced plugin API route integration.
 
@@ -32,9 +34,12 @@ Dashboard functionality lives outside the core Junior runtime package.
 
 ```txt
 packages/junior/
+  src/api/people/list.ts
+  src/api/people/profile.ts
   src/reporting/**
 
 packages/junior-dashboard/
+  src/api/**
   src/app.ts
   src/auth.ts
   src/client/**
@@ -43,9 +48,9 @@ packages/junior-dashboard/
   src/url.ts
 ```
 
-`@sentry/junior` exports a read-only, dashboard-neutral reporting surface. The
-dashboard package consumes this surface and may alias the returned report types
-into UI-specific names locally.
+`@sentry/junior` exports a read-only, dashboard-neutral reporting surface for
+runtime and plugin reports. The dashboard package consumes this surface and may
+alias the returned report types into UI-specific names locally.
 
 ```ts
 export interface JuniorReporting {
@@ -55,8 +60,6 @@ export interface JuniorReporting {
   getSkills(): Promise<SkillReport[]>;
   listConversations(): Promise<ConversationFeed>;
   getConversationStats?(): Promise<ConversationStatsReport>;
-  listRequesters?(): Promise<RequesterDirectoryReport>;
-  getRequesterProfile?(email: string): Promise<RequesterProfileReport>;
   getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
   getConversation(conversationId: string): Promise<ConversationReport>;
   getConversationSubagentTranscript(
@@ -70,6 +73,20 @@ export function createJuniorReporting(): JuniorReporting;
 ```
 
 Every exported reporting function must have a brief JSDoc comment explaining why the data is exposed.
+
+People API endpoints are not part of `JuniorReporting`. They live in route
+modules under `@sentry/junior/api/people/*` and read the SQL schema directly
+with Drizzle:
+
+```ts
+export function readPeopleList(): Promise<RequesterDirectoryReport>;
+export function readPeopleProfile(
+  email: string,
+): Promise<RequesterProfileReport>;
+```
+
+These modules are consumed by the dashboard API route wrappers and must not
+depend on plugin reporting hooks or runtime summary state.
 
 `@sentry/junior` accepts dashboard configuration in `createApp()` and
 `juniorNitro()`:
@@ -216,7 +233,10 @@ If auth is enabled and no domains and no emails are configured, dashboard route 
 
 ## Reporting Contract
 
-The dashboard reads Junior data through in-process reporting interfaces. It must not import legacy diagnostics handlers or other private route handlers.
+The dashboard reads runtime and plugin data through in-process reporting
+interfaces. Product-owned API endpoints may read durable SQL data directly with
+Drizzle. Dashboard code must not import legacy diagnostics handlers or other
+private route handlers.
 
 Core reporting code belongs under `packages/junior/src/reporting/**` and must
 use neutral reporting names such as `ConversationReport`,
@@ -295,6 +315,10 @@ Stats reports are conversation-index aggregates. They count conversations,
 latest status, requester, and location from durable conversation records.
 Duration and token totals stay on feed/detail run reports until the SQL model
 has a durable run-summary table.
+
+People list and profile APIs must read durable requester identities from the
+SQL conversation index with Drizzle. They must not use `JuniorReporting`,
+plugin reporting hooks, or expiring turn-session summary state.
 
 ### Plugin Operational Reports
 

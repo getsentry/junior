@@ -165,12 +165,104 @@ UPDATE junior_destinations
 `,
 ] as const;
 
+const userIdentityStatements = [
+  `
+CREATE TABLE IF NOT EXISTS junior_users (
+  id TEXT PRIMARY KEY,
+  primary_email TEXT NOT NULL,
+  primary_email_normalized TEXT NOT NULL,
+  display_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+)
+`,
+  `
+CREATE UNIQUE INDEX IF NOT EXISTS junior_users_primary_email_normalized_uidx
+  ON junior_users (primary_email_normalized)
+`,
+  `
+ALTER TABLE junior_identities
+  ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES junior_users (id)
+`,
+  `
+ALTER TABLE junior_identities
+  ADD COLUMN IF NOT EXISTS email_normalized TEXT
+`,
+  `
+ALTER TABLE junior_identities
+  ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false
+`,
+  `
+UPDATE junior_identities
+  SET email_normalized = lower(trim(email)),
+      email_verified = CASE
+        WHEN kind = 'user' AND provider = 'slack' THEN true
+        ELSE email_verified
+      END
+  WHERE email IS NOT NULL
+    AND trim(email) <> ''
+`,
+  `
+WITH first_identity AS (
+  SELECT DISTINCT ON (email_normalized)
+    id,
+    COALESCE(NULLIF(trim(email), ''), email_normalized) AS email,
+    email_normalized,
+    display_name,
+    created_at,
+    updated_at
+  FROM junior_identities
+  WHERE kind = 'user'
+    AND email_verified = true
+    AND email_normalized IS NOT NULL
+  ORDER BY email_normalized, created_at ASC, id ASC
+)
+INSERT INTO junior_users (
+  id,
+  primary_email,
+  primary_email_normalized,
+  display_name,
+  created_at,
+  updated_at
+)
+SELECT
+  'identity:' || id,
+  email,
+  email_normalized,
+  display_name,
+  created_at,
+  updated_at
+FROM first_identity
+ON CONFLICT (primary_email_normalized) DO NOTHING
+`,
+  `
+UPDATE junior_identities AS identity
+  SET user_id = junior_users.id
+  FROM junior_users
+  WHERE identity.kind = 'user'
+    AND identity.user_id IS NULL
+    AND identity.email_verified = true
+    AND identity.email_normalized = junior_users.primary_email_normalized
+`,
+  `
+CREATE INDEX IF NOT EXISTS junior_identities_user_idx
+  ON junior_identities (user_id)
+`,
+  `
+CREATE INDEX IF NOT EXISTS junior_identities_verified_email_idx
+  ON junior_identities (email_normalized)
+  WHERE email_verified = true
+    AND email_normalized IS NOT NULL
+`,
+] as const;
+
 export const migrations = [
   defineMigration("0001_conversation_core", coreMetadataStatements),
   defineMigration(
     "0002_slack_destination_visibility_backfill",
     destinationVisibilityBackfillStatements,
   ),
+  defineMigration("0003_user_identities", userIdentityStatements),
 ] as const;
 
 export { schema };
