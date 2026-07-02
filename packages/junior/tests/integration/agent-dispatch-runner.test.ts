@@ -5,6 +5,10 @@ import {
   getDispatchConversationId,
   getDispatchDestinationLockId,
   getDispatchRecord,
+  getDispatchStorageKey,
+  parseDispatchRecord,
+  updateDispatchRecord,
+  withDispatchLock,
 } from "@/chat/agent-dispatch/store";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import {
@@ -353,6 +357,137 @@ describe("agent dispatch runner", () => {
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "completed",
       resultMessageTs: "1700000000.000002",
+    });
+  });
+
+  it("does not re-post when the delivered-state persist fails after Slack accepted the reply", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000004",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-persist-fail",
+        destination: slackAddress(),
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    const state = getStateAdapter();
+    await state.connect();
+    const originalSet = state.set.bind(state);
+    const setSpy = vi
+      .spyOn(state, "set")
+      .mockImplementation(async (key, value, ttlMs) => {
+        if (String(key).startsWith("thread-state:")) {
+          throw new Error("state store unavailable");
+        }
+        return originalSet(key, value, ttlMs);
+      });
+
+    try {
+      await runAgentDispatchSlice(
+        {
+          id: created.record.id,
+          expectedVersion: created.record.version,
+        },
+        { generateAssistantReply: async () => createReply() },
+      );
+    } finally {
+      setSpy.mockRestore();
+    }
+
+    // Delivery already happened: the dispatch is terminal so a retry cannot
+    // re-post, and the persistence failure is logged instead of failing it.
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000004",
+    });
+
+    const rerunGenerate = vi.fn(async () => {
+      throw new Error("must not regenerate a delivered dispatch");
+    });
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { generateAssistantReply: rerunGenerate },
+    );
+    expect(rerunGenerate).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+  });
+
+  it("suppresses re-posting when a redelivered slice finds the delivered marker", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000005",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-crash-window",
+        destination: slackAddress(),
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { generateAssistantReply: async () => createReply() },
+    );
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000005",
+    });
+
+    // Simulate a crash after the delivered marker persisted but before the
+    // dispatch was marked terminal: the record reverts to a lease-expired
+    // running attempt that queue redelivery will re-claim.
+    const reverted = await withDispatchLock(
+      created.record.id,
+      async (state) => {
+        const current = parseDispatchRecord(
+          await state.get(getDispatchStorageKey(created.record.id)),
+        );
+        if (!current) {
+          throw new Error("Expected dispatch record");
+        }
+        return await updateDispatchRecord(state, {
+          ...current,
+          status: "running",
+          attempt: 1,
+          leaseExpiresAtMs: Date.now() - 1,
+        });
+      },
+    );
+
+    const rerunGenerate = vi.fn(async () => {
+      throw new Error("must not regenerate a delivered dispatch");
+    });
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: reverted.version,
+      },
+      { generateAssistantReply: rerunGenerate },
+    );
+
+    expect(rerunGenerate).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000005",
     });
   });
 

@@ -204,7 +204,10 @@ happened:
   fact is needed to explain execution continuity. Omit it when a following
   `slice_started` event with `reason=queue_resume|auth_resume` is enough.
 - `assistant_reply_delivered`: records that the final assistant reply for this
-  session was accepted by Slack.
+  session was accepted by Slack. Current implementation carries this fact as
+  the acceptance-gated `completed` transition on the turn-session read model
+  instead of a session-log event; add the event only when a log consumer
+  needs it.
 - `session_abandoned`: records that this session must not resume because a
   specific newer user input started a replacement session.
 - `session_error_recorded`: records a terminal user-visible or operator-visible
@@ -375,7 +378,10 @@ cache/index that can be rebuilt from the session log.
 - The reduced lifecycle is a projection, not a durable event vocabulary.
 - `awaiting_resume` is derived from the latest unconsumed `timeout_paused` or
   `auth_paused`.
-- `delivered` is derived from `assistant_reply_delivered`.
+- `delivered` is derived from the acceptance-gated delivered fact
+  (`assistant_reply_delivered`, currently the turn-session record's
+  `completed` transition, which is written only after destination
+  acceptance).
 - `abandoned` is derived from `session_abandoned`.
 - Terminal user-visible failure is currently reflected in conversation/thread
   state. Add `session_error_recorded` only when that durable fact is needed to
@@ -548,7 +554,10 @@ never be silently dropped.
    the same inbound message after a lost input commit against a `running`
    record: the same user prompt must not appear twice in Pi history.
 4. The queue worker runs and eagerly persists sandbox/artifact state as those values change.
-5. If Slack accepts the final assistant reply, append `assistant_reply_delivered`.
+5. If Slack accepts the final assistant reply, record the delivered fact
+   (`assistant_reply_delivered` semantics; currently the acceptance-gated
+   `completed` record commit). Final assistant messages are committed to the
+   durable log only after acceptance.
 6. If MCP auth pauses at a safe boundary, append `auth_paused`; the OAuth callback later consults auth-owned state before resuming.
 7. If the worker reaches a cooperative yield boundary, it ensures the latest safe boundary is durably represented in the session log, enqueues the conversation id, releases the lease, and exits.
 8. The next queue worker rebuilds durable runtime state, restores Pi messages, drains newly pending mailbox input, and calls `continue()`.

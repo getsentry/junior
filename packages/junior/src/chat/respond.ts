@@ -131,7 +131,6 @@ import {
 } from "@/chat/usage";
 import {
   loadTurnSessionRecord,
-  persistCompletedSessionRecord,
   persistAuthPauseSessionRecord,
   persistRunningSessionRecord,
   persistTimeoutSessionRecord,
@@ -1807,24 +1806,12 @@ async function generateAssistantReplyInPrivacyContext(
       sessionId
     ) {
       await recordActiveMcpProviders();
-      await persistCompletedSessionRecord({
-        channelName: context.correlation?.channelName,
-        conversationId: sessionConversationId,
-        currentDurationMs: Date.now() - replyStartedAtMs,
-        currentUsage: turnUsage,
-        destination: context.destination,
-        source: runSource,
-        sessionId,
-        sliceId: currentSliceId,
-        allMessages: agent.state.messages,
-        loadedSkillNames: loadedSkillNamesForResume,
-        logContext: sessionRecordLogContext,
-        requester,
-        ...(surface ? { surface } : {}),
-        ...(turnStartMessageIndex !== undefined
-          ? { turnStartMessageIndex }
-          : {}),
-      });
+      // Generation completing is not delivery: the session record stays at its
+      // latest running safe boundary here. The destination boundary commits
+      // the final messages and terminal completed state only after the visible
+      // reply is accepted, so an undelivered assistant reply never surfaces as
+      // delivered conversation history and a crash before delivery stays
+      // recoverable through stranded-running continuation.
     }
 
     // ── Build turn result ────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   type AgentTurnSessionRecord,
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Requester, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -200,16 +201,26 @@ export async function persistRunningSessionRecord(args: {
   }
 }
 
-/** Persist a completed turn session record. */
+/**
+ * Commit the delivered final reply as the terminal completed session record.
+ *
+ * Generation completing is not delivery: call this only after the destination
+ * accepted the visible final reply, so an undelivered assistant reply never
+ * becomes durable conversation history or a terminal completed state. Failures
+ * are logged and swallowed because the reply is already user-visible.
+ */
 export async function persistCompletedSessionRecord(args: {
   channelName?: string;
   conversationId: string;
   currentDurationMs?: number;
   currentUsage?: AgentTurnUsage;
   destination?: Destination;
+  /** Source-confirmed destination visibility from the current event's signal. */
+  destinationVisibility?: ConversationPrivacy;
   source?: Source;
   sessionId: string;
-  sliceId: number;
+  /** Defaults to the latest stored slice when the deliverer does not know it. */
+  sliceId?: number;
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
@@ -217,6 +228,7 @@ export async function persistCompletedSessionRecord(args: {
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
+  const sliceIdForLog = args.sliceId ?? 1;
   try {
     const latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
@@ -241,15 +253,21 @@ export async function persistCompletedSessionRecord(args: {
       ...((args.source ?? latestSessionRecord?.source)
         ? { source: args.source ?? latestSessionRecord?.source }
         : {}),
+      ...(args.destinationVisibility
+        ? { destinationVisibility: args.destinationVisibility }
+        : {}),
       sessionId: args.sessionId,
-      sliceId: args.sliceId,
+      sliceId: args.sliceId ?? latestSessionRecord?.sliceId ?? 1,
       state: "completed",
       piMessages: args.allMessages,
       ...((args.surface ?? latestSessionRecord?.surface)
         ? { surface: args.surface ?? latestSessionRecord?.surface }
         : {}),
-      ...(args.loadedSkillNames
-        ? { loadedSkillNames: args.loadedSkillNames }
+      ...((args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames)
+        ? {
+            loadedSkillNames:
+              args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
+          }
         : {}),
       ...((args.requester ?? latestSessionRecord?.requester)
         ? { requester: args.requester ?? latestSessionRecord?.requester }
@@ -272,7 +290,7 @@ export async function persistCompletedSessionRecord(args: {
       "agent_turn_completed_session_record_failed",
       args,
       {
-        "app.ai.resume_slice_id": args.sliceId,
+        "app.ai.resume_slice_id": sliceIdForLog,
       },
       "Failed to persist completed turn session record",
     );

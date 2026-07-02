@@ -744,12 +744,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       { query: "hello" },
     );
 
+    // Generation completing is not delivery: the record stays resumable until
+    // the destination boundary commits completion after Slack acceptance.
     const resumedSessionRecord = await getAgentTurnSessionRecord(
       "conversation-1",
       "turn-1",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "completed",
+      state: "awaiting_resume",
     });
   });
 
@@ -785,12 +787,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       { query: "hello" },
     );
 
+    // Generation completing is not delivery: the record stays at its running
+    // safe boundary until the destination boundary commits completion.
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-2",
       "turn-2",
     );
     expect(sessionRecord).toMatchObject({
-      state: "completed",
+      state: "running",
     });
   });
 
@@ -1119,12 +1123,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(reply.text).toBe("resumed reply");
 
+    // Generation completing is not delivery: the record stays resumable until
+    // the destination boundary commits completion after Slack acceptance.
     const resumedSessionRecord = await getAgentTurnSessionRecord(
       "conversation-4",
       "turn-4",
     );
     expect(resumedSessionRecord).toMatchObject({
-      state: "completed",
+      state: "awaiting_resume",
     });
   });
 

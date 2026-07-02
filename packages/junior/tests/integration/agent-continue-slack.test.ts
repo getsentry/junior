@@ -629,8 +629,30 @@ describe("agent continuation Slack integration", () => {
   });
 
   it("resumes a lease-expired running session from its latest durable boundary", async () => {
+    // Process death between generation and the final post leaves a running
+    // record at its last durable safe boundary; queue redelivery must produce
+    // exactly one visible reply and only then a delivered/completed session.
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
+    generateAssistantReplyMock.mockResolvedValueOnce({
+      text: "Final resumed answer",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Final resumed answer" }],
+          timestamp: 2,
+        },
+      ],
+      diagnostics: {
+        outcome: "success",
+        toolCalls: [],
+      },
+    });
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -710,6 +732,7 @@ describe("agent continuation Slack integration", () => {
         destination: SLACK_DESTINATION,
       }),
     );
+    // Exactly one visible reply for the interrupted request.
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
@@ -719,6 +742,15 @@ describe("agent continuation Slack integration", () => {
         }),
       }),
     ]);
+    // Completion is committed only after Slack accepted the reply.
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      state: "completed",
+    });
   });
 
   it("terminally fails a stranded running session with no resumable boundary", async () => {

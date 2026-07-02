@@ -117,6 +117,7 @@ import {
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import {
   initConversationContext,
   setConversationTitle,
@@ -127,6 +128,39 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/respond-helpers";
 import { requireSlackDestination } from "@/chat/destination";
+
+const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Persist post-delivery thread state with a short retry so a transient state
+ * write does not lose the delivered outcome of an already-accepted reply.
+ */
+async function persistThreadStateWithRetry(
+  thread: Thread,
+  patch: Parameters<typeof persistThreadState>[1],
+): Promise<void> {
+  let lastError: unknown;
+  for (
+    let attempt = 1;
+    attempt <= DELIVERED_STATE_PERSIST_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await persistThreadState(thread, patch);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DELIVERED_STATE_PERSIST_ATTEMPTS) {
+        await sleep(attempt * 100);
+      }
+    }
+  }
+  throw lastError;
+}
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   return new Set(
@@ -839,6 +873,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
+        // Mirrors slack-resume's finalReplyDelivered guard: once the
+        // destination accepted the final posts, later errors in the same turn
+        // must not mark it failed or trigger the fallback failure reply.
+        let finalReplyDelivered = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
 
@@ -1129,6 +1167,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             }
+            // Slack accepted every final post: the turn is delivered even if
+            // the redundant-ack cleanup or completion persistence below fails.
+            finalReplyDelivered = true;
+            shouldPersistFailureState = false;
             const firstPlannedMessageHasFiles =
               (plannedPosts[0]?.files?.length ?? 0) > 0;
             // When a reaction already acknowledged the turn, delete the
@@ -1144,6 +1186,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sent.delete();
             }
           }
+          // Zero planned posts means there is nothing to deliver; treat the
+          // turn as accepted so completion persistence proceeds.
+          finalReplyDelivered = true;
+          shouldPersistFailureState = false;
 
           const completedState = buildDeliveredTurnStatePatch({
             artifactStatePatch: {
@@ -1159,37 +1205,77 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (completedState.artifacts) {
             latestArtifacts = completedState.artifacts;
           }
-          await persistThreadState(thread, {
-            ...completedState,
-          });
-          if (
-            completedState.artifacts &&
-            (assistantTitleArtifacts.assistantTitle !== undefined ||
-              assistantTitleArtifacts.assistantTitleSourceMessageId !==
-                undefined) &&
-            (completedState.artifacts.assistantTitle !==
-              assistantTitleArtifacts.assistantTitle ||
-              completedState.artifacts.assistantTitleSourceMessageId !==
-                assistantTitleArtifacts.assistantTitleSourceMessageId)
-          ) {
-            await persistThreadState(thread, { artifacts: latestArtifacts });
-          }
-          if (conversationId) {
-            await recordAgentTurnSessionSummary({
-              channelName,
-              conversationId,
-              cumulativeDurationMs: reply.diagnostics.durationMs,
-              cumulativeUsage: reply.diagnostics.usage,
-              sessionId: turnId,
-              sliceId: 1,
-              startedAtMs: message.metadata.dateSent.getTime(),
-              state: "completed",
-              requester,
-              destination,
-              destinationVisibility,
-              source,
-              traceId: getActiveTraceId(),
+          try {
+            // Commit the terminal completed session record first: it is the
+            // delivered marker that keeps stranded-running recovery from
+            // regenerating an already-delivered reply if the thread-state
+            // write below fails.
+            if (conversationId && reply.piMessages?.length) {
+              await persistCompletedSessionRecord({
+                channelName,
+                conversationId,
+                currentDurationMs: reply.diagnostics.durationMs,
+                currentUsage: reply.diagnostics.usage,
+                destination,
+                destinationVisibility,
+                source,
+                sessionId: turnId,
+                allMessages: reply.piMessages,
+                logContext: {
+                  threadId,
+                  requesterId: slackRequesterId,
+                  channelId,
+                  runId,
+                  assistantUserName: botConfig.userName,
+                  modelId: reply.diagnostics.modelId,
+                },
+                requester,
+                surface: "slack",
+              });
+            } else if (conversationId) {
+              await recordAgentTurnSessionSummary({
+                channelName,
+                conversationId,
+                cumulativeDurationMs: reply.diagnostics.durationMs,
+                cumulativeUsage: reply.diagnostics.usage,
+                sessionId: turnId,
+                sliceId: 1,
+                startedAtMs: message.metadata.dateSent.getTime(),
+                state: "completed",
+                requester,
+                destination,
+                destinationVisibility,
+                source,
+                traceId: getActiveTraceId(),
+              });
+            }
+            await persistThreadStateWithRetry(thread, {
+              ...completedState,
             });
+            if (
+              completedState.artifacts &&
+              (assistantTitleArtifacts.assistantTitle !== undefined ||
+                assistantTitleArtifacts.assistantTitleSourceMessageId !==
+                  undefined) &&
+              (completedState.artifacts.assistantTitle !==
+                assistantTitleArtifacts.assistantTitle ||
+                completedState.artifacts.assistantTitleSourceMessageId !==
+                  assistantTitleArtifacts.assistantTitleSourceMessageId)
+            ) {
+              await persistThreadStateWithRetry(thread, {
+                artifacts: latestArtifacts,
+              });
+            }
+          } catch (commitError) {
+            // The user already saw the reply; keep the turn successful and
+            // record the persistence failure for operators.
+            logException(
+              commitError,
+              "slack_reply_post_delivery_commit_failed",
+              turnTraceContext,
+              messageTs ? { "messaging.message.id": messageTs } : {},
+              "Post-delivery turn state persistence failed after Slack accepted the reply",
+            );
           }
           preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
@@ -1223,6 +1309,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
         } catch (error) {
+          if (finalReplyDelivered) {
+            // Delivered-turn guard: errors after Slack accepted the final
+            // reply (redundant-ack cleanup, completion callbacks) must not
+            // fail the turn or trigger the visible failure fallback.
+            shouldPersistFailureState = false;
+            logException(
+              error,
+              "slack_reply_post_delivery_commit_failed",
+              turnTraceContext,
+              messageTs ? { "messaging.message.id": messageTs } : {},
+              "Post-delivery turn work failed after Slack accepted the reply",
+            );
+            return;
+          }
           if (isCooperativeTurnYieldError(error)) {
             shouldPersistFailureState = false;
             throw error;

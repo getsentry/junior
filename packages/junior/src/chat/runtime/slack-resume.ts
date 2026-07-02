@@ -27,6 +27,7 @@ import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -409,6 +410,34 @@ export async function resumeSlackTurn(
       footer,
     });
     finalReplyDelivered = true;
+    // Destination acceptance is the completion boundary: only now commit the
+    // final assistant messages and the terminal completed session record.
+    // Persistence failures are logged inside and never fail the turn.
+    if (
+      replyContext.correlation?.conversationId &&
+      replyContext.correlation.turnId &&
+      reply.piMessages?.length
+    ) {
+      await persistCompletedSessionRecord({
+        conversationId: replyContext.correlation.conversationId,
+        sessionId: replyContext.correlation.turnId,
+        allMessages: reply.piMessages,
+        currentDurationMs: reply.diagnostics.durationMs,
+        currentUsage: reply.diagnostics.usage,
+        destination: replyContext.destination,
+        source: replyContext.source,
+        requester: replyContext.requester,
+        surface: "slack",
+        logContext: {
+          threadId: replyContext.correlation.threadId,
+          requesterId: replyContext.requester?.userId,
+          channelId: runArgs.channelId,
+          runId: replyContext.correlation.runId,
+          assistantUserName: botConfig.userName,
+          modelId: reply.diagnostics.modelId,
+        },
+      });
+    }
     await runArgs.onSuccess?.(reply);
     if (
       reply.diagnostics.outcome === "success" &&

@@ -585,6 +585,8 @@ function buildStoredRecord(args: {
 
 async function setStoredRecord(args: {
   conversationStore?: ConversationStore;
+  /** Source-confirmed destination visibility from the current event's signal. */
+  destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
@@ -607,6 +609,7 @@ async function setStoredRecord(args: {
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
+    destinationVisibility: args.destinationVisibility,
     nowMs: Date.now(),
     summary,
   });
@@ -683,6 +686,8 @@ export async function upsertAgentTurnSessionRecord(args: {
   cumulativeDurationMs?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
+  /** Source-confirmed destination visibility from the current event's signal. */
+  destinationVisibility?: ConversationPrivacy;
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
@@ -714,6 +719,7 @@ export async function upsertAgentTurnSessionRecord(args: {
 
   return await setStoredRecord({
     conversationStore: args.conversationStore,
+    destinationVisibility: args.destinationVisibility,
     piMessages: args.piMessages,
     ttlMs,
     record: buildStoredRecord({

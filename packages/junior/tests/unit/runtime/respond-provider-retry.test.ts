@@ -325,6 +325,7 @@ import { generateAssistantReply } from "@/chat/respond";
 import { getConversationStore } from "@/chat/db";
 import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 import { createJuniorReporting } from "@/reporting";
@@ -386,15 +387,22 @@ describe("generateAssistantReply provider retry", () => {
     expect(counters.promptCalls).toBe(1);
     expect(counters.continueCalls).toBe(1);
 
+    expect(reply.piMessages?.map((message) => message.role)).toEqual([
+      "user",
+      "toolResult",
+      "assistant",
+    ]);
+    // Generation completing is not delivery: the record stays running at the
+    // last safe boundary (no trailing assistant text) until the destination
+    // boundary commits completion after acceptance.
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-1",
       "turn-1",
     );
-    expect(sessionRecord?.state).toBe("completed");
+    expect(sessionRecord?.state).toBe("running");
     expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
       "user",
       "toolResult",
-      "assistant",
     ]);
   });
 
@@ -463,6 +471,17 @@ describe("generateAssistantReply provider retry", () => {
 
     expect(reply.text).toBe("Steered.");
     expect(injectedTexts).toEqual(["actually do the other thing"]);
+
+    // Simulate the destination boundary committing completion after
+    // acceptance; generation itself no longer persists the final reply.
+    await persistCompletedSessionRecord({
+      conversationId: "slack:C123:1712345.0001",
+      sessionId: "turn-steering",
+      allMessages: reply.piMessages ?? [],
+      destination: TEST_DESTINATION,
+      source: TEST_SOURCE,
+      logContext: { modelId: "test-model" },
+    });
 
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "slack:C123:1712345.0001",

@@ -41,6 +41,7 @@ import {
 } from "@/chat/slack/reply";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
@@ -124,6 +125,38 @@ async function persistRuntimePatch(args: {
     sandboxId: args.sandboxId,
     sandboxDependencyProfileHash: args.sandboxDependencyProfileHash,
   });
+}
+
+const DELIVERED_PATCH_PERSIST_ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Persist the post-delivery dispatch state with a short retry so a transient
+ * state write does not drop the delivered marker that suppresses re-posts.
+ */
+async function persistRuntimePatchWithRetry(
+  args: Parameters<typeof persistRuntimePatch>[0],
+): Promise<void> {
+  let lastError: unknown;
+  for (
+    let attempt = 1;
+    attempt <= DELIVERED_PATCH_PERSIST_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await persistRuntimePatch(args);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < DELIVERED_PATCH_PERSIST_ATTEMPTS) {
+        await sleep(attempt * 100);
+      }
+    }
+  }
+  throw lastError;
 }
 
 async function markDispatch(args: {
@@ -374,6 +407,12 @@ export async function runAgentDispatchSlice(
       fileUploadFailureMode: "strict",
     });
 
+    // Slack accepted the reply: everything after this point serves duplicate
+    // suppression and bookkeeping, and must not turn into a failed dispatch
+    // that a retry would re-post. Persist the delivered marker
+    // (`meta.slackTs`, checked by the redelivery guard above) immediately and
+    // durably before the dispatch is marked terminal so the crash window
+    // between post and marker stays as small as possible.
     markConversationMessage(conversation, userMessageId, {
       replied: true,
       skippedReason: undefined,
@@ -396,14 +435,53 @@ export async function runAgentDispatchSlice(
     const nextArtifacts = reply.artifactStatePatch
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
       : artifacts;
-    await persistRuntimePatch({
-      threadId: conversationId,
-      conversation,
-      artifacts: nextArtifacts,
-      sandboxId: reply.sandboxId ?? sandboxId,
-      sandboxDependencyProfileHash:
-        reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
-    });
+    try {
+      await persistRuntimePatchWithRetry({
+        threadId: conversationId,
+        conversation,
+        artifacts: nextArtifacts,
+        sandboxId: reply.sandboxId ?? sandboxId,
+        sandboxDependencyProfileHash:
+          reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+      });
+    } catch (persistError) {
+      logException(
+        persistError,
+        "agent_dispatch_post_delivery_persist_failed",
+        {
+          conversationId,
+          slackThreadId: conversationId,
+          slackChannelId: dispatch.destination.channelId,
+          runId: dispatch.id,
+          actorType: dispatch.actor.type,
+          actorId: dispatch.actor.id,
+          assistantUserName: botConfig.userName,
+        },
+        {},
+        "Failed to persist delivered dispatch state after Slack accepted the reply",
+      );
+    }
+    if (!failure && reply.piMessages?.length) {
+      // Destination acceptance is the completion boundary for the session
+      // record too; this call swallows its own persistence failures.
+      await persistCompletedSessionRecord({
+        conversationId,
+        sessionId: getDispatchTurnId(dispatch.id),
+        allMessages: reply.piMessages,
+        currentDurationMs: reply.diagnostics.durationMs,
+        currentUsage: reply.diagnostics.usage,
+        destination: dispatch.destination,
+        source: dispatch.source,
+        surface: "api",
+        logContext: {
+          threadId: conversationId,
+          channelId: dispatch.destination.channelId,
+          runId: dispatch.id,
+          assistantUserName: botConfig.userName,
+          modelId: reply.diagnostics.modelId,
+        },
+      });
+    }
     dispatch = await markDispatch({
       dispatch,
       status: failure ? "failed" : "completed",

@@ -34,6 +34,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -338,11 +339,21 @@ export async function runLocalAgentTurn(
     sandboxDependencyProfileHash:
       reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
   });
-  if (reply.piMessages) {
-    await commitMessages({
+  if (reply.piMessages?.length) {
+    // Destination acceptance is the completion boundary: this first commits
+    // the final assistant messages to the session log and marks the session
+    // record completed only after the CLI sink accepted the reply. Failures
+    // are logged inside and never fail the delivered turn.
+    await persistCompletedSessionRecord({
       conversationId: input.conversationId,
-      messages: reply.piMessages,
-      ttlMs: THREAD_STATE_TTL_MS,
+      sessionId: turnId,
+      allMessages: reply.piMessages,
+      currentDurationMs: reply.diagnostics.durationMs,
+      currentUsage: reply.diagnostics.usage,
+      destination,
+      source,
+      surface: "internal",
+      logContext: { modelId: reply.diagnostics.modelId },
     });
   }
   if (reply.diagnostics.outcome === "success") {

@@ -470,22 +470,62 @@ describe("bot handlers (integration)", () => {
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
+    const conversationId = "slack:C_DELIVERY_FAIL:1700000000.000";
+    const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
+    const promptMessages = turnPiMessages("please answer");
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: finalText,
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "fake-agent-model",
-              outcome: "success",
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () => {
+            // Simulate respond's durable input checkpoint: the session record
+            // is running at the prompt boundary when generation finishes.
+            await upsertAgentTurnSessionRecord({
+              conversationId,
+              sessionId,
+              sliceId: 1,
+              state: "running",
+              piMessages: promptMessages,
+            });
+            return {
+              text: finalText,
+              piMessages: [
+                ...promptMessages,
+                {
+                  role: "assistant" as const,
+                  content: [{ type: "text" as const, text: finalText }],
+                  api: "responses" as const,
+                  provider: "openai",
+                  model: "gpt-5.3",
+                  usage: {
+                    input: 1,
+                    output: 1,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 2,
+                    cost: {
+                      input: 0,
+                      output: 0,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      total: 0,
+                    },
+                  },
+                  stopReason: "stop" as const,
+                  timestamp: 2,
+                },
+              ],
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -493,7 +533,7 @@ describe("bot handlers (integration)", () => {
       },
     });
     const thread = createTestThread({
-      id: "slack:C_DELIVERY_FAIL:1700000000.000",
+      id: conversationId,
     });
     thread.post = vi.fn(async () => {
       throw new Error("Slack unavailable");
@@ -504,7 +544,7 @@ describe("bot handlers (integration)", () => {
         thread,
         createTestMessage({
           id: "msg-delivery-fail",
-          threadId: "slack:C_DELIVERY_FAIL:1700000000.000",
+          threadId: conversationId,
           text: "please answer",
           isMention: true,
         }),
@@ -544,6 +584,85 @@ describe("bot handlers (integration)", () => {
         skippedReason: "reply failed",
       },
     });
+
+    // The session must not be recorded as delivered, and the undelivered
+    // assistant reply must not surface to later turns as durable history.
+    const sessionRecord = await getAgentTurnSessionRecord(
+      conversationId,
+      sessionId,
+    );
+    expect(sessionRecord?.state).toBe("failed");
+    const projection = await loadProjection({ conversationId });
+    expect(JSON.stringify(projection)).not.toContain(finalText);
+  });
+
+  it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
+    const conversationId = "slack:C_POST_DELIVERY:1700000000.000";
+    const finalText = "Delivered before the state store failed.";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: finalText,
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+        visionContext: {
+          listThreadReplies: async () => [],
+        },
+      },
+    });
+    const thread = createTestThread({ id: conversationId });
+    const originalPost = thread.post.bind(thread);
+    const originalSetState = thread.setState.bind(thread);
+    let replyPosted = false;
+    thread.post = (async (message: unknown) => {
+      const sent = await originalPost(
+        message as Parameters<typeof originalPost>[0],
+      );
+      replyPosted = true;
+      return sent;
+    }) as typeof thread.post;
+    thread.setState = (async (
+      next: Parameters<typeof originalSetState>[0],
+      options?: Parameters<typeof originalSetState>[1],
+    ) => {
+      if (replyPosted) {
+        throw new Error("state store unavailable");
+      }
+      return originalSetState(next, options);
+    }) as typeof thread.setState;
+
+    // The user already saw the answer: post-delivery persistence failures are
+    // logged, the turn stays successful, and no fallback failure reply posts.
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-post-delivery",
+          threadId: conversationId,
+          text: "please answer",
+          isMention: true,
+        }),
+        { destination: createTestDestination(thread) },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(postIncludes(thread, finalText)).toBe(true);
+    expect(
+      postIncludes(
+        thread,
+        "I ran into an internal error while processing that.",
+      ),
+    ).toBe(false);
   });
 
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {
