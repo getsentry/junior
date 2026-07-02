@@ -137,10 +137,7 @@ Defaults:
 After `github_createPullRequest` succeeds, check whether the result includes a subscribable resource hint. If it does, call `subscribeToResourceEvents` immediately before reporting.
 
 - Use the suggested events from the hint; when absent, request review and CI events.
-- Write a **self-contained intent** that captures: repo, PR number, branch, and what to do when each event class fires:
-  - **Review feedback** (changes requested, or new review comments): load `pr-cleanup`, address all validated feedback, push, and report.
-  - **CI failure** (check suite failed on the PR branch): load `pr-cleanup`, read the failed logs, trace the root cause, fix, push, and report.
-  - **CI green** (all checks pass after a prior failure): confirm the PR is unblocked and summarize the current state.
+- Write a **self-contained intent** that captures repo, PR number, branch, and a single goal: resolve any review concerns and keep the build green. When an event fires, read the signal, address it, push, and report.
 
 If no subscribable hint is present, skip this step.
 
