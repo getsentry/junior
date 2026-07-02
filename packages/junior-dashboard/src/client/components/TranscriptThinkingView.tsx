@@ -10,7 +10,7 @@ function isString(value: string | undefined): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-/** Render a thinking transcript event collapsed until expanded or searched. */
+/** Render a thinking transcript event collapsed with a truncated preview until expanded or searched. */
 export function TranscriptThinkingView(props: {
   timestamp?: number;
   value: unknown;
@@ -30,11 +30,8 @@ export function TranscriptThinkingView(props: {
       <TranscriptThoughtLabel />
       <TranscriptHeadingRow
         left={
-          <span
-            aria-hidden="true"
-            className="min-w-0 font-mono text-[0.78rem] font-bold uppercase text-[#888]"
-          >
-            thinking
+          <span className="block min-w-0 truncate italic text-[#9a9a9a]">
+            {expandedText}
           </span>
         }
         right={

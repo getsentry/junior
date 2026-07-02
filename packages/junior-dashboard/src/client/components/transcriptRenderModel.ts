@@ -25,11 +25,14 @@ export type RenderedTranscriptEntry =
   | RenderedThinkingEntry
   | RenderedToolEntry;
 
-type RenderedThinkingEntry = {
+export type RenderedThinkingEntry = {
   kind: "thinking";
   part: TranscriptViewPart;
   timestamp?: number;
 };
+
+/** A single entry in a mixed tool-and-thinking run group. */
+export type RenderedToolRunEntry = RenderedToolEntry | RenderedThinkingEntry;
 
 export type RenderedSubagentEntry = {
   kind: "subagent";

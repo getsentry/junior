@@ -1398,7 +1398,6 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("py-1.5 text-[0.84rem] leading-relaxed");
     expect(html).toContain("grid-cols-[1rem_minmax(0,1fr)]");
     expect(html).toContain("inline-flex size-4 shrink-0 items-center");
-    expect(html).toContain(">thinking<");
     expect(html).toContain("not-italic text-[#777] max-md:hidden");
     expect(html).toContain("hidden min-w-0 grid-cols-[1rem_minmax(0,1fr)]");
     expect(html).toContain("not-italic leading-snug text-[#777]");
@@ -1408,8 +1407,9 @@ describe("dashboard telemetry components", () => {
       html.indexOf("<summary"),
       html.indexOf("</summary>"),
     );
-    expect(summary).not.toContain("checking the rollout");
-    expect(summary).not.toContain("listing deploy windows");
+    // Summary shows truncated thinking text preview (not just a static label).
+    expect(summary).toContain("checking the rollout");
+    expect(summary).toContain("listing deploy windows");
   });
 
   it("collapses short thinking rows by default", () => {
@@ -1439,14 +1439,14 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain("<details");
-    expect(html).toContain(">thinking<");
     expect(html).toContain("checking the rollout");
 
     const summary = html.slice(
       html.indexOf("<summary"),
       html.indexOf("</summary>"),
     );
-    expect(summary).not.toContain("checking the rollout");
+    // Summary shows the truncated thinking text so users can scan before expanding.
+    expect(summary).toContain("checking the rollout");
   });
 
   it("expands thinking rows during transcript search", () => {
@@ -1485,5 +1485,160 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("checking the rollout");
     expect(html).toContain("listing <mark");
     expect(html).toContain(">deploy<");
+  });
+
+  it("consolidates mixed tool-and-thinking run at threshold behind a reveal", () => {
+    // 2 tool calls + 2 thinking entries = 4 total = at threshold
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            { id: "call-0", name: "tool-0", type: "tool_call" },
+            { type: "thinking", output: "first thought" },
+            { id: "call-1", name: "tool-1", type: "tool_call" },
+            { type: "thinking", output: "second thought" },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptSegment turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    // All four entries collapse into one reveal group.
+    expect(html).toContain('<details class="min-w-0"><summary');
+    expect(html).toContain("show 2 tool calls and 2 thinking entries");
+    expect(html).toContain("tool-0");
+    expect(html).toContain("tool-1");
+    expect(html).toContain("first thought");
+    expect(html).toContain("second thought");
+  });
+
+  it("keeps mixed tool-and-thinking run below threshold expanded flat", () => {
+    // 1 tool + 2 thinking = 3 total, below threshold
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            { id: "call-0", name: "tool-0", type: "tool_call" },
+            { type: "thinking", output: "first thought" },
+            { type: "thinking", output: "second thought" },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptSegment turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).not.toContain("show");
+    expect(html).toContain("tool-0");
+    expect(html).toContain("first thought");
+    expect(html).toContain("second thought");
+  });
+
+  it("shows correct counts in mixed-run reveal label", () => {
+    // 5 tool calls + 2 thinking entries
+    const toolParts = Array.from({ length: 5 }, (_, i) => ({
+      id: `call-${i}`,
+      name: `tool-${i}`,
+      type: "tool_call",
+    }));
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            ...toolParts,
+            { type: "thinking", output: "thought a" },
+            { type: "thinking", output: "thought b" },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptSegment turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("show 5 tool calls and 2 thinking entries");
+  });
+
+  it("renders pure-thinking runs individually without a reveal group", () => {
+    // 4 consecutive thinking entries — no tools, so no consolidation
+    const turn = {
+      conversationId: "conversation-1",
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            { type: "thinking", output: "thought 1" },
+            { type: "thinking", output: "thought 2" },
+            { type: "thinking", output: "thought 3" },
+            { type: "thinking", output: "thought 4" },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTurn;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptSegment turn={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    // No reveal group — pure thinking runs stay as individual collapsed rows.
+    expect(html).not.toContain("show");
+    expect(html).toContain("thought 1");
+    expect(html).toContain("thought 4");
   });
 });

@@ -1,14 +1,19 @@
 import { Fragment, type ReactNode } from "react";
 
-import type { RenderedToolEntry } from "./transcriptRenderModel";
+import type {
+  RenderedThinkingEntry,
+  RenderedToolEntry,
+  RenderedToolRunEntry,
+} from "./transcriptRenderModel";
 import { useTranscriptSearch } from "./transcriptSearch";
 
 const TOOL_RUN_REVEAL_THRESHOLD = 4;
 
-/** Render a consecutive tool run with a one-way reveal for dense middle calls. */
+/** Render a consecutive tool-and-thinking run with a one-way reveal for dense middle calls. */
 export function TranscriptToolRun(props: {
-  entries: RenderedToolEntry[];
+  entries: RenderedToolRunEntry[];
   keyPrefix: string;
+  renderThinking: (entry: RenderedThinkingEntry, index: number) => ReactNode;
   renderTool: (entry: RenderedToolEntry, index: number) => ReactNode;
   startIndex: number;
 }) {
@@ -17,11 +22,12 @@ export function TranscriptToolRun(props: {
   if (props.entries.length < TOOL_RUN_REVEAL_THRESHOLD || searchActive) {
     return (
       <>
-        {renderToolEntries(
+        {renderRunEntries(
           props.entries,
           props.startIndex,
           props.keyPrefix,
           props.renderTool,
+          props.renderThinking,
         )}
       </>
     );
@@ -29,40 +35,59 @@ export function TranscriptToolRun(props: {
 
   return (
     <details className="min-w-0">
-      <ToolRunReveal hiddenCount={props.entries.length} />
+      <ToolRunReveal entries={props.entries} />
       <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-        {renderToolEntries(
+        {renderRunEntries(
           props.entries,
           props.startIndex,
           props.keyPrefix,
           props.renderTool,
+          props.renderThinking,
         )}
       </div>
     </details>
   );
 }
 
-function renderToolEntries(
-  entries: RenderedToolEntry[],
+function renderRunEntries(
+  entries: RenderedToolRunEntry[],
   startIndex: number,
   keyPrefix: string,
   renderTool: (entry: RenderedToolEntry, index: number) => ReactNode,
+  renderThinking: (entry: RenderedThinkingEntry, index: number) => ReactNode,
 ): ReactNode[] {
   return entries.map((entry, offset) => {
     const index = startIndex + offset;
     return (
-      <Fragment key={`${keyPrefix}:tool:${index}`}>
-        {renderTool(entry, index)}
+      <Fragment key={`${keyPrefix}:run:${index}`}>
+        {entry.kind === "thinking"
+          ? renderThinking(entry, index)
+          : renderTool(entry, index)}
       </Fragment>
     );
   });
 }
 
-function ToolRunReveal(props: { hiddenCount: number }) {
+function formatRunRevealLabel(entries: RenderedToolRunEntry[]): string {
+  const toolCount = entries.filter((e) => e.kind === "tool").length;
+  const thinkingCount = entries.filter((e) => e.kind === "thinking").length;
+  const parts: string[] = [];
+  if (toolCount > 0) {
+    parts.push(`${toolCount} tool ${toolCount === 1 ? "call" : "calls"}`);
+  }
+  if (thinkingCount > 0) {
+    parts.push(
+      `${thinkingCount} thinking ${thinkingCount === 1 ? "entry" : "entries"}`,
+    );
+  }
+  return `show ${parts.join(" and ")}`;
+}
+
+function ToolRunReveal(props: { entries: RenderedToolRunEntry[] }) {
   return (
     <summary className="group flex w-full cursor-pointer list-none items-center gap-2 py-1.5 text-left font-mono text-[0.78rem] leading-tight text-[#888] transition-colors hover:text-[#d6d6d6] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55 [&::-webkit-details-marker]:hidden">
       <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
-      <span className="shrink-0">show {props.hiddenCount} tool calls</span>
+      <span className="shrink-0">{formatRunRevealLabel(props.entries)}</span>
       <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
     </summary>
   );
