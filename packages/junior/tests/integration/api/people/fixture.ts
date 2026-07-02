@@ -130,3 +130,42 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     executionStatus: "idle",
   });
 }
+
+/** Seed an identity whose shared user name is filled by a later observation. */
+export async function seedDisplayNameBackfill(fixture: LocalJuniorSqlFixture) {
+  const store = createSqlStore(fixture.sql);
+
+  await store.recordActivity({
+    conversationId: "slack:C6:nameless-first",
+    destination: {
+      platform: "slack",
+      teamId: "T1",
+      channelId: "C6",
+    },
+    requester: {
+      email: "nameless@example.com",
+      platform: "slack",
+      slackUserId: "U-nameless-1",
+      teamId: "T1",
+    },
+    source: "slack",
+    nowMs: Date.parse("2026-06-08T09:00:00.000Z"),
+  });
+  await store.recordActivity({
+    conversationId: "slack:C6:nameless-later",
+    destination: {
+      platform: "slack",
+      teamId: "T1",
+      channelId: "C6",
+    },
+    requester: {
+      email: "NameLess@Example.com",
+      fullName: "Named Later",
+      platform: "slack",
+      slackUserId: "U-nameless-2",
+      teamId: "T1",
+    },
+    source: "slack",
+    nowMs: Date.parse("2026-06-14T09:00:00.000Z"),
+  });
+}

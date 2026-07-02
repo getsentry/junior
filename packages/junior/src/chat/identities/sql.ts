@@ -41,6 +41,7 @@ async function upsertUser(
     .onConflictDoUpdate({
       target: juniorUsers.primaryEmailNormalized,
       set: {
+        displayName: sql`coalesce(${juniorUsers.displayName}, excluded.display_name)`,
         updatedAt: sql`excluded.updated_at`,
       },
     })

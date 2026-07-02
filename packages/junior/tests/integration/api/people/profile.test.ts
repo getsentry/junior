@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { readPeopleProfileFromSql } from "@/api/people/profile.query";
 import { createLocalJuniorSqlFixture } from "../../../fixtures/sql";
-import { seedPeople } from "./fixture";
+import { seedDisplayNameBackfill, seedPeople } from "./fixture";
 
 describe("people profile API", () => {
   test("reads profiles case-insensitively from shared verified identity", async () => {
@@ -80,6 +80,23 @@ describe("people profile API", () => {
         sampleSize: 0,
         totals: {
           conversations: 0,
+        },
+      });
+
+      await seedDisplayNameBackfill(fixture);
+      const backfilled = await readPeopleProfileFromSql(
+        "nameless@example.com",
+        {
+          db: fixture.sql.db(),
+        },
+      );
+      expect(backfilled).toMatchObject({
+        requester: {
+          email: "nameless@example.com",
+          fullName: "Named Later",
+        },
+        totals: {
+          conversations: 2,
         },
       });
     } finally {
