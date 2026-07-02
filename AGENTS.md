@@ -77,6 +77,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
 - `policies/interface-design.md` (domain naming, module paths, and minimal interface boundaries)
 - `policies/policy-template.md` (template for adding new policy docs)
+- `policies/provider-boundaries.md` (keep provider SDKs and primitives inside provider-owned modules)
 - `policies/runtime-boundary-schemas.md` (strict runtime schemas and inferred types for boundary contracts)
 - `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
 - `policies/testing.md` (integration/eval-first testing policy and unit-test churn guardrails)

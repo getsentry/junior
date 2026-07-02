@@ -37,6 +37,19 @@ export default {
       },
     },
     {
+      name: "no-slack-sdk-outside-provider-modules",
+      comment:
+        "Slack SDK imports must stay in Slack-owned infrastructure or Slack tool modules.",
+      severity: "error",
+      from: {
+        path: "^src/chat/",
+        pathNot: "^src/chat/(slack/|tools/slack/)",
+      },
+      to: {
+        path: "^@slack/",
+      },
+    },
+    {
       name: "no-chat-slack-to-runtime",
       comment:
         "Slack modules must own Slack behavior and avoid runtime orchestration imports.",
