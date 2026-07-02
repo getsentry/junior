@@ -23,6 +23,7 @@ import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -52,6 +53,10 @@ function createReply(): AssistantReply {
       toolResultCount: 0,
       usedPrimaryText: true,
     },
+    piMessages: [
+      { role: "user", content: "Run the scheduled task." },
+      { role: "assistant", content: "Dispatch delivered." },
+    ],
   };
 }
 
@@ -196,6 +201,18 @@ describe("agent dispatch runner", () => {
     expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
       conversationId: dispatchConversationId,
       sessionId: `dispatch:${created.record.id}`,
+    });
+    await expect(
+      getAgentTurnSessionRecord(
+        dispatchConversationId,
+        `dispatch:${created.record.id}`,
+      ),
+    ).resolves.toMatchObject({
+      conversationId: dispatchConversationId,
+      sessionId: `dispatch:${created.record.id}`,
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
     });
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},

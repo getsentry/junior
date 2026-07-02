@@ -17,7 +17,7 @@ import {
   getConversationWorkState,
   listActiveConversationIds,
   listConversationsByActivity,
-  markConversationMessagesInjected,
+  ackMessages,
   recordConversationActivity,
   requestConversationContinuation,
   requestConversationWork,
@@ -554,7 +554,7 @@ describe("conversation work execution", () => {
       queue,
       run: async (context) => {
         runs += 1;
-        await context.drainMailbox(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -594,7 +594,7 @@ describe("conversation work execution", () => {
       nowMs: () => currentNowMs,
       queue,
       run: async (context) => {
-        await context.drainMailbox(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -709,7 +709,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -745,7 +745,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -791,7 +791,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await requestConversationWork({
             conversationId: context.conversationId,
@@ -916,7 +916,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_000;
           await scheduleAgentContinue(
             {
@@ -947,13 +947,13 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("consumes a message that exceeds the delivery attempt limit as poison work", async () => {
+  it("dead-letters a message that exceeds the delivery attempt limit", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
-    // Deterministic pre-input-commit failure: the runner returns without
-    // durably handling the offered message, which requeued forever before
+    // Deterministic pre-ack failure: the runner returns without durably
+    // handling the attempted message, which requeued forever before
     // attempts were bounded.
     const runSlice = () =>
       processConversationWork(conversationQueueMessage(), {
@@ -1078,7 +1078,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          injected.push(await context.drainMailbox(async () => {}));
+          injected.push(await context.attempt.drain(async () => {}));
           return { status: "completed" };
         },
       }),
@@ -1111,7 +1111,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.drainMailbox(async (messages) => {
+          await context.attempt.drain(async (messages) => {
             injected.push(messages.map((message) => message.inboundMessageId));
             return messages
               .filter((message) => message.inboundMessageId === "m1")
@@ -1132,7 +1132,7 @@ describe("conversation work execution", () => {
     ]);
   });
 
-  it("rejects mailbox acknowledgements outside the offered pending set", async () => {
+  it("rejects mailbox acknowledgements outside the pending set", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
@@ -1142,7 +1142,7 @@ describe("conversation work execution", () => {
         queue,
         run: async (context) => {
           try {
-            await context.drainMailbox(async () => ["different-message"]);
+            await context.attempt.drain(async () => ["different-message"]);
           } catch (error) {
             drainError = error;
             throw error;
@@ -1183,7 +1183,7 @@ describe("conversation work execution", () => {
         queue,
         state: observed.state,
         run: async (context) => {
-          const drain = context.drainMailbox(async () => {
+          const drain = context.attempt.drain(async () => {
             expect(observed.isHeld()).toBe(false);
             injectionStarted.resolve();
             await finishInjection.promise;
@@ -1232,7 +1232,7 @@ describe("conversation work execution", () => {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
-        await context.drainMailbox(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve();
         await finish.promise;
         return { status: "completed" };
@@ -1264,7 +1264,6 @@ describe("conversation work execution", () => {
     const queue = createConversationWorkQueueTestAdapter();
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
     const entered = deferred<{
-      leaseToken: string;
       shouldYield: () => boolean;
     }>();
     const finish = deferred<void>();
@@ -1273,9 +1272,8 @@ describe("conversation work execution", () => {
       checkInIntervalMs: 15_000,
       queue,
       run: async (context) => {
-        await context.drainMailbox(async () => {});
+        await context.attempt.drain(async () => {});
         entered.resolve({
-          leaseToken: context.leaseToken,
           shouldYield: context.shouldYield,
         });
         await finish.promise;
@@ -1283,10 +1281,15 @@ describe("conversation work execution", () => {
       },
     });
     const runningContext = await entered.promise;
+    const leased = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    const leaseToken = leased?.execution.lease?.token;
+    expect(leaseToken).toBeDefined();
 
     await releaseConversationWork({
       conversationId: CONVERSATION_ID,
-      leaseToken: runningContext.leaseToken,
+      leaseToken: leaseToken!,
       nowMs: 2_000,
     });
     await vi.advanceTimersByTimeAsync(15_000);
@@ -1333,7 +1336,7 @@ describe("conversation work execution", () => {
     if (lease.status !== "acquired") {
       return;
     }
-    await markConversationMessagesInjected({
+    await ackMessages({
       conversationId: CONVERSATION_ID,
       inboundMessageIds: ["m1"],
       leaseToken: lease.leaseToken,
@@ -1506,7 +1509,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          const first = await context.drainMailbox(async () => {});
+          const first = await context.attempt.drain(async () => {});
           injected.push(first.map((message) => message.inboundMessageId));
           await appendInboundMessage({
             message: inboundMessage("m2", {
@@ -1515,7 +1518,7 @@ describe("conversation work execution", () => {
             }),
             nowMs: 2_100,
           });
-          const second = await context.drainMailbox(async () => {});
+          const second = await context.attempt.drain(async () => {});
           injected.push(second.map((message) => message.inboundMessageId));
           return { status: "completed" };
         },
@@ -1533,7 +1536,7 @@ describe("conversation work execution", () => {
       processConversationWork(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           await appendInboundMessage({
             message: inboundMessage("m2", {
               createdAtMs: 2_000,
@@ -1541,7 +1544,7 @@ describe("conversation work execution", () => {
             }),
             nowMs: 2_100,
           });
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           return { status: "completed" };
         },
       }),
@@ -1564,7 +1567,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 2_100;
           await appendInboundMessage({
             message: inboundMessage("m2", {
@@ -1595,7 +1598,7 @@ describe("conversation work execution", () => {
         nowMs: () => currentNowMs,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           currentNowMs = 242_000;
           expect(context.shouldYield()).toBe(true);
           return { status: "yielded" };
@@ -1638,7 +1641,7 @@ describe("conversation work execution", () => {
       drainConversationMailbox({
         conversationId: CONVERSATION_ID,
         leaseToken: "wrong-token",
-        inject: async () => {},
+        handle: async () => {},
         nowMs: 3_000,
       }),
     ).rejects.toThrow("lease is not held");
@@ -1650,7 +1653,7 @@ describe("conversation work execution", () => {
       }),
     ).resolves.toBe("lost_lease");
     await expect(
-      markConversationMessagesInjected({
+      ackMessages({
         conversationId: CONVERSATION_ID,
         inboundMessageIds: ["m1"],
         leaseToken: "wrong-token",
@@ -1818,7 +1821,7 @@ describe("conversation work execution", () => {
       processConversationQueueMessage(conversationQueueMessage(), {
         queue,
         run: async (context) => {
-          const messages = await context.drainMailbox(async () => {});
+          const messages = await context.attempt.drain(async () => {});
           injected.push(...messages.map((message) => message.inboundMessageId));
           return { status: "completed" };
         },

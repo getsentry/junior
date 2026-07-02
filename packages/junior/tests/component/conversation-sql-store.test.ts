@@ -742,7 +742,7 @@ INSERT INTO junior_conversations (
         conversationStore: store,
         queue,
         run: async (context) => {
-          await context.drainMailbox(async () => {});
+          await context.attempt.drain(async () => {});
           entered.resolve();
           await finish.promise;
           return { status: "completed" };
@@ -800,7 +800,7 @@ INSERT INTO junior_conversations (
       await drainConversationMailbox({
         conversationId: CONVERSATION_ID,
         conversationStore: store,
-        inject: async () => {},
+        handle: async () => {},
         leaseToken: lease.leaseToken,
         nowMs: 3_000,
         state,

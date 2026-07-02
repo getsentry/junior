@@ -303,6 +303,43 @@ export async function persistCompletedSessionRecord(args: {
   }
 }
 
+/** Complete a delivered single-slice run with an explicit session boundary. */
+export async function completeDeliveredTurn(args: {
+  channelName?: string;
+  conversationId: string;
+  destination: Destination;
+  destinationVisibility?: ConversationPrivacy;
+  durationMs?: number;
+  loadedSkillNames?: string[];
+  logContext: SessionRecordLogContext;
+  messages: PiMessage[];
+  requester?: Requester;
+  sessionId: string;
+  sliceId: number;
+  source: Source;
+  surface: AgentTurnSurface;
+  turnStartMessageIndex?: number;
+  usage?: AgentTurnUsage;
+}): Promise<void> {
+  await persistCompletedSessionRecord({
+    channelName: args.channelName,
+    conversationId: args.conversationId,
+    currentDurationMs: args.durationMs,
+    currentUsage: args.usage,
+    destination: args.destination,
+    destinationVisibility: args.destinationVisibility,
+    source: args.source,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    allMessages: args.messages,
+    loadedSkillNames: args.loadedSkillNames,
+    logContext: args.logContext,
+    requester: args.requester,
+    surface: args.surface,
+    turnStartMessageIndex: args.turnStartMessageIndex,
+  });
+}
+
 /**
  * Persist an auth-pause session record. Returns the durable record only when
  * the caller can safely hand the user to an authorization resume flow.

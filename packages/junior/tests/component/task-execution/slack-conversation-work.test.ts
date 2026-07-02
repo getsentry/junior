@@ -10,9 +10,10 @@ import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
+  CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   countPendingConversationMessages,
   getConversationWorkState,
-  markConversationMessagesInjected,
+  ackMessages,
   requestConversationWork,
   startConversationWork,
 } from "@/chat/task-execution/store";
@@ -31,6 +32,11 @@ import {
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -90,6 +96,7 @@ describe("Slack conversation work execution", () => {
   });
 
   afterEach(async () => {
+    resetSlackApiMockState();
     await disconnectStateAdapter();
   });
 
@@ -182,7 +189,7 @@ describe("Slack conversation work execution", () => {
             throw new Error("unexpected mention route");
           },
           handleSubscribedMessage: async (_thread, message, hooks) => {
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
             calls.push(message);
           },
         },
@@ -289,7 +296,7 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async (thread, message, hooks) => {
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
             calls.push({ thread, message });
           },
           handleSubscribedMessage: async () => {
@@ -351,7 +358,7 @@ describe("Slack conversation work execution", () => {
 
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (thread, message, hooks) => {
-        await hooks.onInputCommitted?.();
+        await hooks.ack?.();
         calls.push({
           destination: hooks.destination,
           thread,
@@ -418,7 +425,7 @@ describe("Slack conversation work execution", () => {
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, message, hooks) => {
         capturedMessage = message;
-        await hooks.onInputCommitted?.();
+        await hooks.ack?.();
       },
       handleSubscribedMessage: async () => {
         throw new Error("unexpected subscribed route");
@@ -507,7 +514,7 @@ describe("Slack conversation work execution", () => {
 
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (thread, message, hooks) => {
-        await hooks.onInputCommitted?.();
+        await hooks.ack?.();
         subscribedValues.push(await thread.isSubscribed());
         calls.push({
           thread,
@@ -573,7 +580,7 @@ describe("Slack conversation work execution", () => {
         resumeAwaitingContinuation,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
             calls.push(message.text);
           },
           handleSubscribedMessage: async () => {
@@ -626,7 +633,7 @@ describe("Slack conversation work execution", () => {
         resumeAwaitingContinuation,
         runtime: {
           handleNewMention: async (_thread, message, hooks) => {
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
             calls.push(message.text);
           },
           handleSubscribedMessage: async () => {
@@ -673,7 +680,7 @@ describe("Slack conversation work execution", () => {
     const injected: string[][] = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
-        await hooks.onInputCommitted?.();
+        await hooks.ack?.();
         await handleSlackWebhookAndFlush({
           request: slackWebhookRequest(
             slackEnvelope({
@@ -751,7 +758,7 @@ describe("Slack conversation work execution", () => {
     const observed: Array<Array<{ activeRequest: boolean; id: string }>> = [];
     const runtime: SlackWorkerOptions["runtime"] = {
       handleNewMention: async (_thread, _message, hooks) => {
-        await hooks.onInputCommitted?.();
+        await hooks.ack?.();
         const followUp = new Message({
           id: "1712345.1002",
           threadId: conversationId,
@@ -856,7 +863,7 @@ describe("Slack conversation work execution", () => {
     });
     const inboundMessageIds =
       work?.messages.map((message) => message.inboundMessageId) ?? [];
-    await markConversationMessagesInjected({
+    await ackMessages({
       conversationId: CONVERSATION_ID,
       inboundMessageIds,
       leaseToken: lease.leaseToken,
@@ -1128,7 +1135,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("exposes mailbox retry state to the runtime failure path", async () => {
+  it("exposes final attempt state to the runtime failure path", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -1155,12 +1162,9 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async (_thread, _message, hooks) => {
-            // Before input commit a failure leaves the record pending, so the
-            // mailbox retries and the visible failure reply is suppressed.
-            observed.push(hooks.willRetryOnFailure?.());
-            await hooks.onInputCommitted?.();
-            // After input commit no redelivery happens: the failure is final.
-            observed.push(hooks.willRetryOnFailure?.());
+            observed.push(hooks.isFinalAttempt);
+            await hooks.ack?.();
+            observed.push(hooks.isFinalAttempt);
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1170,10 +1174,10 @@ describe("Slack conversation work execution", () => {
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(observed).toEqual([true, false]);
+    expect(observed).toEqual([false, false]);
   });
 
-  it("keeps Slack mailbox records pending when input commit fails", async () => {
+  it("keeps Slack mailbox records pending when ack fails", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -1199,7 +1203,7 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async () => {
-            throw new Error("runtime failed before input commit");
+            throw new Error("runtime failed before ack");
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1217,6 +1221,143 @@ describe("Slack conversation work execution", () => {
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
     expect(work?.messages[0]?.attemptCount).toBe(1);
+  });
+
+  it("marks the terminal Slack delivery attempt before dead-lettering", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    const observed: boolean[] = [];
+    const runtime: SlackWorkerOptions["runtime"] = {
+      handleNewMention: async (_thread, _message, hooks) => {
+        observed.push(hooks.isFinalAttempt === true);
+        throw new Error("runtime failed before ack");
+      },
+      handleSubscribedMessage: async () => {
+        throw new Error("unexpected subscribed route");
+      },
+    };
+
+    for (
+      let attempt = 1;
+      attempt < CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS;
+      attempt += 1
+    ) {
+      await expect(
+        processNextQueuedSlackWork({
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime,
+          state,
+        }),
+      ).resolves.toEqual({ status: "failed" });
+      const work = await getConversationWorkState({
+        conversationId: CONVERSATION_ID,
+        state,
+      });
+      expect(work?.messages[0]?.attemptCount).toBe(attempt);
+      expect(queue.hasQueuedMessages()).toBe(true);
+    }
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "failed" });
+
+    expect(observed).toEqual([false, false, false, false, true]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.messages).toEqual([]);
+    expect(work?.needsRun).toBe(false);
+    expect(work?.execution.status).toBe("failed");
+  });
+
+  it("posts one fallback reply on the final queued Slack delivery attempt", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new Error("persistent queued failure");
+          },
+        },
+      },
+    });
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> first`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+
+    for (
+      let attempt = 1;
+      attempt < CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS;
+      attempt += 1
+    ) {
+      await expect(
+        processNextQueuedSlackWork({
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: slackRuntime,
+          state,
+        }),
+      ).resolves.toEqual({ status: "pending_requeued" });
+      expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+    }
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: slackRuntime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "failed" });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that.",
+          ),
+        }),
+      }),
+    ]);
   });
 
   it("requeues deferred Slack mailbox records without consuming retry attempts", async () => {
@@ -1277,7 +1418,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.attemptCount).toBeUndefined();
   });
 
-  it("reports lost lease when input commit loses the mailbox lease", async () => {
+  it("reports lost lease when ack loses the mailbox lease", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -1312,7 +1453,7 @@ describe("Slack conversation work execution", () => {
               queue,
               state,
             });
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1368,7 +1509,7 @@ describe("Slack conversation work execution", () => {
         runtime: {
           handleNewMention: async (_thread, _message, hooks) => {
             currentNowMs = 242_000;
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1416,7 +1557,7 @@ describe("Slack conversation work execution", () => {
         queue,
         runtime: {
           handleNewMention: async (_thread, _message, hooks) => {
-            await hooks.onInputCommitted?.();
+            await hooks.ack?.();
             currentNowMs = 242_000;
             throw new CooperativeTurnYieldError();
           },

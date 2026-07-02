@@ -256,7 +256,7 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   drainSteeringMessages?: (
-    inject: (messages: ReplySteeringMessage[]) => Promise<void>,
+    accept: (messages: ReplySteeringMessage[]) => Promise<void>,
   ) => Promise<ReplySteeringMessage[]>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
@@ -1491,12 +1491,12 @@ async function generateAssistantReplyInPrivacyContext(
         });
         if (steeredMessageCount > 0) {
           logInfo(
-            "agent_turn_steering_messages_injected",
+            "agent_turn_steering_messages_accepted",
             spanContext,
             {
               "app.ai.steering_message_count": steeredMessageCount,
             },
-            "Agent turn steering messages injected",
+            "Agent turn steering messages accepted",
           );
         }
       } catch (error) {

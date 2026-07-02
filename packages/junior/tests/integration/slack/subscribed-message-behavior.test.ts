@@ -1151,9 +1151,9 @@ describe("Slack behavior: subscribed messages", () => {
 
   // Regression: skipped subscribed messages must commit inbound input so the
   // durable mailbox does not re-enqueue them forever.
-  it("calls onInputCommitted when preflight skips a message directed at another user", async () => {
+  it("calls ack when preflight skips a message directed at another user", async () => {
     const { slackRuntime } = createRuntime();
-    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const ack = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.001" });
 
     await slackRuntime.handleSubscribedMessage(
@@ -1165,16 +1165,16 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
-      { destination: createTestDestination(thread), onInputCommitted },
+      { destination: createTestDestination(thread), ack },
     );
 
-    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(ack).toHaveBeenCalledTimes(1);
     expect(thread.posts).toHaveLength(0);
   });
 
   it("preserves an unrelated active continuation when preflight skips a message", async () => {
     const { slackRuntime } = createRuntime();
-    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const ack = vi.fn().mockResolvedValue(undefined);
     const activeTurnId = "turn_existing_resume";
     const thread = createTestThread({
       id: "slack:C_REGRESS:1700010000.005",
@@ -1196,19 +1196,19 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
-      { destination: createTestDestination(thread), onInputCommitted },
+      { destination: createTestDestination(thread), ack },
     );
 
     const state = (await thread.state) ?? {};
     const conversation = state.conversation as {
       processing?: { activeTurnId?: string };
     };
-    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(ack).toHaveBeenCalledTimes(1);
     expect(conversation.processing?.activeTurnId).toBe(activeTurnId);
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("calls onInputCommitted when the classifier decides not to reply", async () => {
+  it("calls ack when the classifier decides not to reply", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -1224,7 +1224,7 @@ describe("Slack behavior: subscribed messages", () => {
         },
       },
     });
-    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const ack = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.002" });
 
     await slackRuntime.handleSubscribedMessage(
@@ -1236,14 +1236,14 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
-      { destination: createTestDestination(thread), onInputCommitted },
+      { destination: createTestDestination(thread), ack },
     );
 
-    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(ack).toHaveBeenCalledTimes(1);
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("calls onInputCommitted on the opt-out skip path", async () => {
+  it("calls ack on the opt-out skip path", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         subscribedReplyPolicy: {
@@ -1260,7 +1260,7 @@ describe("Slack behavior: subscribed messages", () => {
         },
       },
     });
-    const onInputCommitted = vi.fn().mockResolvedValue(undefined);
+    const ack = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.003" });
     // Subscribe first so opt-out has something to unsubscribe from.
     thread.subscribe();
@@ -1274,18 +1274,18 @@ describe("Slack behavior: subscribed messages", () => {
         threadId: thread.id,
         author: { userId: "U_TESTER" },
       }),
-      { destination: createTestDestination(thread), onInputCommitted },
+      { destination: createTestDestination(thread), ack },
     );
 
-    expect(onInputCommitted).toHaveBeenCalledTimes(1);
+    expect(ack).toHaveBeenCalledTimes(1);
   });
 
-  it("propagates TurnInputCommitLostError when onInputCommitted fails on skip", async () => {
+  it("propagates TurnInputCommitLostError when ack fails on skip", async () => {
     const { slackRuntime } = createRuntime();
     const commitError = new TurnInputCommitLostError(
       "lease lost during skip commit",
     );
-    const onInputCommitted = vi.fn().mockRejectedValue(commitError);
+    const ack = vi.fn().mockRejectedValue(commitError);
     const thread = createTestThread({ id: "slack:C_REGRESS:1700010000.004" });
 
     await expect(
@@ -1298,7 +1298,7 @@ describe("Slack behavior: subscribed messages", () => {
           threadId: thread.id,
           author: { userId: "U_TESTER" },
         }),
-        { destination: createTestDestination(thread), onInputCommitted },
+        { destination: createTestDestination(thread), ack },
       ),
     ).rejects.toThrow(TurnInputCommitLostError);
   });

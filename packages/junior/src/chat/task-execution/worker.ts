@@ -10,21 +10,23 @@ import {
   type ConversationWorkQueue,
 } from "./queue";
 import {
+  ackMessages,
   checkInConversationWork,
   clearConsumedConversationWake,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   countPendingConversationMessages,
+  deadLetterAttempt,
   drainConversationMailbox,
   ensureConversationWake,
-  failConversationWork,
   getConversationWorkState,
+  isFinalAttempt,
   isInvalidConversationRecordError,
-  recordConversationWorkFailure,
+  recordAttemptFailure,
   releaseConversationWork,
   requestConversationContinuation,
   startConversationWork,
-  type ConversationWorkFailureRecord,
+  type AttemptFailure,
   type ConversationWorkState,
   type InboundMessage,
 } from "./store";
@@ -33,14 +35,22 @@ export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
 export const CONVERSATION_WORK_SOFT_YIELD_AFTER_MS = 240_000;
 
 export interface ConversationWorkerContext {
+  attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination: Destination;
-  drainMailbox(
-    inject: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
-  ): Promise<InboundMessage[]>;
-  leaseToken: string;
   shouldYield(): boolean;
+}
+
+export interface InboxAttempt {
+  ack(): Promise<void>;
+  conversationId: string;
+  destination: Destination;
+  drain(
+    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+  ): Promise<InboundMessage[]>;
+  isFinalAttempt: boolean;
+  messages: InboundMessage[];
 }
 
 export interface ConversationWorkerResult {
@@ -124,29 +134,29 @@ async function requestLostLeaseRecovery(args: {
 }
 
 /**
- * Record one failed delivery attempt and surface consumed poison messages.
+ * Record one failed delivery attempt and surface dead-lettered messages.
  *
- * Consumption is logged here so every poisoned message leaves a
- * `conversation_work_poisoned` trail with its terminal attempt count.
+ * Consumption is logged here so every dead-lettered message leaves a
+ * `conversation_work_dead_lettered` trail with its terminal attempt count.
  */
 async function recordFailedDeliveryAttempt(args: {
   conversationId: string;
   leaseToken: string;
   nowMs: number;
-  offeredInboundMessageIds: string[];
+  messageIds: string[];
   options: ProcessConversationWorkOptions;
-}): Promise<ConversationWorkFailureRecord> {
-  const failure = await recordConversationWorkFailure({
+}): Promise<AttemptFailure> {
+  const failure = await recordAttemptFailure({
     conversationId: args.conversationId,
-    inboundMessageIds: args.offeredInboundMessageIds,
+    inboundMessageIds: args.messageIds,
     leaseToken: args.leaseToken,
     conversationStore: args.options.conversationStore,
     nowMs: args.nowMs,
     state: args.options.state,
   });
-  for (const message of failure.poisonedMessages) {
+  for (const message of failure.deadLetteredMessages) {
     logWarn(
-      "conversation_work_poisoned",
+      "conversation_work_dead_lettered",
       { conversationId: args.conversationId },
       {
         "app.conversation.source": message.source,
@@ -160,11 +170,11 @@ async function recordFailedDeliveryAttempt(args: {
   return failure;
 }
 
-/** True only when this attempt poisoned messages and left no further pending work. */
-function isTerminalFailure(failure: ConversationWorkFailureRecord): boolean {
+/** True only when this attempt dead-lettered messages and left no further pending work. */
+function isTerminalFailure(failure: AttemptFailure): boolean {
   return (
     failure.status === "recorded" &&
-    failure.poisonedMessages.length > 0 &&
+    failure.deadLetteredMessages.length > 0 &&
     failure.pendingCount === 0
   );
 }
@@ -304,7 +314,12 @@ export async function processConversationWork(
   const softYieldDeadlineMs =
     startedAtMs +
     (options.softYieldAfterMs ?? CONVERSATION_WORK_SOFT_YIELD_AFTER_MS);
-  const offeredInboundMessageIds = initial.messages.map(
+  const leasedWork = await getConversationWorkState({
+    conversationId,
+    state: options.state,
+  });
+  const attemptMessages = leasedWork?.messages ?? initial.messages;
+  const attemptMessageIds = attemptMessages.map(
     (message) => message.inboundMessageId,
   );
   let leaseLost = false;
@@ -327,10 +342,48 @@ export async function processConversationWork(
     "Conversation work lease acquired",
   );
 
+  const drainInbox = (
+    handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>,
+  ) =>
+    drainConversationMailbox({
+      conversationId,
+      leaseToken: lease.leaseToken,
+      conversationStore: options.conversationStore,
+      handle,
+      nowMs: now(options),
+      state: options.state,
+    });
+
+  const ack = async (): Promise<void> => {
+    const acknowledged = await ackMessages({
+      conversationId,
+      inboundMessageIds: attemptMessageIds,
+      leaseToken: lease.leaseToken,
+      conversationStore: options.conversationStore,
+      nowMs: now(options),
+      state: options.state,
+    });
+    if (!acknowledged) {
+      markLeaseLost();
+      throw new Error(
+        `Conversation work lease lost before inbox ack for ${conversationId}`,
+      );
+    }
+  };
+
   const workerContext: ConversationWorkerContext = {
+    attempt: {
+      ack,
+      conversationId,
+      destination,
+      drain: drainInbox,
+      isFinalAttempt: attemptMessages.some((message) =>
+        isFinalAttempt(message),
+      ),
+      messages: attemptMessages,
+    },
     conversationId,
     destination,
-    leaseToken: lease.leaseToken,
     shouldYield: () => leaseLost || now(options) >= softYieldDeadlineMs,
     checkIn: async () => {
       const checkedIn = await checkInConversationWork({
@@ -345,15 +398,6 @@ export async function processConversationWork(
       }
       return checkedIn;
     },
-    drainMailbox: (inject) =>
-      drainConversationMailbox({
-        conversationId,
-        leaseToken: lease.leaseToken,
-        conversationStore: options.conversationStore,
-        inject,
-        nowMs: now(options),
-        state: options.state,
-      }),
   };
 
   try {
@@ -451,19 +495,19 @@ export async function processConversationWork(
         : { status: "completed" };
     }
 
-    // A run that returns without durably handling any offered message is a
+    // A run that returns without durably handling any attempted message is a
     // failed delivery attempt, even when the runner swallowed its error:
     // completing would requeue the untouched mailbox forever.
-    if (offeredInboundMessageIds.length > 0) {
+    if (attemptMessageIds.length > 0) {
       const failure = await recordFailedDeliveryAttempt({
         conversationId,
         leaseToken: lease.leaseToken,
         nowMs: now(options),
-        offeredInboundMessageIds,
+        messageIds: attemptMessageIds,
         options,
       });
       if (isTerminalFailure(failure)) {
-        await failConversationWork({
+        await deadLetterAttempt({
           conversationId,
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,
@@ -521,17 +565,17 @@ export async function processConversationWork(
     let recoveryRecorded = false;
     try {
       const failure =
-        offeredInboundMessageIds.length > 0
+        attemptMessageIds.length > 0
           ? await recordFailedDeliveryAttempt({
               conversationId,
               leaseToken: lease.leaseToken,
               nowMs: errorNowMs,
-              offeredInboundMessageIds,
+              messageIds: attemptMessageIds,
               options,
             })
           : undefined;
       if (failure && isTerminalFailure(failure)) {
-        await failConversationWork({
+        await deadLetterAttempt({
           conversationId,
           leaseToken: lease.leaseToken,
           conversationStore: options.conversationStore,

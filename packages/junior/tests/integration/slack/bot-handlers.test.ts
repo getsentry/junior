@@ -1072,7 +1072,7 @@ describe("bot handlers (integration)", () => {
       expectedVersion: 4,
     });
     const generateAssistantReply = vi.fn();
-    const onInputCommitted = vi.fn();
+    const ack = vi.fn();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
@@ -1100,7 +1100,7 @@ describe("bot handlers (integration)", () => {
         }),
         {
           destination,
-          onInputCommitted,
+          ack,
           onTurnStatePersisted,
         },
       ),
@@ -1118,7 +1118,7 @@ describe("bot handlers (integration)", () => {
     });
     expect(generateAssistantReply).not.toHaveBeenCalled();
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
-    expect(onInputCommitted).toHaveBeenCalledOnce();
+    expect(ack).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
@@ -1234,7 +1234,7 @@ describe("bot handlers (integration)", () => {
       );
     });
     const generateAssistantReply = vi.fn();
-    const onInputCommitted = vi.fn();
+    const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -1257,12 +1257,12 @@ describe("bot handlers (integration)", () => {
 
     await slackRuntime.handleNewMention(thread, followUp, {
       destination,
-      onInputCommitted,
+      ack,
     });
 
     expect(generateAssistantReply).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
-    expect(onInputCommitted).toHaveBeenCalledOnce();
+    expect(ack).toHaveBeenCalledOnce();
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
       conversationId,
       destination,
@@ -1291,7 +1291,7 @@ describe("bot handlers (integration)", () => {
     // Redelivery of the same follow-up must not duplicate the append.
     await slackRuntime.handleNewMention(thread, followUp, {
       destination,
-      onInputCommitted,
+      ack,
     });
     const projection = await loadProjection({ conversationId });
     expect(
@@ -1371,7 +1371,7 @@ describe("bot handlers (integration)", () => {
       turnStartMessageIndex: 0,
     });
     const scheduleAgentContinue = vi.fn();
-    const onInputCommitted = vi.fn();
+    const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -1397,17 +1397,19 @@ describe("bot handlers (integration)", () => {
     const lock = await acquireActiveLock(stateAdapter, conversationId);
     expect(lock).not.toBeNull();
     try {
-      await slackRuntime.handleNewMention(thread, followUp, {
-        destination,
-        onInputCommitted,
-      });
+      await expect(
+        slackRuntime.handleNewMention(thread, followUp, {
+          destination,
+          ack,
+        }),
+      ).rejects.toThrow("Turn input is deferred until the active resume ends");
     } finally {
       await stateAdapter.releaseLock(lock!);
     }
 
     // The message was not consumed and nothing was appended or scheduled: it
     // stays pending in the mailbox for the next drain.
-    expect(onInputCommitted).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
     expect(scheduleAgentContinue).not.toHaveBeenCalled();
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
@@ -1439,11 +1441,51 @@ describe("bot handlers (integration)", () => {
       }),
       {
         destination: createTestDestination(thread),
-        willRetryOnFailure: () => true,
+        isFinalAttempt: false,
       },
     );
 
     expect(thread.posts).toEqual([]);
+  });
+
+  it("posts the failure fallback after ack even when the attempt is not final", async () => {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_input, context) => {
+            await context.onInputCommitted?.();
+            throw new Error("post-ack turn failure");
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_RETRYACKED:1700000000.000",
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-acked-failure",
+        threadId: "slack:C_RETRYACKED:1700000000.000",
+        text: "do work",
+        isMention: true,
+      }),
+      {
+        ack,
+        destination: createTestDestination(thread),
+        isFinalAttempt: false,
+      },
+    );
+
+    expect(ack).toHaveBeenCalledOnce();
+    expect(thread.posts).toEqual([
+      expect.stringContaining(
+        "I ran into an internal error while processing that.",
+      ),
+    ]);
   });
 
   it("posts the failure fallback on the final delivery attempt", async () => {
@@ -1471,7 +1513,7 @@ describe("bot handlers (integration)", () => {
       }),
       {
         destination: createTestDestination(thread),
-        willRetryOnFailure: () => false,
+        isFinalAttempt: true,
       },
     );
 

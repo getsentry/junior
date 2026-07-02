@@ -362,8 +362,8 @@ function normalizeMessage(value: unknown): InboundMessage | undefined {
   };
 }
 
-/** Whether one more failed delivery would consume the message as poison work. */
-export function isFinalConversationDeliveryAttempt(
+/** Whether this is the final attempt before an unacked message is dead-lettered. */
+export function isFinalAttempt(
   message: Pick<InboundMessage, "attemptCount">,
 ): boolean {
   return (
@@ -1489,11 +1489,11 @@ export async function checkInConversationWork(args: {
  * Drain pending mailbox entries after the caller acknowledges durable handling.
  *
  * Returning ids acknowledges only that subset; returning nothing acknowledges
- * every offered pending entry.
+ * every pending entry passed to the handler.
  */
 export async function drainConversationMailbox(args: {
   conversationId: string;
-  inject: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
+  handle: (messages: InboundMessage[]) => Promise<readonly string[] | void>;
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
@@ -1512,12 +1512,12 @@ export async function drainConversationMailbox(args: {
     return [];
   }
 
-  const acknowledgedIds = await args.inject(pending);
-  const offeredIds = new Set(
+  const acknowledgedIds = await args.handle(pending);
+  const pendingIds = new Set(
     pending.map((message) => message.inboundMessageId),
   );
   for (const inboundMessageId of acknowledgedIds ?? []) {
-    if (!offeredIds.has(inboundMessageId)) {
+    if (!pendingIds.has(inboundMessageId)) {
       throw new Error(
         `Conversation mailbox acknowledgement is not pending for ${args.conversationId}`,
       );
@@ -1558,8 +1558,8 @@ export async function drainConversationMailbox(args: {
   return pending.filter((message) => drainedIds.has(message.inboundMessageId));
 }
 
-/** Mark selected leased mailbox entries after their session-log injection succeeds. */
-export async function markConversationMessagesInjected(args: {
+/** Acknowledge leased mailbox entries after the handler accepts responsibility. */
+export async function ackMessages(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
@@ -1703,34 +1703,38 @@ export async function completeConversationWork(args: {
 }
 
 /** Failure outcome: `lost_lease` (another owner took over), `recorded` (attempt counted), or `skipped` (durable progress was made). */
-export interface ConversationWorkFailureRecord {
+export interface AttemptFailure {
   pendingCount: number;
-  poisonedMessages: InboundMessage[];
+  deadLetteredMessages: InboundMessage[];
   status: "lost_lease" | "recorded" | "skipped";
 }
 
 /**
- * Record one failed delivery attempt for the pending messages a run was
- * offered, consuming messages that reach the poison limit so a deterministic
+ * Record one failed delivery attempt for the pending messages a run attempted,
+ * dead-lettering messages that reach the retry limit so a deterministic
  * failure cannot requeue forever.
  *
  * Attempts are counted only when the run made no durable progress: if any
- * offered message left the mailbox, the remaining pending entries may be
+ * attempted message left the mailbox, the remaining pending entries may be
  * deliberate deferrals and are left untouched. Consumed message ids stay in
  * `inboundMessageIds` so source retries remain duplicates.
  */
-export async function recordConversationWorkFailure(args: {
+export async function recordAttemptFailure(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<ConversationWorkFailureRecord> {
+}): Promise<AttemptFailure> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || current.execution.lease?.token !== args.leaseToken) {
-      return { status: "lost_lease", pendingCount: 0, poisonedMessages: [] };
+      return {
+        status: "lost_lease",
+        pendingCount: 0,
+        deadLetteredMessages: [],
+      };
     }
     const pendingIds = new Set(
       current.execution.pendingMessages.map(
@@ -1744,15 +1748,15 @@ export async function recordConversationWorkFailure(args: {
       return {
         status: "skipped",
         pendingCount: current.execution.pendingMessages.length,
-        poisonedMessages: [],
+        deadLetteredMessages: [],
       };
     }
 
-    const offered = new Set(args.inboundMessageIds);
-    const poisonedMessages: InboundMessage[] = [];
+    const attemptedIds = new Set(args.inboundMessageIds);
+    const deadLetteredMessages: InboundMessage[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
-      if (!offered.has(message.inboundMessageId)) {
+      if (!attemptedIds.has(message.inboundMessageId)) {
         pendingMessages.push(message);
         continue;
       }
@@ -1761,7 +1765,7 @@ export async function recordConversationWorkFailure(args: {
         attemptCount: (message.attemptCount ?? 0) + 1,
       };
       if (attempted.attemptCount >= CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS) {
-        poisonedMessages.push(attempted);
+        deadLetteredMessages.push(attempted);
         continue;
       }
       pendingMessages.push(attempted);
@@ -1781,13 +1785,13 @@ export async function recordConversationWorkFailure(args: {
     return {
       status: "recorded",
       pendingCount: pendingMessages.length,
-      poisonedMessages,
+      deadLetteredMessages,
     };
   });
 }
 
 /** Record a terminal failure completion for a leased conversation. */
-export async function failConversationWork(args: {
+export async function deadLetterAttempt(args: {
   conversationId: string;
   leaseToken: string;
   nowMs?: number;

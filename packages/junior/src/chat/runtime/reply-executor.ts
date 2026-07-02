@@ -117,7 +117,7 @@ import {
   getAgentTurnSessionRecord,
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import {
   initConversationContext,
   setConversationTitle,
@@ -328,14 +328,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       beforeFirstResponsePost?: () => Promise<void>;
       destination: Destination;
       explicitMention?: boolean;
-      onInputCommitted?: () => Promise<void>;
+      ack?: () => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
       drainSteeringMessages?: (
-        inject: (messages: QueuedTurnMessage[]) => Promise<void>,
+        accept: (messages: QueuedTurnMessage[]) => Promise<void>,
         context?: { conversationContext?: string },
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
@@ -552,7 +552,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
          * parked safe boundary so the resumed `continue()` sees it. The
          * awaiting record pins the log session and materializes the projection
          * tail, so the append needs no record mutation. Must complete before
-         * `onInputCommitted` consumes the mailbox record.
+         * `ack` consumes the mailbox record.
          *
          * The read-compute-append races a concurrently-resumed slice, which
          * runs under the thread resume lock; take the same lock so the two
@@ -628,7 +628,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
-          await options.onInputCommitted?.();
+          await options.ack?.();
           await options.onTurnCompleted?.();
           return;
         }
@@ -640,7 +640,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
           if (resumeRequest) {
             // Durable session-log append first: rescheduling a continuation
-            // does not consume the message, and `onInputCommitted` may only
+            // does not consume the message, and `ack` may only
             // fire after the input is model-visible.
             if (!(await appendParkedTurnInput(resumeRequest.sessionId))) {
               // A live resume holds the thread lock; leave the mailbox
@@ -670,7 +670,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               conversation: preparedState.conversation,
             });
             await options.onTurnStatePersisted?.();
-            await options.onInputCommitted?.();
+            await options.ack?.();
             return;
           }
 
@@ -752,7 +752,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversation: preparedState.conversation,
           });
           await options.onTurnStatePersisted?.();
-          await options.onInputCommitted?.();
+          await options.ack?.();
           return;
         }
         startActiveTurn({
@@ -1018,19 +1018,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
-                inject: (messages: ReplySteeringMessage[]) => Promise<void>,
+                accept: (messages: ReplySteeringMessage[]) => Promise<void>,
               ): Promise<ReplySteeringMessage[]> => {
-                let injectedMessages: ReplySteeringMessage[] | undefined;
+                let acceptedMessages: ReplySteeringMessage[] | undefined;
                 const drained = await options.drainSteeringMessages!(
                   async (queuedMessages) => {
-                    injectedMessages =
+                    acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
-                    await inject(injectedMessages);
+                    await accept(acceptedMessages);
                   },
                   { conversationContext: preparedState.conversationContext },
                 );
                 return (
-                  injectedMessages ?? (await resolveSteeringMessages(drained))
+                  acceptedMessages ?? (await resolveSteeringMessages(drained))
                 );
               }
             : undefined;
@@ -1101,7 +1101,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               onStatus: (nextStatus) => status.update(nextStatus),
               onToolInvocation: options.onToolInvocation,
-              onInputCommitted: options.onInputCommitted,
+              onInputCommitted: options.ack,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
             },
@@ -1254,16 +1254,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             // regenerating an already-delivered reply if the thread-state
             // write below fails.
             if (conversationId && reply.piMessages?.length) {
-              await persistCompletedSessionRecord({
+              await completeDeliveredTurn({
                 channelName,
                 conversationId,
-                currentDurationMs: reply.diagnostics.durationMs,
-                currentUsage: reply.diagnostics.usage,
+                durationMs: reply.diagnostics.durationMs,
+                usage: reply.diagnostics.usage,
                 destination,
                 destinationVisibility,
                 source,
                 sessionId: turnId,
-                allMessages: reply.piMessages,
+                sliceId: 1,
+                messages: reply.piMessages,
                 logContext: {
                   threadId,
                   requesterId: slackRequesterId,

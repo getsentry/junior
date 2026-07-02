@@ -34,7 +34,7 @@ invocations without turning every tool call into a queue round trip.
 - Queueing every model call or every tool call as a separate asynchronous task.
 - Exactly-once external side-effect delivery.
 - Mid-model-stream or mid-tool-call checkpointing.
-- Owning model-execution poison-work policy. Timeout slice caps belong to
+- Owning model-execution retry-limit policy. Timeout slice caps belong to
   `./agent-session-resumability.md`; this layer only requeues or releases
   conversation work based on durable runnable state.
 - Using Slack thread messages as progress filler for routine continuation.
@@ -738,7 +738,7 @@ Required event names should distinguish normal progress from repair:
 - `conversation_work_pending_requeued`
 - `conversation_work_recovery_failed`
 - `conversation_work_failed`
-- `conversation_work_poisoned` (attempt limit reached, message consumed)
+- `conversation_work_dead_lettered` (attempt limit reached, message consumed)
 
 Required attributes when available:
 

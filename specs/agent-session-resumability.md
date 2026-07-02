@@ -49,7 +49,7 @@ This spec owns how agent session state is persisted and resumed across execution
   resume source.
 - `slice_id`: Diagnostic integer for one execution chunk in the same
   conversation. The mailbox worker must not enforce a slice cap; timeout
-  poison-work guards live in the agent-run read model.
+  retry-limit guards live in the agent-run read model.
 - `event_id`: Stable identity for one durable session-log event.
 - `pause_event_id`: Event id carried by timeout/auth resume callbacks so stale callbacks can be dropped.
 

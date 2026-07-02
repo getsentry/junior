@@ -34,7 +34,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { startActiveTurn, markTurnFailed } from "@/chat/runtime/turn";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import {
   buildConversationContext,
   markConversationMessage,
@@ -344,15 +344,13 @@ export async function runLocalAgentTurn(
     // the final assistant messages to the session log and marks the session
     // record completed only after the CLI sink accepted the reply. Failures
     // are logged inside and never fail the delivered turn.
-    await persistCompletedSessionRecord({
+    await completeDeliveredTurn({
       conversationId: input.conversationId,
       sessionId: turnId,
-      // Local turns are single-slice by design: there is no local resume
-      // machinery, so a completion here is always slice 1.
       sliceId: 1,
-      allMessages: reply.piMessages,
-      currentDurationMs: reply.diagnostics.durationMs,
-      currentUsage: reply.diagnostics.usage,
+      messages: reply.piMessages,
+      durationMs: reply.diagnostics.durationMs,
+      usage: reply.diagnostics.usage,
       destination,
       source,
       surface: "internal",

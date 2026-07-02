@@ -41,7 +41,7 @@ import {
 } from "@/chat/slack/reply";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
-import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
+import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -431,12 +431,13 @@ export async function runAgentDispatchSlice(
     if (!failure && reply.piMessages?.length) {
       // Destination acceptance is the completion boundary for the session
       // record too; this call swallows its own persistence failures.
-      await persistCompletedSessionRecord({
+      await completeDeliveredTurn({
         conversationId,
         sessionId: turnId,
-        allMessages: reply.piMessages,
-        currentDurationMs: reply.diagnostics.durationMs,
-        currentUsage: reply.diagnostics.usage,
+        sliceId: 1,
+        messages: reply.piMessages,
+        durationMs: reply.diagnostics.durationMs,
+        usage: reply.diagnostics.usage,
         destination: dispatch.destination,
         source: dispatch.source,
         surface: "api",

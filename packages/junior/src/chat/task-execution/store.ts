@@ -11,14 +11,14 @@ export {
   CONVERSATION_WORK_LEASE_TTL_MS,
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
-  isFinalConversationDeliveryAttempt,
+  isFinalAttempt,
   isInvalidConversationRecordError,
   type AgentInput,
+  type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
   type Conversation,
   type ConversationExecution,
-  type ConversationWorkFailureRecord,
   type ConversationWorkLease,
   type ConversationWorkState,
   type ExecutionStatus,
@@ -362,7 +362,7 @@ export async function checkInConversationWork(args: {
   return result;
 }
 
-/** Drain pending mailbox entries after the caller has durably injected them. */
+/** Drain pending mailbox entries after the caller accepts responsibility. */
 export async function drainConversationMailbox(
   args: Parameters<typeof workState.drainConversationMailbox>[0] & {
     conversationStore?: ConversationStore;
@@ -376,8 +376,8 @@ export async function drainConversationMailbox(
   return result;
 }
 
-/** Mark selected leased mailbox entries after their session-log injection succeeds. */
-export async function markConversationMessagesInjected(args: {
+/** Acknowledge leased mailbox entries after the handler accepts responsibility. */
+export async function ackMessages(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
@@ -385,7 +385,7 @@ export async function markConversationMessagesInjected(args: {
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.markConversationMessagesInjected(args);
+  const result = await workState.ackMessages(args);
   await recordExecutionMetadata(args);
   return result;
 }
@@ -430,8 +430,8 @@ export async function completeConversationWork(args: {
   return result;
 }
 
-/** Record one failed delivery attempt and consume poisoned mailbox messages. */
-export async function recordConversationWorkFailure(args: {
+/** Record one failed delivery attempt and dead-letter messages at their limit. */
+export async function recordAttemptFailure(args: {
   conversationId: string;
   inboundMessageIds: string[];
   leaseToken: string;
@@ -439,7 +439,7 @@ export async function recordConversationWorkFailure(args: {
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.recordConversationWorkFailure(args);
+  const result = await workState.recordAttemptFailure(args);
   if (result.status === "recorded") {
     await recordExecutionMetadata(args);
   }
@@ -447,14 +447,14 @@ export async function recordConversationWorkFailure(args: {
 }
 
 /** Record a terminal failure completion for a leased conversation. */
-export async function failConversationWork(args: {
+export async function deadLetterAttempt(args: {
   conversationId: string;
   leaseToken: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
   state?: StateAdapter;
 }) {
-  const result = await workState.failConversationWork(args);
+  const result = await workState.deadLetterAttempt(args);
   await recordExecutionMetadata(args);
   return result;
 }

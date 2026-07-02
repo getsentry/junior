@@ -173,7 +173,7 @@ Scenarios:
 4. Slack side effects must not be reported as successful unless the tool succeeded in the same turn.
 5. Empty model output is not a successful final answer unless a successful side effect, file-only reply, or runtime-owned pause already satisfied the turn.
 6. User-visible failure text is the sanitized fallback response with its correlation/event id. Raw exception messages, stack traces, and internal error strings must not be delivered as reply text. Partial output may be delivered only when it is genuine model-authored text.
-7. Repeated failures for the same inbound message are bounded by the poison-work contract in `./task-execution.md`; one inbound message produces at most one visible failure reply.
+7. Repeated failures for the same inbound message are bounded by the dead-letter contract in `./task-execution.md`; one inbound message produces at most one visible failure reply.
 
 ## Observability
 
