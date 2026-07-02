@@ -29,6 +29,7 @@ type RequestDeadlineModule = typeof import("@/chat/runtime/request-deadline");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 type AgentContinueServiceModule =
   typeof import("@/chat/services/agent-continue");
+type TaskExecutionStoreModule = typeof import("@/chat/task-execution/store");
 
 let stateAdapterModule: StateAdapterModule;
 let threadStateModule: ThreadStateModule;
@@ -36,6 +37,7 @@ let agentContinueRunnerModule: AgentContinueRunnerModule;
 let requestDeadlineModule: RequestDeadlineModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let agentContinueServiceModule: AgentContinueServiceModule;
+let taskExecutionStoreModule: TaskExecutionStoreModule;
 let queue: ConversationWorkQueueTestAdapter;
 
 function continueAgentRun(args: {
@@ -90,6 +92,7 @@ describe("agent continuation Slack integration", () => {
     requestDeadlineModule = await import("@/chat/runtime/request-deadline");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
     agentContinueServiceModule = await import("@/chat/services/agent-continue");
+    taskExecutionStoreModule = await import("@/chat/task-execution/store");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -529,6 +532,199 @@ describe("agent continuation Slack integration", () => {
       state: "failed",
       errorMessage: "Paused agent run failed while continuing",
     });
+  });
+
+  it("terminally fails with a visible fallback when no stored requester can be recovered", async () => {
+    // Issue #727: a missing stored requester must never throw out of the
+    // continue callback (a throw NACKs the queue delivery and wedges the
+    // conversation forever).
+    const conversationId = "slack:C123:1712345.0010";
+    const sessionId = "turn_msg_10";
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0010"),
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.10",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(false);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      state: "failed",
+      errorMessage: "Stored Slack requester missing for continuation",
+    });
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0010",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that.",
+          ),
+        }),
+      }),
+    ]);
+  });
+
+  it("recovers the resume requester from the durable conversation record", async () => {
+    // Issue #727 recovery path: older session records were persisted without
+    // a requester; the durable conversation work record still carries the
+    // matching identity, so the resume completes instead of failing.
+    const conversationId = "slack:C123:1712345.0011";
+    const sessionId = "turn_msg_11";
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0011"),
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+    await taskExecutionStoreModule.recordConversationActivity({
+      conversationId,
+      destination: SLACK_DESTINATION,
+      requester: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        slackUserId: "U123",
+        slackUserName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.11",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(true);
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "resume this request",
+      expect.objectContaining({
+        requester: expect.objectContaining({
+          userId: "U123",
+          userName: "testuser",
+          fullName: "Test User",
+          email: "testuser@example.com",
+        }),
+      }),
+    );
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0011",
+          text: "Final resumed answer",
+        }),
+      }),
+    ]);
   });
 
   it("schedules a durable continuation without posting a notice when a resumed slice times out again", async () => {

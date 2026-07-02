@@ -295,6 +295,9 @@ describe("agent continuation runner callbacks", () => {
     const { continueSlackAgentRun } =
       await import("@/chat/runtime/agent-continue-runner");
 
+    // A mismatched stored requester must never throw out of the continue
+    // callback (issue #727: a throw NACKs the queue delivery and wedges the
+    // conversation); it terminally fails the session instead.
     await expect(
       continueSlackAgentRun(
         {
@@ -305,16 +308,20 @@ describe("agent continuation runner callbacks", () => {
         },
         {
           resumeTurn: async (args) => {
-            await args.beforeStart?.();
-            throw new Error("continuation should not prepare");
+            const prepared = await args.beforeStart?.();
+            if (prepared !== false) {
+              throw new Error("Expected continuation preparation to fail");
+            }
+            return true;
           },
         },
       ),
-    ).rejects.toThrow("Stored Slack requester did not match resume actor");
+    ).resolves.toBe(true);
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
+      errorMessage: "Stored Slack requester missing for continuation",
     });
   });
 });

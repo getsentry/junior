@@ -53,7 +53,13 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
-import { createSlackResumeRequester } from "@/chat/requester";
+import {
+  createSlackRequester,
+  createSlackResumeRequester,
+  type Requester,
+  type SlackRequester,
+} from "@/chat/requester";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -185,6 +191,54 @@ async function failContinuationStartup(args: {
   }
 }
 
+/**
+ * Resolve the resume requester without ever throwing for missing identity.
+ *
+ * A throw escaping `beforeStart` NACKs the continue queue delivery and
+ * permanently wedges the conversation (issue #727), so identity gaps must
+ * resolve to `undefined` and let the caller fail the session visibly. When
+ * the session record lacks a usable requester, recovery consults the durable
+ * conversation work record — but only an identity that matches the resume
+ * actor (team + user) is ever rebuilt; we never fabricate one.
+ */
+async function resolveContinuationRequester(args: {
+  conversationId: string;
+  sessionRecordRequester: Requester | undefined;
+  teamId: string;
+  userId: string;
+}): Promise<SlackRequester | undefined> {
+  const stored = args.sessionRecordRequester;
+  if (
+    stored?.platform === "slack" &&
+    stored.teamId === args.teamId &&
+    stored.userId === args.userId
+  ) {
+    return createSlackResumeRequester({
+      requester: stored,
+      teamId: args.teamId,
+      userId: args.userId,
+    });
+  }
+
+  const work = await getConversationWorkState({
+    conversationId: args.conversationId,
+  });
+  const workRequester = work?.requester;
+  if (
+    workRequester &&
+    workRequester.teamId === args.teamId &&
+    workRequester.slackUserId === args.userId
+  ) {
+    return createSlackRequester(args.teamId, args.userId, {
+      email: workRequester.email,
+      fullName: workRequester.fullName,
+      userName: workRequester.slackUserName,
+    });
+  }
+
+  return undefined;
+}
+
 function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
   return (
     summary.state === "awaiting_resume" &&
@@ -277,11 +331,20 @@ export async function continueSlackAgentRun(
           payload.destination,
           "Slack continuation",
         );
-        const requester = createSlackResumeRequester({
-          requester: activeSessionRecord.requester,
+        const requester = await resolveContinuationRequester({
+          conversationId: payload.conversationId,
+          sessionRecordRequester: activeSessionRecord.requester,
           teamId: destination.teamId,
           userId: userMessage.author.userId,
         });
+        if (!requester) {
+          await failStrandedSessionWithFallback({
+            conversationId: payload.conversationId,
+            errorMessage: "Stored Slack requester missing for continuation",
+            sessionRecord: activeSessionRecord,
+          });
+          return false;
+        }
         if (!activeSessionRecord.source) {
           await failAgentTurnSessionRecord({
             conversationId: payload.conversationId,
