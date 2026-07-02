@@ -428,7 +428,7 @@ export async function runAgentDispatchSlice(
         "Failed to persist delivered dispatch state after Slack accepted the reply",
       );
     }
-    if (!failure && reply.piMessages?.length) {
+    if (reply.piMessages?.length) {
       // Destination acceptance is the completion boundary for the session
       // record too; this call swallows its own persistence failures.
       await completeDeliveredTurn({

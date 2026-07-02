@@ -201,6 +201,41 @@ describe("Slack behavior: finalized thread replies", () => {
     ]);
   });
 
+  it("posts a failure fallback instead of completing an empty final post plan", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "",
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: true,
+              attachFiles: "none",
+            },
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_FINAL:1700006005.000" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-empty-plan",
+        text: "<@U_APP> reply invisibly",
+        isMention: true,
+        threadId: thread.id,
+      }),
+      { destination: createTestDestination(thread), isFinalAttempt: true },
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "I ran into an internal error while processing that.",
+    );
+  });
+
   it("does not delete an ack reply when it also carries files", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {

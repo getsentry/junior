@@ -909,6 +909,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let finalReplyDelivered = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
+        const hasVisibleSlackDelivery = (post: {
+          files?: unknown[];
+          text: string;
+        }) => post.text.trim().length > 0 || Boolean(post.files?.length);
 
         try {
           const loadedPiMessages = await loadPiMessagesForTurn({
@@ -1144,6 +1148,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // completed after the visible reply has been accepted by Slack.
           if (plannedPosts.length > 0) {
             let sent: SentMessage | undefined;
+            const hasVisibleDelivery = plannedPosts.some(
+              hasVisibleSlackDelivery,
+            );
+            if (!hasVisibleDelivery) {
+              throw new Error(
+                "Slack final reply plan did not contain visible delivery",
+              );
+            }
             if (shouldUseSlackFooter) {
               const slackChannelId = channelId;
               const slackThreadTs = threadTs;
@@ -1191,6 +1203,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
             } else {
               for (const post of plannedPosts) {
+                if (!hasVisibleSlackDelivery(post)) {
+                  continue;
+                }
                 sent = await postThreadReply(
                   buildSlackOutputMessage(post.text, post.files),
                   post.stage,
@@ -1228,11 +1243,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             }
+          } else {
+            // Side-effect-only turns (for example reactions or channel posts)
+            // have no thread reply to deliver; the successful tool result is
+            // the visible Slack acceptance boundary.
+            finalReplyDelivered = true;
+            shouldPersistFailureState = false;
           }
-          // Zero planned posts means there is nothing to deliver; treat the
-          // turn as accepted so completion persistence proceeds.
-          finalReplyDelivered = true;
-          shouldPersistFailureState = false;
 
           const completedState = buildDeliveredTurnStatePatch({
             artifactStatePatch: {
