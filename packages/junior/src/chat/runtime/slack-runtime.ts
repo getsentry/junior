@@ -14,6 +14,7 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SlackActionError } from "@/chat/slack/client";
 import {
   isCooperativeTurnYieldError,
+  isTurnInputDeferredError,
   isTurnInputCommitLostError,
   isRetryableTurnError,
 } from "@/chat/runtime/turn";
@@ -97,6 +98,7 @@ function shouldRethrowTurnControlError(error: unknown): boolean {
   return (
     isCooperativeTurnYieldError(error) ||
     isTurnInputCommitLostError(error) ||
+    isTurnInputDeferredError(error) ||
     isProviderRetryError(error)
   );
 }

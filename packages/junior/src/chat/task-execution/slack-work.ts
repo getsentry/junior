@@ -13,6 +13,7 @@ import type {
 } from "@/chat/runtime/slack-runtime";
 import {
   isCooperativeTurnYieldError,
+  isTurnInputDeferredError,
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
@@ -395,7 +396,18 @@ export function createSlackConversationWorker(
       }),
     );
     if (records.length === 0) {
-      await options.resumeAwaitingContinuation(context.conversationId);
+      const destination = requireSlackDestination(
+        context.destination,
+        "Slack continuation recovery",
+      );
+      await runWithSlackInstallation({
+        adapter,
+        installation: { teamId: destination.teamId },
+        state,
+        task: async () => {
+          await options.resumeAwaitingContinuation(context.conversationId);
+        },
+      });
       return { status: "completed" };
     }
 
@@ -530,6 +542,9 @@ export function createSlackConversationWorker(
             willRetryOnFailure,
           });
         } catch (error) {
+          if (isTurnInputDeferredError(error)) {
+            return { status: "deferred" } satisfies ConversationWorkerResult;
+          }
           if (isCooperativeTurnYieldError(error)) {
             return { status: "yielded" } satisfies ConversationWorkerResult;
           }
@@ -541,6 +556,7 @@ export function createSlackConversationWorker(
       },
     });
     if (
+      turnResult?.status === "deferred" ||
       turnResult?.status === "yielded" ||
       turnResult?.status === "lost_lease"
     ) {

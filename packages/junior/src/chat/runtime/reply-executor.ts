@@ -97,6 +97,7 @@ import {
   isAuthResumeRetryableTurnError,
   isCooperativeTurnYieldError,
   isRetryableTurnError,
+  TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
@@ -645,7 +646,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // A live resume holds the thread lock; leave the mailbox
               // message pending so the next drain re-delivers it after the
               // resume completes.
-              return;
+              throw new TurnInputDeferredError();
             }
             try {
               await deps.services.scheduleAgentContinue(resumeRequest);

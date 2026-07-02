@@ -44,7 +44,7 @@ export interface ConversationWorkerContext {
 }
 
 export interface ConversationWorkerResult {
-  status: "completed" | "lost_lease" | "yielded";
+  status: "completed" | "deferred" | "lost_lease" | "yielded";
 }
 
 export interface ConversationWorkProcessResult {
@@ -420,6 +420,35 @@ export async function processConversationWork(
         "Conversation work yielded cooperatively",
       );
       return { status: "yielded" };
+    }
+
+    if (result.status === "deferred") {
+      const deferredNowMs = now(options);
+      const released = await releaseConversationWork({
+        conversationId,
+        leaseToken: lease.leaseToken,
+        conversationStore: options.conversationStore,
+        nowMs: deferredNowMs,
+        state: options.state,
+      });
+      if (!released) {
+        return { status: "lost_lease" };
+      }
+      const wake = await ensureConversationWake({
+        conversationId,
+        conversationStore: options.conversationStore,
+        idempotencyKey: nudgeIdempotencyKey(
+          "deferred",
+          conversationId,
+          deferredNowMs,
+        ),
+        nowMs: deferredNowMs,
+        queue: options.queue,
+        state: options.state,
+      });
+      return wake.status === "enqueued"
+        ? { status: "pending_requeued" }
+        : { status: "completed" };
     }
 
     // A run that returns without durably handling any offered message is a

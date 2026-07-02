@@ -13,6 +13,7 @@ Good policy topics:
 - test adapters and harnesses
 - naming conventions
 - interface design
+- correctness and complexity tradeoffs
 - runtime boundary schemas
 - migration hygiene
 - automation safety boundaries

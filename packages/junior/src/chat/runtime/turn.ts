@@ -134,6 +134,23 @@ export function isTurnInputCommitLostError(
   return error instanceof TurnInputCommitLostError;
 }
 
+/** Error indicating durable turn input should stay pending for a later worker. */
+export class TurnInputDeferredError extends Error {
+  readonly code = "turn_input_deferred";
+
+  constructor(message = "Turn input is deferred until the active resume ends") {
+    super(message);
+    this.name = "TurnInputDeferredError";
+  }
+}
+
+/** Return whether an error means the durable worker should redeliver input later. */
+export function isTurnInputDeferredError(
+  error: unknown,
+): error is TurnInputDeferredError {
+  return error instanceof TurnInputDeferredError;
+}
+
 // ---------------------------------------------------------------------------
 // Turn lifecycle mutations
 // ---------------------------------------------------------------------------

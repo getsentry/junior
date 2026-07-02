@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message, ThreadImpl, type StateAdapter, type Thread } from "chat";
-import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
+import type { SlackAdapter } from "@chat-adapter/slack";
+import {
+  CooperativeTurnYieldError,
+  TurnInputDeferredError,
+} from "@/chat/runtime/turn";
+import { getSlackClient } from "@/chat/slack/client";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
   appendInboundMessage,
@@ -955,6 +960,67 @@ describe("Slack conversation work execution", () => {
     });
   });
 
+  it("binds the destination installation token while recovering idle continuations", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const resolveTokenForTeam = vi.fn(
+      async (teamId: string, isEnterpriseInstall?: boolean) => ({
+        botUserId: SLACK_BOT_USER_ID,
+        token: `xoxb-${isEnterpriseInstall ? "enterprise" : teamId}`,
+      }),
+    );
+    const requestContextRun = vi.fn(
+      async (_context: unknown, fn: () => Promise<void>) => await fn(),
+    );
+    const slackAdapter = {
+      botUserId: SLACK_BOT_USER_ID,
+      initialize: vi.fn(async () => {}),
+      requestContext: {
+        run: requestContextRun,
+      },
+      resolveTokenForTeam,
+    } as unknown as SlackAdapter;
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+
+    let observedToken: string | undefined;
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        state,
+        run: createSlackConversationWorker({
+          getSlackAdapter: () => slackAdapter,
+          resumeAwaitingContinuation: async () => {
+            observedToken = getSlackClient().token;
+            return true;
+          },
+          runtime: {
+            handleNewMention: async () => {
+              throw new Error("injected messages should not replay");
+            },
+            handleSubscribedMessage: async () => {
+              throw new Error("injected messages should not replay");
+            },
+          },
+          state,
+        }),
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(resolveTokenForTeam).toHaveBeenCalledWith("T123", undefined);
+    expect(requestContextRun).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "xoxb-T123" }),
+      expect.any(Function),
+    );
+    expect(observedToken).toBe("xoxb-T123");
+  });
+
   it("terminalizes stale idle continuations skipped by resume startup", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
@@ -1153,7 +1219,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.messages[0]?.attemptCount).toBe(1);
   });
 
-  it("requeues Slack mailbox records when the runtime returns without input commit", async () => {
+  it("requeues deferred Slack mailbox records without consuming retry attempts", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -1183,6 +1249,7 @@ describe("Slack conversation work execution", () => {
         runtime: {
           handleNewMention: async () => {
             handled += 1;
+            throw new TurnInputDeferredError();
           },
           handleSubscribedMessage: async () => {
             throw new Error("unexpected subscribed route");
@@ -1196,7 +1263,7 @@ describe("Slack conversation work execution", () => {
     expect(queue.sentRecords()).toEqual([
       expect.objectContaining({
         conversationId: CONVERSATION_ID,
-        idempotencyKey: `pending:${CONVERSATION_ID}:3000`,
+        idempotencyKey: `deferred:${CONVERSATION_ID}:3000`,
       }),
     ]);
     const work = await getConversationWorkState({
@@ -1207,6 +1274,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.needsRun).toBe(true);
     expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
     expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
+    expect(work?.messages[0]?.attemptCount).toBeUndefined();
   });
 
   it("reports lost lease when input commit loses the mailbox lease", async () => {

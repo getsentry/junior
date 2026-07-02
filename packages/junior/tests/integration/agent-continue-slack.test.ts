@@ -291,6 +291,11 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
+        requester: {
+          platform: "slack",
+          teamId: SLACK_DESTINATION.teamId,
+          userId: "U123",
+        },
       });
 
     await threadStateModule.persistThreadStateById(conversationId, {
