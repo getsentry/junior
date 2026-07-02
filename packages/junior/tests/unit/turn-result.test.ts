@@ -339,6 +339,35 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
+  it("treats empty sendMessage-only turns as channel-only success", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: '{"file_count":1}' }],
+        },
+      ],
+      userInput: "send the generated image to the channel",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 1,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryMode).toBe("channel_only");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
   it("keeps post-canvas thread replies brief", () => {
     const verboseReply = [
       "I put together a reusable reference here:",

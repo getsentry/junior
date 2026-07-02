@@ -259,9 +259,14 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
   const fileOnlySuccess =
     !rawPrimaryText && toolErrorCount === 0 && replyFiles.length > 0;
-  const sideEffectOnlySuccess = markerSideEffectSuccess || fileOnlySuccess;
+  const channelMessageOnlySuccess =
+    !rawPrimaryText && toolErrorCount === 0 && channelPostPerformed;
+  const sideEffectOnlySuccess =
+    markerSideEffectSuccess || fileOnlySuccess || channelMessageOnlySuccess;
   const baseDeliveryPlan = buildReplyDeliveryPlan({
-    explicitChannelPostIntent: exactNoReplyMarker && explicitChannelPostIntent,
+    explicitChannelPostIntent:
+      (exactNoReplyMarker && explicitChannelPostIntent) ||
+      channelMessageOnlySuccess,
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });
