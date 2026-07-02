@@ -2,6 +2,9 @@
  * Repair Slack destination visibility after migration 0002 over-aggressively
  * reset all confirmed-public destinations to 'private'.
  *
+ * TODO(0.90): Remove this migration once all deployments have run it and
+ * destination rows have been re-confirmed by the live Slack Events API.
+ *
  * Uses the Slack conversations.info API to confirm actual channel visibility
  * for ambiguous C-prefixed destinations. DMs and group/private channels are
  * left untouched; only 'channel'-kind rows are re-evaluated.
