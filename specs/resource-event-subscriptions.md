@@ -254,8 +254,11 @@ MVP events:
 
 - `checks.failed`
 - `checks.recovered`
+- `comment.created`
 - `review.approved`
 - `review.changes_requested`
+- `review.commented`
+- `review_comment.created`
 - `state.merged`
 - `state.closed_unmerged`
 

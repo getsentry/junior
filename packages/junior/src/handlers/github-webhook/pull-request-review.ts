@@ -39,7 +39,9 @@ export function normalizeGitHubPullRequestReviewEvent(
       ? "review.approved"
       : reviewState === "CHANGES_REQUESTED"
         ? "review.changes_requested"
-        : undefined;
+        : reviewState === "COMMENTED"
+          ? "review.commented"
+          : undefined;
   if (!eventType) {
     return undefined;
   }
@@ -57,7 +59,9 @@ export function normalizeGitHubPullRequestReviewEvent(
     trustedSummary:
       eventType === "review.approved"
         ? `${resource.label} was approved${reviewer ? ` by ${reviewer}` : ""}.`
-        : `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`,
+        : eventType === "review.changes_requested"
+          ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
+          : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
     untrustedText: parsed.data.review.body ?? undefined,
   };
 }

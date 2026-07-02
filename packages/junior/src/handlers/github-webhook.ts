@@ -6,7 +6,9 @@ import {
 } from "@/chat/resource-events/ingest";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { normalizeGitHubCheckSuiteEvents } from "@/handlers/github-webhook/check-suite";
+import { normalizeGitHubIssueCommentEvent } from "@/handlers/github-webhook/issue-comment";
 import { normalizeGitHubPullRequestEvent } from "@/handlers/github-webhook/pull-request";
+import { normalizeGitHubPullRequestReviewCommentEvent } from "@/handlers/github-webhook/pull-request-review-comment";
 import { normalizeGitHubPullRequestReviewEvent } from "@/handlers/github-webhook/pull-request-review";
 
 export interface GitHubWebhookHandlerOptions {
@@ -49,6 +51,20 @@ export function normalizeGitHubResourceEvents(args: {
     }
     case "pull_request_review": {
       const event = normalizeGitHubPullRequestReviewEvent(
+        args.deliveryId,
+        args.body,
+      );
+      return event ? [event] : [];
+    }
+    case "issue_comment": {
+      const event = normalizeGitHubIssueCommentEvent(
+        args.deliveryId,
+        args.body,
+      );
+      return event ? [event] : [];
+    }
+    case "pull_request_review_comment": {
+      const event = normalizeGitHubPullRequestReviewCommentEvent(
         args.deliveryId,
         args.body,
       );

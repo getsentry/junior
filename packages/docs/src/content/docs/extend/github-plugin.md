@@ -104,8 +104,10 @@ Create and install a GitHub App before you verify GitHub workflows:
 
 5. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`, then subscribe the app to these repository events:
    - Check suite
+   - Issue comment
    - Pull request
    - Pull request review
+   - Pull request review comment
 6. Install the app on the repository or organization Junior should access.
 7. Copy the App ID, OAuth client ID/secret, installation ID, bot name, bot noreply email, and, if you enabled PR event watches, the webhook secret into your deployment environment.
 
@@ -120,11 +122,13 @@ When `GITHUB_WEBHOOK_SECRET` is configured, `github_createPullRequest` returns a
 
 Supported GitHub webhook deliveries become these Junior resource events:
 
-| GitHub delivery                 | Junior event types                            |
-| ------------------------------- | --------------------------------------------- |
-| `check_suite` completed         | `checks.failed`, `checks.recovered`           |
-| `pull_request_review` submitted | `review.approved`, `review.changes_requested` |
-| `pull_request` closed           | `state.merged`, `state.closed_unmerged`       |
+| GitHub delivery                       | Junior event types                                                |
+| ------------------------------------- | ----------------------------------------------------------------- |
+| `check_suite` completed               | `checks.failed`, `checks.recovered`                               |
+| `issue_comment` created on a PR       | `comment.created`                                                 |
+| `pull_request_review` submitted       | `review.approved`, `review.changes_requested`, `review.commented` |
+| `pull_request_review_comment` created | `review_comment.created`                                          |
+| `pull_request` closed                 | `state.merged`, `state.closed_unmerged`                           |
 
 `state.merged` and `state.closed_unmerged` complete the subscription after Junior accepts the event. Other supported events keep the watch active until the subscription expires, is cancelled, or reaches its configured TTL.
 

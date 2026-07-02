@@ -89,6 +89,123 @@ describe("normalizeGitHubResourceEvents", () => {
     ]);
   });
 
+  it("normalizes comment-only review events with untrusted text", () => {
+    vi.setSystemTime(1_000);
+
+    expect(
+      normalizeGitHubResourceEvents({
+        deliveryId: "delivery-commented-review",
+        eventName: "pull_request_review",
+        body: {
+          action: "submitted",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 691 },
+          review: {
+            body: "overall this looks close",
+            state: "COMMENTED",
+            user: { login: "reviewer" },
+          },
+        },
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-commented-review:review.commented",
+        eventType: "review.commented",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 received a review comment from reviewer.",
+        untrustedText: "overall this looks close",
+      },
+    ]);
+  });
+
+  it("normalizes pull request issue comments with untrusted text", () => {
+    vi.setSystemTime(1_000);
+
+    expect(
+      normalizeGitHubResourceEvents({
+        deliveryId: "delivery-pr-comment",
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: {
+            number: 691,
+            pull_request: {
+              url: "https://api.github.com/repos/getsentry/junior/pulls/691",
+            },
+          },
+          comment: {
+            body: "could you add a changelog note?",
+            user: { login: "reviewer" },
+          },
+        },
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-pr-comment:comment.created",
+        eventType: "comment.created",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 received a comment from reviewer.",
+        untrustedText: "could you add a changelog note?",
+      },
+    ]);
+  });
+
+  it("ignores issue comments that are not on pull requests", () => {
+    expect(
+      normalizeGitHubResourceEvents({
+        deliveryId: "delivery-issue-comment",
+        eventName: "issue_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          issue: { number: 691 },
+          comment: {
+            body: "plain issue comment",
+            user: { login: "reviewer" },
+          },
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("normalizes inline review comments with untrusted text", () => {
+    vi.setSystemTime(1_000);
+
+    expect(
+      normalizeGitHubResourceEvents({
+        deliveryId: "delivery-inline-comment",
+        eventName: "pull_request_review_comment",
+        body: {
+          action: "created",
+          repository: { full_name: "getsentry/junior" },
+          pull_request: { number: 691 },
+          comment: {
+            body: "this branch needs the null case",
+            user: { login: "reviewer" },
+          },
+        },
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-inline-comment:review_comment.created",
+        eventType: "review_comment.created",
+        occurredAtMs: 1_000,
+        provider: "github",
+        resourceRef: "github:pull_request:getsentry/junior#691",
+        trustedSummary:
+          "GitHub PR getsentry/junior#691 received an inline review comment from reviewer.",
+        untrustedText: "this branch needs the null case",
+      },
+    ]);
+  });
+
   it("normalizes completed check suite events for pull requests", () => {
     vi.setSystemTime(1_000);
 

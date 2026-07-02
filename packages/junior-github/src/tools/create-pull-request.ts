@@ -251,8 +251,11 @@ function gitHubPullRequestSubscribable(
   const supportedEvents = [
     "checks.failed",
     "checks.recovered",
+    "comment.created",
     "review.approved",
     "review.changes_requested",
+    "review.commented",
+    "review_comment.created",
     "state.merged",
     "state.closed_unmerged",
   ];
@@ -262,7 +265,10 @@ function gitHubPullRequestSubscribable(
     resourceRef: `github:pull_request:${repoRef}#${result.number}`,
     suggestedEvents: [
       "checks.failed",
+      "comment.created",
       "review.changes_requested",
+      "review.commented",
+      "review_comment.created",
       "state.merged",
       "state.closed_unmerged",
     ],
