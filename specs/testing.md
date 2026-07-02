@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-27
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -17,9 +17,16 @@ Start from the real product contract, not the easiest seam to mock.
 1. Use evals when the contract is agent-facing behavior. Treat evals as the integration-style layer for prompt behavior, natural-language routing, continuity, reply quality, and other outcomes where model interpretation is the contract.
 2. Use integration tests when the contract is real product wiring or an external/user-visible boundary: handler behavior, Slack-facing contracts, persistence/routing through production composition, auth resumes, final delivery, and other behavior that does not depend on the model interpreting language correctly.
 3. Use component tests for deterministic service/runtime contracts that cross modules but are still best proven through explicit local ports: durable stores, queue wake-up ports, worker state machines, lease/recovery coordination, persistence adapters, and similar orchestration invariants.
-4. Use unit tests only for tightly local deterministic logic: parsing, scoring, routing heuristics, retry math, pure transforms, normalization, and similar algorithmic invariants.
+4. Use unit tests only for tightly local deterministic logic: parsing, scoring, routing heuristics, retry math, pure transforms, normalization, and similar algorithmic invariants. Unit tests are the exception, not the default, when a change touches product or runtime behavior.
 
 For runtime/product regressions, reproduce the failure at the highest deterministic boundary that owns the behavior. Prefer one integration or eval that drives real ingress, persistence, routing, and delivery wiring over unit tests that recreate intermediate state. Do not force deterministic service contracts into broad integration tests when a component test proves the invariant with fewer fake layers.
+
+Prefer integration/eval coverage over unit coverage whenever both can prove the
+same user-visible or runtime contract. Unit tests that mirror helper branches
+already exercised by integration/eval coverage create churn and should be
+deleted or avoided. Add a unit test only when the invariant is local enough that
+an integration/eval would be materially slower, less deterministic, or less
+diagnostic.
 
 ## Test Layers
 
@@ -56,6 +63,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 11. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
 12. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
 13. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
+14. Do not add a unit test as "extra confidence" for behavior already covered at integration/eval level. The higher-fidelity test owns that contract.
 
 ## Coverage Budget (Avoid Over-Testing)
 
@@ -71,7 +79,7 @@ Use this practical budget:
 
 If a proposed test does not add a new contract guarantee, do not add it.
 
-When higher-level coverage proves the user-visible contract, do not add parallel unit tests for the same workflow. Keep unit tests for deterministic helper logic the higher-level test cannot localize cleanly.
+When higher-level coverage proves the user-visible contract, do not add parallel unit tests for the same workflow. Keep unit tests for deterministic helper logic the higher-level test cannot localize cleanly, and remove unit tests that become implementation-only duplicates after integration/eval coverage lands.
 
 ## Layer Selection Guide
 
@@ -90,6 +98,10 @@ Ask these questions in order:
 4. Otherwise, is the contract tightly local deterministic logic or an algorithmic invariant?
    Use `unit`.
    Examples: retry math, pure transforms, normalization, local scoring, parser behavior, deterministic state transitions.
+
+Before choosing `unit`, check whether an existing integration/eval harness can
+prove the same behavior through the production path with only the allowed fake
+boundary. If yes, use that higher-fidelity layer and skip the unit test.
 
 If a test must mock large parts of runtime, hand-build durable state, or assert private call sequencing to prove a user-visible flow, it belongs in integration or eval instead.
 

@@ -3,11 +3,15 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-02
+- Last Edited: 2026-07-02
 
 ## Intent
 
 Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. Use this layer when the contract depends on production composition, handler routing, external transport behavior, or user-visible runtime outcomes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
+
+When integration can prove the same runtime/product behavior as a unit test,
+prefer the integration test and do not add parallel unit coverage for the helper
+branch. The integration test should own the contract.
 
 ## Scope
 
@@ -73,6 +77,10 @@ If the behavior under test depends on natural-language interpretation, continuit
 If a product/runtime change can be proven only by real wiring plus a deterministic fake agent, integration is the right answer. If the contract is a deterministic store, worker, queue-port, lease, or service-coordination invariant, prefer a component test.
 
 Do not keep a scenario in integration solely because a fake classifier fixture is easier than writing the corresponding eval. When the real contract is ambiguous natural-language behavior or reply quality, promote it to eval.
+
+If the behavior is user-visible or crosses runtime boundaries, do not demote it
+to unit tests just because the fix happens in a small helper. Exercise the
+production path and let helper internals remain refactorable.
 
 ## Core Scenarios to Cover
 

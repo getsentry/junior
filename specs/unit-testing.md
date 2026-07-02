@@ -3,11 +3,15 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-02
+- Last Edited: 2026-07-02
 
 ## Intent
 
 Unit tests validate isolated logic with tight control of dependencies. Use them for algorithm-type things and tightly local deterministic invariants. They are not the default for runtime/product behavior.
+
+Prefer not to add unit tests when an integration test or eval can prove the
+same behavior through the production path. Duplicate unit coverage for helper
+branches makes refactors noisy without strengthening the product contract.
 
 ## Scope
 
@@ -24,6 +28,8 @@ In scope:
 - Slack HTTP request/response contract validation.
 - Full runtime Slack event handling behavior.
 - Conversational quality and multi-turn judge-scored outcomes.
+- Helper branches whose only product meaning is already covered by integration
+  or eval behavior.
 
 ## Mocking Policy
 
@@ -40,6 +46,9 @@ Recommended:
 - Do not treat logger or tracer calls as required behavior unless the test is explicitly validating instrumentation.
 - Do not unit test prompt builders by asserting exact or substring prompt prose. If prompt wording matters, cover the resulting user-visible behavior with evals or integration tests.
 - If a test has to mock large parts of the runtime or Slack client to prove a user-visible flow, reclassify it as component, integration, or eval instead of growing the unit seam.
+- Do not add a unit test as a companion to integration/eval coverage unless it
+  isolates a genuinely local invariant that the higher-fidelity test cannot
+  diagnose cleanly.
 
 ## Data and Fixtures
 
@@ -57,3 +66,5 @@ Recommended:
 2. Deterministic results across runs.
 3. Clear failure messages that localize logic regressions quickly.
 4. A unit test should fail because one local invariant broke, not because an end-to-end workflow changed shape.
+5. A unit test should not merely encode the current implementation shape of a
+   behavior already covered by integration or eval.
