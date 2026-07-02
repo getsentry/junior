@@ -146,14 +146,14 @@ Current rules:
 
 ### 6. Primary Reply Contract
 
-Junior has one primary visible reply surface per turn: finalized Slack thread replies.
+Junior's primary visible text reply surface is finalized Slack thread replies.
 
 Current rules:
 
 1. Do not create a visible Slack text artifact until the assistant reply is final enough to budget, normalize, and persist.
 2. Deliver visible reply text through finalized thread posts, not through incremental text streaming.
-3. Only mark a turn successful after the final visible Slack reply has been accepted by Slack.
-4. If explicit user intent requested an in-channel post and that post already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan.
+3. Only mark a text-reply turn successful after the final visible Slack reply has been accepted by Slack. When a successful requested Slack side effect, such as a reaction or in-channel post, fully satisfies the turn and the assistant uses the no-reply marker, that side effect is the visible completion.
+4. If explicit user intent requested a Slack side effect and that successful side effect already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan only when the assistant used the no-reply marker.
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
 7. When Junior adds finalized reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.

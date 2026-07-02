@@ -230,63 +230,6 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
-  it("treats reaction-only turns as successful without fallback text", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-      ],
-      userInput: "react to this",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(false);
-  });
-
-  it("suppresses empty thread text when a channel post is the successful side effect", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackChannelPostMessage",
-          isError: false,
-          content: [{ type: "text", text: "message posted" }],
-        },
-      ],
-      userInput: "share the update",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: ["slackChannelPostMessage"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      mode: "thread",
-      postThreadText: false,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(false);
-  });
-
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -315,39 +258,6 @@ describe("buildTurnResult", () => {
     expect(reply.text).toBe("Handled it.");
     expect(reply.deliveryPlan).toMatchObject({
       postThreadText: true,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(true);
-  });
-
-  it("suppresses model text for reaction-only requests", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "slackMessageAddReaction",
-          isError: false,
-          content: [{ type: "text", text: "reaction added" }],
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "արձագանքեցի :thumbsup:" }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "react to this",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: ["slackMessageAddReaction"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
     });
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);

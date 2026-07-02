@@ -2,12 +2,16 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import {
+  containsNoReplyMarker,
+  isNoReplyMarker,
+  stripNoReplyMarker,
+} from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
-  isReactionOnlyIntent,
   type ReplyDeliveryPlan,
 } from "@/chat/services/reply-delivery-plan";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
@@ -150,11 +154,19 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const assistantMessages = newMessages.filter(isAssistantMessage);
   const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
 
-  const primaryText = stripThinkingXmlBlocks(
+  const rawPrimaryText = stripThinkingXmlBlocks(
     terminalAssistantMessages
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
+  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
+  const mixedNoReplyMarker =
+    !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
+  const primaryText = exactNoReplyMarker
+    ? ""
+    : mixedNoReplyMarker
+      ? stripNoReplyMarker(rawPrimaryText)
+      : rawPrimaryText;
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
@@ -169,15 +181,18 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
+  const markerSideEffectSuccess =
+    exactNoReplyMarker &&
+    toolErrorCount === 0 &&
+    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
+  const fileOnlySuccess =
+    !rawPrimaryText && toolErrorCount === 0 && replyFiles.length > 0;
+  const sideEffectOnlySuccess = markerSideEffectSuccess || fileOnlySuccess;
   const baseDeliveryPlan = buildReplyDeliveryPlan({
-    explicitChannelPostIntent,
+    explicitChannelPostIntent: exactNoReplyMarker && explicitChannelPostIntent,
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });
-  const sideEffectOnlySuccess =
-    !primaryText &&
-    toolErrorCount === 0 &&
-    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
   const lastAssistant = terminalAssistantMessages.at(-1) as
     | { stopReason?: unknown; errorMessage?: unknown }
     | undefined;
@@ -191,7 +206,69 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       : undefined;
   const isProviderError = stopReason === "error";
 
-  if (!primaryText && !sideEffectOnlySuccess && !isProviderError) {
+  if (exactNoReplyMarker) {
+    const markerCategory = reactionPerformed
+      ? "reaction"
+      : channelPostPerformed
+        ? "channel_post"
+        : replyFiles.length > 0
+          ? "file"
+          : "none";
+    const markerContext = {
+      slackThreadId: correlation?.threadId,
+      slackUserId: correlation?.requesterId,
+      slackChannelId: correlation?.channelId,
+      runId: correlation?.runId,
+      assistantUserName,
+      modelId: botConfig.modelId,
+    };
+    const markerAttributes = {
+      "app.ai.no_reply_marker": true,
+      "app.ai.no_reply_marker_category": markerCategory,
+      "app.ai.no_reply_marker_accepted":
+        sideEffectOnlySuccess && !isProviderError,
+    };
+
+    if (sideEffectOnlySuccess && !isProviderError) {
+      logInfo(
+        "ai_no_reply_marker_accepted",
+        markerContext,
+        markerAttributes,
+        "No-reply marker suppressed visible thread text",
+      );
+    } else if (!isProviderError) {
+      logWarn(
+        "ai_no_reply_marker_rejected",
+        markerContext,
+        markerAttributes,
+        "No-reply marker requires a successful visible side effect",
+      );
+    }
+  } else if (mixedNoReplyMarker) {
+    logWarn(
+      "ai_no_reply_marker_mixed_text",
+      {
+        slackThreadId: correlation?.threadId,
+        slackUserId: correlation?.requesterId,
+        slackChannelId: correlation?.channelId,
+        runId: correlation?.runId,
+        assistantUserName,
+        modelId: botConfig.modelId,
+      },
+      {
+        "app.ai.no_reply_marker": true,
+        "app.ai.no_reply_marker_mode": "mixed",
+      },
+      "No-reply marker appeared with visible assistant text",
+    );
+  }
+
+  if (
+    !primaryText &&
+    !sideEffectOnlySuccess &&
+    !isProviderError &&
+    !exactNoReplyMarker
+  ) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -211,7 +288,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     );
   }
 
-  const usedPrimaryText = Boolean(primaryText);
+  const usedPrimaryText = Boolean(rawPrimaryText);
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
@@ -220,13 +297,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   } else {
     outcome = "execution_failure";
   }
-  const suppressReactionOnlyText =
-    reactionPerformed &&
-    !channelPostPerformed &&
-    replyFiles.length === 0 &&
-    Boolean(primaryText) &&
-    isReactionOnlyIntent(userInput);
-  const rawResponseText = suppressReactionOnlyText ? "" : primaryText;
+  const rawResponseText = primaryText;
   const responseText =
     canvasCreated && isVerbosePostCanvasReply(rawResponseText)
       ? buildBriefPostCanvasReply(artifactStatePatch)

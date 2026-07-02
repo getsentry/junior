@@ -102,8 +102,6 @@ import {
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
-import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
-import { deleteSlackMessage } from "@/chat/slack/outbound";
 import {
   finalizeFailedTurnReply,
   getAgentTurnDiagnosticsAttributes,
@@ -1132,9 +1130,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const artifactStatePatch: Partial<ThreadArtifactsState> =
             reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
 
-          const reactionPerformed = reply.diagnostics.toolCalls.includes(
-            "slackMessageAddReaction",
-          );
           const plannedPosts = planSlackReplyPosts({ reply });
           const replyFooter = buildSlackReplyFooter({
             conversationId,
@@ -1144,10 +1139,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             Boolean(channelId && threadTs) &&
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
 
-          // Final Slack delivery is part of turn success. We only mark the turn
-          // completed after the visible reply has been accepted by Slack.
+          // Text replies must be accepted by Slack before completion;
+          // side-effect-only turns may already be visibly complete.
           if (plannedPosts.length > 0) {
-            let sent: SentMessage | undefined;
             const hasVisibleDelivery = plannedPosts.some(
               hasVisibleSlackDelivery,
             );
@@ -1165,7 +1159,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
 
-              const sentMessageTs = await postSlackApiReplyPosts({
+              await postSlackApiReplyPosts({
                 beforePost: beforeFirstResponsePost,
                 channelId: slackChannelId,
                 threadTs: slackThreadTs,
@@ -1188,61 +1182,21 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   );
                 },
               });
-
-              if (sentMessageTs) {
-                sent = {
-                  id: sentMessageTs,
-                  text: reply.text,
-                  delete: async () => {
-                    await deleteSlackMessage({
-                      channelId: slackChannelId,
-                      timestamp: sentMessageTs,
-                    });
-                  },
-                } as SentMessage;
-              }
             } else {
               for (const post of plannedPosts) {
                 if (!hasVisibleSlackDelivery(post)) {
                   continue;
                 }
-                sent = await postThreadReply(
+                await postThreadReply(
                   buildSlackOutputMessage(post.text, post.files),
                   post.stage,
                 );
               }
             }
             // Slack accepted every final post: the turn is delivered even if
-            // the redundant-ack cleanup or completion persistence below fails.
+            // completion persistence below fails.
             finalReplyDelivered = true;
             shouldPersistFailureState = false;
-            const firstPlannedMessageHasFiles =
-              (plannedPosts[0]?.files?.length ?? 0) > 0;
-            // When a reaction already acknowledged the turn, delete the
-            // redundant thread reply. The post itself completes Slack's
-            // assistant response cycle (clearing the typing indicator).
-            if (
-              sent &&
-              reactionPerformed &&
-              plannedPosts.length === 1 &&
-              !firstPlannedMessageHasFiles &&
-              isRedundantReactionAckText(reply.text)
-            ) {
-              try {
-                await sent.delete();
-              } catch (error) {
-                // Best effort: the turn is already delivered, and a thrown
-                // delete here would skip the completed-record commit below
-                // and leave the session record stuck running.
-                logException(
-                  error,
-                  "slack_redundant_ack_delete_failed",
-                  turnTraceContext,
-                  messageTs ? { "messaging.message.id": messageTs } : {},
-                  "Failed to delete redundant reaction-ack reply",
-                );
-              }
-            }
           } else {
             // Side-effect-only turns (for example reactions or channel posts)
             // have no thread reply to deliver; the successful tool result is

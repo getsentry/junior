@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { addReactionToMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 import type { ToolState } from "@/chat/tools/types";
@@ -12,7 +13,7 @@ export function createSlackMessageAddReactionTool(
 ) {
   return tool({
     description:
-      "Add an emoji reaction to the current inbound Slack message. Use sparingly for lightweight acknowledgements. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
+      "Add an emoji reaction to the current inbound Slack message. Use when the user asks for a reaction on the current message without another target. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
     inputSchema: Type.Object({
       emoji: Type.String({
         minLength: 1,
@@ -25,18 +26,15 @@ export function createSlackMessageAddReactionTool(
       const targetChannelId = context.sourceChannelId;
       const targetMessageTs = context.messageTs;
       if (!targetMessageTs) {
-        return {
-          ok: false,
-          error: "No active message timestamp is available for reactions",
-        };
+        throw new ToolInputError(
+          "No active message timestamp is available for reactions.",
+        );
       }
       const normalizedEmoji = normalizeSlackEmojiName(emoji);
       if (!normalizedEmoji) {
-        return {
-          ok: false,
-          error:
-            "Emoji must be a valid Slack emoji alias name (for example `thumbsup` or `thumbsup::skin-tone-6`)",
-        };
+        throw new ToolInputError(
+          "Emoji must be a valid Slack emoji alias name (for example `thumbsup` or `thumbsup::skin-tone-6`).",
+        );
       }
 
       const operationKey = createOperationKey("slackMessageAddReaction", {

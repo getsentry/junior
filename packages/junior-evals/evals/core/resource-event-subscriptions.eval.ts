@@ -1,15 +1,30 @@
-import { describeEval } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import {
   resourceEventNotification,
   rubric,
   slackEvals,
 } from "../../src/helpers";
 
+function textContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function visibleThreadReplies(
+  session: Parameters<typeof assistantMessages>[0],
+) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      textContent(message.content).trim().length > 0,
+  );
+}
+
 describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   it("when a subscribed PR check fails, summarize the failure and suggest next steps", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         resourceEventNotification({
           eventKey: "github-delivery-checks-failed",
@@ -36,12 +51,13 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         ],
       }),
     });
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when a subscribed PR is merged, report completion without extra work", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         resourceEventNotification({
           eventKey: "github-delivery-pr-merged",
@@ -67,5 +83,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         ],
       }),
     });
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 });

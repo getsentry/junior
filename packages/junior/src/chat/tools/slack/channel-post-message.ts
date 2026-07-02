@@ -12,7 +12,7 @@ export function createSlackChannelPostMessageTool(
 ) {
   return tool({
     description:
-      "Post a new top-level message to the current Slack channel. Use only when the user explicitly asks to post/send/share/say something to the channel. Do not use for thread replies, inline @mentions, or pinging mentioned users.",
+      "Post a new top-level message to the current Slack channel. Use only when the user explicitly asks to post/send/share/say something to the current channel. Do not use for other named channels, thread replies, inline @mentions, or pinging mentioned users.",
     inputSchema: Type.Object({
       text: Type.String({
         minLength: 1,

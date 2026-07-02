@@ -1,5 +1,27 @@
-import { describeEval } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { expect } from "vitest";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+
+type EvalSession = Parameters<typeof assistantMessages>[0];
+
+function textContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function visibleThreadReplies(session: EvalSession) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      textContent(message.content).trim().length > 0,
+  );
+}
+
+function visibleText(session: EvalSession): string {
+  return assistantMessages(session)
+    .map((message) => textContent(message.content))
+    .join("\n");
+}
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
@@ -20,15 +42,27 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when asked to post in channel, send a channel post instead of a thread reply", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [mention("@bot say hello to the channel!")],
       criteria: rubric({
         pass: [
           "The normalized transcript contains exactly one hello-style channel_post assistant message with no thread_ts.",
+          "The assistant tool calls include slackChannelPostMessage for the requested channel post.",
           "The normalized transcript does not contain that hello-style message as a thread reply.",
+        ],
+        fail: [
+          "Do not add a redundant thread reply acknowledging the channel post.",
+          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
         ],
       }),
     });
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "slackChannelPostMessage" }),
+      ]),
+    );
+    expect(visibleThreadReplies(result.session)).toEqual([]);
+    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
 
   it("when asked to post in another named channel, explain the limitation instead", async ({
@@ -103,18 +137,29 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when the request is reaction-only, add a reaction without reply clutter", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [mention("react to this")],
       criteria: rubric({
         pass: [
           "The normalized transcript contains at least one reaction_added assistant message.",
+          "The assistant tool calls include slackMessageAddReaction for the requested reaction.",
+          `The visible transcript contains no thread reply; the no-reply marker ${NO_REPLY_MARKER} is only an internal publication signal.`,
         ],
         fail: [
+          "Do not rely only on a runtime processing reaction.",
           "Do not add a redundant thread reply that echoes the emoji.",
           "Do not add a short acknowledgement reply such as 'Done'.",
+          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
         ],
       }),
     });
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "slackMessageAddReaction" }),
+      ]),
+    );
+    expect(visibleThreadReplies(result.session)).toEqual([]);
+    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
 
   const continuityThread = {

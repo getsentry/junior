@@ -16,6 +16,8 @@ import {
 } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 
+const NO_VISIBLE_REPLY_CONVERSATION_TEXT = "[no visible reply]";
+
 /** Build the canonical thread-state patch after final Slack delivery succeeds. */
 export function buildDeliveredTurnStatePatch(args: {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
@@ -36,6 +38,11 @@ export function buildDeliveredTurnStatePatch(args: {
       : undefined;
 
   clearPendingAuth(conversation, args.sessionId);
+  const assistantText =
+    normalizeConversationText(args.reply.text) ||
+    (args.reply.deliveryPlan?.postThreadText === false
+      ? NO_VISIBLE_REPLY_CONVERSATION_TEXT
+      : "[empty response]");
   markConversationMessage(conversation, args.userMessageId, {
     replied: true,
     skippedReason: undefined,
@@ -43,7 +50,7 @@ export function buildDeliveredTurnStatePatch(args: {
   upsertConversationMessage(conversation, {
     id: generateConversationId("assistant"),
     role: "assistant",
-    text: normalizeConversationText(args.reply.text) || "[empty response]",
+    text: assistantText,
     createdAtMs: Date.now(),
     author: {
       userName: botConfig.userName,

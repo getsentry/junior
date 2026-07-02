@@ -16,6 +16,7 @@ import {
   worldPathCandidates,
 } from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { slackOutputPolicy } from "@/chat/slack/output";
 import {
   SANDBOX_DATA_ROOT,
@@ -384,12 +385,10 @@ const CONVERSATION_RULES = [
 ];
 
 const SLACK_ACTION_RULES = [
-  "- Context-bound Slack tools use runtime-owned targets; do not invent channel, canvas, list, or message IDs.",
-  "- Use first-class Slack tools for Slack side effects; do not use bash, curl, or provider APIs to bypass Slack tool targeting.",
-  "- Use channel-post and emoji-reaction tools only when the user explicitly asks for that Slack side effect.",
-  "- For explicit channel-post or emoji-reaction requests, skip a duplicate thread text reply when the tool result already satisfies the request.",
-  "- Do not claim an attachment, canvas, channel post, list update, or reaction succeeded unless the tool returned success this turn; when it did, include any link the tool returned.",
-  "- Do not use reactions as progress indicators.",
+  "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
+  "- Use channel-post and emoji-reaction tools only for explicit user-requested Slack side effects.",
+  "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
+  `- Side-effect-only completion for channel posts or reactions: call the requested tool first; if it succeeds and fully satisfies the request, final message must be exactly ${NO_REPLY_MARKER}.`,
 ];
 
 const SAFETY_RULES = [
@@ -446,7 +445,7 @@ function buildOutputSection(platform: PromptPlatform): string {
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
     "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
     "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
-    "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
+    "- End every turn with a final user-facing markdown response unless the Slack action rules allow a side-effect-only completion.",
     "</output>",
   ].join("\n");
 }

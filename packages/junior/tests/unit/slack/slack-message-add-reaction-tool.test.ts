@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/tools/slack/context";
 
 const addReactionToMessage = vi.fn();
@@ -50,11 +51,8 @@ describe("slackMessageAddReaction tool", () => {
       throw new Error("Expected executable tool");
     }
 
-    const result = await tool.execute({ emoji: "✅" }, {} as any);
-    expect(result).toEqual(
-      expect.objectContaining({
-        ok: false,
-      }),
+    await expect(tool.execute({ emoji: "✅" }, {} as any)).rejects.toThrow(
+      ToolInputError,
     );
     expect(addReactionToMessage).not.toHaveBeenCalled();
   });

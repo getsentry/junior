@@ -126,7 +126,7 @@ Scenarios:
 2. User asks Junior to react:
    - When the user explicitly asks Junior to add a Slack reaction, Junior must use the Slack reaction tool when the runtime provides a valid target and must not treat automatic processing reactions as satisfying the user's request.
 3. Slack side effect satisfies the turn:
-   - When a successful Slack side-effect tool already satisfies the user's request and a duplicate thread reply would only restate the same acknowledgement, Junior may suppress the duplicate final thread text according to the reply-delivery plan.
+   - When a successful Slack side-effect tool already satisfies the user's request, Junior may suppress a duplicate final thread reply according to the reply-delivery plan only when the assistant used the no-reply marker.
 
 ### 8. Progress And Resumed-Turn Behavior
 

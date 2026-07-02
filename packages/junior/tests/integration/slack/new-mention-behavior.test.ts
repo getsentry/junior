@@ -287,58 +287,6 @@ describe("Slack behavior: new mention", () => {
     });
   });
 
-  it("deletes redundant reply and clears status for reaction-only turn", async () => {
-    const slackAdapter = new FakeSlackAdapter();
-    const { slackRuntime } = createTestChatRuntime({
-      slackAdapter,
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(makeAssistantStatus("drafting", "reply"));
-            return {
-              text: "Done!",
-              deliveryMode: "thread",
-
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: ["slackMessageAddReaction"],
-                toolErrorCount: 0,
-                toolResultCount: 1,
-                usedPrimaryText: true,
-              },
-            };
-          },
-        },
-      },
-    });
-
-    const thread = createTestThread({
-      id: "slack:C_STATUS:1700004000.000",
-    });
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-reaction-only",
-        text: "<@U_APP> add a reaction to this message",
-        isMention: true,
-        threadId: thread.id,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    // Reply posted then deleted to complete Slack's response cycle without visible noise
-    expect(thread.posts).toHaveLength(0);
-    expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
-    expect(slackAdapter.statusCalls.at(-1)).toEqual({
-      channelId: "C_STATUS",
-      threadTs: "1700004000.000",
-      text: "",
-      loadingMessages: undefined,
-    });
-  });
-
   it("clears assistant status after agent error", async () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createTestChatRuntime({
