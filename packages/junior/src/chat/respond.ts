@@ -30,7 +30,10 @@ import {
   buildSystemPrompt,
   buildTurnContextPrompt,
 } from "@/chat/prompt";
-import { renderCurrentInstruction } from "@/chat/current-instruction";
+import {
+  extractCurrentInstructionBody,
+  renderCurrentInstruction,
+} from "@/chat/current-instruction";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
@@ -606,15 +609,27 @@ function userPromptContentMatches(
       if (legacyTextPart.success) {
         // TODO(v0.84.0): Remove legacy unwrapped resume prompt matching after
         // pre-current-instruction session records expire.
-        return (
-          renderCurrentInstruction(legacyTextPart.data.text) ===
-          currentPart.text
+        return legacyTextPartMatchesCurrentText(
+          legacyTextPart.data.text,
+          currentPart.text,
         );
       }
     }
 
     return JSON.stringify(storedPart) === JSON.stringify(currentPart);
   });
+}
+
+function legacyTextPartMatchesCurrentText(
+  storedText: string,
+  currentText: string,
+): boolean {
+  const storedInstructionBody = extractCurrentInstructionBody(storedText);
+  if (storedInstructionBody !== undefined) {
+    return renderCurrentInstruction(storedInstructionBody) === currentText;
+  }
+
+  return renderCurrentInstruction(storedText) === currentText;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */

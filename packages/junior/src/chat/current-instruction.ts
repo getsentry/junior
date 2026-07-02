@@ -4,6 +4,9 @@ const CURRENT_INSTRUCTION_TAG = "current-instruction";
 const CURRENT_INSTRUCTION_PATTERN = new RegExp(
   `<${CURRENT_INSTRUCTION_TAG}>\\n([\\s\\S]*?)\\n</${CURRENT_INSTRUCTION_TAG}>`,
 );
+const STANDALONE_CURRENT_INSTRUCTION_PATTERN = new RegExp(
+  `^<${CURRENT_INSTRUCTION_TAG}>\\n([\\s\\S]*?)\\n</${CURRENT_INSTRUCTION_TAG}>$`,
+);
 
 function unescapeXml(value: string): string {
   return value
@@ -21,6 +24,14 @@ export function renderCurrentInstruction(instruction: string): string {
     escapeXml(instruction),
     `</${CURRENT_INSTRUCTION_TAG}>`,
   ].join("\n");
+}
+
+/** Read the exact body from a standalone current-task prompt boundary. */
+export function extractCurrentInstructionBody(
+  text: string,
+): string | undefined {
+  const match = text.match(STANDALONE_CURRENT_INSTRUCTION_PATTERN);
+  return match?.[1];
 }
 
 /** Recover display text from the internal current-task prompt boundary. */

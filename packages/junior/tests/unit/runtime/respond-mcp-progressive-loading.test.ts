@@ -992,6 +992,56 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
   });
 
+  it("does not duplicate an unescaped wrapped current prompt from a no-checkpoint resume record", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    const messageText = `continue & <auth> &lt;literal&gt; "now"`;
+    const rawCurrentPrompt = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "<runtime-turn-context>\nlegacy bootstrap\n</runtime-turn-context>",
+        },
+        {
+          type: "text",
+          text: `<current-instruction>\n${messageText}\n</current-instruction>`,
+        },
+      ],
+      timestamp: 2,
+    } as PiMessage;
+    const storedMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior question" }],
+        timestamp: 1,
+      },
+      rawCurrentPrompt,
+    ] as PiMessage[];
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-unescaped-current-resume",
+      sessionId: "turn-unescaped-current-resume",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: storedMessages,
+      resumeReason: "auth",
+      errorMessage: "authorization required",
+    });
+
+    await generateAssistantReply(messageText, {
+      ...makeReplyContext({
+        conversationId: "conversation-unescaped-current-resume",
+        threadTs: "1712345.0093",
+        turnId: "turn-unescaped-current-resume",
+      }),
+    });
+
+    expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
+    expect(JSON.stringify(promptMessages.at(-1))).toContain(
+      "continue &amp; &lt;auth&gt; &amp;lt;literal&amp;gt; &quot;now&quot;",
+    );
+  });
+
   it("injects session context for crash retries loaded from stripped running history", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
