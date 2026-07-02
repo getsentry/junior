@@ -267,6 +267,92 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
+  it("resumes and delivers when the continuation record is missing stored requester profile data", async () => {
+    const conversationId = "slack:C123:1712345.0008";
+    const sessionId = "turn_msg_8";
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
+        source: slackSource("1712345.0008"),
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.8",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(true);
+    expect(slackApiOutbox.messages()).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0008",
+          text: "Final resumed answer",
+        }),
+      }),
+    ]);
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "resume this request",
+      expect.objectContaining({
+        requester: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        },
+      }),
+    );
+  });
+
   it("schedules another continuation for high slice ids", async () => {
     const conversationId = "slack:C123:1712345.0002";
     const sessionId = "turn_msg_2";

@@ -264,21 +264,20 @@ export function toStoredSlackRequester(
   };
 }
 
-/** Resolve a Slack resume requester from stored runtime identity and the active actor. */
+/** Resolve a Slack resume requester from stored profile data and the active actor. */
 export function createSlackResumeRequester(args: {
   requester?: Requester;
   teamId: string;
   userId: string;
 }): SlackRequester {
-  if (!args.requester) {
-    throw new Error("Stored Slack requester is required for resume");
-  }
-  if (
-    args.requester.platform !== "slack" ||
-    args.requester.teamId !== args.teamId ||
-    args.requester.userId !== args.userId
-  ) {
-    throw new Error("Stored Slack requester did not match resume actor");
+  if (args.requester) {
+    if (
+      args.requester.platform !== "slack" ||
+      args.requester.teamId !== args.teamId ||
+      args.requester.userId !== args.userId
+    ) {
+      throw new Error("Stored Slack requester did not match resume actor");
+    }
   }
   const requester = createRequester(args.requester, {
     platform: "slack",
