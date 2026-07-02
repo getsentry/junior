@@ -228,20 +228,25 @@ export async function postSlackEphemeralMessage(input: {
   };
 }
 
-/** Upload files into a Slack thread via the shared outbound file boundary. */
-export async function uploadFilesToThread(input: {
+/** Minimal Slack file metadata exposed outside the Slack client boundary. */
+export interface SlackUploadedFile {
+  id?: string;
+}
+
+/** Upload files into a Slack conversation or thread via the shared outbound file boundary. */
+export async function uploadFilesToConversation(input: {
   channelId: string;
-  threadTs: string;
+  initialComment?: string;
+  threadTs?: string;
   files: Array<{ data: Buffer; filename: string }>;
-}): Promise<void> {
+}): Promise<{ files?: SlackUploadedFile[] }> {
   const channelId = requireSlackConversationId(
     input.channelId,
     "Slack file upload",
   );
-  const threadTs = requireSlackThreadTimestamp(
-    input.threadTs,
-    "Slack file upload",
-  );
+  const threadTs = input.threadTs
+    ? requireSlackThreadTimestamp(input.threadTs, "Slack file upload")
+    : undefined;
   if (input.files.length === 0) {
     throw new Error("Slack file upload requires at least one file");
   }
@@ -258,11 +263,13 @@ export async function uploadFilesToThread(input: {
     };
   });
 
-  await withSlackRetries(
+  const initialComment = input.initialComment?.trim();
+  const response = await withSlackRetries(
     () =>
       getSlackClient().filesUploadV2({
         channel_id: channelId,
-        thread_ts: threadTs,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        ...(initialComment ? { initial_comment: initialComment } : {}),
         file_uploads: fileUploads,
       }),
     3,
@@ -270,10 +277,28 @@ export async function uploadFilesToThread(input: {
       action: "filesUploadV2",
       spanAttributes: {
         "app.slack.channel_id": channelId,
-        "app.slack.thread_ts": threadTs,
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
       },
     },
   );
+
+  return {
+    files: response.files.flatMap((completion) =>
+      (completion.files ?? []).map((file) => (file.id ? { id: file.id } : {})),
+    ),
+  };
+}
+
+/** Upload files into a Slack thread via the shared outbound file boundary. */
+export async function uploadFilesToThread(input: {
+  channelId: string;
+  threadTs: string;
+  files: Array<{ data: Buffer; filename: string }>;
+}): Promise<void> {
+  await uploadFilesToConversation({
+    ...input,
+    threadTs: requireSlackThreadTimestamp(input.threadTs, "Slack file upload"),
+  });
 }
 
 /** Add a reaction to a Slack message, treating `already_reacted` as idempotent success. */

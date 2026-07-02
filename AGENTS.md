@@ -79,6 +79,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/policy-template.md` (template for adding new policy docs)
 - `policies/provider-boundaries.md` (keep provider SDKs and primitives inside provider-owned modules)
 - `policies/runtime-boundary-schemas.md` (strict runtime schemas and inferred types for boundary contracts)
+- `policies/serverless-background-work.md` (serverless background work, queues, and continuation boundaries)
 - `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
 - `policies/testing.md` (integration/eval-first testing policy and unit-test churn guardrails)
 - `policies/tool-design.md` (model-facing tool schema and executor alignment)

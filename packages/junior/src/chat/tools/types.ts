@@ -39,9 +39,22 @@ export interface WebSearchToolDeps {
   }) => Promise<unknown> | unknown;
 }
 
+/** Sandbox file handle returned to the model after a generated artifact is written. */
+export interface GeneratedArtifactFileRef {
+  bytes: number;
+  filename: string;
+  mimeType?: string;
+  path: string;
+}
+
 export interface ToolHooks {
-  getGeneratedFile?: (filename: string) => FileUpload | undefined;
-  onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
+  /**
+   * Materialize generated files and return sandbox paths that exist before the
+   * generating tool reports success.
+   */
+  writeGeneratedArtifacts?: (
+    files: FileUpload[],
+  ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (
     patch: Partial<ThreadArtifactsState>,

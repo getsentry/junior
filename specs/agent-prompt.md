@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -132,7 +132,7 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 
 ### Runtime and safety boundaries
 
-The tool policy must make sandbox workspace ownership explicit: sandbox-backed file and shell tools inspect the isolated sandbox workspace, not arbitrary host files. If sandbox execution is unavailable, the model should report that blocker instead of implying local inspection succeeded.
+Sandbox workspace mechanics belong in sandbox tool descriptions, schemas, and results rather than global prompt prose. The core prompt may tell the model to treat unavailable sandbox execution as a blocker instead of implying local inspection succeeded.
 
 Runtime facts should live in a compact runtime block inside session bootstrap context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
 

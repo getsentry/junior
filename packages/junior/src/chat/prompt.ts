@@ -348,7 +348,6 @@ const TOOL_POLICY_RULES = [
   "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
-  `- Sandbox-backed file and shell tools operate in an isolated workspace rooted at ${SANDBOX_WORKSPACE_ROOT}; readFile/writeFile paths are sandbox-workspace paths, bash runs inside that workspace, and attachFile accepts absolute or workspace-relative sandbox paths.`,
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
   "- When a tool result includes a subscribable resource, subscribe only when high-signal follow-up events clearly serve the user's current intent; use the suggested events when they fit and write a concise intent summary.",
@@ -475,6 +474,7 @@ function buildRuntimeSection(params: {
   slackConversation?: SlackConversationContext;
 }): string | null {
   const lines = [
+    `- sandbox.workspace_root: ${escapeXml(SANDBOX_WORKSPACE_ROOT)}`,
     params.conversationId
       ? `- gen_ai.conversation.id: ${escapeXml(params.conversationId)}`
       : "",

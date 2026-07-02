@@ -35,14 +35,14 @@ describe("prompt builders", () => {
     );
   });
 
-  it("omits empty runtime context sections", () => {
-    expect(
-      buildTurnContextPrompt({
-        availableSkills: [],
-        activeMcpCatalogs: [],
-        invocation: null,
-      }),
-    ).toBeNull();
+  it("renders sandbox workspace root as runtime context", () => {
+    const prompt = buildTurnContextPrompt({
+      availableSkills: [],
+      activeMcpCatalogs: [],
+      invocation: null,
+    });
+
+    expect(prompt).toContain("- sandbox.workspace_root: /vercel/sandbox");
   });
 
   it("renders Slack conversation facts in runtime context", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 
 const thinkingSelection = {
@@ -303,6 +304,39 @@ describe("buildTurnResult", () => {
     });
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("suppresses duplicate thread replies after sendMessage succeeds", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: "posted" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "say hello to the channel",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryMode).toBe("channel_only");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
   });
 
   it("keeps post-canvas thread replies brief", () => {

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -91,6 +91,7 @@ events. Each pause event identifies one safe resume boundary inside that log.
   the predictable `conversation_id` already identifies the model history.
 - Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the session log.
 - Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful run completion.
+- File-like tool outputs that can be reused across model steps must be represented by explicit handles, such as sandbox paths, before the tool reports success. Process memory may cache file bytes during one slice, but it is not the source of truth across tool, delivery, resume, or later-turn boundaries.
 - Thread state, channel state, agent-run read models, and Pi session messages
   share Junior's one-week Redis retention window.
 

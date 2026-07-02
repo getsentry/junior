@@ -250,9 +250,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((result) => normalizeToolNameFromResult(result))
       .filter((value): value is string => Boolean(value)),
   );
-  const channelPostPerformed = successfulToolNames.has(
-    "slackChannelPostMessage",
-  );
+  const channelPostPerformed = successfulToolNames.has("sendMessage");
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
   const markerSideEffectSuccess =

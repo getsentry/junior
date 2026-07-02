@@ -78,7 +78,7 @@ function parseImageGenerationError(
 }
 
 export function createImageGenerateTool(
-  hooks: ToolHooks,
+  hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
   deps: ImageGenerateToolDeps = {},
 ) {
   return tool({
@@ -168,7 +168,24 @@ export function createImageGenerateTool(
       }
 
       if (uploads.length > 0) {
-        hooks.onGeneratedArtifactFiles?.(uploads);
+        const artifactRefs = await hooks.writeGeneratedArtifacts(uploads);
+
+        return {
+          ok: true,
+          model,
+          prompt,
+          enrichedPrompt,
+          image_count: artifactRefs.length,
+          images: artifactRefs.map((artifact) => ({
+            filename: artifact.filename,
+            path: artifact.path,
+            attachment_path: artifact.path,
+            media_type: artifact.mimeType,
+            bytes: artifact.bytes,
+          })),
+          delivery:
+            "Generated images were written to sandbox paths. Use sendMessage with the returned path if the user explicitly asked to post the image to the current channel; otherwise include the path in the final reply when needed.",
+        };
       }
 
       return {
@@ -176,15 +193,9 @@ export function createImageGenerateTool(
         model,
         prompt,
         enrichedPrompt,
-        image_count: uploads.length,
-        images: uploads.map((upload) => ({
-          filename: upload.filename,
-          attachment_path: upload.filename,
-          media_type: upload.mimeType,
-          bytes: upload.data.byteLength,
-        })),
-        delivery:
-          "Generated images are available to attach with attachFile using the returned attachment_path.",
+        image_count: 0,
+        images: [],
+        delivery: "No images were generated.",
       };
     },
   });

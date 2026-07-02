@@ -60,6 +60,17 @@ function imagePayload() {
   };
 }
 
+function writeGeneratedArtifacts(
+  files: Array<{ data: Buffer; filename: string; mimeType?: string }>,
+) {
+  return files.map((file) => ({
+    bytes: file.data.byteLength,
+    filename: file.filename,
+    mimeType: file.mimeType,
+    path: `/tmp/junior/artifacts/${file.filename}`,
+  }));
+}
+
 describe("createImageGenerateTool", () => {
   afterEach(() => {
     delete process.env.AI_GATEWAY_API_KEY;
@@ -80,8 +91,11 @@ describe("createImageGenerateTool", () => {
 
     const uploads: Array<{ filename: string }> = [];
     const tool = createImageGenerateTool({
-      onGeneratedArtifactFiles: (files: Array<{ filename: string }>) => {
+      writeGeneratedArtifacts: (
+        files: Array<{ data: Buffer; filename: string; mimeType?: string }>,
+      ) => {
         uploads.push(...files.map((file) => ({ filename: file.filename })));
+        return writeGeneratedArtifacts(files);
       },
     } as any);
     if (typeof tool.execute !== "function") {
@@ -107,7 +121,8 @@ describe("createImageGenerateTool", () => {
     expect(result).toMatchObject({
       images: [
         expect.objectContaining({
-          attachment_path: "generated-image-1737000000000-1.png",
+          attachment_path:
+            "/tmp/junior/artifacts/generated-image-1737000000000-1.png",
         }),
       ],
     });
@@ -123,7 +138,9 @@ describe("createImageGenerateTool", () => {
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({} as any);
+    const tool = createImageGenerateTool({
+      writeGeneratedArtifacts,
+    } as any);
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
     }
@@ -155,7 +172,9 @@ describe("createImageGenerateTool", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const tool = createImageGenerateTool({} as any);
+    const tool = createImageGenerateTool({
+      writeGeneratedArtifacts,
+    } as any);
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
     }
@@ -177,7 +196,7 @@ describe("createImageGenerateTool", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedArtifactFiles: vi.fn(),
+      writeGeneratedArtifacts,
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
@@ -200,7 +219,7 @@ describe("createImageGenerateTool", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedArtifactFiles: vi.fn(),
+      writeGeneratedArtifacts,
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
@@ -221,7 +240,7 @@ describe("createImageGenerateTool", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedArtifactFiles: vi.fn(),
+      writeGeneratedArtifacts,
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 

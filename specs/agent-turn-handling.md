@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-30
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -122,7 +122,8 @@ Junior must use Slack side-effect tools only when the user explicitly requests t
 Scenarios:
 
 1. User asks Junior to post in channel:
-   - When the user explicitly asks Junior to post, send, say, or share a message in the current Slack channel, Junior must use the channel-post tool when the runtime provides a valid target and must not use a normal thread reply as a substitute for the requested channel post.
+   - When the user explicitly asks Junior to post, send, say, or share a message in the current Slack channel, Junior must use the `sendMessage` tool when the runtime provides a valid target and must not use a normal thread reply as a substitute for the requested channel post.
+   - `sendMessage` may send text, sandbox-path files, or both. File-only messages are valid when the user's requested message is represented entirely by attachments.
 2. User asks Junior to react:
    - When the user explicitly asks Junior to add a Slack reaction, Junior must use the Slack reaction tool when the runtime provides a valid target and must not treat automatic processing reactions as satisfying the user's request.
 3. Slack side effect satisfies the turn:

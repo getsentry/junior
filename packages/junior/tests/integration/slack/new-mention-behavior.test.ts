@@ -335,7 +335,7 @@ describe("Slack behavior: new mention", () => {
                   assistantMessageCount: 1,
                   modelId: "fake-agent-model",
                   outcome: "success" as const,
-                  toolCalls: ["slackChannelPostMessage"],
+                  toolCalls: ["sendMessage"],
                   toolErrorCount: 0,
                   toolResultCount: 1,
                   usedPrimaryText: true,

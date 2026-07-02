@@ -14,6 +14,7 @@ Runtime behavior should receive the authority, destination, and scope it needs a
 - Tool and model inputs must not supply privileged runtime context when the runtime can derive it from the active conversation, actor, destination, or artifact state.
 - Display labels are presentation data. They may be sanitized for UX, but they must not become an identity source or overwrite actor ids.
 - Retryable and resumable workflows must preserve the same identity context and idempotency context across retries and continuation slices.
+- In-memory values are caches only. Any value that must be used after a tool boundary, async boundary, resume, delivery boundary, or later turn must be represented by a persisted handle before success is reported. A handle may point at bounded ephemeral storage only when the lifecycle explicitly accepts disappearance as a recoverable failure.
 
 ## Exceptions
 

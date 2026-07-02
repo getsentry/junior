@@ -47,7 +47,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The normalized transcript contains exactly one hello-style channel_post assistant message with no thread_ts.",
-          "The assistant tool calls include slackChannelPostMessage for the requested channel post.",
+          "The assistant tool calls include sendMessage for the requested channel post.",
           "The normalized transcript does not contain that hello-style message as a thread reply.",
         ],
         fail: [
@@ -58,7 +58,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     });
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "slackChannelPostMessage" }),
+        expect.objectContaining({ name: "sendMessage" }),
       ]),
     );
     expect(visibleThreadReplies(result.session)).toEqual([]);

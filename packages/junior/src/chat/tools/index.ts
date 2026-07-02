@@ -4,6 +4,7 @@ import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
 import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
+import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
@@ -19,9 +20,9 @@ import {
   createSubscribeToResourceEventsTool,
 } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/slack/tools/channel-post-message";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
+import { createSendMessageTool } from "@/chat/slack/tools/send-message";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
 import { createSlackCanvasReadTool } from "@/chat/slack/tools/canvas/read";
@@ -105,11 +106,13 @@ export function createTools(
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(hooks.toolOverrides?.webSearch),
     webFetch: createWebFetchTool(hooks),
-    imageGenerate: createImageGenerateTool(
-      hooks,
-      hooks.toolOverrides?.imageGenerate,
-    ),
   };
+  if (hooks.writeGeneratedArtifacts) {
+    tools.imageGenerate = createImageGenerateTool(
+      { writeGeneratedArtifacts: hooks.writeGeneratedArtifacts },
+      hooks.toolOverrides?.imageGenerate,
+    );
+  }
 
   if (context.advisor) {
     tools.advisor = createAdvisorTool(context.advisor);
@@ -159,9 +162,8 @@ export function createTools(
     }
 
     if (outputCapabilities?.canPostToChannel && canPostStandaloneSlackMessage) {
-      tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
-        slackContext,
-        state,
+      tools.sendMessage = createSendMessageTool(slackContext, state, (input) =>
+        readSandboxFileUpload(context.sandbox, input),
       );
     }
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-16
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -73,10 +73,12 @@ Current rules:
 
 Current rules:
 
-1. Thread file uploads go through the shared outbound boundary.
-2. Uploads require a valid channel ID, thread timestamp, and at least one file.
+1. Slack file uploads go through the shared outbound boundary.
+2. Uploads require a valid channel ID and at least one file.
 3. Each file must include a filename before the upload request is built.
-4. Resume and callback flows use the same upload semantics as the primary reply planner.
+4. Thread replies pass `thread_ts`; top-level file messages omit it.
+5. A file upload may include an initial comment, but file-only messages are valid and must not be forced through an empty `chat.postMessage` call.
+6. Resume and callback flows use the same upload semantics as the primary reply planner.
 
 ### 6. Reaction Contract
 
