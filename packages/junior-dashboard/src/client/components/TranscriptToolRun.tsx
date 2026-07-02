@@ -9,7 +9,12 @@ import { useTranscriptSearch } from "./transcriptSearch";
 
 const TOOL_RUN_REVEAL_THRESHOLD = 4;
 
-/** Render a consecutive tool-and-thinking run with a one-way reveal for dense middle calls. */
+/** Render a consecutive tool-and-thinking run with a one-way reveal for dense middle calls.
+ *
+ * When the run is long enough, the first and last entries are always visible as
+ * bookends so the reader has context on what opened and closed the block. The
+ * middle entries are collapsed behind a reveal separator.
+ */
 export function TranscriptToolRun(props: {
   entries: RenderedToolRunEntry[];
   keyPrefix: string;
@@ -33,19 +38,55 @@ export function TranscriptToolRun(props: {
     );
   }
 
+  const first = props.entries[0]!;
+  const last = props.entries[props.entries.length - 1]!;
+  const middle = props.entries.slice(1, -1);
+
   return (
-    <details className="min-w-0">
-      <ToolRunReveal entries={props.entries} />
-      <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-        {renderRunEntries(
-          props.entries,
-          props.startIndex,
-          props.keyPrefix,
-          props.renderTool,
-          props.renderThinking,
-        )}
-      </div>
-    </details>
+    <>
+      {renderRunEntry(
+        first,
+        props.startIndex,
+        props.keyPrefix,
+        props.renderTool,
+        props.renderThinking,
+      )}
+      <details className="min-w-0">
+        <ToolRunReveal entries={props.entries} />
+        <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+          {renderRunEntries(
+            middle,
+            props.startIndex + 1,
+            props.keyPrefix,
+            props.renderTool,
+            props.renderThinking,
+          )}
+        </div>
+      </details>
+      {renderRunEntry(
+        last,
+        props.startIndex + props.entries.length - 1,
+        props.keyPrefix,
+        props.renderTool,
+        props.renderThinking,
+      )}
+    </>
+  );
+}
+
+function renderRunEntry(
+  entry: RenderedToolRunEntry,
+  index: number,
+  keyPrefix: string,
+  renderTool: (entry: RenderedToolEntry, index: number) => ReactNode,
+  renderThinking: (entry: RenderedThinkingEntry, index: number) => ReactNode,
+): ReactNode {
+  return (
+    <Fragment key={`${keyPrefix}:${entry.kind}:${index}`}>
+      {entry.kind === "thinking"
+        ? renderThinking(entry, index)
+        : renderTool(entry, index)}
+    </Fragment>
   );
 }
 
@@ -56,16 +97,15 @@ function renderRunEntries(
   renderTool: (entry: RenderedToolEntry, index: number) => ReactNode,
   renderThinking: (entry: RenderedThinkingEntry, index: number) => ReactNode,
 ): ReactNode[] {
-  return entries.map((entry, offset) => {
-    const index = startIndex + offset;
-    return (
-      <Fragment key={`${keyPrefix}:${entry.kind}:${index}`}>
-        {entry.kind === "thinking"
-          ? renderThinking(entry, index)
-          : renderTool(entry, index)}
-      </Fragment>
-    );
-  });
+  return entries.map((entry, offset) =>
+    renderRunEntry(
+      entry,
+      startIndex + offset,
+      keyPrefix,
+      renderTool,
+      renderThinking,
+    ),
+  );
 }
 
 function formatRunRevealLabel(entries: RenderedToolRunEntry[]): string {

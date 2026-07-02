@@ -1343,10 +1343,16 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("cursor-pointer");
     expect(html).toContain("py-1.5 text-left font-mono");
     expect(html).not.toContain("pl-3 text-left font-mono");
+    // All entries present in DOM (first+last outside <details>, middle inside).
     expect(html).toContain("tool-0");
     expect(html).toContain("tool-1");
     expect(html).toContain("tool-2");
     expect(html).toContain("tool-3");
+    // First (tool-0) and last (tool-3) entries are bookends outside the run-reveal
+    // <details class="min-w-0"> wrapper; only the middle two are inside it.
+    const runRevealPos = html.indexOf('<details class="min-w-0">');
+    expect(html.indexOf("tool-0")).toBeLessThan(runRevealPos);
+    expect(html.lastIndexOf("tool-3")).toBeGreaterThan(runRevealPos);
   });
 
   it("keeps three consecutive tool calls expanded", () => {
@@ -1519,13 +1525,17 @@ describe("dashboard telemetry components", () => {
       </QueryClientProvider>,
     );
 
-    // All four entries collapse into one reveal group.
+    // All entries present; first and last visible outside <details>.
     expect(html).toContain('<details class="min-w-0"><summary');
     expect(html).toContain("show 2 tool calls and 2 thinking entries");
     expect(html).toContain("tool-0");
     expect(html).toContain("tool-1");
     expect(html).toContain("first thought");
     expect(html).toContain("second thought");
+    // First (tool-0) and last (second thought) are bookends outside the reveal.
+    const runRevealPos = html.indexOf('<details class="min-w-0">');
+    expect(html.indexOf("tool-0")).toBeLessThan(runRevealPos);
+    expect(html.lastIndexOf("second thought")).toBeGreaterThan(runRevealPos);
   });
 
   it("keeps mixed tool-and-thinking run below threshold expanded flat", () => {
