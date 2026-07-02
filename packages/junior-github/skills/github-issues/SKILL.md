@@ -52,6 +52,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 **Hard constraints — apply to every new issue:**
 
 - Title ≤ 60 characters. Descriptive for bugs, imperative for tasks/features.
+- **Issue title format: plain language, no type prefix.** Do not use `fix(x):`, `feat(x):`, `chore:`, `ref(x):`, or any other type-scope prefix — those belong in commit messages and PR titles, not issues.
 - Summary ≤ 3 sentences. Do not restate the title in the body.
 - Prefer flat bullet lists over headed sections for simple issues. Remove empty sections.
 - Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying technical problem.
