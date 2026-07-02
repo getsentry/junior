@@ -156,24 +156,20 @@ CREATE INDEX IF NOT EXISTS junior_conversations_origin_idx
 `,
 ] as const;
 
-/**
- * Expand-only: adds a nullable confirmation timestamp so readers can
- * distinguish source-confirmed visibility from legacy prefix-derived values.
- * Legacy rows keep a NULL confirmation and must read as private until a live
- * source signal re-confirms them.
- */
-const destinationVisibilityConfirmationStatements = [
+const destinationVisibilityBackfillStatements = [
   `
-ALTER TABLE junior_destinations
-  ADD COLUMN IF NOT EXISTS visibility_confirmed_at TIMESTAMPTZ
+UPDATE junior_destinations
+  SET visibility = 'private'
+  WHERE provider = 'slack'
+    AND visibility = 'public'
 `,
 ] as const;
 
 export const migrations = [
   defineMigration("0001_conversation_core", coreMetadataStatements),
   defineMigration(
-    "0002_destination_visibility_confirmation",
-    destinationVisibilityConfirmationStatements,
+    "0002_slack_destination_visibility_backfill",
+    destinationVisibilityBackfillStatements,
   ),
 ] as const;
 

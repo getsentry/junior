@@ -205,12 +205,12 @@ describe("completeText", () => {
       ] as any,
       metadata: { conversationId: "slack:C1:123", channelId: "C1" },
     });
-    const unconfirmed = mocks.withSpan.mock.calls[0]?.[4] as Record<
+    const noSignal = mocks.withSpan.mock.calls[0]?.[4] as Record<
       string,
       unknown
     >;
-    expect(unconfirmed["app.conversation.privacy"]).toBe("private");
-    expect(unconfirmed["gen_ai.input.messages"]).not.toContain(
+    expect(noSignal["app.conversation.privacy"]).toBe("private");
+    expect(noSignal["gen_ai.input.messages"]).not.toContain(
       "possibly private question",
     );
 
@@ -224,12 +224,12 @@ describe("completeText", () => {
         metadata: { conversationId: "slack:C1:123", channelId: "C1" },
       }),
     );
-    const confirmed = mocks.withSpan.mock.calls[1]?.[4] as Record<
+    const publicSignal = mocks.withSpan.mock.calls[1]?.[4] as Record<
       string,
       unknown
     >;
-    expect(confirmed["app.conversation.privacy"]).toBe("public");
-    expect(confirmed["gen_ai.input.messages"]).toContain("public question");
+    expect(publicSignal["app.conversation.privacy"]).toBe("public");
+    expect(publicSignal["gen_ai.input.messages"]).toContain("public question");
   });
 
   it("uses AI SDK structured output for object completions", async () => {

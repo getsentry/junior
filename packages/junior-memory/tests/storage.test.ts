@@ -268,9 +268,9 @@ function slackContext(
     source: createSlackSource({
       teamId,
       channelId,
-      // Only channel_type can mark a source public; C-prefixed test channels
-      // model public channels unless a test overrides this.
-      ...(channelId.startsWith("C") ? { channelType: "channel" as const } : {}),
+      // The Slack boundary supplies normalized public visibility for these
+      // C-prefixed test channels unless a test overrides the channel id.
+      ...(channelId.startsWith("C") ? { type: "pub" as const } : {}),
       messageTs: threadTs,
       threadTs,
     }),
@@ -1168,6 +1168,8 @@ describe("memory plugin storage", () => {
                 source: createSlackSource({
                   teamId: runtime.source.teamId,
                   channelId: runtime.source.channelId,
+
+                  type: "priv",
                 }),
               });
             },

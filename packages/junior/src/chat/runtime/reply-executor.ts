@@ -357,7 +357,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       channelType: slackChannelType,
     });
     // Source-confirmed visibility for destination persistence; undefined when
-    // the event carries no channel_type so stored rows stay unconfirmed.
+    // the event carries no channel_type so existing visibility is not changed.
     const destinationVisibility =
       conversationVisibilityFromSlackChannelType(slackChannelType);
     const threadTs = getThreadTs(threadId);
@@ -370,10 +370,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const teamId = destination.teamId;
     const source = createSlackSource({
       channelId: channelId ?? destination.channelId,
-      channelType: slackChannelType,
       messageTs,
       teamId,
       threadTs,
+      type: destinationVisibility === "public" ? "pub" : "priv",
     });
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;

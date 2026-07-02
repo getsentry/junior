@@ -74,6 +74,8 @@ function createSlackSourceForTest(channelId: string) {
     teamId: "T123",
     channelId,
     threadTs: "1700000000.000",
+
+    type: "priv",
   });
 }
 

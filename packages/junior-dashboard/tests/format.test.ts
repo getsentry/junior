@@ -757,27 +757,24 @@ describe("canRenderStructuredMarkup", () => {
 });
 
 describe("slackLocationLabel redacted labels", () => {
-  const redactedLabels = [
-    "Public Channel",
-    "Private Channel",
-    "Group DM",
-    "Direct Message",
-    "Private Channel or Group DM",
-    "Private Conversation",
-  ];
-
-  it("returns redacted type labels verbatim instead of formatting them as channel names", () => {
-    for (const label of redactedLabels) {
-      expect(slackLocationLabel({ channel: "C123", channelName: label })).toBe(
-        `${label} (C123)`,
-      );
-      expect(
-        slackLocationLabel(
-          { channel: "C123", channelName: label },
-          { includeId: false },
-        ),
-      ).toBe(label);
-    }
+  it("returns redacted type labels verbatim when the report marks them redacted", () => {
+    expect(
+      slackLocationLabel({
+        channel: "C123",
+        channelName: "Private Conversation",
+        channelNameRedacted: true,
+      }),
+    ).toBe("Private Conversation (C123)");
+    expect(
+      slackLocationLabel(
+        {
+          channel: "C123",
+          channelName: "Private Conversation",
+          channelNameRedacted: true,
+        },
+        { includeId: false },
+      ),
+    ).toBe("Private Conversation");
   });
 
   it("still formats real channel names with a # prefix", () => {
@@ -787,5 +784,11 @@ describe("slackLocationLabel redacted labels", () => {
         { includeId: false },
       ),
     ).toBe("#proj-alpha");
+    expect(
+      slackLocationLabel(
+        { channel: "C123", channelName: "Private Conversation" },
+        { includeId: false },
+      ),
+    ).toBe("#Private Conversation");
   });
 });

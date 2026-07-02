@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { backfillToSql } from "@/chat/conversations/sql/backfill";
+import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
 import { createSqlStore, SqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
 import {
@@ -180,7 +181,7 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("persists visibility only from source-confirmed signals and converges on newer signals", async () => {
+  it("persists visibility from source signals and converges on newer signals", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -206,7 +207,7 @@ describe("conversation SQL store", () => {
         }),
       ).resolves.toBe("private");
 
-      // A signal-less write must not clobber the confirmed value.
+      // A signal-less write must not clobber the stored value.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination,
@@ -233,20 +234,29 @@ describe("conversation SQL store", () => {
           providerDestinationId: "C123",
         }),
       ).resolves.toBe("public");
+
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination,
+        nowMs: 4_000,
+      });
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({ visibility: "public" });
     } finally {
       await fixture.close();
     }
   });
 
-  it("treats unsigned and legacy prefix-derived destinations as unconfirmed", async () => {
+  it("defaults unsigned Slack destinations to private", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       const store = createSqlStore(fixture.sql);
       await store.migrate();
 
-      // A write without a live source signal stays unconfirmed even though
-      // the channel id is C-prefixed.
+      // A write without a live source signal fails closed to private even
+      // though the channel id is C-prefixed.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -255,17 +265,24 @@ describe("conversation SQL store", () => {
       const conversation = await store.get({
         conversationId: CONVERSATION_ID,
       });
-      expect(conversation?.visibility).toBeUndefined();
+      expect(conversation?.visibility).toBe("private");
       await expect(
         store.getDestinationVisibility({
           provider: "slack",
           providerTenantId: "T123",
           providerDestinationId: "C123",
         }),
-      ).resolves.toBeUndefined();
+      ).resolves.toBe("private");
+    } finally {
+      await fixture.close();
+    }
+  });
 
-      // A legacy row whose visibility was derived from the id prefix has no
-      // confirmation timestamp and must read as unconfirmed.
+  it("migrates historical Slack public visibility guesses to private", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql, [migrations[0]]);
       await fixture.sql.execute(
         `
 INSERT INTO junior_destinations (
@@ -274,7 +291,7 @@ INSERT INTO junior_destinations (
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `,
         [
-          "legacy-destination",
+          "historical-public-destination",
           "slack",
           "T999",
           "C_LEGACY",
@@ -284,13 +301,17 @@ INSERT INTO junior_destinations (
           new Date(1_000).toISOString(),
         ],
       );
+
+      const store = createSqlStore(fixture.sql);
+      await store.migrate();
+
       await expect(
         store.getDestinationVisibility({
           provider: "slack",
           providerTenantId: "T999",
           providerDestinationId: "C_LEGACY",
         }),
-      ).resolves.toBeUndefined();
+      ).resolves.toBe("private");
     } finally {
       await fixture.close();
     }

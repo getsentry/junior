@@ -71,6 +71,8 @@ function createContext(
     source: createSlackSource({
       teamId,
       channelId,
+
+      type: "priv",
     }),
     requester: {
       platform: "slack",
@@ -328,6 +330,8 @@ describe("Slack schedule tools", () => {
           teamId: TEST_TEAM_ID,
           channelId: "C123",
           threadTs: "1700000000.000",
+
+          type: "priv",
         }),
       }),
     );
@@ -887,6 +891,8 @@ describe("Slack schedule tools", () => {
             ...createSlackSource({
               teamId: TEST_TEAM_ID,
               channelId: "D123",
+
+              type: "priv",
             }),
             teamId: TEST_TEAM_ID,
             channelId: "slack:D123:1700000000.000",
@@ -1219,6 +1225,8 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         source: createSlackSource({
           teamId: TEAM_ID,
           channelId: "DDM",
+
+          type: "priv",
         }),
         destination: {
           platform: "slack",

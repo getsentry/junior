@@ -116,6 +116,8 @@ function makeReplyContext(args: {
       teamId: destination.teamId,
       channelId: destination.channelId,
       threadTs: args.threadTs,
+
+      type: "priv",
     }),
     requester: TEST_REQUESTER,
     recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
@@ -1180,6 +1182,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
         threadTs: "1712345.0003",
+
+        type: "priv",
       }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
@@ -1278,6 +1282,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
         threadTs: "1712345.0005",
+
+        type: "priv",
       }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
@@ -1322,6 +1328,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
         teamId: "T123",
         channelId: "C123",
         threadTs: "1712345.0006",
+
+        type: "priv",
       }),
       requester: TEST_REQUESTER,
       recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {

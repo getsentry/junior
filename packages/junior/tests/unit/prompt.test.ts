@@ -10,6 +10,8 @@ describe("prompt builders", () => {
     const source = createSlackSource({
       teamId: "T123",
       channelId: "C123",
+
+      type: "priv",
     });
     const systemPrompt = buildSystemPrompt({ source });
 
@@ -26,6 +28,8 @@ describe("prompt builders", () => {
         source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
+
+          type: "priv",
         }),
       }),
     );
@@ -75,6 +79,8 @@ describe("prompt builders", () => {
         source: createSlackSource({
           teamId: "T123",
           channelId: "C123",
+
+          type: "priv",
         }),
         destination: {
           platform: "slack",

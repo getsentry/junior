@@ -15,7 +15,7 @@ describe("conversation privacy classification", () => {
     expect(canExposeConversationPayload({ channelId: "C123" })).toBe(false);
   });
 
-  it("classifies public only from a confirmed visibility signal", () => {
+  it("classifies public only from an explicit visibility signal", () => {
     expect(
       resolveConversationPrivacy({ channelId: "C123", visibility: "public" }),
     ).toBe("public");

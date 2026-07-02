@@ -39,6 +39,8 @@ function testSlackSource(threadTs: string) {
     teamId: TEST_SLACK_DESTINATION.teamId,
     channelId: TEST_SLACK_DESTINATION.channelId,
     threadTs,
+
+    type: "priv",
   });
 }
 

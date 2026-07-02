@@ -31,6 +31,7 @@ const SLACK_DESTINATION = {
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
+  type: "priv",
 });
 
 describe("generateAssistantReply error path", () => {

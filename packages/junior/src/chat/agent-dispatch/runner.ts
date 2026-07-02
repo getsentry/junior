@@ -128,16 +128,6 @@ async function persistRuntimePatch(args: {
   });
 }
 
-/**
- * Persist the post-delivery dispatch state with a short retry so a transient
- * state write does not drop the delivered marker that suppresses re-posts.
- */
-async function persistRuntimePatchWithRetry(
-  args: Parameters<typeof persistRuntimePatch>[0],
-): Promise<void> {
-  await persistWithRetry(() => persistRuntimePatch(args));
-}
-
 async function markDispatch(args: {
   dispatch: DispatchRecord;
   errorMessage?: string;
@@ -215,6 +205,16 @@ export async function runAgentDispatchSlice(
   let dispatch = claimedDispatch;
 
   const conversationId = getDispatchConversationId(dispatch);
+  const turnId = getDispatchTurnId(dispatch.id);
+  const logContext = {
+    conversationId,
+    slackThreadId: conversationId,
+    slackChannelId: dispatch.destination.channelId,
+    runId: dispatch.id,
+    actorType: dispatch.actor.type,
+    actorId: dispatch.actor.id,
+    assistantUserName: botConfig.userName,
+  };
   const destinationLockId = getDispatchDestinationLockId(dispatch.destination);
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
@@ -319,7 +319,7 @@ export async function runAgentDispatchSlice(
       correlation: {
         conversationId,
         threadId: conversationId,
-        turnId: getDispatchTurnId(dispatch.id),
+        turnId,
         runId: dispatch.id,
         channelId: dispatch.destination.channelId,
         teamId: dispatch.destination.teamId,
@@ -364,13 +364,7 @@ export async function runAgentDispatchSlice(
         reply,
         logException,
         context: {
-          conversationId,
-          slackThreadId: conversationId,
-          slackChannelId: dispatch.destination.channelId,
-          runId: dispatch.id,
-          actorType: dispatch.actor.type,
-          actorId: dispatch.actor.id,
-          assistantUserName: botConfig.userName,
+          ...logContext,
           modelId: reply.diagnostics.modelId,
         },
       });
@@ -415,27 +409,21 @@ export async function runAgentDispatchSlice(
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
       : artifacts;
     try {
-      await persistRuntimePatchWithRetry({
-        threadId: conversationId,
-        conversation,
-        artifacts: nextArtifacts,
-        sandboxId: reply.sandboxId ?? sandboxId,
-        sandboxDependencyProfileHash:
-          reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
-      });
+      await persistWithRetry(() =>
+        persistRuntimePatch({
+          threadId: conversationId,
+          conversation,
+          artifacts: nextArtifacts,
+          sandboxId: reply.sandboxId ?? sandboxId,
+          sandboxDependencyProfileHash:
+            reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,
+        }),
+      );
     } catch (persistError) {
       logException(
         persistError,
         "agent_dispatch_post_delivery_persist_failed",
-        {
-          conversationId,
-          slackThreadId: conversationId,
-          slackChannelId: dispatch.destination.channelId,
-          runId: dispatch.id,
-          actorType: dispatch.actor.type,
-          actorId: dispatch.actor.id,
-          assistantUserName: botConfig.userName,
-        },
+        logContext,
         {},
         "Failed to persist delivered dispatch state after Slack accepted the reply",
       );
@@ -445,7 +433,7 @@ export async function runAgentDispatchSlice(
       // record too; this call swallows its own persistence failures.
       await persistCompletedSessionRecord({
         conversationId,
-        sessionId: getDispatchTurnId(dispatch.id),
+        sessionId: turnId,
         allMessages: reply.piMessages,
         currentDurationMs: reply.diagnostics.durationMs,
         currentUsage: reply.diagnostics.usage,
@@ -471,21 +459,13 @@ export async function runAgentDispatchSlice(
       try {
         await scheduleCompletedTasks({
           conversationId,
-          sessionId: getDispatchTurnId(dispatch.id),
+          sessionId: turnId,
         });
       } catch (error) {
         logException(
           error,
           "plugin_session_completed_task_schedule_failed",
-          {
-            conversationId,
-            slackThreadId: conversationId,
-            slackChannelId: dispatch.destination.channelId,
-            runId: dispatch.id,
-            actorType: dispatch.actor.type,
-            actorId: dispatch.actor.id,
-            assistantUserName: botConfig.userName,
-          },
+          logContext,
           {},
           "Plugin session.completed task scheduling failed",
         );
@@ -539,13 +519,7 @@ export async function runAgentDispatchSlice(
       error,
       "agent_dispatch_run_failed",
       {
-        conversationId,
-        slackThreadId: conversationId,
-        slackChannelId: dispatch.destination.channelId,
-        runId: dispatch.id,
-        actorType: dispatch.actor.type,
-        actorId: dispatch.actor.id,
-        assistantUserName: botConfig.userName,
+        ...logContext,
         modelId: botConfig.modelId,
       },
       {},

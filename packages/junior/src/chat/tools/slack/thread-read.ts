@@ -75,7 +75,7 @@ export function createSlackThreadReadTool(
 ) {
   return tool({
     description:
-      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and channels Junior has confirmed as public in this workspace are readable.",
+      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and public channels Junior has seen in this workspace are readable.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       url: Type.Optional(
@@ -141,9 +141,8 @@ export function createSlackThreadReadTool(
         };
       }
 
-      // Cross-conversation reads require persisted confirmed-public
-      // visibility in the current workspace; the active delivery context is
-      // always readable.
+      // Cross-conversation reads require persisted public visibility in the
+      // current workspace; the active delivery context is always readable.
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,

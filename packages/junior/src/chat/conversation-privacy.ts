@@ -34,16 +34,14 @@ function privateNarrowingFromConversationId(
 /**
  * Resolve whether a conversation may expose raw payloads.
  *
- * Only a confirmed visibility — the source event's `channel_type` /
- * `conversations.info` `is_private`, or the persisted source-confirmed
- * destination visibility — can classify a conversation public. Identifier
- * prefixes may only narrow classification toward private. Unknown stays
- * undefined so callers fail closed to private.
+ * Only a live source signal or persisted destination visibility can classify
+ * a conversation public. Identifier prefixes may only narrow classification
+ * toward private. Unknown stays undefined so callers fail closed to private.
  */
 export function resolveConversationPrivacy(input: {
   channelId?: string;
   conversationId?: string;
-  /** Source-confirmed or persisted-confirmed visibility, when the caller has one. */
+  /** Live source or persisted visibility, when the caller has one. */
   visibility?: ConversationPrivacy;
 }): ConversationPrivacy | undefined {
   const narrowed =
@@ -55,11 +53,11 @@ export function resolveConversationPrivacy(input: {
   return input.visibility;
 }
 
-/** Gate raw transcript/tool payload exposure to conversations confirmed public. */
+/** Gate raw transcript/tool payload exposure to public conversations. */
 export function canExposeConversationPayload(input: {
   channelId?: string;
   conversationId?: string;
-  /** Source-confirmed or persisted-confirmed visibility, when the caller has one. */
+  /** Live source or persisted visibility, when the caller has one. */
   visibility?: ConversationPrivacy;
 }): boolean {
   return resolveConversationPrivacy(input) === "public";

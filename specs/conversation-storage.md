@@ -146,11 +146,11 @@ authority consumed by redaction, transcript access, and dashboard reporting
 - Ingress refreshes visibility from the current event's signal when it differs
   from the stored value, so a channel converted between public and private
   converges on the next message.
-- Readers must treat any value other than confirmed `public` as private.
-- Legacy rows whose visibility was derived from id prefixes are unconfirmed:
-  read them as private until a live source signal re-confirms them. No
-  destructive migration is required; this is a read-side rule plus write-side
-  refresh.
+- Readers must treat any value other than `public` as private.
+- Legacy Slack rows whose visibility was derived from id prefixes are migrated
+  to private. Losing historical public classification is acceptable because it
+  only reduces transcript/report exposure; the next live source signal can
+  restore public visibility.
 
 ### Retention And Erasure
 

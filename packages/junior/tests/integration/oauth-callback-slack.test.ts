@@ -34,6 +34,8 @@ function slackSource(threadTs: string) {
     teamId: SLACK_DESTINATION.teamId,
     channelId: SLACK_DESTINATION.channelId,
     threadTs,
+
+    type: "priv",
   });
 }
 
@@ -113,6 +115,8 @@ describe("oauth callback slack integration", () => {
       channelId: "C123",
       messageTs: "1700000000.oauth-source",
       threadTs: "1700000000.001",
+
+      type: "priv",
     });
     await stateAdapterModule
       .getStateAdapter()
@@ -199,6 +203,8 @@ describe("oauth callback slack integration", () => {
       channelId: "C123",
       messageTs: "1700000000.session-source",
       threadTs: "1700000000.009",
+
+      type: "priv",
     });
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({

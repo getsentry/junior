@@ -19,9 +19,9 @@ export type SlackChannelReadAccess =
  * Decide whether the model may read Slack content from a target channel.
  *
  * The current conversation is always readable. Any other channel requires
- * persisted source-confirmed `public` visibility in the same workspace:
- * channel-id prefixes cannot prove a channel public (modern Slack private
- * channels also use `C` ids), so unknown or unconfirmed channels fail closed.
+ * persisted `public` visibility in the same workspace: channel-id prefixes
+ * cannot prove a channel public (modern Slack private channels also use `C`
+ * ids), so missing or private destinations fail closed.
  */
 export async function checkSlackChannelReadAccess(args: {
   currentChannelIds: Array<string | undefined>;
@@ -54,6 +54,6 @@ export async function checkSlackChannelReadAccess(args: {
   return {
     allowed: false,
     error:
-      "Cannot read this Slack conversation: only the current conversation or channels Junior has confirmed as public in this workspace are readable.",
+      "Cannot read this Slack conversation: only the current conversation or public channels Junior has seen in this workspace are readable.",
   };
 }

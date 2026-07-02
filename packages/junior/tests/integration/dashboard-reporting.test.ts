@@ -315,25 +315,30 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("redacts C-prefixed conversations without confirmed visibility", async () => {
+  it("redacts C-prefixed conversations without public visibility", async () => {
     const { getConversationStore } = await import("@/chat/db");
     const { createJuniorReporting } = await import("@/reporting");
     const conversationStore = getConversationStore();
 
-    // Legacy-style row: no live signal ever confirmed this channel public.
+    // Legacy-style row: no live signal ever marked this channel public.
     await conversationStore.recordActivity({
       conversationId: "slack:C9:444",
       channelName: "maybe-private-room",
       destination: { platform: "slack", teamId: "T1", channelId: "C9" },
       nowMs: 1_000,
       source: "slack",
-      title: "Unconfirmed visibility",
+      title: "Private by default",
     });
 
     const summaries = await createJuniorReporting().listRecentConversations();
 
     expect(JSON.stringify(summaries)).not.toContain("maybe-private-room");
-    expect(JSON.stringify(summaries)).not.toContain("Unconfirmed visibility");
+    expect(JSON.stringify(summaries)).not.toContain("Private by default");
+    expect(summaries[0]).toMatchObject({
+      channelName: "Private Conversation",
+      channelNameRedacted: true,
+      displayTitle: "Private Conversation",
+    });
   });
 
   it("refreshes conversation context ttl without replacing origin context", async () => {
@@ -426,7 +431,7 @@ describe("dashboard reporting", () => {
       "slack:C1:details-only",
     );
 
-    // The confirmed-public destination record surfaces as an index-only run;
+    // The persisted-public destination record surfaces as an index-only run;
     // the details title may only appear because the conversation is public.
     expect(report).toMatchObject({
       conversationId: "slack:C1:details-only",
@@ -1371,8 +1376,8 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { conversationStore, readConversationReport } =
       await createStateReportingReader();
-    // The state-backed store cannot persist confirmed visibility; present the
-    // conversation as source-confirmed public for this read.
+    // The state-backed store cannot persist destination visibility; present
+    // the conversation as public for this read.
     const publicConversationStore: ConversationStore = {
       ...conversationStore,
       get: async (args) => {
@@ -1618,6 +1623,7 @@ describe("dashboard reporting", () => {
     expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
+      channelNameRedacted: true,
       id: "turn-private",
       requesterIdentity: {
         email: "david@sentry.io",
@@ -1664,6 +1670,7 @@ describe("dashboard reporting", () => {
     expect(report.runs[0]).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
+      channelNameRedacted: true,
       id: "turn-private-expired",
       transcriptAvailable: false,
       transcriptMetadata: [],

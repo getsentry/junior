@@ -339,6 +339,7 @@ const TEST_SOURCE = createSlackSource({
   teamId: TEST_DESTINATION.teamId,
   channelId: TEST_DESTINATION.channelId,
   threadTs: "1712345.0001",
+  type: "priv",
 });
 
 describe("generateAssistantReply provider retry", () => {

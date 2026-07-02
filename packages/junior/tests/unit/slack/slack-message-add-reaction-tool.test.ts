@@ -19,6 +19,8 @@ const TEST_SLACK_CONTEXT: SlackToolContext = {
     teamId: "T123",
     channelId: "C123",
     messageTs: "1700000000.100",
+
+    type: "priv",
   }),
   destinationChannelId: "C123",
   messageTs: "1700000000.100",

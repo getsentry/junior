@@ -18,6 +18,8 @@ function slackSource(threadTs: string) {
     teamId: SLACK_DESTINATION.teamId,
     channelId: SLACK_DESTINATION.channelId,
     threadTs,
+
+    type: "priv",
   });
 }
 
@@ -112,6 +114,8 @@ describe("agent continuation Slack integration", () => {
       channelId: "C123",
       messageTs: "1712345.continue-source",
       threadTs: "1712345.0001",
+
+      type: "priv",
     });
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({

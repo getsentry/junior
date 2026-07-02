@@ -54,6 +54,7 @@ const SLACK_DESTINATION = {
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
   channelId: SLACK_DESTINATION.channelId,
+  type: "priv",
 });
 
 class PrototypeTool {
@@ -69,6 +70,8 @@ function slackSource(channelId: string) {
   return createSlackSource({
     teamId: "T123",
     channelId,
+
+    type: "priv",
   });
 }
 
@@ -123,12 +126,12 @@ function fakeSandbox(
 }
 
 describe("agent plugin hooks", () => {
-  it("classifies Slack source visibility from the channel_type signal", () => {
+  it("accepts Slack source visibility from the runtime boundary", () => {
     expect(
       createSlackSource({
         teamId: "T123",
         channelId: "C123",
-        channelType: "channel",
+        type: "pub",
         threadTs: "1718800000.000000",
       }).type,
     ).toBe("pub");
@@ -138,6 +141,8 @@ describe("agent plugin hooks", () => {
         teamId: "T123",
         channelId: "C123",
         threadTs: "1718800000.000000",
+
+        type: "priv",
       }).type,
     ).toBe("priv");
     expect(
@@ -145,6 +150,8 @@ describe("agent plugin hooks", () => {
         teamId: "T123",
         channelId: "D123",
         threadTs: "1718800000.000000",
+
+        type: "priv",
       }).type,
     ).toBe("priv");
     expect(
@@ -152,14 +159,10 @@ describe("agent plugin hooks", () => {
         teamId: "T123",
         channelId: "G123",
         threadTs: "1718800000.000000",
+
+        type: "priv",
       }).type,
     ).toBe("priv");
-    expect(() =>
-      createSlackSource({
-        teamId: "T123",
-        channelId: "X123",
-      }),
-    ).toThrow("Unsupported Slack channel ID prefix");
   });
 
   it("collects system prompt contributions from configured plugins", async () => {

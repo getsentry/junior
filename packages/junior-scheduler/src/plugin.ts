@@ -80,6 +80,8 @@ function scheduledTaskDispatchSource(task: ScheduledTask): Source {
   return createSlackSource({
     teamId: task.destination.teamId,
     channelId: task.destination.channelId,
+
+    type: "priv",
   });
 }
 

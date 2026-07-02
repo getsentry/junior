@@ -40,6 +40,8 @@ function ctx(channelId?: string): ToolRuntimeContext {
     source: createSlackSource({
       teamId: "T123",
       channelId,
+
+      type: "priv",
     }),
     egress: noopEgress,
     sandbox: noopSandbox,

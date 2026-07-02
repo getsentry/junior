@@ -44,6 +44,8 @@ async function seedMemory(args: {
       messageTs: args.thread.thread_ts,
       teamId: memoryTeamId,
       threadTs: args.thread.thread_ts,
+
+      type: "priv",
     }),
   });
   const input = {
@@ -403,6 +405,8 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         messageTs: "17000000.memory-supersession",
         teamId: memoryTeamId,
         threadTs: "17000000.memory-supersession",
+
+        type: "priv",
       }),
     };
 

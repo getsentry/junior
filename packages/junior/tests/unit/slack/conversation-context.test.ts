@@ -81,7 +81,7 @@ describe("Slack conversation prompt context", () => {
     ).toMatchObject({ visibility: "private" });
   });
 
-  it("leaves visibility unconfirmed for C-prefixed ids without a signal", () => {
+  it("leaves visibility undefined for C-prefixed ids without a signal", () => {
     expect(
       resolveSlackConversationContext({
         channelId: "C123",

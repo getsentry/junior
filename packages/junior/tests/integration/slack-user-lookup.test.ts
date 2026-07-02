@@ -346,6 +346,8 @@ describe("slackUserLookup", () => {
           source: createSlackSource({
             teamId: "T_TEST",
             channelId: "C_TEST",
+
+            type: "priv",
           }),
           destination: {
             platform: "slack",

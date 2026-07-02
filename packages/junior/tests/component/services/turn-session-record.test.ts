@@ -17,6 +17,7 @@ const SLACK_SOURCE = createSlackSource({
   teamId: "T123",
   channelId: "C123",
   threadTs: "1700000000.001",
+  type: "priv",
 }) satisfies Source;
 
 function userMessage(text: string): PiMessage {

@@ -89,13 +89,6 @@ describe("conversation SQL migrations", () => {
         expect.stringContaining("INSERT INTO junior_schema_migrations"),
       ]),
     );
-    expect(executor.transactions[1]).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining(
-          "ADD COLUMN IF NOT EXISTS visibility_confirmed_at",
-        ),
-      ]),
-    );
   });
 
   it("does not reapply migrations already recorded with the same checksum", async () => {

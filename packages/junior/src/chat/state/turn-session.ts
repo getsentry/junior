@@ -790,8 +790,8 @@ export async function recordAgentTurnSessionSummary(args: {
   destination?: Destination;
   /**
    * Source-confirmed destination visibility from the current event's signal
-   * (Slack `channel_type`). Leave unset when no live signal exists so the
-   * stored destination stays unconfirmed.
+   * (Slack `channel_type`). Leave unset when no live signal exists so an
+   * existing destination visibility is not overwritten.
    */
   destinationVisibility?: ConversationPrivacy;
   source?: Source;

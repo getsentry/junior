@@ -35,7 +35,6 @@ type ConversationRow = typeof juniorConversations.$inferSelect;
 interface ConversationReadRow {
   conversation: ConversationRow;
   destinationVisibility: JuniorDestinationVisibility | null;
-  destinationVisibilityConfirmedAt: Date | null;
 }
 
 interface IdentityUpsert {
@@ -56,9 +55,8 @@ interface DestinationUpsert {
   provider: string;
   providerDestinationId: string;
   providerTenantId?: string;
+  refreshVisibility: boolean;
   visibility: JuniorDestinationVisibility;
-  /** True only when `visibility` came from a source-provided signal. */
-  visibilityConfirmed: boolean;
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
@@ -178,27 +176,6 @@ function localWorkspaceFromConversationId(
   return match?.[1];
 }
 
-/**
- * Persist Slack visibility only from source-provided signals: without a
- * confirmed value, id prefixes may narrow toward private (`D`/`G`) but a `C`
- * prefix stays `unknown` because modern private channels also use it.
- */
-function slackDestinationVisibility(
-  channelId: string,
-  confirmed: ConversationPrivacy | undefined,
-): JuniorDestinationVisibility {
-  if (channelId.startsWith("D")) {
-    return "direct";
-  }
-  if (confirmed === "public") {
-    return "public";
-  }
-  if (confirmed === "private" || channelId.startsWith("G")) {
-    return "private";
-  }
-  return "unknown";
-}
-
 function destinationUpsertFromDestination(args: {
   channelName?: string;
   conversationId?: string;
@@ -222,8 +199,8 @@ function destinationUpsertFromDestination(args: {
       provider: "slack",
       providerTenantId: destination.teamId,
       providerDestinationId: channelId,
-      visibility: slackDestinationVisibility(channelId, args.visibility),
-      visibilityConfirmed: args.visibility !== undefined,
+      refreshVisibility: args.visibility !== undefined,
+      visibility: args.visibility ?? "private",
       ...(args.channelName ? { displayName: args.channelName } : {}),
       metadata: { platform: "slack" },
     };
@@ -235,9 +212,8 @@ function destinationUpsertFromDestination(args: {
       localWorkspaceFromConversationId(destination.conversationId) ??
       localWorkspaceFromConversationId(args.conversationId ?? ""),
     providerDestinationId: destination.conversationId,
+    refreshVisibility: true,
     visibility: "direct",
-    // Local conversations are direct by construction of the platform.
-    visibilityConfirmed: true,
     metadata: { platform: "local" },
   };
 }
@@ -255,11 +231,11 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
   throw new Error("Conversation record execution status is invalid");
 }
 
-/** Project joined destination columns into source-confirmed visibility. */
-function confirmedVisibilityFromRow(
+/** Project joined destination columns into conversation privacy. */
+function privacyFromRow(
   row: ConversationReadRow,
 ): ConversationPrivacy | undefined {
-  if (row.destinationVisibilityConfirmedAt === null) {
+  if (row.destinationVisibility === null) {
     return undefined;
   }
   return row.destinationVisibility === "public" ? "public" : "private";
@@ -268,7 +244,7 @@ function confirmedVisibilityFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = confirmedVisibilityFromRow(readRow);
+  const visibility = privacyFromRow(readRow);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -536,8 +512,6 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
-        destinationVisibilityConfirmedAt:
-          juniorDestinations.visibilityConfirmedAt,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -566,7 +540,6 @@ export class SqlStore implements ConversationStore {
       .db()
       .select({
         visibility: juniorDestinations.visibility,
-        visibilityConfirmedAt: juniorDestinations.visibilityConfirmedAt,
       })
       .from(juniorDestinations)
       .where(
@@ -583,7 +556,7 @@ export class SqlStore implements ConversationStore {
         ),
       );
     const row = rows[0];
-    if (!row || row.visibilityConfirmedAt === null) {
+    if (!row) {
       return undefined;
     }
     return row.visibility === "public" ? "public" : "private";
@@ -608,8 +581,6 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
-        destinationVisibilityConfirmedAt:
-          juniorDestinations.visibilityConfirmedAt,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -763,6 +734,9 @@ export class SqlStore implements ConversationStore {
     if (!destination) {
       return undefined;
     }
+    const visibilityUpdate = destination.refreshVisibility
+      ? sql`excluded.visibility`
+      : juniorDestinations.visibility;
     const rows = await this.executor
       .db()
       .insert(juniorDestinations)
@@ -775,9 +749,6 @@ export class SqlStore implements ConversationStore {
         parentDestinationId: null,
         displayName: destination.displayName ?? null,
         visibility: destination.visibility,
-        visibilityConfirmedAt: destination.visibilityConfirmed
-          ? dateFromMs(nowMs)
-          : null,
         metadata: destination.metadata ?? null,
         createdAt: dateFromMs(nowMs),
         updatedAt: dateFromMs(nowMs),
@@ -791,11 +762,10 @@ export class SqlStore implements ConversationStore {
         set: {
           kind: sql`excluded.kind`,
           displayName: sql`coalesce(excluded.display_name, ${juniorDestinations.displayName})`,
-          // A source-confirmed write refreshes visibility (so converted
-          // channels converge on the next message); unconfirmed writes must
-          // not clobber a previously confirmed value.
-          visibility: sql`case when excluded.visibility_confirmed_at is not null then excluded.visibility else ${juniorDestinations.visibility} end`,
-          visibilityConfirmedAt: sql`coalesce(excluded.visibility_confirmed_at, ${juniorDestinations.visibilityConfirmedAt})`,
+          // Signal-less writes insert as private but must not clobber an
+          // existing public/private value. Live source signals refresh this
+          // field so converted channels converge on the next message.
+          visibility: visibilityUpdate,
           metadata: sql`coalesce(excluded.metadata_json, ${juniorDestinations.metadata})`,
           updatedAt: sql`excluded.updated_at`,
         },

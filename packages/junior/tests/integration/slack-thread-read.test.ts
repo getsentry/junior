@@ -27,6 +27,8 @@ function createContext(
       createSlackSource({
         teamId: "T123",
         channelId: sourceChannelId,
+
+        type: "priv",
       }),
     destinationChannelId,
     sourceChannelId,
@@ -35,8 +37,8 @@ function createContext(
   };
 }
 
-/** Persisted-visibility fake: only listed channels are confirmed public in T123. */
-function confirmedPublicChannels(
+/** Persisted-visibility fake: only listed channels are public in T123. */
+function persistedPublicChannels(
   ...channelIds: string[]
 ): DestinationVisibilityReader {
   return {
@@ -53,10 +55,10 @@ function confirmedPublicChannels(
 
 function createTool(
   overrides: Partial<SlackToolContext> = {},
-  confirmedPublic: string[] = [],
+  publicChannels: string[] = [],
 ) {
   return createSlackThreadReadTool(createContext(overrides), {
-    visibilityStore: confirmedPublicChannels(...confirmedPublic),
+    visibilityStore: persistedPublicChannels(...publicChannels),
   });
 }
 
@@ -295,7 +297,7 @@ describe("slackThreadRead", () => {
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
-  it("blocks reading a C-prefixed channel without confirmed public visibility", async () => {
+  it("blocks reading a C-prefixed channel without persisted public visibility", async () => {
     const tool = createTool({ sourceChannelId: "C_CURRENT" });
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
@@ -305,7 +307,7 @@ describe("slackThreadRead", () => {
       ok: false,
       channel_id: "C0UNCONFIRMED",
     });
-    expect(result.error).toContain("confirmed as public");
+    expect(result.error).toContain("public channels Junior has seen");
     // Blocked locally, no Slack API traffic.
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });

@@ -38,22 +38,14 @@ export interface Conversation {
   source?: ConversationSource;
   title?: string;
   updatedAtMs: number;
-  /**
-   * Source-confirmed destination visibility. Undefined means unconfirmed —
-   * legacy prefix-derived rows included — and readers must treat it as
-   * private.
-   */
+  /** Persisted destination visibility. Undefined means no destination row exists. */
   visibility?: ConversationPrivacy;
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
   get(args: { conversationId: string }): Promise<Conversation | undefined>;
-  /**
-   * Read persisted source-confirmed visibility for one destination, used by
-   * cross-conversation privacy gates. Undefined means unconfirmed and must be
-   * treated as private.
-   */
+  /** Read persisted visibility for one destination. Missing rows fail closed. */
   getDestinationVisibility(args: {
     provider: string;
     providerDestinationId: string;

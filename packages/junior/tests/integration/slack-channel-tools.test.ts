@@ -52,6 +52,8 @@ function createContext(
       teamId: "T123",
       channelId: sourceChannelId,
       messageTs: "1700000000.321",
+
+      type: "priv",
     }),
     destinationChannelId,
     messageTs: "1700000000.321",

@@ -29,11 +29,11 @@ Junior classifies conversations as `public` or `private`.
 - Channel-id prefixes must not be used to prove a conversation public. Modern
   Slack private channels also use `C`-prefixed ids. A prefix may only narrow
   classification toward private (`D`, `G`).
-- Confirmed visibility is persisted on the destination record
-  (`./conversation-storage.md`). Persisted visibility is the authority for any
-  read that happens outside the originating event context: transcript tools,
-  dashboard reporting, and telemetry capture.
-- Unknown, unparsable, or unconfirmed visibility is private.
+- Visibility is persisted on the destination record
+  (`./conversation-storage.md`). Persisted `public` is the only public case for
+  reads outside the originating event context: transcript tools, dashboard
+  reporting, and telemetry capture.
+- Unknown, unparsable, missing, or historical visibility is private.
 
 Privacy checks must fail closed. A missing channel id, missing visibility
 signal, unknown conversation shape, or unsupported platform must not expose
@@ -83,7 +83,7 @@ are an exposure surface governed by the same visibility classification.
 - Cross-conversation reads require persisted destination visibility of
   `public` and the same provider tenant (Slack workspace) as the requesting
   context.
-- Conversations with missing destinations or unconfirmed visibility are not
+- Conversations with missing destinations or non-public visibility are not
   readable across contexts.
 - Local and Slack contexts must not read each other's transcripts.
 
@@ -135,8 +135,8 @@ attribute.
 - Unknown conversation ids are treated as private.
 - Conversations Slack reports as private (`channel_type: group` or
   `is_private: true`) are classified private regardless of a `C` id prefix.
-- Cross-context transcript reads are denied for conversations without
-  confirmed public visibility, including legacy rows classified by id prefix.
+- Cross-context transcript reads are denied unless the destination has
+  persisted public visibility.
 
 ## Related Specs
 
