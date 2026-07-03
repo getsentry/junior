@@ -13,6 +13,7 @@ import {
   createWaitUntilCollector,
   type WaitUntilCollector,
 } from "../../fixtures/wait-until";
+import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 
 let waitUntil: WaitUntilCollector;
 
@@ -20,11 +21,7 @@ function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
 }
 
-const testAgentRunner = {
-  run: vi.fn(async () => {
-    throw new Error("test agent runner should not run");
-  }),
-};
+const testAgentRunner = neverRunAgentRunner();
 
 describe("mcp oauth callback handler", () => {
   beforeEach(() => {

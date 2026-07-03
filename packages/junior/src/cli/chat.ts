@@ -15,7 +15,11 @@ import * as readline from "node:readline/promises";
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
-import type { LocalAgentReply, LocalToolResult } from "@/chat/local/runner";
+import type {
+  LocalAgentReply,
+  LocalAgentTurnDeps,
+  LocalToolResult,
+} from "@/chat/local/runner";
 import { generateAssistantReply } from "@/chat/respond";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
@@ -232,34 +236,44 @@ function newRunConversationId(): string {
   return conversationId;
 }
 
+/** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
+async function prepareLocalChatRun(
+  io: ChatIo,
+  pluginSet: JuniorPluginSet | null | undefined,
+) {
+  defaultStateAdapterForLocalChat();
+  await configureLocalChatPlugins(pluginSet);
+  const { runLocalAgentTurn } = await import("@/chat/local/runner");
+  const deps: LocalAgentTurnDeps = {
+    agentRunner: createAgentRunner(generateAssistantReply),
+    deliverReply: async (reply) => {
+      await deliverReply(io, reply);
+    },
+    onStatus: async (status) => {
+      await reportStatus(io, status);
+    },
+    onToolResult: async (result) => {
+      await reportToolResult(io, result);
+    },
+  };
+  return { conversationId: newRunConversationId(), runLocalAgentTurn, deps };
+}
+
 async function runPrompt(
   options: Extract<ChatCommandOptions, { mode: "prompt" }>,
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<number> {
-  defaultStateAdapterForLocalChat();
-  await configureLocalChatPlugins(pluginSet);
-  const conversationId = newRunConversationId();
-  const agentRunner = createAgentRunner(generateAssistantReply);
-
-  const { runLocalAgentTurn } = await import("@/chat/local/runner");
+  const { conversationId, runLocalAgentTurn, deps } = await prepareLocalChatRun(
+    io,
+    pluginSet,
+  );
   const result = await runLocalAgentTurn(
     {
       conversationId,
       message: options.message,
     },
-    {
-      agentRunner,
-      deliverReply: async (reply) => {
-        await deliverReply(io, reply);
-      },
-      onStatus: async (status) => {
-        await reportStatus(io, status);
-      },
-      onToolResult: async (result) => {
-        await reportToolResult(io, result);
-      },
-    },
+    deps,
   );
   return result.outcome === "success" ? 0 : 1;
 }
@@ -268,12 +282,10 @@ async function runInteractive(
   io: ChatIo,
   pluginSet: JuniorPluginSet | null | undefined,
 ): Promise<void> {
-  defaultStateAdapterForLocalChat();
-  await configureLocalChatPlugins(pluginSet);
-  const conversationId = newRunConversationId();
-  const agentRunner = createAgentRunner(generateAssistantReply);
-
-  const { runLocalAgentTurn } = await import("@/chat/local/runner");
+  const { conversationId, runLocalAgentTurn, deps } = await prepareLocalChatRun(
+    io,
+    pluginSet,
+  );
   const rl = readline.createInterface({
     input: io.input,
     output: io.output,
@@ -294,18 +306,7 @@ async function runInteractive(
             conversationId,
             message,
           },
-          {
-            agentRunner,
-            deliverReply: async (reply) => {
-              await deliverReply(io, reply);
-            },
-            onStatus: async (status) => {
-              await reportStatus(io, status);
-            },
-            onToolResult: async (result) => {
-              await reportToolResult(io, result);
-            },
-          },
+          deps,
         );
       } catch (error) {
         if (error instanceof ChatOutputError) {

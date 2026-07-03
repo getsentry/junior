@@ -111,6 +111,7 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
+import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -118,11 +119,7 @@ const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
 };
 
-const testAgentRunner = {
-  run: vi.fn(async () => {
-    throw new Error("test agent runner should not run");
-  }),
-};
+const testAgentRunner = neverRunAgentRunner();
 
 beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";

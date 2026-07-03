@@ -1,12 +1,15 @@
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   waitUntilCallbacks,
   testWaitUntil,
 } from "./oauth-callback-after-harness";
+import { respondAgentRunner } from "./agent-runner";
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
   state: string;
   code: string;
+  agentRunner?: AgentRunner;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
@@ -17,14 +20,7 @@ export async function runMcpOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
-    {
-      agentRunner: {
-        run: async (messageText, context) => {
-          const { generateAssistantReply } = await import("@/chat/respond");
-          return await generateAssistantReply(messageText, context);
-        },
-      },
-    },
+    { agentRunner: args.agentRunner ?? respondAgentRunner },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   for (const callback of callbacks) {

@@ -11,7 +11,7 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
@@ -29,11 +29,7 @@ function restoreEnv(name: string, value: string | undefined): void {
   process.env[name] = value;
 }
 
-const agentRunnerShouldNotRun: AgentRunner = {
-  run: async () => {
-    throw new Error("agent runner should not run in this test");
-  },
-};
+const agentRunnerShouldNotRun = neverRunAgentRunner();
 
 describe("agent continuation scheduling", () => {
   beforeEach(async () => {

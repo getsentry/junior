@@ -11,13 +11,8 @@ import {
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+const generateAssistantReplyMock = vi.fn();
+const testAgentRunner = { run: generateAssistantReplyMock };
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
@@ -106,6 +101,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -174,6 +170,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-resume-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -341,6 +338,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-session-record-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -516,6 +514,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-mismatched-requester-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -665,6 +664,7 @@ describe("oauth callback slack integration", () => {
         provider: "eval-oauth",
         state: "eval-oauth-locked-state",
         code: "eval-oauth-code",
+        agentRunner: testAgentRunner,
       });
 
       expect(response.status).toBe(200);
@@ -803,6 +803,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-reused-link-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);
@@ -862,6 +863,7 @@ describe("oauth callback slack integration", () => {
       provider: "eval-oauth",
       state: "eval-oauth-abandoned-state",
       code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
     });
 
     expect(response.status).toBe(200);

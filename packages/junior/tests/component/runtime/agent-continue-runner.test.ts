@@ -6,7 +6,7 @@ import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
 
 const SLACK_SOURCE = createSlackSource({
@@ -32,11 +32,7 @@ function restoreEnv(name: string, value: string | undefined): void {
   process.env[name] = value;
 }
 
-const agentRunnerShouldNotRun: AgentRunner = {
-  run: async () => {
-    throw new Error("agent runner should not run in this test");
-  },
-};
+const agentRunnerShouldNotRun = neverRunAgentRunner();
 
 describe("agent continuation runner callbacks", () => {
   beforeEach(async () => {

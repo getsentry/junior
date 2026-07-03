@@ -15,6 +15,10 @@ export function createAgentRunner(
   run: AgentRunner["run"],
   options?: { tracePropagation?: SandboxEgressTracePropagationConfig },
 ): AgentRunner {
+  const tracePropagation = options?.tracePropagation;
+  if (!tracePropagation) {
+    return { run };
+  }
   return {
     run: async (messageText, context) =>
       await run(messageText, {
@@ -22,7 +26,7 @@ export function createAgentRunner(
         sandbox: {
           ...context.sandbox,
           tracePropagation:
-            context.sandbox?.tracePropagation ?? options?.tracePropagation,
+            context.sandbox?.tracePropagation ?? tracePropagation,
         },
       }),
   };

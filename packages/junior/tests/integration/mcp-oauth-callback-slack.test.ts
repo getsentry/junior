@@ -20,13 +20,8 @@ import {
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+const generateAssistantReplyMock = vi.fn();
+const testAgentRunner = { run: generateAssistantReplyMock };
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
@@ -353,6 +348,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -517,6 +513,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -653,6 +650,7 @@ describe("mcp oauth callback slack integration", () => {
           provider: EVAL_MCP_AUTH_PROVIDER,
           state: authProvider.authSessionId,
           code: EVAL_MCP_AUTH_CODE,
+          agentRunner: testAgentRunner,
         });
 
       expect(response.status).toBe(200);
@@ -759,6 +757,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -824,6 +823,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -888,6 +888,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -972,6 +973,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
@@ -1057,6 +1059,7 @@ describe("mcp oauth callback slack integration", () => {
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
       });
 
     expect(response.status).toBe(200);
