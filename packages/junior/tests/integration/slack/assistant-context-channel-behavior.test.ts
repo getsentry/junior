@@ -15,7 +15,17 @@ describe("Slack behavior: assistant context channel routing", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               capturedToolChannelIds.push(context?.toolChannelId);
               return completedAgentRun({
                 text: "Canvas draft prepared.",

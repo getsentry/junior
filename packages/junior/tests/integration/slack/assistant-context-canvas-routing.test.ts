@@ -43,7 +43,17 @@ describe("Slack behavior: assistant context canvas routing", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               await createCanvas({
                 title: "Shared update",
                 markdown: "Context-aware update",

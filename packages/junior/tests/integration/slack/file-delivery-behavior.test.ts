@@ -28,7 +28,17 @@ describe("Slack behavior: file delivery", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               await context?.onTextDelta?.("Preview is ready.");
               return completedAgentRun({
                 text: "Preview is ready.",

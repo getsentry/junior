@@ -1607,7 +1607,17 @@ describe("Slack conversation work execution", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_text, context) => {
+            run: async (request) => {
+              const _text = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               await context?.onInputCommitted?.();
               await context?.onArtifactStateUpdated?.({
                 lastCanvasId: "F_YIELD_CANVAS",

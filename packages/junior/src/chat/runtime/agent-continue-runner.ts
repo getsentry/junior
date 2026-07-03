@@ -360,41 +360,51 @@ export async function continueSlackAgentRun(
           messageText: userMessage.text,
           messageTs: getTurnUserSlackMessageTs(userMessage),
           replyContext: {
-            credentialContext: {
-              actor: {
-                type: "user",
-                userId: requester.userId,
+            input: {
+              conversationContext,
+              piMessages: conversation.piMessages,
+              ...getTurnUserReplyAttachmentContext(userMessage),
+            },
+            routing: {
+              credentialContext: {
+                actor: {
+                  type: "user",
+                  userId: requester.userId,
+                },
+              },
+              requester,
+              destination: payload.destination,
+              source: activeSessionRecord.source,
+              correlation: {
+                conversationId: payload.conversationId,
+                turnId: payload.sessionId,
+                channelId: thread.channelId,
+                threadTs: thread.threadTs,
+                requesterId: requester.userId,
+              },
+              toolChannelId:
+                artifacts.assistantContextChannelId ?? thread.channelId,
+            },
+            policy: {
+              channelConfiguration,
+              sandbox,
+            },
+            state: {
+              artifactState: artifacts,
+              pendingAuth: conversation.processing.pendingAuth,
+            },
+            durability: {
+              recordPendingAuth: async (nextPendingAuth) => {
+                await applyPendingAuthUpdate({
+                  conversation,
+                  conversationId: payload.conversationId,
+                  nextPendingAuth,
+                });
+                await persistThreadStateById(payload.conversationId, {
+                  conversation,
+                });
               },
             },
-            requester,
-            destination: payload.destination,
-            source: activeSessionRecord.source,
-            correlation: {
-              conversationId: payload.conversationId,
-              turnId: payload.sessionId,
-              channelId: thread.channelId,
-              threadTs: thread.threadTs,
-              requesterId: requester.userId,
-            },
-            toolChannelId:
-              artifacts.assistantContextChannelId ?? thread.channelId,
-            artifactState: artifacts,
-            pendingAuth: conversation.processing.pendingAuth,
-            conversationContext,
-            channelConfiguration,
-            piMessages: conversation.piMessages,
-            sandbox,
-            recordPendingAuth: async (nextPendingAuth) => {
-              await applyPendingAuthUpdate({
-                conversation,
-                conversationId: payload.conversationId,
-                nextPendingAuth,
-              });
-              await persistThreadStateById(payload.conversationId, {
-                conversation,
-              });
-            },
-            ...getTurnUserReplyAttachmentContext(userMessage),
           },
           onSuccess: async (reply: AssistantReply) => {
             await persistCompletedReplyState({

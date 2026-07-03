@@ -157,7 +157,17 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("does not post assistant status when the DM message omits thread_ts", async () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...request.input,
+            ...request.routing,
+            ...(request.policy ?? {}),
+            ...(request.state ?? {}),
+            ...(request.observers ?? {}),
+            ...(request.durability ?? {}),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },
@@ -181,7 +191,17 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("posts assistant status with a raw DM channel id when thread_ts is present", async () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...request.input,
+            ...request.routing,
+            ...(request.policy ?? {}),
+            ...(request.state ?? {}),
+            ...(request.observers ?? {}),
+            ...(request.durability ?? {}),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },
@@ -224,7 +244,17 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("posts assistant status for the first channel-thread reply before Slack adds thread_ts", async () => {
     const bot = await createMentionBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...request.input,
+            ...request.routing,
+            ...(request.policy ?? {}),
+            ...(request.state ?? {}),
+            ...(request.observers ?? {}),
+            ...(request.durability ?? {}),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },

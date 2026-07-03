@@ -264,7 +264,17 @@ describe("Slack behavior: message_changed webhook ingress", () => {
             userName: "dcramer",
           }),
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               expect(context?.requester).toEqual({
                 email: "david@example.com",
                 fullName: "David Cramer",

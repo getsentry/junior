@@ -74,7 +74,17 @@ describe("Slack behavior: finalized thread replies", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               await context?.onTextDelta?.("Hello ");
               await context?.onTextDelta?.("world");
               return completedAgentRun({
@@ -110,7 +120,17 @@ describe("Slack behavior: finalized thread replies", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               await context?.onTextDelta?.("Fetching sources now...");
               await context?.onAssistantMessageStart?.();
               await context?.onTextDelta?.(finalReply);

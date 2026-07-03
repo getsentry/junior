@@ -1037,27 +1037,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             : undefined;
-          const outcome = await deps.services.agentRunner.run(
-            effectiveUserText,
-            {
-              credentialContext,
-              requester,
+          const outcome = await deps.services.agentRunner.run({
+            input: {
+              messageText: effectiveUserText,
               conversationContext: preparedState.conversationContext,
-              artifactState: preparedState.artifacts,
               piMessages,
-              pendingAuth: preparedState.conversation.processing.pendingAuth,
-              configuration: preparedState.configuration,
-              channelConfiguration: preparedState.channelConfiguration,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,
               userAttachments,
+            },
+            routing: {
+              credentialContext,
+              requester,
               slackConversation,
               source,
               destination,
               surface: "slack",
-              authorizationFlowMode:
-                message.author.isBot === true ? "disabled" : undefined,
-              turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               correlation: {
                 conversationId,
                 threadId,
@@ -1071,11 +1066,31 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 requesterId: slackRequesterId,
               },
               toolChannelId,
+            },
+            policy: {
+              configuration: preparedState.configuration,
+              channelConfiguration: preparedState.channelConfiguration,
+              authorizationFlowMode:
+                message.author.isBot === true ? "disabled" : undefined,
+              turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
               sandbox: {
                 sandboxId: preparedState.sandboxId,
                 sandboxDependencyProfileHash:
                   preparedState.sandboxDependencyProfileHash,
               },
+            },
+            state: {
+              artifactState: preparedState.artifacts,
+              pendingAuth: preparedState.conversation.processing.pendingAuth,
+            },
+            observers: {
+              onStatus: (nextStatus) => status.update(nextStatus),
+              onToolInvocation: options.onToolInvocation,
+            },
+            durability: {
+              onInputCommitted: options.ack,
+              drainSteeringMessages,
+              shouldYield: options.shouldYield,
               onSandboxAcquired: async (sandbox) => {
                 await persistThreadState(thread, {
                   sandboxId: sandbox.sandboxId,
@@ -1102,13 +1117,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   conversation: preparedState.conversation,
                 });
               },
-              onStatus: (nextStatus) => status.update(nextStatus),
-              onToolInvocation: options.onToolInvocation,
-              onInputCommitted: options.ack,
-              drainSteeringMessages,
-              shouldYield: options.shouldYield,
             },
-          );
+          });
           if (outcome.status === "yielded") {
             shouldPersistFailureState = false;
             throw new CooperativeTurnYieldError();

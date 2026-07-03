@@ -6,9 +6,23 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 
 const listThreadRepliesMock = vi.fn();
 const ORIGINAL_ENV = { ...process.env };
+
+function flattenReplyRequestForTest(
+  request: Parameters<AgentRunner["run"]>[0],
+) {
+  return {
+    ...request.input,
+    ...request.routing,
+    ...(request.policy ?? {}),
+    ...(request.state ?? {}),
+    ...(request.observers ?? {}),
+    ...(request.durability ?? {}),
+  };
+}
 
 async function createRuntime(
   args: Parameters<
@@ -451,8 +465,9 @@ describe("bot image hydration", () => {
       text: "Passive screenshot summary",
       message: {} as never,
     }));
-    const generateAssistantReply = vi.fn(
-      async (_text: string, context: any) => {
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
         expect(context?.conversationContext).toContain(
           "Passive screenshot summary",
         );
@@ -609,8 +624,9 @@ describe("bot image hydration", () => {
       message: {} as never,
     }));
     const attachmentFetch = vi.fn(async () => Buffer.from("attachment-image"));
-    const generateAssistantReply = vi.fn(
-      async (_text: string, context: any) => {
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
         expect(context?.userAttachments).toEqual([
           expect.objectContaining({
             mediaType: "image/png",
@@ -765,8 +781,9 @@ describe("bot image hydration", () => {
     const secondAttachmentFetch = vi.fn(async () =>
       Buffer.from("second-image"),
     );
-    const generateAssistantReply = vi.fn(
-      async (_text: string, context: any) => {
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
         expect(context?.userAttachments).toEqual([
           expect.objectContaining({
             filename: "first.png",
@@ -895,8 +912,9 @@ describe("bot image hydration", () => {
       text: longSummary,
       message: {} as never,
     }));
-    const generateAssistantReply = vi.fn(
-      async (_text: string, context: any) => {
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
         const promptText = context?.userAttachments?.[0]?.promptText;
         const summary = extractImageAttachmentSummary(promptText);
         expect(summary).toBe(longSummary.slice(0, 500));
@@ -1074,7 +1092,17 @@ describe("bot image hydration", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_text: string, _context: any) => {
+            run: async (request) => {
+              const _text = request.input.messageText;
+              const _context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               return completedAgentRun({
                 ...makeSuccessReply("finalized content"),
                 files: [

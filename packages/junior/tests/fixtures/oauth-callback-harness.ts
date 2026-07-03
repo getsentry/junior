@@ -19,9 +19,9 @@ export async function runOauthCallbackRoute(args: {
     testWaitUntil,
     {
       agentRunner: {
-        run: async (messageText, context) => {
+        run: async (request) => {
           const { generateAssistantReply } = await import("@/chat/respond");
-          return await generateAssistantReply(messageText, context);
+          return await generateAssistantReply(request);
         },
       },
     },

@@ -104,10 +104,14 @@ export const plugins = {
           .map((plugin) => plugin.manifest.name),
       ).toContain("local-chat-plugin");
       expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-        "hello",
         expect.objectContaining({
-          authorizationFlowMode: "disabled",
-          destination: expect.objectContaining({ platform: "local" }),
+          input: expect.objectContaining({ messageText: "hello" }),
+          policy: expect.objectContaining({
+            authorizationFlowMode: "disabled",
+          }),
+          routing: expect.objectContaining({
+            destination: expect.objectContaining({ platform: "local" }),
+          }),
         }),
       );
       expect(output).toEqual(["hello local\n"]);

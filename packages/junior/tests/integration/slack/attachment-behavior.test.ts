@@ -62,7 +62,17 @@ describe("Slack behavior: attachment handling", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               const attachments = context?.userAttachments ?? [];
               capturedAttachmentCounts.push(attachments.length);
               if (attachments[0]) {

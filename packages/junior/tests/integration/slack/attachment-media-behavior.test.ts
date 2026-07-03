@@ -6,6 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -70,7 +71,17 @@ describe("Slack behavior: mixed attachment media", () => {
           },
           replyExecutor: {
             agentRunner: {
-              run: async (_prompt, context) => {
+              run: async (request) => {
+                const _prompt = request.input.messageText;
+                const context = {
+                  ...request.input,
+                  ...request.routing,
+                  ...(request.policy ?? {}),
+                  ...(request.state ?? {}),
+                  ...(request.observers ?? {}),
+                  ...(request.durability ?? {}),
+                };
+
                 const attachments = context?.userAttachments ?? [];
                 capturedAttachmentMediaTypes.push(
                   attachments.map((attachment) => attachment.mediaType),
@@ -166,7 +177,17 @@ describe("Slack behavior: mixed attachment media", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               const attachments = context?.userAttachments ?? [];
               capturedAttachmentMediaTypes.push(
                 attachments.map((attachment) => attachment.mediaType),
@@ -232,8 +253,8 @@ describe("Slack behavior: mixed attachment media", () => {
   it("still runs the assistant when only images are attached and vision is disabled", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const capturedOmittedImageCounts: number[] = [];
-    const generateAssistantReply = vi.fn(
-      async (_prompt?: string, _context?: unknown) => {
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (_request) => {
         return completedAgentRun({
           text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
           diagnostics: {
@@ -253,11 +274,20 @@ describe("Slack behavior: mixed attachment media", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               capturedOmittedImageCounts.push(
                 context?.omittedImageAttachmentCount ?? 0,
               );
-              return generateAssistantReply(prompt, context);
+              return generateAssistantReply(request);
             },
           },
         },

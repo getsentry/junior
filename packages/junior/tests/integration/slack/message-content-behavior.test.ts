@@ -62,7 +62,17 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -98,7 +108,9 @@ describe("Slack behavior: message content", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               calls.push({ prompt });
               return completedReply("Done.");
             },
@@ -131,7 +143,17 @@ describe("Slack behavior: message content", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -248,7 +270,17 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -350,7 +382,17 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -464,7 +506,17 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,

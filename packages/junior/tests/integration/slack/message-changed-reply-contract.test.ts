@@ -99,7 +99,17 @@ describe("Slack contract: edited-message reply delivery", () => {
   it("posts the finalized reply into the edited DM thread with chat.postMessage", async () => {
     const bot = await createEditedDmBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...request.input,
+            ...request.routing,
+            ...(request.policy ?? {}),
+            ...(request.state ?? {}),
+            ...(request.observers ?? {}),
+            ...(request.durability ?? {}),
+          };
+
           await context?.onTextDelta?.("Hello world");
           return completedAgentRun({
             text: "Hello world",

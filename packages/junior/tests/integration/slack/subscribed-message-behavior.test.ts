@@ -160,7 +160,17 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...request.input,
+                ...request.routing,
+                ...(request.policy ?? {}),
+                ...(request.state ?? {}),
+                ...(request.observers ?? {}),
+                ...(request.durability ?? {}),
+              };
+
               replyContexts.push(context);
               return completedReply("I checked the subscribed PR event.");
             },
@@ -292,7 +302,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply(
                 "Action item captured: monitor dashboards for 30 minutes.",
@@ -343,7 +355,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply("Yes. Shipping status is green.");
             },
@@ -387,7 +401,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply("Handled queued subscribed turn.");
             },
@@ -454,7 +470,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply(
                 replyCalls.length === 1
@@ -944,7 +962,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply("You asked for the budget by Friday.");
             },
@@ -1005,7 +1025,9 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               replyCalls.push(prompt);
               return completedReply(
                 replyCalls.length === 1

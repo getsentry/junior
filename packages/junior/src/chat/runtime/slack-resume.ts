@@ -16,7 +16,6 @@ import {
   retryableTurnErrorFromTimedOutAgentRun,
 } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { Source } from "@sentry/junior-plugin-api";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
@@ -160,8 +159,8 @@ interface ResumeSlackTurnArgs {
   replyTimeoutMs?: number;
 }
 
-type ResumeReplyContext = AssistantReplyRequestContext & {
-  source: Source;
+type ResumeReplyContext = Omit<AssistantReplyRequestContext, "input"> & {
+  input?: Omit<AssistantReplyRequestContext["input"], "messageText">;
 };
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
@@ -172,15 +171,15 @@ function getResumeLogContext(
   args: ResumeSlackTurnArgs,
   lockKey: string,
 ): LogContext {
+  const routing = args.replyContext?.routing;
   return {
-    conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
-    slackThreadId: args.replyContext?.correlation?.threadId ?? lockKey,
+    conversationId: routing?.correlation?.conversationId ?? lockKey,
+    slackThreadId: routing?.correlation?.threadId ?? lockKey,
     slackUserId:
-      args.replyContext?.requester?.userId ??
-      args.replyContext?.correlation?.requesterId,
-    slackUserName: args.replyContext?.requester?.userName,
+      routing?.requester?.userId ?? routing?.correlation?.requesterId,
+    slackUserName: routing?.requester?.userName,
     slackChannelId: args.channelId,
-    runId: args.replyContext?.correlation?.runId,
+    runId: routing?.correlation?.runId,
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
   };
@@ -191,7 +190,7 @@ function getResumeConversationId(
   args: ResumeSlackTurnArgs,
   lockKey: string,
 ): string {
-  return args.replyContext?.correlation?.conversationId ?? lockKey;
+  return args.replyContext?.routing.correlation?.conversationId ?? lockKey;
 }
 
 async function postResumeFailureReply(args: {
@@ -248,55 +247,73 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-): ResumeReplyContext {
+): AssistantReplyRequestContext {
   const replyContext = args.replyContext;
   if (!replyContext) {
     throw new TypeError("Slack resume requires a reply context");
   }
-  if (!replyContext.source) {
+  if (!replyContext.routing.source) {
     throw new TypeError("Slack resume requires a reply context source");
   }
-  const source = replyContext.source;
-  if (replyContext.destination.platform !== "slack") {
+  const source = replyContext.routing.source;
+  if (replyContext.routing.destination.platform !== "slack") {
     throw new TypeError("Slack resume requires a Slack destination");
   }
   const requestDeadline = getTurnRequestDeadline();
   const threadId =
     args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
   const persistedChannelConfiguration =
-    replyContext.channelConfiguration ??
-    (replyContext.configuration
-      ? createReadOnlyConfigService(replyContext.configuration)
+    replyContext.policy?.channelConfiguration ??
+    (replyContext.policy?.configuration
+      ? createReadOnlyConfigService(replyContext.policy.configuration)
       : undefined);
 
   return {
-    ...replyContext,
-    source,
-    turnDeadlineAtMs:
-      replyContext.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
-    correlation: {
-      ...replyContext.correlation,
-      threadId: replyContext.correlation?.threadId ?? threadId,
-      channelId: replyContext.correlation?.channelId ?? args.channelId,
-      threadTs: replyContext.correlation?.threadTs ?? args.threadTs,
-      requesterId:
-        replyContext.correlation?.requesterId ?? replyContext.requester?.userId,
+    input: {
+      ...(replyContext.input ?? {}),
+      messageText: args.messageText,
     },
-    channelConfiguration: persistedChannelConfiguration,
-    onSandboxAcquired: async (sandbox) => {
-      await persistThreadStateById(threadId, {
-        sandboxId: sandbox.sandboxId,
-        sandboxDependencyProfileHash: sandbox.sandboxDependencyProfileHash,
-      });
-      await replyContext.onSandboxAcquired?.(sandbox);
+    routing: {
+      ...replyContext.routing,
+      source,
+      correlation: {
+        ...replyContext.routing.correlation,
+        threadId: replyContext.routing.correlation?.threadId ?? threadId,
+        channelId:
+          replyContext.routing.correlation?.channelId ?? args.channelId,
+        threadTs: replyContext.routing.correlation?.threadTs ?? args.threadTs,
+        requesterId:
+          replyContext.routing.correlation?.requesterId ??
+          replyContext.routing.requester?.userId,
+      },
     },
-    onArtifactStateUpdated: async (artifacts) => {
-      await persistThreadStateById(threadId, { artifacts });
-      await replyContext.onArtifactStateUpdated?.(artifacts);
+    policy: {
+      ...replyContext.policy,
+      turnDeadlineAtMs:
+        replyContext.policy?.turnDeadlineAtMs ?? requestDeadline?.deadlineAtMs,
+      channelConfiguration: persistedChannelConfiguration,
     },
-    onStatus: async (nextStatus) => {
-      statusSession.update(nextStatus);
-      await replyContext.onStatus?.(nextStatus);
+    state: replyContext.state,
+    observers: {
+      ...replyContext.observers,
+      onStatus: async (nextStatus) => {
+        statusSession.update(nextStatus);
+        await replyContext.observers?.onStatus?.(nextStatus);
+      },
+    },
+    durability: {
+      ...replyContext.durability,
+      onSandboxAcquired: async (sandbox) => {
+        await persistThreadStateById(threadId, {
+          sandboxId: sandbox.sandboxId,
+          sandboxDependencyProfileHash: sandbox.sandboxDependencyProfileHash,
+        });
+        await replyContext.durability?.onSandboxAcquired?.(sandbox);
+      },
+      onArtifactStateUpdated: async (artifacts) => {
+        await persistThreadStateById(threadId, { artifacts });
+        await replyContext.durability?.onArtifactStateUpdated?.(artifacts);
+      },
     },
   };
 }
@@ -343,16 +360,17 @@ export async function resumeSlackTurn(
       runArgs = { ...args, ...preparedArgs };
     }
 
-    if (!runArgs.replyContext?.requester?.userId) {
+    if (!runArgs.replyContext?.routing.requester?.userId) {
       throw new Error("Resumed turn requires replyContext.requester.userId");
     }
-    const credentialContext = runArgs.replyContext.credentialContext;
+    const credentialContext = runArgs.replyContext.routing.credentialContext;
     if (!credentialContext) {
       throw new Error("Resumed turn requires replyContext.credentialContext");
     }
     if (
       credentialContext.actor.type !== "user" ||
-      credentialContext.actor.userId !== runArgs.replyContext.requester.userId
+      credentialContext.actor.userId !==
+        runArgs.replyContext.routing.requester.userId
     ) {
       throw new Error(
         "Resumed turn credential actor must match replyContext.requester.userId",
@@ -377,10 +395,7 @@ export async function resumeSlackTurn(
     status.start();
 
     const replyContext = createResumeReplyContext(runArgs, status);
-    const replyPromise = runArgs.agentRunner.run(
-      runArgs.messageText,
-      replyContext,
-    );
+    const replyPromise = runArgs.agentRunner.run(replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
     const outcome =
       typeof replyTimeoutMs === "number"
@@ -431,25 +446,25 @@ export async function resumeSlackTurn(
     // final assistant messages and the terminal completed session record.
     // Persistence failures are logged inside and never fail the turn.
     if (
-      replyContext.correlation?.conversationId &&
-      replyContext.correlation.turnId &&
+      replyContext.routing.correlation?.conversationId &&
+      replyContext.routing.correlation.turnId &&
       reply.piMessages?.length
     ) {
       await persistCompletedSessionRecord({
-        conversationId: replyContext.correlation.conversationId,
-        sessionId: replyContext.correlation.turnId,
+        conversationId: replyContext.routing.correlation.conversationId,
+        sessionId: replyContext.routing.correlation.turnId,
         allMessages: reply.piMessages,
         currentDurationMs: reply.diagnostics.durationMs,
         currentUsage: reply.diagnostics.usage,
-        destination: replyContext.destination,
-        source: replyContext.source,
-        requester: replyContext.requester,
+        destination: replyContext.routing.destination,
+        source: replyContext.routing.source,
+        requester: replyContext.routing.requester,
         surface: "slack",
         logContext: {
-          threadId: replyContext.correlation.threadId,
-          requesterId: replyContext.requester?.userId,
+          threadId: replyContext.routing.correlation.threadId,
+          requesterId: replyContext.routing.requester?.userId,
           channelId: runArgs.channelId,
-          runId: replyContext.correlation.runId,
+          runId: replyContext.routing.correlation.runId,
           assistantUserName: botConfig.userName,
           modelId: reply.diagnostics.modelId,
         },
@@ -458,13 +473,13 @@ export async function resumeSlackTurn(
     await runArgs.onSuccess?.(reply);
     if (
       reply.diagnostics.outcome === "success" &&
-      replyContext.correlation?.conversationId &&
-      replyContext.correlation.turnId
+      replyContext.routing.correlation?.conversationId &&
+      replyContext.routing.correlation.turnId
     ) {
       try {
         const params = {
-          conversationId: replyContext.correlation.conversationId,
-          sessionId: replyContext.correlation.turnId,
+          conversationId: replyContext.routing.correlation.conversationId,
+          sessionId: replyContext.routing.correlation.turnId,
         };
         if (runArgs.scheduleSessionCompletedPluginTasks) {
           await runArgs.scheduleSessionCompletedPluginTasks(params);
@@ -504,7 +519,7 @@ export async function resumeSlackTurn(
       deferredAuthInfo = {
         providerDisplayName: error.metadata.authProviderDisplayName,
         // The try body validates requester.userId; catch scope does not retain that narrowing.
-        requesterId: runArgs.replyContext?.requester?.userId,
+        requesterId: runArgs.replyContext?.routing.requester?.userId,
       };
       deferredPauseHandler = async () => {
         await onAuthPause(error);
