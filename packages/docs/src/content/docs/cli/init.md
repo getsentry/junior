@@ -25,12 +25,13 @@ The command requires exactly one argument: the target directory.
 
 The scaffold includes:
 
-- `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `@sentry/junior-memory`, `hono`, `nitro`, `vite`, `typescript`, and `jiti`
+- `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `@sentry/junior-memory`, `hono`, `nitro`, `typescript`, `jiti`, and `@types/node`
 - `plugins.ts` with `@sentry/junior-maintenance` and `createMemoryPlugin()` enabled
 - `server.ts`
 - `nitro.config.ts` pointing at `./plugins`
-- `vite.config.ts`
+- `tsconfig.json` extending Nitro's TypeScript config
 - `vercel.json`
+- `.github/workflows/ci.yml`
 - `app/SOUL.md`
 - `app/WORLD.md`
 - `app/DESCRIPTION.md`
@@ -74,7 +75,7 @@ junior command failed: refusing to initialize non-empty directory: /path/to/my-b
 After scaffolding:
 
 1. Run `cd my-bot && pnpm install`.
-2. Fill in the required values from `.env.example`.
+2. Fill in the required values from `.env.example`, including `DATABASE_URL`.
 3. Run `pnpm dev`.
 4. Check `http://localhost:3000/health`.
 

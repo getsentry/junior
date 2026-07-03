@@ -321,6 +321,7 @@ Use the same baseline that the scaffolded CI workflow uses:
 
 - Node.js 24
 - pnpm
+- A Postgres database for Junior SQL records and the default memory plugin
 - A Redis URL for runtime state, locks, and durable task records
 
 Slack credentials are needed before the bot can reply in Slack. You can scaffold and verify the local health route first, then finish [Slack App Setup](/start-here/slack-app-setup/).
@@ -335,7 +336,7 @@ cd my-bot
 pnpm install
 ```
 
-`junior init` creates the app entrypoint, Nitro/Vite config, Vercel config, Vercel queue consumer source, CI workflow, app context files, local plugin and skill directories, `.env.example`, and a `plugins.ts` with maintenance and memory enabled by default.
+`junior init` creates the app entrypoint, Nitro config, Vercel config, TypeScript config, CI workflow, app context files, local plugin and skill directories, `.env.example`, and a `plugins.ts` with maintenance and memory enabled by default.
 
 The generated `app/` files have separate jobs:
 
@@ -363,6 +364,8 @@ Set these values before running real turns:
 | ------------------------- | ---------------------- | -------------------------------------------------------------- |
 | `SLACK_SIGNING_SECRET`    | Yes, for Slack traffic | Verifies Slack requests.                                       |
 | `SLACK_BOT_TOKEN`         | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                     |
+| `DATABASE_URL`            | Yes                    | Postgres connection string for Junior SQL records and memory.  |
+| `JUNIOR_DATABASE_DRIVER`  | No                     | SQL client driver: `neon` or `postgres`.                       |
 | `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background task records.     |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox requester context. |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                       |
@@ -376,7 +379,9 @@ Set these values before running real turns:
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
 If you keep the default memory plugin enabled, use a Postgres database with
-pgvector support before running migrations.
+pgvector support before running migrations. Local Postgres URLs automatically
+use the `postgres` driver; set `JUNIOR_DATABASE_DRIVER=postgres` for other
+non-Neon Postgres providers.
 
 ## Run locally
 
@@ -440,8 +445,8 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-Point `juniorNitro()` at that module. `createApp()` reads the same plugin set
-from Nitro's virtual module, so the server entry does not repeat it:
+Point `juniorNitro()` at that module and pass the same plugin set to
+`createApp()` so local dev and built bundles use identical runtime plugins:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
@@ -462,8 +467,11 @@ export default defineConfig({
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins.ts";
 
-const app = await createApp();
+const app = await createApp({
+  plugins,
+});
 
 export default app;
 ```
@@ -488,8 +496,8 @@ When enabled plugins declare sandbox runtime dependencies, the scaffolded build 
 {
   "scripts": {
     "check": "junior check",
-    "dev": "vite dev",
-    "build": "junior snapshot create && vite build"
+    "dev": "nitro dev",
+    "build": "junior snapshot create && nitro build"
   }
 }
 ```

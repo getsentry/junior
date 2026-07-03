@@ -65,8 +65,9 @@ pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-cloudflare @
 Create one runtime-safe plugin set and point `juniorNitro()` at that module.
 Manifest-only packages use package-name strings. Plugins that need runtime
 hooks use JavaScript factories such as `githubPlugin()` and `schedulerPlugin()`.
-`createApp()` reads the same enabled plugin set from Nitro's virtual module at
-runtime.
+Import the same plugin set in `server.ts` and pass it to
+`createApp({ plugins })` so local dev and built bundles use identical runtime
+plugins.
 
 ```ts title="plugins.ts"
 import { defineJuniorPlugins } from "@sentry/junior";
@@ -112,8 +113,11 @@ export default defineConfig({
 
 ```ts title="server.ts"
 import { createApp } from "@sentry/junior";
+import { plugins } from "./plugins.ts";
 
-const app = await createApp();
+const app = await createApp({
+  plugins,
+});
 
 export default app;
 ```

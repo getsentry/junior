@@ -5,26 +5,17 @@ import { juniorVercelConfig } from "../vercel";
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "server.ts"),
-    `import { initSentry } from "@sentry/junior/instrumentation";
+    `import { createApp } from "@sentry/junior";
+import { initSentry } from "@sentry/junior/instrumentation";
+import { plugins } from "./plugins.ts";
+
 initSentry();
 
-import { createApp } from "@sentry/junior";
-
-const app = await createApp();
+const app = await createApp({
+  plugins,
+});
 
 export default app;
-`,
-  );
-}
-
-function writeQueueConsumerEntry(targetDir: string): void {
-  const queueConsumerDir = path.join(targetDir, "api", "internal", "agent");
-  fs.mkdirSync(queueConsumerDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(queueConsumerDir, "continue.ts"),
-    `import app from "../../../server.ts";
-
-export const POST = (request: Request) => app.fetch(request);
 `,
   );
 }
@@ -64,19 +55,17 @@ export default defineConfig({
   );
 }
 
-function writeViteConfig(targetDir: string): void {
+function writeTsConfig(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "vite.config.ts"),
-    `import { defineConfig } from "vite";
-import { nitro } from "nitro/vite";
-
-export default defineConfig({
-  server: {
-    allowedHosts: true,
-  },
-  plugins: [nitro()],
-});
-`,
+    path.join(targetDir, "tsconfig.json"),
+    `${JSON.stringify(
+      {
+        extends: "nitro/tsconfig",
+        compilerOptions: {},
+      },
+      null,
+      2,
+    )}\n`,
   );
 }
 
@@ -111,7 +100,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install
       - run: pnpm check
       - run: pnpm build
 `,
@@ -147,21 +136,23 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "vite dev",
+      dev: "nitro dev",
       check: "junior check",
-      build: "junior snapshot create && vite build",
+      build: "junior snapshot create && nitro build",
+      preview: "nitro preview",
+      typecheck: "tsc --noEmit",
     },
     dependencies: {
       "@sentry/junior": "latest",
       "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
-      hono: "^4.12.0",
+      hono: "^4.12.22",
     },
     devDependencies: {
-      jiti: "^2.6.1",
-      nitro: "3.0.260311-beta",
-      typescript: "^5.9.0",
-      vite: "^8.0.3",
+      "@types/node": "^25.9.1",
+      jiti: "^2.7.0",
+      nitro: "3.0.260522-beta",
+      typescript: "^6.0.3",
     },
   };
   fs.writeFileSync(
@@ -216,6 +207,8 @@ AI_EMBEDDING_MODEL=
 MEMORY_RECALL_MAX_VECTOR_DISTANCE=
 AI_VISION_MODEL=
 AI_WEB_SEARCH_MODEL=
+DATABASE_URL=
+JUNIOR_DATABASE_DRIVER=
 REDIS_URL=
 CRON_SECRET=
 SENTRY_DSN=
@@ -224,10 +217,9 @@ SENTRY_ORG_SLUG=
   );
 
   writeServerEntry(target);
-  writeQueueConsumerEntry(target);
   writePluginsFile(target);
   writeNitroConfig(target);
-  writeViteConfig(target);
+  writeTsConfig(target);
   writeVercelJson(target);
   writeGitHubWorkflow(target);
 

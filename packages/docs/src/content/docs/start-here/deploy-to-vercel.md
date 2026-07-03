@@ -48,8 +48,8 @@ The scaffolded `package.json` includes the production build script:
 {
   "scripts": {
     "check": "junior check",
-    "dev": "vite dev",
-    "build": "junior snapshot create && vite build"
+    "dev": "nitro dev",
+    "build": "junior snapshot create && nitro build"
   }
 }
 ```
@@ -74,7 +74,11 @@ import { juniorNitro } from "@sentry/junior/nitro";
 
 export default defineConfig({
   preset: "vercel",
-  modules: [juniorNitro()],
+  modules: [
+    juniorNitro({
+      plugins: "./plugins",
+    }),
+  ],
   routes: {
     "/**": { handler: "./server.ts" },
   },
