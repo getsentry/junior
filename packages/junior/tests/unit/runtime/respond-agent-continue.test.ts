@@ -249,10 +249,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 }));
 
 import { generateAssistantReply } from "@/chat/respond";
-import {
-  isRetryableTurnError,
-  isTurnInputCommitLostError,
-} from "@/chat/runtime/turn";
+import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
 import { getConversationStore } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -311,7 +308,7 @@ describe("generateAssistantReply agent continuation", () => {
     expect(onInputCommitted).not.toHaveBeenCalled();
   });
 
-  it("stores the last safe boundary and throws a retryable timeout error", async () => {
+  it("stores the last safe boundary and returns a timed-out outcome", async () => {
     const replyPromise = generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
@@ -322,14 +319,14 @@ describe("generateAssistantReply agent continuation", () => {
         channelId: "C123",
         threadTs: "1712345.0001",
       },
-    }).catch((caught) => caught);
+    });
 
     await vi.advanceTimersByTimeAsync(10_000);
-    const error = await replyPromise;
+    const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
-    expect(error.metadata).toMatchObject({
+    expect(outcome).toMatchObject({
+      status: "timed_out",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       version: expect.any(Number),
@@ -388,7 +385,6 @@ describe("generateAssistantReply agent continuation", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toHaveProperty("text");
-    expect(isRetryableTurnError(error, "agent_continue")).toBe(false);
     expect(error.message).toContain("slice limit");
 
     const sessionRecord = await getAgentTurnSessionRecord(
@@ -416,13 +412,13 @@ describe("generateAssistantReply agent continuation", () => {
         channelId: "C123",
         threadTs: "1712345.0005",
       },
-    }).catch((caught) => caught);
+    });
 
     await vi.advanceTimersByTimeAsync(2_500);
-    const error = await replyPromise;
+    const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
+    expect(outcome.status).toBe("timed_out");
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-short-deadline",
       "turn-short-deadline",
@@ -483,16 +479,16 @@ describe("generateAssistantReply agent continuation", () => {
         channelId: "C123",
         threadTs: "1712345.0003",
       },
-    }).catch((caught) => caught);
+    });
 
     await waitForPromptCall(1);
     await realSleep(10);
     await vi.advanceTimersByTimeAsync(15_000);
-    const error = await replyPromise;
+    const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
-    expect(error.metadata).toMatchObject({
+    expect(outcome).toMatchObject({
+      status: "timed_out",
       conversationId: "conversation-hung",
       sessionId: "turn-hung",
       version: expect.any(Number),
@@ -528,17 +524,17 @@ describe("generateAssistantReply agent continuation", () => {
         channelId: "C123",
         threadTs: "1712345.0004",
       },
-    }).catch((caught) => caught);
+    });
 
     await waitForPromptCall(1);
     await vi.advanceTimersByTimeAsync(8_000);
     await waitForProviderPromptSettlement();
     await advanceUntilContinueCall(5_000);
     await vi.advanceTimersByTimeAsync(1);
-    const error = await replyPromise;
+    const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(isRetryableTurnError(error, "agent_continue")).toBe(true);
+    expect(outcome.status).toBe("timed_out");
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-retry",
       "turn-retry",

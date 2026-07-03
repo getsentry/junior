@@ -10,6 +10,7 @@ import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 interface FakeReplyCall {
   prompt: string;
@@ -30,6 +31,21 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
+function completedReply(text: string, toolCalls: string[] = []) {
+  return completedAgentRun({
+    text,
+    diagnostics: {
+      assistantMessageCount: 1,
+      modelId: "fake-agent-model",
+      outcome: "success" as const,
+      toolCalls,
+      toolErrorCount: 0,
+      toolResultCount: toolCalls.length,
+      usedPrimaryText: true,
+    },
+  });
+}
+
 describe("Slack behavior: new mention", () => {
   it("handles a mention with real runtime wiring and fake agent response", async () => {
     const fakeReplyCalls: FakeReplyCall[] = [];
@@ -39,18 +55,9 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             fakeReplyCalls.push({ prompt });
-            return {
-              text: "Acknowledged. Rollback is complete and error rates are stable.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply(
+              "Acknowledged. Rollback is complete and error rates are stable.",
+            );
           },
         },
       },
@@ -89,18 +96,7 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             fakeReplyCalls.push({ prompt });
-            return {
-              text: "Handled both updates.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Handled both updates.");
           },
         },
       },
@@ -176,18 +172,7 @@ describe("Slack behavior: new mention", () => {
               ),
               attachmentText: attachments[0]?.data?.toString("utf8"),
             });
-            return {
-              text: "Handled queued attachment.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Handled queued attachment.");
           },
         },
       },
@@ -247,18 +232,7 @@ describe("Slack behavior: new mention", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-            return {
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: ["bash"],
-                toolErrorCount: 0,
-                toolResultCount: 1,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Done.", ["bash"]);
           },
         },
       },
@@ -328,19 +302,19 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
-            return {
+            return completedAgentRun({
               text: "Posted in channel.",
-              deliveryMode: "channel_only",
+              deliveryMode: "channel_only" as const,
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "fake-agent-model",
-                outcome: "success",
+                outcome: "success" as const,
                 toolCalls: ["slackChannelPostMessage"],
                 toolErrorCount: 0,
                 toolResultCount: 1,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

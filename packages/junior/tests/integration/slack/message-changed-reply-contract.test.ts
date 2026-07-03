@@ -10,6 +10,7 @@ import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -101,10 +102,10 @@ describe("Slack contract: edited-message reply delivery", () => {
     const bot = await createEditedDmBot({
       generateAssistantReply: async (_prompt, context) => {
         await context?.onTextDelta?.("Hello world");
-        return {
+        return completedAgentRun({
           text: "Hello world",
           diagnostics: makeDiagnostics(),
-        };
+        });
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();
@@ -156,10 +157,11 @@ describe("Slack contract: edited-message reply delivery", () => {
       (_, i) => `line ${i + 1}`,
     ).join("\n");
     const bot = await createEditedDmBot({
-      generateAssistantReply: async () => ({
-        text: longReply,
-        diagnostics: makeDiagnostics(),
-      }),
+      generateAssistantReply: async () =>
+        completedAgentRun({
+          text: longReply,
+          diagnostics: makeDiagnostics(),
+        }),
     });
     const waitUntil = slackWebhookClient.waitUntil();
 

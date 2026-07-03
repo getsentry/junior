@@ -100,11 +100,14 @@ import {
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import {
   CooperativeTurnYieldError,
-  RetryableTurnError,
   TurnInputCommitLostError,
   isTurnInputCommitLostError,
-  isRetryableTurnError,
 } from "@/chat/runtime/turn";
+import {
+  completedAgentRun,
+  failedAgentRun,
+  type AgentRunOutcome,
+} from "@/chat/runtime/agent-run-outcome";
 import {
   buildUserTurnText,
   encodeNonImageAttachmentForPrompt,
@@ -642,7 +645,7 @@ function legacyTextPartMatchesCurrentText(
 export async function generateAssistantReply(
   messageText: string,
   context: AssistantReplyRequestContext,
-): Promise<AssistantReply> {
+): Promise<AgentRunOutcome> {
   const conversationPrivacy = resolveConversationPrivacy({
     channelId: context.correlation?.channelId,
     conversationId:
@@ -666,7 +669,7 @@ async function generateAssistantReplyInPrivacyContext(
   messageText: string,
   context: AssistantReplyRequestContext,
   conversationPrivacy: ConversationPrivacy | undefined,
-): Promise<AssistantReply> {
+): Promise<AgentRunOutcome> {
   if (!context.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
@@ -1875,25 +1878,27 @@ async function generateAssistantReplyInPrivacyContext(
     }
 
     // ── Build turn result ────────────────────────────────────────────
-    return buildTurnResult({
-      newMessages,
-      userInput,
-      replyFiles,
-      artifactStatePatch,
-      toolCalls,
-      sandboxId: currentSandboxExecutor.getSandboxId(),
-      sandboxDependencyProfileHash:
-        currentSandboxExecutor.getDependencyProfileHash(),
-      piMessages: [...agent.state.messages],
-      durationMs: Date.now() - replyStartedAtMs,
-      generatedFileCount: generatedFiles.length,
-      shouldTrace,
-      spanContext,
-      usage: turnUsage,
-      thinkingSelection,
-      correlation: context.correlation,
-      assistantUserName: botConfig.userName,
-    });
+    return completedAgentRun(
+      buildTurnResult({
+        newMessages,
+        userInput,
+        replyFiles,
+        artifactStatePatch,
+        toolCalls,
+        sandboxId: currentSandboxExecutor.getSandboxId(),
+        sandboxDependencyProfileHash:
+          currentSandboxExecutor.getDependencyProfileHash(),
+        piMessages: [...agent.state.messages],
+        durationMs: Date.now() - replyStartedAtMs,
+        generatedFileCount: generatedFiles.length,
+        shouldTrace,
+        spanContext,
+        usage: turnUsage,
+        thinkingSelection,
+        correlation: context.correlation,
+        assistantUserName: botConfig.userName,
+      }),
+    );
   } catch (error) {
     if (
       cooperativeYieldError &&
@@ -1926,7 +1931,13 @@ async function generateAssistantReplyInPrivacyContext(
           `Failed to persist cooperative yield continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
         );
       }
-      throw error;
+      return {
+        status: "yielded",
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        sliceId: sessionRecord.sliceId,
+        version: sessionRecord.version,
+      };
     }
 
     if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
@@ -1956,16 +1967,13 @@ async function generateAssistantReplyInPrivacyContext(
         );
       }
       if (sessionRecord.state === "awaiting_resume") {
-        throw new RetryableTurnError(
-          "agent_continue",
-          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId} version=${sessionRecord.version}`,
-          {
-            conversationId: timeoutResumeConversationId,
-            sessionId: timeoutResumeSessionId,
-            sliceId: sessionRecord.sliceId,
-            version: sessionRecord.version,
-          },
-        );
+        return {
+          status: "timed_out",
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: sessionRecord.sliceId,
+          version: sessionRecord.version,
+        };
       }
       throw new Error(
         sessionRecord.errorMessage ??
@@ -2003,28 +2011,22 @@ async function generateAssistantReplyInPrivacyContext(
         ...(surface ? { surface } : {}),
       });
       if (sessionRecord) {
-        throw new RetryableTurnError(
-          error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
-          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${sessionRecord.sliceId}`,
-          {
-            authDisposition: error.disposition,
-            authDurationMs: Date.now() - replyStartedAtMs,
-            authKind: error.kind,
-            authProvider: error.provider,
-            authProviderDisplayName: error.providerDisplayName,
-            authThinkingLevel: thinkingSelection?.thinkingLevel,
-            authUsage: turnUsage,
-            conversationId: timeoutResumeConversationId,
-            sessionId: timeoutResumeSessionId,
-            sliceId: sessionRecord.sliceId,
-          },
-        );
+        return {
+          status: "awaiting_auth",
+          authDisposition: error.disposition,
+          authDurationMs: Date.now() - replyStartedAtMs,
+          authKind: error.kind,
+          authProvider: error.provider,
+          authProviderDisplayName: error.providerDisplayName,
+          authThinkingLevel: thinkingSelection?.thinkingLevel,
+          authUsage: turnUsage,
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: sessionRecord.sliceId,
+        };
       }
     }
 
-    if (isRetryableTurnError(error)) {
-      throw error;
-    }
     if (isProviderRetryError(error)) {
       throw error;
     }
@@ -2057,7 +2059,7 @@ async function generateAssistantReplyInPrivacyContext(
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);
-    return {
+    return failedAgentRun({
       text: "",
       ...getSandboxMetadata(),
       diagnostics: {
@@ -2077,7 +2079,7 @@ async function generateAssistantReplyInPrivacyContext(
         errorMessage: message,
         providerError: error,
       },
-    };
+    });
   } finally {
     try {
       await mcpToolManager?.close();

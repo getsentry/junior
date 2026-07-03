@@ -5,6 +5,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -63,24 +64,26 @@ describe("Slack behavior: provider default configuration", () => {
   });
 
   it("does not intercept combined repo setup and agent work", async () => {
-    const generateAssistantReply = vi.fn(async () => ({
-      text: "Created the issue.",
-      deliveryMode: "thread" as const,
-      deliveryPlan: {
-        mode: "thread" as const,
-        postThreadText: true,
-        attachFiles: "none" as const,
-      },
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "test-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    }));
+    const generateAssistantReply = vi.fn(async () =>
+      completedAgentRun({
+        text: "Created the issue.",
+        deliveryMode: "thread" as const,
+        deliveryPlan: {
+          mode: "thread" as const,
+          postThreadText: true,
+          attachFiles: "none" as const,
+        },
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -28,7 +29,7 @@ describe("Slack behavior: file delivery", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onTextDelta?.("Preview is ready.");
-            return {
+            return completedAgentRun({
               text: "Preview is ready.",
               deliveryPlan: {
                 mode: "thread",
@@ -45,7 +46,7 @@ describe("Slack behavior: file delivery", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

@@ -5,6 +5,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const listThreadRepliesMock = vi.fn();
 const ORIGINAL_ENV = { ...process.env };
@@ -40,6 +41,10 @@ function makeSuccessReply(text = "ok") {
       usedPrimaryText: true,
     },
   };
+}
+
+function makeSuccessOutcome(text = "ok") {
+  return completedAgentRun(makeSuccessReply(text));
 }
 
 function extractImageAttachmentSummary(
@@ -78,7 +83,7 @@ describe("bot image hydration", () => {
             listThreadReplies: listThreadRepliesMock,
           },
           replyExecutor: {
-            generateAssistantReply: async () => makeSuccessReply(),
+            generateAssistantReply: async () => makeSuccessOutcome(),
           },
         },
       },
@@ -177,7 +182,7 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock,
         },
         replyExecutor: {
-          generateAssistantReply: async () => makeSuccessReply(),
+          generateAssistantReply: async () => makeSuccessOutcome(),
         },
       },
     });
@@ -279,7 +284,7 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock,
         },
         replyExecutor: {
-          generateAssistantReply: async () => makeSuccessReply(),
+          generateAssistantReply: async () => makeSuccessOutcome(),
         },
       },
     });
@@ -361,7 +366,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply: async () => makeSuccessReply(),
+            generateAssistantReply: async () => makeSuccessOutcome(),
           },
         },
       },
@@ -451,7 +456,7 @@ describe("bot image hydration", () => {
         expect(context?.conversationContext).toContain(
           "Passive screenshot summary",
         );
-        return makeSuccessReply();
+        return makeSuccessOutcome();
       },
     );
 
@@ -613,7 +618,7 @@ describe("bot image hydration", () => {
             promptText: expect.stringContaining("Current screenshot summary"),
           }),
         ]);
-        return makeSuccessReply();
+        return makeSuccessOutcome();
       },
     );
 
@@ -772,7 +777,7 @@ describe("bot image hydration", () => {
             promptText: expect.stringContaining("Second cached summary"),
           }),
         ]);
-        return makeSuccessReply();
+        return makeSuccessOutcome();
       },
     );
 
@@ -896,7 +901,7 @@ describe("bot image hydration", () => {
         const summary = extractImageAttachmentSummary(promptText);
         expect(summary).toBe(longSummary.slice(0, 500));
         expect(summary).toHaveLength(500);
-        return makeSuccessReply();
+        return makeSuccessOutcome();
       },
     );
 
@@ -1010,10 +1015,11 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            ...makeSuccessReply("Here is your image"),
-            files: [generatedFile],
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              ...makeSuccessReply("Here is your image"),
+              files: [generatedFile],
+            }),
         },
       },
     });
@@ -1066,7 +1072,7 @@ describe("bot image hydration", () => {
         },
         replyExecutor: {
           generateAssistantReply: async (_text: string, _context: any) => {
-            return {
+            return completedAgentRun({
               ...makeSuccessReply("finalized content"),
               files: [
                 {
@@ -1075,7 +1081,7 @@ describe("bot image hydration", () => {
                   mimeType: "image/png",
                 },
               ],
-            };
+            });
           },
         },
       },

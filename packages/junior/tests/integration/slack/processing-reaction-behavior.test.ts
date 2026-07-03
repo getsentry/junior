@@ -6,6 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function successDiagnostics(toolCalls: string[] = []) {
   return {
@@ -37,10 +38,10 @@ describe("Slack behavior: processing reaction", () => {
           generateAssistantReply: async () => {
             expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
             expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: successDiagnostics(),
-            };
+            });
           },
         },
       },
@@ -145,10 +146,10 @@ describe("Slack behavior: processing reaction", () => {
           generateAssistantReply: async () => {
             expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
             expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: successDiagnostics(),
-            };
+            });
           },
         },
       },
@@ -189,10 +190,10 @@ describe("Slack behavior: processing reaction", () => {
           generateAssistantReply: async () => {
             expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
             expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: successDiagnostics(),
-            };
+            });
           },
         },
       },
@@ -242,10 +243,10 @@ describe("Slack behavior: processing reaction", () => {
               toolName: "slackMessageAddReaction",
               params: { emoji: ":eyes:" },
             });
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: successDiagnostics(["slackMessageAddReaction"]),
-            };
+            });
           },
         },
       },

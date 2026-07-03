@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -15,7 +16,7 @@ describe("Slack behavior: assistant context channel routing", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             capturedToolChannelIds.push(context?.toolChannelId);
-            return {
+            return completedAgentRun({
               text: "Canvas draft prepared.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -26,7 +27,7 @@ describe("Slack behavior: assistant context channel routing", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

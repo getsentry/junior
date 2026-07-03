@@ -8,6 +8,7 @@ import {
 } from "../fixtures/conversation-work";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const generateAssistantReplyMock = vi.fn();
 
@@ -21,6 +22,18 @@ function slackSource(threadTs: string) {
 
     type: "priv",
   });
+}
+
+function makeDiagnostics() {
+  return {
+    assistantMessageCount: 1,
+    modelId: "fake-agent-model",
+    outcome: "success" as const,
+    toolCalls: [],
+    toolErrorCount: 0,
+    toolResultCount: 0,
+    usedPrimaryText: true,
+  };
 }
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
@@ -70,13 +83,12 @@ describe("agent continuation Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "Final resumed answer",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      completedAgentRun({
+        text: "Final resumed answer",
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -839,25 +851,24 @@ describe("agent continuation Slack integration", () => {
     // exactly one visible reply and only then a delivered/completed session.
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "Final resumed answer",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello" }],
-          timestamp: 1,
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Final resumed answer" }],
-          timestamp: 2,
-        },
-      ],
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      completedAgentRun({
+        text: "Final resumed answer",
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Final resumed answer" }],
+            timestamp: 2,
+          },
+        ] as any,
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
@@ -1095,19 +1106,18 @@ describe("agent continuation Slack integration", () => {
         },
       });
 
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "Final resumed answer with artifact",
-      files: [
-        {
-          data: Buffer.from("resume-file"),
-          filename: "resume.txt",
-        },
-      ],
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      completedAgentRun({
+        text: "Final resumed answer with artifact",
+        files: [
+          {
+            data: Buffer.from("resume-file"),
+            filename: "resume.txt",
+          },
+        ],
+        diagnostics: makeDiagnostics(),
+      }),
+    );
 
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: {

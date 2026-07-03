@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -46,7 +47,7 @@ describe("Slack behavior: thread continuity", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             prompts.push(prompt);
-            return {
+            return completedAgentRun({
               text:
                 scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply",
               diagnostics: {
@@ -58,7 +59,7 @@ describe("Slack behavior: thread continuity", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

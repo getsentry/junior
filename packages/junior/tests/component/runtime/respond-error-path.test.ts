@@ -44,7 +44,7 @@ describe("generateAssistantReply error path", () => {
   });
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
-    const reply = await generateAssistantReply("hello", {
+    const outcome = await generateAssistantReply("hello", {
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
       sandbox: {
@@ -52,16 +52,19 @@ describe("generateAssistantReply error path", () => {
         sandboxDependencyProfileHash: "hash-abc",
       },
     });
+    expect(outcome.status).toBe("failed");
+    const reply = outcome.status === "failed" ? outcome.reply : undefined;
+    expect(reply).toBeDefined();
 
     // Raw exception text stays in diagnostics; it is never reply text.
-    expect(reply.text).toBe("");
-    expect(reply.diagnostics.errorMessage).toBe("discover failed");
-    expect(reply.diagnostics.assistantMessageCount).toBe(0);
-    expect(reply.sandboxId).toBe("sb-123");
-    expect(reply.sandboxDependencyProfileHash).toBe("hash-abc");
-    expect(reply.diagnostics.outcome).toBe("provider_error");
-    expect(reply.diagnostics.modelId).toBe("openai/gpt-5.4");
-    expect(reply.diagnostics.thinkingLevel).toBeUndefined();
+    expect(reply!.text).toBe("");
+    expect(reply!.diagnostics.errorMessage).toBe("discover failed");
+    expect(reply!.diagnostics.assistantMessageCount).toBe(0);
+    expect(reply!.sandboxId).toBe("sb-123");
+    expect(reply!.sandboxDependencyProfileHash).toBe("hash-abc");
+    expect(reply!.diagnostics.outcome).toBe("provider_error");
+    expect(reply!.diagnostics.modelId).toBe("openai/gpt-5.4");
+    expect(reply!.diagnostics.thinkingLevel).toBeUndefined();
   });
 
   it("propagates pre-commit failures when durable input commit is required", async () => {

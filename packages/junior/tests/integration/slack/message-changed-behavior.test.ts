@@ -15,6 +15,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -272,10 +273,10 @@ describe("Slack behavior: message_changed webhook ingress", () => {
               userName: "dcramer",
             });
             await context?.onTextDelta?.("Hello world");
-            return {
+            return completedAgentRun({
               text: "Hello world",
               diagnostics: makeDiagnostics(),
-            };
+            });
           },
         },
       },

@@ -26,12 +26,16 @@ import {
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
-import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   getCapturedSlackApiCalls,
@@ -1588,5 +1592,92 @@ describe("Slack conversation work execution", () => {
         "slack:T123:slack:C123:1712345.0001:1712345.0001",
       ]),
     );
+  });
+
+  it("keeps yielded executor outcomes resumable without failure recovery", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    let currentNowMs = 1_000;
+    let yieldedSessionId: string | undefined;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_text, context) => {
+            await context?.onInputCommitted?.();
+            await context?.onArtifactStateUpdated?.({
+              lastCanvasId: "F_YIELD_CANVAS",
+              lastCanvasUrl: "https://slack.example/docs/T/F_YIELD_CANVAS",
+              recentCanvases: [
+                {
+                  id: "F_YIELD_CANVAS",
+                  title: "Yielded canvas",
+                  url: "https://slack.example/docs/T/F_YIELD_CANVAS",
+                  createdAt: "2026-07-02T12:00:00.000Z",
+                },
+              ],
+            });
+            currentNowMs = 242_000;
+            yieldedSessionId = context?.correlation?.turnId;
+            return {
+              status: "yielded",
+              conversationId:
+                context?.correlation?.conversationId ?? CONVERSATION_ID,
+              sessionId: yieldedSessionId ?? "missing-session",
+              sliceId: 1,
+              version: 1,
+            };
+          },
+        },
+      },
+    });
+
+    await handleSlackWebhookAndFlush({
+      request: slackWebhookRequest(
+        slackEnvelope({
+          text: `<@${SLACK_BOT_USER_ID}> create the canvas and continue later`,
+        }),
+      ),
+      services: {
+        getSlackAdapter: () => slackAdapter,
+        queue,
+        runtime: createNoopSlackWebhookRuntime(),
+        state,
+      },
+    });
+    queue.clearSentRecords();
+
+    await expect(
+      processNextQueuedSlackWork({
+        getSlackAdapter: () => slackAdapter,
+        nowMs: () => currentNowMs,
+        queue,
+        runtime: slackRuntime,
+        state,
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+    expect(queue.sentRecords()).toMatchObject([
+      {
+        conversationId: CONVERSATION_ID,
+        idempotencyKey: `yield:${CONVERSATION_ID}:242000`,
+      },
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(work?.needsRun).toBe(true);
+    expect(work?.messages).toEqual([]);
+    const persistedState = await getPersistedThreadState(CONVERSATION_ID);
+    const conversation = coerceThreadConversationState(persistedState);
+    expect(conversation.processing.activeTurnId).toBe(yieldedSessionId);
+    const sessionRecord = await getAgentTurnSessionRecord(
+      CONVERSATION_ID,
+      yieldedSessionId ?? "",
+    );
+    expect(sessionRecord?.state).not.toBe("failed");
   });
 });

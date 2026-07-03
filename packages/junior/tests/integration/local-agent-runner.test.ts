@@ -26,6 +26,7 @@ import { commitMessages, loadProjection } from "@/chat/state/session-log";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function successReply(
   text: string,
@@ -88,7 +89,7 @@ describe("local agent runner", () => {
     const generateReply = vi.fn<typeof generateAssistantReply>(
       async (_text, context) => {
         contexts.push(context);
-        return successReply("hello from local");
+        return completedAgentRun(successReply("hello from local"));
       },
     );
     const delivered: LocalAgentReply[] = [];
@@ -182,7 +183,9 @@ describe("local agent runner", () => {
           params: { content: "The requester prefers short updates." },
           result: { ok: true },
         });
-        return successReply("saved", { toolCalls: ["createMemory"] });
+        return completedAgentRun(
+          successReply("saved", { toolCalls: ["createMemory"] }),
+        );
       },
     );
     const invocations: LocalToolInvocation[] = [];
@@ -267,9 +270,11 @@ describe("local agent runner", () => {
               },
             ] as PiMessage[];
             await persistCompletedSessionForFakeReply(context, piMessages);
-            return successReply("captured", {
-              piMessages,
-            });
+            return completedAgentRun(
+              successReply("captured", {
+                piMessages,
+              }),
+            );
           },
         },
       );
@@ -321,7 +326,7 @@ describe("local agent runner", () => {
     const generateReply = vi.fn<typeof generateAssistantReply>(
       async (text, context) => {
         contexts.push(context);
-        return successReply(`reply to ${text}`);
+        return completedAgentRun(successReply(`reply to ${text}`));
       },
     );
 
@@ -369,7 +374,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const generateReply = vi.fn<typeof generateAssistantReply>(async () =>
-      successReply("not delivered"),
+      completedAgentRun(successReply("not delivered")),
     );
 
     await expect(
@@ -429,7 +434,7 @@ describe("local agent runner", () => {
     const generateReply = vi.fn<typeof generateAssistantReply>(
       async (_text, context) => {
         contexts.push(context);
-        return successReply("uses projection");
+        return completedAgentRun(successReply("uses projection"));
       },
     );
 
@@ -465,9 +470,11 @@ describe("local agent runner", () => {
       },
     ] as PiMessage[];
     const generateReply = vi.fn<typeof generateAssistantReply>(async () =>
-      successReply("persisted visible output", {
-        piMessages: generatedMessages,
-      }),
+      completedAgentRun(
+        successReply("persisted visible output", {
+          piMessages: generatedMessages,
+        }),
+      ),
     );
 
     await runLocalAgentTurn(
@@ -498,7 +505,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         generateAssistantReply: async (_text, context) => {
           contexts.push(context);
-          return successReply("follow up reply");
+          return completedAgentRun(successReply("follow up reply"));
         },
       },
     );
@@ -559,9 +566,11 @@ describe("local agent runner", () => {
                 context,
                 generatedMessages,
               );
-              return successReply("visible reply", {
-                piMessages: generatedMessages,
-              });
+              return completedAgentRun(
+                successReply("visible reply", {
+                  piMessages: generatedMessages,
+                }),
+              );
             },
           },
         ),
@@ -618,7 +627,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         generateAssistantReply: async (_text, context) => {
           contexts.push(context);
-          return successReply("uses newer fallback");
+          return completedAgentRun(successReply("uses newer fallback"));
         },
       },
     );
@@ -652,7 +661,7 @@ describe("local agent runner", () => {
           messages: [assistantMessage],
           ttlMs: 60_000,
         });
-        return successReply("not delivered");
+        return completedAgentRun(successReply("not delivered"));
       },
     );
 
