@@ -60,6 +60,7 @@ jobs:
       - run: pnpm release:check
       - run: pnpm skills:check
       - run: pnpm lint
+      - run: pnpm typecheck
       - run: pnpm test:ci
       - run: pnpm test:e2e:dashboard
       - run: pnpm --filter @sentry/junior-example build

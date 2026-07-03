@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "evals": "vitest run -c vitest.evals.config.ts",
     "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.config.ts"
   },
