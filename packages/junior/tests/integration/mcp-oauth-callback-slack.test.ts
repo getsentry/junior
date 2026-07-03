@@ -18,6 +18,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -46,6 +47,18 @@ function slackSource(threadTs: string) {
 
     type: "priv",
   });
+}
+
+function makeDiagnostics() {
+  return {
+    assistantMessageCount: 1,
+    modelId: "fake-mcp-oauth-callback",
+    outcome: "success" as const,
+    toolCalls: [],
+    toolErrorCount: 0,
+    toolResultCount: 0,
+    usedPrimaryText: true,
+  };
 }
 
 type ArtifactStateModule = typeof import("@/chat/state/artifacts");
@@ -145,18 +158,17 @@ async function createAwaitingMcpTurnRecord(args: {
 describe("mcp oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "The budget deadline you mentioned earlier was Friday.",
-      artifactStatePatch: {
-        lastCanvasUrl: "https://example.com/canvas",
-      },
-      sandboxId: "sandbox-1",
-      sandboxDependencyProfileHash: "hash-1",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      completedAgentRun({
+        text: "The budget deadline you mentioned earlier was Friday.",
+        artifactStatePatch: {
+          lastCanvasUrl: "https://example.com/canvas",
+        },
+        sandboxId: "sandbox-1",
+        sandboxDependencyProfileHash: "hash-1",
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
@@ -894,24 +906,23 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "",
-      files: [
-        {
-          data: Buffer.from("hello"),
-          filename: "resume.txt",
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      completedAgentRun({
+        text: "",
+        files: [
+          {
+            data: Buffer.from("hello"),
+            filename: "resume.txt",
+          },
+        ],
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: true,
+          attachFiles: "inline",
         },
-      ],
-      deliveryPlan: {
-        mode: "thread",
-        postThreadText: true,
-        attachFiles: "inline",
-      },
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     await stateAdapterModule
       .getStateAdapter()
       .set("thread-state:slack:C123:1700000000.002", {
@@ -980,24 +991,23 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files even when thread text delivery is suppressed", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce({
-      text: "👍",
-      files: [
-        {
-          data: Buffer.from("hello"),
-          filename: "resume.txt",
+    generateAssistantReplyMock.mockResolvedValueOnce(
+      completedAgentRun({
+        text: "👍",
+        files: [
+          {
+            data: Buffer.from("hello"),
+            filename: "resume.txt",
+          },
+        ],
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: false,
+          attachFiles: "inline",
         },
-      ],
-      deliveryPlan: {
-        mode: "thread",
-        postThreadText: false,
-        attachFiles: "inline",
-      },
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     await stateAdapterModule
       .getStateAdapter()
       .set("thread-state:slack:C123:1700000000.003", {

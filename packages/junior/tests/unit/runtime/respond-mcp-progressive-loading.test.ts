@@ -600,7 +600,15 @@ import {
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
+
+function finalReply(
+  outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
+) {
+  if (outcome.status !== "completed" && outcome.status !== "failed") {
+    throw new Error(`Expected final reply, got ${outcome.status}`);
+  }
+  return outcome.reply;
+}
 
 // This suite validates local progressive-loading logic through a mocked
 // agent/runtime seam; it is not integration coverage.
@@ -683,11 +691,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
       turnId: "turn-1",
     });
 
-    const firstError = await generateAssistantReply("help me", context).catch(
-      (error) => error,
-    );
+    const firstError = await generateAssistantReply("help me", context);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(firstError.status).toBe("awaiting_auth");
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
@@ -717,7 +723,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     ]);
     expect(loadSkillExecutionErrorCount.value).toBe(0);
 
-    const reply = await generateAssistantReply("help me", context);
+    const reply = finalReply(await generateAssistantReply("help me", context));
 
     expect(reply.text).toBe("resumed reply");
     expect(promptCallCount.value).toBe(1);
@@ -761,13 +767,15 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
-    const reply = await generateAssistantReply(
-      "help me",
-      makeReplyContext({
-        conversationId: "conversation-2",
-        threadTs: "1712345.0002",
-        turnId: "turn-2",
-      }),
+    const reply = finalReply(
+      await generateAssistantReply(
+        "help me",
+        makeReplyContext({
+          conversationId: "conversation-2",
+          threadTs: "1712345.0002",
+          turnId: "turn-2",
+        }),
+      ),
     );
 
     expect(reply.text).toBe("resumed reply");
@@ -858,7 +866,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       piMessages: priorMessages,
     }).catch((error) => error);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(firstError.status).toBe("awaiting_auth");
 
     const pausedSessionRecord = await getAgentTurnSessionRecord(
       "conversation-restore-auth",
@@ -882,14 +890,16 @@ describe("generateAssistantReply progressive MCP loading", () => {
       "current follow-up",
     );
 
-    const reply = await generateAssistantReply("current follow-up", {
-      ...makeReplyContext({
-        conversationId: "conversation-restore-auth",
-        threadTs: "1712345.0091",
-        turnId: "turn-restore-auth",
+    const reply = finalReply(
+      await generateAssistantReply("current follow-up", {
+        ...makeReplyContext({
+          conversationId: "conversation-restore-auth",
+          threadTs: "1712345.0091",
+          turnId: "turn-restore-auth",
+        }),
+        piMessages: priorMessages,
       }),
-      piMessages: priorMessages,
-    });
+    );
 
     expect(reply.text).toBe("resumed reply");
     expect(resumeMessages).toHaveLength(0);
@@ -1164,11 +1174,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
       turnId: "turn-4",
     });
 
-    const firstError = await generateAssistantReply("help me", context).catch(
-      (error) => error,
-    );
+    const firstError = await generateAssistantReply("help me", context);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(firstError.status).toBe("awaiting_auth");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
 
     const pausedSessionRecord = await getAgentTurnSessionRecord(
@@ -1180,7 +1188,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       resumeReason: "auth",
     });
 
-    const reply = await generateAssistantReply("help me", context);
+    const reply = finalReply(await generateAssistantReply("help me", context));
 
     expect(reply.text).toBe("resumed reply");
 
@@ -1202,13 +1210,15 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue([makeDemoMcpTool("ping")]);
 
-    const reply = await generateAssistantReply(
-      "help me",
-      makeReplyContext({
-        conversationId: "conversation-5",
-        threadTs: "1712345.0005",
-        turnId: "turn-5",
-      }),
+    const reply = finalReply(
+      await generateAssistantReply(
+        "help me",
+        makeReplyContext({
+          conversationId: "conversation-5",
+          threadTs: "1712345.0005",
+          turnId: "turn-5",
+        }),
+      ),
     );
 
     expect(reply.text).toBe("");
@@ -1256,9 +1266,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     };
 
-    const reply = await generateAssistantReply("help me", context);
+    const reply = finalReply(await generateAssistantReply("help me", context));
 
-    expect(isRetryableTurnError(reply, "mcp_auth_resume")).toBe(false);
     expect(reply.diagnostics.outcome).toBe("provider_error");
     expect(sessionRecordSpy).toHaveBeenCalled();
   });
@@ -1356,7 +1365,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     }).catch((error) => error);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(firstError.status).toBe("awaiting_auth");
 
     const resumedSessionRecord = await getAgentTurnSessionRecord(
       "conversation-5",
@@ -1402,7 +1411,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     }).catch((error) => error);
 
-    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(firstError.status).toBe("awaiting_auth");
 
     const pausedSessionRecord = await getAgentTurnSessionRecord(
       "conversation-6",

@@ -9,7 +9,9 @@
 import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
+  type AssistantReplyRequestContext,
 } from "@/chat/respond";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import {
   createLocalSource,
   localDestinationSchema,
@@ -67,7 +69,10 @@ export type LocalToolResult = ToolExecutionReport;
 
 export interface LocalAgentTurnDeps {
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
-  generateAssistantReply?: typeof generateAssistantReplyImpl;
+  generateAssistantReply?: (
+    messageText: string,
+    context: AssistantReplyRequestContext,
+  ) => Promise<AgentRunOutcome>;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -227,7 +232,7 @@ export async function runLocalAgentTurn(
       fallback: conversation.piMessages,
     });
     piMessagesBeforeRun = piMessages;
-    reply = await generateAssistantReply(text, {
+    const outcome = await generateAssistantReply(text, {
       authorizationFlowMode: "disabled",
       conversationContext: buildConversationContext(conversation, {
         excludeMessageId: userMessageId,
@@ -285,6 +290,14 @@ export async function runLocalAgentTurn(
         await deps.onToolResult?.(result);
       },
     });
+    if (
+      outcome.status === "awaiting_auth" ||
+      outcome.status === "timed_out" ||
+      outcome.status === "yielded"
+    ) {
+      throw new Error(`Local agent run ended with ${outcome.status}`);
+    }
+    reply = outcome.reply;
 
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.

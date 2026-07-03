@@ -10,7 +10,9 @@ import { botConfig } from "@/chat/config";
 import {
   generateAssistantReply as generateAssistantReplyImpl,
   type AssistantReply,
+  type AssistantReplyRequestContext,
 } from "@/chat/respond";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { logException } from "@/chat/logging";
 import {
@@ -46,7 +48,6 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
-import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { scheduleDispatchCallback } from "./signing";
 import {
   getDispatchConversationId,
@@ -63,7 +64,10 @@ import type { DispatchCallback, DispatchRecord } from "./types";
 const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 
 export interface AgentDispatchRunnerDeps {
-  generateAssistantReply?: typeof generateAssistantReplyImpl;
+  generateAssistantReply?: (
+    messageText: string,
+    context: AssistantReplyRequestContext,
+  ) => Promise<AgentRunOutcome>;
   scheduleCallback?: typeof scheduleDispatchCallback;
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
   tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -296,7 +300,7 @@ export async function runAgentDispatchSlice(
       excludeMessageId: userMessageId,
     });
 
-    let reply = await generateAssistantReply(dispatch.input, {
+    const outcome = await generateAssistantReply(dispatch.input, {
       authorizationFlowMode: "disabled",
       credentialContext: {
         actor: dispatch.actor,
@@ -353,6 +357,33 @@ export async function runAgentDispatchSlice(
         });
       },
     });
+    if (outcome.status === "awaiting_auth") {
+      await markDispatch({
+        dispatch,
+        status: "blocked",
+        errorMessage:
+          "Dispatch requires authorization from an interactive user turn.",
+      });
+      return;
+    }
+    if (outcome.status === "timed_out" || outcome.status === "yielded") {
+      if (typeof outcome.version === "number") {
+        const awaiting = await markDispatch({
+          dispatch,
+          status: "awaiting_resume",
+        });
+        await scheduleCallback({
+          id: awaiting.id,
+          expectedVersion: awaiting.version,
+        });
+        return;
+      }
+      throw new Error(
+        `Dispatch continuation ended with ${outcome.status} without a session record version`,
+      );
+    }
+
+    let reply = outcome.reply;
 
     const failure =
       reply.diagnostics.outcome === "success"
@@ -489,33 +520,6 @@ export async function runAgentDispatchSlice(
       });
       return;
     }
-    if (
-      isRetryableTurnError(error, "mcp_auth_resume") ||
-      isRetryableTurnError(error, "plugin_auth_resume")
-    ) {
-      await markDispatch({
-        dispatch,
-        status: "blocked",
-        errorMessage:
-          "Dispatch requires authorization from an interactive user turn.",
-      });
-      return;
-    }
-    if (isRetryableTurnError(error, "agent_continue")) {
-      const version = error.metadata?.version;
-      if (typeof version === "number") {
-        const awaiting = await markDispatch({
-          dispatch,
-          status: "awaiting_resume",
-        });
-        await scheduleCallback({
-          id: awaiting.id,
-          expectedVersion: awaiting.version,
-        });
-        return;
-      }
-    }
-
     logException(
       error,
       "agent_dispatch_run_failed",

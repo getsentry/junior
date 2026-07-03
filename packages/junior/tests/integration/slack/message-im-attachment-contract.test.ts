@@ -6,6 +6,7 @@ import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -110,10 +111,10 @@ describe("Slack contract: message.im attachment ingress", () => {
         capturedAttachmentNames.push(
           attachments.map((attachment) => attachment.filename ?? ""),
         );
-        return {
+        return completedAgentRun({
           text: "Processed screenshot.",
           diagnostics: makeDiagnostics(),
-        };
+        });
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();

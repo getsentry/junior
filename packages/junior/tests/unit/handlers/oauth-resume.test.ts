@@ -3,6 +3,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const { postMessageMock, setStatusMock, uploadFilesToThreadMock } = vi.hoisted(
   () => ({
@@ -204,18 +205,19 @@ describe("resumeAuthorizedRequest", () => {
           source: testSlackSource("1700000000.0005"),
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        generateReply: async () => ({
-          text: "Final resumed answer",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        }),
+        generateReply: async () =>
+          completedAgentRun({
+            text: "Final resumed answer",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
         onSuccess: async () => {
           throw new Error("state write failed");
         },
@@ -261,18 +263,19 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0006"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => ({
-        text: "Final resumed answer",
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "fake-agent-model",
-          outcome: "success",
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
-      }),
+      generateReply: async () =>
+        completedAgentRun({
+          text: "Final resumed answer",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        }),
       scheduleSessionCompletedPluginTasks,
     });
 

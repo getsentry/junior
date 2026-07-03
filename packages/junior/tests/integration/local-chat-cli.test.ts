@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantReply } from "@/chat/respond";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const generateAssistantReplyMock = vi.hoisted(() => vi.fn());
 
@@ -75,7 +76,9 @@ export const plugins = {
 `,
     );
     process.chdir(tempDir);
-    generateAssistantReplyMock.mockResolvedValue(successReply("hello local"));
+    generateAssistantReplyMock.mockResolvedValue(
+      completedAgentRun(successReply("hello local")),
+    );
     const output: string[] = [];
 
     try {

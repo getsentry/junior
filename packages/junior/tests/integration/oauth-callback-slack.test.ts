@@ -9,6 +9,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -39,6 +40,18 @@ function slackSource(threadTs: string) {
   });
 }
 
+function makeDiagnostics() {
+  return {
+    assistantMessageCount: 1,
+    modelId: "fake-oauth-callback",
+    outcome: "success" as const,
+    toolCalls: [],
+    toolErrorCount: 0,
+    toolResultCount: 0,
+    usedPrimaryText: true,
+  };
+}
+
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
@@ -52,13 +65,12 @@ let pluginApp: PluginAppFixture | undefined;
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue({
-      text: "Here are your Sentry issues.",
-      diagnostics: {
-        outcome: "success",
-        toolCalls: [],
-      },
-    });
+    generateAssistantReplyMock.mockResolvedValue(
+      completedAgentRun({
+        text: "Here are your Sentry issues.",
+        diagnostics: makeDiagnostics(),
+      }),
+    );
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,

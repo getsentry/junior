@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCanvas } from "@/chat/tools/slack/canvases";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -47,7 +48,7 @@ describe("Slack behavior: assistant context canvas routing", () => {
               markdown: "Context-aware update",
               channelId: context?.toolChannelId,
             });
-            return {
+            return completedAgentRun({
               text: "Shared canvas created.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -58,7 +59,7 @@ describe("Slack behavior: assistant context canvas routing", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

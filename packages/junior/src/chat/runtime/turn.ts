@@ -47,7 +47,10 @@ export type AuthResumeRetryableTurnError = RetryableTurnError & {
   readonly metadata: AuthResumeRetryableTurnMetadata;
 };
 
-/** Error indicating an agent run can continue later after timeout or auth pause. */
+/**
+ * Historical turn error for outer resume/callback boundaries; expected
+ * generateAssistantReply lifecycle endings are represented by AgentRunOutcome.
+ */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
   readonly metadata?: RetryableTurnMetadata;
@@ -101,7 +104,11 @@ export function isAuthResumeRetryableTurnError(
   );
 }
 
-/** Error indicating the turn paused voluntarily at a safe continuation boundary. */
+/**
+ * Historical turn error for queue-worker yield routing; respond.ts returns a
+ * yielded AgentRunOutcome and the Slack executor recreates this at the worker
+ * boundary.
+ */
 export class CooperativeTurnYieldError extends Error {
   readonly code = "cooperative_turn_yield";
 

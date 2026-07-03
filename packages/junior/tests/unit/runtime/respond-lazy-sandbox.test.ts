@@ -529,15 +529,19 @@ const LOCAL_DESTINATION = {
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
-function generateLocalReply(
+async function generateLocalReply(
   message: string,
   context: Omit<ReplyRequestContext, "destination" | "source"> = {},
 ) {
-  return generateAssistantReply(message, {
+  const outcome = await generateAssistantReply(message, {
     ...context,
     destination: LOCAL_DESTINATION,
     source: LOCAL_SOURCE,
   });
+  if (outcome.status !== "completed" && outcome.status !== "failed") {
+    throw new Error(`Expected final reply, got ${outcome.status}`);
+  }
+  return outcome.reply;
 }
 
 describe("generateAssistantReply lazy sandbox boot", () => {

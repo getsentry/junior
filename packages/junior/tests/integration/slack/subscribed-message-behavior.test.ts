@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  RetryableTurnError,
-  TurnInputCommitLostError,
-} from "@/chat/runtime/turn";
+import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createProviderError } from "@/chat/services/provider-retry";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -11,6 +8,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const emptyThreadReplies = async () => [];
 
@@ -44,6 +42,21 @@ function toPostedText(value: unknown): string {
   }
 
   return String(value);
+}
+
+function completedReply(text: string) {
+  return completedAgentRun({
+    text,
+    diagnostics: {
+      assistantMessageCount: 1,
+      modelId: "fake-agent-model",
+      outcome: "success" as const,
+      toolCalls: [],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: true,
+    },
+  });
 }
 
 describe("Slack behavior: subscribed messages", () => {
@@ -144,18 +157,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             replyContexts.push(context);
-            return {
-              text: "I checked the subscribed PR event.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("I checked the subscribed PR event.");
           },
         },
       },
@@ -212,12 +214,17 @@ describe("Slack behavior: subscribed messages", () => {
         },
         replyExecutor: {
           generateAssistantReply: async () => {
-            throw new RetryableTurnError("mcp_auth_resume", "auth required", {
+            return {
+              status: "awaiting_auth",
+              authDisposition: "link_sent",
+              authDurationMs: 1,
+              authKind: "mcp",
               authProvider: "github",
               authProviderDisplayName: "GitHub",
               conversationId: "slack:C_BEHAVIOR:1700002000.003",
               sessionId: "resource-event-auth",
-            });
+              sliceId: 2,
+            };
           },
         },
       },
@@ -278,18 +285,9 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text: "Action item captured: monitor dashboards for 30 minutes.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply(
+              "Action item captured: monitor dashboards for 30 minutes.",
+            );
           },
         },
       },
@@ -336,18 +334,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text: "Yes. Shipping status is green.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Yes. Shipping status is green.");
           },
         },
       },
@@ -389,18 +376,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text: "Handled queued subscribed turn.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Handled queued subscribed turn.");
           },
         },
       },
@@ -465,21 +441,11 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text:
-                replyCalls.length === 1
-                  ? "I can help with this thread."
-                  : "I'm back because you mentioned me again.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply(
+              replyCalls.length === 1
+                ? "I can help with this thread."
+                : "I'm back because you mentioned me again.",
+            );
           },
         },
       },
@@ -556,18 +522,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -613,18 +568,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -676,18 +620,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -741,18 +674,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -804,18 +726,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -874,18 +785,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -945,18 +845,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "This should never be posted.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("This should never be posted.");
           },
         },
       },
@@ -1026,18 +915,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text: "You asked for the budget by Friday.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("You asked for the budget by Friday.");
           },
         },
       },
@@ -1096,21 +974,11 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             replyCalls.push(prompt);
-            return {
-              text:
-                replyCalls.length === 1
-                  ? "The deploy changed billing, auth, and the API gateway."
-                  : "The three services were billing, auth, and the API gateway.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply(
+              replyCalls.length === 1
+                ? "The deploy changed billing, auth, and the API gateway."
+                : "The three services were billing, auth, and the API gateway.",
+            );
           },
         },
       },

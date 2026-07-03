@@ -5,6 +5,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -76,18 +77,18 @@ describe("Slack behavior: mixed attachment media", () => {
               capturedAttachmentNames.push(
                 attachments.map((attachment) => attachment.filename ?? ""),
               );
-              return {
+              return completedAgentRun({
                 text: "Processed attachments.",
                 diagnostics: {
                   assistantMessageCount: 1,
                   modelId: "fake-agent-model",
-                  outcome: "success",
+                  outcome: "success" as const,
                   toolCalls: [],
                   toolErrorCount: 0,
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              };
+              });
             },
           },
         },
@@ -173,18 +174,18 @@ describe("Slack behavior: mixed attachment media", () => {
             capturedOmittedImageCounts.push(
               context?.omittedImageAttachmentCount ?? 0,
             );
-            return {
+            return completedAgentRun({
               text: "Processed attachments.",
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "fake-agent-model",
-                outcome: "success",
+                outcome: "success" as const,
                 toolCalls: [],
                 toolErrorCount: 0,
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -229,7 +230,7 @@ describe("Slack behavior: mixed attachment media", () => {
     const capturedOmittedImageCounts: number[] = [];
     const generateAssistantReply = vi.fn(
       async (_prompt?: string, _context?: unknown) => {
-        return {
+        return completedAgentRun({
           text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
           diagnostics: {
             assistantMessageCount: 1,
@@ -240,7 +241,7 @@ describe("Slack behavior: mixed attachment media", () => {
             toolResultCount: 0,
             usedPrimaryText: true,
           },
-        };
+        });
       },
     );
 

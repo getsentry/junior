@@ -4,7 +4,10 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { ReplyRequestContext } from "@/chat/respond";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
-import { RetryableTurnError } from "@/chat/runtime/turn";
+import {
+  completedAgentRun,
+  failedAgentRun,
+} from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { loadProjection } from "@/chat/state/session-log";
@@ -176,18 +179,19 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Hello from the bot!",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Hello from the bot!",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
           scheduleSessionCompletedPluginTasks,
         },
         visionContext: {
@@ -325,18 +329,19 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Replying to mention",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Replying to mention",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -490,7 +495,7 @@ describe("bot handlers (integration)", () => {
               state: "running",
               piMessages: promptMessages,
             });
-            return {
+            return completedAgentRun({
               text: finalText,
               piMessages: [
                 ...promptMessages,
@@ -527,7 +532,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
         visionContext: {
@@ -605,18 +610,19 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: finalText,
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "fake-agent-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: finalText,
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -685,7 +691,7 @@ describe("bot handlers (integration)", () => {
               turnId: context?.correlation?.turnId,
               runId: context?.correlation?.runId,
             });
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -696,7 +702,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -734,16 +740,17 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "mcp_auth_resume",
-              "simulated auth pause",
-              {
-                authDisposition: "link_sent",
-                authKind: "mcp",
-                authProvider: "notion",
-                authProviderDisplayName: "Notion",
-              },
-            );
+            return {
+              status: "awaiting_auth",
+              authDisposition: "link_sent",
+              authDurationMs: 1,
+              authKind: "mcp",
+              authProvider: "notion",
+              authProviderDisplayName: "Notion",
+              conversationId: "slack:C_AUTH:1700000000.000",
+              sessionId: "turn_msg-auth-pause",
+              sliceId: 2,
+            };
           },
         },
       },
@@ -817,16 +824,17 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "plugin_auth_resume",
-              "simulated plugin auth pause",
-              {
-                authDisposition: "link_sent",
-                authKind: "plugin",
-                authProvider: "github",
-                authProviderDisplayName: "GitHub",
-              },
-            );
+            return {
+              status: "awaiting_auth",
+              authDisposition: "link_sent",
+              authDurationMs: 1,
+              authKind: "plugin",
+              authProvider: "github",
+              authProviderDisplayName: "GitHub",
+              conversationId: "slack:C_PLUGIN_AUTH:1700000000.000",
+              sessionId: "turn_msg-plugin-auth-pause",
+              sliceId: 2,
+            };
           },
         },
       },
@@ -907,16 +915,13 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_continue",
-              "simulated timeout continuation",
-              {
-                conversationId,
-                sessionId,
-                version: 3,
-                sliceId: 2,
-              },
-            );
+            return {
+              status: "timed_out",
+              conversationId,
+              sessionId,
+              version: 3,
+              sliceId: 2,
+            };
           },
         },
       },
@@ -966,16 +971,13 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_continue",
-              "simulated timeout continuation",
-              {
-                conversationId,
-                sessionId,
-                version: 4,
-                sliceId: 2,
-              },
-            );
+            return {
+              status: "timed_out",
+              conversationId,
+              sessionId,
+              version: 4,
+              sliceId: 2,
+            };
           },
         },
       },
@@ -1018,16 +1020,13 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_continue",
-              "simulated timeout continuation",
-              {
-                conversationId,
-                sessionId,
-                version: 3,
-                sliceId: 2,
-              },
-            );
+            return {
+              status: "timed_out",
+              conversationId,
+              sessionId,
+              version: 3,
+              sliceId: 2,
+            };
           },
         },
       },
@@ -1145,18 +1144,20 @@ describe("bot handlers (integration)", () => {
   it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
     const conversationId = "slack:C_AUTH_PARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
-    const generateAssistantReply = vi.fn().mockResolvedValue({
-      text: "Fresh answer without the provider.",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "test-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    });
+    const generateAssistantReply = vi.fn().mockResolvedValue(
+      completedAgentRun({
+        text: "Fresh answer without the provider.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId: activeSessionId,
@@ -1527,18 +1528,20 @@ describe("bot handlers (integration)", () => {
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
     const conversationId = "slack:C_BAD_CONTINUATION:1700000000.000";
     const activeSessionId = "turn_msg-timeout-original";
-    const generateAssistantReply = vi.fn().mockResolvedValue({
-      text: "Recovered.",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "test-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    });
+    const generateAssistantReply = vi.fn().mockResolvedValue(
+      completedAgentRun({
+        text: "Recovered.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId: activeSessionId,
@@ -1805,7 +1808,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onTextDelta?.("Partial output...");
-            return {
+            return failedAgentRun({
               text: "Partial output...",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -1816,7 +1819,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -1857,7 +1860,7 @@ describe("bot handlers (integration)", () => {
             await context?.onStatus?.(
               makeAssistantStatus("reading", "channel messages"),
             );
-            return {
+            return completedAgentRun({
               text: "Done.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -1868,7 +1871,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -1926,7 +1929,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyStarted = true;
-            return {
+            return completedAgentRun({
               text: "Still replied while status was pending.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -1937,7 +1940,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2009,7 +2012,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyStarted = true;
-            return {
+            return completedAgentRun({
               text: "Reply lands after the pending status is drained.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2020,7 +2023,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2070,18 +2073,19 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Here is how to debug memory leaks.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Here is how to debug memory leaks.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2130,18 +2134,19 @@ describe("bot handlers (integration)", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Here is the updated answer.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Here is the updated answer.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2189,18 +2194,19 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Today is April 16, 2026.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Today is April 16, 2026.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2259,18 +2265,19 @@ describe("bot handlers (integration)", () => {
             }),
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Today is April 16, 2026.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Today is April 16, 2026.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2338,7 +2345,7 @@ describe("bot handlers (integration)", () => {
             await context?.onArtifactStateUpdated?.({
               lastCanvasId: "F_CANVAS",
             });
-            return {
+            return completedAgentRun({
               text: "Today is April 16, 2026.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2349,7 +2356,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2392,7 +2399,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             turnCount += 1;
-            return {
+            return completedAgentRun({
               text: `reply-${turnCount}`,
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2403,7 +2410,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2468,18 +2475,19 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "This reply should still succeed.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "This reply should still succeed.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2528,18 +2536,19 @@ describe("bot handlers (integration)", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "Reply still succeeds.",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "test-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+          generateAssistantReply: async () =>
+            completedAgentRun({
+              text: "Reply still succeeds.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
         },
       },
     });
@@ -2577,7 +2586,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             capturedContexts.push(context?.conversationContext);
-            return {
+            return completedAgentRun({
               text: "First reply.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2588,7 +2597,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2618,7 +2627,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             capturedContexts.push(context?.conversationContext);
-            return {
+            return completedAgentRun({
               text: "Follow-up reply.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2629,7 +2638,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2688,7 +2697,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             capturedContexts.push(context?.conversationContext);
-            return {
+            return completedAgentRun({
               text: "Responding to first message only.",
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2699,7 +2708,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -2746,7 +2755,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             turnCount += 1;
-            return {
+            return completedAgentRun({
               text: `reply-${turnCount}`,
               diagnostics: {
                 assistantMessageCount: 1,
@@ -2757,7 +2766,7 @@ describe("bot handlers (integration)", () => {
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },

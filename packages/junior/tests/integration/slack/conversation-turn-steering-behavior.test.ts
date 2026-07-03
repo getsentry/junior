@@ -25,6 +25,7 @@ import {
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
@@ -178,10 +179,11 @@ describe("Slack behavior: durable turn steering", () => {
   it("does not enqueue duplicate Slack event retries for a persisted message", async () => {
     const state = getStateAdapter();
     const { conversationId, queue, services } = createTurnHarness({
-      generateAssistantReply: async () => ({
-        text: "not used",
-        diagnostics: makeDiagnostics(),
-      }),
+      generateAssistantReply: async () =>
+        completedAgentRun({
+          text: "not used",
+          diagnostics: makeDiagnostics(),
+        }),
       state,
     });
     const event = makeMessageEvent({
@@ -264,13 +266,13 @@ describe("Slack behavior: durable turn steering", () => {
 
         const steeringTexts = steeringMessages.map((message) => message.text);
         agentCalls.push({ prompt, steeringTexts });
-        return {
+        return completedAgentRun({
           text: [
             `Handled initial: ${prompt}`,
             `Steered: ${steeringTexts.join(" | ")}`,
           ].join("\n"),
           diagnostics: makeDiagnostics(),
-        };
+        });
       };
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
@@ -445,10 +447,10 @@ describe("Slack behavior: durable turn steering", () => {
         generateAssistantReply: async (prompt, context) => {
           replyCalls.push(prompt);
           await context?.onInputCommitted?.();
-          return {
+          return completedAgentRun({
             text: "Started.",
             diagnostics: makeDiagnostics(),
-          };
+          });
         },
         state,
       });
@@ -515,10 +517,10 @@ describe("Slack behavior: durable turn steering", () => {
         if (drainedTexts.length === 0 && drained) {
           drainedTexts.push(...drained.map((message) => message.text));
         }
-        return {
+        return completedAgentRun({
           text: "Done with the initial request.",
           diagnostics: makeDiagnostics(),
-        };
+        });
       };
     const { conversationId, runNextQueuedWork, services } = createTurnHarness({
       completeObject: completeObjectWithDecision((prompt) =>

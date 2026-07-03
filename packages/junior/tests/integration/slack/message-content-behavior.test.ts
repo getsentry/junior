@@ -15,11 +15,27 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 interface CapturedCall {
   contextConversation?: string;
   piMessages?: PiMessage[];
   prompt: string;
+}
+
+function completedReply(text: string) {
+  return completedAgentRun({
+    text,
+    diagnostics: {
+      assistantMessageCount: 1,
+      modelId: "fake-agent-model",
+      outcome: "success" as const,
+      toolCalls: [],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: true,
+    },
+  });
 }
 
 describe("Slack behavior: message content", () => {
@@ -50,18 +66,7 @@ describe("Slack behavior: message content", () => {
               prompt,
               contextConversation: context?.conversationContext,
             });
-            return {
-              text: "Summary sent.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Summary sent.");
           },
         },
       },
@@ -92,18 +97,7 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           generateAssistantReply: async (prompt) => {
             calls.push({ prompt });
-            return {
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Done.");
           },
         },
       },
@@ -137,18 +131,7 @@ describe("Slack behavior: message content", () => {
               prompt,
               contextConversation: context?.conversationContext,
             });
-            return {
-              text: "Alert reviewed.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Alert reviewed.");
           },
         },
       },
@@ -195,18 +178,7 @@ describe("Slack behavior: message content", () => {
         replyExecutor: {
           generateAssistantReply: async () => {
             replyCalled = true;
-            return {
-              text: "Should not happen",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Should not happen");
           },
         },
       },
@@ -286,18 +258,9 @@ describe("Slack behavior: message content", () => {
                 piMessages: storedFirstTurnHistory,
               });
             }
-            return {
-              text: calls.length === 1 ? "First response." : "Second response.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply(
+              calls.length === 1 ? "First response." : "Second response.",
+            );
           },
         },
       },
@@ -382,18 +345,7 @@ describe("Slack behavior: message content", () => {
               contextConversation: context?.conversationContext,
               piMessages: context?.piMessages,
             });
-            return {
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Done.");
           },
         },
       },
@@ -505,18 +457,7 @@ describe("Slack behavior: message content", () => {
               contextConversation: context?.conversationContext,
               piMessages: context?.piMessages,
             });
-            return {
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            };
+            return completedReply("Done.");
           },
         },
       },

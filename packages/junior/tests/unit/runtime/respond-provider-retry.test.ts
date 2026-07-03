@@ -323,12 +323,20 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { generateAssistantReply } from "@/chat/respond";
 import { getConversationStore } from "@/chat/db";
-import { isCooperativeTurnYieldError } from "@/chat/runtime/turn";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 import { createJuniorReporting } from "@/reporting";
+
+function finalReply(
+  outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
+) {
+  if (outcome.status !== "completed" && outcome.status !== "failed") {
+    throw new Error(`Expected final reply, got ${outcome.status}`);
+  }
+  return outcome.reply;
+}
 
 const TEST_DESTINATION = {
   platform: "slack",
@@ -376,7 +384,7 @@ describe("generateAssistantReply provider retry", () => {
 
     await waitForPromptCall(1);
     await advanceUntilContinueCall(5_000);
-    const reply = await replyPromise;
+    const reply = finalReply(await replyPromise);
 
     expect(reply.text).toBe("Recovered.");
     expect(reply.diagnostics.outcome).toBe("success");
@@ -449,26 +457,28 @@ describe("generateAssistantReply provider retry", () => {
       visibility: "public",
     });
 
-    const reply = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      piMessages: priorMessages,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
-      correlation: {
-        conversationId: "slack:C123:1712345.0001",
-        turnId: "turn-steering",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-      },
-      drainSteeringMessages: async (inject) => {
-        const messages = [
-          { text: "actually do the other thing", timestampMs: 2_000 },
-        ];
-        await inject(messages);
-        injectedTexts.push(...messages.map((message) => message.text));
-        return messages;
-      },
-    });
+    const reply = finalReply(
+      await generateAssistantReply("help me", {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        piMessages: priorMessages,
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId: "slack:C123:1712345.0001",
+          turnId: "turn-steering",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
+        drainSteeringMessages: async (inject) => {
+          const messages = [
+            { text: "actually do the other thing", timestampMs: 2_000 },
+          ];
+          await inject(messages);
+          injectedTexts.push(...messages.map((message) => message.text));
+          return messages;
+        },
+      }),
+    );
 
     expect(reply.text).toBe("Steered.");
     expect(injectedTexts).toEqual(["actually do the other thing"]);
@@ -519,7 +529,7 @@ describe("generateAssistantReply provider retry", () => {
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
     agentMode.value = "cooperativeYield";
 
-    const error = await generateAssistantReply("help me", {
+    const outcome = await generateAssistantReply("help me", {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -530,12 +540,15 @@ describe("generateAssistantReply provider retry", () => {
         threadTs: "1712345.0003",
       },
       shouldYield: () => true,
-    }).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
+    });
 
-    expect(isCooperativeTurnYieldError(error)).toBe(true);
+    expect(outcome).toMatchObject({
+      status: "yielded",
+      conversationId: "conversation-yield",
+      sessionId: "turn-yield",
+      sliceId: 1,
+      version: expect.any(Number),
+    });
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-yield",
       "turn-yield",
@@ -567,7 +580,7 @@ describe("generateAssistantReply provider retry", () => {
   it("keeps steered messages when yielding after steering drain", async () => {
     agentMode.value = "cooperativeYield";
 
-    const error = await generateAssistantReply("help me", {
+    const outcome = await generateAssistantReply("help me", {
       requester: { platform: "slack", teamId: "T123", userId: "U123" },
       correlation: {
         conversationId: "conversation-yield-steering",
@@ -585,12 +598,15 @@ describe("generateAssistantReply provider retry", () => {
         return messages;
       },
       shouldYield: () => true,
-    }).then(
-      () => undefined,
-      (caught: unknown) => caught,
-    );
+    });
 
-    expect(isCooperativeTurnYieldError(error)).toBe(true);
+    expect(outcome).toMatchObject({
+      status: "yielded",
+      conversationId: "conversation-yield-steering",
+      sessionId: "turn-yield-steering",
+      sliceId: 1,
+      version: expect.any(Number),
+    });
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-yield-steering",
       "turn-yield-steering",
@@ -639,7 +655,6 @@ describe("generateAssistantReply provider retry", () => {
     expect((error as Error).message).toContain(
       "Failed to persist cooperative yield continuation",
     );
-    expect(isCooperativeTurnYieldError(error)).toBe(false);
     await expect(
       turnSessionState.getAgentTurnSessionRecord(
         "conversation-yield-persist-failure",
@@ -652,17 +667,19 @@ describe("generateAssistantReply provider retry", () => {
     agentMode.value = "toolActivity";
     sessionLogState.failToolExecutionAppend = true;
 
-    const reply = await generateAssistantReply("run the tool", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
-      correlation: {
-        conversationId: "conversation-tool-activity",
-        turnId: "turn-tool-activity",
-        channelId: "C123",
-        threadTs: "1712345.0006",
-      },
-    });
+    const reply = finalReply(
+      await generateAssistantReply("run the tool", {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId: "conversation-tool-activity",
+          turnId: "turn-tool-activity",
+          channelId: "C123",
+          threadTs: "1712345.0006",
+        },
+      }),
+    );
 
     expect(sessionLogState.toolExecutionAppendCalls).toBe(1);
     expect(reply.diagnostics.outcome).toBe("success");
@@ -689,18 +706,20 @@ describe("generateAssistantReply provider retry", () => {
       turnStartMessageIndex: 0,
     });
 
-    const reply = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      piMessages: [checkpointedPrompt],
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
-      correlation: {
-        conversationId,
-        turnId: sessionId,
-        channelId: "C123",
-        threadTs: "1712345.0007",
-      },
-    });
+    const reply = finalReply(
+      await generateAssistantReply("help me", {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        piMessages: [checkpointedPrompt],
+        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId,
+          turnId: sessionId,
+          channelId: "C123",
+          threadTs: "1712345.0007",
+        },
+      }),
+    );
 
     expect(reply.diagnostics.outcome).toBe("success");
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(

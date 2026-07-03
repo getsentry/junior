@@ -12,6 +12,11 @@ import {
   type AssistantReply,
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
+import {
+  retryableTurnErrorFromAuthAgentRun,
+  retryableTurnErrorFromTimedOutAgentRun,
+  type AgentRunOutcome,
+} from "@/chat/runtime/agent-run-outcome";
 import type { Source } from "@sentry/junior-plugin-api";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
@@ -65,6 +70,11 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
+
+type ResumeGenerateReply = (
+  messageText: string,
+  context: AssistantReplyRequestContext,
+) => Promise<AgentRunOutcome>;
 
 async function postSlackMessageBestEffort(
   channelId: string,
@@ -142,7 +152,7 @@ interface ResumeSlackTurnArgs {
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   initialText?: string;
-  generateReply?: typeof generateAssistantReply;
+  generateReply?: ResumeGenerateReply;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
     sessionId: string;
@@ -376,7 +386,7 @@ export async function resumeSlackTurn(
     const replyContext = createResumeReplyContext(runArgs, status);
     const replyPromise = generateReply(runArgs.messageText, replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
-    let reply =
+    const outcome =
       typeof replyTimeoutMs === "number"
         ? await Promise.race([
             replyPromise,
@@ -393,6 +403,16 @@ export async function resumeSlackTurn(
             ),
           ])
         : await replyPromise;
+    if (outcome.status === "awaiting_auth") {
+      throw retryableTurnErrorFromAuthAgentRun(outcome);
+    }
+    if (outcome.status === "timed_out") {
+      throw retryableTurnErrorFromTimedOutAgentRun(outcome);
+    }
+    if (outcome.status === "yielded") {
+      throw new Error("Slack resume yielded without a queue worker boundary");
+    }
+    let reply = outcome.reply;
     reply = finalizeFailedTurnReply({
       reply,
       logException,
@@ -578,7 +598,7 @@ export async function resumeAuthorizedRequest(args: {
   connectedText: string;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
-  generateReply?: typeof generateAssistantReply;
+  generateReply?: ResumeGenerateReply;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;

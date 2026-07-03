@@ -5,6 +5,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -67,18 +68,18 @@ describe("Slack behavior: attachment handling", () => {
               capturedAttachmentMediaTypes.push(attachments[0].mediaType);
             }
 
-            return {
+            return completedAgentRun({
               text: "Image received. The chart trend is upward.",
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "fake-agent-model",
-                outcome: "success",
+                outcome: "success" as const,
                 toolCalls: [],
                 toolErrorCount: 0,
                 toolResultCount: 0,
                 usedPrimaryText: true,
               },
-            };
+            });
           },
         },
       },
@@ -119,18 +120,20 @@ describe("Slack behavior: attachment handling", () => {
     const completeTextMock = vi.fn(async () => {
       throw new Error("vision unavailable");
     });
-    const generateAssistantReply = vi.fn(async () => ({
-      text: "should not post",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "fake-agent-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
-      },
-    }));
+    const generateAssistantReply = vi.fn(async () =>
+      completedAgentRun({
+        text: "should not post",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "fake-agent-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
 
     const { slackRuntime } = await createRuntime({
       services: {
