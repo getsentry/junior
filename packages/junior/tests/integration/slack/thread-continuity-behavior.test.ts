@@ -45,21 +45,24 @@ describe("Slack behavior: thread continuity", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            prompts.push(prompt);
-            return completedAgentRun({
-              text:
-                scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (prompt) => {
+              prompts.push(prompt);
+              return completedAgentRun({
+                text:
+                  scriptedReplies[prompts.length - 1] ??
+                  "Unexpected extra reply",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success",
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },

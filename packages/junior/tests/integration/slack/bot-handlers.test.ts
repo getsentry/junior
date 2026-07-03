@@ -176,19 +176,21 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Hello from the bot!",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Hello from the bot!",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
           scheduleSessionCompletedPluginTasks,
         },
         visionContext: {
@@ -237,7 +239,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
@@ -326,19 +328,21 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Replying to mention",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Replying to mention",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -442,8 +446,10 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("LLM unavailable");
+          agentRunner: {
+            run: async () => {
+              throw new Error("LLM unavailable");
+            },
           },
         },
         visionContext: {
@@ -482,54 +488,56 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            // Simulate respond's durable input checkpoint: the session record
-            // is running at the prompt boundary when generation finishes.
-            await upsertAgentTurnSessionRecord({
-              conversationId,
-              sessionId,
-              sliceId: 1,
-              state: "running",
-              piMessages: promptMessages,
-            });
-            return completedAgentRun({
-              text: finalText,
-              piMessages: [
-                ...promptMessages,
-                {
-                  role: "assistant" as const,
-                  content: [{ type: "text" as const, text: finalText }],
-                  api: "responses" as const,
-                  provider: "openai",
-                  model: "gpt-5.3",
-                  usage: {
-                    input: 1,
-                    output: 1,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                    totalTokens: 2,
-                    cost: {
-                      input: 0,
-                      output: 0,
+          agentRunner: {
+            run: async () => {
+              // Simulate respond's durable input checkpoint: the session record
+              // is running at the prompt boundary when generation finishes.
+              await upsertAgentTurnSessionRecord({
+                conversationId,
+                sessionId,
+                sliceId: 1,
+                state: "running",
+                piMessages: promptMessages,
+              });
+              return completedAgentRun({
+                text: finalText,
+                piMessages: [
+                  ...promptMessages,
+                  {
+                    role: "assistant" as const,
+                    content: [{ type: "text" as const, text: finalText }],
+                    api: "responses" as const,
+                    provider: "openai",
+                    model: "gpt-5.3",
+                    usage: {
+                      input: 1,
+                      output: 1,
                       cacheRead: 0,
                       cacheWrite: 0,
-                      total: 0,
+                      totalTokens: 2,
+                      cost: {
+                        input: 0,
+                        output: 0,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        total: 0,
+                      },
                     },
+                    stopReason: "stop" as const,
+                    timestamp: 2,
                   },
-                  stopReason: "stop" as const,
-                  timestamp: 2,
+                ],
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
                 },
-              ],
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+              });
+            },
           },
         },
         visionContext: {
@@ -607,19 +615,21 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: finalText,
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: finalText,
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -681,25 +691,27 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedCorrelation.push({
-              conversationId: context?.correlation?.conversationId,
-              threadId: context?.correlation?.threadId,
-              turnId: context?.correlation?.turnId,
-              runId: context?.correlation?.runId,
-            });
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              capturedCorrelation.push({
+                conversationId: context?.correlation?.conversationId,
+                threadId: context?.correlation?.threadId,
+                turnId: context?.correlation?.turnId,
+                runId: context?.correlation?.runId,
+              });
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -736,11 +748,13 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            return {
-              status: "awaiting_auth",
-              providerDisplayName: "Notion",
-            };
+          agentRunner: {
+            run: async () => {
+              return {
+                status: "awaiting_auth",
+                providerDisplayName: "Notion",
+              };
+            },
           },
         },
       },
@@ -813,11 +827,13 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            return {
-              status: "awaiting_auth",
-              providerDisplayName: "GitHub",
-            };
+          agentRunner: {
+            run: async () => {
+              return {
+                status: "awaiting_auth",
+                providerDisplayName: "GitHub",
+              };
+            },
           },
         },
       },
@@ -897,8 +913,10 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           scheduleAgentContinue,
-          generateAssistantReply: async () => {
-            return { status: "suspended", resumeVersion: 3 };
+          agentRunner: {
+            run: async () => {
+              return { status: "suspended", resumeVersion: 3 };
+            },
           },
         },
       },
@@ -947,8 +965,10 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           scheduleAgentContinue,
-          generateAssistantReply: async () => {
-            return { status: "suspended", resumeVersion: 4 };
+          agentRunner: {
+            run: async () => {
+              return { status: "suspended", resumeVersion: 4 };
+            },
           },
         },
       },
@@ -990,8 +1010,10 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           scheduleAgentContinue,
-          generateAssistantReply: async () => {
-            return { status: "suspended", resumeVersion: 3 };
+          agentRunner: {
+            run: async () => {
+              return { status: "suspended", resumeVersion: 3 };
+            },
           },
         },
       },
@@ -1041,7 +1063,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1134,7 +1156,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
@@ -1204,7 +1226,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           scheduleAgentContinue,
         },
       },
@@ -1284,7 +1306,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: vi.fn(),
+          agentRunner: { run: vi.fn() },
           scheduleAgentContinue,
         },
       },
@@ -1341,7 +1363,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: vi.fn(),
+          agentRunner: { run: vi.fn() },
           scheduleAgentContinue,
         },
       },
@@ -1386,8 +1408,10 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("transient turn failure");
+          agentRunner: {
+            run: async () => {
+              throw new Error("transient turn failure");
+            },
           },
         },
       },
@@ -1419,9 +1443,11 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_input, context) => {
-            await context.onInputCommitted?.();
-            throw new Error("post-ack turn failure");
+          agentRunner: {
+            run: async (_input, context) => {
+              await context.onInputCommitted?.();
+              throw new Error("post-ack turn failure");
+            },
           },
         },
       },
@@ -1458,8 +1484,10 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("persistent turn failure");
+          agentRunner: {
+            run: async () => {
+              throw new Error("persistent turn failure");
+            },
           },
         },
       },
@@ -1518,7 +1546,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
@@ -1573,7 +1601,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1624,7 +1652,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1676,7 +1704,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1736,7 +1764,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1771,20 +1799,22 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.("Partial output...");
-            return completedAgentRun({
-              text: "Partial output...",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "provider_error" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              await context?.onTextDelta?.("Partial output...");
+              return completedAgentRun({
+                text: "Partial output...",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "provider_error" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -1821,22 +1851,24 @@ describe("bot handlers (integration)", () => {
       slackAdapter: fakeAdapter,
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(
-              makeAssistantStatus("reading", "channel messages"),
-            );
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              await context?.onStatus?.(
+                makeAssistantStatus("reading", "channel messages"),
+              );
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -1892,20 +1924,22 @@ describe("bot handlers (integration)", () => {
           completeText: async () => ({ text: "Status thread" }) as never,
         },
         replyExecutor: {
-          generateAssistantReply: async () => {
-            replyStarted = true;
-            return completedAgentRun({
-              text: "Still replied while status was pending.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async () => {
+              replyStarted = true;
+              return completedAgentRun({
+                text: "Still replied while status was pending.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -1975,20 +2009,22 @@ describe("bot handlers (integration)", () => {
           completeText: async () => ({ text: "Status thread" }) as never,
         },
         replyExecutor: {
-          generateAssistantReply: async () => {
-            replyStarted = true;
-            return completedAgentRun({
-              text: "Reply lands after the pending status is drained.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async () => {
+              replyStarted = true;
+              return completedAgentRun({
+                text: "Reply lands after the pending status is drained.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2038,19 +2074,21 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Here is how to debug memory leaks.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Here is how to debug memory leaks.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2099,19 +2137,21 @@ describe("bot handlers (integration)", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Here is the updated answer.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Here is the updated answer.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2159,19 +2199,21 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Today is April 16, 2026.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Today is April 16, 2026.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2230,19 +2272,21 @@ describe("bot handlers (integration)", () => {
             }),
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Today is April 16, 2026.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Today is April 16, 2026.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2296,32 +2340,31 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async (
-            _text: string,
-            context?: ReplyRequestContext,
-          ) => {
-            await vi.waitFor(() => {
-              expect(
-                fakeAdapter.titleCalls.some(
-                  (call) => call.title === "Today's Date",
-                ),
-              ).toBe(true);
-            });
-            await context?.onArtifactStateUpdated?.({
-              lastCanvasId: "F_CANVAS",
-            });
-            return completedAgentRun({
-              text: "Today is April 16, 2026.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_text: string, context?: ReplyRequestContext) => {
+              await vi.waitFor(() => {
+                expect(
+                  fakeAdapter.titleCalls.some(
+                    (call) => call.title === "Today's Date",
+                  ),
+                ).toBe(true);
+              });
+              await context?.onArtifactStateUpdated?.({
+                lastCanvasId: "F_CANVAS",
+              });
+              return completedAgentRun({
+                text: "Today is April 16, 2026.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2362,20 +2405,22 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () => {
-            turnCount += 1;
-            return completedAgentRun({
-              text: `reply-${turnCount}`,
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async () => {
+              turnCount += 1;
+              return completedAgentRun({
+                text: `reply-${turnCount}`,
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2440,19 +2485,21 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "This reply should still succeed.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "This reply should still succeed.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2501,19 +2548,21 @@ describe("bot handlers (integration)", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              text: "Reply still succeeds.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                text: "Reply still succeeds.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              }),
+          },
         },
       },
     });
@@ -2549,20 +2598,22 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return completedAgentRun({
-              text: "First reply.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              capturedContexts.push(context?.conversationContext);
+              return completedAgentRun({
+                text: "First reply.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2590,20 +2641,22 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return completedAgentRun({
-              text: "Follow-up reply.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              capturedContexts.push(context?.conversationContext);
+              return completedAgentRun({
+                text: "Follow-up reply.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2660,20 +2713,22 @@ describe("bot handlers (integration)", () => {
             }) as any,
         },
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            capturedContexts.push(context?.conversationContext);
-            return completedAgentRun({
-              text: "Responding to first message only.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              capturedContexts.push(context?.conversationContext);
+              return completedAgentRun({
+                text: "Responding to first message only.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -2718,20 +2773,22 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            turnCount += 1;
-            return completedAgentRun({
-              text: `reply-${turnCount}`,
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "test-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async () => {
+              turnCount += 1;
+              return completedAgentRun({
+                text: `reply-${turnCount}`,
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },

@@ -1307,8 +1307,10 @@ describe("Slack conversation work execution", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("persistent queued failure");
+          agentRunner: {
+            run: async () => {
+              throw new Error("persistent queued failure");
+            },
           },
         },
       },
@@ -1604,23 +1606,25 @@ describe("Slack conversation work execution", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_text, context) => {
-            await context?.onInputCommitted?.();
-            await context?.onArtifactStateUpdated?.({
-              lastCanvasId: "F_YIELD_CANVAS",
-              lastCanvasUrl: "https://slack.example/docs/T/F_YIELD_CANVAS",
-              recentCanvases: [
-                {
-                  id: "F_YIELD_CANVAS",
-                  title: "Yielded canvas",
-                  url: "https://slack.example/docs/T/F_YIELD_CANVAS",
-                  createdAt: "2026-07-02T12:00:00.000Z",
-                },
-              ],
-            });
-            currentNowMs = 242_000;
-            yieldedSessionId = context?.correlation?.turnId;
-            return { status: "suspended", resumeVersion: 1 };
+          agentRunner: {
+            run: async (_text, context) => {
+              await context?.onInputCommitted?.();
+              await context?.onArtifactStateUpdated?.({
+                lastCanvasId: "F_YIELD_CANVAS",
+                lastCanvasUrl: "https://slack.example/docs/T/F_YIELD_CANVAS",
+                recentCanvases: [
+                  {
+                    id: "F_YIELD_CANVAS",
+                    title: "Yielded canvas",
+                    url: "https://slack.example/docs/T/F_YIELD_CANVAS",
+                    createdAt: "2026-07-02T12:00:00.000Z",
+                  },
+                ],
+              });
+              currentNowMs = 242_000;
+              yieldedSessionId = context?.correlation?.turnId;
+              return { status: "suspended", resumeVersion: 1 };
+            },
           },
         },
       },

@@ -27,26 +27,28 @@ describe("Slack behavior: file delivery", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onTextDelta?.("Preview is ready.");
-            return completedAgentRun({
-              text: "Preview is ready.",
-              deliveryPlan: {
-                mode: "thread",
+          agentRunner: {
+            run: async (_prompt, context) => {
+              await context?.onTextDelta?.("Preview is ready.");
+              return completedAgentRun({
+                text: "Preview is ready.",
+                deliveryPlan: {
+                  mode: "thread",
 
-                postThreadText: true,
-                attachFiles: "followup",
-              },
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+                  postThreadText: true,
+                  attachFiles: "followup",
+                },
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success",
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },

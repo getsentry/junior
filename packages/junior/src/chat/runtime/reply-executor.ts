@@ -1,10 +1,10 @@
 /**
  * Slack reply execution boundary.
  *
- * This module bridges prepared Slack thread state into `generateAssistantReply`
+ * This module bridges prepared Slack thread state into the agent runner
  * and commits the resulting Slack-visible delivery/state updates. It is where
  * queued messages, compaction, status updates, and Slack posting meet; agent
- * internals stay behind the reply generator.
+ * internals stay behind the runner seam.
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { Message, SentMessage, Thread } from "chat";
@@ -31,10 +31,9 @@ import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
   buildSteeringPiMessage,
-  type AssistantReplyRequestContext,
   type ReplySteeringMessage,
 } from "@/chat/respond";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -277,11 +276,8 @@ async function loadPiMessagesForTurn(args: {
 }
 
 export interface ReplyExecutorServices {
+  agentRunner: AgentRunner;
   contextCompactor: ContextCompactor;
-  generateAssistantReply: (
-    messageText: string,
-    context: AssistantReplyRequestContext,
-  ) => Promise<AgentRunOutcome>;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getAwaitingAgentContinueRequest: (args: {
     conversationId: string;
@@ -1039,7 +1035,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             : undefined;
-          const outcome = await deps.services.generateAssistantReply(
+          const outcome = await deps.services.agentRunner.run(
             effectiveUserText,
             {
               credentialContext,

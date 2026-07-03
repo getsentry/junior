@@ -9,7 +9,7 @@ import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-clien
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
-import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
@@ -76,7 +76,7 @@ function makeCompletedReply(text: string) {
 
 async function createDirectMessageBot(args: {
   completeText?: ConversationMemoryDeps["completeText"];
-  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+  agentRunner: AgentRunner;
 }) {
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
     userName: "junior",
@@ -101,7 +101,7 @@ async function createDirectMessageBot(args: {
           }
         : {}),
       replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
+        agentRunner: args.agentRunner,
       },
     },
   });
@@ -115,9 +115,7 @@ async function createDirectMessageBot(args: {
   return bot;
 }
 
-async function createMentionBot(args: {
-  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
-}) {
+async function createMentionBot(args: { agentRunner: AgentRunner }) {
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
     userName: "junior",
     adapters: {
@@ -133,7 +131,7 @@ async function createMentionBot(args: {
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
       replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
+        agentRunner: args.agentRunner,
       },
     },
   });
@@ -158,9 +156,11 @@ describe("Slack contract: assistant-thread delivery", () => {
 
   it("does not post assistant status when the DM message omits thread_ts", async () => {
     const bot = await createDirectMessageBot({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-        return makeCompletedReply("Done.");
+      agentRunner: {
+        run: async (_prompt, context) => {
+          await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+          return makeCompletedReply("Done.");
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();
@@ -180,9 +180,11 @@ describe("Slack contract: assistant-thread delivery", () => {
 
   it("posts assistant status with a raw DM channel id when thread_ts is present", async () => {
     const bot = await createDirectMessageBot({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-        return makeCompletedReply("Done.");
+      agentRunner: {
+        run: async (_prompt, context) => {
+          await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+          return makeCompletedReply("Done.");
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();
@@ -221,9 +223,11 @@ describe("Slack contract: assistant-thread delivery", () => {
 
   it("posts assistant status for the first channel-thread reply before Slack adds thread_ts", async () => {
     const bot = await createMentionBot({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-        return makeCompletedReply("Done.");
+      agentRunner: {
+        run: async (_prompt, context) => {
+          await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+          return makeCompletedReply("Done.");
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();
@@ -265,8 +269,10 @@ describe("Slack contract: assistant-thread delivery", () => {
           text: "Debugging Node.js Memory Leaks",
           message: { role: "assistant", content: "" },
         }) as any,
-      generateAssistantReply: async () =>
-        makeCompletedReply("Here is how to debug memory leaks."),
+      agentRunner: {
+        run: async () =>
+          makeCompletedReply("Here is how to debug memory leaks."),
+      },
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -305,8 +311,10 @@ describe("Slack contract: assistant-thread delivery", () => {
             } as any);
           };
         }),
-      generateAssistantReply: async () =>
-        makeCompletedReply("Here is how to debug memory leaks."),
+      agentRunner: {
+        run: async () =>
+          makeCompletedReply("Here is how to debug memory leaks."),
+      },
     });
     const waitUntil = slackWebhookClient.waitUntil();
 
@@ -333,6 +341,7 @@ describe("Slack contract: assistant-thread delivery", () => {
       ]),
     );
 
+    resetSlackApiMockState();
     resolveTitle!();
     await vi.waitFor(() => {
       expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([
@@ -354,8 +363,10 @@ describe("Slack contract: assistant-thread delivery", () => {
           text: "Debugging Node.js Memory Leaks",
           message: { role: "assistant", content: "" },
         }) as any,
-      generateAssistantReply: async () =>
-        makeCompletedReply("Here is how to debug memory leaks."),
+      agentRunner: {
+        run: async () =>
+          makeCompletedReply("Here is how to debug memory leaks."),
+      },
     });
     const waitUntil = slackWebhookClient.waitUntil();
 

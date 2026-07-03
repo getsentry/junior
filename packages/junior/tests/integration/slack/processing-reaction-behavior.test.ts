@@ -35,13 +35,15 @@ describe("Slack behavior: processing reaction", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: successDiagnostics(),
-            });
+          agentRunner: {
+            run: async () => {
+              expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: successDiagnostics(),
+              });
+            },
           },
         },
       },
@@ -93,8 +95,10 @@ describe("Slack behavior: processing reaction", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("assistant should not run for skipped message");
+          agentRunner: {
+            run: async () => {
+              throw new Error("assistant should not run for skipped message");
+            },
           },
         },
       },
@@ -143,13 +147,15 @@ describe("Slack behavior: processing reaction", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: successDiagnostics(),
-            });
+          agentRunner: {
+            run: async () => {
+              expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: successDiagnostics(),
+              });
+            },
           },
         },
       },
@@ -187,13 +193,15 @@ describe("Slack behavior: processing reaction", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: successDiagnostics(),
-            });
+          agentRunner: {
+            run: async () => {
+              expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+              expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: successDiagnostics(),
+              });
+            },
           },
         },
       },
@@ -238,15 +246,17 @@ describe("Slack behavior: processing reaction", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            context?.onToolInvocation?.({
-              toolName: "slackMessageAddReaction",
-              params: { emoji: ":eyes:" },
-            });
-            return completedAgentRun({
-              text: "Done.",
-              diagnostics: successDiagnostics(["slackMessageAddReaction"]),
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              context?.onToolInvocation?.({
+                toolName: "slackMessageAddReaction",
+                params: { emoji: ":eyes:" },
+              });
+              return completedAgentRun({
+                text: "Done.",
+                diagnostics: successDiagnostics(["slackMessageAddReaction"]),
+              });
+            },
           },
         },
       },

@@ -63,7 +63,7 @@ import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
 } from "@/chat/app/production";
-import { withSandboxTracePropagation } from "@/chat/app/services";
+import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export { defineJuniorPlugins } from "./plugins";
@@ -592,10 +592,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
-  const generateReplyWithTracePropagation = withSandboxTracePropagation(
-    generateAssistantReply,
-    runtimeServiceOverrides.sandbox.tracePropagation,
-  );
+  const agentRunner = createAgentRunner(generateAssistantReply, {
+    tracePropagation: runtimeServiceOverrides.sandbox.tracePropagation,
+  });
 
   const app = new Hono();
 
@@ -629,18 +628,19 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
   app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      generateReply: generateReplyWithTracePropagation,
+      agentRunner,
     });
   });
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil, {
-      generateReply: generateReplyWithTracePropagation,
+      agentRunner,
     });
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {
     return agentDispatchPOST(c.req.raw, waitUntil, {
+      agentRunner,
       tracePropagation: { domains: sandboxEgressTracePropagationDomains },
     });
   });

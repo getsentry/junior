@@ -62,11 +62,12 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
+import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 
 interface OAuthCallbackOptions {
-  generateReply?: typeof generateAssistantReply;
+  agentRunner: AgentRunner;
 }
 
 /**
@@ -261,7 +262,7 @@ async function resumeOAuthSessionRecordTurn(
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
     initialText: "",
-    generateReply: options.generateReply,
+    agentRunner: options.agentRunner,
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
         stored.resumeConversationId!,
@@ -506,7 +507,7 @@ async function resumePendingOAuthMessage(
     threadTs: stored.threadTs,
     messageTs,
     connectedText: "",
-    generateReply: options.generateReply,
+    agentRunner: options.agentRunner,
     replyContext: {
       credentialContext: {
         actor: { type: "user", userId: stored.userId },
@@ -543,7 +544,7 @@ export async function GET(
   request: Request,
   provider: string,
   waitUntil: WaitUntilFn,
-  options: OAuthCallbackOptions = {},
+  options: OAuthCallbackOptions,
 ): Promise<Response> {
   const providerConfig = pluginCatalogRuntime.getOAuthConfig(provider);
   if (!providerConfig) {

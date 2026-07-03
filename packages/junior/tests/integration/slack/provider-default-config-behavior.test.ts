@@ -26,7 +26,7 @@ describe("Slack behavior: provider default configuration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
@@ -87,7 +87,7 @@ describe("Slack behavior: provider default configuration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });

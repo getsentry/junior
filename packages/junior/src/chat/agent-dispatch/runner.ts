@@ -7,12 +7,8 @@
  * state, and schedules follow-up slices when a turn needs to continue.
  */
 import { botConfig } from "@/chat/config";
-import {
-  generateAssistantReply as generateAssistantReplyImpl,
-  type AssistantReply,
-  type AssistantReplyRequestContext,
-} from "@/chat/respond";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { logException } from "@/chat/logging";
 import {
@@ -64,10 +60,7 @@ import type { DispatchCallback, DispatchRecord } from "./types";
 const DISPATCH_SLICE_LEASE_MS = 5 * 60 * 1000;
 
 export interface AgentDispatchRunnerDeps {
-  generateAssistantReply?: (
-    messageText: string,
-    context: AssistantReplyRequestContext,
-  ) => Promise<AgentRunOutcome>;
+  agentRunner: AgentRunner;
   scheduleCallback?: typeof scheduleDispatchCallback;
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
   tracePropagation?: SandboxEgressTracePropagationConfig;
@@ -176,10 +169,8 @@ function canClaimDispatch(record: DispatchRecord, nowMs: number): boolean {
 /** Run one serverless slice for a core-owned agent dispatch. */
 export async function runAgentDispatchSlice(
   callback: DispatchCallback,
-  deps: AgentDispatchRunnerDeps = {},
+  deps: AgentDispatchRunnerDeps,
 ): Promise<void> {
-  const generateAssistantReply =
-    deps.generateAssistantReply ?? generateAssistantReplyImpl;
   const scheduleCallback = deps.scheduleCallback ?? scheduleDispatchCallback;
   const scheduleCompletedTasks =
     deps.scheduleSessionCompletedPluginTasks ??
@@ -300,7 +291,7 @@ export async function runAgentDispatchSlice(
       excludeMessageId: userMessageId,
     });
 
-    const outcome = await generateAssistantReply(dispatch.input, {
+    const outcome = await deps.agentRunner.run(dispatch.input, {
       authorizationFlowMode: "disabled",
       credentialContext: {
         actor: dispatch.actor,

@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackRuntime } from "@/chat/app/factory";
-import { withSandboxTracePropagation } from "@/chat/app/services";
+import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
   getSlackBotToken,
@@ -98,6 +98,11 @@ export function createProductionConversationWorkOptions(options?: {
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
+  const agentRunner =
+    options?.services?.replyExecutor?.agentRunner ??
+    createAgentRunner(generateAssistantReply, {
+      tracePropagation: options?.services?.sandbox?.tracePropagation,
+    });
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
     services: options?.services,
@@ -110,10 +115,7 @@ export function createProductionConversationWorkOptions(options?: {
       conversationStore,
       resumeAwaitingContinuation: async (conversationId) =>
         await resumeAwaitingSlackContinuation(conversationId, {
-          generateReply: withSandboxTracePropagation(
-            generateAssistantReply,
-            options?.services?.sandbox?.tracePropagation,
-          ),
+          agentRunner,
           scheduleSessionCompletedPluginTasks:
             options?.services?.replyExecutor
               ?.scheduleSessionCompletedPluginTasks,

@@ -5,7 +5,7 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { mswServer } from "../../msw/server";
-import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -31,7 +31,7 @@ function makeDiagnostics() {
 
 async function createDirectMessageBot(args: {
   completeText: () => Promise<{ text: string; message: never }>;
-  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+  agentRunner: AgentRunner;
 }) {
   const [{ createSlackRuntime }, { JuniorChat }, { createJuniorSlackAdapter }] =
     await Promise.all([
@@ -57,7 +57,7 @@ async function createDirectMessageBot(args: {
         completeText: args.completeText,
       },
       replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
+        agentRunner: args.agentRunner,
       },
     },
   });
@@ -103,18 +103,20 @@ describe("Slack contract: message.im attachment ingress", () => {
         text: "Screenshot shows the current incident chart.",
         message: {} as never,
       }),
-      generateAssistantReply: async (_prompt, context) => {
-        const attachments = context?.userAttachments ?? [];
-        capturedAttachmentMediaTypes.push(
-          attachments.map((attachment) => attachment.mediaType),
-        );
-        capturedAttachmentNames.push(
-          attachments.map((attachment) => attachment.filename ?? ""),
-        );
-        return completedAgentRun({
-          text: "Processed screenshot.",
-          diagnostics: makeDiagnostics(),
-        });
+      agentRunner: {
+        run: async (_prompt, context) => {
+          const attachments = context?.userAttachments ?? [];
+          capturedAttachmentMediaTypes.push(
+            attachments.map((attachment) => attachment.mediaType),
+          );
+          capturedAttachmentNames.push(
+            attachments.map((attachment) => attachment.filename ?? ""),
+          );
+          return completedAgentRun({
+            text: "Processed screenshot.",
+            diagnostics: makeDiagnostics(),
+          });
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();

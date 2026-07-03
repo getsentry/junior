@@ -69,7 +69,7 @@ function continueAgentRun(args: {
         sessionId: args.sessionId,
       },
       {
-        generateReply: generateAssistantReplyMock,
+        agentRunner: { run: generateAssistantReplyMock },
         scheduleAgentContinue: (request) =>
           agentContinueServiceModule.scheduleAgentContinue(request, {
             queue,
@@ -922,7 +922,7 @@ describe("agent continuation Slack integration", () => {
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
         {
-          generateReply: generateAssistantReplyMock,
+          agentRunner: { run: generateAssistantReplyMock },
           scheduleAgentContinue: (request) =>
             agentContinueServiceModule.scheduleAgentContinue(request, {
               queue,
@@ -1036,7 +1036,7 @@ describe("agent continuation Slack integration", () => {
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
         {
-          generateReply: generateAssistantReplyMock,
+          agentRunner: { run: generateAssistantReplyMock },
         },
       ),
     );

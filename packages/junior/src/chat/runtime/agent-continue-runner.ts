@@ -60,7 +60,8 @@ import {
   type SlackRequester,
 } from "@/chat/requester";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import type { AssistantReply, generateAssistantReply } from "@/chat/respond";
+import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   applyPendingAuthUpdate,
@@ -72,7 +73,7 @@ const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
 /** Runtime ports for agent continuation scheduling. */
 export interface AgentContinueRunnerOptions {
-  generateReply?: typeof generateAssistantReply;
+  agentRunner: AgentRunner;
   resumeTurn?: typeof resumeSlackTurn;
   scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
@@ -267,7 +268,7 @@ async function failUnresumableContinuation(args: {
  */
 export async function continueSlackAgentRun(
   payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions = {},
+  options: AgentContinueRunnerOptions,
 ): Promise<boolean> {
   const thread = parseSlackThreadId(payload.conversationId);
   if (!thread) {
@@ -284,7 +285,7 @@ export async function continueSlackAgentRun(
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
-    generateReply: options.generateReply,
+    agentRunner: options.agentRunner,
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
@@ -583,7 +584,7 @@ async function recoverStrandedRunningSession(args: {
 /** Resume the first valid paused Slack session for an idle conversation. */
 export async function resumeAwaitingSlackContinuation(
   conversationId: string,
-  options: AgentContinueRunnerOptions = {},
+  options: AgentContinueRunnerOptions,
 ): Promise<boolean> {
   const summaries =
     await listAgentTurnSessionSummariesForConversation(conversationId);
@@ -643,7 +644,7 @@ export async function resumeAwaitingSlackContinuation(
  */
 export async function continueSlackAgentRunWithLockRetry(
   payload: AgentContinueRequest,
-  options: AgentContinueRunnerOptions = {},
+  options: AgentContinueRunnerOptions,
 ): Promise<boolean> {
   const scheduleAgentContinue =
     options.scheduleAgentContinue ?? defaultScheduleAgentContinue;

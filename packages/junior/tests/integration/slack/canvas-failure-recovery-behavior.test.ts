@@ -42,7 +42,7 @@ describe("Slack behavior: canvas failure recovery", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
@@ -80,7 +80,7 @@ describe("Slack behavior: canvas failure recovery", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });

@@ -53,11 +53,13 @@ describe("Slack behavior: new mention", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            fakeReplyCalls.push({ prompt });
-            return completedReply(
-              "Acknowledged. Rollback is complete and error rates are stable.",
-            );
+          agentRunner: {
+            run: async (prompt) => {
+              fakeReplyCalls.push({ prompt });
+              return completedReply(
+                "Acknowledged. Rollback is complete and error rates are stable.",
+              );
+            },
           },
         },
       },
@@ -94,9 +96,11 @@ describe("Slack behavior: new mention", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            fakeReplyCalls.push({ prompt });
-            return completedReply("Handled both updates.");
+          agentRunner: {
+            run: async (prompt) => {
+              fakeReplyCalls.push({ prompt });
+              return completedReply("Handled both updates.");
+            },
           },
         },
       },
@@ -162,17 +166,19 @@ describe("Slack behavior: new mention", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            fakeReplyCalls.push({
-              prompt,
-              inboundAttachmentCount: context?.inboundAttachmentCount,
-              filenames: attachments.map(
-                (attachment) => attachment.filename ?? "",
-              ),
-              attachmentText: attachments[0]?.data?.toString("utf8"),
-            });
-            return completedReply("Handled queued attachment.");
+          agentRunner: {
+            run: async (prompt, context) => {
+              const attachments = context?.userAttachments ?? [];
+              fakeReplyCalls.push({
+                prompt,
+                inboundAttachmentCount: context?.inboundAttachmentCount,
+                filenames: attachments.map(
+                  (attachment) => attachment.filename ?? "",
+                ),
+                attachmentText: attachments[0]?.data?.toString("utf8"),
+              });
+              return completedReply("Handled queued attachment.");
+            },
           },
         },
       },
@@ -230,9 +236,11 @@ describe("Slack behavior: new mention", () => {
       slackAdapter,
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(makeAssistantStatus("running", "bash"));
-            return completedReply("Done.", ["bash"]);
+          agentRunner: {
+            run: async (_prompt, context) => {
+              await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+              return completedReply("Done.", ["bash"]);
+            },
           },
         },
       },
@@ -267,8 +275,10 @@ describe("Slack behavior: new mention", () => {
       slackAdapter,
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new Error("model exploded");
+          agentRunner: {
+            run: async () => {
+              throw new Error("model exploded");
+            },
           },
         },
       },
@@ -301,20 +311,22 @@ describe("Slack behavior: new mention", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            return completedAgentRun({
-              text: "Posted in channel.",
-              deliveryMode: "channel_only" as const,
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success" as const,
-                toolCalls: ["slackChannelPostMessage"],
-                toolErrorCount: 0,
-                toolResultCount: 1,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async () => {
+              return completedAgentRun({
+                text: "Posted in channel.",
+                deliveryMode: "channel_only" as const,
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success" as const,
+                  toolCalls: ["slackChannelPostMessage"],
+                  toolErrorCount: 0,
+                  toolResultCount: 1,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },

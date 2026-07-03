@@ -17,6 +17,14 @@ export async function runMcpOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
+    {
+      agentRunner: {
+        run: async (messageText, context) => {
+          const { generateAssistantReply } = await import("@/chat/respond");
+          return await generateAssistantReply(messageText, context);
+        },
+      },
+    },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   for (const callback of callbacks) {

@@ -61,25 +61,27 @@ describe("Slack behavior: attachment handling", () => {
           completeText: completeTextMock,
         },
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            capturedAttachmentCounts.push(attachments.length);
-            if (attachments[0]) {
-              capturedAttachmentMediaTypes.push(attachments[0].mediaType);
-            }
+          agentRunner: {
+            run: async (_prompt, context) => {
+              const attachments = context?.userAttachments ?? [];
+              capturedAttachmentCounts.push(attachments.length);
+              if (attachments[0]) {
+                capturedAttachmentMediaTypes.push(attachments[0].mediaType);
+              }
 
-            return completedAgentRun({
-              text: "Image received. The chart trend is upward.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+              return completedAgentRun({
+                text: "Image received. The chart trend is upward.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -141,7 +143,7 @@ describe("Slack behavior: attachment handling", () => {
           completeText: completeTextMock,
         },
         replyExecutor: {
-          generateAssistantReply,
+          agentRunner: { run: generateAssistantReply },
         },
       },
     });
