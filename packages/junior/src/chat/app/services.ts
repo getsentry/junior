@@ -1,8 +1,5 @@
 import { completeObject, completeText } from "@/chat/pi/client";
-import {
-  generateAssistantReply as generateAssistantReplyImpl,
-  type AssistantReplyRequestContext,
-} from "@/chat/respond";
+import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   getAwaitingAgentContinueRequest,
@@ -33,6 +30,7 @@ import {
   type VisionContextDeps,
   type VisionContextService,
 } from "@/chat/services/vision-context";
+import { createAgentRunner } from "@/chat/runtime/agent-runner";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
@@ -51,22 +49,6 @@ export interface JuniorRuntimeServiceOverrides {
     tracePropagation?: SandboxEgressTracePropagationConfig;
   };
   visionContext?: Partial<VisionContextDeps>;
-}
-
-/** Apply app-owned sandbox egress trace config unless a turn overrides it. */
-export function withSandboxTracePropagation(
-  generateReply: typeof generateAssistantReplyImpl,
-  tracePropagation?: SandboxEgressTracePropagationConfig,
-): typeof generateAssistantReplyImpl {
-  return async (messageText: string, context: AssistantReplyRequestContext) =>
-    await generateReply(messageText, {
-      ...context,
-      sandbox: {
-        ...context?.sandbox,
-        tracePropagation:
-          context?.sandbox?.tracePropagation ?? tracePropagation,
-      },
-    });
 }
 
 export function createJuniorRuntimeServices(
@@ -94,12 +76,11 @@ export function createJuniorRuntimeServices(
     replyExecutor: {
       contextCompactor:
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
-      generateAssistantReply:
-        overrides.replyExecutor?.generateAssistantReply ??
-        withSandboxTracePropagation(
-          generateAssistantReplyImpl,
-          overrides.sandbox?.tracePropagation,
-        ),
+      agentRunner:
+        overrides.replyExecutor?.agentRunner ??
+        createAgentRunner(generateAssistantReplyImpl, {
+          tracePropagation: overrides.sandbox?.tracePropagation,
+        }),
       getAwaitingAgentContinueRequest:
         overrides.replyExecutor?.getAwaitingAgentContinueRequest ??
         getAwaitingAgentContinueRequest,

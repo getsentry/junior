@@ -83,7 +83,7 @@ describe("bot image hydration", () => {
             listThreadReplies: listThreadRepliesMock,
           },
           replyExecutor: {
-            generateAssistantReply: async () => makeSuccessOutcome(),
+            agentRunner: { run: async () => makeSuccessOutcome() },
           },
         },
       },
@@ -182,7 +182,7 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock,
         },
         replyExecutor: {
-          generateAssistantReply: async () => makeSuccessOutcome(),
+          agentRunner: { run: async () => makeSuccessOutcome() },
         },
       },
     });
@@ -284,7 +284,7 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock,
         },
         replyExecutor: {
-          generateAssistantReply: async () => makeSuccessOutcome(),
+          agentRunner: { run: async () => makeSuccessOutcome() },
         },
       },
     });
@@ -366,7 +366,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply: async () => makeSuccessOutcome(),
+            agentRunner: { run: async () => makeSuccessOutcome() },
           },
         },
       },
@@ -476,7 +476,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply,
+            agentRunner: { run: generateAssistantReply },
           },
         },
       },
@@ -631,7 +631,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply,
+            agentRunner: { run: generateAssistantReply },
           },
         },
       },
@@ -790,7 +790,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply,
+            agentRunner: { run: generateAssistantReply },
           },
         },
       },
@@ -913,7 +913,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply,
+            agentRunner: { run: generateAssistantReply },
           },
         },
       },
@@ -1015,11 +1015,13 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
         },
         replyExecutor: {
-          generateAssistantReply: async () =>
-            completedAgentRun({
-              ...makeSuccessReply("Here is your image"),
-              files: [generatedFile],
-            }),
+          agentRunner: {
+            run: async () =>
+              completedAgentRun({
+                ...makeSuccessReply("Here is your image"),
+                files: [generatedFile],
+              }),
+          },
         },
       },
     });
@@ -1071,17 +1073,19 @@ describe("bot image hydration", () => {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
         },
         replyExecutor: {
-          generateAssistantReply: async (_text: string, _context: any) => {
-            return completedAgentRun({
-              ...makeSuccessReply("finalized content"),
-              files: [
-                {
-                  data: Buffer.from("fake-png"),
-                  filename: "generated.png",
-                  mimeType: "image/png",
-                },
-              ],
-            });
+          agentRunner: {
+            run: async (_text: string, _context: any) => {
+              return completedAgentRun({
+                ...makeSuccessReply("finalized content"),
+                files: [
+                  {
+                    data: Buffer.from("fake-png"),
+                    filename: "generated.png",
+                    mimeType: "image/png",
+                  },
+                ],
+              });
+            },
           },
         },
       },

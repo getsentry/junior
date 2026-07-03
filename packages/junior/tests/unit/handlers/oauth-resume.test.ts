@@ -121,7 +121,7 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0001"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: () => new Promise<never>(() => {}),
+      agentRunner: { run: () => new Promise<never>(() => {}) },
       replyTimeoutMs: 10,
       onFailure,
     });
@@ -164,8 +164,10 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0004"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => {
-        throw new Error("resume failed");
+      agentRunner: {
+        run: async () => {
+          throw new Error("resume failed");
+        },
       },
       onFailure,
     });
@@ -205,19 +207,21 @@ describe("resumeAuthorizedRequest", () => {
           source: testSlackSource("1700000000.0005"),
           requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        generateReply: async () =>
-          completedAgentRun({
-            text: "Final resumed answer",
-            diagnostics: {
-              assistantMessageCount: 1,
-              modelId: "fake-agent-model",
-              outcome: "success" as const,
-              toolCalls: [],
-              toolErrorCount: 0,
-              toolResultCount: 0,
-              usedPrimaryText: true,
-            },
-          }),
+        agentRunner: {
+          run: async () =>
+            completedAgentRun({
+              text: "Final resumed answer",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            }),
+        },
         onSuccess: async () => {
           throw new Error("state write failed");
         },
@@ -263,19 +267,21 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0006"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: "Final resumed answer",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success" as const,
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "Final resumed answer",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "fake-agent-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+      },
       scheduleSessionCompletedPluginTasks,
     });
 
@@ -311,13 +317,15 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0002"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 3,
-        });
+      agentRunner: {
+        run: async () => {
+          throw new RetryableTurnError("agent_continue", "timed out again", {
+            conversationId: "conversation-1",
+            sessionId: "turn-1",
+            version: 3,
+            sliceId: 3,
+          });
+        },
       },
       onTimeoutPause,
     });
@@ -341,13 +349,15 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0003"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 6,
-        });
+      agentRunner: {
+        run: async () => {
+          throw new RetryableTurnError("agent_continue", "timed out again", {
+            conversationId: "conversation-1",
+            sessionId: "turn-1",
+            version: 3,
+            sliceId: 6,
+          });
+        },
       },
       onTimeoutPause: async () => {
         throw new Error("continuation scheduling failed");

@@ -69,26 +69,28 @@ describe("Slack behavior: mixed attachment media", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            generateAssistantReply: async (_prompt, context) => {
-              const attachments = context?.userAttachments ?? [];
-              capturedAttachmentMediaTypes.push(
-                attachments.map((attachment) => attachment.mediaType),
-              );
-              capturedAttachmentNames.push(
-                attachments.map((attachment) => attachment.filename ?? ""),
-              );
-              return completedAgentRun({
-                text: "Processed attachments.",
-                diagnostics: {
-                  assistantMessageCount: 1,
-                  modelId: "fake-agent-model",
-                  outcome: "success" as const,
-                  toolCalls: [],
-                  toolErrorCount: 0,
-                  toolResultCount: 0,
-                  usedPrimaryText: true,
-                },
-              });
+            agentRunner: {
+              run: async (_prompt, context) => {
+                const attachments = context?.userAttachments ?? [];
+                capturedAttachmentMediaTypes.push(
+                  attachments.map((attachment) => attachment.mediaType),
+                );
+                capturedAttachmentNames.push(
+                  attachments.map((attachment) => attachment.filename ?? ""),
+                );
+                return completedAgentRun({
+                  text: "Processed attachments.",
+                  diagnostics: {
+                    assistantMessageCount: 1,
+                    modelId: "fake-agent-model",
+                    outcome: "success" as const,
+                    toolCalls: [],
+                    toolErrorCount: 0,
+                    toolResultCount: 0,
+                    usedPrimaryText: true,
+                  },
+                });
+              },
             },
           },
         },
@@ -163,29 +165,31 @@ describe("Slack behavior: mixed attachment media", () => {
     const { slackRuntime } = await createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            const attachments = context?.userAttachments ?? [];
-            capturedAttachmentMediaTypes.push(
-              attachments.map((attachment) => attachment.mediaType),
-            );
-            capturedAttachmentNames.push(
-              attachments.map((attachment) => attachment.filename ?? ""),
-            );
-            capturedOmittedImageCounts.push(
-              context?.omittedImageAttachmentCount ?? 0,
-            );
-            return completedAgentRun({
-              text: "Processed attachments.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success" as const,
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              const attachments = context?.userAttachments ?? [];
+              capturedAttachmentMediaTypes.push(
+                attachments.map((attachment) => attachment.mediaType),
+              );
+              capturedAttachmentNames.push(
+                attachments.map((attachment) => attachment.filename ?? ""),
+              );
+              capturedOmittedImageCounts.push(
+                context?.omittedImageAttachmentCount ?? 0,
+              );
+              return completedAgentRun({
+                text: "Processed attachments.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },
@@ -248,11 +252,13 @@ describe("Slack behavior: mixed attachment media", () => {
     const { slackRuntime } = await createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            capturedOmittedImageCounts.push(
-              context?.omittedImageAttachmentCount ?? 0,
-            );
-            return generateAssistantReply(prompt, context);
+          agentRunner: {
+            run: async (prompt, context) => {
+              capturedOmittedImageCounts.push(
+                context?.omittedImageAttachmentCount ?? 0,
+              );
+              return generateAssistantReply(prompt, context);
+            },
           },
         },
       },

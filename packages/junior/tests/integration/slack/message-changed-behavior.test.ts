@@ -263,20 +263,22 @@ describe("Slack behavior: message_changed webhook ingress", () => {
             fullName: "David Cramer",
             userName: "dcramer",
           }),
-          generateAssistantReply: async (_prompt, context) => {
-            expect(context?.requester).toEqual({
-              email: "david@example.com",
-              fullName: "David Cramer",
-              platform: "slack",
-              teamId: TEST_SLACK_TEAM_ID,
-              userId: "U123",
-              userName: "dcramer",
-            });
-            await context?.onTextDelta?.("Hello world");
-            return completedAgentRun({
-              text: "Hello world",
-              diagnostics: makeDiagnostics(),
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              expect(context?.requester).toEqual({
+                email: "david@example.com",
+                fullName: "David Cramer",
+                platform: "slack",
+                teamId: TEST_SLACK_TEAM_ID,
+                userId: "U123",
+                userName: "dcramer",
+              });
+              await context?.onTextDelta?.("Hello world");
+              return completedAgentRun({
+                text: "Hello world",
+                diagnostics: makeDiagnostics(),
+              });
+            },
           },
         },
       },

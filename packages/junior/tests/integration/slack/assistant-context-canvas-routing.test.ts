@@ -42,24 +42,26 @@ describe("Slack behavior: assistant context canvas routing", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (_prompt, context) => {
-            await createCanvas({
-              title: "Shared update",
-              markdown: "Context-aware update",
-              channelId: context?.toolChannelId,
-            });
-            return completedAgentRun({
-              text: "Shared canvas created.",
-              diagnostics: {
-                assistantMessageCount: 1,
-                modelId: "fake-agent-model",
-                outcome: "success",
-                toolCalls: [],
-                toolErrorCount: 0,
-                toolResultCount: 0,
-                usedPrimaryText: true,
-              },
-            });
+          agentRunner: {
+            run: async (_prompt, context) => {
+              await createCanvas({
+                title: "Shared update",
+                markdown: "Context-aware update",
+                channelId: context?.toolChannelId,
+              });
+              return completedAgentRun({
+                text: "Shared canvas created.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "fake-agent-model",
+                  outcome: "success",
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
           },
         },
       },

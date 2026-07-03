@@ -13,7 +13,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { ReplySteeringMessage } from "@/chat/respond";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -103,7 +103,7 @@ function completeObjectWithDecision(
 
 function createTurnHarness(args: {
   completeObject?: CompleteObjectOverride;
-  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+  agentRunner: AgentRunner;
   services?: Parameters<typeof createSlackRuntime>[0]["services"];
   state: StateAdapter;
 }) {
@@ -119,7 +119,7 @@ function createTurnHarness(args: {
       ...(args.services ?? {}),
       replyExecutor: {
         ...(args.services?.replyExecutor ?? {}),
-        generateAssistantReply: args.generateAssistantReply,
+        agentRunner: args.agentRunner,
       },
       subscribedReplyPolicy: {
         completeObject:
@@ -179,11 +179,13 @@ describe("Slack behavior: durable turn steering", () => {
   it("does not enqueue duplicate Slack event retries for a persisted message", async () => {
     const state = getStateAdapter();
     const { conversationId, queue, services } = createTurnHarness({
-      generateAssistantReply: async () =>
-        completedAgentRun({
-          text: "not used",
-          diagnostics: makeDiagnostics(),
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "not used",
+            diagnostics: makeDiagnostics(),
+          }),
+      },
       state,
     });
     const event = makeMessageEvent({
@@ -245,35 +247,37 @@ describe("Slack behavior: durable turn steering", () => {
       steeringTexts: string[];
     }> = [];
     const state = getStateAdapter();
-    const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
-      async (prompt, context) => {
-        await context?.onInputCommitted?.();
-        if (!blockingCallReleased) {
-          agentEntered.resolve();
-          await releaseAgent.promise;
-          blockingCallReleased = true;
-        }
+    const generateAssistantReply: AgentRunner["run"] = async (
+      prompt,
+      context,
+    ) => {
+      await context?.onInputCommitted?.();
+      if (!blockingCallReleased) {
+        agentEntered.resolve();
+        await releaseAgent.promise;
+        blockingCallReleased = true;
+      }
 
-        const steeringMessages: ReplySteeringMessage[] = [];
-        const drained = await context?.drainSteeringMessages?.(
-          async (messages) => {
-            steeringMessages.push(...messages);
-          },
-        );
-        if (steeringMessages.length === 0 && drained) {
-          steeringMessages.push(...drained);
-        }
+      const steeringMessages: ReplySteeringMessage[] = [];
+      const drained = await context?.drainSteeringMessages?.(
+        async (messages) => {
+          steeringMessages.push(...messages);
+        },
+      );
+      if (steeringMessages.length === 0 && drained) {
+        steeringMessages.push(...drained);
+      }
 
-        const steeringTexts = steeringMessages.map((message) => message.text);
-        agentCalls.push({ prompt, steeringTexts });
-        return completedAgentRun({
-          text: [
-            `Handled initial: ${prompt}`,
-            `Steered: ${steeringTexts.join(" | ")}`,
-          ].join("\n"),
-          diagnostics: makeDiagnostics(),
-        });
-      };
+      const steeringTexts = steeringMessages.map((message) => message.text);
+      agentCalls.push({ prompt, steeringTexts });
+      return completedAgentRun({
+        text: [
+          `Handled initial: ${prompt}`,
+          `Steered: ${steeringTexts.join(" | ")}`,
+        ].join("\n"),
+        diagnostics: makeDiagnostics(),
+      });
+    };
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
         completeObject: completeObjectWithDecision((prompt) =>
@@ -291,7 +295,7 @@ describe("Slack behavior: durable turn steering", () => {
                 reason: "active steering follow-up",
               },
         ),
-        generateAssistantReply,
+        agentRunner: { run: generateAssistantReply },
         state,
       });
 
@@ -444,13 +448,15 @@ describe("Slack behavior: durable turn steering", () => {
           confidence: 1,
           reason: "side conversation",
         })),
-        generateAssistantReply: async (prompt, context) => {
-          replyCalls.push(prompt);
-          await context?.onInputCommitted?.();
-          return completedAgentRun({
-            text: "Started.",
-            diagnostics: makeDiagnostics(),
-          });
+        agentRunner: {
+          run: async (prompt, context) => {
+            replyCalls.push(prompt);
+            await context?.onInputCommitted?.();
+            return completedAgentRun({
+              text: "Started.",
+              diagnostics: makeDiagnostics(),
+            });
+          },
         },
         state,
       });
@@ -504,24 +510,26 @@ describe("Slack behavior: durable turn steering", () => {
     const releaseAgent = deferred();
     const drainedTexts: string[] = [];
     const state = getStateAdapter();
-    const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
-      async (_prompt, context) => {
-        await context?.onInputCommitted?.();
-        agentEntered.resolve();
-        await releaseAgent.promise;
-        const drained = await context?.drainSteeringMessages?.(
-          async (messages) => {
-            drainedTexts.push(...messages.map((message) => message.text));
-          },
-        );
-        if (drainedTexts.length === 0 && drained) {
-          drainedTexts.push(...drained.map((message) => message.text));
-        }
-        return completedAgentRun({
-          text: "Done with the initial request.",
-          diagnostics: makeDiagnostics(),
-        });
-      };
+    const generateAssistantReply: AgentRunner["run"] = async (
+      _prompt,
+      context,
+    ) => {
+      await context?.onInputCommitted?.();
+      agentEntered.resolve();
+      await releaseAgent.promise;
+      const drained = await context?.drainSteeringMessages?.(
+        async (messages) => {
+          drainedTexts.push(...messages.map((message) => message.text));
+        },
+      );
+      if (drainedTexts.length === 0 && drained) {
+        drainedTexts.push(...drained.map((message) => message.text));
+      }
+      return completedAgentRun({
+        text: "Done with the initial request.",
+        diagnostics: makeDiagnostics(),
+      });
+    };
     const { conversationId, runNextQueuedWork, services } = createTurnHarness({
       completeObject: completeObjectWithDecision((prompt) =>
         prompt.includes("stop watching")
@@ -538,7 +546,7 @@ describe("Slack behavior: durable turn steering", () => {
               reason: "active steering follow-up",
             },
       ),
-      generateAssistantReply,
+      agentRunner: { run: generateAssistantReply },
       state,
     });
 
@@ -626,14 +634,16 @@ describe("Slack behavior: durable turn steering", () => {
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {
     const state = getStateAdapter();
-    const generateAssistantReply: ReplyExecutorServices["generateAssistantReply"] =
-      async (_prompt, context) => {
-        expect(context?.onInputCommitted).toEqual(expect.any(Function));
-        throw new Error("agent crashed before input commit");
-      };
+    const generateAssistantReply: AgentRunner["run"] = async (
+      _prompt,
+      context,
+    ) => {
+      expect(context?.onInputCommitted).toEqual(expect.any(Function));
+      throw new Error("agent crashed before input commit");
+    };
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
-        generateAssistantReply,
+        agentRunner: { run: generateAssistantReply },
         state,
       });
 

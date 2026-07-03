@@ -85,16 +85,18 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.001"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: "The budget deadline you mentioned earlier was Friday.",
-          diagnostics: makeDiagnostics("success", {
-            durationMs: 842,
-            usage: {
-              totalTokens: 1234,
-            },
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "The budget deadline you mentioned earlier was Friday.",
+            diagnostics: makeDiagnostics("success", {
+              durationMs: 842,
+              usage: {
+                totalTokens: 1234,
+              },
+            }),
           }),
-        }),
+      },
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
@@ -187,16 +189,18 @@ describe("oauth resume slack integration", () => {
           turnId: "turn-1",
         },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: "done",
-          diagnostics: makeDiagnostics("success", {
-            durationMs: 500,
-            usage: {
-              outputTokens: 7,
-            },
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "done",
+            diagnostics: makeDiagnostics("success", {
+              durationMs: 500,
+              usage: {
+                outputTokens: 7,
+              },
+            }),
           }),
-        }),
+      },
     });
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
@@ -247,13 +251,15 @@ describe("oauth resume slack integration", () => {
           turnId: "turn-auth-pause",
         },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("mcp_auth_resume", "auth required", {
-          authDisposition: "link_sent",
-          authKind: "mcp",
-          authProvider: "eval-auth",
-          authProviderDisplayName: "Eval Auth",
-        });
+      agentRunner: {
+        run: async () => {
+          throw new RetryableTurnError("mcp_auth_resume", "auth required", {
+            authDisposition: "link_sent",
+            authKind: "mcp",
+            authProvider: "eval-auth",
+            authProviderDisplayName: "Eval Auth",
+          });
+        },
       },
       onAuthPause: async () => undefined,
     });
@@ -294,11 +300,13 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.002"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: longReply,
-          diagnostics: makeDiagnostics(),
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: longReply,
+            diagnostics: makeDiagnostics(),
+          }),
+      },
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -334,11 +342,13 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.003"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        failedAgentRun({
-          text: "Partial output",
-          diagnostics: makeDiagnostics("provider_error"),
-        }),
+      agentRunner: {
+        run: async () =>
+          failedAgentRun({
+            text: "Partial output",
+            diagnostics: makeDiagnostics("provider_error"),
+          }),
+      },
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -371,14 +381,16 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.006"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        failedAgentRun({
-          text: "",
-          diagnostics: makeDiagnostics("execution_failure", {
-            assistantMessageCount: 0,
-            usedPrimaryText: false,
+      agentRunner: {
+        run: async () =>
+          failedAgentRun({
+            text: "",
+            diagnostics: makeDiagnostics("execution_failure", {
+              assistantMessageCount: 0,
+              usedPrimaryText: false,
+            }),
           }),
-        }),
+      },
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -409,17 +421,19 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.004"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: "Here is the resumed artifact.",
-          files: [
-            {
-              data: Buffer.from("resume-file"),
-              filename: "resume.txt",
-            },
-          ],
-          diagnostics: makeDiagnostics(),
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "Here is the resumed artifact.",
+            files: [
+              {
+                data: Buffer.from("resume-file"),
+                filename: "resume.txt",
+              },
+            ],
+            diagnostics: makeDiagnostics(),
+          }),
+      },
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -468,17 +482,19 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.005"),
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      generateReply: async () =>
-        completedAgentRun({
-          text: "Here is the resumed artifact.",
-          files: [
-            {
-              data: Buffer.from("resume-file"),
-              filename: "resume.txt",
-            },
-          ],
-          diagnostics: makeDiagnostics(),
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: "Here is the resumed artifact.",
+            files: [
+              {
+                data: Buffer.from("resume-file"),
+                filename: "resume.txt",
+              },
+            ],
+            diagnostics: makeDiagnostics(),
+          }),
+      },
     });
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([

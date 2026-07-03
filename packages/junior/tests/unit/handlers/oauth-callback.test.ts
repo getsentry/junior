@@ -118,6 +118,12 @@ const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
 };
 
+const testAgentRunner = {
+  run: vi.fn(async () => {
+    throw new Error("test agent runner should not run");
+  }),
+};
+
 beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   await disconnectStateAdapter();
@@ -249,6 +255,7 @@ describe("oauth callback handler", () => {
       ),
       "unknown",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(404);
@@ -262,6 +269,7 @@ describe("oauth callback handler", () => {
       makeRequest("https://example.com/api/oauth/callback/sentry"),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -277,6 +285,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -301,6 +310,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -329,6 +339,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(await getStoredState(stateKey)).toBeFalsy();
@@ -349,6 +360,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(500);
@@ -379,6 +391,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(200);
@@ -416,6 +429,7 @@ describe("oauth callback handler", () => {
       ),
       "example",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(200);
@@ -473,6 +487,7 @@ describe("oauth callback handler", () => {
       ),
       "github",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(200);
@@ -524,6 +539,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -549,6 +565,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(500);
@@ -573,6 +590,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(500);
@@ -595,6 +613,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -615,6 +634,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -630,6 +650,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -645,6 +666,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -683,6 +705,7 @@ describe("oauth callback handler", () => {
       ),
       "sentry",
       testWaitUntil,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(200);

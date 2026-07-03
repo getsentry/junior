@@ -20,6 +20,12 @@ function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
 }
 
+const testAgentRunner = {
+  run: vi.fn(async () => {
+    throw new Error("test agent runner should not run");
+  }),
+};
+
 describe("mcp oauth callback handler", () => {
   beforeEach(() => {
     finalizeMcpAuthorizationMock.mockReset();
@@ -35,6 +41,7 @@ describe("mcp oauth callback handler", () => {
       makeRequest("https://example.com/api/oauth/callback/mcp/demo?code=abc"),
       "demo",
       waitUntil.fn,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -50,6 +57,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(400);
@@ -70,6 +78,7 @@ describe("mcp oauth callback handler", () => {
       ),
       "demo",
       waitUntil.fn,
+      { agentRunner: testAgentRunner },
     );
 
     expect(response.status).toBe(500);

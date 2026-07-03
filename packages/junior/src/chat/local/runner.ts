@@ -6,12 +6,8 @@
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts the final output.
  */
-import {
-  generateAssistantReply as generateAssistantReplyImpl,
-  type AssistantReply,
-  type AssistantReplyRequestContext,
-} from "@/chat/respond";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
+import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   createLocalSource,
   localDestinationSchema,
@@ -68,11 +64,8 @@ export interface LocalToolInvocation {
 export type LocalToolResult = ToolExecutionReport;
 
 export interface LocalAgentTurnDeps {
+  agentRunner: AgentRunner;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
-  generateAssistantReply?: (
-    messageText: string,
-    context: AssistantReplyRequestContext,
-  ) => Promise<AgentRunOutcome>;
   now?: () => number;
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -183,8 +176,6 @@ export async function runLocalAgentTurn(
   const destination = localDestination(input.conversationId);
   const source = createLocalSource(destination.conversationId);
 
-  const generateAssistantReply =
-    deps.generateAssistantReply ?? generateAssistantReplyImpl;
   const now = deps.now ?? (() => Date.now());
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
@@ -232,7 +223,7 @@ export async function runLocalAgentTurn(
       fallback: conversation.piMessages,
     });
     piMessagesBeforeRun = piMessages;
-    const outcome = await generateAssistantReply(text, {
+    const outcome = await deps.agentRunner.run(text, {
       authorizationFlowMode: "disabled",
       conversationContext: buildConversationContext(conversation, {
         excludeMessageId: userMessageId,

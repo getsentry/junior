@@ -61,12 +61,14 @@ describe("Slack behavior: message content", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            calls.push({
-              prompt,
-              contextConversation: context?.conversationContext,
-            });
-            return completedReply("Summary sent.");
+          agentRunner: {
+            run: async (prompt, context) => {
+              calls.push({
+                prompt,
+                contextConversation: context?.conversationContext,
+              });
+              return completedReply("Summary sent.");
+            },
           },
         },
       },
@@ -95,9 +97,11 @@ describe("Slack behavior: message content", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt) => {
-            calls.push({ prompt });
-            return completedReply("Done.");
+          agentRunner: {
+            run: async (prompt) => {
+              calls.push({ prompt });
+              return completedReply("Done.");
+            },
           },
         },
       },
@@ -126,12 +130,14 @@ describe("Slack behavior: message content", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            calls.push({
-              prompt,
-              contextConversation: context?.conversationContext,
-            });
-            return completedReply("Alert reviewed.");
+          agentRunner: {
+            run: async (prompt, context) => {
+              calls.push({
+                prompt,
+                contextConversation: context?.conversationContext,
+              });
+              return completedReply("Alert reviewed.");
+            },
           },
         },
       },
@@ -176,9 +182,11 @@ describe("Slack behavior: message content", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => {
-            replyCalled = true;
-            return completedReply("Should not happen");
+          agentRunner: {
+            run: async () => {
+              replyCalled = true;
+              return completedReply("Should not happen");
+            },
           },
         },
       },
@@ -239,28 +247,30 @@ describe("Slack behavior: message content", () => {
           },
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            calls.push({
-              prompt,
-              contextConversation: context?.conversationContext,
-              piMessages: context?.piMessages,
-            });
-            if (
-              calls.length === 1 &&
-              context?.correlation?.conversationId &&
-              context.correlation.turnId
-            ) {
-              await upsertAgentTurnSessionRecord({
-                conversationId: context.correlation.conversationId,
-                sessionId: context.correlation.turnId,
-                sliceId: 1,
-                state: "completed",
-                piMessages: storedFirstTurnHistory,
+          agentRunner: {
+            run: async (prompt, context) => {
+              calls.push({
+                prompt,
+                contextConversation: context?.conversationContext,
+                piMessages: context?.piMessages,
               });
-            }
-            return completedReply(
-              calls.length === 1 ? "First response." : "Second response.",
-            );
+              if (
+                calls.length === 1 &&
+                context?.correlation?.conversationId &&
+                context.correlation.turnId
+              ) {
+                await upsertAgentTurnSessionRecord({
+                  conversationId: context.correlation.conversationId,
+                  sessionId: context.correlation.turnId,
+                  sliceId: 1,
+                  state: "completed",
+                  piMessages: storedFirstTurnHistory,
+                });
+              }
+              return completedReply(
+                calls.length === 1 ? "First response." : "Second response.",
+              );
+            },
           },
         },
       },
@@ -339,13 +349,15 @@ describe("Slack behavior: message content", () => {
           autoCompactionTriggerTokens: 100,
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            calls.push({
-              prompt,
-              contextConversation: context?.conversationContext,
-              piMessages: context?.piMessages,
-            });
-            return completedReply("Done.");
+          agentRunner: {
+            run: async (prompt, context) => {
+              calls.push({
+                prompt,
+                contextConversation: context?.conversationContext,
+                piMessages: context?.piMessages,
+              });
+              return completedReply("Done.");
+            },
           },
         },
       },
@@ -451,13 +463,15 @@ describe("Slack behavior: message content", () => {
           autoCompactionTriggerTokens: 100,
         },
         replyExecutor: {
-          generateAssistantReply: async (prompt, context) => {
-            calls.push({
-              prompt,
-              contextConversation: context?.conversationContext,
-              piMessages: context?.piMessages,
-            });
-            return completedReply("Done.");
+          agentRunner: {
+            run: async (prompt, context) => {
+              calls.push({
+                prompt,
+                contextConversation: context?.conversationContext,
+                piMessages: context?.piMessages,
+              });
+              return completedReply("Done.");
+            },
           },
         },
       },

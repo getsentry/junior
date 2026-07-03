@@ -7,7 +7,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
-import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -63,9 +63,7 @@ function createEditedMentionRequest(args: {
   });
 }
 
-async function createEditedDmBot(args: {
-  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
-}) {
+async function createEditedDmBot(args: { agentRunner: AgentRunner }) {
   const state = createMemoryState();
   await state.connect();
   const bot = new JuniorChat<{ slack: SlackAdapter }>({
@@ -83,7 +81,7 @@ async function createEditedDmBot(args: {
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
       replyExecutor: {
-        generateAssistantReply: args.generateAssistantReply,
+        agentRunner: args.agentRunner,
       },
     },
   });
@@ -100,12 +98,14 @@ async function createEditedDmBot(args: {
 describe("Slack contract: edited-message reply delivery", () => {
   it("posts the finalized reply into the edited DM thread with chat.postMessage", async () => {
     const bot = await createEditedDmBot({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onTextDelta?.("Hello world");
-        return completedAgentRun({
-          text: "Hello world",
-          diagnostics: makeDiagnostics(),
-        });
+      agentRunner: {
+        run: async (_prompt, context) => {
+          await context?.onTextDelta?.("Hello world");
+          return completedAgentRun({
+            text: "Hello world",
+            diagnostics: makeDiagnostics(),
+          });
+        },
       },
     });
     const waitUntil = slackWebhookClient.waitUntil();
@@ -157,11 +157,13 @@ describe("Slack contract: edited-message reply delivery", () => {
       (_, i) => `line ${i + 1}`,
     ).join("\n");
     const bot = await createEditedDmBot({
-      generateAssistantReply: async () =>
-        completedAgentRun({
-          text: longReply,
-          diagnostics: makeDiagnostics(),
-        }),
+      agentRunner: {
+        run: async () =>
+          completedAgentRun({
+            text: longReply,
+            diagnostics: makeDiagnostics(),
+          }),
+      },
     });
     const waitUntil = slackWebhookClient.waitUntil();
 

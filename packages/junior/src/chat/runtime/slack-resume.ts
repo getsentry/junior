@@ -8,15 +8,14 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
-  generateAssistantReply,
   type AssistantReply,
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
 import {
   retryableTurnErrorFromAuthAgentRun,
   retryableTurnErrorFromTimedOutAgentRun,
-  type AgentRunOutcome,
 } from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { Source } from "@sentry/junior-plugin-api";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
@@ -70,11 +69,6 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
-
-type ResumeGenerateReply = (
-  messageText: string,
-  context: AssistantReplyRequestContext,
-) => Promise<AgentRunOutcome>;
 
 async function postSlackMessageBestEffort(
   channelId: string,
@@ -152,7 +146,7 @@ interface ResumeSlackTurnArgs {
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   initialText?: string;
-  generateReply?: ResumeGenerateReply;
+  agentRunner: AgentRunner;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
     sessionId: string;
@@ -382,9 +376,11 @@ export async function resumeSlackTurn(
     }
     status.start();
 
-    const generateReply = runArgs.generateReply ?? generateAssistantReply;
     const replyContext = createResumeReplyContext(runArgs, status);
-    const replyPromise = generateReply(runArgs.messageText, replyContext);
+    const replyPromise = runArgs.agentRunner.run(
+      runArgs.messageText,
+      replyContext,
+    );
     const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
     const outcome =
       typeof replyTimeoutMs === "number"
@@ -598,7 +594,7 @@ export async function resumeAuthorizedRequest(args: {
   connectedText: string;
   replyContext?: ResumeReplyContext;
   lockKey?: string;
-  generateReply?: ResumeGenerateReply;
+  agentRunner: AgentRunner;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
@@ -615,7 +611,7 @@ export async function resumeAuthorizedRequest(args: {
     replyContext: args.replyContext,
     lockKey: args.lockKey,
     initialText: args.connectedText,
-    generateReply: args.generateReply,
+    agentRunner: args.agentRunner,
     onSuccess: args.onSuccess,
     onFailure: args.onFailure,
     onAuthPause: args.onAuthPause,
