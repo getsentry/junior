@@ -1,5 +1,5 @@
 import { botConfig } from "@/chat/config";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -23,7 +23,7 @@ export function buildDeliveredTurnStatePatch(args: {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   artifacts: ThreadArtifactsState;
   conversation: ThreadConversationState;
-  reply: AssistantReply;
+  reply: AgentRunResult;
   sessionId: string;
   userMessageId?: string;
 }): ThreadStatePatch & { conversation: ThreadConversationState } {

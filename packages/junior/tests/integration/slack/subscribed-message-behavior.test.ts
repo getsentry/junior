@@ -82,7 +82,7 @@ describe("Slack behavior: subscribed messages", () => {
           agentRunner: {
             run: async () => {
               throw new Error(
-                "generateAssistantReply should not run when classifier skips reply",
+                "executeAgentRun should not run when classifier skips reply",
               );
             },
           },
@@ -122,7 +122,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async () => {
-              throw new Error("generateAssistantReply should not run");
+              throw new Error("executeAgentRun should not run");
             },
           },
         },

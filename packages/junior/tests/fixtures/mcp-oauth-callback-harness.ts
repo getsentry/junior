@@ -20,8 +20,8 @@ export async function runMcpOauthCallbackRoute(args: {
     {
       agentRunner: {
         run: async (request) => {
-          const { generateAssistantReply } = await import("@/chat/respond");
-          return await generateAssistantReply(request);
+          const { executeAgentRun } = await import("@/chat/agent-run");
+          return await executeAgentRun(request);
         },
       },
     },

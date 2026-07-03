@@ -49,7 +49,7 @@ export type AuthResumeRetryableTurnError = RetryableTurnError & {
 
 /**
  * Historical turn error for outer resume/callback boundaries; expected
- * generateAssistantReply lifecycle endings are represented by AgentRunOutcome.
+ * executeAgentRun lifecycle endings are represented by AgentRunOutcome.
  */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
@@ -105,7 +105,7 @@ export function isAuthResumeRetryableTurnError(
 }
 
 /**
- * Historical turn error for queue-worker yield routing; respond.ts returns a
+ * Historical turn error for queue-worker yield routing; agent-run.ts returns a
  * yielded AgentRunOutcome and the Slack executor recreates this at the worker
  * boundary.
  */

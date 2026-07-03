@@ -60,7 +60,7 @@ import {
   type SlackRequester,
 } from "@/chat/requester";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
@@ -89,7 +89,7 @@ function sleep(ms: number): Promise<void> {
 /** Persist a delivered continuation reply as the terminal thread state. */
 async function persistCompletedReplyState(args: {
   sessionRecord: AgentTurnSessionRecord;
-  reply: AssistantReply;
+  reply: AgentRunResult;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(
     args.sessionRecord.conversationId,
@@ -406,7 +406,7 @@ export async function continueSlackAgentRun(
               },
             },
           },
-          onSuccess: async (reply: AssistantReply) => {
+          onSuccess: async (reply: AgentRunResult) => {
             await persistCompletedReplyState({
               sessionRecord: activeSessionRecord,
               reply,

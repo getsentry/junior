@@ -173,7 +173,7 @@ describe("bot handlers (integration)", () => {
     await disconnectStateAdapter();
   });
 
-  it("handleNewMention: posts reply from generateAssistantReply", async () => {
+  it("handleNewMention: posts reply from executeAgentRun", async () => {
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -237,11 +237,11 @@ describe("bot handlers (integration)", () => {
 
   it("does not replay a message that already has a delivered reply", async () => {
     const conversationId = "slack:C_REPLAY:1700000000.000";
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -311,7 +311,7 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
   });
 
@@ -400,7 +400,7 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    // Should not have posted a reply (no generateAssistantReply call)
+    // Should not have posted a reply (no executeAgentRun call)
     const hasReply = thread.posts.some((p) => {
       if (typeof p === "string") return !p.startsWith("Error:");
       if (
@@ -444,7 +444,7 @@ describe("bot handlers (integration)", () => {
     expect(fakeAdapter.promptCalls[0].prompts.length).toBe(3);
   });
 
-  it("error recovery: posts safe error message when generateAssistantReply throws", async () => {
+  it("error recovery: posts safe error message when executeAgentRun throws", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -492,7 +492,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           agentRunner: {
             run: async () => {
-              // Simulate respond's durable input checkpoint: the session record
+              // Simulate agent-run durable input checkpoint: the session record
               // is running at the prompt boundary when generation finishes.
               await upsertAgentTurnSessionRecord({
                 conversationId,
@@ -1101,13 +1101,13 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const ack = vi.fn();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1146,7 +1146,7 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(ack).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
@@ -1175,7 +1175,7 @@ describe("bot handlers (integration)", () => {
   it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
     const conversationId = "slack:C_AUTH_PARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
-    const generateAssistantReply = vi.fn().mockResolvedValue(
+    const executeAgentRun = vi.fn().mockResolvedValue(
       completedAgentRun({
         text: "Fresh answer without the provider.",
         diagnostics: {
@@ -1200,7 +1200,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -1223,10 +1223,10 @@ describe("bot handlers (integration)", () => {
 
     // The follow-up supersedes the pause: it must be answered, not consumed
     // into a resume that only happens if the user ever authorizes.
-    expect(generateAssistantReply).toHaveBeenCalledOnce();
-    expect(
-      generateAssistantReply.mock.calls[0]?.[0].input.messageText,
-    ).toContain("any update?");
+    expect(executeAgentRun).toHaveBeenCalledOnce();
+    expect(executeAgentRun.mock.calls[0]?.[0].input.messageText).toContain(
+      "any update?",
+    );
     expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
       true,
     );
@@ -1267,12 +1267,12 @@ describe("bot handlers (integration)", () => {
         JSON.stringify(await loadProjection({ conversationId })),
       );
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           scheduleAgentContinue,
         },
       },
@@ -1294,7 +1294,7 @@ describe("bot handlers (integration)", () => {
       ack,
     });
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
     expect(ack).toHaveBeenCalledOnce();
     expect(scheduleAgentContinue).toHaveBeenCalledWith({
@@ -1577,7 +1577,7 @@ describe("bot handlers (integration)", () => {
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
     const conversationId = "slack:C_BAD_CONTINUATION:1700000000.000";
     const activeSessionId = "turn_msg-timeout-original";
-    const generateAssistantReply = vi.fn().mockResolvedValue(
+    const executeAgentRun = vi.fn().mockResolvedValue(
       completedAgentRun({
         text: "Recovered.",
         diagnostics: {
@@ -1602,7 +1602,7 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -1623,7 +1623,7 @@ describe("bot handlers (integration)", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(generateAssistantReply).toHaveBeenCalledOnce();
+    expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(postIncludes(thread, "Recovered.")).toBe(true);
     const failedRecord = await getAgentTurnSessionRecord(
       conversationId,
@@ -1653,11 +1653,11 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1689,7 +1689,7 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
   });
 
   it("does not reschedule an awaiting continuation for an already-replied duplicate", async () => {
@@ -1703,12 +1703,12 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1740,7 +1740,7 @@ describe("bot handlers (integration)", () => {
 
     expect(getAwaitingAgentContinueRequest).not.toHaveBeenCalled();
     expect(scheduleAgentContinue).not.toHaveBeenCalled();
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(onTurnStatePersisted).toHaveBeenCalledOnce();
     expect(thread.posts).toEqual([]);
   });
@@ -1756,11 +1756,11 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1789,7 +1789,7 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
 
     const state = thread.getState();
@@ -1816,11 +1816,11 @@ describe("bot handlers (integration)", () => {
       sessionId: activeSessionId,
       expectedVersion: 4,
     });
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
           getAwaitingAgentContinueRequest,
           scheduleAgentContinue,
         },
@@ -1843,7 +1843,7 @@ describe("bot handlers (integration)", () => {
       { destination },
     );
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([
       expect.stringContaining(
         "I ran into an internal error while processing that.",

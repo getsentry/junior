@@ -16,7 +16,7 @@ import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import type { LocalAgentReply, LocalToolResult } from "@/chat/local/runner";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 
@@ -240,7 +240,7 @@ async function runPrompt(
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
   const conversationId = newRunConversationId();
-  const agentRunner = createAgentRunner(generateAssistantReply);
+  const agentRunner = createAgentRunner(executeAgentRun);
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const result = await runLocalAgentTurn(
@@ -271,7 +271,7 @@ async function runInteractive(
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
   const conversationId = newRunConversationId();
-  const agentRunner = createAgentRunner(generateAssistantReply);
+  const agentRunner = createAgentRunner(executeAgentRun);
 
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const rl = readline.createInterface({

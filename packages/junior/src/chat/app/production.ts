@@ -16,7 +16,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 
@@ -100,7 +100,7 @@ export function createProductionConversationWorkOptions(options?: {
   const conversationStore = getProductionConversationStore();
   const agentRunner =
     options?.services?.replyExecutor?.agentRunner ??
-    createAgentRunner(generateAssistantReply, {
+    createAgentRunner(executeAgentRun, {
       tracePropagation: options?.services?.sandbox?.tracePropagation,
     });
   const runtime = createSlackRuntime({

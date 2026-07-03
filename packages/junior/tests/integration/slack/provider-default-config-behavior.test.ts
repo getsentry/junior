@@ -22,11 +22,11 @@ function toPostedText(value: unknown): string {
 
 describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {
-    const generateAssistantReply = vi.fn();
+    const executeAgentRun = vi.fn();
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -47,7 +47,7 @@ describe("Slack behavior: provider default configuration", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("getsentry/junior");
     expect(channelStateRef.value).toMatchObject({
@@ -64,7 +64,7 @@ describe("Slack behavior: provider default configuration", () => {
   });
 
   it("does not intercept combined repo setup and agent work", async () => {
-    const generateAssistantReply = vi.fn(async () =>
+    const executeAgentRun = vi.fn(async () =>
       completedAgentRun({
         text: "Created the issue.",
         deliveryMode: "thread" as const,
@@ -87,7 +87,7 @@ describe("Slack behavior: provider default configuration", () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -108,7 +108,7 @@ describe("Slack behavior: provider default configuration", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(generateAssistantReply).toHaveBeenCalledOnce();
+    expect(executeAgentRun).toHaveBeenCalledOnce();
     expect(toPostedText(thread.posts[0])).toContain("Created the issue.");
     expect(channelStateRef.value).not.toMatchObject({
       configuration: {

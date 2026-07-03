@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getSuccessfulToolCalls } from "@/chat/respond-helpers";
+import { getSuccessfulToolCalls } from "@/chat/agent-run-helpers";
 
 describe("getSuccessfulToolCalls", () => {
   it("omits failed tool results", () => {

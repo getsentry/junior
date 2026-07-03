@@ -11,12 +11,12 @@ import {
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
+const { executeAgentRunMock } = vi.hoisted(() => ({
+  executeAgentRunMock: vi.fn(),
 }));
 
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
+vi.mock("@/chat/agent-run", () => ({
+  executeAgentRun: executeAgentRunMock,
 }));
 
 const ORIGINAL_ENV = { ...process.env };
@@ -64,8 +64,8 @@ let pluginApp: PluginAppFixture | undefined;
 
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
-    generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue(
+    executeAgentRunMock.mockReset();
+    executeAgentRunMock.mockResolvedValue(
       completedAgentRun({
         text: "Here are your Sentry issues.",
         diagnostics: makeDiagnostics(),
@@ -177,7 +177,7 @@ describe("oauth callback slack integration", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "list my sentry issues",
@@ -191,7 +191,7 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       input?: { conversationContext?: string };
     };
     expect(resumeContext.input?.conversationContext).not.toContain(
@@ -366,7 +366,7 @@ describe("oauth callback slack integration", () => {
         }),
       ]),
     );
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "list my sentry issues",
@@ -394,7 +394,7 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       input?: { conversationContext?: string };
       routing?: { source?: unknown };
     };
@@ -527,7 +527,7 @@ describe("oauth callback slack integration", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,
@@ -680,7 +680,7 @@ describe("oauth callback slack integration", () => {
       getSpy.mockRestore();
     }
 
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "list my sentry issues",
@@ -694,7 +694,7 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       input?: { conversationContext?: string };
     };
     expect(resumeContext.input?.conversationContext).not.toContain(
@@ -818,7 +818,7 @@ describe("oauth callback slack integration", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "new request" }),
         routing: expect.objectContaining({
@@ -879,7 +879,7 @@ describe("oauth callback slack integration", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 });

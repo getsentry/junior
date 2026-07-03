@@ -20,12 +20,12 @@ import {
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const { generateAssistantReplyMock } = vi.hoisted(() => ({
-  generateAssistantReplyMock: vi.fn(),
+const { executeAgentRunMock } = vi.hoisted(() => ({
+  executeAgentRunMock: vi.fn(),
 }));
 
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
+vi.mock("@/chat/agent-run", () => ({
+  executeAgentRun: executeAgentRunMock,
 }));
 
 const ORIGINAL_ENV = { ...process.env };
@@ -157,8 +157,8 @@ async function createAwaitingMcpTurnRecord(args: {
 
 describe("mcp oauth callback slack integration", () => {
   beforeEach(async () => {
-    generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue(
+    executeAgentRunMock.mockReset();
+    executeAgentRunMock.mockResolvedValue(
       completedAgentRun({
         text: "The budget deadline you mentioned earlier was Friday.",
         artifactStatePatch: {
@@ -371,7 +371,7 @@ describe("mcp oauth callback slack integration", () => {
       refresh_token: "eval-auth-refresh-token",
     });
 
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "what did i say about the budget?",
@@ -403,7 +403,7 @@ describe("mcp oauth callback slack integration", () => {
       }),
     );
 
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       input?: { conversationContext?: string };
       policy?: { configuration?: Record<string, unknown> };
       routing?: { source?: unknown };
@@ -526,7 +526,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
     ).resolves.toMatchObject({
@@ -666,7 +666,7 @@ describe("mcp oauth callback slack integration", () => {
       getSpy.mockRestore();
     }
 
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "what did i say about the budget?",
@@ -680,7 +680,7 @@ describe("mcp oauth callback slack integration", () => {
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       input?: { conversationContext?: string };
       routing?: { source?: unknown };
     };
@@ -774,7 +774,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
 
     const persistedState = await stateAdapterModule
@@ -839,7 +839,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
 
@@ -903,7 +903,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
@@ -918,7 +918,7 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce(
+    executeAgentRunMock.mockResolvedValueOnce(
       completedAgentRun({
         text: "",
         files: [
@@ -1003,7 +1003,7 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("uploads resumed reply files even when thread text delivery is suppressed", async () => {
-    generateAssistantReplyMock.mockResolvedValueOnce(
+    executeAgentRunMock.mockResolvedValueOnce(
       completedAgentRun({
         text: "👍",
         files: [

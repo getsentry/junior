@@ -248,7 +248,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   parseSkillInvocation: () => null,
 }));
 
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
 import { getConversationStore } from "@/chat/db";
@@ -276,7 +276,7 @@ const TEST_REQUESTER = {
   userId: "U123",
 } as const;
 
-describe("generateAssistantReply agent continuation", () => {
+describe("executeAgentRun agent continuation", () => {
   beforeEach(async () => {
     promptAborted.value = false;
     continueCalls.value = 0;
@@ -298,7 +298,7 @@ describe("generateAssistantReply agent continuation", () => {
   it("rejects durable input when no prompt checkpoint can be persisted", async () => {
     const onInputCommitted = vi.fn();
 
-    const error = await generateAssistantReply({
+    const error = await executeAgentRun({
       input: { messageText: "help me" },
       routing: { destination: TEST_DESTINATION, source: TEST_SOURCE },
       durability: { onInputCommitted },
@@ -309,7 +309,7 @@ describe("generateAssistantReply agent continuation", () => {
   });
 
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -371,7 +371,7 @@ describe("generateAssistantReply agent continuation", () => {
       resumeReason: "timeout",
     });
 
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -407,7 +407,7 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -438,7 +438,7 @@ describe("generateAssistantReply agent continuation", () => {
   });
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: {
         messageText: "what is in this image?",
         omittedImageAttachmentCount: 1,
@@ -483,7 +483,7 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -531,7 +531,7 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,

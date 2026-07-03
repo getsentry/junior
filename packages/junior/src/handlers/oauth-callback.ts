@@ -62,7 +62,7 @@ import {
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
 
@@ -88,7 +88,7 @@ function htmlErrorResponse(
 async function persistCompletedOAuthReplyState(args: {
   conversationId: string;
   sessionId: string;
-  reply: AssistantReply;
+  reply: AgentRunResult;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
@@ -423,7 +423,7 @@ async function resumeOAuthSessionRecordTurn(
             },
           },
         },
-        onSuccess: async (reply: AssistantReply) => {
+        onSuccess: async (reply: AgentRunResult) => {
           logInfo(
             "oauth_callback_resume_complete",
             {},

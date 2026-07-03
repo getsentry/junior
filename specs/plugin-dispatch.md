@@ -199,7 +199,7 @@ The internal callback runs a core-owned dispatched agent runner. The runner owns
 - loading dispatch-scoped persisted conversation/artifact/sandbox state and destination channel config state
 - creating or reusing synthetic system-authored conversation messages
 - building conversation context
-- calling `generateAssistantReply`
+- calling `executeAgentRun`
 - delivering the reply
 - committing conversation, artifact, sandbox, and dispatch state
 - marking auth-required runs as blocked
@@ -224,7 +224,7 @@ Slack post and state commit are not atomic. If Slack accepts the post but persis
 
 Dispatched requests must not use the Slack conversation queue used for interactive conversations. Timeout continuation uses the dispatch callback path:
 
-1. `generateAssistantReply` persists a resumable session record for the dispatch conversation and turn id.
+1. `executeAgentRun` persists a resumable session record for the dispatch conversation and turn id.
 2. Runner catches `agent_continue`.
 3. Runner marks dispatch `awaiting_resume` with the next record version.
 4. Runner signs another callback for the same dispatch id.

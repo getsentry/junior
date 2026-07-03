@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const generateAssistantReplyMock = vi.hoisted(() => vi.fn());
+const executeAgentRunMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
+vi.mock("@/chat/agent-run", () => ({
+  executeAgentRun: executeAgentRunMock,
 }));
 
 const ORIGINAL_CWD = process.cwd();
@@ -23,7 +23,7 @@ function restoreEnv(name: string, value: string | undefined): void {
   process.env[name] = value;
 }
 
-function successReply(text: string): AssistantReply {
+function successReply(text: string): AgentRunResult {
   return {
     text,
     diagnostics: {
@@ -41,7 +41,7 @@ function successReply(text: string): AssistantReply {
 describe("local chat CLI integration", () => {
   beforeEach(() => {
     vi.resetModules();
-    generateAssistantReplyMock.mockReset();
+    executeAgentRunMock.mockReset();
   });
 
   afterEach(async () => {
@@ -76,7 +76,7 @@ export const plugins = {
 `,
     );
     process.chdir(tempDir);
-    generateAssistantReplyMock.mockResolvedValue(
+    executeAgentRunMock.mockResolvedValue(
       completedAgentRun(successReply("hello local")),
     );
     const output: string[] = [];
@@ -103,7 +103,7 @@ export const plugins = {
           .getProviders()
           .map((plugin) => plugin.manifest.name),
       ).toContain("local-chat-plugin");
-      expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      expect(executeAgentRunMock).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({ messageText: "hello" }),
           policy: expect.objectContaining({

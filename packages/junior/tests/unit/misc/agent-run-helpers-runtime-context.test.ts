@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import { prependMissingRuntimeTurnContext } from "@/chat/respond-helpers";
+import { prependMissingRuntimeTurnContext } from "@/chat/agent-run-helpers";
 
 describe("prependMissingRuntimeTurnContext", () => {
   it("leaves recorded bootstrap prompts unchanged", () => {

@@ -11,7 +11,7 @@ import {
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
@@ -592,7 +592,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
-  const agentRunner = createAgentRunner(generateAssistantReply, {
+  const agentRunner = createAgentRunner(executeAgentRun, {
     tracePropagation: runtimeServiceOverrides.sandbox.tracePropagation,
   });
 

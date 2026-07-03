@@ -1,4 +1,4 @@
-import type { AssistantReply } from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type {
   AuthorizationPauseDisposition,
   AuthorizationPauseKind,
@@ -28,20 +28,20 @@ export interface AgentRunAuthPauseMetadata extends AgentRunContinuationIds {
 }
 
 export type AgentRunOutcome =
-  | { status: "completed"; reply: AssistantReply }
-  | { status: "failed"; reply: AssistantReply }
+  | { status: "completed"; result: AgentRunResult }
+  | { status: "failed"; result: AgentRunResult }
   | ({ status: "yielded" } & AgentRunContinuationIds)
   | ({ status: "timed_out" } & AgentRunContinuationIds)
   | ({ status: "awaiting_auth" } & Omit<AgentRunAuthPauseMetadata, "version">);
 
-/** Return a successful final reply as an agent-run outcome. */
-export function completedAgentRun(reply: AssistantReply): AgentRunOutcome {
-  return { status: "completed", reply };
+/** Return a successful final result as an agent-run outcome. */
+export function completedAgentRun(result: AgentRunResult): AgentRunOutcome {
+  return { status: "completed", result };
 }
 
-/** Return a terminal provider-failure reply as an agent-run outcome. */
-export function failedAgentRun(reply: AssistantReply): AgentRunOutcome {
-  return { status: "failed", reply };
+/** Return a terminal provider-failure result as an agent-run outcome. */
+export function failedAgentRun(result: AgentRunResult): AgentRunOutcome {
+  return { status: "failed", result };
 }
 
 /** Recreate the historical timeout continuation error at outer boundaries. */

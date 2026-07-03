@@ -54,7 +54,7 @@ Previous migration matrix:
 
 1. `packages/junior/src/handlers/webhooks.ts`: unknown platform, handler failures, request lifecycle.
 2. `packages/junior/src/chat/runtime/slack-runtime.ts`: attachment handling, thread lifecycle, handler failures.
-3. `packages/junior/src/chat/respond.ts`: empty/fallback behaviors, retries, model/tool anomalies. Per-turn diagnostics are captured on turn spans, not required as info logs.
+3. `packages/junior/src/chat/agent-run.ts`: empty/fallback behaviors, retries, model/tool anomalies. Per-turn diagnostics are captured on turn spans, not required as info logs.
 4. `packages/junior/src/chat/skills.ts`: skill discovery/read/frontmatter parse issues.
 5. `packages/junior/src/chat/slack/output.ts`: output normalization fallback.
 
@@ -69,7 +69,7 @@ Previous rollout phases:
 
 Previous logging TODOs:
 
-1. Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
+1. Migrate duplicated per-turn context in `packages/junior/src/chat/agent-run.ts` to ambient `withContext`/`withLogContext`.
 2. Update `packages/junior/src/chat/runtime/slack-runtime.ts` logging call patterns to rely on ambient context by default.
 3. Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*` and `packages/junior/src/chat/queue/*`.
 4. Add unit tests for context merge precedence and async propagation in `packages/junior/src/chat/logging.ts`.

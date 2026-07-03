@@ -132,7 +132,7 @@ describe("Slack behavior: attachment handling", () => {
     const completeTextMock = vi.fn(async () => {
       throw new Error("vision unavailable");
     });
-    const generateAssistantReply = vi.fn(async () =>
+    const executeAgentRun = vi.fn(async () =>
       completedAgentRun({
         text: "should not post",
         diagnostics: {
@@ -153,7 +153,7 @@ describe("Slack behavior: attachment handling", () => {
           completeText: completeTextMock,
         },
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -182,7 +182,7 @@ describe("Slack behavior: attachment handling", () => {
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
       "I ran into an internal error while processing that.",

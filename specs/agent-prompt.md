@@ -66,7 +66,7 @@ Trusted deployment-authored Markdown files, such as `SOUL.md` and `WORLD.md`, sh
 
 ### Current Task Declaration
 
-Every model-visible active user task assembled by the Junior turn runtime must render the user-authored task text inside `<current-instruction>`. This wrapper is required even when there is no thread background, dispatch metadata, plugin contribution, attachment, or runtime context. It applies to Slack turns, local turns, dispatched or scheduled work that enters the shared reply boundary, and queued steering messages injected during an active turn.
+Every model-visible active user task assembled by the Junior turn runtime must render the user-authored task text inside `<current-instruction>`. This wrapper is required even when there is no thread background, dispatch metadata, plugin contribution, attachment, or runtime context. It applies to Slack turns, local turns, dispatched or scheduled work that enters the shared agent-run boundary, and queued steering messages injected during an active turn.
 
 Thread background, runtime context, plugin prompt contributions, requester/configuration metadata, and attachments must remain outside `<current-instruction>` as sibling blocks or content parts. Internal helper prompts and subagent/tool prompts may use task-specific wrappers when they are not model-visible Junior user turns.
 

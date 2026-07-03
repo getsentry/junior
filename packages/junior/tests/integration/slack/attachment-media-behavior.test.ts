@@ -253,22 +253,20 @@ describe("Slack behavior: mixed attachment media", () => {
   it("still runs the assistant when only images are attached and vision is disabled", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const capturedOmittedImageCounts: number[] = [];
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (_request) => {
-        return completedAgentRun({
-          text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success" as const,
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        });
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (_request) => {
+      return completedAgentRun({
+        text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "fake-agent-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      });
+    });
 
     const { slackRuntime } = await createRuntime({
       services: {
@@ -287,7 +285,7 @@ describe("Slack behavior: mixed attachment media", () => {
               capturedOmittedImageCounts.push(
                 context?.omittedImageAttachmentCount ?? 0,
               );
-              return generateAssistantReply(request);
+              return executeAgentRun(request);
             },
           },
         },
@@ -317,7 +315,7 @@ describe("Slack behavior: mixed attachment media", () => {
     });
 
     expect(imageFetch).not.toHaveBeenCalled();
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
     expect(capturedOmittedImageCounts).toEqual([1]);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(

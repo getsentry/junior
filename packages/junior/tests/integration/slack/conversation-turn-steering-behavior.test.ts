@@ -14,7 +14,7 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { ReplySteeringMessage } from "@/chat/respond";
+import type { AgentRunSteeringMessage } from "@/chat/agent-run";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -247,7 +247,7 @@ describe("Slack behavior: durable turn steering", () => {
       steeringTexts: string[];
     }> = [];
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+    const executeAgentRun: AgentRunner["run"] = async (request) => {
       const prompt = request.input.messageText;
       await request.durability?.onInputCommitted?.();
       if (!blockingCallReleased) {
@@ -256,7 +256,7 @@ describe("Slack behavior: durable turn steering", () => {
         blockingCallReleased = true;
       }
 
-      const steeringMessages: ReplySteeringMessage[] = [];
+      const steeringMessages: AgentRunSteeringMessage[] = [];
       const drained = await request.durability?.drainSteeringMessages?.(
         async (messages) => {
           steeringMessages.push(...messages);
@@ -293,7 +293,7 @@ describe("Slack behavior: durable turn steering", () => {
                 reason: "active steering follow-up",
               },
         ),
-        agentRunner: { run: generateAssistantReply },
+        agentRunner: { run: executeAgentRun },
         state,
       });
 
@@ -518,7 +518,7 @@ describe("Slack behavior: durable turn steering", () => {
     const releaseAgent = deferred();
     const drainedTexts: string[] = [];
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+    const executeAgentRun: AgentRunner["run"] = async (request) => {
       await request.durability?.onInputCommitted?.();
       agentEntered.resolve();
       await releaseAgent.promise;
@@ -551,7 +551,7 @@ describe("Slack behavior: durable turn steering", () => {
               reason: "active steering follow-up",
             },
       ),
-      agentRunner: { run: generateAssistantReply },
+      agentRunner: { run: executeAgentRun },
       state,
     });
 
@@ -639,7 +639,7 @@ describe("Slack behavior: durable turn steering", () => {
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+    const executeAgentRun: AgentRunner["run"] = async (request) => {
       expect(request.durability?.onInputCommitted).toEqual(
         expect.any(Function),
       );
@@ -647,7 +647,7 @@ describe("Slack behavior: durable turn steering", () => {
     };
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
-        agentRunner: { run: generateAssistantReply },
+        agentRunner: { run: executeAgentRun },
         state,
       });
 

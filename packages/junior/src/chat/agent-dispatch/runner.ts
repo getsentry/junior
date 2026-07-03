@@ -7,7 +7,7 @@
  * state, and schedules follow-up slices when a turn needs to continue.
  */
 import { botConfig } from "@/chat/config";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { logException } from "@/chat/logging";
@@ -78,7 +78,7 @@ function buildDispatchConversationText(dispatch: DispatchRecord): string {
   return `[dispatched task] ${dispatch.input}`;
 }
 
-function ensureVisibleDeliveryText(reply: AssistantReply): AssistantReply {
+function ensureVisibleDeliveryText(reply: AgentRunResult): AgentRunResult {
   if (reply.text.trim().length > 0 || !reply.files?.length) {
     return reply;
   }
@@ -385,7 +385,7 @@ export async function runAgentDispatchSlice(
       );
     }
 
-    let reply = outcome.reply;
+    let reply = outcome.result;
 
     const failure =
       reply.diagnostics.outcome === "success"
