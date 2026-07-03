@@ -44,12 +44,14 @@ describe("generateAssistantReply error path", () => {
   });
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
-    const outcome = await generateAssistantReply("hello", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      sandbox: {
-        sandboxId: "sb-123",
-        sandboxDependencyProfileHash: "hash-abc",
+    const outcome = await generateAssistantReply({
+      input: { messageText: "hello" },
+      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+      policy: {
+        sandbox: {
+          sandboxId: "sb-123",
+          sandboxDependencyProfileHash: "hash-abc",
+        },
       },
     });
     const reply = outcome.status === "completed" ? outcome.reply : undefined;
@@ -69,11 +71,13 @@ describe("generateAssistantReply error path", () => {
 
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
-      generateAssistantReply("hello", {
-        destination: LOCAL_DESTINATION,
-        source: LOCAL_SOURCE,
-        onInputCommitted: async () => {
-          throw new Error("input should not commit before startup succeeds");
+      generateAssistantReply({
+        input: { messageText: "hello" },
+        routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+        durability: {
+          onInputCommitted: async () => {
+            throw new Error("input should not commit before startup succeeds");
+          },
         },
       }),
     ).rejects.toThrow("discover failed");
@@ -81,22 +85,25 @@ describe("generateAssistantReply error path", () => {
 
   it("hard-fails missing destinations", async () => {
     await expect(
-      generateAssistantReply(
-        "hello",
-        {} as Parameters<typeof generateAssistantReply>[1],
-      ),
+      generateAssistantReply({
+        input: { messageText: "hello" },
+        routing: {} as Parameters<typeof generateAssistantReply>[0]["routing"],
+      }),
     ).rejects.toThrow("Assistant reply generation requires a destination");
   });
 
   it("hard-fails requester and destination platform mismatches", async () => {
     await expect(
-      generateAssistantReply("hello", {
-        destination: LOCAL_DESTINATION,
-        source: LOCAL_SOURCE,
-        requester: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
+      generateAssistantReply({
+        input: { messageText: "hello" },
+        routing: {
+          destination: LOCAL_DESTINATION,
+          source: LOCAL_SOURCE,
+          requester: {
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          },
         },
       }),
     ).rejects.toThrow(
@@ -106,12 +113,15 @@ describe("generateAssistantReply error path", () => {
 
   it("hard-fails Slack correlation and destination mismatches", async () => {
     await expect(
-      generateAssistantReply("hello", {
-        destination: SLACK_DESTINATION,
-        source: SLACK_SOURCE,
-        correlation: {
-          channelId: "C999",
-          teamId: "T123",
+      generateAssistantReply({
+        input: { messageText: "hello" },
+        routing: {
+          destination: SLACK_DESTINATION,
+          source: SLACK_SOURCE,
+          correlation: {
+            channelId: "C999",
+            teamId: "T123",
+          },
         },
       }),
     ).rejects.toThrow(

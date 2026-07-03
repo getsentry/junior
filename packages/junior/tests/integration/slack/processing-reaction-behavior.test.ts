@@ -7,6 +7,7 @@ import {
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 function successDiagnostics(toolCalls: string[] = []) {
   return {
@@ -247,7 +248,12 @@ describe("Slack behavior: processing reaction", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               context?.onToolInvocation?.({
                 toolName: "slackMessageAddReaction",
                 params: { emoji: ":eyes:" },

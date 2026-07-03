@@ -223,62 +223,75 @@ export async function runLocalAgentTurn(
       fallback: conversation.piMessages,
     });
     piMessagesBeforeRun = piMessages;
-    const outcome = await deps.agentRunner.run(text, {
-      authorizationFlowMode: "disabled",
-      conversationContext: buildConversationContext(conversation, {
-        excludeMessageId: userMessageId,
-      }),
-      artifactState: artifacts,
-      credentialContext: {
-        actor: { type: "system", id: "local-cli" },
+    const outcome = await deps.agentRunner.run({
+      input: {
+        messageText: text,
+        conversationContext: buildConversationContext(conversation, {
+          excludeMessageId: userMessageId,
+        }),
+        piMessages,
       },
-      destination,
-      source,
-      requester: {
-        fullName: "Local CLI",
-        platform: "local",
-        userId: "local-cli",
-        userName: "local",
+      routing: {
+        credentialContext: {
+          actor: { type: "system", id: "local-cli" },
+        },
+        destination,
+        source,
+        requester: {
+          fullName: "Local CLI",
+          platform: "local",
+          userId: "local-cli",
+          userName: "local",
+        },
+        surface: "internal",
+        correlation: {
+          conversationId: input.conversationId,
+          turnId,
+          runId: turnId,
+        },
       },
-      piMessages,
-      surface: "internal",
-      correlation: {
-        conversationId: input.conversationId,
-        turnId,
-        runId: turnId,
-      },
-      sandbox: {
-        sandboxId,
-        sandboxDependencyProfileHash,
-      },
-      onArtifactStateUpdated: async (nextArtifacts) => {
-        artifacts = nextArtifacts;
-        await persistThreadStateById(input.conversationId, {
-          artifacts,
-          conversation,
+      policy: {
+        authorizationFlowMode: "disabled",
+        sandbox: {
           sandboxId,
           sandboxDependencyProfileHash,
-        });
+        },
       },
-      onSandboxAcquired: async (sandbox) => {
-        sandboxId = sandbox.sandboxId;
-        sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
-        await persistThreadStateById(input.conversationId, {
-          artifacts,
-          conversation,
-          sandboxId,
-          sandboxDependencyProfileHash,
-        });
+      state: {
+        artifactState: artifacts,
       },
-      onStatus: async (status) => {
-        await deps.onStatus?.(status.text);
+      observers: {
+        onStatus: async (status) => {
+          await deps.onStatus?.(status.text);
+        },
+        onTextDelta: deps.onTextDelta,
+        onToolInvocation: async (invocation) => {
+          await deps.onToolInvocation?.(invocation);
+        },
+        onToolResult: async (result) => {
+          await deps.onToolResult?.(result);
+        },
       },
-      onTextDelta: deps.onTextDelta,
-      onToolInvocation: async (invocation) => {
-        await deps.onToolInvocation?.(invocation);
-      },
-      onToolResult: async (result) => {
-        await deps.onToolResult?.(result);
+      durability: {
+        onArtifactStateUpdated: async (nextArtifacts) => {
+          artifacts = nextArtifacts;
+          await persistThreadStateById(input.conversationId, {
+            artifacts,
+            conversation,
+            sandboxId,
+            sandboxDependencyProfileHash,
+          });
+        },
+        onSandboxAcquired: async (sandbox) => {
+          sandboxId = sandbox.sandboxId;
+          sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
+          await persistThreadStateById(input.conversationId, {
+            artifacts,
+            conversation,
+            sandboxId,
+            sandboxDependencyProfileHash,
+          });
+        },
       },
     });
     if (outcome.status !== "completed") {

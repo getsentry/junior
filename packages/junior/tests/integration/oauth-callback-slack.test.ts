@@ -175,19 +175,23 @@ describe("oauth callback slack integration", () => {
 
     expect(response.status).toBe(200);
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "list my sentry issues",
       expect.objectContaining({
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        conversationContext: expect.stringContaining(
-          "You need the budget by Friday.",
-        ),
+        input: expect.objectContaining({
+          messageText: "list my sentry issues",
+          conversationContext: expect.stringContaining(
+            "You need the budget by Friday.",
+          ),
+        }),
+        routing: expect.objectContaining({
+          destination: SLACK_DESTINATION,
+          source: storedSource,
+        }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      conversationContext?: string;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      input?: { conversationContext?: string };
     };
-    expect(resumeContext.conversationContext).not.toContain(
+    expect(resumeContext.input?.conversationContext).not.toContain(
       "list my sentry issues",
     );
 
@@ -361,38 +365,42 @@ describe("oauth callback slack integration", () => {
       ]),
     );
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "list my sentry issues",
       expect.objectContaining({
-        requester: expect.objectContaining({
-          email: "stored@example.com",
-          fullName: "Stored User",
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "stored-user",
+        input: expect.objectContaining({
+          messageText: "list my sentry issues",
+          conversationContext: expect.stringContaining(
+            "You need the budget by Friday.",
+          ),
         }),
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        correlation: expect.objectContaining({
-          channelId: "C123",
-          threadTs: "1700000000.009",
-          requesterId: "U123",
+        routing: expect.objectContaining({
+          requester: expect.objectContaining({
+            email: "stored@example.com",
+            fullName: "Stored User",
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+            userName: "stored-user",
+          }),
+          destination: SLACK_DESTINATION,
+          source: storedSource,
+          correlation: expect.objectContaining({
+            channelId: "C123",
+            threadTs: "1700000000.009",
+            requesterId: "U123",
+          }),
+          toolChannelId: "C999",
         }),
-        toolChannelId: "C999",
-        conversationContext: expect.stringContaining(
-          "You need the budget by Friday.",
-        ),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      conversationContext?: string;
-      source?: unknown;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      input?: { conversationContext?: string };
+      routing?: { source?: unknown };
     };
-    expect(resumeContext.source).toEqual({
+    expect(resumeContext.routing?.source).toEqual({
       ...slackSource("1700000000.009"),
       messageTs: "1700000000.session-source",
     });
-    expect(resumeContext.conversationContext).not.toContain(
+    expect(resumeContext.input?.conversationContext).not.toContain(
       "list my sentry issues",
     );
 
@@ -673,19 +681,23 @@ describe("oauth callback slack integration", () => {
     }
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "list my sentry issues",
       expect.objectContaining({
-        toolChannelId: "CFRESH",
-        destination: SLACK_DESTINATION,
-        conversationContext: expect.stringContaining(
-          "Fresh context loaded after the lock.",
-        ),
+        input: expect.objectContaining({
+          messageText: "list my sentry issues",
+          conversationContext: expect.stringContaining(
+            "Fresh context loaded after the lock.",
+          ),
+        }),
+        routing: expect.objectContaining({
+          toolChannelId: "CFRESH",
+          destination: SLACK_DESTINATION,
+        }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      conversationContext?: string;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      input?: { conversationContext?: string };
     };
-    expect(resumeContext.conversationContext).not.toContain(
+    expect(resumeContext.input?.conversationContext).not.toContain(
       "Old context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
@@ -808,10 +820,12 @@ describe("oauth callback slack integration", () => {
 
     expect(response.status).toBe(200);
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "new request",
       expect.objectContaining({
-        correlation: expect.objectContaining({
-          turnId: newSessionId,
+        input: expect.objectContaining({ messageText: "new request" }),
+        routing: expect.objectContaining({
+          correlation: expect.objectContaining({
+            turnId: newSessionId,
+          }),
         }),
       }),
     );

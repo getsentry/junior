@@ -298,10 +298,10 @@ describe("generateAssistantReply agent continuation", () => {
   it("rejects durable input when no prompt checkpoint can be persisted", async () => {
     const onInputCommitted = vi.fn();
 
-    const error = await generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      onInputCommitted,
+    const error = await generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: { destination: TEST_DESTINATION, source: TEST_SOURCE },
+      durability: { onInputCommitted },
     }).catch((caught) => caught);
 
     expect(isTurnInputCommitLostError(error)).toBe(true);
@@ -309,15 +309,18 @@ describe("generateAssistantReply agent continuation", () => {
   });
 
   it("stores the last safe boundary and returns a timed-out outcome", async () => {
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      correlation: {
-        conversationId: "conversation-1",
-        turnId: "turn-1",
-        channelId: "C123",
-        threadTs: "1712345.0001",
+    const replyPromise = generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-1",
+          turnId: "turn-1",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
       },
     });
 
@@ -365,15 +368,18 @@ describe("generateAssistantReply agent continuation", () => {
       resumeReason: "timeout",
     });
 
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      correlation: {
-        conversationId: "conversation-timeout-cap",
-        turnId: "turn-timeout-cap",
-        channelId: "C123",
-        threadTs: "1712345.0006",
+    const replyPromise = generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-timeout-cap",
+          turnId: "turn-timeout-cap",
+          channelId: "C123",
+          threadTs: "1712345.0006",
+        },
       },
     }).catch((caught) => caught);
 
@@ -398,17 +404,20 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("records the effective request deadline timeout budget", async () => {
     const startedAtMs = Date.now();
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      turnDeadlineAtMs: startedAtMs + 2_500,
-      correlation: {
-        conversationId: "conversation-short-deadline",
-        turnId: "turn-short-deadline",
-        channelId: "C123",
-        threadTs: "1712345.0005",
+    const replyPromise = generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-short-deadline",
+          turnId: "turn-short-deadline",
+          channelId: "C123",
+          threadTs: "1712345.0005",
+        },
       },
+      policy: { turnDeadlineAtMs: startedAtMs + 2_500 },
     });
 
     await vi.advanceTimersByTimeAsync(2_500);
@@ -426,16 +435,21 @@ describe("generateAssistantReply agent continuation", () => {
   });
 
   it("persists omitted-image context in the session-recorded Pi user message", async () => {
-    const replyPromise = generateAssistantReply("what is in this image?", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      omittedImageAttachmentCount: 1,
-      correlation: {
-        conversationId: "conversation-2",
-        turnId: "turn-2",
-        channelId: "C123",
-        threadTs: "1712345.0002",
+    const replyPromise = generateAssistantReply({
+      input: {
+        messageText: "what is in this image?",
+        omittedImageAttachmentCount: 1,
+      },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-2",
+          turnId: "turn-2",
+          channelId: "C123",
+          threadTs: "1712345.0002",
+        },
       },
     }).catch((caught) => caught);
 
@@ -466,15 +480,18 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("persists agent continuation state when abort does not settle the agent run", async () => {
     promptMode.value = "hangsAfterAbort";
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      correlation: {
-        conversationId: "conversation-hung",
-        turnId: "turn-hung",
-        channelId: "C123",
-        threadTs: "1712345.0003",
+    const replyPromise = generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-hung",
+          turnId: "turn-hung",
+          channelId: "C123",
+          threadTs: "1712345.0003",
+        },
       },
     });
 
@@ -508,15 +525,18 @@ describe("generateAssistantReply agent continuation", () => {
 
   it("uses one wall-clock timeout budget across provider retries", async () => {
     promptMode.value = "providerRetryThenHangs";
-    const replyPromise = generateAssistantReply("help me", {
-      destination: TEST_DESTINATION,
-      source: TEST_SOURCE,
-      requester: TEST_REQUESTER,
-      correlation: {
-        conversationId: "conversation-retry",
-        turnId: "turn-retry",
-        channelId: "C123",
-        threadTs: "1712345.0004",
+    const replyPromise = generateAssistantReply({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        requester: TEST_REQUESTER,
+        correlation: {
+          conversationId: "conversation-retry",
+          turnId: "turn-retry",
+          channelId: "C123",
+          threadTs: "1712345.0004",
+        },
       },
     });
 

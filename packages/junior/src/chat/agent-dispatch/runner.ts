@@ -289,60 +289,71 @@ export async function runAgentDispatchSlice(
       excludeMessageId: userMessageId,
     });
 
-    const outcome = await deps.agentRunner.run(dispatch.input, {
-      authorizationFlowMode: "disabled",
-      credentialContext: {
-        actor: dispatch.actor,
-        ...(dispatch.credentialSubject
-          ? { subject: dispatch.credentialSubject }
-          : {}),
+    const outcome = await deps.agentRunner.run({
+      input: {
+        messageText: dispatch.input,
+        conversationContext,
+        piMessages: conversation.piMessages,
       },
-      configuration,
-      channelConfiguration,
-      conversationContext,
-      artifactState: artifacts,
-      piMessages: conversation.piMessages,
-      destination: dispatch.destination,
-      source: dispatch.source,
-      dispatch: {
-        actor: dispatch.actor,
-        metadata: dispatch.metadata,
-        plugin: dispatch.plugin,
-      },
-      correlation: {
-        conversationId,
-        threadId: conversationId,
-        turnId,
-        runId: dispatch.id,
-        channelId: dispatch.destination.channelId,
-        teamId: dispatch.destination.teamId,
-      },
-      surface: "api",
-      toolChannelId: dispatch.destination.channelId,
-      sandbox: {
-        sandboxId,
-        sandboxDependencyProfileHash,
-      },
-      onSandboxAcquired: async (sandbox) => {
-        sandboxId = sandbox.sandboxId;
-        sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
-        await persistRuntimePatch({
+      routing: {
+        credentialContext: {
+          actor: dispatch.actor,
+          ...(dispatch.credentialSubject
+            ? { subject: dispatch.credentialSubject }
+            : {}),
+        },
+        destination: dispatch.destination,
+        source: dispatch.source,
+        dispatch: {
+          actor: dispatch.actor,
+          metadata: dispatch.metadata,
+          plugin: dispatch.plugin,
+        },
+        correlation: {
+          conversationId,
           threadId: conversationId,
-          conversation,
-          artifacts,
+          turnId,
+          runId: dispatch.id,
+          channelId: dispatch.destination.channelId,
+          teamId: dispatch.destination.teamId,
+        },
+        surface: "api",
+        toolChannelId: dispatch.destination.channelId,
+      },
+      policy: {
+        authorizationFlowMode: "disabled",
+        configuration,
+        channelConfiguration,
+        sandbox: {
           sandboxId,
           sandboxDependencyProfileHash,
-        });
+        },
       },
-      onArtifactStateUpdated: async (nextArtifacts) => {
-        artifacts = nextArtifacts;
-        await persistRuntimePatch({
-          threadId: conversationId,
-          conversation,
-          artifacts,
-          sandboxId,
-          sandboxDependencyProfileHash,
-        });
+      state: {
+        artifactState: artifacts,
+      },
+      durability: {
+        onSandboxAcquired: async (sandbox) => {
+          sandboxId = sandbox.sandboxId;
+          sandboxDependencyProfileHash = sandbox.sandboxDependencyProfileHash;
+          await persistRuntimePatch({
+            threadId: conversationId,
+            conversation,
+            artifacts,
+            sandboxId,
+            sandboxDependencyProfileHash,
+          });
+        },
+        onArtifactStateUpdated: async (nextArtifacts) => {
+          artifacts = nextArtifacts;
+          await persistRuntimePatch({
+            threadId: conversationId,
+            conversation,
+            artifacts,
+            sandboxId,
+            sandboxDependencyProfileHash,
+          });
+        },
       },
     });
     if (outcome.status === "awaiting_auth") {

@@ -213,36 +213,44 @@ describe("agent continuation Slack integration", () => {
     expect(continued).toBe(true);
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "resume this request",
       expect.objectContaining({
-        requester: expect.objectContaining({
-          email: "testuser@example.com",
-          fullName: "Test User",
-          userId: "U123",
-          userName: "testuser",
+        input: expect.objectContaining({
+          messageText: "resume this request",
+          inboundAttachmentCount: 2,
+          omittedImageAttachmentCount: 1,
         }),
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        toolChannelId: "C999",
-        inboundAttachmentCount: 2,
-        omittedImageAttachmentCount: 1,
-        sandbox: expect.objectContaining({
-          sandboxId: undefined,
-          sandboxDependencyProfileHash: undefined,
+        routing: expect.objectContaining({
+          requester: expect.objectContaining({
+            email: "testuser@example.com",
+            fullName: "Test User",
+            userId: "U123",
+            userName: "testuser",
+          }),
+          destination: SLACK_DESTINATION,
+          source: storedSource,
+          toolChannelId: "C999",
+        }),
+        policy: expect.objectContaining({
+          sandbox: expect.objectContaining({
+            sandboxId: undefined,
+            sandboxDependencyProfileHash: undefined,
+          }),
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      channelConfiguration?: {
-        resolve: (key: string) => Promise<unknown>;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      policy?: {
+        channelConfiguration?: {
+          resolve: (key: string) => Promise<unknown>;
+        };
+        turnDeadlineAtMs?: number;
       };
-      turnDeadlineAtMs?: number;
     };
-    expect(resumeContext.turnDeadlineAtMs).toEqual(expect.any(Number));
-    expect(resumeContext.turnDeadlineAtMs).toBeGreaterThan(Date.now());
-    expect(await resumeContext.channelConfiguration?.resolve("demo.org")).toBe(
-      "acme",
-    );
+    expect(resumeContext.policy?.turnDeadlineAtMs).toEqual(expect.any(Number));
+    expect(resumeContext.policy?.turnDeadlineAtMs).toBeGreaterThan(Date.now());
+    expect(
+      await resumeContext.policy?.channelConfiguration?.resolve("demo.org"),
+    ).toBe("acme");
 
     expect(slackApiOutbox.calls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([
@@ -366,13 +374,15 @@ describe("agent continuation Slack integration", () => {
       }),
     ]);
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "resume this request",
       expect.objectContaining({
-        requester: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-        },
+        input: expect.objectContaining({ messageText: "resume this request" }),
+        routing: expect.objectContaining({
+          requester: {
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+          },
+        }),
       }),
     );
   });
@@ -722,13 +732,15 @@ describe("agent continuation Slack integration", () => {
 
     expect(continued).toBe(true);
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "resume this request",
       expect.objectContaining({
-        requester: expect.objectContaining({
-          userId: "U123",
-          userName: "testuser",
-          fullName: "Test User",
-          email: "testuser@example.com",
+        input: expect.objectContaining({ messageText: "resume this request" }),
+        routing: expect.objectContaining({
+          requester: expect.objectContaining({
+            userId: "U123",
+            userName: "testuser",
+            fullName: "Test User",
+            email: "testuser@example.com",
+          }),
         }),
       }),
     );
@@ -933,9 +945,11 @@ describe("agent continuation Slack integration", () => {
 
     expect(resumed).toBe(true);
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "resume this request",
       expect.objectContaining({
-        destination: SLACK_DESTINATION,
+        input: expect.objectContaining({ messageText: "resume this request" }),
+        routing: expect.objectContaining({
+          destination: SLACK_DESTINATION,
+        }),
       }),
     );
     // Exactly one visible reply for the interrupted request.

@@ -349,41 +349,51 @@ async function resumeAuthorizedMcpTurn(args: {
         messageText: lockedUserMessage.text,
         messageTs: lockedMessageTs,
         replyContext: {
-          credentialContext: {
-            actor: { type: "user", userId: requester.userId },
+          input: {
+            conversationContext: lockedConversationContext,
+            piMessages: lockedConversation.piMessages,
+            ...getTurnUserReplyAttachmentContext(lockedUserMessage),
           },
-          requester,
-          destination,
-          source: lockedSessionRecord.source,
-          correlation: {
-            conversationId: authSession.conversationId,
-            turnId: lockedSessionId,
-            channelId: authSession.channelId,
-            threadTs: authSession.threadTs,
-            requesterId: requester.userId,
-          },
-          toolChannelId:
-            authSession.toolChannelId ??
-            lockedArtifacts.assistantContextChannelId ??
-            authSession.channelId,
-          conversationContext: lockedConversationContext,
-          artifactState: lockedArtifacts,
-          piMessages: lockedConversation.piMessages,
-          configuration: authSession.configuration,
-          pendingAuth: lockedPendingAuth,
-          channelConfiguration: lockedChannelConfiguration,
-          sandbox: getPersistedSandboxState(lockedState),
-          recordPendingAuth: async (nextPendingAuth) => {
-            await applyPendingAuthUpdate({
-              conversation: lockedConversation,
+          routing: {
+            credentialContext: {
+              actor: { type: "user", userId: requester.userId },
+            },
+            requester,
+            destination,
+            source: lockedSessionRecord.source,
+            correlation: {
               conversationId: authSession.conversationId,
-              nextPendingAuth,
-            });
-            await persistThreadStateById(threadId, {
-              conversation: lockedConversation,
-            });
+              turnId: lockedSessionId,
+              channelId: authSession.channelId,
+              threadTs: authSession.threadTs,
+              requesterId: requester.userId,
+            },
+            toolChannelId:
+              authSession.toolChannelId ??
+              lockedArtifacts.assistantContextChannelId ??
+              authSession.channelId,
           },
-          ...getTurnUserReplyAttachmentContext(lockedUserMessage),
+          policy: {
+            configuration: authSession.configuration,
+            channelConfiguration: lockedChannelConfiguration,
+            sandbox: getPersistedSandboxState(lockedState),
+          },
+          state: {
+            artifactState: lockedArtifacts,
+            pendingAuth: lockedPendingAuth,
+          },
+          durability: {
+            recordPendingAuth: async (nextPendingAuth) => {
+              await applyPendingAuthUpdate({
+                conversation: lockedConversation,
+                conversationId: authSession.conversationId,
+                nextPendingAuth,
+              });
+              await persistThreadStateById(threadId, {
+                conversation: lockedConversation,
+              });
+            },
+          },
         },
         onSuccess: async (reply: AssistantReply) => {
           await persistCompletedReplyState(

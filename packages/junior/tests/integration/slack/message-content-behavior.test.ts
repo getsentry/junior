@@ -16,6 +16,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 interface CapturedCall {
   contextConversation?: string;
@@ -62,7 +63,12 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -98,7 +104,9 @@ describe("Slack behavior: message content", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               calls.push({ prompt });
               return completedReply("Done.");
             },
@@ -131,7 +139,12 @@ describe("Slack behavior: message content", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -248,7 +261,12 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -350,7 +368,12 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,
@@ -464,7 +487,12 @@ describe("Slack behavior: message content", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               calls.push({
                 prompt,
                 contextConversation: context?.conversationContext,

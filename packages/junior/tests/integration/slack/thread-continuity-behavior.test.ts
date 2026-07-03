@@ -46,7 +46,9 @@ describe("Slack behavior: thread continuity", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               prompts.push(prompt);
               return completedAgentRun({
                 text:

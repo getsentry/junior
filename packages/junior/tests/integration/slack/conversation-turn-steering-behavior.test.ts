@@ -26,6 +26,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 const CHANNEL_ID = "CSTEER";
 const THREAD_TS = "1712345.000100";
@@ -247,11 +248,9 @@ describe("Slack behavior: durable turn steering", () => {
       steeringTexts: string[];
     }> = [];
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (
-      prompt,
-      context,
-    ) => {
-      await context?.onInputCommitted?.();
+    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+      const prompt = request.input.messageText;
+      await request.durability?.onInputCommitted?.();
       if (!blockingCallReleased) {
         agentEntered.resolve();
         await releaseAgent.promise;
@@ -259,7 +258,7 @@ describe("Slack behavior: durable turn steering", () => {
       }
 
       const steeringMessages: ReplySteeringMessage[] = [];
-      const drained = await context?.drainSteeringMessages?.(
+      const drained = await request.durability?.drainSteeringMessages?.(
         async (messages) => {
           steeringMessages.push(...messages);
         },
@@ -449,7 +448,12 @@ describe("Slack behavior: durable turn steering", () => {
           reason: "side conversation",
         })),
         agentRunner: {
-          run: async (prompt, context) => {
+          run: async (request) => {
+            const prompt = request.input.messageText;
+            const context = {
+              ...flattenReplyRequestForTest(request),
+            };
+
             replyCalls.push(prompt);
             await context?.onInputCommitted?.();
             return completedAgentRun({
@@ -510,14 +514,11 @@ describe("Slack behavior: durable turn steering", () => {
     const releaseAgent = deferred();
     const drainedTexts: string[] = [];
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (
-      _prompt,
-      context,
-    ) => {
-      await context?.onInputCommitted?.();
+    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+      await request.durability?.onInputCommitted?.();
       agentEntered.resolve();
       await releaseAgent.promise;
-      const drained = await context?.drainSteeringMessages?.(
+      const drained = await request.durability?.drainSteeringMessages?.(
         async (messages) => {
           drainedTexts.push(...messages.map((message) => message.text));
         },
@@ -634,11 +635,10 @@ describe("Slack behavior: durable turn steering", () => {
 
   it("keeps the mailbox pending when the agent fails before input commit", async () => {
     const state = getStateAdapter();
-    const generateAssistantReply: AgentRunner["run"] = async (
-      _prompt,
-      context,
-    ) => {
-      expect(context?.onInputCommitted).toEqual(expect.any(Function));
+    const generateAssistantReply: AgentRunner["run"] = async (request) => {
+      expect(request.durability?.onInputCommitted).toEqual(
+        expect.any(Function),
+      );
       throw new Error("agent crashed before input commit");
     };
     const { conversationId, queue, runNextQueuedWork, services } =

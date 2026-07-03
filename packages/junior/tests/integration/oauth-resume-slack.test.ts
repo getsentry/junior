@@ -75,12 +75,14 @@ describe("oauth resume slack integration", () => {
       connectedText:
         "Your eval-auth MCP access is now connected. Continuing the original request...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.001"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.001"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>
@@ -175,15 +177,17 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.007",
       connectedText: "",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.007"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-1",
-          turnId: "turn-1",
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.007"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
+          correlation: {
+            conversationId: "conversation-1",
+            turnId: "turn-1",
+          },
         },
       },
       agentRunner: {
@@ -236,15 +240,17 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.008",
       connectedText: "",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.008"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-auth-pause",
-          turnId: "turn-auth-pause",
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.008"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
+          correlation: {
+            conversationId: "conversation-auth-pause",
+            turnId: "turn-auth-pause",
+          },
         },
       },
       agentRunner: {
@@ -285,12 +291,14 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.002",
       connectedText: "Connected. Continuing...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.002"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.002"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>
@@ -327,12 +335,14 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.003",
       connectedText: "Connected. Continuing...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.003"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.003"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>
@@ -366,12 +376,14 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.006",
       connectedText: "Connected. Continuing...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.006"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.006"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>
@@ -406,12 +418,14 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.004",
       connectedText: "Connected. Continuing...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.004"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.004"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>
@@ -467,12 +481,14 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.005",
       connectedText: "Connected. Continuing...",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U123" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.005"),
+          requester: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.005"),
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: {
         run: async () =>

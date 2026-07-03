@@ -204,8 +204,19 @@ function waitForAbortSettlement(
   });
 }
 
-export interface ReplyRequestContext {
-  skillDirs?: string[];
+/** Carries the user-visible content and prior transcript for one agent-run slice. */
+export interface ReplyRequestInput {
+  messageText: string;
+  userAttachments?: ReplyRequestAttachment[];
+  inboundAttachmentCount?: number;
+  omittedImageAttachmentCount?: number;
+  /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
+  piMessages?: PiMessage[];
+  conversationContext?: string;
+}
+
+/** Carries identity and addressing needed to route tools, auth, and delivery. */
+export interface ReplyRequestRouting {
   credentialContext?: CredentialContext;
   requester?: Requester;
   source: Source;
@@ -230,44 +241,43 @@ export interface ReplyRequestContext {
     requesterId?: string;
   };
   toolChannelId?: string;
-  conversationContext?: string;
-  artifactState?: ThreadArtifactsState;
-  pendingAuth?: ConversationPendingAuthState;
-  authorizationFlowMode?: AuthorizationFlowMode;
-  configuration?: Record<string, unknown>;
-  /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  piMessages?: PiMessage[];
+}
+
+/**
+ * Carries execution limits, dependency overrides, and persisted sandbox
+ * reuse state for one run slice.
+ */
+export interface ReplyRequestPolicy {
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
+  authorizationFlowMode?: AuthorizationFlowMode;
+  configuration?: Record<string, unknown>;
   channelConfiguration?: ChannelConfigurationService;
-  userAttachments?: ReplyRequestAttachment[];
-  inboundAttachmentCount?: number;
-  omittedImageAttachmentCount?: number;
+  skillDirs?: string[];
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
-    /** Per-turn override for app-owned sandbox egress trace propagation. */
+    /** Per-slice override for app-owned sandbox egress trace propagation. */
     tracePropagation?: SandboxEgressTracePropagationConfig;
   };
-  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
-  onArtifactStateUpdated?: (
-    artifactState: ThreadArtifactsState,
-  ) => void | Promise<void>;
-  onInputCommitted?: () => void | Promise<void>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;
     webSearch?: WebSearchToolDeps;
   };
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
-  drainSteeringMessages?: (
-    accept: (messages: ReplySteeringMessage[]) => Promise<void>,
-  ) => Promise<ReplySteeringMessage[]>;
-  /** Return true when the durable worker should pause at the next Pi boundary. */
-  shouldYield?: () => boolean;
-  recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState,
-  ) => void | Promise<void>;
+}
+
+/** Carries durable state snapshots already loaded by the caller. */
+export interface ReplyRequestState {
+  artifactState?: ThreadArtifactsState;
+  pendingAuth?: ConversationPendingAuthState;
+}
+
+/**
+ * Carries notification-only callbacks for streaming UI and status surfaces;
+ * their failures never affect the run.
+ */
+export interface ReplyRequestObservers {
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   onToolInvocation?: (invocation: {
@@ -275,9 +285,62 @@ export interface ReplyRequestContext {
     params: Record<string, unknown>;
   }) => void | Promise<void>;
   onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+}
+
+/** Carries durable-worker ports that commit or update resumable run state. */
+export interface ReplyRequestDurability {
+  onInputCommitted?: () => void | Promise<void>;
+  /** Return true when the durable worker should pause at the next Pi boundary. */
+  shouldYield?: () => boolean;
+  drainSteeringMessages?: (
+    accept: (messages: ReplySteeringMessage[]) => Promise<void>,
+  ) => Promise<ReplySteeringMessage[]>;
+  recordPendingAuth?: (
+    pendingAuth: ConversationPendingAuthState,
+  ) => void | Promise<void>;
+  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
+  onArtifactStateUpdated?: (
+    artifactState: ThreadArtifactsState,
+  ) => void | Promise<void>;
+}
+
+/** Groups the per-slice reply request by the runtime role each field serves. */
+export interface ReplyRequestContext {
+  input: ReplyRequestInput;
+  routing: ReplyRequestRouting;
+  policy?: ReplyRequestPolicy;
+  state?: ReplyRequestState;
+  observers?: ReplyRequestObservers;
+  durability?: ReplyRequestDurability;
 }
 
 export type AssistantReplyRequestContext = ReplyRequestContext;
+
+type FlatReplyRequestContext = ReplyRequestInput &
+  ReplyRequestRouting &
+  ReplyRequestPolicy &
+  ReplyRequestState &
+  ReplyRequestObservers &
+  ReplyRequestDurability;
+
+/**
+ * Interim shim: run internals still consume the historical flat shape
+ * (grouped rewrite deferred to #746 Phase 5). The groups must stay
+ * key-disjoint or later spreads silently shadow earlier fields.
+ */
+function flattenReplyRequestContext(
+  request: ReplyRequestContext,
+): FlatReplyRequestContext {
+  return {
+    ...request.input,
+    ...request.routing,
+    ...(request.policy ?? {}),
+    ...(request.state ?? {}),
+    ...(request.observers ?? {}),
+    ...(request.durability ?? {}),
+  };
+}
 
 export interface ReplyRequestAttachment {
   data?: Buffer;
@@ -308,7 +371,7 @@ const legacyStoredTextPartSchema = z
   .strict();
 
 type UserTurnAttachment = NonNullable<
-  ReplyRequestContext["userAttachments"]
+  ReplyRequestInput["userAttachments"]
 >[number];
 
 function buildOmittedImageAttachmentNotice(count: number): string {
@@ -343,13 +406,15 @@ function extractSliceUsage(
 }
 
 function requesterFromContext(
-  context: ReplyRequestContext,
+  context: FlatReplyRequestContext,
 ): Requester | undefined {
   return actorRequesterFromContext(context);
 }
 
 /** Reject requester identities that do not belong to the active destination. */
-function assertRequesterDestinationMatch(context: ReplyRequestContext): void {
+function assertRequesterDestinationMatch(
+  context: FlatReplyRequestContext,
+): void {
   const { destination, requester } = context;
   if (!requester) {
     return;
@@ -369,7 +434,9 @@ function assertRequesterDestinationMatch(context: ReplyRequestContext): void {
 }
 
 /** Reject legacy Slack correlation fields that conflict with the destination. */
-function assertCorrelationDestinationMatch(context: ReplyRequestContext): void {
+function assertCorrelationDestinationMatch(
+  context: FlatReplyRequestContext,
+): void {
   const { correlation, destination } = context;
   if (destination.platform !== "slack") {
     return;
@@ -393,7 +460,7 @@ function assertCorrelationDestinationMatch(context: ReplyRequestContext): void {
 }
 
 function actorRequesterFromContext(
-  context: ReplyRequestContext,
+  context: FlatReplyRequestContext,
 ): Requester | undefined {
   return createRequester(context.requester, {
     platform:
@@ -411,7 +478,9 @@ function actorRequesterFromContext(
   });
 }
 
-function toolInvocationDestination(context: ReplyRequestContext): Destination {
+function toolInvocationDestination(
+  context: FlatReplyRequestContext,
+): Destination {
   if (context.destination.platform !== "slack" || !context.toolChannelId) {
     return context.destination;
   }
@@ -423,7 +492,7 @@ function toolInvocationDestination(context: ReplyRequestContext): Destination {
 }
 
 function surfaceFromContext(
-  context: ReplyRequestContext,
+  context: FlatReplyRequestContext,
 ): AgentTurnSurface | undefined {
   if (context.surface) {
     return context.surface;
@@ -488,7 +557,7 @@ function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
 
 function buildUserTurnInput(args: {
   omittedImageAttachmentCount: number;
-  userAttachments?: ReplyRequestContext["userAttachments"];
+  userAttachments?: ReplyRequestInput["userAttachments"];
   userTurnText: string;
 }): {
   routerBlocks: string[];
@@ -639,9 +708,10 @@ function legacyTextPartMatchesCurrentText(
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
-  messageText: string,
-  context: AssistantReplyRequestContext,
+  request: AssistantReplyRequestContext,
 ): Promise<AgentRunOutcome> {
+  const context = flattenReplyRequestContext(request);
+  const messageText = request.input.messageText;
   const conversationPrivacy = resolveConversationPrivacy({
     channelId: context.correlation?.channelId,
     conversationId:
@@ -663,7 +733,7 @@ export async function generateAssistantReply(
 
 async function generateAssistantReplyInPrivacyContext(
   messageText: string,
-  context: AssistantReplyRequestContext,
+  context: FlatReplyRequestContext,
   conversationPrivacy: ConversationPrivacy | undefined,
 ): Promise<AgentRunOutcome> {
   if (!context.destination) {

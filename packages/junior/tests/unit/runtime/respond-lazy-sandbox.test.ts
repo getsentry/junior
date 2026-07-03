@@ -531,12 +531,20 @@ const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 async function generateLocalReply(
   message: string,
-  context: Omit<ReplyRequestContext, "destination" | "source"> = {},
+  context: Partial<Omit<ReplyRequestContext, "input" | "routing">> & {
+    input?: Partial<Omit<ReplyRequestContext["input"], "messageText">>;
+  } = {},
 ) {
-  const outcome = await generateAssistantReply(message, {
+  const outcome = await generateAssistantReply({
     ...context,
-    destination: LOCAL_DESTINATION,
-    source: LOCAL_SOURCE,
+    input: {
+      messageText: message,
+      ...(context.input ?? {}),
+    },
+    routing: {
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    },
   });
   if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
@@ -617,13 +625,15 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
   it("uses attachment text when routing the turn thinking level", async () => {
     const reply = await generateLocalReply("can you fix this?", {
-      userAttachments: [
-        {
-          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
-          filename: "error.txt",
-          mediaType: "text/plain",
-        },
-      ],
+      input: {
+        userAttachments: [
+          {
+            data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+            filename: "error.txt",
+            mediaType: "text/plain",
+          },
+        ],
+      },
     });
 
     expect(reply.text).toBe("Plain reply.");
@@ -632,13 +642,15 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
   it("uses structured-suffix attachment text when the media type has parameters", async () => {
     const reply = await generateLocalReply("can you fix this?", {
-      userAttachments: [
-        {
-          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
-          filename: "error.json",
-          mediaType: "application/vnd.api+json; charset=utf-8",
-        },
-      ],
+      input: {
+        userAttachments: [
+          {
+            data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+            filename: "error.json",
+            mediaType: "application/vnd.api+json; charset=utf-8",
+          },
+        ],
+      },
     });
 
     expect(reply.text).toBe("Plain reply.");
@@ -663,7 +675,9 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     const onSandboxAcquired = vi.fn();
 
     const reply = await generateLocalReply("attach the report", {
-      onSandboxAcquired,
+      durability: {
+        onSandboxAcquired,
+      },
     });
 
     // Raw exception text stays in diagnostics; it is never reply text.

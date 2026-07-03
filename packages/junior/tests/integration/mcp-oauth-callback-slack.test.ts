@@ -368,40 +368,46 @@ describe("mcp oauth callback slack integration", () => {
     });
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "what did i say about the budget?",
       expect.objectContaining({
-        requester: expect.objectContaining({
-          email: "stored@example.com",
-          fullName: "Stored User",
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "stored-user",
+        input: expect.objectContaining({
+          messageText: "what did i say about the budget?",
+          inboundAttachmentCount: 1,
+          omittedImageAttachmentCount: 1,
+          conversationContext: expect.stringContaining(
+            "You need the budget by Friday.",
+          ),
         }),
-        destination: SLACK_DESTINATION,
-        source: storedSource,
-        toolChannelId: "C999",
-        inboundAttachmentCount: 1,
-        omittedImageAttachmentCount: 1,
-        artifactState: expect.objectContaining({
-          assistantContextChannelId: "C999",
-          lastCanvasId: "F123",
+        routing: expect.objectContaining({
+          requester: expect.objectContaining({
+            email: "stored@example.com",
+            fullName: "Stored User",
+            platform: "slack",
+            teamId: "T123",
+            userId: "U123",
+            userName: "stored-user",
+          }),
+          destination: SLACK_DESTINATION,
+          source: storedSource,
+          toolChannelId: "C999",
         }),
-        conversationContext: expect.stringContaining(
-          "You need the budget by Friday.",
-        ),
+        state: expect.objectContaining({
+          artifactState: expect.objectContaining({
+            assistantContextChannelId: "C999",
+            lastCanvasId: "F123",
+          }),
+        }),
       }),
     );
 
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      conversationContext?: string;
-      configuration?: Record<string, unknown>;
-      source?: unknown;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      input?: { conversationContext?: string };
+      policy?: { configuration?: Record<string, unknown> };
+      routing?: { source?: unknown };
     };
-    expect(resumeContext.conversationContext).not.toContain(
+    expect(resumeContext.input?.conversationContext).not.toContain(
       "what did i say about the budget?",
     );
-    expect(resumeContext.configuration?.region).toBe("us");
+    expect(resumeContext.policy?.configuration?.region).toBe("us");
 
     const persistedState = await stateAdapterModule
       .getStateAdapter()
@@ -659,21 +665,27 @@ describe("mcp oauth callback slack integration", () => {
     }
 
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
-      "what did i say about the budget?",
       expect.objectContaining({
-        destination: SLACK_DESTINATION,
-        toolChannelId: "CFRESH",
-        conversationContext: expect.stringContaining(
-          "Fresh MCP context loaded after the lock.",
-        ),
+        input: expect.objectContaining({
+          messageText: "what did i say about the budget?",
+          conversationContext: expect.stringContaining(
+            "Fresh MCP context loaded after the lock.",
+          ),
+        }),
+        routing: expect.objectContaining({
+          destination: SLACK_DESTINATION,
+          toolChannelId: "CFRESH",
+        }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
-      conversationContext?: string;
-      source?: unknown;
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+      input?: { conversationContext?: string };
+      routing?: { source?: unknown };
     };
-    expect(resumeContext.source).toEqual(slackSource("1700000000.005"));
-    expect(resumeContext.conversationContext).not.toContain(
+    expect(resumeContext.routing?.source).toEqual(
+      slackSource("1700000000.005"),
+    );
+    expect(resumeContext.input?.conversationContext).not.toContain(
       "Old MCP context that should not be used.",
     );
     expect(getCapturedSlackApiCalls("reactions.add")).toEqual([

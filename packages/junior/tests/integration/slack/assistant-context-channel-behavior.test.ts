@@ -6,6 +6,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 describe("Slack behavior: assistant context channel routing", () => {
   it("prefers assistantContextChannelId over DM channel for tool execution context", async () => {
@@ -15,7 +16,12 @@ describe("Slack behavior: assistant context channel routing", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               capturedToolChannelIds.push(context?.toolChannelId);
               return completedAgentRun({
                 text: "Canvas draft prepared.",

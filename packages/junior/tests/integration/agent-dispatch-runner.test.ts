@@ -19,6 +19,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AssistantReply } from "@/chat/respond";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
@@ -31,6 +32,7 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+import { flattenReplyRequestForTest } from "../fixtures/agent-runner";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -179,30 +181,33 @@ describe("agent dispatch runner", () => {
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
-    const generateAssistantReply = vi.fn(async (_input, context) => {
-      expect(context.requester).toBeUndefined();
-      expect(context.authorizationFlowMode).toBe("disabled");
-      expect(context.surface).toBe("api");
-      expect(context.source).toEqual(slackSource());
-      expect(context.dispatch).toEqual({
-        actor: { type: "system", id: "scheduler" },
-        metadata: { runId: "run-1" },
-        plugin: "scheduler",
-      });
-      expect(context.correlation).toMatchObject({
-        conversationId: dispatchConversationId,
-        threadId: dispatchConversationId,
-        channelId: "C123",
-        teamId: "T123",
-      });
-      expect(context.credentialContext).toEqual({
-        actor: { type: "system", id: "scheduler" },
-      });
-      expect(context.sandbox?.tracePropagation).toEqual({
-        domains: ["*.sentry.io"],
-      });
-      return completedAgentRun(createReply());
-    });
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
+        expect(context.requester).toBeUndefined();
+        expect(context.authorizationFlowMode).toBe("disabled");
+        expect(context.surface).toBe("api");
+        expect(context.source).toEqual(slackSource());
+        expect(context.dispatch).toEqual({
+          actor: { type: "system", id: "scheduler" },
+          metadata: { runId: "run-1" },
+          plugin: "scheduler",
+        });
+        expect(context.correlation).toMatchObject({
+          conversationId: dispatchConversationId,
+          threadId: dispatchConversationId,
+          channelId: "C123",
+          teamId: "T123",
+        });
+        expect(context.credentialContext).toEqual({
+          actor: { type: "system", id: "scheduler" },
+        });
+        expect(context.sandbox?.tracePropagation).toEqual({
+          domains: ["*.sentry.io"],
+        });
+        return completedAgentRun(createReply());
+      },
+    );
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
     await runAgentDispatchSlice(
@@ -308,11 +313,14 @@ describe("agent dispatch runner", () => {
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
-    const generateAssistantReply = vi.fn(async (_input, context) => {
-      expect(context.conversationContext).toBeUndefined();
-      expect(context.piMessages).toEqual([]);
-      return completedAgentRun(createReply());
-    });
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
+        expect(context.conversationContext).toBeUndefined();
+        expect(context.piMessages).toEqual([]);
+        return completedAgentRun(createReply());
+      },
+    );
 
     await runAgentDispatchSlice(
       {
@@ -396,25 +404,28 @@ describe("agent dispatch runner", () => {
         source: slackSource("D123"),
       },
     });
-    const generateAssistantReply = vi.fn(async (_input, context) => {
-      expect(context.requester).toBeUndefined();
-      expect(context.credentialContext).toEqual({
-        actor: { type: "system", id: "scheduler" },
-        subject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-          binding: {
-            type: "slack-direct-conversation",
-            teamId: "T123",
-            channelId: "D123",
-            signature: expect.any(String),
+    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
+      async (request) => {
+        const context = flattenReplyRequestForTest(request);
+        expect(context.requester).toBeUndefined();
+        expect(context.credentialContext).toEqual({
+          actor: { type: "system", id: "scheduler" },
+          subject: {
+            type: "user",
+            userId: "U123",
+            allowedWhen: "private-direct-conversation",
+            binding: {
+              type: "slack-direct-conversation",
+              teamId: "T123",
+              channelId: "D123",
+              signature: expect.any(String),
+            },
           },
-        },
-      });
-      expect(context.authorizationFlowMode).toBe("disabled");
-      return completedAgentRun(createReply());
-    });
+        });
+        expect(context.authorizationFlowMode).toBe("disabled");
+        return completedAgentRun(createReply());
+      },
+    );
 
     await runAgentDispatchSlice(
       {

@@ -129,7 +129,7 @@ describe("agent continuation runner callbacks", () => {
             if (!prepared.replyContext) {
               throw new Error("Expected prepared continuation reply context");
             }
-            expect(prepared.replyContext.requester).toEqual({
+            expect(prepared.replyContext.routing.requester).toEqual({
               email: "stored@example.com",
               fullName: "Stored User",
               platform: "slack",

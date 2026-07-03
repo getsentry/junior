@@ -1488,7 +1488,7 @@ function buildRuntimeServices(
       : {}),
     replyExecutor: {
       agentRunner: {
-        run: async (text, context) => {
+        run: async (request) => {
           replyCallCount += 1;
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           if (scenario.overrides?.fail_reply_call === replyCallCount) {
@@ -1497,7 +1497,7 @@ function buildRuntimeServices(
           const replyResult = replyResults[replyCallCount - 1];
           if (replyResult) {
             if (replyResult.stream_text) {
-              await context?.onTextDelta?.(replyResult.stream_text);
+              await request.observers?.onTextDelta?.(replyResult.stream_text);
             }
             replyState.successfulCount += 1;
             observations.toolInvocations.push(
@@ -1557,7 +1557,7 @@ function buildRuntimeServices(
             "VERCEL_OIDC_TOKEN",
           ]);
           const baseToolOverrides: ToolHooks["toolOverrides"] = {
-            ...(context?.toolOverrides ?? {}),
+            ...(request.policy?.toolOverrides ?? {}),
           };
           const toolOverrides = {
             ...baseToolOverrides,
@@ -1572,21 +1572,27 @@ function buildRuntimeServices(
             delete process.env.VERCEL_OIDC_TOKEN;
           }
           try {
-            const outcome = await generateAssistantReply(text, {
-              ...context,
-              turnDeadlineAtMs: Math.min(
-                context?.turnDeadlineAtMs ?? Number.POSITIVE_INFINITY,
-                Date.now() + replyTimeoutMs,
-              ),
-              onToolInvocation: (invocation) => {
-                observations.toolInvocations.push(
-                  toEvalToolInvocation(invocation),
-                );
+            const outcome = await generateAssistantReply({
+              ...request,
+              policy: {
+                ...request.policy,
+                turnDeadlineAtMs: Math.min(
+                  request.policy?.turnDeadlineAtMs ?? Number.POSITIVE_INFINITY,
+                  Date.now() + replyTimeoutMs,
+                ),
+                ...(env.configuredSkillDirs.length > 0
+                  ? { skillDirs: env.configuredSkillDirs }
+                  : {}),
+                toolOverrides,
               },
-              ...(env.configuredSkillDirs.length > 0
-                ? { skillDirs: env.configuredSkillDirs }
-                : {}),
-              toolOverrides,
+              observers: {
+                ...request.observers,
+                onToolInvocation: (invocation) => {
+                  observations.toolInvocations.push(
+                    toEvalToolInvocation(invocation),
+                  );
+                },
+              },
             });
             replyState.successfulCount += 1;
             return outcome;

@@ -97,41 +97,6 @@ const TEST_REQUESTER = {
   userId: "U123",
 } as const;
 
-function makeReplyContext(args: {
-  conversationId: string;
-  threadTs: string;
-  turnId: string;
-}) {
-  const destination = {
-    platform: "slack" as const,
-    teamId: "T123",
-    channelId: "C123",
-  };
-  return {
-    credentialContext: {
-      actor: { type: "user" as const, userId: "U123" },
-    },
-    destination,
-    source: createSlackSource({
-      teamId: destination.teamId,
-      channelId: destination.channelId,
-      threadTs: args.threadTs,
-
-      type: "priv",
-    }),
-    requester: TEST_REQUESTER,
-    recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
-      pendingAuthRecords.push(pendingAuth);
-    },
-    correlation: {
-      channelId: "C123",
-      conversationId: args.conversationId,
-      threadTs: args.threadTs,
-      turnId: args.turnId,
-    },
-  };
-}
-
 vi.mock("@earendil-works/pi-agent-core", () => {
   class MockAgent {
     state: {
@@ -594,7 +559,10 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
-import { generateAssistantReply } from "@/chat/respond";
+import {
+  generateAssistantReply,
+  type ReplyRequestContext,
+} from "@/chat/respond";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
@@ -608,6 +576,65 @@ function finalReply(
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
   return outcome.reply;
+}
+
+function makeReplyRequest(
+  messageText: string,
+  args: {
+    conversationId: string;
+    threadTs: string;
+    turnId: string;
+  },
+  overrides: {
+    input?: Partial<Omit<ReplyRequestContext["input"], "messageText">>;
+    routing?: Partial<ReplyRequestContext["routing"]>;
+    policy?: ReplyRequestContext["policy"];
+    state?: ReplyRequestContext["state"];
+    observers?: ReplyRequestContext["observers"];
+    durability?: ReplyRequestContext["durability"];
+  } = {},
+): ReplyRequestContext {
+  const destination = {
+    platform: "slack" as const,
+    teamId: "T123",
+    channelId: "C123",
+  };
+  return {
+    input: {
+      messageText,
+      ...(overrides.input ?? {}),
+    },
+    routing: {
+      credentialContext: {
+        actor: { type: "user" as const, userId: "U123" },
+      },
+      destination,
+      source: createSlackSource({
+        teamId: destination.teamId,
+        channelId: destination.channelId,
+        threadTs: args.threadTs,
+
+        type: "priv",
+      }),
+      requester: TEST_REQUESTER,
+      correlation: {
+        channelId: "C123",
+        conversationId: args.conversationId,
+        threadTs: args.threadTs,
+        turnId: args.turnId,
+      },
+      ...(overrides.routing ?? {}),
+    },
+    ...(overrides.policy ? { policy: overrides.policy } : {}),
+    ...(overrides.state ? { state: overrides.state } : {}),
+    ...(overrides.observers ? { observers: overrides.observers } : {}),
+    durability: {
+      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
+        pendingAuthRecords.push(pendingAuth);
+      },
+      ...(overrides.durability ?? {}),
+    },
+  };
 }
 
 // This suite validates local progressive-loading logic through a mocked
@@ -685,13 +712,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
   });
 
   it("persists loaded plugin skills across auth pause and resume", async () => {
-    const context = makeReplyContext({
+    const context = makeReplyRequest("help me", {
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
       turnId: "turn-1",
     });
 
-    const firstError = await generateAssistantReply("help me", context);
+    const firstError = await generateAssistantReply(context);
 
     expect(firstError.status).toBe("awaiting_auth");
     expect(agentInitialToolNames[0]).toContain("loadSkill");
@@ -723,7 +750,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     ]);
     expect(loadSkillExecutionErrorCount.value).toBe(0);
 
-    const reply = finalReply(await generateAssistantReply("help me", context));
+    const reply = finalReply(await generateAssistantReply(context));
 
     expect(reply.text).toBe("resumed reply");
     expect(promptCallCount.value).toBe(1);
@@ -769,8 +796,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     const reply = finalReply(
       await generateAssistantReply(
-        "help me",
-        makeReplyContext({
+        makeReplyRequest("help me", {
           conversationId: "conversation-2",
           threadTs: "1712345.0002",
           turnId: "turn-2",
@@ -812,25 +838,32 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
-    await generateAssistantReply("help me", {
-      ...makeReplyContext({
-        conversationId: "conversation-restored-provider",
-        threadTs: "1712345.0090",
-        turnId: "turn-restored-provider",
-      }),
-      piMessages: [
+    await generateAssistantReply(
+      makeReplyRequest(
+        "help me",
         {
-          role: "toolResult",
-          toolName: "callMcpTool",
-          isError: false,
-          content: [{ type: "text", text: "pong" }],
+          conversationId: "conversation-restored-provider",
+          threadTs: "1712345.0090",
+          turnId: "turn-restored-provider",
+        },
+        {
           input: {
-            tool_name: "mcp__demo__ping",
-            arguments: { query: "prior" },
+            piMessages: [
+              {
+                role: "toolResult",
+                toolName: "callMcpTool",
+                isError: false,
+                content: [{ type: "text", text: "pong" }],
+                input: {
+                  tool_name: "mcp__demo__ping",
+                  arguments: { query: "prior" },
+                },
+              },
+            ] as unknown as PiMessage[],
           },
         },
-      ] as unknown as PiMessage[],
-    });
+      ),
+    );
 
     expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([
       { provider: "demo", available_tool_count: 1 },
@@ -857,14 +890,19 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as unknown as PiMessage[];
 
-    const firstError = await generateAssistantReply("current follow-up", {
-      ...makeReplyContext({
-        conversationId: "conversation-restore-auth",
-        threadTs: "1712345.0091",
-        turnId: "turn-restore-auth",
-      }),
-      piMessages: priorMessages,
-    }).catch((error) => error);
+    const firstError = await generateAssistantReply(
+      makeReplyRequest(
+        "current follow-up",
+        {
+          conversationId: "conversation-restore-auth",
+          threadTs: "1712345.0091",
+          turnId: "turn-restore-auth",
+        },
+        {
+          input: { piMessages: priorMessages },
+        },
+      ),
+    ).catch((error) => error);
 
     expect(firstError.status).toBe("awaiting_auth");
 
@@ -891,14 +929,19 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
 
     const reply = finalReply(
-      await generateAssistantReply("current follow-up", {
-        ...makeReplyContext({
-          conversationId: "conversation-restore-auth",
-          threadTs: "1712345.0091",
-          turnId: "turn-restore-auth",
-        }),
-        piMessages: priorMessages,
-      }),
+      await generateAssistantReply(
+        makeReplyRequest(
+          "current follow-up",
+          {
+            conversationId: "conversation-restore-auth",
+            threadTs: "1712345.0091",
+            turnId: "turn-restore-auth",
+          },
+          {
+            input: { piMessages: priorMessages },
+          },
+        ),
+      ),
     );
 
     expect(reply.text).toBe("resumed reply");
@@ -938,15 +981,22 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as PiMessage[];
 
-    await generateAssistantReply("help me", {
-      ...makeReplyContext({
-        conversationId: "conversation-history",
-        threadTs: "1712345.0003",
-        turnId: "turn-history",
-      }),
-      conversationContext: "duplicated prior transcript",
-      piMessages: priorMessages,
-    });
+    await generateAssistantReply(
+      makeReplyRequest(
+        "help me",
+        {
+          conversationId: "conversation-history",
+          threadTs: "1712345.0003",
+          turnId: "turn-history",
+        },
+        {
+          input: {
+            conversationContext: "duplicated prior transcript",
+            piMessages: priorMessages,
+          },
+        },
+      ),
+    );
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
     expect(JSON.stringify(promptMessages[0])).not.toContain(
@@ -994,13 +1044,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply("continue after auth", {
-      ...makeReplyContext({
+    await generateAssistantReply(
+      makeReplyRequest("continue after auth", {
         conversationId: "conversation-raw-current-resume",
         threadTs: "1712345.0092",
         turnId: "turn-raw-current-resume",
       }),
-    });
+    );
 
     expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
     expect(JSON.stringify(promptMessages.at(-1))).toContain(
@@ -1044,13 +1094,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply(messageText, {
-      ...makeReplyContext({
+    await generateAssistantReply(
+      makeReplyRequest(messageText, {
         conversationId: "conversation-unescaped-current-resume",
         threadTs: "1712345.0093",
         turnId: "turn-unescaped-current-resume",
       }),
-    });
+    );
 
     expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
     expect(JSON.stringify(promptMessages.at(-1))).toContain(
@@ -1089,14 +1139,19 @@ describe("generateAssistantReply progressive MCP loading", () => {
       piMessages: storedRunningMessages,
     });
 
-    await generateAssistantReply("continue after crash", {
-      ...makeReplyContext({
-        conversationId: "conversation-crash-retry",
-        threadTs: "1712345.00032",
-        turnId: "turn-crash-retry",
-      }),
-      piMessages: strippedHistory,
-    });
+    await generateAssistantReply(
+      makeReplyRequest(
+        "continue after crash",
+        {
+          conversationId: "conversation-crash-retry",
+          threadTs: "1712345.00032",
+          turnId: "turn-crash-retry",
+        },
+        {
+          input: { piMessages: strippedHistory },
+        },
+      ),
+    );
 
     expect(promptSeedMessages[0]).toEqual(strippedHistory);
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
@@ -1126,14 +1181,19 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as PiMessage[];
 
-    await generateAssistantReply("help me", {
-      ...makeReplyContext({
-        conversationId: "conversation-history-with-context",
-        threadTs: "1712345.00031",
-        turnId: "turn-history-with-context",
-      }),
-      piMessages: priorMessages,
-    });
+    await generateAssistantReply(
+      makeReplyRequest(
+        "help me",
+        {
+          conversationId: "conversation-history-with-context",
+          threadTs: "1712345.00031",
+          turnId: "turn-history-with-context",
+        },
+        {
+          input: { piMessages: priorMessages },
+        },
+      ),
+    );
 
     expect(promptSeedMessages[0]).toEqual(priorMessages);
     expect(turnContextInputs).toHaveLength(0);
@@ -1168,13 +1228,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const context = makeReplyContext({
+    const context = makeReplyRequest("help me", {
       conversationId: "conversation-4",
       threadTs: "1712345.0004",
       turnId: "turn-4",
     });
 
-    const firstError = await generateAssistantReply("help me", context);
+    const firstError = await generateAssistantReply(context);
 
     expect(firstError.status).toBe("awaiting_auth");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
@@ -1188,7 +1248,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       resumeReason: "auth",
     });
 
-    const reply = finalReply(await generateAssistantReply("help me", context));
+    const reply = finalReply(await generateAssistantReply(context));
 
     expect(reply.text).toBe("resumed reply");
 
@@ -1212,8 +1272,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     const reply = finalReply(
       await generateAssistantReply(
-        "help me",
-        makeReplyContext({
+        makeReplyRequest("help me", {
           conversationId: "conversation-5",
           threadTs: "1712345.0005",
           turnId: "turn-5",
@@ -1238,35 +1297,15 @@ describe("generateAssistantReply progressive MCP loading", () => {
         return await originalUpsert(args);
       });
 
-    const context = {
-      credentialContext: {
-        actor: { type: "user" as const, userId: "U123" },
-      },
-      destination: {
-        platform: "slack" as const,
-        teamId: "T123",
-        channelId: "C123",
-      },
-      source: createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0003",
-
-        type: "priv",
-      }),
-      requester: TEST_REQUESTER,
-      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
-        pendingAuthRecords.push(pendingAuth);
-      },
-      correlation: {
-        conversationId: "conversation-3",
-        turnId: "turn-3",
-        channelId: "C123",
-        threadTs: "1712345.0003",
-      },
-    };
-
-    const reply = finalReply(await generateAssistantReply("help me", context));
+    const reply = finalReply(
+      await generateAssistantReply(
+        makeReplyRequest("help me", {
+          conversationId: "conversation-3",
+          threadTs: "1712345.0003",
+          turnId: "turn-3",
+        }),
+      ),
+    );
 
     expect(reply.diagnostics.outcome).toBe("provider_error");
     expect(sessionRecordSpy).toHaveBeenCalled();
@@ -1337,33 +1376,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const firstError = await generateAssistantReply("help me", {
-      credentialContext: {
-        actor: { type: "user", userId: "U123" },
-      },
-      destination: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-      },
-      source: createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0005",
-
-        type: "priv",
-      }),
-      requester: TEST_REQUESTER,
-      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
-        pendingAuthRecords.push(pendingAuth);
-      },
-      correlation: {
+    const firstError = await generateAssistantReply(
+      makeReplyRequest("help me", {
         conversationId: "conversation-5",
-        turnId: "turn-5",
-        channelId: "C123",
         threadTs: "1712345.0005",
-      },
-    }).catch((error) => error);
+        turnId: "turn-5",
+      }),
+    ).catch((error) => error);
 
     expect(firstError.status).toBe("awaiting_auth");
 
@@ -1383,33 +1402,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
   it("still parks for auth when abort leaves an empty completed assistant frame", async () => {
     completeEmptyAssistantOnAbort.value = true;
 
-    const firstError = await generateAssistantReply("help me", {
-      credentialContext: {
-        actor: { type: "user", userId: "U123" },
-      },
-      destination: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-      },
-      source: createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0006",
-
-        type: "priv",
-      }),
-      requester: TEST_REQUESTER,
-      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
-        pendingAuthRecords.push(pendingAuth);
-      },
-      correlation: {
+    const firstError = await generateAssistantReply(
+      makeReplyRequest("help me", {
         conversationId: "conversation-6",
-        turnId: "turn-6",
-        channelId: "C123",
         threadTs: "1712345.0006",
-      },
-    }).catch((error) => error);
+        turnId: "turn-6",
+      }),
+    ).catch((error) => error);
 
     expect(firstError.status).toBe("awaiting_auth");
 

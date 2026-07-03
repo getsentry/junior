@@ -23,8 +23,8 @@ function toPostedText(value: unknown): string {
 describe("Slack behavior: canvas failure recovery", () => {
   it("points to a created canvas when reply generation fails before final text", async () => {
     const generateAssistantReply = vi.fn(
-      async (_text: string, context?: ReplyRequestContext) => {
-        await context?.onArtifactStateUpdated?.({
+      async (request: ReplyRequestContext) => {
+        await request.durability?.onArtifactStateUpdated?.({
           lastCanvasId: "F_CANVAS",
           lastCanvasUrl: "https://slack.example/docs/T/F_CANVAS",
           recentCanvases: [

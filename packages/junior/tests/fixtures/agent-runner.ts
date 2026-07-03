@@ -6,11 +6,28 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
  * without the mock exercise the real reply generator.
  */
 export const respondAgentRunner: AgentRunner = {
-  run: async (messageText, context) => {
+  run: async (request) => {
     const { generateAssistantReply } = await import("@/chat/respond");
-    return await generateAssistantReply(messageText, context);
+    return await generateAssistantReply(request);
   },
 };
+
+/**
+ * Flatten a grouped run request so tests can assert on the legacy flat field
+ * surface without hand-copying the group spreads at every mock boundary.
+ */
+export function flattenReplyRequestForTest(
+  request: Parameters<AgentRunner["run"]>[0],
+) {
+  return {
+    ...request.input,
+    ...request.routing,
+    ...(request.policy ?? {}),
+    ...(request.state ?? {}),
+    ...(request.observers ?? {}),
+    ...(request.durability ?? {}),
+  };
+}
 
 /**
  * Guard runner for paths that must never reach agent execution; failing loud

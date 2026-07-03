@@ -6,6 +6,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -28,7 +29,12 @@ describe("Slack behavior: file delivery", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context?.onTextDelta?.("Preview is ready.");
               return completedAgentRun({
                 text: "Preview is ready.",

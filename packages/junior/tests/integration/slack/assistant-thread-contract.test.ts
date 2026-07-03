@@ -14,6 +14,7 @@ import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -157,7 +158,12 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("does not post assistant status when the DM message omits thread_ts", async () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...flattenReplyRequestForTest(request),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },
@@ -181,7 +187,12 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("posts assistant status with a raw DM channel id when thread_ts is present", async () => {
     const bot = await createDirectMessageBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...flattenReplyRequestForTest(request),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },
@@ -224,7 +235,12 @@ describe("Slack contract: assistant-thread delivery", () => {
   it("posts assistant status for the first channel-thread reply before Slack adds thread_ts", async () => {
     const bot = await createMentionBot({
       agentRunner: {
-        run: async (_prompt, context) => {
+        run: async (request) => {
+          const _prompt = request.input.messageText;
+          const context = {
+            ...flattenReplyRequestForTest(request),
+          };
+
           await context?.onStatus?.(makeAssistantStatus("running", "bash"));
           return makeCompletedReply("Done.");
         },

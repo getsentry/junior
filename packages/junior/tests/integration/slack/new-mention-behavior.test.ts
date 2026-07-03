@@ -11,6 +11,7 @@ import {
   createTestThread,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 interface FakeReplyCall {
   prompt: string;
@@ -54,7 +55,9 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               fakeReplyCalls.push({ prompt });
               return completedReply(
                 "Acknowledged. Rollback is complete and error rates are stable.",
@@ -97,7 +100,9 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+
               fakeReplyCalls.push({ prompt });
               return completedReply("Handled both updates.");
             },
@@ -167,7 +172,12 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (prompt, context) => {
+            run: async (request) => {
+              const prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               const attachments = context?.userAttachments ?? [];
               fakeReplyCalls.push({
                 prompt,
@@ -237,7 +247,12 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context?.onStatus?.(makeAssistantStatus("running", "bash"));
               return completedReply("Done.", ["bash"]);
             },

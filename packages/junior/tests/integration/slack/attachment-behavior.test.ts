@@ -6,6 +6,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -62,7 +63,12 @@ describe("Slack behavior: attachment handling", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               const attachments = context?.userAttachments ?? [];
               capturedAttachmentCounts.push(attachments.length);
               if (attachments[0]) {

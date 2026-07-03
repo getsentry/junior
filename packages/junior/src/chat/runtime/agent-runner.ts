@@ -4,10 +4,7 @@ import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/
 
 /** Run one agent-run slice behind runtime-owned orchestration boundaries. */
 export interface AgentRunner {
-  run(
-    messageText: string,
-    context: ReplyRequestContext,
-  ): Promise<AgentRunOutcome>;
+  run(request: ReplyRequestContext): Promise<AgentRunOutcome>;
 }
 
 /** Adapt the Pi-facing reply generator behind the runtime-owned runner seam. */
@@ -20,13 +17,16 @@ export function createAgentRunner(
     return { run };
   }
   return {
-    run: async (messageText, context) =>
-      await run(messageText, {
-        ...context,
-        sandbox: {
-          ...context.sandbox,
-          tracePropagation:
-            context.sandbox?.tracePropagation ?? tracePropagation,
+    run: async (request) =>
+      await run({
+        ...request,
+        policy: {
+          ...request.policy,
+          sandbox: {
+            ...request.policy?.sandbox,
+            tracePropagation:
+              request.policy?.sandbox?.tracePropagation ?? tracePropagation,
+          },
         },
       }),
   };

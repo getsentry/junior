@@ -54,6 +54,7 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
@@ -1607,7 +1608,12 @@ describe("Slack conversation work execution", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_text, context) => {
+            run: async (request) => {
+              const _text = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context?.onInputCommitted?.();
               await context?.onArtifactStateUpdated?.({
                 lastCanvasId: "F_YIELD_CANVAS",

@@ -158,12 +158,15 @@ describe("plugin prompt hooks", () => {
   });
 
   it("renders prompt messages from plugin hooks", async () => {
-    await generateAssistantReply("hello", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-hooks",
-        turnId: "turn-plugin-prompt-hooks",
+    await generateAssistantReply({
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-hooks",
+          turnId: "turn-plugin-prompt-hooks",
+        },
       },
     });
 
@@ -174,32 +177,40 @@ describe("plugin prompt hooks", () => {
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
-    await generateAssistantReply("hello", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-follow-up",
-        turnId: "turn-plugin-prompt-follow-up-1",
+    await generateAssistantReply({
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-follow-up",
+          turnId: "turn-plugin-prompt-follow-up-1",
+        },
       },
     });
     const firstPromptMessage = captured.promptMessages[0];
     captured.promptMessages = [];
 
-    await generateAssistantReply("again", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-follow-up",
-        turnId: "turn-plugin-prompt-follow-up-2",
+    await generateAssistantReply({
+      input: {
+        messageText: "again",
+        piMessages: [
+          firstPromptMessage,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Done." }],
+            stopReason: "stop",
+          },
+        ] as never,
       },
-      piMessages: [
-        firstPromptMessage,
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Done." }],
-          stopReason: "stop",
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-follow-up",
+          turnId: "turn-plugin-prompt-follow-up-2",
         },
-      ] as never,
+      },
     });
 
     expect(captured.userPromptTexts).toEqual(["hello", "again"]);
@@ -209,16 +220,21 @@ describe("plugin prompt hooks", () => {
   });
 
   it("does not run user prompt hooks for steering messages", async () => {
-    await generateAssistantReply("hello", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-steering",
-        turnId: "turn-plugin-prompt-steering",
+    await generateAssistantReply({
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-steering",
+          turnId: "turn-plugin-prompt-steering",
+        },
       },
-      drainSteeringMessages: async (inject) => {
-        await inject([{ text: "steer me" }]);
-        return [];
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          await inject([{ text: "steer me" }]);
+          return [];
+        },
       },
     });
 
@@ -242,12 +258,15 @@ describe("plugin prompt hooks", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply("resume me", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-resume-before-prompt",
-        turnId: "turn-plugin-prompt-resume-before-prompt",
+    await generateAssistantReply({
+      input: { messageText: "resume me" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-resume-before-prompt",
+          turnId: "turn-plugin-prompt-resume-before-prompt",
+        },
       },
     });
 
@@ -275,12 +294,15 @@ describe("plugin prompt hooks", () => {
       errorMessage: "timed out",
     });
 
-    await generateAssistantReply("resume me", {
-      destination: LOCAL_DESTINATION,
-      source: LOCAL_SOURCE,
-      correlation: {
-        conversationId: "conversation-plugin-prompt-resume-after-prompt",
-        turnId: "turn-plugin-prompt-resume-after-prompt",
+    await generateAssistantReply({
+      input: { messageText: "resume me" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        correlation: {
+          conversationId: "conversation-plugin-prompt-resume-after-prompt",
+          turnId: "turn-plugin-prompt-resume-after-prompt",
+        },
       },
     });
 

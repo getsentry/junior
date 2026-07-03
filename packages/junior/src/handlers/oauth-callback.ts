@@ -377,41 +377,51 @@ async function resumeOAuthSessionRecordTurn(
           : (stored.pendingMessage ?? lockedUserMessage.text),
         messageTs: lockedMessageTs,
         replyContext: {
-          credentialContext: {
-            actor: {
-              type: "user",
-              userId: requester.userId,
+          input: {
+            conversationContext: lockedConversationContext,
+            piMessages: lockedConversation.piMessages,
+            ...getTurnUserReplyAttachmentContext(lockedUserMessage),
+          },
+          routing: {
+            credentialContext: {
+              actor: {
+                type: "user",
+                userId: requester.userId,
+              },
+            },
+            requester,
+            destination,
+            source: lockedSessionRecord.source,
+            correlation: {
+              conversationId: stored.resumeConversationId!,
+              turnId: lockedSessionId,
+              channelId: stored.channelId!,
+              threadTs: stored.threadTs!,
+              requesterId: requester.userId,
+            },
+            toolChannelId:
+              lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
+          },
+          policy: {
+            channelConfiguration: lockedChannelConfiguration,
+            sandbox: getPersistedSandboxState(lockedState),
+          },
+          state: {
+            artifactState: lockedArtifacts,
+            pendingAuth: lockedPendingAuth,
+          },
+          durability: {
+            recordPendingAuth: async (nextPendingAuth) => {
+              await applyPendingAuthUpdate({
+                conversation: lockedConversation,
+                conversationId: stored.resumeConversationId!,
+                nextPendingAuth,
+              });
+              await persistThreadStateById(stored.resumeConversationId!, {
+                conversation: lockedConversation,
+              });
             },
           },
-          requester,
-          destination,
-          source: lockedSessionRecord.source,
-          correlation: {
-            conversationId: stored.resumeConversationId!,
-            turnId: lockedSessionId,
-            channelId: stored.channelId!,
-            threadTs: stored.threadTs!,
-            requesterId: requester.userId,
-          },
-          toolChannelId:
-            lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
-          artifactState: lockedArtifacts,
-          pendingAuth: lockedPendingAuth,
-          conversationContext: lockedConversationContext,
-          channelConfiguration: lockedChannelConfiguration,
-          piMessages: lockedConversation.piMessages,
-          sandbox: getPersistedSandboxState(lockedState),
-          recordPendingAuth: async (nextPendingAuth) => {
-            await applyPendingAuthUpdate({
-              conversation: lockedConversation,
-              conversationId: stored.resumeConversationId!,
-              nextPendingAuth,
-            });
-            await persistThreadStateById(stored.resumeConversationId!, {
-              conversation: lockedConversation,
-            });
-          },
-          ...getTurnUserReplyAttachmentContext(lockedUserMessage),
         },
         onSuccess: async (reply: AssistantReply) => {
           logInfo(
@@ -509,21 +519,27 @@ async function resumePendingOAuthMessage(
     connectedText: "",
     agentRunner: options.agentRunner,
     replyContext: {
-      credentialContext: {
-        actor: { type: "user", userId: stored.userId },
+      input: {
+        conversationContext,
+        piMessages: conversation.piMessages,
       },
-      requester,
-      destination: stored.destination,
-      source,
-      correlation: {
-        conversationId: threadId,
-        channelId: stored.channelId,
-        threadTs: stored.threadTs,
-        requesterId: stored.userId,
+      routing: {
+        credentialContext: {
+          actor: { type: "user", userId: stored.userId },
+        },
+        requester,
+        destination: stored.destination,
+        source,
+        correlation: {
+          conversationId: threadId,
+          channelId: stored.channelId,
+          threadTs: stored.threadTs,
+          requesterId: stored.userId,
+        },
       },
-      conversationContext,
-      piMessages: conversation.piMessages,
-      configuration: stored.configuration,
+      policy: {
+        configuration: stored.configuration,
+      },
     },
     onSuccess: async (reply) => {
       logInfo(

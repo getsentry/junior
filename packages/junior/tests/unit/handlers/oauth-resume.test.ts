@@ -113,12 +113,14 @@ describe("resumeAuthorizedRequest", () => {
       threadTs: "1700000000.0001",
       connectedText: "connected",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U-test" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0001"),
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.0001"),
-        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       agentRunner: { run: () => new Promise<never>(() => {}) },
       replyTimeoutMs: 10,
@@ -156,12 +158,14 @@ describe("resumeAuthorizedRequest", () => {
       threadTs: "1700000000.0004",
       connectedText: "connected",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U-test" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0004"),
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.0004"),
-        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       agentRunner: {
         run: async () => {
@@ -199,12 +203,18 @@ describe("resumeAuthorizedRequest", () => {
         channelId: "C-test",
         threadTs: "1700000000.0005",
         replyContext: {
-          credentialContext: {
-            actor: { type: "user", userId: "U-test" },
+          routing: {
+            credentialContext: {
+              actor: { type: "user", userId: "U-test" },
+            },
+            destination: TEST_SLACK_DESTINATION,
+            source: testSlackSource("1700000000.0005"),
+            requester: {
+              platform: "slack",
+              teamId: "T-test",
+              userId: "U-test",
+            },
           },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.0005"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
         agentRunner: {
           run: async () =>
@@ -255,16 +265,18 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0006",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U-test" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
+          correlation: {
+            conversationId: "slack:T-test:C-test:1700000000.0006",
+            turnId: "turn_1700000000_0006",
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0006"),
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        correlation: {
-          conversationId: "slack:T-test:C-test:1700000000.0006",
-          turnId: "turn_1700000000_0006",
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.0006"),
-        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       agentRunner: {
         run: async () =>
@@ -309,12 +321,14 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0002",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U-test" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0002"),
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.0002"),
-        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       agentRunner: {
         run: async () => ({
@@ -337,12 +351,14 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0003",
       replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U-test" },
+        routing: {
+          credentialContext: {
+            actor: { type: "user", userId: "U-test" },
+          },
+          destination: TEST_SLACK_DESTINATION,
+          source: testSlackSource("1700000000.0003"),
+          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.0003"),
-        requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
       agentRunner: {
         run: async () => ({

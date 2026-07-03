@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import type { ReplyRequestContext } from "@/chat/respond";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -23,6 +22,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
 
@@ -692,7 +692,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               capturedCorrelation.push({
                 conversationId: context?.correlation?.conversationId,
                 threadId: context?.correlation?.threadId,
@@ -1180,7 +1185,9 @@ describe("bot handlers (integration)", () => {
     // The follow-up supersedes the pause: it must be answered, not consumed
     // into a resume that only happens if the user ever authorizes.
     expect(generateAssistantReply).toHaveBeenCalledOnce();
-    expect(generateAssistantReply.mock.calls[0]?.[0]).toContain("any update?");
+    expect(
+      generateAssistantReply.mock.calls[0]?.[0].input.messageText,
+    ).toContain("any update?");
     expect(postIncludes(thread, "Fresh answer without the provider.")).toBe(
       true,
     );
@@ -1444,7 +1451,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_input, context) => {
+            run: async (request) => {
+              const _input = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context.onInputCommitted?.();
               throw new Error("post-ack turn failure");
             },
@@ -1800,7 +1812,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context?.onTextDelta?.("Partial output...");
               return completedAgentRun({
                 text: "Partial output...",
@@ -1852,7 +1869,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await context?.onStatus?.(
                 makeAssistantStatus("reading", "channel messages"),
               );
@@ -2341,7 +2363,12 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_text: string, context?: ReplyRequestContext) => {
+            run: async (request) => {
+              const _text = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               await vi.waitFor(() => {
                 expect(
                   fakeAdapter.titleCalls.some(
@@ -2599,7 +2626,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               capturedContexts.push(context?.conversationContext);
               return completedAgentRun({
                 text: "First reply.",
@@ -2642,7 +2674,12 @@ describe("bot handlers (integration)", () => {
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               capturedContexts.push(context?.conversationContext);
               return completedAgentRun({
                 text: "Follow-up reply.",
@@ -2714,7 +2751,12 @@ describe("bot handlers (integration)", () => {
         },
         replyExecutor: {
           agentRunner: {
-            run: async (_prompt, context) => {
+            run: async (request) => {
+              const _prompt = request.input.messageText;
+              const context = {
+                ...flattenReplyRequestForTest(request),
+              };
+
               capturedContexts.push(context?.conversationContext);
               return completedAgentRun({
                 text: "Responding to first message only.",
