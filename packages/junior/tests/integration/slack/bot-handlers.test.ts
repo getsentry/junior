@@ -4,10 +4,7 @@ import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { ReplyRequestContext } from "@/chat/respond";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { getSlackInterruptionMarker } from "@/chat/slack/output";
-import {
-  completedAgentRun,
-  failedAgentRun,
-} from "@/chat/runtime/agent-run-outcome";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { loadProjection } from "@/chat/state/session-log";
@@ -742,14 +739,7 @@ describe("bot handlers (integration)", () => {
           generateAssistantReply: async () => {
             return {
               status: "awaiting_auth",
-              authDisposition: "link_sent",
-              authDurationMs: 1,
-              authKind: "mcp",
-              authProvider: "notion",
-              authProviderDisplayName: "Notion",
-              conversationId: "slack:C_AUTH:1700000000.000",
-              sessionId: "turn_msg-auth-pause",
-              sliceId: 2,
+              providerDisplayName: "Notion",
             };
           },
         },
@@ -826,14 +816,7 @@ describe("bot handlers (integration)", () => {
           generateAssistantReply: async () => {
             return {
               status: "awaiting_auth",
-              authDisposition: "link_sent",
-              authDurationMs: 1,
-              authKind: "plugin",
-              authProvider: "github",
-              authProviderDisplayName: "GitHub",
-              conversationId: "slack:C_PLUGIN_AUTH:1700000000.000",
-              sessionId: "turn_msg-plugin-auth-pause",
-              sliceId: 2,
+              providerDisplayName: "GitHub",
             };
           },
         },
@@ -915,13 +898,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            return {
-              status: "timed_out",
-              conversationId,
-              sessionId,
-              version: 3,
-              sliceId: 2,
-            };
+            return { status: "suspended", resumeVersion: 3 };
           },
         },
       },
@@ -971,13 +948,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            return {
-              status: "timed_out",
-              conversationId,
-              sessionId,
-              version: 4,
-              sliceId: 2,
-            };
+            return { status: "suspended", resumeVersion: 4 };
           },
         },
       },
@@ -1020,13 +991,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           scheduleAgentContinue,
           generateAssistantReply: async () => {
-            return {
-              status: "timed_out",
-              conversationId,
-              sessionId,
-              version: 3,
-              sliceId: 2,
-            };
+            return { status: "suspended", resumeVersion: 3 };
           },
         },
       },
@@ -1808,7 +1773,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onTextDelta?.("Partial output...");
-            return failedAgentRun({
+            return completedAgentRun({
               text: "Partial output...",
               diagnostics: {
                 assistantMessageCount: 1,

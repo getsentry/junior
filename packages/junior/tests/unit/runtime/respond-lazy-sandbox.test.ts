@@ -538,7 +538,7 @@ async function generateLocalReply(
     destination: LOCAL_DESTINATION,
     source: LOCAL_SOURCE,
   });
-  if (outcome.status !== "completed" && outcome.status !== "failed") {
+  if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
   return outcome.reply;

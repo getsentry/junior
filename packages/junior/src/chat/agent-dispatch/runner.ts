@@ -366,21 +366,16 @@ export async function runAgentDispatchSlice(
       });
       return;
     }
-    if (outcome.status === "timed_out" || outcome.status === "yielded") {
-      if (typeof outcome.version === "number") {
-        const awaiting = await markDispatch({
-          dispatch,
-          status: "awaiting_resume",
-        });
-        await scheduleCallback({
-          id: awaiting.id,
-          expectedVersion: awaiting.version,
-        });
-        return;
-      }
-      throw new Error(
-        `Dispatch continuation ended with ${outcome.status} without a session record version`,
-      );
+    if (outcome.status === "suspended") {
+      const awaiting = await markDispatch({
+        dispatch,
+        status: "awaiting_resume",
+      });
+      await scheduleCallback({
+        id: awaiting.id,
+        expectedVersion: awaiting.version,
+      });
+      return;
     }
 
     let reply = outcome.reply;

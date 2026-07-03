@@ -332,7 +332,7 @@ import { createJuniorReporting } from "@/reporting";
 function finalReply(
   outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
 ) {
-  if (outcome.status !== "completed" && outcome.status !== "failed") {
+  if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
   return outcome.reply;
@@ -543,11 +543,8 @@ describe("generateAssistantReply provider retry", () => {
     });
 
     expect(outcome).toMatchObject({
-      status: "yielded",
-      conversationId: "conversation-yield",
-      sessionId: "turn-yield",
-      sliceId: 1,
-      version: expect.any(Number),
+      status: "suspended",
+      resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-yield",
@@ -601,11 +598,8 @@ describe("generateAssistantReply provider retry", () => {
     });
 
     expect(outcome).toMatchObject({
-      status: "yielded",
-      conversationId: "conversation-yield-steering",
-      sessionId: "turn-yield-steering",
-      sliceId: 1,
-      version: expect.any(Number),
+      status: "suspended",
+      resumeVersion: expect.any(Number),
     });
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
       "conversation-yield-steering",

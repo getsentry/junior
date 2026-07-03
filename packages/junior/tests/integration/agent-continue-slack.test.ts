@@ -443,15 +443,10 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
-    const { RetryableTurnError } = await import("@/chat/runtime/turn");
-    generateAssistantReplyMock.mockRejectedValueOnce(
-      new RetryableTurnError("agent_continue", "timed out again", {
-        conversationId,
-        sessionId,
-        version: sessionRecord.version + 1,
-        sliceId: 6,
-      }),
-    );
+    generateAssistantReplyMock.mockResolvedValueOnce({
+      status: "suspended",
+      resumeVersion: sessionRecord.version + 1,
+    });
 
     const continued = await continueAgentRun({
       conversationId,
@@ -814,15 +809,10 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
-    const { RetryableTurnError } = await import("@/chat/runtime/turn");
-    generateAssistantReplyMock.mockRejectedValueOnce(
-      new RetryableTurnError("agent_continue", "timed out again", {
-        conversationId,
-        sessionId,
-        version: sessionRecord.version + 1,
-        sliceId: 3,
-      }),
-    );
+    generateAssistantReplyMock.mockResolvedValueOnce({
+      status: "suspended",
+      resumeVersion: sessionRecord.version + 1,
+    });
 
     const continued = await continueAgentRun({
       conversationId,

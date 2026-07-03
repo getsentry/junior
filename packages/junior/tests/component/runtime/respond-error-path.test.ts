@@ -52,9 +52,9 @@ describe("generateAssistantReply error path", () => {
         sandboxDependencyProfileHash: "hash-abc",
       },
     });
-    expect(outcome.status).toBe("failed");
-    const reply = outcome.status === "failed" ? outcome.reply : undefined;
+    const reply = outcome.status === "completed" ? outcome.reply : undefined;
     expect(reply).toBeDefined();
+    expect(reply!.diagnostics.outcome).toBe("provider_error");
 
     // Raw exception text stays in diagnostics; it is never reply text.
     expect(reply!.text).toBe("");

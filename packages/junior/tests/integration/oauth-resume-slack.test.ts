@@ -11,10 +11,7 @@ import {
   getCapturedSlackFileUploadCalls,
   queueSlackApiError,
 } from "../msw/handlers/slack-api";
-import {
-  completedAgentRun,
-  failedAgentRun,
-} from "@/chat/runtime/agent-run-outcome";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function makeDiagnostics(
   outcome: "success" | "execution_failure" | "provider_error" = "success",
@@ -228,7 +225,6 @@ describe("oauth resume slack integration", () => {
   it("posts resumed auth pause notices with the conversation footer", async () => {
     const { resumeAuthorizedRequest } =
       await import("@/chat/runtime/slack-resume");
-    const { RetryableTurnError } = await import("@/chat/runtime/turn");
 
     await resumeAuthorizedRequest({
       messageText: "continue this turn",
@@ -247,14 +243,10 @@ describe("oauth resume slack integration", () => {
           turnId: "turn-auth-pause",
         },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("mcp_auth_resume", "auth required", {
-          authDisposition: "link_sent",
-          authKind: "mcp",
-          authProvider: "eval-auth",
-          authProviderDisplayName: "Eval Auth",
-        });
-      },
+      generateReply: async () => ({
+        status: "awaiting_auth" as const,
+        providerDisplayName: "Eval Auth",
+      }),
       onAuthPause: async () => undefined,
     });
 
@@ -335,7 +327,7 @@ describe("oauth resume slack integration", () => {
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
-        failedAgentRun({
+        completedAgentRun({
           text: "Partial output",
           diagnostics: makeDiagnostics("provider_error"),
         }),
@@ -372,7 +364,7 @@ describe("oauth resume slack integration", () => {
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       generateReply: async () =>
-        failedAgentRun({
+        completedAgentRun({
           text: "",
           diagnostics: makeDiagnostics("execution_failure", {
             assistantMessageCount: 0,

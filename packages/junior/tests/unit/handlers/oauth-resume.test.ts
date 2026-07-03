@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -311,14 +310,10 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0002"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 3,
-        });
-      },
+      generateReply: async () => ({
+        status: "suspended" as const,
+        resumeVersion: 3,
+      }),
       onTimeoutPause,
     });
 
@@ -341,14 +336,10 @@ describe("resumeAuthorizedRequest", () => {
         source: testSlackSource("1700000000.0003"),
         requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
       },
-      generateReply: async () => {
-        throw new RetryableTurnError("agent_continue", "timed out again", {
-          conversationId: "conversation-1",
-          sessionId: "turn-1",
-          version: 3,
-          sliceId: 6,
-        });
-      },
+      generateReply: async () => ({
+        status: "suspended" as const,
+        resumeVersion: 3,
+      }),
       onTimeoutPause: async () => {
         throw new Error("continuation scheduling failed");
       },

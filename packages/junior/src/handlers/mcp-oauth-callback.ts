@@ -48,7 +48,7 @@ import {
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { recordAuthorizationCompleted } from "@/chat/state/session-log";
-import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
+import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -419,7 +419,7 @@ async function resumeAuthorizedMcpTurn(args: {
             );
           }
         },
-        onAuthPause: async (error: unknown) => {
+        onAuthPause: async () => {
           await persistAuthPauseTurnState({
             sessionId: lockedSessionId,
             threadStateId: threadId,
@@ -427,30 +427,16 @@ async function resumeAuthorizedMcpTurn(args: {
           logWarn(
             "mcp_oauth_callback_resume_reparked_for_auth",
             {},
-            {
-              "app.credential.provider": provider,
-              ...(isRetryableTurnError(error)
-                ? { "app.ai.retryable_reason": error.reason }
-                : {}),
-            },
+            { "app.credential.provider": provider },
             "Resumed MCP turn requested another authorization flow",
           );
         },
-        onTimeoutPause: async (error: unknown) => {
-          if (!isRetryableTurnError(error, "agent_continue")) {
-            throw error;
-          }
-          const version = error.metadata?.version;
-          if (typeof version !== "number") {
-            throw new Error(
-              "MCP OAuth agent continuation did not include a session record version",
-            );
-          }
+        onTimeoutPause: async ({ resumeVersion }) => {
           await scheduleAgentContinue({
             conversationId: authSession.conversationId,
             destination,
             sessionId: lockedSessionId,
-            expectedVersion: version,
+            expectedVersion: resumeVersion,
           });
         },
       };

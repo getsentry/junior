@@ -604,7 +604,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 function finalReply(
   outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
 ) {
-  if (outcome.status !== "completed" && outcome.status !== "failed") {
+  if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
   return outcome.reply;

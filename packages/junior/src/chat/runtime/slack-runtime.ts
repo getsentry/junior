@@ -16,7 +16,6 @@ import {
   isCooperativeTurnYieldError,
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
-  isRetryableTurnError,
 } from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
@@ -802,19 +801,6 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (
-          isRetryableTurnError(error, "mcp_auth_resume") ||
-          isRetryableTurnError(error, "plugin_auth_resume")
-        ) {
-          deps.logException(
-            error,
-            "mention_handler_auth_pause",
-            errorContext,
-            { "app.ai.retryable_reason": error.reason },
-            "onNewMention parked turn for auth resume",
-          );
-          return;
-        }
         if (error instanceof AuthorizationFlowDisabledError) {
           return;
         }
@@ -1117,19 +1103,6 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (
-          isRetryableTurnError(error, "mcp_auth_resume") ||
-          isRetryableTurnError(error, "plugin_auth_resume")
-        ) {
-          deps.logException(
-            error,
-            "subscribed_message_handler_auth_pause",
-            errorContext,
-            { "app.ai.retryable_reason": error.reason },
-            "onSubscribedMessage parked turn for auth resume",
-          );
-          return;
-        }
         if (error instanceof AuthorizationFlowDisabledError) {
           return;
         }

@@ -40,7 +40,7 @@ import {
   getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
-import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
+import { markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { createSlackResumeRequester, type Requester } from "@/chat/requester";
@@ -451,21 +451,12 @@ async function resumeOAuthSessionRecordTurn(
             threadStateId: stored.resumeConversationId!,
           });
         },
-        onTimeoutPause: async (error: unknown) => {
-          if (!isRetryableTurnError(error, "agent_continue")) {
-            throw error;
-          }
-          const version = error.metadata?.version;
-          if (typeof version !== "number") {
-            throw new Error(
-              "OAuth agent continuation did not include a session record version",
-            );
-          }
+        onTimeoutPause: async ({ resumeVersion }) => {
           await scheduleAgentContinue({
             conversationId: stored.resumeConversationId!,
             destination,
             sessionId: lockedSessionId,
-            expectedVersion: version,
+            expectedVersion: resumeVersion,
           });
         },
       };

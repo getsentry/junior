@@ -11,10 +11,7 @@ import {
   createTestThread,
   createTestDestination,
 } from "../../fixtures/slack-harness";
-import {
-  completedAgentRun,
-  failedAgentRun,
-} from "@/chat/runtime/agent-run-outcome";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -362,7 +359,7 @@ describe("Slack behavior: finalized thread replies", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async () =>
-            failedAgentRun({
+            completedAgentRun({
               text: longReply,
               diagnostics: makeDiagnostics({ outcome: "provider_error" }),
             }),

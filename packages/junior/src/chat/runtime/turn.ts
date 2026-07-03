@@ -1,10 +1,4 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import type {
-  AuthorizationPauseDisposition,
-  AuthorizationPauseKind,
-} from "@/chat/services/auth-pause";
-import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
-import type { AgentTurnUsage } from "@/chat/usage";
 
 export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 
@@ -12,102 +6,10 @@ export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 // Turn errors
 // ---------------------------------------------------------------------------
 
-export type RetryableTurnReason =
-  | "mcp_auth_resume"
-  | "plugin_auth_resume"
-  | "agent_continue";
-
-/** Auth-pause reasons require a known provider before a resume can be parked. */
-export type AuthResumeRetryableTurnReason = Extract<
-  RetryableTurnReason,
-  "mcp_auth_resume" | "plugin_auth_resume"
->;
-
-export interface RetryableTurnMetadata {
-  authDisposition?: AuthorizationPauseDisposition;
-  authDurationMs?: number;
-  authKind?: AuthorizationPauseKind;
-  authProvider?: string;
-  authProviderDisplayName?: string;
-  authThinkingLevel?: TurnThinkingSelection["thinkingLevel"];
-  authUsage?: AgentTurnUsage;
-  version?: number;
-  conversationId?: string;
-  sessionId?: string;
-  sliceId?: number;
-}
-
-export interface AuthResumeRetryableTurnMetadata extends RetryableTurnMetadata {
-  authProvider: string;
-  authProviderDisplayName: string;
-}
-
-export type AuthResumeRetryableTurnError = RetryableTurnError & {
-  readonly reason: AuthResumeRetryableTurnReason;
-  readonly metadata: AuthResumeRetryableTurnMetadata;
-};
-
 /**
- * Historical turn error for outer resume/callback boundaries; expected
- * generateAssistantReply lifecycle endings are represented by AgentRunOutcome.
- */
-export class RetryableTurnError extends Error {
-  readonly code = "retryable_turn";
-  readonly metadata?: RetryableTurnMetadata;
-  readonly reason: RetryableTurnReason;
-
-  constructor(
-    reason: AuthResumeRetryableTurnReason,
-    message: string,
-    metadata: AuthResumeRetryableTurnMetadata,
-  );
-  constructor(
-    reason: "agent_continue",
-    message: string,
-    metadata?: RetryableTurnMetadata,
-  );
-  constructor(
-    reason: RetryableTurnReason,
-    message: string,
-    metadata?: RetryableTurnMetadata,
-  ) {
-    super(message);
-    this.name = "RetryableTurnError";
-    this.reason = reason;
-    this.metadata = metadata;
-  }
-}
-
-export function isRetryableTurnError(
-  error: unknown,
-  reason?: RetryableTurnReason,
-): error is RetryableTurnError {
-  if (!(error instanceof RetryableTurnError)) {
-    return false;
-  }
-  if (!reason) {
-    return true;
-  }
-  return error.reason === reason;
-}
-
-/** Return whether a retryable turn is waiting for provider authorization. */
-export function isAuthResumeRetryableTurnError(
-  error: unknown,
-): error is AuthResumeRetryableTurnError {
-  return (
-    error instanceof RetryableTurnError &&
-    (error.reason === "mcp_auth_resume" ||
-      error.reason === "plugin_auth_resume") &&
-    typeof error.metadata?.authProvider === "string" &&
-    typeof error.metadata.authProviderDisplayName === "string"
-  );
-}
-
-/**
- * Historical turn error for queue-worker yield routing; respond.ts returns a
- * yielded AgentRunOutcome and the Slack executor recreates this at the worker
- * boundary.
+ * Queue-worker yield routing: respond.ts returns a suspended AgentRunOutcome
+ * and the Slack executor raises this at the worker boundary so the lease owner
+ * requeues the conversation.
  */
 export class CooperativeTurnYieldError extends Error {
   readonly code = "cooperative_turn_yield";

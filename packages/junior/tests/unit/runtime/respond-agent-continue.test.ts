@@ -326,11 +326,8 @@ describe("generateAssistantReply agent continuation", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome).toMatchObject({
-      status: "timed_out",
-      conversationId: "conversation-1",
-      sessionId: "turn-1",
-      version: expect.any(Number),
-      sliceId: 2,
+      status: "suspended",
+      resumeVersion: expect.any(Number),
     });
 
     const sessionRecord = await getAgentTurnSessionRecord(
@@ -418,7 +415,7 @@ describe("generateAssistantReply agent continuation", () => {
     const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(outcome.status).toBe("timed_out");
+    expect(outcome.status).toBe("suspended");
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-short-deadline",
       "turn-short-deadline",
@@ -488,11 +485,8 @@ describe("generateAssistantReply agent continuation", () => {
 
     expect(promptAborted.value).toBe(true);
     expect(outcome).toMatchObject({
-      status: "timed_out",
-      conversationId: "conversation-hung",
-      sessionId: "turn-hung",
-      version: expect.any(Number),
-      sliceId: 2,
+      status: "suspended",
+      resumeVersion: expect.any(Number),
     });
 
     const sessionRecord = await getAgentTurnSessionRecord(
@@ -534,7 +528,7 @@ describe("generateAssistantReply agent continuation", () => {
     const outcome = await replyPromise;
 
     expect(promptAborted.value).toBe(true);
-    expect(outcome.status).toBe("timed_out");
+    expect(outcome.status).toBe("suspended");
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-retry",
       "turn-retry",

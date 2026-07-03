@@ -12,11 +12,7 @@ import {
   type AssistantReply,
   type AssistantReplyRequestContext,
 } from "@/chat/respond";
-import {
-  retryableTurnErrorFromAuthAgentRun,
-  retryableTurnErrorFromTimedOutAgentRun,
-  type AgentRunOutcome,
-} from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { Source } from "@sentry/junior-plugin-api";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
@@ -24,10 +20,6 @@ import {
   logException,
   type LogContext,
 } from "@/chat/logging";
-import {
-  isAuthResumeRetryableTurnError,
-  isRetryableTurnError,
-} from "@/chat/runtime/turn";
 import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
@@ -159,8 +151,8 @@ interface ResumeSlackTurnArgs {
   }) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
-  onAuthPause?: (error: unknown) => Promise<void>;
-  onTimeoutPause?: (error: unknown) => Promise<void>;
+  onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
+  onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;
@@ -403,93 +395,119 @@ export async function resumeSlackTurn(
             ),
           ])
         : await replyPromise;
-    if (outcome.status === "awaiting_auth") {
-      throw retryableTurnErrorFromAuthAgentRun(outcome);
-    }
-    if (outcome.status === "timed_out") {
-      throw retryableTurnErrorFromTimedOutAgentRun(outcome);
-    }
-    if (outcome.status === "yielded") {
-      throw new Error("Slack resume yielded without a queue worker boundary");
-    }
-    let reply = outcome.reply;
-    reply = finalizeFailedTurnReply({
-      reply,
-      logException,
-      context: getResumeLogContext(runArgs, lockKey),
-    });
-
-    await status.stop();
-    const footer = buildSlackReplyFooter({
-      conversationId: getResumeConversationId(runArgs, lockKey),
-    });
-    await postSlackApiReplyPosts({
-      channelId: runArgs.channelId,
-      threadTs: runArgs.threadTs,
-      posts: planSlackReplyPosts({ reply }),
-      fileUploadFailureMode: "best_effort",
-      footer,
-    });
-    finalReplyDelivered = true;
-    // Destination acceptance is the completion boundary: only now commit the
-    // final assistant messages and the terminal completed session record.
-    // Persistence failures are logged inside and never fail the turn.
-    if (
-      replyContext.correlation?.conversationId &&
-      replyContext.correlation.turnId &&
-      reply.piMessages?.length
-    ) {
-      await persistCompletedSessionRecord({
-        conversationId: replyContext.correlation.conversationId,
-        sessionId: replyContext.correlation.turnId,
-        allMessages: reply.piMessages,
-        currentDurationMs: reply.diagnostics.durationMs,
-        currentUsage: reply.diagnostics.usage,
-        destination: replyContext.destination,
-        source: replyContext.source,
-        requester: replyContext.requester,
-        surface: "slack",
-        logContext: {
-          threadId: replyContext.correlation.threadId,
-          requesterId: replyContext.requester?.userId,
-          channelId: runArgs.channelId,
-          runId: replyContext.correlation.runId,
-          assistantUserName: botConfig.userName,
-          modelId: reply.diagnostics.modelId,
-        },
+    if (outcome.status !== "completed") {
+      // Expected pauses defer their handlers until the lock is released,
+      // mirroring the failure path below.
+      await status.stop();
+      const onAuthPause = runArgs.onAuthPause;
+      const onTimeoutPause = runArgs.onTimeoutPause;
+      if (outcome.status === "awaiting_auth" && onAuthPause) {
+        deferredPauseKind = "auth";
+        deferredAuthInfo = {
+          providerDisplayName: outcome.providerDisplayName,
+          requesterId: runArgs.replyContext?.requester?.userId,
+        };
+        deferredPauseHandler = async () => {
+          await onAuthPause({
+            providerDisplayName: outcome.providerDisplayName,
+          });
+        };
+      } else if (outcome.status === "suspended" && onTimeoutPause) {
+        deferredPauseKind = "timeout";
+        deferredPauseHandler = async () => {
+          await onTimeoutPause({ resumeVersion: outcome.resumeVersion });
+        };
+      } else {
+        deferredFailureHandler = async () => {
+          await handleResumeFailure({
+            body: "Failed to resume Slack turn",
+            error: new Error(
+              `Resumed run ended ${outcome.status} without a pause handler`,
+            ),
+            eventName: "slack_resume_turn_failed",
+            lockKey,
+            resumeArgs: runArgs,
+          });
+        };
+      }
+    } else {
+      let reply = outcome.reply;
+      reply = finalizeFailedTurnReply({
+        reply,
+        logException,
+        context: getResumeLogContext(runArgs, lockKey),
       });
-    }
-    await runArgs.onSuccess?.(reply);
-    if (
-      reply.diagnostics.outcome === "success" &&
-      replyContext.correlation?.conversationId &&
-      replyContext.correlation.turnId
-    ) {
-      try {
-        const params = {
+
+      await status.stop();
+      const footer = buildSlackReplyFooter({
+        conversationId: getResumeConversationId(runArgs, lockKey),
+      });
+      await postSlackApiReplyPosts({
+        channelId: runArgs.channelId,
+        threadTs: runArgs.threadTs,
+        posts: planSlackReplyPosts({ reply }),
+        fileUploadFailureMode: "best_effort",
+        footer,
+      });
+      finalReplyDelivered = true;
+      // Destination acceptance is the completion boundary: only now commit the
+      // final assistant messages and the terminal completed session record.
+      // Persistence failures are logged inside and never fail the turn.
+      if (
+        replyContext.correlation?.conversationId &&
+        replyContext.correlation.turnId &&
+        reply.piMessages?.length
+      ) {
+        await persistCompletedSessionRecord({
           conversationId: replyContext.correlation.conversationId,
           sessionId: replyContext.correlation.turnId,
-        };
-        if (runArgs.scheduleSessionCompletedPluginTasks) {
-          await runArgs.scheduleSessionCompletedPluginTasks(params);
-        } else {
-          await scheduleSessionCompletedPluginTasks(params);
+          allMessages: reply.piMessages,
+          currentDurationMs: reply.diagnostics.durationMs,
+          currentUsage: reply.diagnostics.usage,
+          destination: replyContext.destination,
+          source: replyContext.source,
+          requester: replyContext.requester,
+          surface: "slack",
+          logContext: {
+            threadId: replyContext.correlation.threadId,
+            requesterId: replyContext.requester?.userId,
+            channelId: runArgs.channelId,
+            runId: replyContext.correlation.runId,
+            assistantUserName: botConfig.userName,
+            modelId: reply.diagnostics.modelId,
+          },
+        });
+      }
+      await runArgs.onSuccess?.(reply);
+      if (
+        reply.diagnostics.outcome === "success" &&
+        replyContext.correlation?.conversationId &&
+        replyContext.correlation.turnId
+      ) {
+        try {
+          const params = {
+            conversationId: replyContext.correlation.conversationId,
+            sessionId: replyContext.correlation.turnId,
+          };
+          if (runArgs.scheduleSessionCompletedPluginTasks) {
+            await runArgs.scheduleSessionCompletedPluginTasks(params);
+          } else {
+            await scheduleSessionCompletedPluginTasks(params);
+          }
+        } catch (scheduleError) {
+          logException(
+            scheduleError,
+            "plugin_session_completed_task_schedule_failed",
+            getResumeLogContext(runArgs, lockKey),
+            {},
+            "Plugin session.completed task scheduling failed",
+          );
         }
-      } catch (scheduleError) {
-        logException(
-          scheduleError,
-          "plugin_session_completed_task_schedule_failed",
-          getResumeLogContext(runArgs, lockKey),
-          {},
-          "Plugin session.completed task scheduling failed",
-        );
       }
     }
   } catch (error) {
     await status.stop();
 
-    const onAuthPause = runArgs.onAuthPause;
-    const onTimeoutPause = runArgs.onTimeoutPause;
     if (finalReplyDelivered) {
       postDeliveryCommitError = error;
       try {
@@ -503,24 +521,6 @@ export async function resumeSlackTurn(
           "Failed to terminalize resumed turn after post-delivery commit failure",
         );
       }
-    } else if (isAuthResumeRetryableTurnError(error) && onAuthPause) {
-      deferredPauseKind = "auth";
-      deferredAuthInfo = {
-        providerDisplayName: error.metadata.authProviderDisplayName,
-        // The try body validates requester.userId; catch scope does not retain that narrowing.
-        requesterId: runArgs.replyContext?.requester?.userId,
-      };
-      deferredPauseHandler = async () => {
-        await onAuthPause(error);
-      };
-    } else if (
-      isRetryableTurnError(error, "agent_continue") &&
-      onTimeoutPause
-    ) {
-      deferredPauseKind = "timeout";
-      deferredPauseHandler = async () => {
-        await onTimeoutPause(error);
-      };
     } else {
       deferredFailureHandler = async () => {
         await handleResumeFailure({
@@ -601,8 +601,8 @@ export async function resumeAuthorizedRequest(args: {
   generateReply?: ResumeGenerateReply;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
-  onAuthPause?: (error: unknown) => Promise<void>;
-  onTimeoutPause?: (error: unknown) => Promise<void>;
+  onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
+  onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<Partial<ResumeSlackTurnArgs> | false | void>;
   replyTimeoutMs?: number;

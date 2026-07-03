@@ -6,7 +6,6 @@ import {
   getDispatchDestinationLockId,
   getDispatchRecord,
   getDispatchStorageKey,
-  getDispatchTurnId,
   parseDispatchRecord,
   updateDispatchRecord,
   withDispatchLock,
@@ -25,10 +24,7 @@ import {
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import {
-  completedAgentRun,
-  failedAgentRun,
-} from "@/chat/runtime/agent-run-outcome";
+import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -360,13 +356,7 @@ describe("agent dispatch runner", () => {
     });
     const scheduleCallback = vi.fn(async () => undefined);
     const generateAssistantReply = vi.fn(async () => {
-      return {
-        status: "timed_out" as const,
-        conversationId: getDispatchConversationId(created.record),
-        sessionId: getDispatchTurnId(created.record.id),
-        version: 7,
-        sliceId: 2,
-      };
+      return { status: "suspended" as const, resumeVersion: 7 };
     });
 
     await runAgentDispatchSlice(
@@ -522,7 +512,7 @@ describe("agent dispatch runner", () => {
     const dispatchConversationId = getDispatchConversationId(created.record);
     const failedReply = createReply();
     const generateAssistantReply = vi.fn(async () =>
-      failedAgentRun({
+      completedAgentRun({
         ...failedReply,
         text: "",
         diagnostics: {

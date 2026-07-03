@@ -41,7 +41,7 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { isRetryableTurnError, markTurnFailed } from "@/chat/runtime/turn";
+import { markTurnFailed } from "@/chat/runtime/turn";
 import {
   getAwaitingAgentContinueRequest,
   scheduleAgentContinue as defaultScheduleAgentContinue,
@@ -428,22 +428,12 @@ export async function continueSlackAgentRun(
               "Continued agent run parked for auth",
             );
           },
-          onTimeoutPause: async (error: unknown) => {
-            if (!isRetryableTurnError(error, "agent_continue")) {
-              throw error;
-            }
-            const version = error.metadata?.version;
-            if (typeof version !== "number") {
-              throw new Error(
-                "Agent continuation did not include a session record version",
-              );
-            }
-
+          onTimeoutPause: async ({ resumeVersion }) => {
             await scheduleAgentContinue({
               conversationId: payload.conversationId,
               destination: payload.destination,
               sessionId: payload.sessionId,
-              expectedVersion: version,
+              expectedVersion: resumeVersion,
             });
           },
         };

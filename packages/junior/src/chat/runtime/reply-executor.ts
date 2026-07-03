@@ -34,10 +34,7 @@ import {
   type AssistantReplyRequestContext,
   type ReplySteeringMessage,
 } from "@/chat/respond";
-import {
-  retryableTurnErrorFromTimedOutAgentRun,
-  type AgentRunOutcome,
-} from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -912,7 +909,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let finalReplyDelivered = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
-        let agentContinuePropagationError: unknown;
         let agentContinueScheduleError: unknown;
         const hasVisibleSlackDelivery = (post: {
           files?: unknown[];
@@ -1115,13 +1111,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldYield: options.shouldYield,
             },
           );
-          if (outcome.status === "yielded") {
-            shouldPersistFailureState = false;
-            throw new CooperativeTurnYieldError();
-          }
           if (outcome.status === "awaiting_auth") {
             if (!requester) {
-              const text = `I could not act on this subscribed event because ${outcome.authProviderDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.authProviderDisplayName} before retrying.`;
+              const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
               await postThreadReply(
                 buildSlackOutputMessage(text),
                 "thread_reply",
@@ -1160,10 +1152,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldPersistFailureState = false;
               return;
             }
-            await postAuthPauseNotice(outcome.authProviderDisplayName);
+            await postAuthPauseNotice(outcome.providerDisplayName);
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
-              sessionId: outcome.sessionId,
+              sessionId: turnId,
             });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
@@ -1172,42 +1164,44 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             shouldPersistFailureState = false;
             return;
           }
-          if (outcome.status === "timed_out") {
-            if (typeof outcome.version === "number" && destination) {
-              try {
-                await deps.services.scheduleAgentContinue({
-                  conversationId: outcome.conversationId,
-                  destination,
-                  sessionId: outcome.sessionId,
-                  expectedVersion: outcome.version,
-                });
-                shouldPersistFailureState = false;
-              } catch (scheduleError) {
-                logException(
-                  scheduleError,
-                  "agent_continue_schedule_failed",
-                  turnTraceContext,
-                  {
-                    ...(messageTs ? { "messaging.message.id": messageTs } : {}),
-                    "app.ai.resume_session_version": outcome.version,
-                  },
-                  "Failed to schedule agent continuation",
-                );
-                shouldPersistFailureState = true;
-                agentContinueScheduleError = scheduleError;
-                throw scheduleError;
-              }
-              return;
+          if (outcome.status === "suspended") {
+            // A cooperative yield only occurs when this caller's own
+            // shouldYield() fired, so the predicate — not the outcome —
+            // decides the resume route: hand the lease back to the queue
+            // worker, or schedule a direct continuation.
+            if (options.shouldYield?.()) {
+              shouldPersistFailureState = false;
+              throw new CooperativeTurnYieldError();
             }
-            logWarn(
-              "agent_continue_metadata_missing",
-              turnTraceContext,
-              messageTs ? { "messaging.message.id": messageTs } : {},
-              "Agent continuation could not be scheduled because retry metadata was incomplete",
-            );
-            agentContinuePropagationError =
-              retryableTurnErrorFromTimedOutAgentRun(outcome);
-            throw agentContinuePropagationError;
+            if (!destination || !conversationId) {
+              throw new Error(
+                "Agent continuation requires a destination and conversation id",
+              );
+            }
+            try {
+              await deps.services.scheduleAgentContinue({
+                conversationId,
+                destination,
+                sessionId: turnId,
+                expectedVersion: outcome.resumeVersion,
+              });
+              shouldPersistFailureState = false;
+            } catch (scheduleError) {
+              logException(
+                scheduleError,
+                "agent_continue_schedule_failed",
+                turnTraceContext,
+                {
+                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                  "app.ai.resume_session_version": outcome.resumeVersion,
+                },
+                "Failed to schedule agent continuation",
+              );
+              shouldPersistFailureState = true;
+              agentContinueScheduleError = scheduleError;
+              throw scheduleError;
+            }
+            return;
           }
 
           let reply = outcome.reply;
@@ -1446,10 +1440,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
           if (error === agentContinueScheduleError) {
-            shouldPersistFailureState = true;
-            throw error;
-          }
-          if (error === agentContinuePropagationError) {
             shouldPersistFailureState = true;
             throw error;
           }

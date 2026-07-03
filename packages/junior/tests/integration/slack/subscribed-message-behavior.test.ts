@@ -216,14 +216,7 @@ describe("Slack behavior: subscribed messages", () => {
           generateAssistantReply: async () => {
             return {
               status: "awaiting_auth",
-              authDisposition: "link_sent",
-              authDurationMs: 1,
-              authKind: "mcp",
-              authProvider: "github",
-              authProviderDisplayName: "GitHub",
-              conversationId: "slack:C_BEHAVIOR:1700002000.003",
-              sessionId: "resource-event-auth",
-              sliceId: 2,
+              providerDisplayName: "GitHub",
             };
           },
         },

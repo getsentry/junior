@@ -103,11 +103,7 @@ import {
   TurnInputCommitLostError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import {
-  completedAgentRun,
-  failedAgentRun,
-  type AgentRunOutcome,
-} from "@/chat/runtime/agent-run-outcome";
+import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import {
   buildUserTurnText,
   encodeNonImageAttachmentForPrompt,
@@ -1878,8 +1874,9 @@ async function generateAssistantReplyInPrivacyContext(
     }
 
     // ── Build turn result ────────────────────────────────────────────
-    return completedAgentRun(
-      buildTurnResult({
+    return {
+      status: "completed",
+      reply: buildTurnResult({
         newMessages,
         userInput,
         replyFiles,
@@ -1898,7 +1895,7 @@ async function generateAssistantReplyInPrivacyContext(
         correlation: context.correlation,
         assistantUserName: botConfig.userName,
       }),
-    );
+    };
   } catch (error) {
     if (
       cooperativeYieldError &&
@@ -1931,13 +1928,7 @@ async function generateAssistantReplyInPrivacyContext(
           `Failed to persist cooperative yield continuation for conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId}`,
         );
       }
-      return {
-        status: "yielded",
-        conversationId: timeoutResumeConversationId,
-        sessionId: timeoutResumeSessionId,
-        sliceId: sessionRecord.sliceId,
-        version: sessionRecord.version,
-      };
+      return { status: "suspended", resumeVersion: sessionRecord.version };
     }
 
     if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
@@ -1967,13 +1958,7 @@ async function generateAssistantReplyInPrivacyContext(
         );
       }
       if (sessionRecord.state === "awaiting_resume") {
-        return {
-          status: "timed_out",
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: sessionRecord.sliceId,
-          version: sessionRecord.version,
-        };
+        return { status: "suspended", resumeVersion: sessionRecord.version };
       }
       throw new Error(
         sessionRecord.errorMessage ??
@@ -2013,16 +1998,7 @@ async function generateAssistantReplyInPrivacyContext(
       if (sessionRecord) {
         return {
           status: "awaiting_auth",
-          authDisposition: error.disposition,
-          authDurationMs: Date.now() - replyStartedAtMs,
-          authKind: error.kind,
-          authProvider: error.provider,
-          authProviderDisplayName: error.providerDisplayName,
-          authThinkingLevel: thinkingSelection?.thinkingLevel,
-          authUsage: turnUsage,
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: sessionRecord.sliceId,
+          providerDisplayName: error.providerDisplayName,
         };
       }
     }
@@ -2059,27 +2035,30 @@ async function generateAssistantReplyInPrivacyContext(
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);
-    return failedAgentRun({
-      text: "",
-      ...getSandboxMetadata(),
-      diagnostics: {
-        outcome: "provider_error",
-        modelId: botConfig.modelId,
-        assistantMessageCount: 0,
-        ...(thinkingSelection
-          ? {
-              thinkingLevel: thinkingSelection.thinkingLevel,
-            }
-          : {}),
-        toolCalls: [],
-        toolResultCount: 0,
-        toolErrorCount: 0,
-        usedPrimaryText: false,
-        durationMs: Date.now() - replyStartedAtMs,
-        errorMessage: message,
-        providerError: error,
+    return {
+      status: "completed",
+      reply: {
+        text: "",
+        ...getSandboxMetadata(),
+        diagnostics: {
+          outcome: "provider_error",
+          modelId: botConfig.modelId,
+          assistantMessageCount: 0,
+          ...(thinkingSelection
+            ? {
+                thinkingLevel: thinkingSelection.thinkingLevel,
+              }
+            : {}),
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedPrimaryText: false,
+          durationMs: Date.now() - replyStartedAtMs,
+          errorMessage: message,
+          providerError: error,
+        },
       },
-    });
+    };
   } finally {
     try {
       await mcpToolManager?.close();

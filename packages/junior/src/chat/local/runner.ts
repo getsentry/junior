@@ -290,11 +290,7 @@ export async function runLocalAgentTurn(
         await deps.onToolResult?.(result);
       },
     });
-    if (
-      outcome.status === "awaiting_auth" ||
-      outcome.status === "timed_out" ||
-      outcome.status === "yielded"
-    ) {
+    if (outcome.status !== "completed") {
       throw new Error(`Local agent run ended with ${outcome.status}`);
     }
     reply = outcome.reply;
