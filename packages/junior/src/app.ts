@@ -584,16 +584,16 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
+  const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
+  const agentRunner = createAgentRunner(generateAssistantReply, {
+    tracePropagation,
+  });
   const runtimeServiceOverrides = {
-    sandbox: {
-      tracePropagation: { domains: sandboxEgressTracePropagationDomains },
-    },
+    replyExecutor: { agentRunner },
+    sandbox: { tracePropagation },
   };
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
-  });
-  const agentRunner = createAgentRunner(generateAssistantReply, {
-    tracePropagation: runtimeServiceOverrides.sandbox.tracePropagation,
   });
 
   const app = new Hono();
@@ -639,10 +639,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.post("/api/internal/agent-dispatch", (c) => {
-    return agentDispatchPOST(c.req.raw, waitUntil, {
-      agentRunner,
-      tracePropagation: { domains: sandboxEgressTracePropagationDomains },
-    });
+    return agentDispatchPOST(c.req.raw, waitUntil, { agentRunner });
   });
 
   let agentContinuePOST:
@@ -658,6 +655,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     conversationWorkOptions ??=
       options?.conversationWork ??
       createProductionConversationWorkOptions({
+        agentRunner,
         services: runtimeServiceOverrides,
       });
     return conversationWorkOptions;

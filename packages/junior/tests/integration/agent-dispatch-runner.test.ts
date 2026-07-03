@@ -25,6 +25,7 @@ import {
 } from "@/chat/credentials/subject";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { chatPostMessageOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -210,9 +211,10 @@ describe("agent dispatch runner", () => {
         expectedVersion: created.record.version,
       },
       {
-        agentRunner: { run: generateAssistantReply },
+        agentRunner: createAgentRunner(generateAssistantReply, {
+          tracePropagation: { domains: ["*.sentry.io"] },
+        }),
         scheduleSessionCompletedPluginTasks,
-        tracePropagation: { domains: ["*.sentry.io"] },
       },
     );
 

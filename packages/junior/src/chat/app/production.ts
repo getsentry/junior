@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackRuntime } from "@/chat/app/factory";
-import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
   getSlackBotToken,
@@ -16,7 +16,6 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { generateAssistantReply } from "@/chat/respond";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
 
@@ -94,18 +93,15 @@ export function getProductionSlackWebhookServices(): SlackWebhookServices {
 }
 
 /** Return the production queue callback options for conversation work. */
-export function createProductionConversationWorkOptions(options?: {
+export function createProductionConversationWorkOptions(options: {
+  agentRunner: AgentRunner;
   services?: JuniorRuntimeServiceOverrides;
 }): VercelConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
-  const agentRunner =
-    options?.services?.replyExecutor?.agentRunner ??
-    createAgentRunner(generateAssistantReply, {
-      tracePropagation: options?.services?.sandbox?.tracePropagation,
-    });
+  const { agentRunner } = options;
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: options?.services,
+    services: options.services,
   });
   return {
     conversationStore,
@@ -117,7 +113,7 @@ export function createProductionConversationWorkOptions(options?: {
         await resumeAwaitingSlackContinuation(conversationId, {
           agentRunner,
           scheduleSessionCompletedPluginTasks:
-            options?.services?.replyExecutor
+            options.services?.replyExecutor
               ?.scheduleSessionCompletedPluginTasks,
         }),
       runtime,

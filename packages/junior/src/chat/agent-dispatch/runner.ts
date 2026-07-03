@@ -9,7 +9,6 @@
 import { botConfig } from "@/chat/config";
 import type { AssistantReply } from "@/chat/respond";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import { logException } from "@/chat/logging";
 import {
   buildConversationContext,
@@ -63,7 +62,6 @@ export interface AgentDispatchRunnerDeps {
   agentRunner: AgentRunner;
   scheduleCallback?: typeof scheduleDispatchCallback;
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
-  tracePropagation?: SandboxEgressTracePropagationConfig;
 }
 
 function getUserMessageId(dispatch: DispatchRecord): string {
@@ -324,7 +322,6 @@ export async function runAgentDispatchSlice(
       sandbox: {
         sandboxId,
         sandboxDependencyProfileHash,
-        tracePropagation: deps.tracePropagation,
       },
       onSandboxAcquired: async (sandbox) => {
         sandboxId = sandbox.sandboxId;
