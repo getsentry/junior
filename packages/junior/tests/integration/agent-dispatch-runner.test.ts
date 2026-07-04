@@ -17,7 +17,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
@@ -32,7 +32,7 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-import { flattenReplyRequestForTest } from "../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../fixtures/agent-runner";
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -55,7 +55,7 @@ function zeroUsage() {
   };
 }
 
-function createReply(): AssistantReply {
+function createReply(): AgentRunResult {
   return {
     text: "Dispatch delivered.",
     deliveryMode: "thread",
@@ -181,33 +181,31 @@ describe("agent dispatch runner", () => {
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context.requester).toBeUndefined();
-        expect(context.authorizationFlowMode).toBe("disabled");
-        expect(context.surface).toBe("api");
-        expect(context.source).toEqual(slackSource());
-        expect(context.dispatch).toEqual({
-          actor: { type: "system", id: "scheduler" },
-          metadata: { runId: "run-1" },
-          plugin: "scheduler",
-        });
-        expect(context.correlation).toMatchObject({
-          conversationId: dispatchConversationId,
-          threadId: dispatchConversationId,
-          channelId: "C123",
-          teamId: "T123",
-        });
-        expect(context.credentialContext).toEqual({
-          actor: { type: "system", id: "scheduler" },
-        });
-        expect(context.sandbox?.tracePropagation).toEqual({
-          domains: ["*.sentry.io"],
-        });
-        return completedAgentRun(createReply());
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context.requester).toBeUndefined();
+      expect(context.authorizationFlowMode).toBe("disabled");
+      expect(context.surface).toBe("api");
+      expect(context.source).toEqual(slackSource());
+      expect(context.dispatch).toEqual({
+        actor: { type: "system", id: "scheduler" },
+        metadata: { runId: "run-1" },
+        plugin: "scheduler",
+      });
+      expect(context.correlation).toMatchObject({
+        conversationId: dispatchConversationId,
+        threadId: dispatchConversationId,
+        channelId: "C123",
+        teamId: "T123",
+      });
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
+      });
+      expect(context.sandbox?.tracePropagation).toEqual({
+        domains: ["*.sentry.io"],
+      });
+      return completedAgentRun(createReply());
+    });
     const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
 
     await runAgentDispatchSlice(
@@ -216,7 +214,7 @@ describe("agent dispatch runner", () => {
         expectedVersion: created.record.version,
       },
       {
-        agentRunner: createAgentRunner(generateAssistantReply, {
+        agentRunner: createAgentRunner(executeAgentRun, {
           tracePropagation: { domains: ["*.sentry.io"] },
         }),
         scheduleSessionCompletedPluginTasks,
@@ -313,21 +311,19 @@ describe("agent dispatch runner", () => {
       },
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context.conversationContext).toBeUndefined();
-        expect(context.piMessages).toEqual([]);
-        return completedAgentRun(createReply());
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context.conversationContext).toBeUndefined();
+      expect(context.piMessages).toEqual([]);
+      return completedAgentRun(createReply());
+    });
 
     await runAgentDispatchSlice(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { agentRunner: { run: generateAssistantReply } },
+      { agentRunner: { run: executeAgentRun } },
     );
 
     const persistedDestination =
@@ -365,7 +361,7 @@ describe("agent dispatch runner", () => {
       },
     });
     const scheduleCallback = vi.fn(async () => undefined);
-    const generateAssistantReply = vi.fn(async () => {
+    const executeAgentRun = vi.fn(async () => {
       return { status: "suspended" as const, resumeVersion: 7 };
     });
 
@@ -374,7 +370,7 @@ describe("agent dispatch runner", () => {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { agentRunner: { run: generateAssistantReply }, scheduleCallback },
+      { agentRunner: { run: executeAgentRun }, scheduleCallback },
     );
 
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
@@ -404,35 +400,33 @@ describe("agent dispatch runner", () => {
         source: slackSource("D123"),
       },
     });
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context.requester).toBeUndefined();
-        expect(context.credentialContext).toEqual({
-          actor: { type: "system", id: "scheduler" },
-          subject: {
-            type: "user",
-            userId: "U123",
-            allowedWhen: "private-direct-conversation",
-            binding: {
-              type: "slack-direct-conversation",
-              teamId: "T123",
-              channelId: "D123",
-              signature: expect.any(String),
-            },
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context.requester).toBeUndefined();
+      expect(context.credentialContext).toEqual({
+        actor: { type: "system", id: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "private-direct-conversation",
+          binding: {
+            type: "slack-direct-conversation",
+            teamId: "T123",
+            channelId: "D123",
+            signature: expect.any(String),
           },
-        });
-        expect(context.authorizationFlowMode).toBe("disabled");
-        return completedAgentRun(createReply());
-      },
-    );
+        },
+      });
+      expect(context.authorizationFlowMode).toBe("disabled");
+      return completedAgentRun(createReply());
+    });
 
     await runAgentDispatchSlice(
       {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { agentRunner: { run: generateAssistantReply } },
+      { agentRunner: { run: executeAgentRun } },
     );
 
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
@@ -524,7 +518,7 @@ describe("agent dispatch runner", () => {
     });
     const dispatchConversationId = getDispatchConversationId(created.record);
     const failedReply = createReply();
-    const generateAssistantReply = vi.fn(async () =>
+    const executeAgentRun = vi.fn(async () =>
       completedAgentRun({
         ...failedReply,
         text: "",
@@ -543,7 +537,7 @@ describe("agent dispatch runner", () => {
         id: created.record.id,
         expectedVersion: created.record.version,
       },
-      { agentRunner: { run: generateAssistantReply } },
+      { agentRunner: { run: executeAgentRun } },
     );
 
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({

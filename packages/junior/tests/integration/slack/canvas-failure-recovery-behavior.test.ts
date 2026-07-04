@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ReplyRequestContext } from "@/chat/respond";
+import type { AgentRunRequest } from "@/chat/agent-run";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -22,27 +22,25 @@ function toPostedText(value: unknown): string {
 
 describe("Slack behavior: canvas failure recovery", () => {
   it("points to a created canvas when reply generation fails before final text", async () => {
-    const generateAssistantReply = vi.fn(
-      async (request: ReplyRequestContext) => {
-        await request.durability?.onArtifactStateUpdated?.({
-          lastCanvasId: "F_CANVAS",
-          lastCanvasUrl: "https://slack.example/docs/T/F_CANVAS",
-          recentCanvases: [
-            {
-              id: "F_CANVAS",
-              title: "Research reference",
-              url: "https://slack.example/docs/T/F_CANVAS",
-              createdAt: "2026-05-20T20:00:00.000Z",
-            },
-          ],
-        });
-        throw new Error("forced failure after canvas");
-      },
-    );
+    const executeAgentRun = vi.fn(async (request: AgentRunRequest) => {
+      await request.durability?.onArtifactStateUpdated?.({
+        lastCanvasId: "F_CANVAS",
+        lastCanvasUrl: "https://slack.example/docs/T/F_CANVAS",
+        recentCanvases: [
+          {
+            id: "F_CANVAS",
+            title: "Research reference",
+            url: "https://slack.example/docs/T/F_CANVAS",
+            createdAt: "2026-05-20T20:00:00.000Z",
+          },
+        ],
+      });
+      throw new Error("forced failure after canvas");
+    });
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });
@@ -74,13 +72,13 @@ describe("Slack behavior: canvas failure recovery", () => {
   });
 
   it("does not recover with a canvas from a prior turn", async () => {
-    const generateAssistantReply = vi.fn(async () => {
+    const executeAgentRun = vi.fn(async () => {
       throw new Error("forced unrelated failure");
     });
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: generateAssistantReply },
+          agentRunner: { run: executeAgentRun },
         },
       },
     });

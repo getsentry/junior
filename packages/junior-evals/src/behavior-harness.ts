@@ -40,7 +40,7 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
@@ -1572,7 +1572,7 @@ function buildRuntimeServices(
             delete process.env.VERCEL_OIDC_TOKEN;
           }
           try {
-            const outcome = await generateAssistantReply({
+            const outcome = await executeAgentRun({
               ...request,
               policy: {
                 ...request.policy,

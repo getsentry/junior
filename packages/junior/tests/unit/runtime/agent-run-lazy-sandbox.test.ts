@@ -518,24 +518,21 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   },
 }));
 
-import {
-  generateAssistantReply,
-  type ReplyRequestContext,
-} from "@/chat/respond";
+import { executeAgentRun, type AgentRunRequest } from "@/chat/agent-run";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
-  conversationId: "local:test:respond-lazy-sandbox",
+  conversationId: "local:test:agent-run-lazy-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 
 async function generateLocalReply(
   message: string,
-  context: Partial<Omit<ReplyRequestContext, "input" | "routing">> & {
-    input?: Partial<Omit<ReplyRequestContext["input"], "messageText">>;
+  context: Partial<Omit<AgentRunRequest, "input" | "routing">> & {
+    input?: Partial<Omit<AgentRunRequest["input"], "messageText">>;
   } = {},
 ) {
-  const outcome = await generateAssistantReply({
+  const outcome = await executeAgentRun({
     ...context,
     input: {
       messageText: message,
@@ -549,10 +546,10 @@ async function generateLocalReply(
   if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
-  return outcome.reply;
+  return outcome.result;
 }
 
-describe("generateAssistantReply lazy sandbox boot", () => {
+describe("executeAgentRun lazy sandbox boot", () => {
   beforeEach(() => {
     agentMode.value = "plain";
     createSandboxCallCount.value = 0;
@@ -628,7 +625,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
       input: {
         userAttachments: [
           {
-            data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
             filename: "error.txt",
             mediaType: "text/plain",
           },
@@ -645,7 +642,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
       input: {
         userAttachments: [
           {
-            data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+            data: Buffer.from("TypeError: x is undefined\nat agent-run.ts:42"),
             filename: "error.json",
             mediaType: "application/vnd.api+json; charset=utf-8",
           },

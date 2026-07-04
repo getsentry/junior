@@ -11,7 +11,7 @@ import {
   createTestThread,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 interface FakeReplyCall {
   prompt: string;
@@ -175,7 +175,7 @@ describe("Slack behavior: new mention", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               const attachments = context?.userAttachments ?? [];
@@ -250,7 +250,7 @@ describe("Slack behavior: new mention", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               await context?.onStatus?.(makeAssistantStatus("running", "bash"));

@@ -1,14 +1,14 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 
 /**
- * Default harness runner: resolve @/chat/respond at call time so a test's
+ * Default harness runner: resolve @/chat/agent-run at call time so a test's
  * vi.mock of that module is honored regardless of import order, while tests
- * without the mock exercise the real reply generator.
+ * without the mock exercise the real executor.
  */
-export const respondAgentRunner: AgentRunner = {
+export const realAgentRunner: AgentRunner = {
   run: async (request) => {
-    const { generateAssistantReply } = await import("@/chat/respond");
-    return await generateAssistantReply(request);
+    const { executeAgentRun } = await import("@/chat/agent-run");
+    return await executeAgentRun(request);
   },
 };
 
@@ -16,7 +16,7 @@ export const respondAgentRunner: AgentRunner = {
  * Flatten a grouped run request so tests can assert on the legacy flat field
  * surface without hand-copying the group spreads at every mock boundary.
  */
-export function flattenReplyRequestForTest(
+export function flattenAgentRunRequestForTest(
   request: Parameters<AgentRunner["run"]>[0],
 ) {
   return {

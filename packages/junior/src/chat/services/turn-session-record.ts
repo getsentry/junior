@@ -11,7 +11,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
 export const AGENT_CONTINUE_MAX_SLICES = 48;

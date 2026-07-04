@@ -46,7 +46,7 @@ describe("selectTurnThinkingLevel", () => {
       completeObject,
       fastModelId: "openai/gpt-5.4-mini",
       messageText:
-        "fix the failing test in packages/junior/src/chat/respond.ts",
+        "fix the failing test in packages/junior/src/chat/agent-run.ts",
     });
 
     expect(profile).toMatchObject({

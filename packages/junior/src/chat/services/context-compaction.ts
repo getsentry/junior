@@ -25,7 +25,7 @@ import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;

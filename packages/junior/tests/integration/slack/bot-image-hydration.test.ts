@@ -7,7 +7,7 @@ import {
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const listThreadRepliesMock = vi.fn();
 const ORIGINAL_ENV = { ...process.env };
@@ -453,15 +453,13 @@ describe("bot image hydration", () => {
       text: "Passive screenshot summary",
       message: {} as never,
     }));
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context?.conversationContext).toContain(
-          "Passive screenshot summary",
-        );
-        return makeSuccessOutcome();
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context?.conversationContext).toContain(
+        "Passive screenshot summary",
+      );
+      return makeSuccessOutcome();
+    });
 
     const { slackRuntime } = await createRuntime(
       {
@@ -479,7 +477,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            agentRunner: { run: generateAssistantReply },
+            agentRunner: { run: executeAgentRun },
           },
         },
       },
@@ -538,7 +536,7 @@ describe("bot image hydration", () => {
       { destination: createTestDestination(thread) },
     );
 
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
 
     await slackRuntime.handleNewMention(
@@ -562,7 +560,7 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
 
     const persistedState = thread.getState() as {
       conversation: {
@@ -612,19 +610,17 @@ describe("bot image hydration", () => {
       message: {} as never,
     }));
     const attachmentFetch = vi.fn(async () => Buffer.from("attachment-image"));
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context?.userAttachments).toEqual([
-          expect.objectContaining({
-            mediaType: "image/png",
-            filename: "screen.png",
-            promptText: expect.stringContaining("Current screenshot summary"),
-          }),
-        ]);
-        return makeSuccessOutcome();
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context?.userAttachments).toEqual([
+        expect.objectContaining({
+          mediaType: "image/png",
+          filename: "screen.png",
+          promptText: expect.stringContaining("Current screenshot summary"),
+        }),
+      ]);
+      return makeSuccessOutcome();
+    });
 
     const { slackRuntime } = await createRuntime(
       {
@@ -635,7 +631,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            agentRunner: { run: generateAssistantReply },
+            agentRunner: { run: executeAgentRun },
           },
         },
       },
@@ -723,7 +719,7 @@ describe("bot image hydration", () => {
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(attachmentFetch).not.toHaveBeenCalled();
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
   });
 
   it("keeps cached image summaries aligned with attachment positions", async () => {
@@ -769,22 +765,20 @@ describe("bot image hydration", () => {
     const secondAttachmentFetch = vi.fn(async () =>
       Buffer.from("second-image"),
     );
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        expect(context?.userAttachments).toEqual([
-          expect.objectContaining({
-            filename: "first.png",
-            promptText: expect.stringContaining("First attachment summary"),
-          }),
-          expect.objectContaining({
-            filename: "second.png",
-            promptText: expect.stringContaining("Second cached summary"),
-          }),
-        ]);
-        return makeSuccessOutcome();
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context?.userAttachments).toEqual([
+        expect.objectContaining({
+          filename: "first.png",
+          promptText: expect.stringContaining("First attachment summary"),
+        }),
+        expect.objectContaining({
+          filename: "second.png",
+          promptText: expect.stringContaining("Second cached summary"),
+        }),
+      ]);
+      return makeSuccessOutcome();
+    });
 
     const { slackRuntime } = await createRuntime(
       {
@@ -795,7 +789,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            agentRunner: { run: generateAssistantReply },
+            agentRunner: { run: executeAgentRun },
           },
         },
       },
@@ -890,7 +884,7 @@ describe("bot image hydration", () => {
     expect(completeTextMock).toHaveBeenCalledTimes(3);
     expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
     expect(secondAttachmentFetch).not.toHaveBeenCalled();
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
   });
 
   it("truncates inline image summaries to the cached summary limit", async () => {
@@ -900,16 +894,14 @@ describe("bot image hydration", () => {
       text: longSummary,
       message: {} as never,
     }));
-    const generateAssistantReply = vi.fn<AgentRunner["run"]>(
-      async (request) => {
-        const context = flattenReplyRequestForTest(request);
-        const promptText = context?.userAttachments?.[0]?.promptText;
-        const summary = extractImageAttachmentSummary(promptText);
-        expect(summary).toBe(longSummary.slice(0, 500));
-        expect(summary).toHaveLength(500);
-        return makeSuccessOutcome();
-      },
-    );
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      const promptText = context?.userAttachments?.[0]?.promptText;
+      const summary = extractImageAttachmentSummary(promptText);
+      expect(summary).toBe(longSummary.slice(0, 500));
+      expect(summary).toHaveLength(500);
+      return makeSuccessOutcome();
+    });
 
     const { slackRuntime } = await createRuntime(
       {
@@ -919,7 +911,7 @@ describe("bot image hydration", () => {
             completeText: completeTextMock,
           },
           replyExecutor: {
-            agentRunner: { run: generateAssistantReply },
+            agentRunner: { run: executeAgentRun },
           },
         },
       },
@@ -1005,7 +997,7 @@ describe("bot image hydration", () => {
     );
 
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(executeAgentRun).toHaveBeenCalledTimes(1);
   });
 
   it("includes generated files in thread.post via SDK file upload", async () => {
@@ -1083,7 +1075,7 @@ describe("bot image hydration", () => {
             run: async (request) => {
               const _text = request.input.messageText;
               const _context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               return completedAgentRun({

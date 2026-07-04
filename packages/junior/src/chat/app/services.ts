@@ -1,5 +1,5 @@
 import { completeObject, completeText } from "@/chat/pi/client";
-import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent-run";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   getAwaitingAgentContinueRequest,
@@ -78,7 +78,7 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
       agentRunner:
         overrides.replyExecutor?.agentRunner ??
-        createAgentRunner(generateAssistantReplyImpl, {
+        createAgentRunner(executeAgentRunImpl, {
           tracePropagation: overrides.sandbox?.tracePropagation,
         }),
       getAwaitingAgentContinueRequest:

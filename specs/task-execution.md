@@ -581,7 +581,7 @@ Rules:
    local ingress uses `source: "local"`.
 2. Local CLI conversation ids must be stable across prompts in the same selected
    terminal session.
-3. Local CLI must use the shared conversation runtime and `generateAssistantReply`
+3. Local CLI must use the shared conversation runtime and `executeAgentRun`
    path. It must not instantiate Slack thread/message wrappers to reach the
    agent.
 4. Local CLI may stream assistant deltas and status updates to stdout/stderr, but

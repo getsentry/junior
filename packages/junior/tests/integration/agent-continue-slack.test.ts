@@ -10,7 +10,7 @@ import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
-const generateAssistantReplyMock = vi.fn();
+const executeAgentRunMock = vi.fn();
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -69,7 +69,7 @@ function continueAgentRun(args: {
         sessionId: args.sessionId,
       },
       {
-        agentRunner: { run: generateAssistantReplyMock },
+        agentRunner: { run: executeAgentRunMock },
         scheduleAgentContinue: (request) =>
           agentContinueServiceModule.scheduleAgentContinue(request, {
             queue,
@@ -82,8 +82,8 @@ function continueAgentRun(args: {
 describe("agent continuation Slack integration", () => {
   beforeEach(async () => {
     queue = createConversationWorkQueueTestAdapter();
-    generateAssistantReplyMock.mockReset();
-    generateAssistantReplyMock.mockResolvedValue(
+    executeAgentRunMock.mockReset();
+    executeAgentRunMock.mockResolvedValue(
       completedAgentRun({
         text: "Final resumed answer",
         diagnostics: makeDiagnostics(),
@@ -212,7 +212,7 @@ describe("agent continuation Slack integration", () => {
 
     expect(continued).toBe(true);
 
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({
           messageText: "resume this request",
@@ -238,7 +238,7 @@ describe("agent continuation Slack integration", () => {
         }),
       }),
     );
-    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[0] as {
+    const resumeContext = executeAgentRunMock.mock.calls[0]?.[0] as {
       policy?: {
         channelConfiguration?: {
           resolve: (key: string) => Promise<unknown>;
@@ -373,7 +373,7 @@ describe("agent continuation Slack integration", () => {
         }),
       }),
     ]);
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "resume this request" }),
         routing: expect.objectContaining({
@@ -453,7 +453,7 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
-    generateAssistantReplyMock.mockResolvedValueOnce({
+    executeAgentRunMock.mockResolvedValueOnce({
       status: "suspended",
       resumeVersion: sessionRecord.version + 1,
     });
@@ -548,7 +548,7 @@ describe("agent continuation Slack integration", () => {
     });
 
     expect(continued).toBe(true);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,
@@ -628,7 +628,7 @@ describe("agent continuation Slack integration", () => {
     });
 
     expect(continued).toBe(false);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,
@@ -731,7 +731,7 @@ describe("agent continuation Slack integration", () => {
     });
 
     expect(continued).toBe(true);
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "resume this request" }),
         routing: expect.objectContaining({
@@ -821,7 +821,7 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
-    generateAssistantReplyMock.mockResolvedValueOnce({
+    executeAgentRunMock.mockResolvedValueOnce({
       status: "suspended",
       resumeVersion: sessionRecord.version + 1,
     });
@@ -853,7 +853,7 @@ describe("agent continuation Slack integration", () => {
     // exactly one visible reply and only then a delivered/completed session.
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
-    generateAssistantReplyMock.mockResolvedValueOnce(
+    executeAgentRunMock.mockResolvedValueOnce(
       completedAgentRun({
         text: "Final resumed answer",
         piMessages: [
@@ -934,7 +934,7 @@ describe("agent continuation Slack integration", () => {
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
         {
-          agentRunner: { run: generateAssistantReplyMock },
+          agentRunner: { run: executeAgentRunMock },
           scheduleAgentContinue: (request) =>
             agentContinueServiceModule.scheduleAgentContinue(request, {
               queue,
@@ -944,7 +944,7 @@ describe("agent continuation Slack integration", () => {
     );
 
     expect(resumed).toBe(true);
-    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "resume this request" }),
         routing: expect.objectContaining({
@@ -1050,13 +1050,13 @@ describe("agent continuation Slack integration", () => {
       agentContinueRunnerModule.resumeAwaitingSlackContinuation(
         conversationId,
         {
-          agentRunner: { run: generateAssistantReplyMock },
+          agentRunner: { run: executeAgentRunMock },
         },
       ),
     );
 
     expect(resumed).toBe(false);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,
@@ -1110,7 +1110,7 @@ describe("agent continuation Slack integration", () => {
         },
       });
 
-    generateAssistantReplyMock.mockResolvedValueOnce(
+    executeAgentRunMock.mockResolvedValueOnce(
       completedAgentRun({
         text: "Final resumed answer with artifact",
         files: [

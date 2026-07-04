@@ -7,10 +7,8 @@
  */
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import {
-  type AssistantReply,
-  type AssistantReplyRequestContext,
-} from "@/chat/respond";
+import type { AgentRunRequest } from "@/chat/agent-run";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
@@ -142,7 +140,7 @@ interface ResumeSlackTurnArgs {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
-  onSuccess?: (reply: AssistantReply) => Promise<void>;
+  onSuccess?: (reply: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;
@@ -153,8 +151,8 @@ interface ResumeSlackTurnArgs {
 
 // Resume args carry the user message text, so stored contexts hold only the
 // remaining input fields.
-type ResumeReplyContext = Omit<AssistantReplyRequestContext, "input"> & {
-  input?: Omit<AssistantReplyRequestContext["input"], "messageText">;
+type ResumeReplyContext = Omit<AgentRunRequest, "input"> & {
+  input?: Omit<AgentRunRequest["input"], "messageText">;
 };
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
@@ -241,7 +239,7 @@ async function handleResumeFailure(args: {
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-): AssistantReplyRequestContext {
+): AgentRunRequest {
   const replyContext = args.replyContext;
   if (!replyContext) {
     throw new TypeError("Slack resume requires a reply context");
@@ -402,7 +400,7 @@ export async function resumeSlackTurn(
                 () =>
                   reject(
                     new Error(
-                      `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+                      `executeAgentRun timed out after ${replyTimeoutMs}ms`,
                     ),
                   ),
                 replyTimeoutMs,
@@ -446,7 +444,7 @@ export async function resumeSlackTurn(
         };
       }
     } else {
-      let reply = outcome.reply;
+      let reply = outcome.result;
       reply = finalizeFailedTurnReply({
         reply,
         logException,
@@ -614,7 +612,7 @@ export async function resumeAuthorizedRequest(args: {
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   agentRunner: AgentRunner;
-  onSuccess?: (reply: AssistantReply) => Promise<void>;
+  onSuccess?: (reply: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onTimeoutPause?: (resume: { resumeVersion: number }) => Promise<void>;

@@ -2,7 +2,7 @@ import type { LogContext } from "@/chat/logging";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import type { AssistantReply } from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 
 type LogException = (
   error: unknown,
@@ -43,7 +43,7 @@ function getExecutionFailureReason(reply: {
   return "empty assistant turn";
 }
 
-function getFailureCapture(reply: AssistantReply): {
+function getFailureCapture(reply: AgentRunResult): {
   attributes: Record<string, unknown>;
   body: string;
   error: unknown;
@@ -76,7 +76,7 @@ function getFailureCapture(reply: AssistantReply): {
 
 /** Keep failed-turn Sentry captures and completion spans on the same keys. */
 export function getAgentTurnDiagnosticsAttributes(
-  reply: AssistantReply,
+  reply: AgentRunResult,
 ): Record<string, unknown> {
   return {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -105,11 +105,11 @@ export function getAgentTurnDiagnosticsAttributes(
 
 /** Enforce one captured, event-ID-bearing failure response before delivery. */
 export function finalizeFailedTurnReply(args: {
-  reply: AssistantReply;
+  reply: AgentRunResult;
   logException: LogException;
   context: LogContext;
   attributes?: Record<string, unknown>;
-}): AssistantReply {
+}): AgentRunResult {
   if (args.reply.diagnostics.outcome === "success") {
     return args.reply;
   }

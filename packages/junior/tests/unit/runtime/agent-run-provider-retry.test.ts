@@ -332,7 +332,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   parseSkillInvocation: () => null,
 }));
 
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { getConversationStore } from "@/chat/db";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
@@ -340,13 +340,11 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
 import { createJuniorReporting } from "@/reporting";
 
-function finalReply(
-  outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
-) {
+function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
-  return outcome.reply;
+  return outcome.result;
 }
 
 const TEST_DESTINATION = {
@@ -361,7 +359,7 @@ const TEST_SOURCE = createSlackSource({
   type: "priv",
 });
 
-describe("generateAssistantReply provider retry", () => {
+describe("executeAgentRun provider retry", () => {
   beforeEach(async () => {
     agentMode.value = "providerRetry";
     counters.continueCalls = 0;
@@ -381,7 +379,7 @@ describe("generateAssistantReply provider retry", () => {
   });
 
   it("continues from the last safe boundary after a transient provider stream error", async () => {
-    const replyPromise = generateAssistantReply({
+    const replyPromise = executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -472,7 +470,7 @@ describe("generateAssistantReply provider retry", () => {
     });
 
     const reply = finalReply(
-      await generateAssistantReply({
+      await executeAgentRun({
         input: { messageText: "help me", piMessages: priorMessages },
         routing: {
           destination: TEST_DESTINATION,
@@ -547,7 +545,7 @@ describe("generateAssistantReply provider retry", () => {
   it("parks the turn when the worker asks to yield at a Pi boundary", async () => {
     agentMode.value = "cooperativeYield";
 
-    const outcome = await generateAssistantReply({
+    const outcome = await executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -598,7 +596,7 @@ describe("generateAssistantReply provider retry", () => {
   it("keeps steered messages when yielding after steering drain", async () => {
     agentMode.value = "cooperativeYield";
 
-    const outcome = await generateAssistantReply({
+    const outcome = await executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         requester: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -654,7 +652,7 @@ describe("generateAssistantReply provider retry", () => {
       .spyOn(turnSessionState, "upsertAgentTurnSessionRecord")
       .mockRejectedValue(new Error("storage unavailable"));
 
-    const error = await generateAssistantReply({
+    const error = await executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,
@@ -691,7 +689,7 @@ describe("generateAssistantReply provider retry", () => {
     sessionLogState.failToolExecutionAppend = true;
 
     const reply = finalReply(
-      await generateAssistantReply({
+      await executeAgentRun({
         input: { messageText: "run the tool" },
         routing: {
           destination: TEST_DESTINATION,
@@ -733,7 +731,7 @@ describe("generateAssistantReply provider retry", () => {
     });
 
     const reply = finalReply(
-      await generateAssistantReply({
+      await executeAgentRun({
         input: { messageText: "help me", piMessages: [checkpointedPrompt] },
         routing: {
           destination: TEST_DESTINATION,
@@ -768,7 +766,7 @@ describe("generateAssistantReply provider retry", () => {
     let injectRejected = false;
     let injectCompleted = false;
 
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "help me" },
       routing: {
         destination: TEST_DESTINATION,

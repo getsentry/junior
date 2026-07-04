@@ -7,7 +7,7 @@ import {
 } from "../../fixtures/slack-harness";
 import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 function successDiagnostics(toolCalls: string[] = []) {
   return {
@@ -251,7 +251,7 @@ describe("Slack behavior: processing reaction", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               context?.onToolInvocation?.({

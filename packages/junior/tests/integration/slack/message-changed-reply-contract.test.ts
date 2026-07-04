@@ -11,7 +11,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -103,7 +103,7 @@ describe("Slack contract: edited-message reply delivery", () => {
         run: async (request) => {
           const _prompt = request.input.messageText;
           const context = {
-            ...flattenReplyRequestForTest(request),
+            ...flattenAgentRunRequestForTest(request),
           };
 
           await context?.onTextDelta?.("Hello world");

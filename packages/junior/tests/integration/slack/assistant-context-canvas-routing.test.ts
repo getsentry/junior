@@ -16,7 +16,7 @@ import {
   getCapturedSlackApiCalls,
   queueSlackApiResponse,
 } from "../../msw/handlers/slack-api";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 describe("Slack behavior: assistant context canvas routing", () => {
   beforeEach(() => {
@@ -47,7 +47,7 @@ describe("Slack behavior: assistant context canvas routing", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               await createCanvas({

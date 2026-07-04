@@ -114,12 +114,8 @@ import {
   summarizeMessageText,
   toObservablePromptPart,
   upsertActiveSkill,
-} from "@/chat/respond-helpers";
-import {
-  buildTurnResult,
-  type AssistantReply,
-  type AgentTurnDiagnostics,
-} from "@/chat/services/turn-result";
+} from "@/chat/agent-run-helpers";
+import { buildTurnResult } from "@/chat/services/turn-result";
 import {
   isProviderRetryError,
   nextProviderRetry,
@@ -160,9 +156,6 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-
-// Re-export types for backward compatibility with existing consumers.
-export type { AssistantReply, AgentTurnDiagnostics };
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -205,9 +198,9 @@ function waitForAbortSettlement(
 }
 
 /** Carries the user-visible content and prior transcript for one agent-run slice. */
-export interface ReplyRequestInput {
+export interface AgentRunInput {
   messageText: string;
-  userAttachments?: ReplyRequestAttachment[];
+  userAttachments?: AgentRunAttachment[];
   inboundAttachmentCount?: number;
   omittedImageAttachmentCount?: number;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
@@ -216,7 +209,7 @@ export interface ReplyRequestInput {
 }
 
 /** Carries identity and addressing needed to route tools, auth, and delivery. */
-export interface ReplyRequestRouting {
+export interface AgentRunRouting {
   credentialContext?: CredentialContext;
   requester?: Requester;
   source: Source;
@@ -247,7 +240,7 @@ export interface ReplyRequestRouting {
  * Carries execution limits, dependency overrides, and persisted sandbox
  * reuse state for one run slice.
  */
-export interface ReplyRequestPolicy {
+export interface AgentRunPolicy {
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
   authorizationFlowMode?: AuthorizationFlowMode;
@@ -268,7 +261,7 @@ export interface ReplyRequestPolicy {
 }
 
 /** Carries durable state snapshots already loaded by the caller. */
-export interface ReplyRequestState {
+export interface AgentRunState {
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
 }
@@ -277,7 +270,7 @@ export interface ReplyRequestState {
  * Carries notification-only callbacks for streaming UI and status surfaces;
  * their failures never affect the run.
  */
-export interface ReplyRequestObservers {
+export interface AgentRunObservers {
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   onToolInvocation?: (invocation: {
@@ -289,13 +282,13 @@ export interface ReplyRequestObservers {
 }
 
 /** Carries durable-worker ports that commit or update resumable run state. */
-export interface ReplyRequestDurability {
+export interface AgentRunDurability {
   onInputCommitted?: () => void | Promise<void>;
   /** Return true when the durable worker should pause at the next Pi boundary. */
   shouldYield?: () => boolean;
   drainSteeringMessages?: (
-    accept: (messages: ReplySteeringMessage[]) => Promise<void>,
-  ) => Promise<ReplySteeringMessage[]>;
+    accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
+  ) => Promise<AgentRunSteeringMessage[]>;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
@@ -305,33 +298,29 @@ export interface ReplyRequestDurability {
   ) => void | Promise<void>;
 }
 
-/** Groups the per-slice reply request by the runtime role each field serves. */
-export interface ReplyRequestContext {
-  input: ReplyRequestInput;
-  routing: ReplyRequestRouting;
-  policy?: ReplyRequestPolicy;
-  state?: ReplyRequestState;
-  observers?: ReplyRequestObservers;
-  durability?: ReplyRequestDurability;
+/** Groups the per-slice run request by the runtime role each field serves. */
+export interface AgentRunRequest {
+  input: AgentRunInput;
+  routing: AgentRunRouting;
+  policy?: AgentRunPolicy;
+  state?: AgentRunState;
+  observers?: AgentRunObservers;
+  durability?: AgentRunDurability;
 }
 
-export type AssistantReplyRequestContext = ReplyRequestContext;
-
-type FlatReplyRequestContext = ReplyRequestInput &
-  ReplyRequestRouting &
-  ReplyRequestPolicy &
-  ReplyRequestState &
-  ReplyRequestObservers &
-  ReplyRequestDurability;
+type FlatAgentRunRequest = AgentRunInput &
+  AgentRunRouting &
+  AgentRunPolicy &
+  AgentRunState &
+  AgentRunObservers &
+  AgentRunDurability;
 
 /**
  * Interim shim: run internals still consume the historical flat shape
  * (grouped rewrite deferred to #746 Phase 5). The groups must stay
  * key-disjoint or later spreads silently shadow earlier fields.
  */
-function flattenReplyRequestContext(
-  request: ReplyRequestContext,
-): FlatReplyRequestContext {
+function flattenAgentRunRequest(request: AgentRunRequest): FlatAgentRunRequest {
   return {
     ...request.input,
     ...request.routing,
@@ -342,18 +331,18 @@ function flattenReplyRequestContext(
   };
 }
 
-export interface ReplyRequestAttachment {
+export interface AgentRunAttachment {
   data?: Buffer;
   mediaType: string;
   filename?: string;
   promptText?: string;
 }
 
-export interface ReplySteeringMessage {
+export interface AgentRunSteeringMessage {
   omittedImageAttachmentCount?: number;
   text: string;
   timestampMs?: number;
-  userAttachments?: ReplyRequestAttachment[];
+  userAttachments?: AgentRunAttachment[];
 }
 
 let startupDiscoveryLogged = false;
@@ -370,9 +359,7 @@ const legacyStoredTextPartSchema = z
   })
   .strict();
 
-type UserTurnAttachment = NonNullable<
-  ReplyRequestInput["userAttachments"]
->[number];
+type UserTurnAttachment = NonNullable<AgentRunInput["userAttachments"]>[number];
 
 function buildOmittedImageAttachmentNotice(count: number): string {
   return [
@@ -406,15 +393,13 @@ function extractSliceUsage(
 }
 
 function requesterFromContext(
-  context: FlatReplyRequestContext,
+  context: FlatAgentRunRequest,
 ): Requester | undefined {
   return actorRequesterFromContext(context);
 }
 
 /** Reject requester identities that do not belong to the active destination. */
-function assertRequesterDestinationMatch(
-  context: FlatReplyRequestContext,
-): void {
+function assertRequesterDestinationMatch(context: FlatAgentRunRequest): void {
   const { destination, requester } = context;
   if (!requester) {
     return;
@@ -434,9 +419,7 @@ function assertRequesterDestinationMatch(
 }
 
 /** Reject legacy Slack correlation fields that conflict with the destination. */
-function assertCorrelationDestinationMatch(
-  context: FlatReplyRequestContext,
-): void {
+function assertCorrelationDestinationMatch(context: FlatAgentRunRequest): void {
   const { correlation, destination } = context;
   if (destination.platform !== "slack") {
     return;
@@ -460,7 +443,7 @@ function assertCorrelationDestinationMatch(
 }
 
 function actorRequesterFromContext(
-  context: FlatReplyRequestContext,
+  context: FlatAgentRunRequest,
 ): Requester | undefined {
   return createRequester(context.requester, {
     platform:
@@ -478,9 +461,7 @@ function actorRequesterFromContext(
   });
 }
 
-function toolInvocationDestination(
-  context: FlatReplyRequestContext,
-): Destination {
+function toolInvocationDestination(context: FlatAgentRunRequest): Destination {
   if (context.destination.platform !== "slack" || !context.toolChannelId) {
     return context.destination;
   }
@@ -492,7 +473,7 @@ function toolInvocationDestination(
 }
 
 function surfaceFromContext(
-  context: FlatReplyRequestContext,
+  context: FlatAgentRunRequest,
 ): AgentTurnSurface | undefined {
   if (context.surface) {
     return context.surface;
@@ -557,7 +538,7 @@ function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
 
 function buildUserTurnInput(args: {
   omittedImageAttachmentCount: number;
-  userAttachments?: ReplyRequestInput["userAttachments"];
+  userAttachments?: AgentRunInput["userAttachments"];
   userTurnText: string;
 }): {
   routerBlocks: string[];
@@ -622,7 +603,7 @@ function buildUserTurnInput(args: {
  * paths store identical durable history.
  */
 export function buildSteeringPiMessage(
-  message: ReplySteeringMessage,
+  message: AgentRunSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
     userTurnText: buildUserTurnText(message.text),
@@ -707,10 +688,10 @@ function legacyTextPartMatchesCurrentText(
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
-export async function generateAssistantReply(
-  request: AssistantReplyRequestContext,
+export async function executeAgentRun(
+  request: AgentRunRequest,
 ): Promise<AgentRunOutcome> {
-  const context = flattenReplyRequestContext(request);
+  const context = flattenAgentRunRequest(request);
   const messageText = request.input.messageText;
   const conversationPrivacy = resolveConversationPrivacy({
     channelId: context.correlation?.channelId,
@@ -723,17 +704,13 @@ export async function generateAssistantReply(
     visibility: context.slackConversation?.visibility,
   });
   return runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
-    generateAssistantReplyInPrivacyContext(
-      messageText,
-      context,
-      conversationPrivacy,
-    ),
+    executeAgentRunInPrivacyContext(messageText, context, conversationPrivacy),
   );
 }
 
-async function generateAssistantReplyInPrivacyContext(
+async function executeAgentRunInPrivacyContext(
   messageText: string,
-  context: FlatReplyRequestContext,
+  context: FlatAgentRunRequest,
   conversationPrivacy: ConversationPrivacy | undefined,
 ): Promise<AgentRunOutcome> {
   if (!context.destination) {
@@ -1946,7 +1923,7 @@ async function generateAssistantReplyInPrivacyContext(
     // ── Build turn result ────────────────────────────────────────────
     return {
       status: "completed",
-      reply: buildTurnResult({
+      result: buildTurnResult({
         newMessages,
         userInput,
         replyFiles,
@@ -2099,7 +2076,7 @@ async function generateAssistantReplyInPrivacyContext(
         modelId: botConfig.modelId,
       },
       {},
-      "generateAssistantReply failed",
+      "executeAgentRun failed",
     );
 
     // Raw exception text is diagnostics-only; the failure-response service
@@ -2107,7 +2084,7 @@ async function generateAssistantReplyInPrivacyContext(
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: "completed",
-      reply: {
+      result: {
         text: "",
         ...getSandboxMetadata(),
         diagnostics: {

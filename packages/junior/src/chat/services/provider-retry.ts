@@ -3,7 +3,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 
 const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000] as const;
 const PROVIDER_ERROR_PREFIX = "AI provider error:";

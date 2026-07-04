@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   defineJuniorPlugin,
   type PluginRunContext,
@@ -24,16 +24,16 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../fixtures/agent-runner";
 
 function successReply(
   text: string,
   options: Partial<
-    Pick<AssistantReply, "piMessages"> & {
+    Pick<AgentRunResult, "piMessages"> & {
       toolCalls: string[];
     }
   > = {},
-): AssistantReply {
+): AgentRunResult {
   return {
     text,
     ...(options.piMessages ? { piMessages: options.piMessages } : {}),
@@ -49,10 +49,10 @@ function successReply(
   };
 }
 
-type FlatReplyRequestContext = ReturnType<typeof flattenReplyRequestForTest>;
+type FlatAgentRunRequest = ReturnType<typeof flattenAgentRunRequestForTest>;
 
 async function persistCompletedSessionForFakeReply(
-  context: FlatReplyRequestContext,
+  context: FlatAgentRunRequest,
   piMessages: PiMessage[],
 ): Promise<void> {
   const conversationId = context.correlation?.conversationId;
@@ -85,9 +85,9 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: FlatReplyRequestContext[] = [];
+    const contexts: FlatAgentRunRequest[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenReplyRequestForTest(request);
+      const context = flattenAgentRunRequestForTest(request);
 
       contexts.push(context);
       return completedAgentRun(successReply("hello from local"));
@@ -174,7 +174,7 @@ describe("local agent runner", () => {
     expect(conversationId).toBeDefined();
 
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenReplyRequestForTest(request);
+      const context = flattenAgentRunRequestForTest(request);
 
       context.onToolInvocation?.({
         toolName: "createMemory",
@@ -262,7 +262,7 @@ describe("local agent runner", () => {
           deliverReply: async () => undefined,
           agentRunner: {
             run: async (request) => {
-              const context = flattenReplyRequestForTest(request);
+              const context = flattenAgentRunRequestForTest(request);
 
               const piMessages = [
                 {
@@ -328,10 +328,10 @@ describe("local agent runner", () => {
     });
     expect(conversationId).toBeDefined();
 
-    const contexts: FlatReplyRequestContext[] = [];
+    const contexts: FlatAgentRunRequest[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
       const text = request.input.messageText;
-      const context = flattenReplyRequestForTest(request);
+      const context = flattenAgentRunRequestForTest(request);
 
       contexts.push(context);
       return completedAgentRun(successReply(`reply to ${text}`));
@@ -437,9 +437,9 @@ describe("local agent runner", () => {
       ttlMs: 60_000,
     });
 
-    const contexts: FlatReplyRequestContext[] = [];
+    const contexts: FlatAgentRunRequest[] = [];
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenReplyRequestForTest(request);
+      const context = flattenAgentRunRequestForTest(request);
 
       contexts.push(context);
       return completedAgentRun(successReply("uses projection"));
@@ -502,7 +502,7 @@ describe("local agent runner", () => {
     const conversation = coerceThreadConversationState(state);
     expect(conversation.piMessages).toEqual(generatedMessages);
 
-    const contexts: FlatReplyRequestContext[] = [];
+    const contexts: FlatAgentRunRequest[] = [];
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -512,7 +512,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         agentRunner: {
           run: async (request) => {
-            const context = flattenReplyRequestForTest(request);
+            const context = flattenAgentRunRequestForTest(request);
 
             contexts.push(context);
             return completedAgentRun(successReply("follow up reply"));
@@ -574,7 +574,7 @@ describe("local agent runner", () => {
             },
             agentRunner: {
               run: async (request) => {
-                const context = flattenReplyRequestForTest(request);
+                const context = flattenAgentRunRequestForTest(request);
 
                 await persistCompletedSessionForFakeReply(
                   context,
@@ -632,7 +632,7 @@ describe("local agent runner", () => {
     conversation.piMessages = newerMessages;
     await persistThreadStateById(conversationId!, { conversation });
 
-    const contexts: FlatReplyRequestContext[] = [];
+    const contexts: FlatAgentRunRequest[] = [];
     await runLocalAgentTurn(
       {
         conversationId: conversationId!,
@@ -642,7 +642,7 @@ describe("local agent runner", () => {
         deliverReply: async () => undefined,
         agentRunner: {
           run: async (request) => {
-            const context = flattenReplyRequestForTest(request);
+            const context = flattenAgentRunRequestForTest(request);
 
             contexts.push(context);
             return completedAgentRun(successReply("uses newer fallback"));
@@ -666,7 +666,7 @@ describe("local agent runner", () => {
       content: [{ type: "text", text: "undelivered pi output" }],
     } as PiMessage;
     const generateReply = vi.fn<AgentRunner["run"]>(async (request) => {
-      const context = flattenReplyRequestForTest(request);
+      const context = flattenAgentRunRequestForTest(request);
 
       await context.onArtifactStateUpdated?.({
         lastCanvasId: "canvas-undelivered",

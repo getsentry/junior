@@ -148,7 +148,7 @@ Rules:
 1. The CLI must call the shared conversation runtime or shared local runner
    boundary. It must not call Slack runtime methods.
 2. The CLI must not construct Chat SDK `Thread`, `Message`, or Slack adapter
-   wrappers to reach `generateAssistantReply`.
+   wrappers to reach `executeAgentRun`.
 3. Runtime context must set `surface: "internal"` until a distinct `local`
    surface is added across reporting and session schemas.
 4. Runtime correlation must include `conversationId`, `runId`, and a local

@@ -101,7 +101,7 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
@@ -158,7 +158,7 @@ describe("plugin prompt hooks", () => {
   });
 
   it("renders prompt messages from plugin hooks", async () => {
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
@@ -177,7 +177,7 @@ describe("plugin prompt hooks", () => {
   });
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
@@ -191,7 +191,7 @@ describe("plugin prompt hooks", () => {
     const firstPromptMessage = captured.promptMessages[0];
     captured.promptMessages = [];
 
-    await generateAssistantReply({
+    await executeAgentRun({
       input: {
         messageText: "again",
         piMessages: [
@@ -220,7 +220,7 @@ describe("plugin prompt hooks", () => {
   });
 
   it("does not run user prompt hooks for steering messages", async () => {
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "hello" },
       routing: {
         destination: LOCAL_DESTINATION,
@@ -258,7 +258,7 @@ describe("plugin prompt hooks", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "resume me" },
       routing: {
         destination: LOCAL_DESTINATION,
@@ -294,7 +294,7 @@ describe("plugin prompt hooks", () => {
       errorMessage: "timed out",
     });
 
-    await generateAssistantReply({
+    await executeAgentRun({
       input: { messageText: "resume me" },
       routing: {
         destination: LOCAL_DESTINATION,

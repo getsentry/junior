@@ -27,7 +27,7 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
   summarizeMessageText,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 
 const POST_CANVAS_REPLY_MAX_CHARS = 700;
 const POST_CANVAS_REPLY_MAX_LINES = 8;
@@ -51,7 +51,7 @@ export interface AgentTurnDiagnostics {
   usedPrimaryText: boolean;
 }
 
-export interface AssistantReply {
+export interface AgentRunResult {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
@@ -131,8 +131,8 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
-/** Process raw agent messages into a structured AssistantReply. */
-export function buildTurnResult(input: TurnResultInput): AssistantReply {
+/** Process raw agent messages into a structured AgentRunResult. */
+export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
     newMessages,
     userInput,

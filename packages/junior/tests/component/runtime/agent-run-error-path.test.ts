@@ -16,7 +16,7 @@ vi.mock("@/chat/skills", () => ({
   parseSkillInvocation: vi.fn(),
 }));
 
-const { generateAssistantReply } = await import("@/chat/respond");
+const { executeAgentRun } = await import("@/chat/agent-run");
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
@@ -34,7 +34,7 @@ const SLACK_SOURCE = createSlackSource({
   type: "priv",
 });
 
-describe("generateAssistantReply error path", () => {
+describe("executeAgentRun error path", () => {
   afterAll(() => {
     if (originalAiModel === undefined) {
       delete process.env.AI_MODEL;
@@ -44,7 +44,7 @@ describe("generateAssistantReply error path", () => {
   });
 
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
-    const outcome = await generateAssistantReply({
+    const outcome = await executeAgentRun({
       input: { messageText: "hello" },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
       policy: {
@@ -54,7 +54,7 @@ describe("generateAssistantReply error path", () => {
         },
       },
     });
-    const reply = outcome.status === "completed" ? outcome.reply : undefined;
+    const reply = outcome.status === "completed" ? outcome.result : undefined;
     expect(reply).toBeDefined();
     expect(reply!.diagnostics.outcome).toBe("provider_error");
 
@@ -71,7 +71,7 @@ describe("generateAssistantReply error path", () => {
 
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
-      generateAssistantReply({
+      executeAgentRun({
         input: { messageText: "hello" },
         routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
         durability: {
@@ -85,16 +85,16 @@ describe("generateAssistantReply error path", () => {
 
   it("hard-fails missing destinations", async () => {
     await expect(
-      generateAssistantReply({
+      executeAgentRun({
         input: { messageText: "hello" },
-        routing: {} as Parameters<typeof generateAssistantReply>[0]["routing"],
+        routing: {} as Parameters<typeof executeAgentRun>[0]["routing"],
       }),
     ).rejects.toThrow("Assistant reply generation requires a destination");
   });
 
   it("hard-fails requester and destination platform mismatches", async () => {
     await expect(
-      generateAssistantReply({
+      executeAgentRun({
         input: { messageText: "hello" },
         routing: {
           destination: LOCAL_DESTINATION,
@@ -113,7 +113,7 @@ describe("generateAssistantReply error path", () => {
 
   it("hard-fails Slack correlation and destination mismatches", async () => {
     await expect(
-      generateAssistantReply({
+      executeAgentRun({
         input: { messageText: "hello" },
         routing: {
           destination: SLACK_DESTINATION,

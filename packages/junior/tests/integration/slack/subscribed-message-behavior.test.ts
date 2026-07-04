@@ -9,7 +9,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
 
@@ -83,7 +83,7 @@ describe("Slack behavior: subscribed messages", () => {
           agentRunner: {
             run: async () => {
               throw new Error(
-                "generateAssistantReply should not run when classifier skips reply",
+                "executeAgentRun should not run when classifier skips reply",
               );
             },
           },
@@ -123,7 +123,7 @@ describe("Slack behavior: subscribed messages", () => {
         replyExecutor: {
           agentRunner: {
             run: async () => {
-              throw new Error("generateAssistantReply should not run");
+              throw new Error("executeAgentRun should not run");
             },
           },
         },
@@ -164,7 +164,7 @@ describe("Slack behavior: subscribed messages", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               replyContexts.push(context);

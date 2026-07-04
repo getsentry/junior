@@ -2,11 +2,11 @@
  * Local agent turn runtime.
  *
  * This module owns the Slack-free execution boundary for CLI-originated turns:
- * it persists local conversation state, invokes the shared reply generator with
+ * it persists local conversation state, invokes the shared agent runner with
  * a local destination, and only commits assistant delivery after the CLI sink
  * accepts the final output.
  */
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   createLocalSource,
@@ -23,7 +23,7 @@ import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -52,7 +52,7 @@ export interface LocalAgentTurnInput {
 }
 
 export interface LocalAgentReply {
-  files?: AssistantReply["files"];
+  files?: AgentRunResult["files"];
   text: string;
 }
 
@@ -75,7 +75,7 @@ export interface LocalAgentTurnDeps {
 
 export interface LocalAgentTurnResult {
   conversationId: string;
-  outcome: AssistantReply["diagnostics"]["outcome"];
+  outcome: AgentRunResult["diagnostics"]["outcome"];
 }
 
 function localDestination(conversationId: string): LocalDestination {
@@ -93,7 +93,7 @@ function localTurnId(sequence: number): string {
   return `local-turn-${sequence}`;
 }
 
-function localReply(reply: AssistantReply): LocalAgentReply {
+function localReply(reply: AgentRunResult): LocalAgentReply {
   return {
     ...(reply.files ? { files: reply.files } : {}),
     text: reply.text,
@@ -161,7 +161,7 @@ async function persistDeliveredLocalTurnState(
   throw lastError;
 }
 
-/** Run one local CLI message through Junior's shared agent reply boundary. */
+/** Run one local CLI message through Junior's shared agent-run boundary. */
 export async function runLocalAgentTurn(
   input: LocalAgentTurnInput,
   deps: LocalAgentTurnDeps,
@@ -212,7 +212,7 @@ export async function runLocalAgentTurn(
   });
   await persistThreadStateById(input.conversationId, { conversation });
 
-  let reply: AssistantReply | undefined;
+  let reply: AgentRunResult | undefined;
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
   let piMessagesBeforeRun:
     | Awaited<ReturnType<typeof loadLocalPiMessages>>
@@ -297,7 +297,7 @@ export async function runLocalAgentTurn(
     if (outcome.status !== "completed") {
       throw new Error(`Local agent run ended with ${outcome.status}`);
     }
-    reply = outcome.reply;
+    reply = outcome.result;
 
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.

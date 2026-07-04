@@ -54,7 +54,7 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
@@ -1611,7 +1611,7 @@ describe("Slack conversation work execution", () => {
             run: async (request) => {
               const _text = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               await context?.onInputCommitted?.();

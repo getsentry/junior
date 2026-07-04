@@ -559,26 +559,21 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
-import {
-  generateAssistantReply,
-  type ReplyRequestContext,
-} from "@/chat/respond";
+import { executeAgentRun, type AgentRunRequest } from "@/chat/agent-run";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
-function finalReply(
-  outcome: Awaited<ReturnType<typeof generateAssistantReply>>,
-) {
+function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
     throw new Error(`Expected final reply, got ${outcome.status}`);
   }
-  return outcome.reply;
+  return outcome.result;
 }
 
-function makeReplyRequest(
+function makeAgentRunRequest(
   messageText: string,
   args: {
     conversationId: string;
@@ -586,14 +581,14 @@ function makeReplyRequest(
     turnId: string;
   },
   overrides: {
-    input?: Partial<Omit<ReplyRequestContext["input"], "messageText">>;
-    routing?: Partial<ReplyRequestContext["routing"]>;
-    policy?: ReplyRequestContext["policy"];
-    state?: ReplyRequestContext["state"];
-    observers?: ReplyRequestContext["observers"];
-    durability?: ReplyRequestContext["durability"];
+    input?: Partial<Omit<AgentRunRequest["input"], "messageText">>;
+    routing?: Partial<AgentRunRequest["routing"]>;
+    policy?: AgentRunRequest["policy"];
+    state?: AgentRunRequest["state"];
+    observers?: AgentRunRequest["observers"];
+    durability?: AgentRunRequest["durability"];
   } = {},
-): ReplyRequestContext {
+): AgentRunRequest {
   const destination = {
     platform: "slack" as const,
     teamId: "T123",
@@ -639,7 +634,7 @@ function makeReplyRequest(
 
 // This suite validates local progressive-loading logic through a mocked
 // agent/runtime seam; it is not integration coverage.
-describe("generateAssistantReply progressive MCP loading", () => {
+describe("executeAgentRun progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
     agentInitialSystemPrompts.length = 0;
@@ -712,13 +707,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
   });
 
   it("persists loaded plugin skills across auth pause and resume", async () => {
-    const context = makeReplyRequest("help me", {
+    const context = makeAgentRunRequest("help me", {
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
       turnId: "turn-1",
     });
 
-    const firstError = await generateAssistantReply(context);
+    const firstError = await executeAgentRun(context);
 
     expect(firstError.status).toBe("awaiting_auth");
     expect(agentInitialToolNames[0]).toContain("loadSkill");
@@ -750,7 +745,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     ]);
     expect(loadSkillExecutionErrorCount.value).toBe(0);
 
-    const reply = finalReply(await generateAssistantReply(context));
+    const reply = finalReply(await executeAgentRun(context));
 
     expect(reply.text).toBe("resumed reply");
     expect(promptCallCount.value).toBe(1);
@@ -795,8 +790,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
     const reply = finalReply(
-      await generateAssistantReply(
-        makeReplyRequest("help me", {
+      await executeAgentRun(
+        makeAgentRunRequest("help me", {
           conversationId: "conversation-2",
           threadTs: "1712345.0002",
           turnId: "turn-2",
@@ -838,8 +833,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
-    await generateAssistantReply(
-      makeReplyRequest(
+    await executeAgentRun(
+      makeAgentRunRequest(
         "help me",
         {
           conversationId: "conversation-restored-provider",
@@ -890,8 +885,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as unknown as PiMessage[];
 
-    const firstError = await generateAssistantReply(
-      makeReplyRequest(
+    const firstError = await executeAgentRun(
+      makeAgentRunRequest(
         "current follow-up",
         {
           conversationId: "conversation-restore-auth",
@@ -929,8 +924,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
 
     const reply = finalReply(
-      await generateAssistantReply(
-        makeReplyRequest(
+      await executeAgentRun(
+        makeAgentRunRequest(
           "current follow-up",
           {
             conversationId: "conversation-restore-auth",
@@ -981,8 +976,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as PiMessage[];
 
-    await generateAssistantReply(
-      makeReplyRequest(
+    await executeAgentRun(
+      makeAgentRunRequest(
         "help me",
         {
           conversationId: "conversation-history",
@@ -1044,8 +1039,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply(
-      makeReplyRequest("continue after auth", {
+    await executeAgentRun(
+      makeAgentRunRequest("continue after auth", {
         conversationId: "conversation-raw-current-resume",
         threadTs: "1712345.0092",
         turnId: "turn-raw-current-resume",
@@ -1094,8 +1089,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       errorMessage: "authorization required",
     });
 
-    await generateAssistantReply(
-      makeReplyRequest(messageText, {
+    await executeAgentRun(
+      makeAgentRunRequest(messageText, {
         conversationId: "conversation-unescaped-current-resume",
         threadTs: "1712345.0093",
         turnId: "turn-unescaped-current-resume",
@@ -1139,8 +1134,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       piMessages: storedRunningMessages,
     });
 
-    await generateAssistantReply(
-      makeReplyRequest(
+    await executeAgentRun(
+      makeAgentRunRequest(
         "continue after crash",
         {
           conversationId: "conversation-crash-retry",
@@ -1181,8 +1176,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ] as PiMessage[];
 
-    await generateAssistantReply(
-      makeReplyRequest(
+    await executeAgentRun(
+      makeAgentRunRequest(
         "help me",
         {
           conversationId: "conversation-history-with-context",
@@ -1228,13 +1223,13 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const context = makeReplyRequest("help me", {
+    const context = makeAgentRunRequest("help me", {
       conversationId: "conversation-4",
       threadTs: "1712345.0004",
       turnId: "turn-4",
     });
 
-    const firstError = await generateAssistantReply(context);
+    const firstError = await executeAgentRun(context);
 
     expect(firstError.status).toBe("awaiting_auth");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
@@ -1248,7 +1243,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       resumeReason: "auth",
     });
 
-    const reply = finalReply(await generateAssistantReply(context));
+    const reply = finalReply(await executeAgentRun(context));
 
     expect(reply.text).toBe("resumed reply");
 
@@ -1271,8 +1266,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockResolvedValue([makeDemoMcpTool("ping")]);
 
     const reply = finalReply(
-      await generateAssistantReply(
-        makeReplyRequest("help me", {
+      await executeAgentRun(
+        makeAgentRunRequest("help me", {
           conversationId: "conversation-5",
           threadTs: "1712345.0005",
           turnId: "turn-5",
@@ -1298,8 +1293,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       });
 
     const reply = finalReply(
-      await generateAssistantReply(
-        makeReplyRequest("help me", {
+      await executeAgentRun(
+        makeAgentRunRequest("help me", {
           conversationId: "conversation-3",
           threadTs: "1712345.0003",
           turnId: "turn-3",
@@ -1376,8 +1371,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const firstError = await generateAssistantReply(
-      makeReplyRequest("help me", {
+    const firstError = await executeAgentRun(
+      makeAgentRunRequest("help me", {
         conversationId: "conversation-5",
         threadTs: "1712345.0005",
         turnId: "turn-5",
@@ -1402,8 +1397,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
   it("still parks for auth when abort leaves an empty completed assistant frame", async () => {
     completeEmptyAssistantOnAbort.value = true;
 
-    const firstError = await generateAssistantReply(
-      makeReplyRequest("help me", {
+    const firstError = await executeAgentRun(
+      makeAgentRunRequest("help me", {
         conversationId: "conversation-6",
         threadTs: "1712345.0006",
         turnId: "turn-6",

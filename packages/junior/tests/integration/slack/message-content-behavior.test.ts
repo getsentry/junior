@@ -16,7 +16,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 interface CapturedCall {
   contextConversation?: string;
@@ -66,7 +66,7 @@ describe("Slack behavior: message content", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               calls.push({
@@ -142,7 +142,7 @@ describe("Slack behavior: message content", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               calls.push({
@@ -264,7 +264,7 @@ describe("Slack behavior: message content", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               calls.push({
@@ -371,7 +371,7 @@ describe("Slack behavior: message content", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               calls.push({
@@ -490,7 +490,7 @@ describe("Slack behavior: message content", () => {
             run: async (request) => {
               const prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               calls.push({

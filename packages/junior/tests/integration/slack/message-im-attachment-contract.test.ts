@@ -7,7 +7,7 @@ import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-clien
 import { mswServer } from "../../msw/server";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -108,7 +108,7 @@ describe("Slack contract: message.im attachment ingress", () => {
         run: async (request) => {
           const _prompt = request.input.messageText;
           const context = {
-            ...flattenReplyRequestForTest(request),
+            ...flattenAgentRunRequestForTest(request),
           };
 
           const attachments = context?.userAttachments ?? [];

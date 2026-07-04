@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-06-12
+- Last Edited: 2026-07-02
 
 ## Purpose
 
@@ -72,11 +72,37 @@ Prefer comments that clarify the current meaning:
 
 > historical turn-session name; represents an agent-run session record
 
+### `reply`
+
+Use `reply` only for destination-visible messages owned by delivery and
+reply-policy layers.
+
+Allowed uses:
+
+- Delivery and policy identifiers that already describe destination-visible
+  messages, such as `SubscribedReplyPolicy`, `ReplyDeliveryPlan`, and
+  `slack/reply.ts`.
+- Historical identifiers in existing delivery-facing APIs, storage fields, and
+  tests when the value is a destination-visible message.
+- User-facing product copy that describes a visible response in Slack, local
+  CLI, or another destination.
+
+Agent execution layers use run/slice vocabulary instead. New executor-boundary
+identifiers must not use `reply` or `respond`; use `agent run`, `result`,
+`outcome`, or `delivery` terms according to ownership.
+
+When touching historical `reply` names, do not rename them opportunistically.
+Prefer comments that clarify the current meaning:
+
+> historical delivery reply name; represents a destination-visible message
+
 ### Naming Rules
 
 - Use `run` for response-producing execution.
 - Use `slice` for one resumable serverless invocation segment.
 - Use `step` for model/tool/action events inside a run.
+- Use `reply` only for destination-visible messages owned by delivery or
+  reply-policy layers.
 - Use `message` for source events and transcript entries.
 - Use `conversation` for the durable container that owns visible history and
   execution state.

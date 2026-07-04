@@ -1,5 +1,5 @@
 /**
- * Pure helper functions used by the agent reply orchestration in respond.ts.
+ * Pure helper functions used by the agent-run orchestration in agent-run.ts.
  *
  * These are extracted to reduce the size of the main orchestration module and
  * make individual helpers independently testable.

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
-import type { AssistantReply } from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 
 function providerErrorReply(args: {
   assistantMessageCount: number;
   errorMessage?: string;
   text: string;
-}): AssistantReply {
+}): AgentRunResult {
   return {
     text: args.text,
     diagnostics: {

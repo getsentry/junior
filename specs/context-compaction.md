@@ -104,7 +104,7 @@ Compaction projection events must use a deterministic event id derived from the 
 Automatic pre-turn compaction may replace an oversized reusable conversation-log projection before the next agent turn starts. It must:
 
 1. Run after reusable Pi history is loaded.
-2. Finish before `generateAssistantReply(...)` receives `piMessages`.
+2. Finish before `executeAgentRun(...)` receives `piMessages`.
 3. Use the compacted replacement history for the upcoming turn.
 4. Append the compaction projection before final thread-state persistence for the turn.
 5. Start explicit assistant progress after the threshold decision and before summarization when a status surface is available, then return to the normal turn status before agent execution.

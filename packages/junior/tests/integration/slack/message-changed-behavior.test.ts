@@ -16,7 +16,7 @@ import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { handleChatSdkPlatformWebhook } from "@/handlers/webhooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
@@ -268,7 +268,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               expect(context?.requester).toEqual({

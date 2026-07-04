@@ -31,8 +31,8 @@ import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
   buildSteeringPiMessage,
-  type ReplySteeringMessage,
-} from "@/chat/respond";
+  type AgentRunSteeringMessage,
+} from "@/chat/agent-run";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -125,7 +125,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
-} from "@/chat/respond-helpers";
+} from "@/chat/agent-run-helpers";
 import { requireSlackDestination } from "@/chat/destination";
 
 /**
@@ -515,7 +515,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
-        ): Promise<ReplySteeringMessage[]> => {
+        ): Promise<AgentRunSteeringMessage[]> => {
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
@@ -1019,9 +1019,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
-                accept: (messages: ReplySteeringMessage[]) => Promise<void>,
-              ): Promise<ReplySteeringMessage[]> => {
-                let acceptedMessages: ReplySteeringMessage[] | undefined;
+                accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
+              ): Promise<AgentRunSteeringMessage[]> => {
+                let acceptedMessages: AgentRunSteeringMessage[] | undefined;
                 const drained = await options.drainSteeringMessages!(
                   async (queuedMessages) => {
                     acceptedMessages =
@@ -1210,7 +1210,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
 
-          let reply = outcome.reply;
+          let reply = outcome.result;
           const diagnosticsContext = {
             slackThreadId: threadId,
             slackUserId: message.author.userId,

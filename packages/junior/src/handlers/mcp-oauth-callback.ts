@@ -14,7 +14,7 @@ import {
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
 import { logException, logWarn } from "@/chat/logging";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   getChannelConfigurationServiceById,
@@ -106,7 +106,7 @@ async function persistCompletedReplyState(
   channelId: string,
   threadTs: string,
   sessionId: string,
-  reply: AssistantReply,
+  reply: AgentRunResult,
 ): Promise<void> {
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
@@ -395,7 +395,7 @@ async function resumeAuthorizedMcpTurn(args: {
             },
           },
         },
-        onSuccess: async (reply: AssistantReply) => {
+        onSuccess: async (reply: AgentRunResult) => {
           await persistCompletedReplyState(
             authSession.channelId!,
             authSession.threadTs!,

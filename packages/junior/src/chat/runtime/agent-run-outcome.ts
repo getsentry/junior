@@ -1,19 +1,19 @@
-import type { AssistantReply } from "@/chat/services/turn-result";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 
 /**
- * How an agent run ended. `completed` carries the terminal reply (success or
- * failure — `reply.diagnostics` distinguishes them). `suspended` means the run
+ * How an agent run ended. `completed` carries the terminal result (success or
+ * failure — `result.diagnostics` distinguishes them). `suspended` means the run
  * persisted an awaiting_resume session record and stopped at a safe boundary;
  * the caller resumes it by scheduling a continuation against `resumeVersion`,
  * the session record's optimistic-concurrency version. `awaiting_auth` means
  * the run parked for user authorization.
  */
 export type AgentRunOutcome =
-  | { status: "completed"; reply: AssistantReply }
+  | { status: "completed"; result: AgentRunResult }
   | { status: "suspended"; resumeVersion: number }
   | { status: "awaiting_auth"; providerDisplayName: string };
 
-/** Wrap a terminal reply (successful or failed per its diagnostics) as an outcome. */
-export function completedAgentRun(reply: AssistantReply): AgentRunOutcome {
-  return { status: "completed", reply };
+/** Wrap a terminal result (successful or failed per its diagnostics) as an outcome. */
+export function completedAgentRun(result: AgentRunResult): AgentRunOutcome {
+  return { status: "completed", result };
 }

@@ -3,7 +3,7 @@ import {
   waitUntilCallbacks,
   testWaitUntil,
 } from "./oauth-callback-after-harness";
-import { respondAgentRunner } from "./agent-runner";
+import { realAgentRunner } from "./agent-runner";
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
@@ -20,7 +20,7 @@ export async function runMcpOauthCallbackRoute(args: {
     ),
     args.provider,
     testWaitUntil,
-    { agentRunner: args.agentRunner ?? respondAgentRunner },
+    { agentRunner: args.agentRunner ?? realAgentRunner },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   for (const callback of callbacks) {

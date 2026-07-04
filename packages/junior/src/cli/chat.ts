@@ -20,7 +20,7 @@ import type {
   LocalAgentTurnDeps,
   LocalToolResult,
 } from "@/chat/local/runner";
-import { generateAssistantReply } from "@/chat/respond";
+import { executeAgentRun } from "@/chat/agent-run";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 
@@ -245,7 +245,7 @@ async function prepareLocalChatRun(
   await configureLocalChatPlugins(pluginSet);
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const deps: LocalAgentTurnDeps = {
-    agentRunner: createAgentRunner(generateAssistantReply),
+    agentRunner: createAgentRunner(executeAgentRun),
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },

@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { FileUpload } from "chat";
-import type { AssistantReply } from "@/chat/respond";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
 import {
   buildSlackReplyBlocks,
@@ -23,7 +23,7 @@ export interface PlannedSlackReplyPost {
   text: string;
 }
 
-function resolveReplyDelivery(reply: AssistantReply): {
+function resolveReplyDelivery(reply: AgentRunResult): {
   shouldPostThreadReply: boolean;
   attachFiles: ReplyFileDelivery;
 } {
@@ -135,7 +135,7 @@ async function uploadReplyFiles(args: {
  * including chunking, interruption markers, and file delivery.
  */
 export function planSlackReplyPosts(args: {
-  reply: AssistantReply;
+  reply: AgentRunResult;
 }): PlannedSlackReplyPost[] {
   const replyFiles =
     args.reply.files && args.reply.files.length > 0

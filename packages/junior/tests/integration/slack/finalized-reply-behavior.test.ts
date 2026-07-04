@@ -12,7 +12,7 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
-import { flattenReplyRequestForTest } from "../../fixtures/agent-runner";
+import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -75,7 +75,7 @@ describe("Slack behavior: finalized thread replies", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               await context?.onTextDelta?.("Hello ");
@@ -116,7 +116,7 @@ describe("Slack behavior: finalized thread replies", () => {
             run: async (request) => {
               const _prompt = request.input.messageText;
               const context = {
-                ...flattenReplyRequestForTest(request),
+                ...flattenAgentRunRequestForTest(request),
               };
 
               await context?.onTextDelta?.("Fetching sources now...");
