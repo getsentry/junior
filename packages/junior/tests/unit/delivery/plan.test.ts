@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildReplyDeliveryPlan } from "@/chat/services/reply-delivery-plan";
 
 describe("buildReplyDeliveryPlan", () => {
-  it("returns channel_only mode when explicit channel intent and channel post succeeds", () => {
+  it("returns channel_only mode when a channel side effect owns the reply", () => {
     expect(
       buildReplyDeliveryPlan({
-        explicitChannelPostIntent: true,
+        channelOnlySideEffect: true,
         channelPostPerformed: true,
-        hasFiles: true,
+        hasFiles: false,
       }),
     ).toEqual({
       mode: "channel_only",
@@ -19,7 +19,7 @@ describe("buildReplyDeliveryPlan", () => {
   it("keeps files inline with finalized thread replies", () => {
     expect(
       buildReplyDeliveryPlan({
-        explicitChannelPostIntent: false,
+        channelOnlySideEffect: false,
         channelPostPerformed: false,
         hasFiles: true,
       }),

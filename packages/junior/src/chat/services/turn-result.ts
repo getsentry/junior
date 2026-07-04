@@ -14,7 +14,6 @@ import {
   buildReplyDeliveryPlan,
   type ReplyDeliveryPlan,
 } from "@/chat/services/reply-delivery-plan";
-import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -209,7 +208,6 @@ function stripThinkingXmlBlocks(text: string): string {
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
     newMessages,
-    userInput,
     replyFiles,
     artifactStatePatch,
     toolCalls,
@@ -243,7 +241,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : rawPrimaryText;
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
-  const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
   const successfulToolNames = new Set(
     toolResults
       .filter((result) => !isToolResultError(result))
@@ -263,10 +260,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     !rawPrimaryText && toolErrorCount === 0 && channelPostPerformed;
   const sideEffectOnlySuccess =
     markerSideEffectSuccess || fileOnlySuccess || channelMessageOnlySuccess;
+  const channelOnlySideEffect =
+    channelPostPerformed &&
+    replyFiles.length === 0 &&
+    (exactNoReplyMarker || channelMessageOnlySuccess);
   const baseDeliveryPlan = buildReplyDeliveryPlan({
-    explicitChannelPostIntent:
-      (exactNoReplyMarker && explicitChannelPostIntent) ||
-      channelMessageOnlySuccess,
+    channelOnlySideEffect,
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });

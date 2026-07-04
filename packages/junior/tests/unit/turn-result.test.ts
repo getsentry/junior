@@ -368,6 +368,43 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("keeps pending reply files in the thread after sendMessage succeeds", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: "posted" }],
+        },
+      ],
+      userInput: "send the message and attach the report",
+      replyFiles: [
+        {
+          data: Buffer.from("report"),
+          filename: "report.txt",
+          mimeType: "text/plain",
+        },
+      ],
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 1,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.files).toHaveLength(1);
+    expect(reply.deliveryMode).toBe("thread");
+    expect(reply.deliveryPlan).toMatchObject({
+      attachFiles: "inline",
+      postThreadText: true,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
   it("keeps post-canvas thread replies brief", () => {
     const verboseReply = [
       "I put together a reusable reference here:",

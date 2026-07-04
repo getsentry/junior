@@ -12,7 +12,11 @@ context.
 - Do not use regexes, keyword lists, string includes, or text-shape heuristics
   to decide agentic semantics such as whether to remember content, who a
   memory is about, whether a reply is appropriate, whether a request is safe,
-  or what the user intended.
+  what the user intended, or what the assistant intended.
+- Do not infer user or LLM intent by matching raw natural-language input or
+  output in deterministic code. Prefer the agent's chosen tool call, a
+  structured tool result, an explicit marker token, or a schema-constrained
+  adjudication result as the boundary signal.
 - Put semantic expectations in prompts, structured tool schemas, policy
   adjudicators, and eval rubrics. Use deterministic code only to enforce hard
   boundaries that do not require understanding meaning.

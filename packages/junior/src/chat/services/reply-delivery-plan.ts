@@ -9,12 +9,12 @@ export interface ReplyDeliveryPlan {
 
 /** Determine how a reply should be delivered (thread vs channel, file handling). */
 export function buildReplyDeliveryPlan(args: {
-  explicitChannelPostIntent: boolean;
+  channelOnlySideEffect: boolean;
   channelPostPerformed: boolean;
   hasFiles: boolean;
 }): ReplyDeliveryPlan {
   const mode: ReplyDeliveryMode =
-    args.explicitChannelPostIntent && args.channelPostPerformed
+    args.channelOnlySideEffect && args.channelPostPerformed
       ? "channel_only"
       : "thread";
 
