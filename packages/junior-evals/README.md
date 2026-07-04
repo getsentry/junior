@@ -43,6 +43,7 @@ Not in scope:
   - `evals/core/routing-and-continuity.eval.ts`
   - `evals/core/lifecycle-and-resilience.eval.ts`
   - `evals/core/media-and-attachments.eval.ts`
+  - `evals/core/slack-message-delivery.eval.ts`
   - `evals/core/oauth-workflows.eval.ts`
   - `evals/core/skill-infra.eval.ts`
 - Scheduler eval cases:

@@ -386,6 +386,7 @@ const CONVERSATION_RULES = [
 const SLACK_ACTION_RULES = [
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
   "- Use channel-post and emoji-reaction tools only for explicit user-requested Slack side effects.",
+  "- Generic Slack requests like 'share it here' refer to the current thread. Use sendMessage with target `thread` when you need to send or attach files into the current Slack thread; use target `channel` only for explicit channel/top-level post requests.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
   `- Side-effect-only completion for channel posts or reactions: call the requested tool first; if it succeeds and fully satisfies the request, final message must be exactly ${NO_REPLY_MARKER}.`,
 ];

@@ -39,32 +39,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     });
   });
 
-  it("when asked to post in channel, send a channel post instead of a thread reply", async ({
-    run,
-  }) => {
-    const result = await run({
-      events: [mention("@bot say hello to the channel!")],
-      criteria: rubric({
-        pass: [
-          "The normalized transcript contains exactly one hello-style channel_post assistant message with no thread_ts.",
-          "The assistant tool calls include sendMessage for the requested channel post.",
-          "The normalized transcript does not contain that hello-style message as a thread reply.",
-        ],
-        fail: [
-          "Do not add a redundant thread reply acknowledging the channel post.",
-          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
-        ],
-      }),
-    });
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "sendMessage" }),
-      ]),
-    );
-    expect(visibleThreadReplies(result.session)).toEqual([]);
-    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
-  });
-
   it("when asked to post in another named channel, explain the limitation instead", async ({
     run,
   }) => {

@@ -184,7 +184,7 @@ export function createImageGenerateTool(
             bytes: artifact.bytes,
           })),
           delivery:
-            "Generated images were written to sandbox paths. Use sendMessage with the returned path if the user explicitly asked to post the image to the current channel; otherwise include the path in the final reply when needed.",
+            "Generated images were written to sandbox paths. Use sendMessage with target `thread` to share or attach the image here. Use target `channel` only if the user explicitly asked for a top-level/current-channel post.",
         };
       }
 

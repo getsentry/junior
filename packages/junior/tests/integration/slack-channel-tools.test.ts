@@ -392,6 +392,7 @@ describe("slack channel tools", () => {
 
     expect(result).toEqual({
       ok: true,
+      target: "channel",
       channel_id: "C123",
       ts: "1700000000.400",
       permalink: undefined,
@@ -458,6 +459,79 @@ describe("slack channel tools", () => {
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
     ).not.toHaveProperty("initial_comment");
+  });
+
+  it("sends text messages into the current Slack thread", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        ts: "1700000000.700",
+        channel: "C123",
+      }),
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink: "https://example.invalid/thread-message",
+      }),
+    });
+    const tool = createSendMessageTool(
+      createContext("reply in thread", {
+        threadTs: "1700000000.321",
+      }),
+      createToolState(),
+      createMaterializeFile(),
+    );
+
+    const result = await executeTool(tool, {
+      target: "thread",
+      text: "Thread update.",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: "thread",
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      ts: "1700000000.700",
+    });
+    expect(
+      getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
+    ).toMatchObject({
+      channel: "C123",
+      thread_ts: "1700000000.321",
+      text: "Thread update.",
+    });
+  });
+
+  it("uploads files into the current Slack thread", async () => {
+    const tool = createSendMessageTool(
+      createContext("attach the report", {
+        threadTs: "1700000000.321",
+      }),
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    const result = await executeTool(tool, {
+      target: "thread",
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: "thread",
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
+    });
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
+    ).toMatchObject({
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+    });
   });
 
   it("does not deduplicate changed file contents at the same path", async () => {
