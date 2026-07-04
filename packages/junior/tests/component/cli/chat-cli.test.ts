@@ -50,11 +50,15 @@ async function waitForMockCalls(
   mock: { mock: { calls: unknown[] } },
   count: number,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // Deadline-based rather than iteration-bounded: under coverage runs with
+  // saturated workers, a fixed number of event-loop turns is not enough for
+  // the readline loop to consume stdin.
+  const deadlineMs = Date.now() + 10_000;
+  while (Date.now() < deadlineMs) {
     if (mock.mock.calls.length >= count) {
       return;
     }
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
   throw new Error(`Expected ${count} mock calls`);
 }

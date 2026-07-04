@@ -27,8 +27,11 @@ async function realSleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => realSetTimeout(resolve, ms));
 }
 
+// Loop bounds are generous real-time ceilings, not expected waits: the loops
+// return as soon as the condition holds, and saturated coverage workers can
+// starve the event loop well past the nominal schedule.
 async function waitForPromptCall(count: number): Promise<void> {
-  for (let index = 0; index < 100; index += 1) {
+  for (let index = 0; index < 2_000; index += 1) {
     if (counters.promptCalls >= count) {
       return;
     }
@@ -44,6 +47,14 @@ async function advanceUntilContinueCall(maxMs: number): Promise<void> {
     }
     await vi.advanceTimersByTimeAsync(100);
     await realSleep(1);
+  }
+  // Fake time is fully advanced; the continuation is already scheduled and
+  // only needs real event-loop turns to settle.
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+    if (counters.continueCalls > 0) {
+      return;
+    }
+    await realSleep(5);
   }
   throw new Error("Expected provider retry continuation to start");
 }
