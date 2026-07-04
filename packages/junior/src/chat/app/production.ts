@@ -99,9 +99,18 @@ export function createProductionConversationWorkOptions(options: {
 }): VercelConversationWorkCallbackOptions {
   const conversationStore = getProductionConversationStore();
   const { agentRunner } = options;
+  // The explicit runner is authoritative for both the reply runtime and the
+  // resume path, so a caller cannot run them on divergent runners.
+  const services: JuniorRuntimeServiceOverrides = {
+    ...options.services,
+    replyExecutor: {
+      ...options.services?.replyExecutor,
+      agentRunner,
+    },
+  };
   const runtime = createSlackRuntime({
     getSlackAdapter: getProductionSlackAdapter,
-    services: options.services,
+    services,
   });
   return {
     conversationStore,
@@ -113,8 +122,7 @@ export function createProductionConversationWorkOptions(options: {
         await resumeAwaitingSlackContinuation(conversationId, {
           agentRunner,
           scheduleSessionCompletedPluginTasks:
-            options.services?.replyExecutor
-              ?.scheduleSessionCompletedPluginTasks,
+            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
         }),
       runtime,
     }),
