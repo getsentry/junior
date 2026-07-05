@@ -1,12 +1,9 @@
-import { Buffer } from "node:buffer";
-import type { FileUpload } from "chat";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
 import {
   buildSlackReplyBlocks,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
-import { postSlackMessage, uploadFilesToThread } from "@/chat/slack/outbound";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   buildSlackOutputMessage,
   splitSlackReplyText,
@@ -14,31 +11,20 @@ import {
 
 export type PlannedSlackReplyStage =
   | "thread_reply"
-  | "thread_reply_continuation"
-  | "thread_reply_files_followup";
+  | "thread_reply_continuation";
 
 export interface PlannedSlackReplyPost {
-  files?: FileUpload[];
   stage: PlannedSlackReplyStage;
   text: string;
 }
 
-function resolveReplyDelivery(reply: AgentRunResult): {
-  shouldPostThreadReply: boolean;
-  attachFiles: ReplyFileDelivery;
-} {
-  const replyHasFiles = Boolean(reply.files && reply.files.length > 0);
+function shouldPostThreadReply(reply: AgentRunResult): boolean {
   const deliveryPlan = reply.deliveryPlan ?? {
     mode: reply.deliveryMode ?? "thread",
     postThreadText: (reply.deliveryMode ?? "thread") !== "channel_only",
-    attachFiles: replyHasFiles ? "inline" : "none",
   };
 
-  return {
-    shouldPostThreadReply: deliveryPlan.postThreadText,
-    attachFiles:
-      replyHasFiles && deliveryPlan.attachFiles !== "none" ? "inline" : "none",
-  };
+  return deliveryPlan.postThreadText;
 }
 
 function buildReplyText(text: string): string {
@@ -64,39 +50,16 @@ function buildReplyText(text: string): string {
 
 function buildTextPosts(args: {
   text: string;
-  firstFiles?: FileUpload[];
   firstStage?: PlannedSlackReplyStage;
 }): PlannedSlackReplyPost[] {
   const chunks = splitSlackReplyText(args.text);
   return chunks.map((chunk, index) => ({
     text: chunk,
-    ...(index === 0 && args.firstFiles ? { files: args.firstFiles } : {}),
     stage:
       index === 0
         ? (args.firstStage ?? "thread_reply")
         : "thread_reply_continuation",
   }));
-}
-
-async function normalizeFileUploads(
-  files: FileUpload[],
-): Promise<Array<{ data: Buffer; filename: string }>> {
-  return await Promise.all(
-    files.map(async (file) => {
-      let data: Buffer;
-      if (Buffer.isBuffer(file.data)) {
-        data = file.data;
-      } else if (file.data instanceof ArrayBuffer) {
-        data = Buffer.from(file.data);
-      } else {
-        data = Buffer.from(await file.data.arrayBuffer());
-      }
-      return {
-        data,
-        filename: file.filename,
-      };
-    }),
-  );
 }
 
 function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
@@ -109,69 +72,26 @@ function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
   return -1;
 }
 
-async function uploadReplyFiles(args: {
-  channelId: string;
-  failureMode: "best_effort" | "strict";
-  threadTs: string;
-  files: FileUpload[];
-}): Promise<void> {
-  try {
-    await uploadFilesToThread({
-      channelId: args.channelId,
-      threadTs: args.threadTs,
-      files: await normalizeFileUploads(args.files),
-    });
-  } catch (error) {
-    if (args.failureMode === "strict") {
-      throw error;
-    }
-
-    // File followups should not turn a delivered resume reply into a failed turn.
-  }
-}
-
 /**
  * Plan the Slack thread posts needed to realize a completed assistant reply,
- * including chunking, interruption markers, and file delivery.
+ * including chunking and interruption markers.
  */
 export function planSlackReplyPosts(args: {
   reply: AgentRunResult;
 }): PlannedSlackReplyPost[] {
-  const replyFiles =
-    args.reply.files && args.reply.files.length > 0
-      ? args.reply.files
-      : undefined;
-  const { shouldPostThreadReply, attachFiles } = resolveReplyDelivery(
-    args.reply,
-  );
   const posts: PlannedSlackReplyPost[] = [];
 
-  const textPosts = shouldPostThreadReply
+  const textPosts = shouldPostThreadReply(args.reply)
     ? buildTextPosts({
         text: args.reply.text,
-        firstFiles: attachFiles === "inline" ? replyFiles : undefined,
       })
     : [];
   posts.push(...textPosts);
 
-  if (attachFiles === "inline" && replyFiles && textPosts.length === 0) {
-    posts.push({
-      files: replyFiles,
-      stage: "thread_reply",
-      text: "",
-    });
-  } else if (shouldPostThreadReply && textPosts.length === 0) {
+  if (shouldPostThreadReply(args.reply) && textPosts.length === 0) {
     posts.push({
       text: buildReplyText(args.reply.text),
       stage: "thread_reply",
-    });
-  }
-
-  if (attachFiles === "followup" && replyFiles) {
-    posts.push({
-      files: replyFiles,
-      stage: "thread_reply_files_followup",
-      text: "",
     });
   }
 
@@ -186,7 +106,6 @@ export async function postSlackApiReplyPosts(args: {
   beforePost?: () => Promise<void>;
   footer?: SlackReplyFooter;
   channelId: string;
-  fileUploadFailureMode?: "best_effort" | "strict";
   onPostError?: (context: {
     error: unknown;
     messageTs?: string;
@@ -199,8 +118,7 @@ export async function postSlackApiReplyPosts(args: {
   let lastPostedMessageTs: string | undefined;
 
   for (const [index, post] of args.posts.entries()) {
-    const hasVisibleDelivery =
-      post.text.trim().length > 0 || post.files?.length;
+    const hasVisibleDelivery = post.text.trim().length > 0;
     if (hasVisibleDelivery) {
       await args.beforePost?.();
     }
@@ -220,19 +138,7 @@ export async function postSlackApiReplyPosts(args: {
         lastPostedMessageTs = response.ts;
       }
 
-      if (!post.files?.length) {
-        continue;
-      }
-
-      if (!args.threadTs && !lastPostedMessageTs) {
-        throw new Error("Slack file delivery requires a posted message thread");
-      }
-      await uploadReplyFiles({
-        channelId: args.channelId,
-        failureMode: args.fileUploadFailureMode ?? "best_effort",
-        threadTs: args.threadTs ?? lastPostedMessageTs!,
-        files: post.files,
-      });
+      continue;
     } catch (error) {
       await args.onPostError?.({
         error,

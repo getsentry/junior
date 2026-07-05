@@ -56,20 +56,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Deliver text-only local replies and turn unsupported files/output errors into failed delivery. */
+/** Deliver text-only local replies. */
 async function deliverReply(io: ChatIo, reply: LocalAgentReply): Promise<void> {
   try {
-    const files = reply.files ?? [];
-    if (files.length > 0) {
-      const names = files
-        .map((file) =>
-          typeof file.filename === "string" && file.filename.trim()
-            ? file.filename
-            : "generated file",
-        )
-        .join(", ");
-      throw new Error(`Local chat cannot deliver files yet: ${names}`);
-    }
     await io.write(formatReply(reply));
   } catch (error) {
     throw new ChatOutputError(error);

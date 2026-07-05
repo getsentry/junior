@@ -82,7 +82,6 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
-  replyFiles: FileUpload[];
   resume: ResumeState;
   routing: AgentRunRouting;
   sessionConversationId?: string;
@@ -303,9 +302,6 @@ export async function wireAgentTools(
         );
         args.generatedFiles.push(...files);
         return refs;
-      },
-      onGeneratedFiles: (files) => {
-        args.replyFiles.push(...files);
       },
       onArtifactStatePatch: async (patch) => {
         Object.assign(args.artifactStatePatch, patch);

@@ -64,4 +64,87 @@ describe("web fetch tool", () => {
       1200,
     );
   });
+
+  it("writes fetched images to generated artifact paths", async () => {
+    const safeUrl = new URL("https://example.com/logo.png");
+    assertPublicUrlMock.mockResolvedValue(safeUrl);
+    fetchTextWithRedirectsMock.mockResolvedValue(
+      new Response(Buffer.from("png-bytes"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+    const writeGeneratedArtifacts = vi.fn(async () => [
+      {
+        bytes: Buffer.from("png-bytes").byteLength,
+        filename: "logo.png",
+        mimeType: "image/png",
+        path: "/tmp/junior/artifacts/logo.png",
+      },
+    ]);
+
+    const tool = createWebFetchTool(
+      { writeGeneratedArtifacts },
+      { canSendFilesToActiveConversation: true },
+    );
+    const execute = tool.execute!;
+    const result = await execute(
+      { url: "https://example.com/logo.png" },
+      {} as never,
+    );
+
+    expect(writeGeneratedArtifacts).toHaveBeenCalledWith([
+      {
+        data: Buffer.from("png-bytes"),
+        filename: "logo.png",
+        mimeType: "image/png",
+      },
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      url: safeUrl.toString(),
+      media_type: "image/png",
+      images: [
+        {
+          filename: "logo.png",
+          path: "/tmp/junior/artifacts/logo.png",
+          attachment_path: "/tmp/junior/artifacts/logo.png",
+          media_type: "image/png",
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).toContain("sendMessage");
+  });
+
+  it("does not recommend sendMessage for fetched images without file-send support", async () => {
+    const safeUrl = new URL("https://example.com/local.png");
+    assertPublicUrlMock.mockResolvedValue(safeUrl);
+    fetchTextWithRedirectsMock.mockResolvedValue(
+      new Response(Buffer.from("png-bytes"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+    const writeGeneratedArtifacts = vi.fn(async () => [
+      {
+        bytes: Buffer.from("png-bytes").byteLength,
+        filename: "local.png",
+        mimeType: "image/png",
+        path: "/tmp/junior/artifacts/local.png",
+      },
+    ]);
+
+    const tool = createWebFetchTool({ writeGeneratedArtifacts });
+    const execute = tool.execute!;
+    const result = await execute(
+      { url: "https://example.com/local.png" },
+      {} as never,
+    );
+
+    expect(JSON.stringify(result)).not.toContain("sendMessage");
+    expect(result).toMatchObject({
+      ok: true,
+      delivery: expect.stringContaining("no file-send tool"),
+    });
+  });
 });

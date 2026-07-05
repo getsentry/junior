@@ -62,7 +62,6 @@ function createReply(): AgentRunResult {
     deliveryPlan: {
       mode: "thread",
       postThreadText: true,
-      attachFiles: "none",
     },
     diagnostics: {
       assistantMessageCount: 1,
@@ -343,6 +342,63 @@ describe("agent dispatch runner", () => {
           }),
           expect.objectContaining({
             id: `dispatch:${created.record.id}:assistant`,
+          }),
+        ]),
+      },
+    });
+  });
+
+  it("does not persist visible filler text for side-effect-only dispatches", async () => {
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-side-effect-only",
+        destination: slackAddress(),
+        input: "React to the scheduled thread.",
+        source: slackSource(),
+      },
+    });
+    const dispatchConversationId = getDispatchConversationId(created.record);
+    const sideEffectReply = createReply();
+
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      {
+        agentRunner: {
+          run: async () =>
+            completedAgentRun({
+              ...sideEffectReply,
+              text: "",
+              deliveryPlan: {
+                mode: "thread",
+                postThreadText: false,
+              },
+              diagnostics: {
+                ...sideEffectReply.diagnostics,
+                toolCalls: ["addReaction"],
+                usedPrimaryText: true,
+              },
+            }),
+        },
+      },
+    );
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+    });
+    await expect(
+      getPersistedThreadState(dispatchConversationId),
+    ).resolves.toMatchObject({
+      conversation: {
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            id: `dispatch:${created.record.id}:assistant`,
+            text: "[empty response]",
           }),
         ]),
       },

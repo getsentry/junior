@@ -1573,7 +1573,6 @@ function buildRuntimeServices(
               deliveryPlan: {
                 mode: "thread",
                 postThreadText: true,
-                attachFiles: "none",
               },
               diagnostics: {
                 assistantMessageCount: replyResult.assistant_message_count ?? 1,
@@ -1601,7 +1600,6 @@ function buildRuntimeServices(
               deliveryPlan: {
                 mode: "thread",
                 postThreadText: true,
-                attachFiles: "none",
               },
               diagnostics: {
                 assistantMessageCount: 1,

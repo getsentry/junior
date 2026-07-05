@@ -459,7 +459,6 @@ export async function resumeSlackTurn(
         channelId: runArgs.channelId,
         threadTs: runArgs.threadTs,
         posts: planSlackReplyPosts({ reply }),
-        fileUploadFailureMode: "best_effort",
         footer,
       });
       finalReplyDelivered = true;

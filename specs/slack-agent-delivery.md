@@ -189,15 +189,16 @@ This is required for readable Slack rendering, not an optional formatting nicety
 
 ### 9. File Delivery Contract
 
-Files are part of the same finalized reply-delivery plan as text.
+Slack file sends use `sendMessage` into the active conversation. Final assistant
+reply delivery is text-only and must not attach files through a second planner
+path.
 
 Current rules:
 
-1. Thread replies attach files inline on the first visible reply post when possible.
-2. File-only replies must still create a visible Slack thread reply carrying the file payload.
-3. `sendMessage` may send text, files, or both into the active Slack conversation/thread as a side effect. It has no model-supplied target and does not replace the final assistant reply contract.
-4. If thread text is intentionally suppressed, files may still be delivered through the thread reply planner when the reply contract requires visible artifacts.
-5. Resume and OAuth callback flows must use the same file-delivery semantics as the main runtime path.
+1. `sendMessage` may send text, files, or both into the active Slack conversation/thread as a side effect. It has no model-supplied target and does not replace the final assistant reply contract.
+2. Generated or fetched artifacts must be represented by sandbox paths before the model asks to share them with `sendMessage`.
+3. Final assistant replies, resume replies, and OAuth callback replies must not attach files directly. If files need to be shared, the agent must use `sendMessage` before final reply completion.
+4. There is no local/non-Slack file-send tool yet.
 
 ### 10. Image Ingress Contract
 
@@ -218,7 +219,7 @@ Paused agent runs continued after timeout, cooperative yield, or OAuth must foll
 Current rules:
 
 1. Queue-driven agent continuation generates the final reply under the normal thread lock.
-2. Continued runs use the shared Slack reply planner for text chunking, continuation markers, interruption markers, and file delivery.
+2. Continued runs use the shared Slack reply planner for text chunking, continuation markers, and interruption markers. File sends remain explicit `sendMessage` side effects from the active Slack conversation.
 3. Continuation success is defined by final visible Slack delivery, not only by successful assistant generation.
 4. Persisted thread state is updated only after the final reply has been delivered to Slack.
 5. Because live turns do not publish provisional assistant text, timeout continuation remains eligible until final reply delivery starts.
@@ -245,7 +246,7 @@ Required split:
 1. Slack status-update failures are best effort and must not by themselves fail the turn.
 2. Slack thread-post or final delivery failures are turn failures because the visible reply contract was not satisfied.
 3. Junior must not persist assistant conversation state for a turn until final Slack delivery succeeds. This includes the durable session-log/Pi transcript: an undelivered assistant reply must not surface to later turns as delivered conversation history.
-4. If a reply normalizes to empty and no files exist, Junior must post an explicit fallback message rather than silently succeeding.
+4. If a final reply normalizes to empty, Junior must post an explicit fallback message rather than silently succeeding.
 5. If a chunked reply overflows a code fence boundary, fence integrity must still be preserved in the delivered Slack posts.
 
 ## Observability
@@ -274,7 +275,7 @@ Required verification coverage for this contract:
 1. Integration: DM, mention, and subscribed-thread routing outcomes.
 2. Integration: long-running status plus finalized primary reply behavior.
 3. Integration: continuation overflow, interruption markers, and code-fence preservation.
-4. Integration: file-only replies, suppressed-thread-text file delivery, and resume-path file parity.
+4. Integration: `sendMessage` text/file side effects, including generated-artifact sandbox paths and resumed-turn paths that need to share files before final reply completion.
 5. Integration: image attachments surviving edited-message ingress and skipped passive-thread hydration.
 6. Integration: assistant-thread lifecycle metadata initialization.
 7. Integration: edited-message mentions apply the shared author gate; external-user and Junior-authored edits do not start turns.

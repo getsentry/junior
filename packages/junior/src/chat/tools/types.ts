@@ -55,7 +55,6 @@ export interface ToolHooks {
   writeGeneratedArtifacts?: (
     files: FileUpload[],
   ) => GeneratedArtifactFileRef[] | Promise<GeneratedArtifactFileRef[]>;
-  onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (
     patch: Partial<ThreadArtifactsState>,
   ) => void | Promise<void>;

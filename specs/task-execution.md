@@ -560,8 +560,8 @@ safe boundary.
 
 Rules:
 
-1. The shared worker passes finalized reply text, generated files, delivery
-   plan, and conversation correlation to the destination delivery port.
+1. The shared worker passes finalized reply text, delivery plan, and
+   conversation correlation to the destination delivery port.
 2. A destination delivery port may format output for its platform, but it must
    not re-enter agent execution or mutate source routing decisions.
 3. Completion is persisted only after the destination delivery port accepts the

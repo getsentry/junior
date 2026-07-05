@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
@@ -6,11 +5,7 @@ import {
   getSlackInterruptionMarker,
 } from "@/chat/slack/output";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
-  getCapturedSlackApiCalls,
-  getCapturedSlackFileUploadCalls,
-  queueSlackApiError,
-} from "../msw/handlers/slack-api";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 function makeDiagnostics(
@@ -406,126 +401,5 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[1]?.params.text).toContain(
       "I ran into an internal error while processing that. Reference: `event_id=",
     );
-  });
-
-  it("delivers resumed reply files through the shared reply planner", async () => {
-    const { resumeAuthorizedRequest } =
-      await import("@/chat/runtime/slack-resume");
-
-    await resumeAuthorizedRequest({
-      messageText: "Continue the original request",
-      channelId: "C123",
-      threadTs: "1700000000.004",
-      connectedText: "Connected. Continuing...",
-      replyContext: {
-        routing: {
-          credentialContext: {
-            actor: { type: "user", userId: "U123" },
-          },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.004"),
-          requester: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-      },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: "Here is the resumed artifact.",
-            files: [
-              {
-                data: Buffer.from("resume-file"),
-                filename: "resume.txt",
-              },
-            ],
-            diagnostics: makeDiagnostics(),
-          }),
-      },
-    });
-
-    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
-    expect(postCalls).toHaveLength(2);
-    expect(postCalls[0]?.params).toMatchObject({
-      channel: "C123",
-      thread_ts: "1700000000.004",
-      text: "Connected. Continuing...",
-    });
-    expect(postCalls[1]?.params).toMatchObject({
-      channel: "C123",
-      thread_ts: "1700000000.004",
-      text: "Here is the resumed artifact.",
-    });
-    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
-      1,
-    );
-    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel_id: "C123",
-          thread_ts: "1700000000.004",
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackFileUploadCalls()).toHaveLength(1);
-  });
-
-  it("keeps the resumed reply visible when file upload followups fail", async () => {
-    const { resumeAuthorizedRequest } =
-      await import("@/chat/runtime/slack-resume");
-    queueSlackApiError("files.completeUploadExternal", {
-      error: "upload_failed",
-    });
-
-    await resumeAuthorizedRequest({
-      messageText: "Continue the original request",
-      channelId: "C123",
-      threadTs: "1700000000.005",
-      connectedText: "Connected. Continuing...",
-      replyContext: {
-        routing: {
-          credentialContext: {
-            actor: { type: "user", userId: "U123" },
-          },
-          destination: TEST_SLACK_DESTINATION,
-          source: testSlackSource("1700000000.005"),
-          requester: { platform: "slack", teamId: "T123", userId: "U123" },
-        },
-      },
-      agentRunner: {
-        run: async () =>
-          completedAgentRun({
-            text: "Here is the resumed artifact.",
-            files: [
-              {
-                data: Buffer.from("resume-file"),
-                filename: "resume.txt",
-              },
-            ],
-            diagnostics: makeDiagnostics(),
-          }),
-      },
-    });
-
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.005",
-          text: "Connected. Continuing...",
-        }),
-      }),
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.005",
-          text: "Here is the resumed artifact.",
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
-      1,
-    );
-    expect(
-      getCapturedSlackApiCalls("files.completeUploadExternal"),
-    ).toHaveLength(1);
   });
 });

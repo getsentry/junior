@@ -52,7 +52,6 @@ export interface LocalAgentTurnInput {
 }
 
 export interface LocalAgentReply {
-  files?: AgentRunResult["files"];
   text: string;
 }
 
@@ -95,7 +94,6 @@ function localTurnId(sequence: number): string {
 
 function localReply(reply: AgentRunResult): LocalAgentReply {
   return {
-    ...(reply.files ? { files: reply.files } : {}),
     text: reply.text,
   };
 }

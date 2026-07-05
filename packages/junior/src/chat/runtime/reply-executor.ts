@@ -904,10 +904,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let agentContinueScheduleError: unknown;
-        const hasVisibleSlackDelivery = (post: {
-          files?: unknown[];
-          text: string;
-        }) => post.text.trim().length > 0 || Boolean(post.files?.length);
+        const hasVisibleSlackDelivery = (post: { text: string }) =>
+          post.text.trim().length > 0;
 
         try {
           const loadedPiMessages = await loadPiMessagesForTurn({
@@ -1265,7 +1263,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 channelId: slackChannelId,
                 threadTs: slackThreadTs,
                 posts: plannedPosts,
-                fileUploadFailureMode: "strict",
                 footer: replyFooter,
                 onPostError: ({ error, messageTs, stage }) => {
                   logException(
@@ -1289,7 +1286,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   continue;
                 }
                 await postThreadReply(
-                  buildSlackOutputMessage(post.text, post.files),
+                  buildSlackOutputMessage(post.text),
                   post.stage,
                 );
               }

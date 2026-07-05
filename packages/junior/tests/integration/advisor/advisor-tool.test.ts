@@ -175,11 +175,11 @@ describe("advisor tool", () => {
     });
 
     const advisorDefinitions = createAdvisorToolDefinitions({
-      attachFile: writeTool,
       conflictingTool,
       readFile: readOnlyTool,
       slackCanvasCreate: writeTool,
       slackCanvasRead: readOnlyTool,
+      uploadArtifact: writeTool,
       writeFile: writeTool,
     });
 

@@ -3,7 +3,6 @@ import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
 import { createGrepTool } from "@/chat/tools/sandbox/grep";
-import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
 import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
@@ -91,6 +90,13 @@ export function createTools(
   context: ToolRuntimeContext,
 ) {
   const state = createToolState(hooks, context);
+  const slackContext = getSlackToolContext(context);
+  const slackSourceCapabilities = slackContext
+    ? resolveChannelCapabilities(slackContext.sourceChannelId)
+    : undefined;
+  const canSendFilesToActiveConversation = Boolean(
+    slackContext && slackSourceCapabilities?.canSendMessage,
+  );
   const tools: Record<string, ToolDefinition<any>> = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
@@ -105,16 +111,20 @@ export function createTools(
     listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(hooks.toolOverrides?.webSearch),
-    webFetch: createWebFetchTool(hooks),
+    webFetch: createWebFetchTool(hooks, {
+      canSendFilesToActiveConversation,
+    }),
   };
   if (hooks.writeGeneratedArtifacts) {
     tools.imageGenerate = createImageGenerateTool(
-      { writeGeneratedArtifacts: hooks.writeGeneratedArtifacts },
+      {
+        writeGeneratedArtifacts: hooks.writeGeneratedArtifacts,
+      },
+      {
+        canSendFilesToActiveConversation,
+      },
       hooks.toolOverrides?.imageGenerate,
     );
-  }
-  if (context.source.platform !== "slack") {
-    tools.attachFile = createAttachFileTool(context.sandbox, hooks);
   }
 
   if (context.advisor) {
@@ -135,7 +145,6 @@ export function createTools(
     tools.callMcpTool = createCallMcpToolTool(context.mcpToolManager);
   }
 
-  const slackContext = getSlackToolContext(context);
   if (slackContext) {
     tools.slackCanvasRead = createSlackCanvasReadTool();
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
@@ -151,12 +160,9 @@ export function createTools(
     const outputCapabilities = outputChannelId
       ? resolveChannelCapabilities(outputChannelId)
       : undefined;
-    const canUseInteractiveSlackSideEffects =
-      context.surface === undefined || context.surface === "slack";
     const rawChannelCapabilities = resolveChannelCapabilities(
       slackContext.sourceChannelId,
     );
-
     if (outputCapabilities?.canCreateCanvas) {
       tools.slackCanvasCreate = createSlackCanvasCreateTool(
         slackContext,
@@ -164,10 +170,7 @@ export function createTools(
       );
     }
 
-    if (
-      canUseInteractiveSlackSideEffects &&
-      rawChannelCapabilities.canSendMessage
-    ) {
+    if (rawChannelCapabilities.canSendMessage) {
       tools.sendMessage = createSendMessageTool(slackContext, state, (input) =>
         readSandboxFileUpload(context.sandbox, input),
       );

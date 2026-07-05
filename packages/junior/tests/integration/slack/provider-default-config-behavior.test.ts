@@ -71,7 +71,6 @@ describe("Slack behavior: provider default configuration", () => {
         deliveryPlan: {
           mode: "thread" as const,
           postThreadText: true,
-          attachFiles: "none" as const,
         },
         diagnostics: {
           assistantMessageCount: 1,

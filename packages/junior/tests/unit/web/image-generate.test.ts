@@ -114,7 +114,9 @@ describe("createImageGenerateTool", () => {
       ok: true,
       model: "google/gemini-3-pro-image",
       image_count: 1,
+      delivery: expect.stringContaining("no file-send tool"),
     });
+    expect(JSON.stringify(result)).not.toContain("sendMessage");
     const generated = result as {
       images: Array<{ attachment_path: string }>;
     };
@@ -128,6 +130,30 @@ describe("createImageGenerateTool", () => {
     });
     expect(uploads[0]?.filename).toContain("generated-image-1737000000000-1");
     expect(uploads[0]?.data).toEqual(Buffer.from("img"));
+  });
+
+  it("recommends sendMessage when active file-send support is available", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
+
+    const tool = createImageGenerateTool(
+      {
+        writeGeneratedArtifacts,
+      },
+      { canSendFilesToActiveConversation: true },
+    );
+    const result = await tool.execute!({ prompt: "test prompt" }, {} as any);
+
+    expect(result).toMatchObject({
+      ok: true,
+      image_count: 1,
+      delivery: expect.stringContaining("sendMessage"),
+    });
   });
 
   it("uses AI_IMAGE_MODEL when configured", async () => {

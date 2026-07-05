@@ -71,7 +71,7 @@ flowchart TD
   R --> YA
   Q --> V[Private auth link plus visible URL-free auth acknowledgement; live run ends]
   V --> AB[OAuth/MCP callback appends mailbox work and enqueues conversation]
-  P --> W[Deliver finalized destination reply/files]
+  P --> W[Deliver finalized destination reply]
   S --> W
   W --> X[Persist assistant message, mark session delivered, release lease]
   AB --> D

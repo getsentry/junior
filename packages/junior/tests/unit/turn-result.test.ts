@@ -30,7 +30,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Open the GitHub issue",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: [],
       generatedFileCount: 0,
@@ -63,7 +62,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Pull the latest blog post and compare related articles",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["webSearch"],
       generatedFileCount: 0,
@@ -97,7 +95,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Pull the latest blog post and compare related articles",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["webSearch"],
       generatedFileCount: 0,
@@ -134,7 +131,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "first request",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: [],
       generatedFileCount: 0,
@@ -175,7 +171,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Do the thing",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: [],
       generatedFileCount: 0,
@@ -214,7 +209,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Do the thing",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["bash"],
       generatedFileCount: 0,
@@ -247,7 +241,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react and confirm",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["addReaction"],
       generatedFileCount: 0,
@@ -289,7 +282,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "react and tell me what happened",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["addReaction"],
       generatedFileCount: 0,
@@ -304,48 +296,6 @@ describe("buildTurnResult", () => {
     });
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
-  });
-
-  it("keeps pending reply files in the thread after sendMessage succeeds", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "sendMessage",
-          isError: false,
-          content: [{ type: "text", text: "posted" }],
-          details: {
-            ok: true,
-            channel_id: "C123",
-            thread_ts: "1700000000.321",
-          },
-        },
-      ],
-      userInput: "send the message and attach the report",
-      replyFiles: [
-        {
-          data: Buffer.from("report"),
-          filename: "report.txt",
-          mimeType: "text/plain",
-        },
-      ],
-      artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
-      generatedFileCount: 1,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.files).toHaveLength(1);
-    expect(reply.deliveryMode).toBe("thread");
-    expect(reply.deliveryPlan).toMatchObject({
-      attachFiles: "inline",
-      postThreadText: true,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
   it("does not treat sendMessage as final reply completion", () => {
@@ -369,7 +319,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "attach it here",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: ["sendMessage"],
       generatedFileCount: 1,
@@ -385,6 +334,41 @@ describe("buildTurnResult", () => {
     });
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("does not correct attachment claims after sendMessage sends files", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: "uploaded file" }],
+          details: {
+            ok: true,
+            channel_id: "C123",
+            thread_ts: "1700000000.321",
+            file_count: 1,
+            file_ids: ["F123"],
+          },
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Here's the image." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "attach it here",
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 1,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("Here's the image.");
+    expect(reply.diagnostics.outcome).toBe("success");
   });
 
   it("keeps post-canvas thread replies brief", () => {
@@ -417,7 +401,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "create a reusable reference",
-      replyFiles: [],
       artifactStatePatch: {
         lastCanvasUrl: "https://example.invalid/files/F123",
       },
@@ -445,7 +428,6 @@ describe("buildTurnResult", () => {
         },
       ],
       userInput: "Do the thing",
-      replyFiles: [],
       artifactStatePatch: {},
       toolCalls: [],
       durationMs: 1532,

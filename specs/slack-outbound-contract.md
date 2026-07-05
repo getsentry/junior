@@ -78,7 +78,7 @@ Current rules:
 3. Each file must include a filename before the upload request is built.
 4. Thread replies pass `thread_ts`; top-level file messages omit it.
 5. A file upload may include an initial comment, but file-only messages are valid and must not be forced through an empty `chat.postMessage` call.
-6. Resume and callback flows use the same upload semantics as the primary reply planner.
+6. File uploads are explicit side effects, such as `sendMessage(files)`. Final reply planners do not own file uploads.
 
 ### 6. Reaction Contract
 

@@ -112,13 +112,13 @@ prompts disabled.
 
 If local validation fails, use the first matching symptom:
 
-| Symptom                         | First check                                                      |
-| ------------------------------- | ---------------------------------------------------------------- |
-| Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.     |
-| Missing provider credentials    | Configure the plugin/provider env required by the changed path.  |
-| Context resets between commands | Expected; use one interactive `junior chat` process for context. |
-| Generated files fail delivery   | Expected in the first local adapter; validate file UX elsewhere. |
-| Slack-specific behavior changed | Use the Slack specs and Slack integration tests instead.         |
+| Symptom                         | First check                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------- |
+| Missing model credentials       | Refresh env with `pnpm dev:env`, then rerun the same prompt.                |
+| Missing provider credentials    | Configure the plugin/provider env required by the changed path.             |
+| Context resets between commands | Expected; use one interactive `junior chat` process for context.            |
+| File-send UX needs validation   | Local validation cannot verify it; the local adapter has no file-send tool. |
+| Slack-specific behavior changed | Use the Slack specs and Slack integration tests instead.                    |
 
 ## Next Step
 

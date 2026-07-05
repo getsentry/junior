@@ -76,13 +76,24 @@ function buildDispatchConversationText(dispatch: DispatchRecord): string {
   return `[dispatched task] ${dispatch.input}`;
 }
 
+/** True when dispatch finalization should produce a visible Slack text reply. */
+function shouldPostDispatchReplyText(reply: AgentRunResult): boolean {
+  return (
+    reply.deliveryPlan?.postThreadText ??
+    (reply.deliveryMode ?? "thread") !== "channel_only"
+  );
+}
+
 function ensureVisibleDeliveryText(reply: AgentRunResult): AgentRunResult {
-  if (reply.text.trim().length > 0 || !reply.files?.length) {
+  if (!shouldPostDispatchReplyText(reply)) {
+    return reply;
+  }
+  if (reply.text.trim().length > 0) {
     return reply;
   }
   return {
     ...reply,
-    text: "Generated files are attached.",
+    text: "The task completed without a visible response.",
   };
 }
 
@@ -402,7 +413,6 @@ export async function runAgentDispatchSlice(
       footer: buildSlackReplyFooter({
         conversationId,
       }),
-      fileUploadFailureMode: "strict",
     });
 
     // Slack accepted the reply: everything after this point serves duplicate

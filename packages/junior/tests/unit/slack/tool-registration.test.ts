@@ -92,7 +92,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
-  it("does not register standalone channel posting outside interactive Slack turns", () => {
+  it("keeps active-conversation sendMessage outside interactive Slack turns", () => {
     const tools = createTools(
       [],
       {},
@@ -102,7 +102,7 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).not.toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackThreadRead");
   });
@@ -199,7 +199,7 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
-    expect(tools).toHaveProperty("attachFile");
+    expect(tools).not.toHaveProperty("attachFile");
   });
 
   it("registers image generation only when artifact persistence is available", () => {

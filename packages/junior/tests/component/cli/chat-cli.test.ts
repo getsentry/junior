@@ -464,30 +464,6 @@ export const plugins = {
     expect(io.error).toHaveBeenCalledWith("stdout closed");
   });
 
-  it("returns failure when a prompt reply contains files", async () => {
-    runner.runLocalAgentTurn.mockImplementation(async (_input, deps) => {
-      const result = reply("success");
-      result.reply.files = [
-        { data: Buffer.from("report"), filename: "report.txt" },
-      ];
-      await deps.deliverReply(result.reply);
-      return result;
-    });
-
-    const io = {
-      error: vi.fn(),
-      input: process.stdin,
-      output: process.stdout,
-      write: vi.fn(),
-    };
-
-    expect(await runChat(["-p", "hello"], io)).toBe(1);
-    expect(io.write).not.toHaveBeenCalled();
-    expect(io.error).toHaveBeenCalledWith(
-      "Local chat cannot deliver files yet: report.txt",
-    );
-  });
-
   it("continues interactive chat after a turn error", async () => {
     const errors: string[] = [];
     const input = new PassThrough();

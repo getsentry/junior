@@ -37,7 +37,11 @@ function extractHttpStatusFromMessage(message: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function createWebFetchTool(hooks: ToolHooks) {
+/** Create the fetch tool with delivery guidance scoped to active file-send capability. */
+export function createWebFetchTool(
+  hooks: ToolHooks,
+  options: { canSendFilesToActiveConversation?: boolean } = {},
+) {
   const override = hooks.toolOverrides?.webFetch;
   return tool({
     description:
@@ -87,21 +91,35 @@ export function createWebFetchTool(hooks: ToolHooks) {
             safeUrl,
             contentType.split(";")[0] ?? "image/png",
           );
-          hooks.onGeneratedFiles?.([
+          const files = [
             {
               data: bytes,
               filename,
               mimeType: contentType.split(";")[0] ?? "application/octet-stream",
             },
-          ]);
+          ];
+          const artifactRefs = hooks.writeGeneratedArtifacts
+            ? await hooks.writeGeneratedArtifacts(files)
+            : [];
 
           return {
             ok: true,
             url: safeUrl.toString(),
             media_type: contentType,
             bytes: bytes.byteLength,
+            images: artifactRefs.map((artifact) => ({
+              filename: artifact.filename,
+              path: artifact.path,
+              attachment_path: artifact.path,
+              media_type: artifact.mimeType,
+              bytes: artifact.bytes,
+            })),
             delivery:
-              "Fetched image will be attached to the Slack response as a file.",
+              artifactRefs.length > 0
+                ? options.canSendFilesToActiveConversation
+                  ? "Fetched image was written to a sandbox path. Use sendMessage to share or attach the image in the active conversation."
+                  : "Fetched image was written to a sandbox path, but this runtime has no file-send tool for the active conversation."
+                : "Fetched image bytes are available only in this tool result; this runtime has no file-send tool for the active conversation.",
           };
         }
 

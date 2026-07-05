@@ -416,7 +416,6 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     const generatedFiles: FileUpload[] = [];
-    const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
     let agent: Agent | undefined;
@@ -457,7 +456,6 @@ async function executeAgentRunInPrivacyContext(
       preAgentPromptMessages,
       priorPiMessages,
       recordConnectedMcpProvider,
-      replyFiles,
       resume: runResume,
       routing,
       sessionConversationId,
@@ -858,7 +856,6 @@ async function executeAgentRunInPrivacyContext(
       result: buildTurnResult({
         newMessages,
         userInput,
-        replyFiles,
         artifactStatePatch,
         toolCalls,
         sandboxId: sandboxExecutor.getSandboxId(),

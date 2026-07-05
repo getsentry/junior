@@ -1,4 +1,3 @@
-import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
@@ -10,11 +9,7 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
-import {
-  buildReplyDeliveryPlan,
-  type ReplyDeliveryPlan,
-} from "@/chat/services/reply-delivery-plan";
-import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
+import type { ReplyDeliveryPlan } from "@/chat/services/reply-delivery-plan";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   extractAssistantText,
@@ -126,7 +121,6 @@ export interface AgentTurnDiagnostics {
 
 export interface AgentRunResult {
   text: string;
-  files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
@@ -139,7 +133,6 @@ export interface AgentRunResult {
 export interface TurnResultInput {
   newMessages: unknown[];
   userInput: string;
-  replyFiles: FileUpload[];
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
   sandboxId?: string;
@@ -208,7 +201,6 @@ function stripThinkingXmlBlocks(text: string): string {
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
     newMessages,
-    replyFiles,
     artifactStatePatch,
     toolCalls,
     sandboxId,
@@ -252,15 +244,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
   const markerSideEffectSuccess =
-    exactNoReplyMarker &&
-    toolErrorCount === 0 &&
-    (reactionPerformed || replyFiles.length > 0);
-  const fileOnlySuccess =
-    !rawPrimaryText && toolErrorCount === 0 && replyFiles.length > 0;
-  const sideEffectOnlySuccess = markerSideEffectSuccess || fileOnlySuccess;
-  const baseDeliveryPlan = buildReplyDeliveryPlan({
-    hasFiles: replyFiles.length > 0,
-  });
+    exactNoReplyMarker && toolErrorCount === 0 && reactionPerformed;
+  const sideEffectOnlySuccess = markerSideEffectSuccess;
+  const baseDeliveryPlan: ReplyDeliveryPlan = {
+    mode: "thread",
+    postThreadText: true,
+  };
   const lastAssistant = terminalAssistantMessages.at(-1) as
     | { stopReason?: unknown; errorMessage?: unknown }
     | undefined;
@@ -275,11 +264,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const isProviderError = stopReason === "error";
 
   if (exactNoReplyMarker) {
-    const markerCategory = reactionPerformed
-      ? "reaction"
-      : replyFiles.length > 0
-        ? "file"
-        : "none";
+    const markerCategory = reactionPerformed ? "reaction" : "none";
     const markerContext = {
       slackThreadId: correlation?.threadId,
       slackUserId: correlation?.requesterId,
@@ -372,17 +357,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     Boolean(primaryText) &&
     (isExecutionEscapeResponse(primaryText) ||
       isRawToolPayloadResponse(primaryText));
-  const resolvedText = escapedOrRawPayload
-    ? ""
-    : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
+  const resolvedText = escapedOrRawPayload ? "" : responseText;
   const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
     ? "execution_failure"
     : outcome;
   const deliveryPlan =
-    resolvedOutcome === "success" &&
-    !resolvedText &&
-    replyFiles.length === 0 &&
-    reactionPerformed
+    resolvedOutcome === "success" && !resolvedText && reactionPerformed
       ? {
           ...baseDeliveryPlan,
           postThreadText: false,
@@ -426,7 +406,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   return {
     text: resolvedText,
-    files: replyFiles.length > 0 ? replyFiles : undefined,
     artifactStatePatch:
       Object.keys(artifactStatePatch).length > 0
         ? artifactStatePatch

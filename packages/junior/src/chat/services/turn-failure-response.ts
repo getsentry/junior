@@ -149,8 +149,6 @@ export function finalizeFailedTurnReply(args: {
     deliveryPlan: {
       mode: "thread",
       postThreadText: true,
-      attachFiles:
-        args.reply.files && args.reply.files.length > 0 ? "inline" : "none",
     },
   };
 }

@@ -1,7 +1,7 @@
 ---
 name: agent-browser
 description: Automate websites with the agent-browser CLI for navigation, form flows, screenshots, extraction, and repeatable browser tasks. Use when users ask to interact with web apps, gather evidence from pages, or run browser-based QA steps.
-allowed-tools: bash attachFile
+allowed-tools: bash sendMessage
 ---
 
 # Browser Automation
@@ -41,9 +41,9 @@ Use this skill when work requires real browser interaction instead of API-only l
 - If page load is async-heavy, wait explicitly:
   - `agent-browser wait --load networkidle`
 - For user-facing findings, include screenshots and the exact page URL.
-- When a user asks to see/share a screenshot, run `attachFile` with the screenshot path so the image is included in the reply.
-- Never claim a screenshot was shared unless `attachFile` returned success (`attached: true`) in this turn.
-- If file attachment fails, state the failure clearly and include the error instead of claiming success.
+- When a user asks to see/share a screenshot in Slack, use `sendMessage` with the screenshot path in `files` so the image is included in the active conversation.
+- Never claim a screenshot was shared unless `sendMessage` returned success in this turn.
+- If `sendMessage` is unavailable or file attachment fails, state the failure clearly and include the saved screenshot path or error instead of claiming success.
 
 ## Common Patterns
 

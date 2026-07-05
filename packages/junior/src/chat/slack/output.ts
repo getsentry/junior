@@ -1,4 +1,4 @@
-import type { FileUpload, PostableMessage } from "chat";
+import type { PostableMessage } from "chat";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
@@ -321,22 +321,11 @@ export function getSlackContinuationBudget(): {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
 }
 
-/** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */
-export function buildSlackOutputMessage(
-  text: string,
-  files?: FileUpload[],
-): PostableMessage {
+/** Normalize text for Slack and wrap it as a PostableMessage. */
+export function buildSlackOutputMessage(text: string): PostableMessage {
   const normalized = normalizeSlackReplyMarkdown(text);
-  const fileCount = files?.length ?? 0;
 
   if (!normalized) {
-    if (fileCount > 0) {
-      return {
-        raw: "",
-        files,
-      };
-    }
-
     throw new Error(
       `Slack output normalized to empty content: original_length=${text.length} parsed_length=${normalized.length}`,
     );
@@ -344,7 +333,6 @@ export function buildSlackOutputMessage(
 
   return {
     markdown: normalized,
-    files,
   };
 }
 

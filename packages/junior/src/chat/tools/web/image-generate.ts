@@ -77,8 +77,10 @@ function parseImageGenerationError(
   }
 }
 
+/** Create the image tool with sandbox artifact guidance matched to file-send capability. */
 export function createImageGenerateTool(
   hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
+  options: { canSendFilesToActiveConversation?: boolean } = {},
   deps: ImageGenerateToolDeps = {},
 ) {
   return tool({
@@ -183,8 +185,9 @@ export function createImageGenerateTool(
             media_type: artifact.mimeType,
             bytes: artifact.bytes,
           })),
-          delivery:
-            "Generated images were written to sandbox paths. Use sendMessage to share or attach the image in the active Slack conversation.",
+          delivery: options.canSendFilesToActiveConversation
+            ? "Generated images were written to sandbox paths. Use sendMessage to share or attach the image in the active conversation."
+            : "Generated images were written to sandbox paths, but this runtime has no file-send tool for the active conversation.",
         };
       }
 

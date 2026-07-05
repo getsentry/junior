@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
   getSlackContinuationMarker,
@@ -34,19 +33,6 @@ function toPostedText(value: unknown): string {
   }
 
   return String(value);
-}
-
-function toPostedFiles(value: unknown): Array<{ filename: string }> {
-  if (
-    value &&
-    typeof value === "object" &&
-    "files" in value &&
-    Array.isArray(value.files)
-  ) {
-    return value.files as Array<{ filename: string }>;
-  }
-
-  return [];
 }
 
 function makeDiagnostics(
@@ -148,83 +134,6 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(thread.posts.map(toPostedText)).toEqual([finalReply]);
   });
 
-  it("keeps file-only replies on the inline post path", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "",
-                files: [{ data: Buffer.from("hello"), filename: "hello.txt" }],
-                diagnostics: makeDiagnostics(),
-              }),
-          },
-        },
-      },
-    });
-
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006002.000" });
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-final-3",
-        text: "<@U0APP> attach the file",
-        isMention: true,
-        threadId: thread.id,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(thread.posts.map(toPostedText)).toEqual([""]);
-    expect(toPostedFiles(thread.posts[0])).toEqual([
-      expect.objectContaining({ filename: "hello.txt" }),
-    ]);
-  });
-
-  it("still delivers files when thread text is suppressed", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Posted it in channel.",
-                files: [
-                  { data: Buffer.from("report"), filename: "report.txt" },
-                ],
-                deliveryPlan: {
-                  mode: "channel_only",
-                  postThreadText: false,
-                  attachFiles: "inline",
-                },
-                diagnostics: makeDiagnostics(),
-              }),
-          },
-        },
-      },
-    });
-
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006003.000" });
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-final-4",
-        text: "<@U0APP> post in channel",
-        isMention: true,
-        threadId: thread.id,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(toPostedText(thread.posts[0])).toBe("");
-    expect(toPostedFiles(thread.posts[0])).toEqual([
-      expect.objectContaining({ filename: "report.txt" }),
-    ]);
-  });
-
   it("posts a failure fallback instead of completing an empty final post plan", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -236,7 +145,6 @@ describe("Slack behavior: finalized thread replies", () => {
                 deliveryPlan: {
                   mode: "thread",
                   postThreadText: true,
-                  attachFiles: "none",
                 },
                 diagnostics: makeDiagnostics(),
               }),
@@ -261,45 +169,6 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(toPostedText(thread.posts[0])).toContain(
       "I ran into an internal error while processing that.",
     );
-  });
-
-  it("does not delete an ack reply when it also carries files", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "ok",
-                files: [
-                  { data: Buffer.from("report"), filename: "report.txt" },
-                ],
-                diagnostics: makeDiagnostics({
-                  toolCalls: ["addReaction"],
-                }),
-              }),
-          },
-        },
-      },
-    });
-
-    const thread = createTestThread({ id: "slack:C0FINAL:1700006004.000" });
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-final-5",
-        text: "<@U0APP> react and attach",
-        isMention: true,
-        threadId: thread.id,
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.postKinds).toEqual(["value"]);
-    expect(toPostedText(thread.posts[0])).toBe("ok");
-    expect(toPostedFiles(thread.posts[0])).toEqual([
-      expect.objectContaining({ filename: "report.txt" }),
-    ]);
   });
 
   it("splits long replies into continuation posts after the final reply is known", async () => {
