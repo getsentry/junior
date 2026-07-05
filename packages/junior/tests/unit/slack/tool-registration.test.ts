@@ -79,7 +79,7 @@ describe("Slack tool registration", () => {
   it("registers tools when runtime channel ids are Junior Slack references", () => {
     const tools = createTools([], {}, ctx("slack:C12345"));
 
-    expect(tools).toHaveProperty("slackChannelPostMessage");
+    expect(tools).toHaveProperty("sendMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");

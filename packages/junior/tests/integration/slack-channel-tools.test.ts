@@ -41,11 +41,17 @@ function createToolState(): ToolState {
 
 type ContextOverrides = Omit<
   Partial<SlackToolContext>,
-  "destinationChannelId" | "sourceChannelId" | "teamId"
+  | "destinationChannelId"
+  | "messageTs"
+  | "sourceChannelId"
+  | "teamId"
+  | "threadTs"
 > & {
   destinationChannelId?: string;
+  messageTs?: string;
   sourceChannelId?: string;
   teamId?: string;
+  threadTs?: string;
 };
 
 function requireSlackChannelId(value: string) {
@@ -64,6 +70,14 @@ function requireSlackTeamId(value: string) {
   return teamId;
 }
 
+function requireSlackMessageTs(value: string) {
+  const timestamp = parseSlackMessageTs(value);
+  if (!timestamp) {
+    throw new Error(`Invalid test Slack timestamp: ${value}`);
+  }
+  return timestamp;
+}
+
 function createContext(
   _userText: string,
   overrides: ContextOverrides = {},
@@ -79,13 +93,17 @@ function createContext(
   const {
     sourceChannelId: _sourceChannelId,
     destinationChannelId: _destinationChannelId,
+    messageTs: overrideMessageTs,
     teamId: _teamId,
+    threadTs: overrideThreadTs,
     ...rest
   } = overrides;
-  const messageTs = parseSlackMessageTs("1700000000.321");
-  if (!messageTs) {
-    throw new Error("Test message timestamp must be a valid Slack ts");
-  }
+  const messageTs = requireSlackMessageTs(
+    overrideMessageTs ?? "1700000000.321",
+  );
+  const threadTs = overrideThreadTs
+    ? requireSlackMessageTs(overrideThreadTs)
+    : undefined;
   return {
     destination: {
       platform: "slack",
@@ -103,6 +121,7 @@ function createContext(
     messageTs,
     sourceChannelId,
     teamId,
+    ...(threadTs ? { threadTs } : {}),
     ...rest,
   };
 }
@@ -507,7 +526,7 @@ describe("slack channel tools", () => {
   it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
     const context = createContext("attach this here", {
       sourceChannelId: "D123",
-      destinationChannelId: "C_SHARED",
+      destinationChannelId: "CSHARED",
       threadTs: "1700000000.321",
     });
     const tool = createSendMessageTool(
