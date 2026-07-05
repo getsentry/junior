@@ -15,21 +15,40 @@ function commandResult(overrides: Partial<SandboxCommandResult> = {}) {
   } satisfies SandboxCommandResult;
 }
 
-describe("writeSandboxGeneratedArtifacts", () => {
-  it("writes generated files to sandbox artifact paths before returning refs", async () => {
-    const commands: Array<{ args?: string[]; cmd: string }> = [];
-    const writes: Array<{ content: string | Uint8Array; path: string }> = [];
-    const sandbox = {
+function createGeneratedArtifactSandbox() {
+  const commands: Array<{ args?: string[]; cmd: string }> = [];
+  const files = new Map<string, string | Uint8Array>();
+  return {
+    commands,
+    files,
+    sandbox: {
       runCommand: async (input: { args?: string[]; cmd: string }) => {
         commands.push(input);
         return commandResult();
       },
       writeFiles: async (
-        files: Array<{ content: string | Uint8Array; path: string }>,
+        writtenFiles: Array<{ content: string | Uint8Array; path: string }>,
       ) => {
-        writes.push(...files);
+        for (const file of writtenFiles) {
+          files.set(file.path, file.content);
+        }
       },
-    };
+    },
+  };
+}
+
+function expectSandboxFile(
+  files: Map<string, string | Uint8Array>,
+  path: string,
+  content: string | Uint8Array,
+) {
+  expect(files.has(path)).toBe(true);
+  expect(files.get(path)).toEqual(content);
+}
+
+describe("writeSandboxGeneratedArtifacts", () => {
+  it("writes generated files to sandbox artifact paths before returning refs", async () => {
+    const fixture = createGeneratedArtifactSandbox();
     const generated: FileUpload[] = [
       {
         data: Buffer.from("image-bytes"),
@@ -38,16 +57,13 @@ describe("writeSandboxGeneratedArtifacts", () => {
       },
     ];
 
-    const refs = await writeSandboxGeneratedArtifacts(sandbox, generated);
+    const refs = await writeSandboxGeneratedArtifacts(
+      fixture.sandbox,
+      generated,
+    );
 
-    expect(commands).toEqual([
+    expect(fixture.commands).toEqual([
       { cmd: "mkdir", args: ["-p", SANDBOX_ARTIFACTS_DIR] },
-    ]);
-    expect(writes).toEqual([
-      {
-        content: Buffer.from("image-bytes"),
-        path: GENERATED_IMAGE_PATH,
-      },
     ]);
     expect(refs).toEqual([
       {
@@ -57,6 +73,11 @@ describe("writeSandboxGeneratedArtifacts", () => {
         path: GENERATED_IMAGE_PATH,
       },
     ]);
+    expectSandboxFile(
+      fixture.files,
+      refs[0]?.path ?? "",
+      Buffer.from("image-bytes"),
+    );
   });
 
   it("fails before returning refs when the artifact directory cannot be created", async () => {

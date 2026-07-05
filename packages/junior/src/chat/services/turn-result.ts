@@ -204,49 +204,10 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function firstJsonTextObject(
-  content: unknown,
-): Record<string, unknown> | undefined {
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
-  for (const part of content) {
-    if (!isRecord(part) || typeof part.text !== "string") {
-      continue;
-    }
-    const parsed = parseJsonCandidate(part.text);
-    if (isRecord(parsed)) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
-function toolResultDetails(
-  result: unknown,
-): Record<string, unknown> | undefined {
-  if (!isRecord(result)) {
-    return undefined;
-  }
-  if (isRecord(result.details)) {
-    return result.details;
-  }
-  if (isRecord(result.toolResult)) {
-    return result.toolResult;
-  }
-  return firstJsonTextObject(result.content);
-}
-
 function sendMessageResultTarget(
   result: unknown,
 ): "channel" | "thread" | undefined {
-  const details = toolResultDetails(result);
-  const target = details?.target;
+  const target = (result as { details?: { target?: unknown } }).details?.target;
   return target === "channel" || target === "thread" ? target : undefined;
 }
 

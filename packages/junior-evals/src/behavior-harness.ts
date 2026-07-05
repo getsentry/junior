@@ -292,6 +292,7 @@ export interface EvalAttachedFile {
 
 export interface EvalAssistantPost {
   channel?: string;
+  eventType?: "channel_post" | "thread_post";
   files: EvalAttachedFile[];
   text: string;
   thread_ts?: string;
@@ -943,11 +944,55 @@ function toEvalFiles(value: unknown): EvalAttachedFile[] {
   });
 }
 
+function isImageFilename(filename: string): boolean {
+  const normalized = filename.toLowerCase();
+  return (
+    normalized.endsWith(".png") ||
+    normalized.endsWith(".jpg") ||
+    normalized.endsWith(".jpeg") ||
+    normalized.endsWith(".gif") ||
+    normalized.endsWith(".webp")
+  );
+}
+
+function toEvalUploadedFiles(files: unknown): EvalAttachedFile[] {
+  if (!Array.isArray(files) || files.length === 0) {
+    return [];
+  }
+
+  return files.map((file) => {
+    const fields = file as {
+      filename?: unknown;
+      mimeType?: unknown;
+      mimetype?: unknown;
+      name?: unknown;
+      title?: unknown;
+    };
+    const filename =
+      toFirstString(fields.title) ??
+      toFirstString(fields.filename) ??
+      toFirstString(fields.name) ??
+      "file";
+    const mediaType =
+      toFirstString(fields.mimeType) ?? toFirstString(fields.mimetype);
+    return {
+      filename,
+      isImage: Boolean(
+        mediaType?.startsWith("image/") || isImageFilename(filename),
+      ),
+      ...(mediaType ? { mimeType: mediaType } : {}),
+    };
+  });
+}
+
 export function collectSlackArtifactsFromCapturedCalls(
   calls: CapturedSlackApiCall[],
-): Pick<EvalResult, "canvases" | "channelPosts" | "reactions"> {
+): Pick<EvalResult, "canvases" | "channelPosts" | "reactions"> & {
+  filePosts: EvalAssistantPost[];
+} {
   const canvases: EvalResult["canvases"] = [];
   const channelPosts: EvalResult["channelPosts"] = [];
+  const filePosts: EvalAssistantPost[] = [];
   const reactions = new Map<string, EvalResult["reactions"][number]>();
 
   for (const call of calls) {
@@ -981,6 +1026,23 @@ export function collectSlackArtifactsFromCapturedCalls(
       channelPosts.push({
         channel,
         text,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+      });
+      continue;
+    }
+
+    if (call.method === "files.completeUploadExternal") {
+      const channel = toFirstString(call.params.channel_id);
+      const files = toEvalUploadedFiles(call.params.files);
+      if (!channel || files.length === 0) {
+        continue;
+      }
+      const threadTs = toFirstString(call.params.thread_ts);
+      filePosts.push({
+        channel,
+        eventType: threadTs ? "thread_post" : "channel_post",
+        files,
+        text: toFirstString(call.params.initial_comment) ?? "",
         ...(threadTs ? { thread_ts: threadTs } : {}),
       });
       continue;
@@ -1022,6 +1084,7 @@ export function collectSlackArtifactsFromCapturedCalls(
   return {
     canvases,
     channelPosts,
+    filePosts,
     reactions: [...reactions.values()],
   };
 }
@@ -1923,7 +1986,7 @@ function collectResults(
       .filter((record) => record.thread.threadTs)
       .map((record) => `${record.thread.channelId}:${record.thread.threadTs}`),
   );
-  const { canvases, channelPosts, reactions } =
+  const { canvases, channelPosts, filePosts, reactions } =
     collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
   const threadPosts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map((post) => ({
@@ -1952,7 +2015,7 @@ function collectResults(
     channelPosts,
     logRecords,
     reactions,
-    posts: [...threadPosts, ...callbackThreadPosts],
+    posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
     slackAdapter,
     toolInvocations: observations.toolInvocations,
   };

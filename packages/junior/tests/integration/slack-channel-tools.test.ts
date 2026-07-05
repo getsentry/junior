@@ -600,6 +600,38 @@ describe("slack channel tools", () => {
     });
   });
 
+  it("treats nullable optional sendMessage fields as omitted", async () => {
+    const tool = createSendMessageTool(
+      createContext("attach the report", {
+        threadTs: "1700000000.321",
+      }),
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    const result = await executeTool(tool, {
+      target: null,
+      text: null,
+      files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: "thread",
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
+    });
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
+    ).toMatchObject({
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+    });
+  });
+
   it("rejects invalid sendMessage targets", async () => {
     const tool = createSendMessageTool(
       createContext("send this"),

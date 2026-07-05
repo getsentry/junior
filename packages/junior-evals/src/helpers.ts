@@ -119,7 +119,7 @@ function toAssistantPostMessage(
     role: "assistant",
     content: post.text,
     metadata: toJsonRecord({
-      event_type: "thread_post",
+      event_type: post.eventType ?? "thread_post",
       ...(post.channel ? { channel: post.channel } : {}),
       ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
       files: post.files,

@@ -116,6 +116,8 @@ export class FakeSlackAdapter {
     title: string;
   }> = [];
 
+  async initialize(): Promise<void> {}
+
   async setAssistantTitle(
     channelId: string,
     threadTs: string,

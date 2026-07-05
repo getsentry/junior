@@ -357,4 +357,30 @@ describe("behavior harness", () => {
       },
     ]);
   });
+
+  it("collects uploaded Slack files as assistant posts with text and files", () => {
+    const artifacts = collectSlackArtifactsFromCapturedCalls([
+      {
+        method: "files.completeUploadExternal",
+        url: "https://slack.test/api/files.completeUploadExternal",
+        headers: {},
+        params: {
+          channel_id: "CTEST",
+          thread_ts: "1700000000.0001",
+          initial_comment: "Here is the image.",
+          files: [{ id: "F1", title: "generated.png" }],
+        },
+      },
+    ]);
+
+    expect(artifacts.filePosts).toEqual([
+      {
+        channel: "CTEST",
+        eventType: "thread_post",
+        files: [{ filename: "generated.png", isImage: true }],
+        text: "Here is the image.",
+        thread_ts: "1700000000.0001",
+      },
+    ]);
+  });
 });

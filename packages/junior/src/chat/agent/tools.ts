@@ -59,6 +59,7 @@ import {
 import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
+import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -295,10 +296,12 @@ export async function wireAgentTools(
   const tools = createTools(
     loadableSkills,
     {
-      getGeneratedFile: (filename) =>
-        args.generatedFiles.find((file) => file.filename === filename),
-      onGeneratedArtifactFiles: (files) => {
+      writeGeneratedArtifacts: async (files) => {
         args.generatedFiles.push(...files);
+        return await writeSandboxGeneratedArtifacts(
+          await sandboxExecutor.createSandbox(),
+          files,
+        );
       },
       onGeneratedFiles: (files) => {
         args.replyFiles.push(...files);
