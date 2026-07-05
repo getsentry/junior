@@ -332,7 +332,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   parseSkillInvocation: () => null,
 }));
 
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { getConversationStore } from "@/chat/db";
 import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue";
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";

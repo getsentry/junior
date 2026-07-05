@@ -259,7 +259,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   parseSkillInvocation: () => null,
 }));
 
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import { AGENT_CONTINUE_MAX_SLICES } from "@/chat/services/turn-session-record";
 import { getConversationStore } from "@/chat/db";

@@ -11,7 +11,7 @@ import {
 import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {

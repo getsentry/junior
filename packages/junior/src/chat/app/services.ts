@@ -1,5 +1,5 @@
 import { completeObject, completeText } from "@/chat/pi/client";
-import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent-run";
+import { executeAgentRun as executeAgentRunImpl } from "@/chat/agent";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import {
   getAwaitingAgentContinueRequest,

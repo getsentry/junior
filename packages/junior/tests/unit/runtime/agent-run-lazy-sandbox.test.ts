@@ -518,7 +518,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
   },
 }));
 
-import { executeAgentRun, type AgentRunRequest } from "@/chat/agent-run";
+import { executeAgentRun, type AgentRunRequest } from "@/chat/agent";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,

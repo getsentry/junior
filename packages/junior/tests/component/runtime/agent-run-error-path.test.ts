@@ -16,7 +16,7 @@ vi.mock("@/chat/skills", () => ({
   parseSkillInvocation: vi.fn(),
 }));
 
-const { executeAgentRun } = await import("@/chat/agent-run");
+const { executeAgentRun } = await import("@/chat/agent");
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,

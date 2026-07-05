@@ -101,7 +101,7 @@ vi.mock("@/chat/pi/client", () => ({
 }));
 
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";

@@ -20,7 +20,7 @@ import type {
   LocalAgentTurnDeps,
   LocalToolResult,
 } from "@/chat/local/runner";
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { JuniorPluginSet } from "@/plugins";
 

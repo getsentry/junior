@@ -7,7 +7,7 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
  */
 export const realAgentRunner: AgentRunner = {
   run: async (request) => {
-    const { executeAgentRun } = await import("@/chat/agent-run");
+    const { executeAgentRun } = await import("@/chat/agent");
     return await executeAgentRun(request);
   },
 };

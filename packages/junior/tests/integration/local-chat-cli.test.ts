@@ -7,7 +7,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 
 const executeAgentRunMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/chat/agent-run", () => ({
+vi.mock("@/chat/agent", () => ({
   executeAgentRun: executeAgentRunMock,
 }));
 

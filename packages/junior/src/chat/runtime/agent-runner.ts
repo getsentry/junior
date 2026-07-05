@@ -1,4 +1,4 @@
-import type { AgentRunRequest } from "@/chat/agent-run";
+import type { AgentRunRequest } from "@/chat/agent";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 

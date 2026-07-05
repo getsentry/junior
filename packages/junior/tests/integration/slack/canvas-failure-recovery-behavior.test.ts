@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRunRequest } from "@/chat/agent-run";
+import type { AgentRunRequest } from "@/chat/agent";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,

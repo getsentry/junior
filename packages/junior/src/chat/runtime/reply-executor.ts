@@ -32,7 +32,7 @@ import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import {
   buildSteeringPiMessage,
   type AgentRunSteeringMessage,
-} from "@/chat/agent-run";
+} from "@/chat/agent";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
