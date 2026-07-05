@@ -81,6 +81,7 @@ Co-Authored-By: (agent model name) <email>
 - `policies/runtime-boundary-schemas.md` (strict runtime schemas and inferred types for boundary contracts)
 - `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
 - `policies/testing.md` (integration/eval-first testing policy and unit-test churn guardrails)
+- `policies/tool-design.md` (model-facing tool schema and executor alignment)
 
 ## Investigation-First Development
 

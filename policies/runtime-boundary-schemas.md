@@ -15,6 +15,7 @@ Runtime boundary contracts should not depend on TypeScript trust alone. When dat
 - Normalization is allowed only at platform ingress or explicit constructor helpers that convert external platform payloads into canonical Junior values. Durable-state and plugin-input parsers must assert canonical shape without repair.
 - Runtime-owned bindings, signatures, actor identity, destination identity, and credential subjects must be parsed as separate fields. Do not infer one from another after crossing a boundary.
 - Tool input JSON schemas may stay on the tool/schema system that serves the model. If a tool input carries runtime authority or durable context, that context must also be validated by the owning runtime boundary schema.
+- Model-facing tool schema design rules live in `policies/tool-design.md`.
 
 ## Exceptions
 

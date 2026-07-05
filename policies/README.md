@@ -15,6 +15,7 @@ Good policy topics:
 - interface design
 - correctness and complexity tradeoffs
 - runtime boundary schemas
+- model-facing tool schema design
 - migration hygiene
 - automation safety boundaries
 - serverless background work
