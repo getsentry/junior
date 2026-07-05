@@ -502,6 +502,40 @@ describe("slack channel tools", () => {
     });
   });
 
+  it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
+    const context = createContext("attach this here", {
+      sourceChannelId: "D123",
+      destinationChannelId: "C_SHARED",
+      threadTs: "1700000000.321",
+    });
+    const tool = createSendMessageTool(
+      context,
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    const result = await executeTool(tool, {
+      target: "thread",
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: "thread",
+      channel_id: "D123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
+    });
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
+    ).toMatchObject({
+      channel_id: "D123",
+      thread_ts: "1700000000.321",
+    });
+  });
+
   it("uploads files into the current Slack thread", async () => {
     const tool = createSendMessageTool(
       createContext("attach the report", {
@@ -532,6 +566,22 @@ describe("slack channel tools", () => {
       channel_id: "C123",
       thread_ts: "1700000000.321",
     });
+  });
+
+  it("rejects invalid sendMessage targets", async () => {
+    const tool = createSendMessageTool(
+      createContext("send this"),
+      createToolState(),
+      createMaterializeFile(),
+    );
+
+    await expect(
+      executeTool(tool, {
+        target: "dm",
+        text: "Invalid target.",
+      }),
+    ).rejects.toThrow("sendMessage target must be `channel` or `thread`");
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
 
   it("does not deduplicate changed file contents at the same path", async () => {

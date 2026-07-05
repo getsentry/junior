@@ -195,7 +195,7 @@ Current rules:
 
 1. Thread replies attach files inline on the first visible reply post when possible.
 2. File-only replies must still create a visible Slack thread reply carrying the file payload.
-3. `sendMessage` with `target: "thread"` may send or attach files into the current Slack thread as a side effect. It does not replace the final assistant reply contract.
+3. `sendMessage` with `target: "thread"` may send text, files, or both into the current Slack thread as a side effect. It does not replace the final assistant reply contract.
 4. If thread text is intentionally suppressed, files may still be delivered through the thread reply planner when the reply contract requires visible artifacts.
 5. Resume and OAuth callback flows must use the same file-delivery semantics as the main runtime path.
 

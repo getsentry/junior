@@ -23,6 +23,12 @@ function visibleText(session: EvalSession): string {
     .join("\n");
 }
 
+function sendMessageTargets(session: EvalSession): unknown[] {
+  return toolCalls(session)
+    .filter((call) => call.name === "sendMessage")
+    .map((call) => call.arguments?.target);
+}
+
 describeEval("Slack Message Delivery", slackEvals, (it) => {
   it("when asked to post in channel, send a channel message without duplicate thread text", async ({
     run,
@@ -84,6 +90,10 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
         }),
       ]),
     );
+    expect(sendMessageTargets(result.session)).toContain("thread");
+    expect(sendMessageTargets(result.session)).not.toContain("channel");
+    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
   });
 
   it("when a generated image should be posted to the channel, use channel target", async ({
@@ -118,5 +128,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
         }),
       ]),
     );
+    expect(sendMessageTargets(result.session)).toContain("channel");
+    expect(sendMessageTargets(result.session)).not.toContain("thread");
   });
 });

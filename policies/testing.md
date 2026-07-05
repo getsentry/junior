@@ -12,6 +12,10 @@ routine refactors do not churn brittle unit tests.
   proven through real wiring with only the allowed fake boundary.
 - Prefer evals for agent-facing behavior that depends on model interpretation,
   continuity, routing, or reply quality.
+- Test tool implementations outside the agent flow when their contract is
+  deterministic. For Slack tools, use integration tests with outbound mocks for
+  API payloads, target coordinates, and attachment serialization; use evals only
+  for whether the agent selects the correct tool, target, and reply strategy.
 - Use unit tests only for tightly local deterministic logic where integration or
   eval coverage would be materially slower, less deterministic, or less
   diagnostic.

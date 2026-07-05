@@ -204,6 +204,52 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function firstJsonTextObject(
+  content: unknown,
+): Record<string, unknown> | undefined {
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+
+  for (const part of content) {
+    if (!isRecord(part) || typeof part.text !== "string") {
+      continue;
+    }
+    const parsed = parseJsonCandidate(part.text);
+    if (isRecord(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function toolResultDetails(
+  result: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(result)) {
+    return undefined;
+  }
+  if (isRecord(result.details)) {
+    return result.details;
+  }
+  if (isRecord(result.toolResult)) {
+    return result.toolResult;
+  }
+  return firstJsonTextObject(result.content);
+}
+
+function sendMessageResultTarget(
+  result: unknown,
+): "channel" | "thread" | undefined {
+  const details = toolResultDetails(result);
+  const target = details?.target;
+  return target === "channel" || target === "thread" ? target : undefined;
+}
+
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
@@ -241,13 +287,19 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : rawPrimaryText;
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
+  const successfulToolResults = toolResults.filter(
+    (result) => !isToolResultError(result),
+  );
   const successfulToolNames = new Set(
-    toolResults
-      .filter((result) => !isToolResultError(result))
+    successfulToolResults
       .map((result) => normalizeToolNameFromResult(result))
       .filter((value): value is string => Boolean(value)),
   );
-  const channelPostPerformed = successfulToolNames.has("sendMessage");
+  const channelPostPerformed = successfulToolResults.some(
+    (result) =>
+      normalizeToolNameFromResult(result) === "sendMessage" &&
+      sendMessageResultTarget(result) === "channel",
+  );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
   const markerSideEffectSuccess =

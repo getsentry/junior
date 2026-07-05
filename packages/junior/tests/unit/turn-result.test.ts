@@ -314,6 +314,7 @@ describe("buildTurnResult", () => {
           toolName: "sendMessage",
           isError: false,
           content: [{ type: "text", text: "posted" }],
+          details: { ok: true, target: "channel", channel_id: "C123" },
         },
         {
           role: "assistant",
@@ -347,6 +348,12 @@ describe("buildTurnResult", () => {
           toolName: "sendMessage",
           isError: false,
           content: [{ type: "text", text: '{"file_count":1}' }],
+          details: {
+            ok: true,
+            target: "channel",
+            channel_id: "C123",
+            file_count: 1,
+          },
         },
       ],
       userInput: "send the generated image to the channel",
@@ -376,6 +383,7 @@ describe("buildTurnResult", () => {
           toolName: "sendMessage",
           isError: false,
           content: [{ type: "text", text: "posted" }],
+          details: { ok: true, target: "channel", channel_id: "C123" },
         },
       ],
       userInput: "send the message and attach the report",
@@ -403,6 +411,46 @@ describe("buildTurnResult", () => {
     });
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
+  it("does not treat thread-target sendMessage as final reply completion", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: "posted in thread" }],
+          details: {
+            ok: true,
+            target: "thread",
+            channel_id: "C123",
+            thread_ts: "1700000000.321",
+          },
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "attach it here",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 1,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryMode).toBe("thread");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: true,
+    });
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
   it("keeps post-canvas thread replies brief", () => {

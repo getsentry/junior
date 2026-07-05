@@ -22,6 +22,10 @@ the repo test layer and find the harness docs.
 
 Default to the highest deterministic layer that proves the contract. Do not add
 lower-layer duplicate coverage when a higher-fidelity test owns the behavior.
+For Slack tools, validate the tool's transport behavior, outbound API payloads,
+and attachment serialization outside the agent loop with integration tests and
+Slack outbound mocks. Use evals to prove the agent chooses the correct tool,
+target, and final-reply behavior from natural-language context.
 
 ## Layer References
 
