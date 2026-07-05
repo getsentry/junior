@@ -76,6 +76,15 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
+  it("registers tools when runtime channel ids are Junior Slack references", () => {
+    const tools = createTools([], {}, ctx("slack:C12345"));
+
+    expect(tools).toHaveProperty("slackChannelPostMessage");
+    expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("slackCanvasCreate");
+  });
+
   it("does not register standalone channel posting outside interactive Slack turns", () => {
     const tools = createTools(
       [],

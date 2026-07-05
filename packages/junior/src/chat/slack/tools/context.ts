@@ -3,7 +3,7 @@ import type { SlackDestination } from "@sentry/junior-plugin-api";
 import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackRequester } from "@/chat/requester";
 import {
-  parseSlackChannelId,
+  parseSlackChannelReferenceId,
   parseSlackTeamId,
   type SlackChannelId,
   type SlackTeamId,
@@ -34,10 +34,12 @@ export function getSlackToolContext(
   if (context.destination.platform !== "slack") {
     throw new TypeError("Slack source requires a Slack destination");
   }
-  const destinationChannelId = parseSlackChannelId(
+  const destinationChannelId = parseSlackChannelReferenceId(
     context.destination.channelId,
   );
-  const sourceChannelId = parseSlackChannelId(context.source.channelId);
+  const sourceChannelId = parseSlackChannelReferenceId(
+    context.source.channelId,
+  );
   const teamId = parseSlackTeamId(context.source.teamId);
   if (!destinationChannelId || !sourceChannelId || !teamId) {
     return undefined;
