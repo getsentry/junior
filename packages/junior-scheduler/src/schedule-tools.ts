@@ -316,7 +316,11 @@ function validateCreateScheduleKind(input: {
   ) {
     throwToolInputError("schedule_kind must be one_off or recurring.");
   }
-  if (input.schedule_kind === "one_off" && input.recurrence !== undefined) {
+  if (
+    input.schedule_kind === "one_off" &&
+    input.recurrence !== undefined &&
+    input.recurrence !== null
+  ) {
     throwToolInputError("Omit recurrence when schedule_kind is one_off.");
   }
   if (
@@ -405,6 +409,7 @@ export function createSlackScheduleCreateTaskTool(
             Type.Literal("weekly"),
             Type.Literal("monthly"),
             Type.Literal("yearly"),
+            Type.Null(),
           ],
           {
             description:

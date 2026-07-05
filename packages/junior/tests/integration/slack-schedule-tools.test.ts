@@ -1,5 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TSchema } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   PluginToolInputError,
@@ -176,6 +178,21 @@ describe("Slack schedule tools", () => {
 
     expect(schema.required).toContain("schedule_kind");
     expect(options).toEqual(["one_off", "recurring"]);
+  });
+
+  it("accepts null recurrence in the create schema", async () => {
+    const schema = createSlackScheduleCreateTaskTool(createContext())
+      .inputSchema as TSchema;
+
+    expect(
+      Value.Check(schema, {
+        task: "Remind Greg to drink water.",
+        schedule: "In 1 minute",
+        schedule_kind: "one_off",
+        next_run_at: "2026-05-28T02:18:48.005Z",
+        recurrence: null,
+      }),
+    ).toBe(true);
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -549,6 +566,48 @@ describe("Slack schedule tools", () => {
     ]);
   });
 
+  it("creates one-off reminders with null recurrence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-28T02:17:48.005Z"));
+
+    const result = await executeTool(
+      createSlackScheduleCreateTaskTool(
+        createContext({
+          userText: "remind greg to drink water in 1m",
+        }),
+      ),
+      {
+        task: "Remind Greg to drink water.",
+        schedule: "In 1 minute",
+        schedule_kind: "one_off",
+        next_run_at: "2026-05-28T02:18:48.005Z",
+        recurrence: null,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      task: {
+        next_run_at: "2026-05-28T02:18:48.005Z",
+        recurrence: null,
+        schedule: "In 1 minute",
+        status: "active",
+        task: "Remind Greg to drink water.",
+      },
+    });
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toMatchObject([
+      {
+        nextRunAtMs: Date.parse("2026-05-28T02:18:48.005Z"),
+        schedule: {
+          kind: "one_off",
+        },
+        status: "active",
+      },
+    ]);
+  });
+
   it("rejects parseable non-ISO next run timestamps", async () => {
     await expect(
       createTask(createContext(), {
@@ -614,6 +673,18 @@ describe("Slack schedule tools", () => {
       createTask(createContext(), {
         schedule_kind: "recurring",
         recurrence: undefined,
+      }),
+    ).rejects.toThrow("Provide recurrence when schedule_kind is recurring.");
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toEqual([]);
+  });
+
+  it("rejects recurring create calls with null recurrence", async () => {
+    await expect(
+      createTask(createContext(), {
+        schedule_kind: "recurring",
+        recurrence: null,
       }),
     ).rejects.toThrow("Provide recurrence when schedule_kind is recurring.");
     await expect(
