@@ -3,6 +3,13 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
+export interface ToolExecuteOptions {
+  experimental_context?: unknown;
+  signal?: AbortSignal;
+  conversationPrivacy?: ConversationPrivacy;
+  toolCallId?: string;
+}
+
 export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   /** Stable internal owner-qualified identity for plugin-contributed tools. */
   identity?: {
@@ -29,13 +36,22 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   executionMode?: ToolExecutionMode;
   execute?: (
     input: Static<TInputSchema>,
-    options: {
-      experimental_context?: unknown;
-      signal?: AbortSignal;
-      conversationPrivacy?: ConversationPrivacy;
-      toolCallId?: string;
-    },
+    options: ToolExecuteOptions,
   ) => Promise<unknown> | unknown;
+}
+
+/**
+ * Schema-erased view for heterogeneous registries after Pi validates tool input.
+ */
+export interface AnyToolDefinition extends Omit<
+  ToolDefinition<TSchema>,
+  "execute" | "prepareArguments"
+> {
+  execute?(
+    input: unknown,
+    options: ToolExecuteOptions,
+  ): Promise<unknown> | unknown;
+  prepareArguments?(args: unknown): unknown;
 }
 
 /** Infer execute parameter types from the inputSchema via generic binding. */

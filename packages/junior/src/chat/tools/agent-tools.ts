@@ -22,7 +22,7 @@ import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import type { ToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
@@ -38,7 +38,7 @@ export interface ToolExecutionReport {
 
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
-  tools: Record<string, ToolDefinition<any>>,
+  tools: Record<string, AnyToolDefinition>,
   sandbox: SkillSandbox,
   spanContext: LogContext,
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
@@ -145,7 +145,7 @@ export function createAgentTools(
                   input: sandboxInput,
                   ...(signal ? { signal } : {}),
                 })
-              : await toolDef.execute(toolInput as never, {
+              : await toolDef.execute(toolInput, {
                   experimental_context: sandbox,
                   ...(signal ? { signal } : {}),
                   conversationPrivacy: effectiveConversationPrivacy,

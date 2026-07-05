@@ -6,6 +6,7 @@ import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { isSlackTeamId } from "@/chat/slack/ids";
 import {
   parseSlackThreadId,
+  readSlackRawMessageContext,
   resolveSlackChannelIdFromThreadId,
   resolveSlackChannelIdFromMessage,
 } from "@/chat/slack/context";
@@ -21,6 +22,17 @@ function toSlackTeamId(value: unknown): string | undefined {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readObjectField(value: object, key: string): unknown {
+  return (value as Record<string, unknown>)[key];
+}
+
+function readOptionalStringField(
+  value: object,
+  key: string,
+): string | undefined {
+  return toOptionalString(readObjectField(value, key));
 }
 
 interface StripLeadingBotMentionOptions {
@@ -72,8 +84,8 @@ export function getThreadId(
 
 export function getRunId(thread: Thread, message: Message): string | undefined {
   return (
-    toOptionalString((thread as unknown as { runId?: unknown }).runId) ??
-    toOptionalString((message as unknown as { runId?: unknown }).runId)
+    readOptionalStringField(thread, "runId") ??
+    readOptionalStringField(message, "runId")
   );
 }
 
@@ -104,24 +116,19 @@ export function getThreadTs(threadId: string | undefined): string | undefined {
 export function getAssistantThreadContext(
   message: Message,
 ): { channelId: string; threadTs: string } | undefined {
-  const raw = (message as unknown as { raw?: unknown }).raw;
-  const rawRecord =
-    raw && typeof raw === "object"
-      ? (raw as Record<string, unknown>)
-      : undefined;
-  const channelId = toOptionalString(rawRecord?.channel);
+  const rawContext = readSlackRawMessageContext(message);
+  const channelId = rawContext?.channelId;
   if (channelId) {
-    const rawThreadTs = toOptionalString(rawRecord?.thread_ts);
     const threadTs = isDmChannel(channelId)
-      ? rawThreadTs
-      : (rawThreadTs ?? toOptionalString(rawRecord?.ts));
+      ? rawContext.threadTs
+      : (rawContext.threadTs ?? rawContext.messageTs);
     if (threadTs) {
       return { channelId, threadTs };
     }
   }
 
   const parsedThreadId = parseSlackThreadId(
-    toOptionalString((message as unknown as { threadId?: unknown }).threadId),
+    readOptionalStringField(message, "threadId"),
   );
   if (!parsedThreadId || isDmChannel(parsedThreadId.channelId)) {
     return undefined;
@@ -132,24 +139,18 @@ export function getAssistantThreadContext(
 
 /** Resolve the native Slack timestamp for a message that can target Slack APIs. */
 export function getMessageTs(message: Message): SlackMessageTs | undefined {
-  const directTs = toOptionalString(
-    (message as unknown as { ts?: unknown }).ts,
-  );
+  const directTs = readOptionalStringField(message, "ts");
   const parsedDirectTs = parseSlackMessageTs(directTs);
   if (parsedDirectTs) {
     return parsedDirectTs;
   }
 
-  const raw = (message as unknown as { raw?: unknown }).raw;
-  if (!raw || typeof raw !== "object") {
+  const rawContext = readSlackRawMessageContext(message);
+  if (!rawContext) {
     return undefined;
   }
 
-  const rawRecord = raw as Record<string, unknown>;
-  const candidates = [
-    rawRecord.ts,
-    (rawRecord.message as { ts?: unknown } | undefined)?.ts,
-  ];
+  const candidates = [rawContext.messageTs, rawContext.nestedMessageTs];
   for (const candidate of candidates) {
     const ts = parseSlackMessageTs(candidate);
     if (ts) {
@@ -161,16 +162,14 @@ export function getMessageTs(message: Message): SlackMessageTs | undefined {
 
 /** Resolve the Slack workspace/team id from the raw inbound message payload. */
 export function getTeamId(message: Message): string | undefined {
-  const raw = (message as unknown as { raw?: unknown }).raw;
-  if (!raw || typeof raw !== "object") {
+  const rawContext = readSlackRawMessageContext(message);
+  if (!rawContext) {
     return undefined;
   }
 
-  const rawRecord = raw as Record<string, unknown>;
   return (
-    toSlackTeamId(rawRecord.team_id) ??
-    toSlackTeamId(rawRecord.team) ??
+    toSlackTeamId(rawContext.teamId) ??
     toSlackTeamId(getWorkspaceTeamId()) ??
-    toSlackTeamId(rawRecord.user_team)
+    toSlackTeamId(rawContext.authorTeamId)
   );
 }

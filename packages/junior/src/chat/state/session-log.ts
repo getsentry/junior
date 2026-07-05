@@ -10,7 +10,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   storedSlackRequesterSchema,
   type StoredSlackRequester,
@@ -25,13 +25,6 @@ const AGENT_SESSION_LOG_SCHEMA_VERSION = 1;
 const INITIAL_SESSION_ID = "session_0";
 const SESSION_ID_PREFIX = "session_";
 const STATE_STORE_LOCK_TTL_MS = 5_000;
-
-const piMessageSchema = z
-  .object({
-    role: z.string(),
-  })
-  .passthrough()
-  .transform((value) => value as unknown as PiMessage);
 
 const piMessageEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),

@@ -33,7 +33,7 @@ import {
 import type { SkillInvocation, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { ToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { Requester } from "@/chat/requester";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type {
@@ -397,8 +397,8 @@ export async function assemblePrompt(args: {
   spanContext: LogContext;
   toolGuidance: Array<{
     name: string;
-    promptGuidelines: ToolDefinition<any>["promptGuidelines"];
-    promptSnippet: ToolDefinition<any>["promptSnippet"];
+    promptGuidelines: AnyToolDefinition["promptGuidelines"];
+    promptSnippet: AnyToolDefinition["promptSnippet"];
   }>;
   toolRuntimeContext: ToolRuntimeContext;
   userContentParts: UserContentPart[];

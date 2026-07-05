@@ -22,7 +22,7 @@ import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import type { ToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
@@ -384,8 +384,8 @@ export async function getPluginUserPromptContributions(args: {
 /** Collect turn-scoped tools exposed by plugins. */
 export function getPluginTools(
   context: ToolRuntimeContext,
-): Record<string, ToolDefinition<any>> {
-  const tools: Record<string, ToolDefinition<any>> = {};
+): Record<string, AnyToolDefinition> {
+  const tools: Record<string, AnyToolDefinition> = {};
   for (const plugin of getPlugins()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
@@ -468,7 +468,7 @@ export function getPluginTools(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as unknown as ToolDefinition<any>;
+      const definition = tool as unknown as AnyToolDefinition;
       definition.identity = {
         id: `${pluginName}.${localName}`,
         name: localName,

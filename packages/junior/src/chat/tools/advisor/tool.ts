@@ -37,7 +37,7 @@ import {
   recordSubagentEnded,
   recordSubagentStarted,
 } from "@/chat/state/session-log";
-import { tool, type ToolDefinition } from "@/chat/tools/definition";
+import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { escapeXml } from "@/chat/xml";
 
 export type AdvisorErrorCode =
@@ -119,7 +119,7 @@ function success(memo: string): AdvisorToolResult {
 }
 
 function hasReadOnlyToolAnnotations(
-  annotations: ToolDefinition["annotations"],
+  annotations: AnyToolDefinition["annotations"],
 ): boolean {
   return (
     annotations?.readOnlyHint === true && annotations.destructiveHint !== true
@@ -128,8 +128,8 @@ function hasReadOnlyToolAnnotations(
 
 /** Build the advisor's read-only tool definition subset. */
 export function createAdvisorToolDefinitions(
-  definitions: Record<string, ToolDefinition<any>>,
-): Record<string, ToolDefinition<any>> {
+  definitions: Record<string, AnyToolDefinition>,
+): Record<string, AnyToolDefinition> {
   return Object.fromEntries(
     Object.entries(definitions).filter(
       ([name, definition]) =>

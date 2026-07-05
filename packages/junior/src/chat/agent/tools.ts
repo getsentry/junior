@@ -23,7 +23,7 @@ import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { inferActiveMcpProvidersFromPiMessages } from "@/chat/pi/derived-state";
 import { createTools } from "@/chat/tools";
-import type { ToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   toActiveMcpCatalogSummaries,
@@ -104,8 +104,8 @@ export interface ToolWiring {
   sandboxExecutor: SandboxExecutor;
   toolGuidance: Array<{
     name: string;
-    promptGuidelines: ToolDefinition<any>["promptGuidelines"];
-    promptSnippet: ToolDefinition<any>["promptSnippet"];
+    promptGuidelines: AnyToolDefinition["promptGuidelines"];
+    promptSnippet: AnyToolDefinition["promptSnippet"];
   }>;
   toolRuntimeContext: ToolRuntimeContext;
 }
@@ -351,7 +351,7 @@ export async function wireAgentTools(
   );
 
   const toolGuidance = Object.entries(
-    tools as Record<string, ToolDefinition<any>>,
+    tools as Record<string, AnyToolDefinition>,
   ).map(([name, definition]) => ({
     name,
     promptGuidelines: definition.promptGuidelines,

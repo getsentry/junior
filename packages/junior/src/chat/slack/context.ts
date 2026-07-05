@@ -1,5 +1,11 @@
+import { z } from "zod";
 import { toOptionalString } from "@/chat/coerce";
-import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
+import {
+  parseSlackChannelId,
+  parseSlackTeamId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -8,6 +14,65 @@ import {
 function toTrimmedSlackString(value: unknown): string | undefined {
   const normalized = toOptionalString(value);
   return normalized?.trim() || undefined;
+}
+
+const slackMessageEnvelopeSchema = z.object({
+  raw: z.unknown().optional(),
+});
+
+const rawSlackMessageSchema = z.object({
+  channel: z.unknown().optional(),
+  message: z.unknown().optional(),
+  team: z.unknown().optional(),
+  team_id: z.unknown().optional(),
+  thread_ts: z.unknown().optional(),
+  ts: z.unknown().optional(),
+  user_team: z.unknown().optional(),
+});
+
+const nestedRawSlackMessageSchema = z.object({
+  ts: z.unknown().optional(),
+});
+
+export interface SlackRawMessageContext {
+  authorTeamId?: SlackTeamId;
+  channelId?: SlackChannelId;
+  messageTs?: SlackMessageTs;
+  nestedMessageTs?: SlackMessageTs;
+  teamId?: SlackTeamId;
+  threadTs?: SlackMessageTs;
+}
+
+/** Project only the Slack raw fields consumed by runtime thread context. */
+export function readSlackRawMessageContext(
+  message: unknown,
+): SlackRawMessageContext | undefined {
+  const envelope = slackMessageEnvelopeSchema.safeParse(message);
+  if (!envelope.success) {
+    return undefined;
+  }
+  const raw = rawSlackMessageSchema.safeParse(envelope.data.raw);
+  if (!raw.success) {
+    return undefined;
+  }
+  const nestedMessage = nestedRawSlackMessageSchema.safeParse(raw.data.message);
+  const channelId = parseSlackChannelId(raw.data.channel);
+  const threadTs = parseSlackMessageTs(raw.data.thread_ts);
+  const messageTs = parseSlackMessageTs(raw.data.ts);
+  const nestedMessageTs =
+    nestedMessage.success && parseSlackMessageTs(nestedMessage.data.ts);
+  const teamId =
+    parseSlackTeamId(raw.data.team_id) ?? parseSlackTeamId(raw.data.team);
+  const authorTeamId = parseSlackTeamId(raw.data.user_team);
+
+  return {
+    ...(channelId ? { channelId } : {}),
+    ...(threadTs ? { threadTs } : {}),
+    ...(messageTs ? { messageTs } : {}),
+    ...(nestedMessageTs ? { nestedMessageTs } : {}),
+    ...(teamId ? { teamId } : {}),
+    ...(authorTeamId ? { authorTeamId } : {}),
+  };
 }
 
 /** Extract a channel ID and validated Slack timestamp from `slack:<channel>:<ts>`. */

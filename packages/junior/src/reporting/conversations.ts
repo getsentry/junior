@@ -12,7 +12,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import type { PiMessage } from "@/chat/pi/messages";
+import { piContentMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
 import type {
   PluginConversationStatus,
@@ -1503,14 +1503,6 @@ function subagentConversationFields(
   };
 }
 
-const piMessageSchema = z
-  .object({
-    content: z.array(z.unknown()),
-    role: z.string().min(1),
-  })
-  .passthrough()
-  .transform((value) => value as unknown as PiMessage);
-
 async function readTranscriptRefMessages(
   ref: Extract<
     SessionActivityEntry,
@@ -1524,7 +1516,7 @@ async function readTranscriptRefMessages(
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const value = await stateAdapter.get<unknown>(ref.key);
-  const parsed = z.array(piMessageSchema).safeParse(value);
+  const parsed = z.array(piContentMessageSchema).safeParse(value);
   return parsed.success ? parsed.data : [];
 }
 

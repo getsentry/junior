@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getAssistantThreadContext,
+  getMessageTs,
   getTeamId,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
@@ -93,6 +94,41 @@ describe("getAssistantThreadContext", () => {
         threadId: "slack:D12345:1700000000.300",
       } as any),
     ).toBeUndefined();
+  });
+});
+
+describe("getMessageTs", () => {
+  it("uses a direct normalized message timestamp first", () => {
+    expect(
+      getMessageTs({
+        raw: {
+          ts: "1700000000.100",
+        },
+        ts: "1700000000.200",
+      } as any),
+    ).toBe("1700000000.200");
+  });
+
+  it("uses the raw Slack message timestamp when direct ts is absent", () => {
+    expect(
+      getMessageTs({
+        raw: {
+          ts: "1700000000.300",
+        },
+      } as any),
+    ).toBe("1700000000.300");
+  });
+
+  it("falls back to the nested Slack message timestamp", () => {
+    expect(
+      getMessageTs({
+        raw: {
+          message: {
+            ts: "1700000000.400",
+          },
+        },
+      } as any),
+    ).toBe("1700000000.400");
   });
 });
 
