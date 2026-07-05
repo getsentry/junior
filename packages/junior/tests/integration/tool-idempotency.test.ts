@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackCanvasCreateTool } from "@/chat/tools/slack/canvas-tools";
+import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
+import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
 import { SlackActionError } from "@/chat/slack/client";
 import type { ToolState } from "@/chat/tools/types";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import {
   canvasesAccessSetOk,
   canvasesCreateOk,

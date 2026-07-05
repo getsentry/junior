@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import type { DestinationVisibilityReader } from "@/chat/tools/slack/channel-access";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
+import type { DestinationVisibilityReader } from "@/chat/slack/tools/channel-access";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -362,7 +362,8 @@ describe("slackThreadRead", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      error: "Invalid Slack message timestamp.",
+      error:
+        "Invalid `ts` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
     });
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });

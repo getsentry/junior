@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createSlackCanvasReadTool } from "@/chat/tools/slack/canvas-tools";
+import { createSlackCanvasReadTool } from "@/chat/slack/tools/canvas/read";
 import { filesInfoOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,

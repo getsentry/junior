@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
+import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,

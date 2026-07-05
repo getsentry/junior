@@ -29,7 +29,7 @@ import {
   createVisionContextService,
   type VisionContextDeps,
   type VisionContextService,
-} from "@/chat/services/vision-context";
+} from "@/chat/slack/vision-context";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 
 export interface JuniorRuntimeServices {

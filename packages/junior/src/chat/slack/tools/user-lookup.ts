@@ -7,6 +7,7 @@ import {
 } from "@/chat/slack/users";
 import { tool } from "@/chat/tools/definition";
 
+/** Create the tool that resolves Slack users by ID, handle, or email. */
 export function createSlackUserLookupTool() {
   return tool({
     description:

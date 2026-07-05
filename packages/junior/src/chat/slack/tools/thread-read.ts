@@ -4,13 +4,15 @@ import { listThreadReplies } from "@/chat/slack/channel";
 import {
   checkSlackChannelReadAccess,
   type DestinationVisibilityReader,
-} from "@/chat/tools/slack/channel-access";
+} from "@/chat/slack/tools/channel-access";
 import { tool } from "@/chat/tools/definition";
+import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import {
-  SLACK_TS_PATTERN,
-  parseSlackMessageReference,
-} from "@/chat/tools/slack/slack-message-url";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+  parseRequiredSlackTimestampParam,
+  slackTimestampParam,
+} from "@/chat/slack/timestamp-param";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 
@@ -93,11 +95,9 @@ export function createSlackThreadReadTool(
         }),
       ),
       ts: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
-        }),
+        slackTimestampParam(
+          "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
+        ),
       ),
       limit: Type.Optional(
         Type.Integer({
@@ -116,8 +116,8 @@ export function createSlackThreadReadTool(
     }),
     execute: async ({ url, channel_id, ts, limit, max_pages }) => {
       let channelId: string;
-      let messageTs: string;
-      let threadTs: string | undefined;
+      let messageTs: SlackMessageTs;
+      let threadTs: SlackMessageTs | undefined;
 
       if (url) {
         const parsed = parseSlackMessageReference(url);
@@ -128,11 +128,12 @@ export function createSlackThreadReadTool(
         messageTs = parsed.reference.messageTs;
         threadTs = parsed.reference.threadTs;
       } else if (channel_id && ts) {
-        if (!SLACK_TS_PATTERN.test(ts)) {
-          return { ok: false, error: "Invalid Slack message timestamp." };
+        const parsedTs = parseRequiredSlackTimestampParam("ts", ts);
+        if (!parsedTs.ok) {
+          return { ok: false, error: parsedTs.error };
         }
         channelId = channel_id;
-        messageTs = ts;
+        messageTs = parsedTs.value;
       } else {
         return {
           ok: false,

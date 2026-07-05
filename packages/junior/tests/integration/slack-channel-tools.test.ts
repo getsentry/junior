@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/slack/tools/channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolState } from "@/chat/tools/types";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
@@ -203,7 +203,7 @@ describe("slack channel tools", () => {
     const result = await executeTool(tool, {
       limit: 150,
       oldest: "1690000000.000",
-      latest: "1710000000.000",
+      latest: "1710000000",
       max_pages: 3,
     });
 
@@ -223,9 +223,89 @@ describe("slack channel tools", () => {
     expect(historyCalls[0]?.params).toMatchObject({
       channel: "C123",
       oldest: "1690000000.000",
-      latest: "1710000000.000",
+      latest: "1710000000",
     });
     expect(String(historyCalls[0]?.params.limit)).toBe("150");
+  });
+
+  it("normalizes Slack thread references before listing channel messages", async () => {
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.300000", text: "hello", user: "U1" }],
+      }),
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      oldest: "slack:C123:1690000000.000000",
+      latest: " slack:C123:1710000000.000000 ",
+    });
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      channel_id: "C123",
+      count: 1,
+    });
+    expect(
+      getCapturedSlackApiCalls("conversations.history")[0]?.params,
+    ).toMatchObject({
+      channel: "C123",
+      oldest: "1690000000.000000",
+      latest: "1710000000.000000",
+    });
+  });
+
+  it("rejects invalid channel history timestamps before calling Slack", async () => {
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      latest: "slack:C123:not-a-timestamp",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Invalid `latest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
+    });
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
+  });
+
+  it("rejects blank channel history timestamps before calling Slack", async () => {
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      oldest: "   ",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
+    });
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
+  });
+
+  it("rejects channel history timestamp references for other channels", async () => {
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      oldest: "slack:C_OTHER:1710000000.000000",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
+    });
+    expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
   });
 
   it("returns posted message even when permalink lookup fails", async () => {

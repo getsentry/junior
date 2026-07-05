@@ -6,7 +6,7 @@ import { getMessageActorIdentity } from "@/chat/services/message-actor-identity"
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
-} from "@/chat/services/vision-context";
+} from "@/chat/slack/vision-context";
 
 const NON_TEXT_MESSAGE_TEXT = "[non-text message]";
 

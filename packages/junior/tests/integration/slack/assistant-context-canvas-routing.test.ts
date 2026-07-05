@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCanvas } from "@/chat/tools/slack/canvases";
+import { createCanvas } from "@/chat/slack/tools/canvas/api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   canvasesAccessSetOk,

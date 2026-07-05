@@ -1,14 +1,18 @@
 import { toOptionalString } from "@/chat/coerce";
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 function toTrimmedSlackString(value: unknown): string | undefined {
   const normalized = toOptionalString(value);
   return normalized?.trim() || undefined;
 }
 
-/** Extract channelId and threadTs from a `slack:<channel>:<ts>` thread identifier. */
+/** Extract a channel ID and validated Slack timestamp from `slack:<channel>:<ts>`. */
 export function parseSlackThreadId(
   threadId: string | undefined,
-): { channelId: string; threadTs: string } | undefined {
+): { channelId: string; threadTs: SlackMessageTs } | undefined {
   const normalizedThreadId = toTrimmedSlackString(threadId);
   if (!normalizedThreadId) {
     return undefined;
@@ -20,7 +24,7 @@ export function parseSlackThreadId(
   }
 
   const channelId = toTrimmedSlackString(parts[1]);
-  const threadTs = toTrimmedSlackString(parts[2]);
+  const threadTs = parseSlackMessageTs(parts[2]);
   if (!channelId || !threadTs) {
     return undefined;
   }

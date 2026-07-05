@@ -3,9 +3,10 @@ import { postSlackMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolState } from "@/chat/tools/types";
 
+/** Create the tool that posts a new message to the active Slack channel. */
 export function createSlackChannelPostMessageTool(
   context: SlackToolContext,
   state: ToolState,

@@ -1,9 +1,13 @@
 /** Parse Slack archive URLs into structured message references. */
+import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
 
 export interface SlackMessageReference {
   channelId: string;
-  messageTs: string;
-  threadTs?: string;
+  messageTs: SlackMessageTs;
+  threadTs?: SlackMessageTs;
 }
 
 type ParseResult =
@@ -12,9 +16,6 @@ type ParseResult =
 
 const SLACK_HOST_PATTERN = /^[a-z0-9-]+\.slack(?:-gov)?\.com$/;
 const ARCHIVE_PATH_PATTERN = /^\/archives\/([CDG][A-Z0-9]+)\/p(\d{10})(\d{6})$/;
-
-/** Slack message timestamp format: 10 digits, dot, 6 digits. */
-export const SLACK_TS_PATTERN = /^\d{10}\.\d{6}$/;
 
 /**
  * Convert a Slack `pNNNNNNNNNNMMMMMM` path segment into a Slack
@@ -64,13 +65,19 @@ export function parseSlackMessageReference(input: string): ParseResult {
   }
 
   const channelId = pathMatch[1]!;
-  const messageTs = pTimestampToTs(pathMatch[2]!, pathMatch[3]!);
+  const messageTs = parseSlackMessageTs(
+    pTimestampToTs(pathMatch[2]!, pathMatch[3]!),
+  );
+  if (!messageTs) {
+    return { ok: false, error: "Invalid message timestamp in URL" };
+  }
 
   // Handle HTML-encoded ampersands from some Slack contexts.
   const params = new URLSearchParams(parsed.search.replace(/&amp;/g, "&"));
-  const threadTs = params.get("thread_ts") || undefined;
+  const rawThreadTs = params.get("thread_ts") || undefined;
+  const threadTs = rawThreadTs ? parseSlackMessageTs(rawThreadTs) : undefined;
 
-  if (threadTs && !SLACK_TS_PATTERN.test(threadTs)) {
+  if (rawThreadTs && !threadTs) {
     return { ok: false, error: "Invalid thread timestamp in URL" };
   }
 

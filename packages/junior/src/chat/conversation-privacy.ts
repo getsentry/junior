@@ -22,10 +22,14 @@ function privateNarrowingFromChannelId(
 function privateNarrowingFromConversationId(
   conversationId: string | undefined,
 ): ConversationPrivacy | undefined {
-  if (!conversationId?.trim()) return undefined;
-  const slackThread = parseSlackThreadId(conversationId);
+  const normalized = conversationId?.trim();
+  if (!normalized) return undefined;
+  const slackThread = parseSlackThreadId(normalized);
   if (slackThread) {
     return privateNarrowingFromChannelId(slackThread.channelId);
+  }
+  if (normalized.startsWith("slack:")) {
+    return undefined;
   }
   // Non-Slack conversations (local CLI, internal runs) are private surfaces.
   return "private";

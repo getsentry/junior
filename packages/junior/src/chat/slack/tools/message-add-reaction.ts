@@ -4,9 +4,10 @@ import { addReactionToMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolState } from "@/chat/tools/types";
 
+/** Create the tool that reacts to the current inbound Slack message. */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCanvasMarkdown } from "@/chat/tools/slack/canvases";
+import { normalizeCanvasMarkdown } from "@/chat/slack/tools/canvas/api";
 
 describe("normalizeCanvasMarkdown", () => {
   it("downgrades unsupported heading depth to h3", () => {

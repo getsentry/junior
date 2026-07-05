@@ -5,6 +5,10 @@ import type { ThreadConversationState } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logInfo, logWarn } from "@/chat/logging";
 import {
+  parseSlackMessageTs,
+  type SlackMessageTs,
+} from "@/chat/slack/timestamp";
+import {
   getConversationMessageSlackTs,
   isHumanConversationMessage,
   updateConversationStats,
@@ -43,7 +47,7 @@ export interface VisionContextDeps {
   downloadFile: (url: string) => Promise<Buffer>;
   listThreadReplies: (input: {
     channelId: string;
-    threadTs: string;
+    threadTs: SlackMessageTs;
     limit?: number;
     maxPages?: number;
     targetMessageTs?: string[];
@@ -462,6 +466,10 @@ async function hydrateConversationVisionContextWithDeps(
   if (!context.channelId || !context.threadTs) {
     return;
   }
+  const threadTs = parseSlackMessageTs(context.threadTs);
+  if (!threadTs) {
+    return;
+  }
 
   const messagesByTs = new Map<
     string,
@@ -482,7 +490,7 @@ async function hydrateConversationVisionContextWithDeps(
   try {
     replies = await deps.listThreadReplies({
       channelId: context.channelId,
-      threadTs: context.threadTs,
+      threadTs,
       limit: 1000,
       maxPages: 10,
       targetMessageTs: [...messagesByTs.keys()],

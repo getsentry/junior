@@ -19,6 +19,12 @@ describe("conversation privacy classification", () => {
     expect(
       resolveConversationPrivacy({ channelId: "C123", visibility: "public" }),
     ).toBe("public");
+    expect(
+      resolveConversationPrivacy({
+        conversationId: "slack:C123:details-only",
+        visibility: "public",
+      }),
+    ).toBe("public");
     // Slack reported channel_type group despite the C prefix.
     expect(
       resolveConversationPrivacy({ channelId: "C123", visibility: "private" }),

@@ -69,7 +69,7 @@ import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
   isVisionEnabled,
-} from "@/chat/services/vision-context";
+} from "@/chat/slack/vision-context";
 import {
   createSlackAdapterAssistantStatusSession,
   type AssistantStatusSpec,

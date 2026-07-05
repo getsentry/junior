@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  createSlackCanvasEditTool,
-  createSlackCanvasWriteTool,
-} from "@/chat/tools/slack/canvas-tools";
+import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
+import { createSlackCanvasWriteTool } from "@/chat/slack/tools/canvas/write";
 import type { ToolState } from "@/chat/tools/types";
 import { canvasesEditOk, filesInfoOk } from "../fixtures/slack/factories/api";
 import {

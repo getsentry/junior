@@ -1,10 +1,61 @@
 import { Type } from "@sinclair/typebox";
-import { SlackActionError } from "@/chat/slack/client";
+import {
+  normalizeSlackConversationId,
+  SlackActionError,
+} from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
+import { parseSlackThreadId } from "@/chat/slack/context";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
+import {
+  optionalSlackTimestampParam,
+  parseSlackTimestampParam,
+} from "@/chat/slack/timestamp-param";
 import { tool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { SlackToolContext } from "@/chat/tools/slack/context";
+import type { SlackToolContext } from "@/chat/slack/tools/context";
 
+/**
+ * Accept numeric Slack ts bounds and recover matching Junior
+ * `slack:<channel>:<ts>` references before Slack API calls.
+ */
+function normalizeRangeTimestamp(
+  field: "oldest" | "latest",
+  value: string | undefined,
+  targetChannelId: string,
+):
+  | { ok: true; value: SlackMessageTs | undefined }
+  | { ok: false; error: string } {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return parseSlackTimestampParam(field, value);
+  }
+
+  const timestamp = parseSlackTimestampParam(field, trimmed);
+  if (timestamp.ok && timestamp.value) {
+    return timestamp;
+  }
+
+  const threadId = parseSlackThreadId(trimmed);
+  const threadTimestamp = threadId
+    ? parseSlackTimestampParam(field, threadId.threadTs)
+    : undefined;
+  if (threadId && threadTimestamp?.ok && threadTimestamp.value) {
+    const referenceChannelId = normalizeSlackConversationId(threadId.channelId);
+    const normalizedTargetChannelId =
+      normalizeSlackConversationId(targetChannelId);
+    if (referenceChannelId === normalizedTargetChannelId) {
+      return threadTimestamp;
+    }
+  }
+
+  return timestamp;
+}
+
+/** Create the active-channel history tool with preflight timestamp normalization. */
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return tool({
     description:
@@ -24,19 +75,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
           description: "Optional cursor to continue from a prior call.",
         }),
       ),
-      oldest: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Optional oldest message timestamp (Slack ts) for range filtering.",
-        }),
+      oldest: optionalSlackTimestampParam(
+        "Optional oldest message timestamp (Slack ts) for range filtering.",
       ),
-      latest: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Optional latest message timestamp (Slack ts) for range filtering.",
-        }),
+      latest: optionalSlackTimestampParam(
+        "Optional latest message timestamp (Slack ts) for range filtering.",
       ),
       inclusive: Type.Optional(
         Type.Boolean({
@@ -65,14 +108,31 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         throw new ToolInputError("No active Slack destination is available.");
       }
 
+      const normalizedOldest = normalizeRangeTimestamp(
+        "oldest",
+        oldest,
+        targetChannelId,
+      );
+      if (!normalizedOldest.ok) {
+        return { ok: false, error: normalizedOldest.error };
+      }
+      const normalizedLatest = normalizeRangeTimestamp(
+        "latest",
+        latest,
+        targetChannelId,
+      );
+      if (!normalizedLatest.ok) {
+        return { ok: false, error: normalizedLatest.error };
+      }
+
       let result;
       try {
         result = await listChannelMessages({
           channelId: targetChannelId,
           limit: limit ?? 100,
           cursor,
-          oldest,
-          latest,
+          oldest: normalizedOldest.value,
+          latest: normalizedLatest.value,
           inclusive,
           maxPages: max_pages,
         });

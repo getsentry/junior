@@ -29,7 +29,7 @@ import {
 import {
   hasPotentialImageAttachment,
   isVisionEnabled,
-} from "@/chat/services/vision-context";
+} from "@/chat/slack/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";

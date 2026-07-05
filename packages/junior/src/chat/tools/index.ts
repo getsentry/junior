@@ -18,24 +18,20 @@ import {
   createListResourceEventSubscriptionsTool,
   createSubscribeToResourceEventsTool,
 } from "@/chat/tools/resource-events";
-import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
-import { getSlackToolContext } from "@/chat/tools/slack/context";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
-import {
-  createSlackCanvasCreateTool,
-  createSlackCanvasEditTool,
-  createSlackCanvasReadTool,
-  createSlackCanvasWriteTool,
-} from "@/chat/tools/slack/canvas-tools";
-import {
-  createSlackListAddItemsTool,
-  createSlackListCreateTool,
-  createSlackListGetItemsTool,
-  createSlackListUpdateItemTool,
-} from "@/chat/tools/slack/list-tools";
-import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
+import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/slack/tools/channel-post-message";
+import { getSlackToolContext } from "@/chat/slack/tools/context";
+import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
+import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
+import { createSlackCanvasEditTool } from "@/chat/slack/tools/canvas/edit";
+import { createSlackCanvasReadTool } from "@/chat/slack/tools/canvas/read";
+import { createSlackCanvasWriteTool } from "@/chat/slack/tools/canvas/write";
+import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
+import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
+import { createSlackListGetItemsTool } from "@/chat/slack/tools/list/get-items";
+import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
+import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
+import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createAdvisorTool } from "@/chat/tools/advisor/tool";
 import type { ToolDefinition } from "@/chat/tools/definition";

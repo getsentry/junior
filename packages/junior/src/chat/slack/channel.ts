@@ -3,6 +3,7 @@ import {
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
+import type { SlackMessageTs } from "@/chat/slack/timestamp";
 
 export interface SlackChannelMessage {
   ts?: string;
@@ -36,12 +37,13 @@ export interface SlackThreadReply {
   attachments?: unknown[];
 }
 
+/** List channel history using Slack-native, pre-validated timestamp bounds. */
 export async function listChannelMessages(input: {
   channelId: string;
   limit: number;
   cursor?: string;
-  oldest?: string;
-  latest?: string;
+  oldest?: SlackMessageTs;
+  latest?: SlackMessageTs;
   inclusive?: boolean;
   maxPages?: number;
 }): Promise<{ messages: SlackChannelMessage[]; nextCursor?: string }> {
@@ -88,9 +90,10 @@ export async function listChannelMessages(input: {
   };
 }
 
+/** Read replies from a Slack thread identified by a validated native thread timestamp. */
 export async function listThreadReplies(input: {
   channelId: string;
-  threadTs: string;
+  threadTs: SlackMessageTs;
   limit?: number;
   maxPages?: number;
   targetMessageTs?: string[];
