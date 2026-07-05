@@ -1,8 +1,5 @@
-import {
-  getSlackClient,
-  normalizeSlackConversationId,
-  withSlackRetries,
-} from "@/chat/slack/client";
+import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
+import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 
 export interface SlackChannelMessage {
@@ -39,7 +36,7 @@ export interface SlackThreadReply {
 
 /** List channel history using Slack-native, pre-validated timestamp bounds. */
 export async function listChannelMessages(input: {
-  channelId: string;
+  channelId: SlackChannelId;
   limit: number;
   cursor?: string;
   oldest?: SlackMessageTs;
@@ -48,10 +45,7 @@ export async function listChannelMessages(input: {
   maxPages?: number;
 }): Promise<{ messages: SlackChannelMessage[]; nextCursor?: string }> {
   const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack channel history lookup requires a valid channel ID");
-  }
+  const channelId = input.channelId;
   const targetLimit = Math.max(1, Math.min(input.limit, 1000));
   const maxPages = Math.max(1, Math.min(input.maxPages ?? 5, 10));
   const messages: SlackChannelMessage[] = [];
@@ -92,17 +86,14 @@ export async function listChannelMessages(input: {
 
 /** Read replies from a Slack thread identified by a validated native thread timestamp. */
 export async function listThreadReplies(input: {
-  channelId: string;
+  channelId: SlackChannelId;
   threadTs: SlackMessageTs;
   limit?: number;
   maxPages?: number;
   targetMessageTs?: string[];
 }): Promise<SlackThreadReply[]> {
   const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack thread reply lookup requires a valid channel ID");
-  }
+  const channelId = input.channelId;
   const targetLimit = Math.max(1, Math.min(input.limit ?? 1000, 1000));
   const maxPages = Math.max(1, Math.min(input.maxPages ?? 10, 10));
   const pendingTargets = new Set(

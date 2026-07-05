@@ -4,6 +4,7 @@ import {
   getSlackClient,
   withSlackRetries,
 } from "@/chat/slack/client";
+import type { SlackUserId } from "@/chat/slack/ids";
 import type { ListColumnMap } from "@/chat/state/artifacts";
 
 type RichTextBlock = {
@@ -153,7 +154,7 @@ export async function addListItems(input: {
   listId: string;
   titles: string[];
   listColumnMap?: ListColumnMap;
-  assigneeUserId?: string;
+  assigneeUserId?: SlackUserId;
   dueDate?: string;
 }): Promise<{ createdItemIds: string[]; listColumnMap?: ListColumnMap }> {
   const client = getSlackClient();

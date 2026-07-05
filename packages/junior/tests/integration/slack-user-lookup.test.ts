@@ -67,20 +67,20 @@ describe("slackUserLookup", () => {
     it("returns user without custom fields when none are set", async () => {
       queueSlackApiResponse("users.info", {
         body: usersInfoOk({
-          userId: "U_BASIC",
+          userId: "U0BASIC",
           userName: "basic",
           realName: "Basic User",
         }),
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_BASIC" });
+      const result = await executeTool(tool, { user_id: "U0BASIC" });
 
       expect(result).toMatchObject({
         ok: true,
         mode: "user_id",
         user: {
-          id: "U_BASIC",
+          id: "U0BASIC",
           name: "basic",
           real_name: "Basic User",
           is_bot: false,
@@ -93,7 +93,7 @@ describe("slackUserLookup", () => {
       queueSlackApiError("users.info", { error: "user_not_found" });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_NONEXISTENT" });
+      const result = await executeTool(tool, { user_id: "U0NONEXISTENT" });
 
       expect(result.ok).toBe(false);
       expect(result.slack_error).toBe("user_not_found");
@@ -104,7 +104,7 @@ describe("slackUserLookup", () => {
     it("finds a user by email", async () => {
       queueSlackApiResponse("users.lookupByEmail", {
         body: usersInfoOk({
-          userId: "U_EMAIL",
+          userId: "U0EMAIL",
           userName: "emailuser",
           realName: "Email User",
           email: "emailuser@sentry.io",
@@ -118,7 +118,7 @@ describe("slackUserLookup", () => {
         ok: true,
         mode: "email",
         user: {
-          id: "U_EMAIL",
+          id: "U0EMAIL",
           name: "emailuser",
           email: "emailuser@sentry.io",
         },
@@ -344,15 +344,15 @@ describe("slackUserLookup", () => {
         {},
         {
           source: createSlackSource({
-            teamId: "T_TEST",
-            channelId: "C_TEST",
+            teamId: "T0TEST",
+            channelId: "C0TEST",
 
             type: "priv",
           }),
           destination: {
             platform: "slack",
-            teamId: "T_TEST",
-            channelId: "C_TEST",
+            teamId: "T0TEST",
+            channelId: "C0TEST",
           },
           egress: {
             async fetch() {
@@ -372,7 +372,7 @@ describe("slackUserLookup", () => {
     it("returns custom profile fields as-is", async () => {
       queueSlackApiResponse("users.info", {
         body: usersInfoOk({
-          userId: "U_GH",
+          userId: "U0GH",
           userName: "untitaker",
           realName: "Markus Unterwaditzer",
           fields: {
@@ -386,7 +386,7 @@ describe("slackUserLookup", () => {
       });
 
       const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_GH" });
+      const result = await executeTool(tool, { user_id: "U0GH" });
 
       expect(result.user.profile_fields).toHaveLength(1);
       expect(result.user.profile_fields[0]).toMatchObject({

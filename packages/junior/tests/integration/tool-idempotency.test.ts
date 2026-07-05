@@ -4,8 +4,10 @@ import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
 import { SlackActionError } from "@/chat/slack/client";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolState } from "@/chat/tools/types";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
+import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {
   canvasesAccessSetOk,
   canvasesCreateOk,
@@ -50,22 +52,40 @@ function createToolState(
 
 const noopSandbox = {} as any;
 
+function requireSlackChannelId(value: string) {
+  const channelId = parseSlackChannelId(value);
+  if (!channelId) {
+    throw new Error(`Invalid test Slack channel ID: ${value}`);
+  }
+  return channelId;
+}
+
+function requireSlackTeamId(value: string) {
+  const teamId = parseSlackTeamId(value);
+  if (!teamId) {
+    throw new Error(`Invalid test Slack team ID: ${value}`);
+  }
+  return teamId;
+}
+
 function slackContext(channelId: string): SlackToolContext {
+  const parsedChannelId = requireSlackChannelId(channelId);
+  const teamId = requireSlackTeamId("T123");
   return {
     destination: {
       platform: "slack" as const,
-      teamId: "T123",
-      channelId,
+      teamId,
+      channelId: parsedChannelId,
     },
     source: createSlackSource({
-      teamId: "T123",
-      channelId,
+      teamId,
+      channelId: parsedChannelId,
 
       type: "priv",
     }),
-    destinationChannelId: channelId,
-    sourceChannelId: channelId,
-    teamId: "T123",
+    destinationChannelId: parsedChannelId,
+    sourceChannelId: parsedChannelId,
+    teamId,
   };
 }
 
@@ -199,15 +219,17 @@ describe("tool idempotency", () => {
       }),
     });
 
+    const sharedChannelId = requireSlackChannelId("C0SHARED");
+    const teamId = requireSlackTeamId("T123");
     const tool = createSlackCanvasCreateTool(
       {
         ...slackContext("D123"),
         destination: {
           platform: "slack" as const,
-          teamId: "T123",
-          channelId: "C_SHARED",
+          teamId,
+          channelId: sharedChannelId,
         },
-        destinationChannelId: "C_SHARED",
+        destinationChannelId: sharedChannelId,
       },
       createToolState(),
     );
@@ -226,7 +248,7 @@ describe("tool idempotency", () => {
     ).toMatchObject({
       canvas_id: "canvas-shared-1",
       access_level: "write",
-      channel_ids: ["C_SHARED"],
+      channel_ids: ["C0SHARED"],
     });
   });
 
@@ -291,6 +313,52 @@ describe("tool idempotency", () => {
       ok: true,
       list_id: "list-1",
       deduplicated: true,
+    });
+  });
+
+  it("validates slack_list_add_items assignee user ids before Slack calls", async () => {
+    const state = createToolState({
+      currentListId: "list-1",
+      listColumnMap: {
+        titleColumnId: "col-title",
+        assigneeColumnId: "col-assignee",
+      },
+    });
+    const tool = createSlackListAddItemsTool(state);
+
+    await expect(
+      executeTool(tool, {
+        items: ["Ship patch"],
+        assignee_user_id: "not-a-slack-user",
+      }),
+    ).rejects.toThrow(ToolInputError);
+    expect(getCapturedSlackApiCalls("slackLists.items.create")).toHaveLength(0);
+
+    queueSlackApiResponse("slackLists.items.create", {
+      body: slackListsItemsCreateOk({ itemId: "item-1" }),
+    });
+
+    await expect(
+      executeTool(tool, {
+        items: ["Ship patch"],
+        assignee_user_id: "U123",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      list_id: "list-1",
+      created_count: 1,
+    });
+
+    expect(
+      getCapturedSlackApiCalls("slackLists.items.create")[0]?.params,
+    ).toMatchObject({
+      list_id: "list-1",
+      initial_fields: expect.arrayContaining([
+        expect.objectContaining({
+          column_id: "col-assignee",
+          user: ["U123"],
+        }),
+      ]),
     });
   });
 

@@ -5,6 +5,10 @@ import {
   lookupSlackUserByEmail,
   searchSlackUsers,
 } from "@/chat/slack/users";
+import {
+  parseRequiredSlackUserIdParam,
+  slackUserIdParam,
+} from "@/chat/slack/id-param";
 import { tool } from "@/chat/tools/definition";
 
 /** Create the tool that resolves Slack users by ID, handle, or email. */
@@ -15,11 +19,9 @@ export function createSlackUserLookupTool() {
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       user_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Slack user ID to look up (e.g. U039RR91S). Mutually exclusive with email and query.",
-        }),
+        slackUserIdParam(
+          "Slack user ID to look up (e.g. U039RR91S). Mutually exclusive with email and query.",
+        ),
       ),
       email: Type.Optional(
         Type.String({
@@ -83,10 +85,18 @@ export function createSlackUserLookupTool() {
 
       try {
         if (user_id) {
+          const parsedUserId = parseRequiredSlackUserIdParam(
+            "user_id",
+            user_id,
+          );
+          if (!parsedUserId.ok) {
+            return { ok: false, error: parsedUserId.error };
+          }
+
           return {
             ok: true,
             mode: "user_id",
-            user: await lookupSlackUserProfile(user_id),
+            user: await lookupSlackUserProfile(parsedUserId.value),
           };
         }
 

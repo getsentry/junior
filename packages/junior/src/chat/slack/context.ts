@@ -1,4 +1,5 @@
 import { toOptionalString } from "@/chat/coerce";
+import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -12,7 +13,7 @@ function toTrimmedSlackString(value: unknown): string | undefined {
 /** Extract a channel ID and validated Slack timestamp from `slack:<channel>:<ts>`. */
 export function parseSlackThreadId(
   threadId: string | undefined,
-): { channelId: string; threadTs: SlackMessageTs } | undefined {
+): { channelId: SlackChannelId; threadTs: SlackMessageTs } | undefined {
   const normalizedThreadId = toTrimmedSlackString(threadId);
   if (!normalizedThreadId) {
     return undefined;
@@ -23,7 +24,7 @@ export function parseSlackThreadId(
     return undefined;
   }
 
-  const channelId = toTrimmedSlackString(parts[1]);
+  const channelId = parseSlackChannelId(parts[1]);
   const threadTs = parseSlackMessageTs(parts[2]);
   if (!channelId || !threadTs) {
     return undefined;
@@ -35,15 +36,15 @@ export function parseSlackThreadId(
 /** Resolve the Slack channel ID from a `slack:<channel>:<ts>` thread identifier. */
 export function resolveSlackChannelIdFromThreadId(
   threadId: string | undefined,
-): string | undefined {
+): SlackChannelId | undefined {
   return parseSlackThreadId(threadId)?.channelId;
 }
 
 /** Best-effort channel ID extraction from a raw Slack message payload. */
 export function resolveSlackChannelIdFromMessage(
   message: unknown,
-): string | undefined {
-  const messageChannelId = toTrimmedSlackString(
+): SlackChannelId | undefined {
+  const messageChannelId = parseSlackChannelId(
     (message as { channelId?: unknown }).channelId,
   );
   if (messageChannelId) {
@@ -52,7 +53,7 @@ export function resolveSlackChannelIdFromMessage(
 
   const raw = (message as { raw?: unknown }).raw;
   if (raw && typeof raw === "object") {
-    const rawChannel = toTrimmedSlackString(
+    const rawChannel = parseSlackChannelId(
       (raw as { channel?: unknown }).channel,
     );
     if (rawChannel) {

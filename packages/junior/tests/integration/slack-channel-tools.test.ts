@@ -5,6 +5,7 @@ import { createSlackChannelPostMessageTool } from "@/chat/slack/tools/channel-po
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolState } from "@/chat/tools/types";
+import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
   chatGetPermalinkOk,
@@ -36,13 +37,49 @@ function createToolState(): ToolState {
   };
 }
 
+type ContextOverrides = Omit<
+  Partial<SlackToolContext>,
+  "destinationChannelId" | "sourceChannelId" | "teamId"
+> & {
+  destinationChannelId?: string;
+  sourceChannelId?: string;
+  teamId?: string;
+};
+
+function requireSlackChannelId(value: string) {
+  const channelId = parseSlackChannelId(value);
+  if (!channelId) {
+    throw new Error(`Invalid test Slack channel ID: ${value}`);
+  }
+  return channelId;
+}
+
+function requireSlackTeamId(value: string) {
+  const teamId = parseSlackTeamId(value);
+  if (!teamId) {
+    throw new Error(`Invalid test Slack team ID: ${value}`);
+  }
+  return teamId;
+}
+
 function createContext(
   _userText: string,
-  overrides: Partial<SlackToolContext> = {},
+  overrides: ContextOverrides = {},
 ): SlackToolContext {
-  const sourceChannelId = overrides.sourceChannelId ?? "C123";
+  const sourceChannelId = requireSlackChannelId(
+    overrides.sourceChannelId ?? "C123",
+  );
   const destinationChannelId =
-    overrides.destinationChannelId ?? sourceChannelId;
+    overrides.destinationChannelId !== undefined
+      ? requireSlackChannelId(overrides.destinationChannelId)
+      : sourceChannelId;
+  const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
+  const {
+    sourceChannelId: _sourceChannelId,
+    destinationChannelId: _destinationChannelId,
+    teamId: _teamId,
+    ...rest
+  } = overrides;
   const messageTs = parseSlackMessageTs("1700000000.321");
   if (!messageTs) {
     throw new Error("Test message timestamp must be a valid Slack ts");
@@ -50,11 +87,11 @@ function createContext(
   return {
     destination: {
       platform: "slack",
-      teamId: "T123",
+      teamId,
       channelId: destinationChannelId,
     },
     source: createSlackSource({
-      teamId: "T123",
+      teamId,
       channelId: sourceChannelId,
       messageTs,
 
@@ -63,8 +100,8 @@ function createContext(
     destinationChannelId,
     messageTs,
     sourceChannelId,
-    teamId: "T123",
-    ...overrides,
+    teamId,
+    ...rest,
   };
 }
 
@@ -107,12 +144,12 @@ describe("slack channel tools", () => {
   it("uses assistant context channel for channel delivery tools in DM turns", async () => {
     const context = createContext("share this in the current channel", {
       sourceChannelId: "D123",
-      destinationChannelId: "C_SHARED",
+      destinationChannelId: "C0SHARED",
     });
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
         ts: "1700000000.112",
-        channel: "C_SHARED",
+        channel: "C0SHARED",
       }),
     });
     queueSlackApiResponse("chat.getPermalink", {
@@ -137,13 +174,13 @@ describe("slack channel tools", () => {
     expect(
       getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
     ).toMatchObject({
-      channel: "C_SHARED",
+      channel: "C0SHARED",
       text: "Shared update",
     });
     expect(
       getCapturedSlackApiCalls("conversations.history")[0]?.params,
     ).toMatchObject({
-      channel: "C_SHARED",
+      channel: "C0SHARED",
     });
   });
 
@@ -297,7 +334,7 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
-      oldest: "slack:C_OTHER:1710000000.000000",
+      oldest: "slack:C0OTHER:1710000000.000000",
     });
 
     expect(result).toEqual({

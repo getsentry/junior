@@ -7,6 +7,10 @@ import {
   setSpanStatus,
   withSpan,
 } from "@/chat/logging";
+import {
+  parseSlackChannelReferenceId,
+  type SlackChannelId,
+} from "@/chat/slack/ids";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
@@ -230,21 +234,11 @@ function resolveSlackToken(): string {
   );
 }
 
+/** Normalize Junior Slack references to native Slack conversation IDs. */
 export function normalizeSlackConversationId(
   channelId: string | undefined,
-): string | undefined {
-  if (!channelId) return undefined;
-  const trimmed = channelId.trim();
-  if (!trimmed) return undefined;
-
-  if (!trimmed.startsWith("slack:")) {
-    return trimmed;
-  }
-
-  const parts = trimmed.split(":");
-  // Accept both "slack:C123" and "slack:C123:1700000000.000" and normalize
-  // to the canonical conversation ID expected by Slack Web API methods.
-  return parts[1]?.trim() || undefined;
+): SlackChannelId | undefined {
+  return parseSlackChannelReferenceId(channelId);
 }
 
 /**

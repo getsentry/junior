@@ -3,6 +3,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import type { DestinationVisibilityReader } from "@/chat/slack/tools/channel-access";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
+import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -10,30 +11,64 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 
-function createContext(
-  overrides: Partial<SlackToolContext> = {},
-): SlackToolContext {
-  const sourceChannelId = overrides.sourceChannelId ?? "C_CURRENT";
+type ContextOverrides = Omit<
+  Partial<SlackToolContext>,
+  "destinationChannelId" | "sourceChannelId" | "teamId"
+> & {
+  destinationChannelId?: string;
+  sourceChannelId?: string;
+  teamId?: string;
+};
+
+function requireSlackChannelId(value: string) {
+  const channelId = parseSlackChannelId(value);
+  if (!channelId) {
+    throw new Error(`Invalid test Slack channel ID: ${value}`);
+  }
+  return channelId;
+}
+
+function requireSlackTeamId(value: string) {
+  const teamId = parseSlackTeamId(value);
+  if (!teamId) {
+    throw new Error(`Invalid test Slack team ID: ${value}`);
+  }
+  return teamId;
+}
+
+function createContext(overrides: ContextOverrides = {}): SlackToolContext {
+  const sourceChannelId = requireSlackChannelId(
+    overrides.sourceChannelId ?? "C0CURRENT",
+  );
   const destinationChannelId =
-    overrides.destinationChannelId ?? sourceChannelId;
+    overrides.destinationChannelId !== undefined
+      ? requireSlackChannelId(overrides.destinationChannelId)
+      : sourceChannelId;
+  const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
+  const {
+    sourceChannelId: _sourceChannelId,
+    destinationChannelId: _destinationChannelId,
+    teamId: _teamId,
+    ...rest
+  } = overrides;
   return {
     destination: overrides.destination ?? {
       platform: "slack",
-      teamId: "T123",
+      teamId,
       channelId: destinationChannelId,
     },
     source:
       overrides.source ??
       createSlackSource({
-        teamId: "T123",
+        teamId,
         channelId: sourceChannelId,
 
         type: "priv",
       }),
     destinationChannelId,
     sourceChannelId,
-    teamId: "T123",
-    ...overrides,
+    teamId,
+    ...rest,
   };
 }
 
@@ -54,7 +89,7 @@ function persistedPublicChannels(
 }
 
 function createTool(
-  overrides: Partial<SlackToolContext> = {},
+  overrides: ContextOverrides = {},
   publicChannels: string[] = [],
 ) {
   return createSlackThreadReadTool(createContext(overrides), {
@@ -171,15 +206,15 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C_MANUAL"]);
+    const tool = createTool({}, ["C0MANUAL"]);
     const result = await executeTool(tool, {
-      channel_id: "C_MANUAL",
+      channel_id: "C0MANUAL",
       ts: "1700000000.500000",
     });
 
     expect(result).toMatchObject({
       ok: true,
-      channel_id: "C_MANUAL",
+      channel_id: "C0MANUAL",
       count: 1,
     });
     expect(result.messages[0].text).toBe("standalone message");
@@ -200,15 +235,15 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({ sourceChannelId: "G_PRIVATE" });
+    const tool = createTool({ sourceChannelId: "G0PRIVATE" });
     const result = await executeTool(tool, {
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
       ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
       ok: true,
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
       count: 1,
     });
 
@@ -233,39 +268,39 @@ describe("slackThreadRead", () => {
     });
 
     const tool = createTool({
-      sourceChannelId: "D_DM",
-      destinationChannelId: "G_PRIVATE",
+      sourceChannelId: "D0DM",
+      destinationChannelId: "G0PRIVATE",
     });
     const result = await executeTool(tool, {
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
       ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
       ok: true,
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
       count: 1,
     });
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 
   it("blocks reading a private group channel from a DM conversation without assistant context", async () => {
-    const tool = createTool({ sourceChannelId: "D_DM" });
+    const tool = createTool({ sourceChannelId: "D0DM" });
     const result = await executeTool(tool, {
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
       ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
       ok: false,
-      channel_id: "G_PRIVATE",
+      channel_id: "G0PRIVATE",
     });
     expect(result.error).toContain("current conversation");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a private channel that is not the current channel", async () => {
-    const tool = createTool({ sourceChannelId: "C_CURRENT" });
+    const tool = createTool({ sourceChannelId: "C0CURRENT" });
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/G0OTHER/p1700000000100000",
     });
@@ -285,20 +320,20 @@ describe("slackThreadRead", () => {
   it("blocks reading a DM channel that is not the current channel", async () => {
     const tool = createTool();
     const result = await executeTool(tool, {
-      channel_id: "D_SOMEONE",
+      channel_id: "D0SOMEONE",
       ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
       ok: false,
-      channel_id: "D_SOMEONE",
+      channel_id: "D0SOMEONE",
     });
     expect(result.error).toContain("current conversation");
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
   });
 
   it("blocks reading a C-prefixed channel without persisted public visibility", async () => {
-    const tool = createTool({ sourceChannelId: "C_CURRENT" });
+    const tool = createTool({ sourceChannelId: "C0CURRENT" });
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C0UNCONFIRMED/p1700000000100000",
     });
@@ -317,15 +352,15 @@ describe("slackThreadRead", () => {
       error: "not_in_channel",
     });
 
-    const tool = createTool({}, ["C_FLAKY"]);
+    const tool = createTool({}, ["C0FLAKY"]);
     const result = await executeTool(tool, {
-      channel_id: "C_FLAKY",
+      channel_id: "C0FLAKY",
       ts: "1700000000.100000",
     });
 
     expect(result).toMatchObject({
       ok: false,
-      channel_id: "C_FLAKY",
+      channel_id: "C0FLAKY",
       slack_error: "not_in_channel",
     });
     expect(result.error).toContain("Could not read this Slack thread");
@@ -403,9 +438,9 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createTool({}, ["C_PAGED"]);
+    const tool = createTool({}, ["C0PAGED"]);
     const result = await executeTool(tool, {
-      channel_id: "C_PAGED",
+      channel_id: "C0PAGED",
       ts: "1700000000.000000",
     });
 

@@ -1,4 +1,5 @@
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
+import type { SlackUserId } from "@/chat/slack/ids";
 
 /** Normalized Slack user profile with custom fields from the Slack workspace. */
 export interface SlackUserProfile {
@@ -82,7 +83,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
 
 /** Look up a Slack user by ID, returning the full profile including custom fields. */
 export async function lookupSlackUserProfile(
-  userId: string,
+  userId: SlackUserId,
 ): Promise<SlackUserProfile> {
   const client = getSlackClient();
   const result = await withSlackRetries(

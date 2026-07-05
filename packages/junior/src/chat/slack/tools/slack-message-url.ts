@@ -1,11 +1,12 @@
 /** Parse Slack archive URLs into structured message references. */
+import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
 
 export interface SlackMessageReference {
-  channelId: string;
+  channelId: SlackChannelId;
   messageTs: SlackMessageTs;
   threadTs?: SlackMessageTs;
 }
@@ -64,7 +65,10 @@ export function parseSlackMessageReference(input: string): ParseResult {
     return { ok: false, error: "URL path does not match Slack archive format" };
   }
 
-  const channelId = pathMatch[1]!;
+  const channelId = parseSlackChannelId(pathMatch[1]);
+  if (!channelId) {
+    return { ok: false, error: "Invalid channel ID in URL" };
+  }
   const messageTs = parseSlackMessageTs(
     pTimestampToTs(pathMatch[2]!, pathMatch[3]!),
   );

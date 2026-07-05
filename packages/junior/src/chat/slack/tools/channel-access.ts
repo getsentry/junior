@@ -1,6 +1,6 @@
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { normalizeSlackConversationId } from "@/chat/slack/client";
 import { getConversationStore } from "@/chat/db";
+import type { SlackChannelId, SlackTeamId } from "@/chat/slack/ids";
 
 /** Minimal persisted-visibility port for cross-conversation read gates. */
 export interface DestinationVisibilityReader {
@@ -24,20 +24,15 @@ export type SlackChannelReadAccess =
  * ids), so missing or private destinations fail closed.
  */
 export async function checkSlackChannelReadAccess(args: {
-  currentChannelIds: Array<string | undefined>;
+  currentChannelIds: Array<SlackChannelId | undefined>;
   store?: DestinationVisibilityReader;
-  targetChannelId: string;
-  teamId: string;
+  targetChannelId: SlackChannelId;
+  teamId: SlackTeamId;
 }): Promise<SlackChannelReadAccess> {
-  const target = normalizeSlackConversationId(args.targetChannelId);
-  if (!target) {
-    return { allowed: false, error: "Invalid Slack channel ID." };
-  }
-
-  const currentChannels = args.currentChannelIds
-    .map((channelId) => normalizeSlackConversationId(channelId))
-    .filter((channelId): channelId is string => Boolean(channelId));
-  if (currentChannels.includes(target)) {
+  const currentChannels = args.currentChannelIds.filter(
+    (channelId): channelId is SlackChannelId => Boolean(channelId),
+  );
+  if (currentChannels.includes(args.targetChannelId)) {
     return { allowed: true };
   }
 
@@ -45,7 +40,7 @@ export async function checkSlackChannelReadAccess(args: {
   const visibility = await store.getDestinationVisibility({
     provider: "slack",
     providerTenantId: args.teamId,
-    providerDestinationId: target,
+    providerDestinationId: args.targetChannelId,
   });
   if (visibility === "public") {
     return { allowed: true };

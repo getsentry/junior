@@ -1,10 +1,8 @@
 import { Type } from "@sinclair/typebox";
-import {
-  normalizeSlackConversationId,
-  SlackActionError,
-} from "@/chat/slack/client";
+import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
 import { parseSlackThreadId } from "@/chat/slack/context";
+import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import {
   optionalSlackTimestampParam,
@@ -21,7 +19,7 @@ import type { SlackToolContext } from "@/chat/slack/tools/context";
 function normalizeRangeTimestamp(
   field: "oldest" | "latest",
   value: string | undefined,
-  targetChannelId: string,
+  targetChannelId: SlackChannelId,
 ):
   | { ok: true; value: SlackMessageTs | undefined }
   | { ok: false; error: string } {
@@ -44,10 +42,7 @@ function normalizeRangeTimestamp(
     ? parseSlackTimestampParam(field, threadId.threadTs)
     : undefined;
   if (threadId && threadTimestamp?.ok && threadTimestamp.value) {
-    const referenceChannelId = normalizeSlackConversationId(threadId.channelId);
-    const normalizedTargetChannelId =
-      normalizeSlackConversationId(targetChannelId);
-    if (referenceChannelId === normalizedTargetChannelId) {
+    if (threadId.channelId === targetChannelId) {
       return threadTimestamp;
     }
   }

@@ -3,6 +3,12 @@ import type { SlackDestination } from "@sentry/junior-plugin-api";
 import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackRequester } from "@/chat/requester";
 import {
+  parseSlackChannelId,
+  parseSlackTeamId,
+  type SlackChannelId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
+import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
@@ -11,11 +17,11 @@ export interface SlackToolContext {
   destination: SlackDestination;
   source: SlackSource;
   requester?: SlackRequester;
-  destinationChannelId: string;
+  destinationChannelId: SlackChannelId;
   messageTs?: SlackMessageTs;
-  sourceChannelId: string;
-  teamId: string;
-  threadTs?: string;
+  sourceChannelId: SlackChannelId;
+  teamId: SlackTeamId;
+  threadTs?: SlackMessageTs;
 }
 
 /** Resolve Slack-specific tool context from the active source/destination/requester. */
@@ -28,15 +34,24 @@ export function getSlackToolContext(
   if (context.destination.platform !== "slack") {
     throw new TypeError("Slack source requires a Slack destination");
   }
+  const destinationChannelId = parseSlackChannelId(
+    context.destination.channelId,
+  );
+  const sourceChannelId = parseSlackChannelId(context.source.channelId);
+  const teamId = parseSlackTeamId(context.source.teamId);
+  if (!destinationChannelId || !sourceChannelId || !teamId) {
+    return undefined;
+  }
+
   return {
     destination: context.destination,
     source: context.source,
     requester:
       context.requester?.platform === "slack" ? context.requester : undefined,
-    destinationChannelId: context.destination.channelId,
+    destinationChannelId,
     messageTs: parseSlackMessageTs(context.source.messageTs),
-    sourceChannelId: context.source.channelId,
-    teamId: context.source.teamId,
-    threadTs: context.source.threadTs,
+    sourceChannelId,
+    teamId,
+    threadTs: parseSlackMessageTs(context.source.threadTs),
   };
 }

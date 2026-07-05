@@ -1,5 +1,10 @@
 import { addListItems } from "@/chat/slack/tools/list/api";
+import {
+  parseRequiredSlackUserIdParam,
+  slackUserIdParam,
+} from "@/chat/slack/id-param";
 import { tool } from "@/chat/tools/definition";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 import { Type } from "@sinclair/typebox";
@@ -16,10 +21,9 @@ export function createSlackListAddItemsTool(state: ToolState) {
         description: "List item titles to create.",
       }),
       assignee_user_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional Slack user ID assigned to all created items.",
-        }),
+        slackUserIdParam(
+          "Optional Slack user ID assigned to all created items.",
+        ),
       ),
       due_date: Type.Optional(
         Type.String({
@@ -33,10 +37,18 @@ export function createSlackListAddItemsTool(state: ToolState) {
       if (!targetListId) {
         return { ok: false, error: "No active list found in artifact context" };
       }
+      const parsedAssigneeUserId =
+        assignee_user_id === undefined
+          ? undefined
+          : parseRequiredSlackUserIdParam("assignee_user_id", assignee_user_id);
+      if (parsedAssigneeUserId?.ok === false) {
+        throw new ToolInputError(parsedAssigneeUserId.error);
+      }
+
       const operationKey = createOperationKey("slackListAddItems", {
         list_id: targetListId,
         items,
-        assignee_user_id: assignee_user_id ?? null,
+        assignee_user_id: parsedAssigneeUserId?.value ?? null,
         due_date: due_date ?? null,
       });
       const cached = state.getOperationResult<{
@@ -56,7 +68,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
         listId: targetListId,
         titles: items,
         listColumnMap: state.artifactState.listColumnMap,
-        assigneeUserId: assignee_user_id,
+        assigneeUserId: parsedAssigneeUserId?.value,
         dueDate: due_date,
       });
 

@@ -3,20 +3,19 @@ import {
   type Destination,
   type SlackDestination,
 } from "@sentry/junior-plugin-api";
-import { normalizeSlackConversationId } from "@/chat/slack/client";
-import { isSlackConversationId, isSlackTeamId } from "@/chat/slack/ids";
+import {
+  parseSlackChannelReferenceId,
+  parseSlackTeamId,
+} from "@/chat/slack/ids";
 
 /** Build Junior's canonical destination from Slack workspace and channel ids. */
 export function createSlackDestination(input: {
   channelId: string | undefined;
   teamId: string | undefined;
 }): Destination | undefined {
-  const channelId = normalizeSlackConversationId(input.channelId);
-  const teamId = input.teamId?.trim();
+  const channelId = parseSlackChannelReferenceId(input.channelId);
+  const teamId = parseSlackTeamId(input.teamId);
   if (!channelId || !teamId) {
-    return undefined;
-  }
-  if (!isSlackConversationId(channelId) || !isSlackTeamId(teamId)) {
     return undefined;
   }
   return { platform: "slack", teamId, channelId };

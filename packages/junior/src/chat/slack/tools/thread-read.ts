@@ -5,6 +5,10 @@ import {
   checkSlackChannelReadAccess,
   type DestinationVisibilityReader,
 } from "@/chat/slack/tools/channel-access";
+import {
+  parseRequiredSlackChannelIdParam,
+  slackChannelIdParam,
+} from "@/chat/slack/id-param";
 import { tool } from "@/chat/tools/definition";
 import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -12,6 +16,7 @@ import {
   parseRequiredSlackTimestampParam,
   slackTimestampParam,
 } from "@/chat/slack/timestamp-param";
+import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
@@ -88,11 +93,9 @@ export function createSlackThreadReadTool(
         }),
       ),
       channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Slack channel/conversation ID (e.g. C123). Use with `ts` as an alternative to `url`.",
-        }),
+        slackChannelIdParam(
+          "Slack channel/conversation ID (e.g. C123). Use with `ts` as an alternative to `url`.",
+        ),
       ),
       ts: Type.Optional(
         slackTimestampParam(
@@ -115,7 +118,7 @@ export function createSlackThreadReadTool(
       ),
     }),
     execute: async ({ url, channel_id, ts, limit, max_pages }) => {
-      let channelId: string;
+      let channelId: SlackChannelId;
       let messageTs: SlackMessageTs;
       let threadTs: SlackMessageTs | undefined;
 
@@ -132,7 +135,14 @@ export function createSlackThreadReadTool(
         if (!parsedTs.ok) {
           return { ok: false, error: parsedTs.error };
         }
-        channelId = channel_id;
+        const parsedChannelId = parseRequiredSlackChannelIdParam(
+          "channel_id",
+          channel_id,
+        );
+        if (!parsedChannelId.ok) {
+          return { ok: false, error: parsedChannelId.error };
+        }
+        channelId = parsedChannelId.value;
         messageTs = parsedTs.value;
       } else {
         return {

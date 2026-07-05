@@ -4,6 +4,7 @@ import type { completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logInfo, logWarn } from "@/chat/logging";
+import { parseSlackChannelId, type SlackChannelId } from "@/chat/slack/ids";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -46,7 +47,7 @@ export interface VisionContextDeps {
   completeText: typeof completeText;
   downloadFile: (url: string) => Promise<Buffer>;
   listThreadReplies: (input: {
-    channelId: string;
+    channelId: SlackChannelId;
     threadTs: SlackMessageTs;
     limit?: number;
     maxPages?: number;
@@ -466,6 +467,10 @@ async function hydrateConversationVisionContextWithDeps(
   if (!context.channelId || !context.threadTs) {
     return;
   }
+  const channelId = parseSlackChannelId(context.channelId);
+  if (!channelId) {
+    return;
+  }
   const threadTs = parseSlackMessageTs(context.threadTs);
   if (!threadTs) {
     return;
@@ -489,7 +494,7 @@ async function hydrateConversationVisionContextWithDeps(
   let replies: VisionThreadReply[];
   try {
     replies = await deps.listThreadReplies({
-      channelId: context.channelId,
+      channelId,
       threadTs,
       limit: 1000,
       maxPages: 10,

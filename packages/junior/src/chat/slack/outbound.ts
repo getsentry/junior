@@ -6,7 +6,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
-import { parseActorUserId } from "@/chat/requester";
+import { parseSlackUserId, type SlackChannelId } from "@/chat/slack/ids";
 import {
   parseSlackMessageTs,
   type SlackMessageTs,
@@ -14,7 +14,10 @@ import {
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
-function requireSlackConversationId(channelId: string, action: string): string {
+function requireSlackConversationId(
+  channelId: string,
+  action: string,
+): SlackChannelId {
   const normalized = normalizeSlackConversationId(channelId);
   if (!normalized) {
     throw new Error(`${action} requires a valid channel ID`);
@@ -54,7 +57,7 @@ function requireSlackMessageText(text: string, action: string): string {
 }
 
 async function getPermalinkBestEffort(args: {
-  channelId: string;
+  channelId: SlackChannelId;
   messageTs: SlackMessageTs;
 }): Promise<string | undefined> {
   try {
@@ -186,7 +189,7 @@ export async function postSlackEphemeralMessage(input: {
     input.channelId,
     "Slack ephemeral message posting",
   );
-  const userId = parseActorUserId(input.userId);
+  const userId = parseSlackUserId(input.userId);
   if (!userId) {
     throw new Error("Slack ephemeral message posting requires a user ID");
   }

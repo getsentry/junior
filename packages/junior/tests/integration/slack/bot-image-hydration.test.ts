@@ -94,7 +94,7 @@ describe("bot image hydration", () => {
       },
     );
     const firstThread = createTestThread({
-      id: "slack:C_IMAGE:1700000000.000",
+      id: "slack:C0IMAGE:1700000000.000",
       state: {
         conversation: {
           schemaVersion: 1,
@@ -137,7 +137,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000000.200",
         text: "/brief on this candidate",
-        threadId: "slack:C_IMAGE:1700000000.000",
+        threadId: "slack:C0IMAGE:1700000000.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -152,7 +152,7 @@ describe("bot image hydration", () => {
 
     const persisted = firstThread.getState();
     const secondThread = createTestThread({
-      id: "slack:C_IMAGE:1700000000.000",
+      id: "slack:C0IMAGE:1700000000.000",
       state: persisted,
     });
 
@@ -161,7 +161,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000000.300",
         text: "follow up without new images",
-        threadId: "slack:C_IMAGE:1700000000.000",
+        threadId: "slack:C0IMAGE:1700000000.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -189,7 +189,7 @@ describe("bot image hydration", () => {
       },
     });
     const thread = createTestThread({
-      id: "slack:C_IMAGE:1700000001.000",
+      id: "slack:C0IMAGE:1700000001.000",
       state: {
         conversation: {
           schemaVersion: 1,
@@ -218,7 +218,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000001.200",
         text: "",
-        threadId: "slack:C_IMAGE:1700000001.000",
+        threadId: "slack:C0IMAGE:1700000001.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -291,7 +291,7 @@ describe("bot image hydration", () => {
       },
     });
     const firstThread = createTestThread({
-      id: "slack:C_IMAGE:1700000002.000",
+      id: "slack:C0IMAGE:1700000002.000",
       state: {
         conversation: {
           schemaVersion: 1,
@@ -320,7 +320,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000002.100",
         text: "what is in this screenshot?",
-        threadId: "slack:C_IMAGE:1700000002.000",
+        threadId: "slack:C0IMAGE:1700000002.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -377,7 +377,7 @@ describe("bot image hydration", () => {
       },
     );
     const secondThread = createTestThread({
-      id: "slack:C_IMAGE:1700000002.000",
+      id: "slack:C0IMAGE:1700000002.000",
       state: firstThread.getState(),
     });
 
@@ -386,7 +386,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000002.200",
         text: "follow up without new uploads",
-        threadId: "slack:C_IMAGE:1700000002.000",
+        threadId: "slack:C0IMAGE:1700000002.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -486,7 +486,7 @@ describe("bot image hydration", () => {
       },
     );
     const thread = createTestThread({
-      id: "slack:C_IMAGE:1700000006.000",
+      id: "slack:C0IMAGE:1700000006.000",
       state: {
         conversation: {
           schemaVersion: 1,
@@ -515,7 +515,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000002.100",
         text: "@Cursor can you look at this?",
-        threadId: "slack:C_IMAGE:1700000006.000",
+        threadId: "slack:C0IMAGE:1700000006.000",
         isMention: false,
         author: {
           userId: "U-user",
@@ -543,8 +543,8 @@ describe("bot image hydration", () => {
       thread,
       createTestMessage({
         id: "1700000002.200",
-        text: "<@U_APP> what is in the screenshot above?",
-        threadId: "slack:C_IMAGE:1700000006.000",
+        text: "<@U0APP> what is in the screenshot above?",
+        threadId: "slack:C0IMAGE:1700000006.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -642,7 +642,7 @@ describe("bot image hydration", () => {
 
     await slackRuntime.handleNewMention(
       createTestThread({
-        id: "slack:C_IMAGE:1700000003.000",
+        id: "slack:C0IMAGE:1700000003.000",
         state: {
           conversation: {
             schemaVersion: 1,
@@ -668,7 +668,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000003.100",
         text: "explain this screenshot",
-        threadId: "slack:C_IMAGE:1700000003.000",
+        threadId: "slack:C0IMAGE:1700000003.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -689,7 +689,7 @@ describe("bot image hydration", () => {
       {
         destination: createTestDestination(
           createTestThread({
-            id: "slack:C_IMAGE:1700000003.000",
+            id: "slack:C0IMAGE:1700000003.000",
             state: {
               conversation: {
                 schemaVersion: 1,
@@ -800,7 +800,7 @@ describe("bot image hydration", () => {
 
     await slackRuntime.handleNewMention(
       createTestThread({
-        id: "slack:C_IMAGE:1700000004.000",
+        id: "slack:C0IMAGE:1700000004.000",
         state: {
           conversation: {
             schemaVersion: 1,
@@ -826,7 +826,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000004.100",
         text: "compare these screenshots",
-        threadId: "slack:C_IMAGE:1700000004.000",
+        threadId: "slack:C0IMAGE:1700000004.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -853,7 +853,7 @@ describe("bot image hydration", () => {
       {
         destination: createTestDestination(
           createTestThread({
-            id: "slack:C_IMAGE:1700000004.000",
+            id: "slack:C0IMAGE:1700000004.000",
             state: {
               conversation: {
                 schemaVersion: 1,
@@ -922,7 +922,7 @@ describe("bot image hydration", () => {
 
     await slackRuntime.handleNewMention(
       createTestThread({
-        id: "slack:C_IMAGE:1700000005.000",
+        id: "slack:C0IMAGE:1700000005.000",
         state: {
           conversation: {
             schemaVersion: 1,
@@ -948,7 +948,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000005.100",
         text: "summarize this screenshot",
-        threadId: "slack:C_IMAGE:1700000005.000",
+        threadId: "slack:C0IMAGE:1700000005.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -969,7 +969,7 @@ describe("bot image hydration", () => {
       {
         destination: createTestDestination(
           createTestThread({
-            id: "slack:C_IMAGE:1700000005.000",
+            id: "slack:C0IMAGE:1700000005.000",
             state: {
               conversation: {
                 schemaVersion: 1,
@@ -1026,7 +1026,7 @@ describe("bot image hydration", () => {
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({
-      id: "slack:C_UPLOAD:1700000000.000",
+      id: "slack:C0UPLOAD:1700000000.000",
       state: {},
     });
     thread.post = postSpy as unknown as Thread["post"];
@@ -1036,7 +1036,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000000.200",
         text: "generate an image",
-        threadId: "slack:C_UPLOAD:1700000000.000",
+        threadId: "slack:C0UPLOAD:1700000000.000",
         isMention: true,
         author: {
           userId: "U-user",
@@ -1096,7 +1096,7 @@ describe("bot image hydration", () => {
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({
-      id: "slack:C_STREAM:1700000000.000",
+      id: "slack:C0STREAM:1700000000.000",
       state: {},
     });
     thread.post = postSpy as unknown as Thread["post"];
@@ -1106,7 +1106,7 @@ describe("bot image hydration", () => {
       createTestMessage({
         id: "1700000000.200",
         text: "generate an image",
-        threadId: "slack:C_STREAM:1700000000.000",
+        threadId: "slack:C0STREAM:1700000000.000",
         isMention: true,
         author: {
           userId: "U-user",
