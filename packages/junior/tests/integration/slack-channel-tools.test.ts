@@ -411,6 +411,7 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
+      target: "channel",
       text: "Here is the report.",
       files: [{ path: "/tmp/report.txt" }],
     });
@@ -442,6 +443,7 @@ describe("slack channel tools", () => {
     );
 
     const result = await executeTool(tool, {
+      target: "channel",
       files: [{ path: "/tmp/report.txt" }],
     });
 
@@ -560,6 +562,36 @@ describe("slack channel tools", () => {
       file_count: 1,
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
+    ).toMatchObject({
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+    });
+  });
+
+  it("defaults file uploads to the current Slack thread", async () => {
+    const tool = createSendMessageTool(
+      createContext("attach the report", {
+        threadTs: "1700000000.321",
+      }),
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    const result = await executeTool(tool, {
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: "thread",
+      channel_id: "C123",
+      thread_ts: "1700000000.321",
+      file_count: 1,
+    });
     expect(
       getCapturedSlackApiCalls("files.completeUploadExternal")[0]?.params,
     ).toMatchObject({
