@@ -45,6 +45,8 @@ Not in scope:
   - `evals/core/media-and-attachments.eval.ts`
   - `evals/core/oauth-workflows.eval.ts`
   - `evals/core/skill-infra.eval.ts`
+- Scheduler eval cases:
+  - `evals/scheduler/workflows.eval.ts`
 - Plugin eval cases:
   - `evals/github/skill-workflows.eval.ts`
   - `evals/memory/workflows.eval.ts`
@@ -146,6 +148,7 @@ Do not do these in eval files:
 ## File Naming Strategy
 
 - Core evals: `evals/core/`
+- Scheduler evals: `evals/scheduler/`
 - Plugin evals: `evals/<plugin-name>/` (e.g. `evals/github/`, `evals/sentry/`)
 - File naming: `<journey>-and-<constraint>.eval.ts` or `<feature>-workflows.eval.ts`
   - Examples:
