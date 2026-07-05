@@ -621,7 +621,7 @@ INSERT INTO junior_destinations (
           "historical-public-destination",
           "slack",
           "T999",
-          "C_LEGACY",
+          "C0LEGACY",
           "channel",
           "public",
           new Date(1_000).toISOString(),
@@ -636,7 +636,7 @@ INSERT INTO junior_destinations (
         store.getDestinationVisibility({
           provider: "slack",
           providerTenantId: "T999",
-          providerDestinationId: "C_LEGACY",
+          providerDestinationId: "C0LEGACY",
         }),
       ).resolves.toBe("private");
     } finally {

@@ -10,7 +10,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
-const BOT_USER_ID = "U_BOT";
+const BOT_USER_ID = "U0BOT";
 const DM_CHANNEL_ID = "D12345";
 const DM_THREAD_TS = "1700000000.000001";
 const ORIGINAL_ENV = { ...process.env };

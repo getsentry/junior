@@ -32,7 +32,7 @@ describe("Slack behavior: provider default configuration", () => {
     });
     const channelStateRef = { value: {} };
     const thread = createTestThread({
-      id: "slack:C_CONFIG:1700007007.000",
+      id: "slack:C0CONFIG:1700007007.000",
       channelStateRef,
     });
 
@@ -40,7 +40,7 @@ describe("Slack behavior: provider default configuration", () => {
       thread,
       createTestMessage({
         id: "m-config-1",
-        text: "<@U_APP> Set the default repo to getsentry/junior.",
+        text: "<@U0APP> Set the default repo to getsentry/junior.",
         isMention: true,
         threadId: thread.id,
       }),
@@ -93,7 +93,7 @@ describe("Slack behavior: provider default configuration", () => {
     });
     const channelStateRef = { value: {} };
     const thread = createTestThread({
-      id: "slack:C_CONFIG_COMBINED:1700007008.000",
+      id: "slack:C0CONFIGCOMBINED:1700007008.000",
       channelStateRef,
     });
 
@@ -101,7 +101,7 @@ describe("Slack behavior: provider default configuration", () => {
       thread,
       createTestMessage({
         id: "m-config-2",
-        text: "<@U_APP> Set the default repo to getsentry/junior and create an issue for flaky evals.",
+        text: "<@U0APP> Set the default repo to getsentry/junior and create an issue for flaky evals.",
         isMention: true,
         threadId: thread.id,
       }),

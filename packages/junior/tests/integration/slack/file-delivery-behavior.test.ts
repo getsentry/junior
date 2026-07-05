@@ -60,13 +60,13 @@ describe("Slack behavior: file delivery", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FILES:1700004020.000" });
+    const thread = createTestThread({ id: "slack:C0FILES:1700004020.000" });
     const message = createTestMessage({
       id: "m-file-plan-1",
-      text: "<@U_APP> show me the preview",
+      text: "<@U0APP> show me the preview",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, message, {

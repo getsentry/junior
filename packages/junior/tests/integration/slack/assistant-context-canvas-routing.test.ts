@@ -74,19 +74,19 @@ describe("Slack behavior: assistant context canvas routing", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:D_DM_THREAD:1700007100.000",
+      id: "slack:D0DMTHREAD:1700007100.000",
       state: {
         artifacts: {
-          assistantContextChannelId: "C_SHARED_CONTEXT",
+          assistantContextChannelId: "C0SHAREDCONTEXT",
         },
       },
     });
     const message = createTestMessage({
       id: "m-assistant-context-canvas-1",
-      text: "<@U_APP> publish this as a shared canvas",
+      text: "<@U0APP> publish this as a shared canvas",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, message, {
@@ -109,7 +109,7 @@ describe("Slack behavior: assistant context canvas routing", () => {
     expect(accessCalls[0]?.params).toMatchObject({
       canvas_id: "F_SHARED_CANVAS",
       access_level: "write",
-      channel_ids: ["C_SHARED_CONTEXT"],
+      channel_ids: ["C0SHAREDCONTEXT"],
     });
 
     expect(

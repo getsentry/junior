@@ -68,7 +68,7 @@ function makeArgs(
     generateThreadTitle,
     getSlackAdapter: () => ({ setAssistantTitle }),
     modelId: "fast-model",
-    requesterId: "U_USER",
+    requesterId: "U0USER",
     runId: "run_001",
     threadId: `slack:${channelId}:${THREAD_TS}`,
     _setAssistantTitle: setAssistantTitle,

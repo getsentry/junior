@@ -18,7 +18,7 @@ describe("Slack webhook auth boundary", () => {
     const waitUntil = client.waitUntil();
     const adapter = createJuniorSlackAdapter({
       botToken: "xoxb-test-token",
-      botUserId: "U_BOT",
+      botUserId: "U0BOT",
       signingSecret: SIGNING_SECRET,
     });
 

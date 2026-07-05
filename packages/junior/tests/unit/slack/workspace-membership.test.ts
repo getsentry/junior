@@ -4,8 +4,8 @@ import {
   runWithWorkspaceTeamId,
 } from "@/chat/ingress/workspace-membership";
 
-const LOCAL_TEAM = "T_LOCAL";
-const EXTERNAL_TEAM = "T_EXTERNAL";
+const LOCAL_TEAM = "T0LOCAL";
+const EXTERNAL_TEAM = "T0EXTERNAL";
 
 describe("isExternalSlackUser", () => {
   it("returns false when no workspace context is set", () => {

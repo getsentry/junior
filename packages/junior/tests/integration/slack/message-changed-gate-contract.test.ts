@@ -66,7 +66,7 @@ describe("Slack message_changed author gate contract", () => {
 
   it("drops an edited mention from a Slack Connect external user", async () => {
     const { queue, response } = await runEditedMentionWebhook(
-      messageChangedEnvelope({ user: "U_EXTERNAL", user_team: "T_OTHER_ORG" }),
+      messageChangedEnvelope({ user: "U0EXTERNAL", user_team: "T0OTHERORG" }),
     );
 
     expect(response.status).toBe(200);

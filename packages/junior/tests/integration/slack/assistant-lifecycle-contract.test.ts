@@ -21,7 +21,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
   it("normalizes adapter-scoped channel ids before assistant lifecycle API calls", async () => {
     const slack = createJuniorSlackAdapter({
       botToken: "xoxb-test",
-      botUserId: "U_BOT",
+      botUserId: "U0BOT",
       signingSecret: "test-signing-secret",
     });
     const slackRuntime = createSlackRuntime({
@@ -32,7 +32,7 @@ describe("Slack contract: assistant lifecycle delivery", () => {
       threadId: `slack:${DM_CHANNEL_ID}:${DM_THREAD_TS}`,
       channelId: `slack:${DM_CHANNEL_ID}`,
       threadTs: DM_THREAD_TS,
-      userId: "U_TEST",
+      userId: "U0TEST",
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setTitle")).toEqual([

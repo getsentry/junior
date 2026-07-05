@@ -74,19 +74,19 @@ describe("createSlackTurnRuntime", () => {
     it("forwards queued SDK context as ordered turn messages", async () => {
       const deps = createMockDeps({
         stripLeadingBotMention: vi.fn((text: string) =>
-          text.replace("<@U_APP> ", ""),
+          text.replace("<@U0APP> ", ""),
         ),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const skipped = createTestMessage({
         id: "m-skipped",
-        text: "<@U_APP> first queued bit",
+        text: "<@U0APP> first queued bit",
         isMention: true,
       });
       const latest = createTestMessage({
         id: "m-latest",
-        text: "<@U_APP> latest queued bit",
+        text: "<@U0APP> latest queued bit",
         isMention: true,
       });
 
@@ -106,7 +106,7 @@ describe("createSlackTurnRuntime", () => {
             {
               explicitMention: true,
               message: skipped,
-              rawText: "<@U_APP> first queued bit",
+              rawText: "<@U0APP> first queued bit",
               userText: "first queued bit",
             },
           ],

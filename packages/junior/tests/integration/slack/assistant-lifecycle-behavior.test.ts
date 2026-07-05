@@ -18,15 +18,15 @@ describe("Slack behavior: assistant lifecycle", () => {
     const { slackRuntime } = createTestChatRuntime({ slackAdapter });
 
     await slackRuntime.handleAssistantThreadStarted({
-      threadId: "slack:C_LIFECYCLE:1700006000.000",
-      channelId: "C_LIFECYCLE",
+      threadId: "slack:C0LIFECYCLE:1700006000.000",
+      channelId: "C0LIFECYCLE",
       threadTs: "1700006000.000",
-      userId: "U_TEST",
+      userId: "U0TEST",
     });
 
     expect(slackAdapter.titleCalls).toEqual([
       {
-        channelId: "C_LIFECYCLE",
+        channelId: "C0LIFECYCLE",
         threadTs: "1700006000.000",
         title: "Junior",
       },
@@ -40,12 +40,12 @@ describe("Slack behavior: assistant lifecycle", () => {
     const { slackRuntime } = createTestChatRuntime({ slackAdapter });
 
     await slackRuntime.handleAssistantContextChanged({
-      threadId: "slack:C_LIFECYCLE:1700006000.000",
-      channelId: "C_LIFECYCLE",
+      threadId: "slack:C0LIFECYCLE:1700006000.000",
+      channelId: "C0LIFECYCLE",
       threadTs: "1700006000.000",
-      userId: "U_TEST",
+      userId: "U0TEST",
       context: {
-        channelId: "C_CONTEXT",
+        channelId: "C0CONTEXT",
       },
     });
 
@@ -57,7 +57,7 @@ describe("Slack behavior: assistant lifecycle", () => {
   it("persists the assistant context channel without replacing artifacts", async () => {
     await disconnectStateAdapter();
 
-    const threadId = "slack:C_LIFECYCLE:1700006001.000";
+    const threadId = "slack:C0LIFECYCLE:1700006001.000";
     await persistThreadStateById(threadId, {
       artifacts: {
         lastCanvasId: "canvas-1",
@@ -72,18 +72,18 @@ describe("Slack behavior: assistant lifecycle", () => {
 
     await slackRuntime.handleAssistantContextChanged({
       threadId,
-      channelId: "C_LIFECYCLE",
+      channelId: "C0LIFECYCLE",
       threadTs: "1700006001.000",
-      userId: "U_TEST",
+      userId: "U0TEST",
       context: {
-        channelId: "slack:C_CONTEXT",
+        channelId: "slack:C0CONTEXT",
       },
     });
 
     const artifacts = coerceThreadArtifactsState(
       await getPersistedThreadState(threadId),
     );
-    expect(artifacts.assistantContextChannelId).toBe("C_CONTEXT");
+    expect(artifacts.assistantContextChannelId).toBe("C0CONTEXT");
     expect(artifacts.lastCanvasId).toBe("canvas-1");
     expect(artifacts.listColumnMap?.titleColumnId).toBe("title-column");
   });

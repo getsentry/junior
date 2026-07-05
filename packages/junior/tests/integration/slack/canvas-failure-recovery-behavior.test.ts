@@ -45,14 +45,14 @@ describe("Slack behavior: canvas failure recovery", () => {
       },
     });
     const thread = createTestThread({
-      id: "slack:C_CANVAS:1700008008.000",
+      id: "slack:C0CANVAS:1700008008.000",
     });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-canvas-1",
-        text: "<@U_APP> Put the research in a canvas.",
+        text: "<@U0APP> Put the research in a canvas.",
         isMention: true,
         threadId: thread.id,
       }),
@@ -83,7 +83,7 @@ describe("Slack behavior: canvas failure recovery", () => {
       },
     });
     const thread = createTestThread({
-      id: "slack:C_CANVAS:1700008009.000",
+      id: "slack:C0CANVAS:1700008009.000",
       state: {
         artifacts: {
           lastCanvasId: "F_OLD",
@@ -104,7 +104,7 @@ describe("Slack behavior: canvas failure recovery", () => {
       thread,
       createTestMessage({
         id: "m-canvas-2",
-        text: "<@U_APP> Summarize the latest thread update.",
+        text: "<@U0APP> Summarize the latest thread update.",
         isMention: true,
         threadId: thread.id,
       }),

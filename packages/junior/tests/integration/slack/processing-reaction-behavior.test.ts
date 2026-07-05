@@ -24,7 +24,7 @@ function successDiagnostics(toolCalls: string[] = []) {
 function reactionCall(name: string, timestamp: string) {
   return expect.objectContaining({
     params: expect.objectContaining({
-      channel: "C_PROCESSING",
+      channel: "C0PROCESSING",
       timestamp,
       name,
     }),
@@ -51,17 +51,17 @@ describe("Slack behavior: processing reaction", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PROCESSING:1700007000.000000",
+      id: "slack:C0PROCESSING:1700007000.000000",
     });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "1700007001.000000",
-        text: "<@U_APP> handle this",
+        text: "<@U0APP> handle this",
         isMention: true,
         threadId: thread.id,
         raw: {
-          channel: "C_PROCESSING",
+          channel: "C0PROCESSING",
           ts: "1700007001.000000",
           thread_ts: "1700007000.000000",
         },
@@ -106,7 +106,7 @@ describe("Slack behavior: processing reaction", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PROCESSING:1700007100.000000",
+      id: "slack:C0PROCESSING:1700007100.000000",
     });
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -116,7 +116,7 @@ describe("Slack behavior: processing reaction", () => {
         isMention: false,
         threadId: thread.id,
         raw: {
-          channel: "C_PROCESSING",
+          channel: "C0PROCESSING",
           ts: "1700007101.000000",
           thread_ts: "1700007100.000000",
         },
@@ -163,7 +163,7 @@ describe("Slack behavior: processing reaction", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PROCESSING:1700007150.000000",
+      id: "slack:C0PROCESSING:1700007150.000000",
     });
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -173,7 +173,7 @@ describe("Slack behavior: processing reaction", () => {
         isMention: false,
         threadId: thread.id,
         raw: {
-          channel: "C_PROCESSING",
+          channel: "C0PROCESSING",
           ts: "1700007151.000000",
           thread_ts: "1700007150.000000",
         },
@@ -209,7 +209,7 @@ describe("Slack behavior: processing reaction", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PROCESSING:1700007160.000000",
+      id: "slack:C0PROCESSING:1700007160.000000",
     });
     await slackRuntime.handleSubscribedMessage(
       thread,
@@ -225,7 +225,7 @@ describe("Slack behavior: processing reaction", () => {
           isBot: true,
         },
         raw: {
-          channel: "C_PROCESSING",
+          channel: "C0PROCESSING",
           event_type: "resource_event",
           thread_ts: "1700007160.000000",
           // Historical malformed records used the synthetic mailbox id as raw.ts.
@@ -269,17 +269,17 @@ describe("Slack behavior: processing reaction", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PROCESSING:1700007200.000000",
+      id: "slack:C0PROCESSING:1700007200.000000",
     });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "1700007201.000000",
-        text: "<@U_APP> add eyes to this",
+        text: "<@U0APP> add eyes to this",
         isMention: true,
         threadId: thread.id,
         raw: {
-          channel: "C_PROCESSING",
+          channel: "C0PROCESSING",
           ts: "1700007201.000000",
           thread_ts: "1700007200.000000",
         },

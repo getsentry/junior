@@ -223,7 +223,7 @@ describe("decideSubscribedThreadReply", () => {
       botUserName: "junior",
       modelId: "router-model",
       input: makeInput({
-        rawText: "<@U_APP> stop watching or participating in this thread",
+        rawText: "<@U0APP> stop watching or participating in this thread",
         text: "stop watching or participating in this thread",
         isExplicitMention: true,
       }),

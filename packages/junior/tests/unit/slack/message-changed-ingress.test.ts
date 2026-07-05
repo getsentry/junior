@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { Adapter } from "chat";
 import { extractMessageChangedMention } from "@/chat/ingress/message-changed";
 
-const BOT_USER_ID = "U_BOT_TEST";
-const CHANNEL_ID = "C_CHAN";
-const TEAM_ID = "T_TEAM";
+const BOT_USER_ID = "U0BOTTEST";
+const CHANNEL_ID = "C0CHAN";
+const TEAM_ID = "T0TEAM";
 const MESSAGE_TS = "1700000100.000";
 const THREAD_TS = "1700000000.000";
 const EDITED_MESSAGE_ID = `${MESSAGE_TS}:message_changed_mention`;
@@ -31,7 +31,7 @@ function makeEnvelope(overrides: {
         text: overrides.newText,
         ts: overrides.messageTs ?? MESSAGE_TS,
         thread_ts: overrides.threadTs ?? THREAD_TS,
-        user: overrides.user ?? "U_SENDER",
+        user: overrides.user ?? "U0SENDER",
         ...(overrides.botId ? { bot_id: overrides.botId } : {}),
       },
       previous_message: {
@@ -76,7 +76,7 @@ describe("extractMessageChangedMention", () => {
       _type: "chat:Message",
       attachments: [],
       author: {
-        userId: "U_SENDER",
+        userId: "U0SENDER",
         isBot: false,
         isMe: false,
       },
@@ -94,7 +94,7 @@ describe("extractMessageChangedMention", () => {
         team_id: TEAM_ID,
         ts: MESSAGE_TS,
         thread_ts: THREAD_TS,
-        user: "U_SENDER",
+        user: "U0SENDER",
       },
       text: `<@${BOT_USER_ID}> please help`,
       threadId: `slack:${CHANNEL_ID}:${THREAD_TS}`,
@@ -176,7 +176,7 @@ describe("extractMessageChangedMention", () => {
           text: `<@${BOT_USER_ID}> help`,
           ts: MESSAGE_TS,
           // no thread_ts
-          user: "U_SENDER",
+          user: "U0SENDER",
         },
         previous_message: {
           text: "help",

@@ -1,7 +1,7 @@
-export const TEST_CHANNEL_ID = "C_TEST";
-export const TEST_DM_CHANNEL_ID = "D_TEST";
-export const TEST_USER_ID = "U_TEST";
-export const TEST_BOT_USER_ID = "U_BOT";
+export const TEST_CHANNEL_ID = "C0TEST";
+export const TEST_DM_CHANNEL_ID = "D0TEST";
+export const TEST_USER_ID = "U0TEST";
+export const TEST_BOT_USER_ID = "U0BOT";
 export const TEST_THREAD_TS = "1700000000.000";
 export const TEST_THREAD_ID = `slack:${TEST_CHANNEL_ID}:${TEST_THREAD_TS}`;
 export const TEST_MESSAGE_TS = "1700000000.100";

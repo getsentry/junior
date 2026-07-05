@@ -403,7 +403,7 @@ describe("Slack schedule tools", () => {
         id: "sched_bad_destination",
         destination: {
           platform: "slack",
-          teamId: "D_BAD_TEAM",
+          teamId: "0BADTEAM",
           channelId: "D123",
         },
       }),

@@ -110,9 +110,9 @@ describe("requester", () => {
           userId: "U039RR91S",
           userName: "dcramer",
         },
-        { teamId: "T123", userId: "U_OTHER" },
+        { teamId: "T123", userId: "U0OTHER" },
       ),
-    ).toEqual({ platform: "slack", teamId: "T123", userId: "U_OTHER" });
+    ).toEqual({ platform: "slack", teamId: "T123", userId: "U0OTHER" });
   });
 
   it("omits unresolved Slack profile fields instead of inventing identity", () => {

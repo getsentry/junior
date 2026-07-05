@@ -199,13 +199,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_INT:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0INT:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-new-mention",
-        threadId: "slack:C_INT:1700000000.000",
+        threadId: "slack:C0INT:1700000000.000",
         text: "hey bot",
         isMention: true,
       }),
@@ -228,13 +228,13 @@ describe("bot handlers (integration)", () => {
     });
     expect(hasReply).toBe(true);
     expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
-      conversationId: "slack:C_INT:1700000000.000",
+      conversationId: "slack:C0INT:1700000000.000",
       sessionId: "turn_msg-new-mention",
     });
   });
 
   it("does not replay a message that already has a delivered reply", async () => {
-    const conversationId = "slack:C_REPLAY:1700000000.000";
+    const conversationId = "slack:C0REPLAY:1700000000.000";
     const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
@@ -350,13 +350,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_SUB:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0SUB:1700000000.000" });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
       createTestMessage({
         id: "msg-sub-mention",
-        threadId: "slack:C_SUB:1700000000.000",
+        threadId: "slack:C0SUB:1700000000.000",
         text: "<@UBOT> check this",
         isMention: true,
       }),
@@ -386,13 +386,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_SKIP:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0SKIP:1700000000.000" });
 
     await slackRuntime.handleSubscribedMessage(
       thread,
       createTestMessage({
         id: "msg-sub-skip",
-        threadId: "slack:C_SKIP:1700000000.000",
+        threadId: "slack:C0SKIP:1700000000.000",
         text: "just chatting among ourselves",
       }),
       { destination: createTestDestination(thread) },
@@ -429,15 +429,15 @@ describe("bot handlers (integration)", () => {
     });
 
     await slackRuntime.handleAssistantThreadStarted({
-      threadId: "slack:C_ASSIST:1700000000.000",
-      channelId: "C_ASSIST",
+      threadId: "slack:C0ASSIST:1700000000.000",
+      channelId: "C0ASSIST",
       threadTs: "1700000000.000",
       userId: "U-starter",
     });
 
     expect(fakeAdapter.titleCalls.length).toBe(1);
     expect(fakeAdapter.titleCalls[0].title).toBe("Junior");
-    expect(fakeAdapter.titleCalls[0].channelId).toBe("C_ASSIST");
+    expect(fakeAdapter.titleCalls[0].channelId).toBe("C0ASSIST");
     expect(fakeAdapter.promptCalls.length).toBe(1);
     expect(fakeAdapter.promptCalls[0].prompts.length).toBe(3);
   });
@@ -458,13 +458,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_ERR:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0ERR:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-err",
-        threadId: "slack:C_ERR:1700000000.000",
+        threadId: "slack:C0ERR:1700000000.000",
         text: "trigger an error",
         isMention: true,
       }),
@@ -481,7 +481,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
-    const conversationId = "slack:C_DELIVERY_FAIL:1700000000.000";
+    const conversationId = "slack:C0DELIVERYFAIL:1700000000.000";
     const sessionId = "turn_msg-delivery-fail";
     const finalText = "This reply never reaches Slack.";
     const promptMessages = turnPiMessages("please answer");
@@ -610,7 +610,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
-    const conversationId = "slack:C_POST_DELIVERY:1700000000.000";
+    const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
     const finalText = "Delivered before the state store failed.";
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -723,7 +723,7 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_CORRELATION:1700000000.000",
+      id: "slack:C0CORRELATION:1700000000.000",
       runId: "run-123",
     });
 
@@ -731,7 +731,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-correlation",
-        threadId: "slack:C_CORRELATION:1700000000.000",
+        threadId: "slack:C0CORRELATION:1700000000.000",
         text: "trace this turn",
         isMention: true,
       }),
@@ -741,8 +741,8 @@ describe("bot handlers (integration)", () => {
     expect(capturedCorrelation).toHaveLength(1);
     expect(capturedCorrelation[0]).toEqual(
       expect.objectContaining({
-        conversationId: "slack:C_CORRELATION:1700000000.000",
-        threadId: "slack:C_CORRELATION:1700000000.000",
+        conversationId: "slack:C0CORRELATION:1700000000.000",
+        threadId: "slack:C0CORRELATION:1700000000.000",
         runId: "run-123",
       }),
     );
@@ -765,13 +765,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_AUTH:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0AUTH:1700000000.000" });
     await expect(
       slackRuntime.handleNewMention(
         thread,
         createTestMessage({
           id: "msg-auth-pause",
-          threadId: "slack:C_AUTH:1700000000.000",
+          threadId: "slack:C0AUTH:1700000000.000",
           text: "please use notion",
           isMention: true,
         }),
@@ -783,7 +783,7 @@ describe("bot handlers (integration)", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          channel: "C_AUTH",
+          channel: "C0AUTH",
           thread_ts: "1700000000.000",
           text: "<@U-test> I'll need you to authorize Notion. I sent you a link.",
         }),
@@ -791,7 +791,7 @@ describe("bot handlers (integration)", () => {
     ]);
     expectBlocksIncludeConversationId(
       getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
-      "slack:C_AUTH:1700000000.000",
+      "slack:C0AUTH:1700000000.000",
     );
     const state = thread.getState();
     const conversation = (
@@ -845,14 +845,14 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_PLUGIN_AUTH:1700000000.000",
+      id: "slack:C0PLUGINAUTH:1700000000.000",
     });
     await expect(
       slackRuntime.handleNewMention(
         thread,
         createTestMessage({
           id: "msg-plugin-auth-pause",
-          threadId: "slack:C_PLUGIN_AUTH:1700000000.000",
+          threadId: "slack:C0PLUGINAUTH:1700000000.000",
           text: "please use github",
           isMention: true,
         }),
@@ -864,7 +864,7 @@ describe("bot handlers (integration)", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          channel: "C_PLUGIN_AUTH",
+          channel: "C0PLUGINAUTH",
           thread_ts: "1700000000.000",
           text: "<@U-test> I'll need you to authorize GitHub. I sent you a link.",
         }),
@@ -872,7 +872,7 @@ describe("bot handlers (integration)", () => {
     ]);
     expectBlocksIncludeConversationId(
       getCapturedSlackApiCalls("chat.postMessage")[0]!.params,
-      "slack:C_PLUGIN_AUTH:1700000000.000",
+      "slack:C0PLUGINAUTH:1700000000.000",
     );
     const state = thread.getState();
     const conversation = (
@@ -1134,7 +1134,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
-    const conversationId = "slack:C_AUTH_PARKED:1700000000.000";
+    const conversationId = "slack:C0AUTHPARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
     const executeAgentRun = vi.fn().mockResolvedValue(
       completedAgentRun({
@@ -1425,14 +1425,14 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_RETRYQUIET:1700000000.000",
+      id: "slack:C0RETRYQUIET:1700000000.000",
     });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-retryable-failure",
-        threadId: "slack:C_RETRYQUIET:1700000000.000",
+        threadId: "slack:C0RETRYQUIET:1700000000.000",
         text: "do work",
         isMention: true,
       }),
@@ -1466,14 +1466,14 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_RETRYACKED:1700000000.000",
+      id: "slack:C0RETRYACKED:1700000000.000",
     });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-acked-failure",
-        threadId: "slack:C_RETRYACKED:1700000000.000",
+        threadId: "slack:C0RETRYACKED:1700000000.000",
         text: "do work",
         isMention: true,
       }),
@@ -1506,14 +1506,14 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_RETRYFINAL:1700000000.000",
+      id: "slack:C0RETRYFINAL:1700000000.000",
     });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-final-failure",
-        threadId: "slack:C_RETRYFINAL:1700000000.000",
+        threadId: "slack:C0RETRYFINAL:1700000000.000",
         text: "do work",
         isMention: true,
       }),
@@ -1531,7 +1531,7 @@ describe("bot handlers (integration)", () => {
   });
 
   it("fails malformed awaiting continuations before handling the follow-up", async () => {
-    const conversationId = "slack:C_BAD_CONTINUATION:1700000000.000";
+    const conversationId = "slack:C0BADCONTINUATION:1700000000.000";
     const activeSessionId = "turn_msg-timeout-original";
     const executeAgentRun = vi.fn().mockResolvedValue(
       completedAgentRun({
@@ -1838,14 +1838,14 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_STREAM_FAIL:1700000000.000",
+      id: "slack:C0STREAMFAIL:1700000000.000",
     });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-stream-fail",
-        threadId: "slack:C_STREAM_FAIL:1700000000.000",
+        threadId: "slack:C0STREAMFAIL:1700000000.000",
         text: "do work",
         isMention: true,
       }),
@@ -1896,13 +1896,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_STATUS:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0STATUS:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-status",
-        threadId: "slack:C_STATUS:1700000000.000",
+        threadId: "slack:C0STATUS:1700000000.000",
         text: "show the channel",
         isMention: true,
       }),
@@ -1912,12 +1912,12 @@ describe("bot handlers (integration)", () => {
     expect(fakeAdapter.statusCalls.length).toBeGreaterThan(0);
     expect(fakeAdapter.statusCalls[0]).toEqual(
       expect.objectContaining({
-        channelId: "C_STATUS",
+        channelId: "C0STATUS",
         threadTs: "1700000000.000",
       }),
     );
     expect(fakeAdapter.statusCalls.at(-1)).toEqual({
-      channelId: "C_STATUS",
+      channelId: "C0STATUS",
       threadTs: "1700000000.000",
       text: "",
       loadingMessages: undefined,
@@ -1969,14 +1969,14 @@ describe("bot handlers (integration)", () => {
 
     let settled = false;
     const thread = createTestThread({
-      id: "slack:D_STATUSBLOCK:1700000000.000",
+      id: "slack:D0STATUSBLOCK:1700000000.000",
     });
     const turnPromise = slackRuntime
       .handleNewMention(
         thread,
         createTestMessage({
           id: "msg-status-block",
-          threadId: "slack:D_STATUSBLOCK:1700000000.000",
+          threadId: "slack:D0STATUSBLOCK:1700000000.000",
           text: "show the channel",
           isMention: true,
         }),
@@ -2022,7 +2022,7 @@ describe("bot handlers (integration)", () => {
 
     let replyStarted = false;
     const thread = createTestThread({
-      id: "slack:D_STATUSORDER:1700000001.000",
+      id: "slack:D0STATUSORDER:1700000001.000",
     });
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
@@ -2115,13 +2115,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-title-1",
-        threadId: "slack:D_TITLE:1700000000.000",
+        threadId: "slack:D0TITLE:1700000000.000",
         text: "How do I debug memory leaks in Node?",
         isMention: true,
       }),
@@ -2135,7 +2135,7 @@ describe("bot handlers (integration)", () => {
     );
     expect(generatedTitleCall).toBeDefined();
     expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
-    expect(generatedTitleCall!.channelId).toBe("D_TITLE");
+    expect(generatedTitleCall!.channelId).toBe("D0TITLE");
     expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
   });
 
@@ -2178,10 +2178,10 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE4:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE4:1700000000.000" });
     const earlierMessage = createTestMessage({
       id: "msg-title4-earlier",
-      threadId: "slack:D_TITLE4:1700000000.000",
+      threadId: "slack:D0TITLE4:1700000000.000",
       text: "Original production issue summary",
       author: { userId: "U-title4", isBot: false },
     });
@@ -2192,7 +2192,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-title4-current",
-        threadId: "slack:D_TITLE4:1700000000.000",
+        threadId: "slack:D0TITLE4:1700000000.000",
         text: "Can you also include the regression window?",
         isMention: true,
       }),
@@ -2241,11 +2241,11 @@ describe("bot handlers (integration)", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:D_TITLE5:1700000000.000",
+      id: "slack:D0TITLE5:1700000000.000",
     });
     const starterMessage = createTestMessage({
       id: "msg-title5-starter",
-      threadId: "slack:D_TITLE5:1700000000.000",
+      threadId: "slack:D0TITLE5:1700000000.000",
       text: "How can I help?",
       author: {
         isBot: true,
@@ -2261,7 +2261,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-title5-user",
-        threadId: "slack:D_TITLE5:1700000000.000",
+        threadId: "slack:D0TITLE5:1700000000.000",
         text: "what's today's date",
         isMention: true,
       }),
@@ -2313,14 +2313,14 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE6:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE6:1700000000.000" });
     let settled = false;
     const turnPromise = slackRuntime
       .handleNewMention(
         thread,
         createTestMessage({
           id: "msg-title-6",
-          threadId: "slack:D_TITLE6:1700000000.000",
+          threadId: "slack:D0TITLE6:1700000000.000",
           text: "what's today's date",
           isMention: true,
         }),
@@ -2397,13 +2397,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE7:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE7:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-title-7",
-        threadId: "slack:D_TITLE7:1700000000.000",
+        threadId: "slack:D0TITLE7:1700000000.000",
         text: "what's today's date",
         isMention: true,
       }),
@@ -2453,13 +2453,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE2:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE2:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-t2-1",
-        threadId: "slack:D_TITLE2:1700000000.000",
+        threadId: "slack:D0TITLE2:1700000000.000",
         text: "first message",
         isMention: true,
       }),
@@ -2476,7 +2476,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-t2-2",
-        threadId: "slack:D_TITLE2:1700000000.000",
+        threadId: "slack:D0TITLE2:1700000000.000",
         text: "second message",
         isMention: true,
       }),
@@ -2531,14 +2531,14 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE3:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE3:1700000000.000" });
 
     await expect(
       slackRuntime.handleNewMention(
         thread,
         createTestMessage({
           id: "msg-title-3",
-          threadId: "slack:D_TITLE3:1700000000.000",
+          threadId: "slack:D0TITLE3:1700000000.000",
           text: "title this thread please",
           isMention: true,
         }),
@@ -2594,13 +2594,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:D_TITLE7:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D0TITLE7:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-title7-1",
-        threadId: "slack:D_TITLE7:1700000000.000",
+        threadId: "slack:D0TITLE7:1700000000.000",
         text: "first message",
         isMention: true,
       }),
@@ -2610,7 +2610,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-title7-2",
-        threadId: "slack:D_TITLE7:1700000000.000",
+        threadId: "slack:D0TITLE7:1700000000.000",
         text: "second message",
         isMention: true,
       }),
@@ -2651,7 +2651,7 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const threadId = "slack:C_FIRST_EMPTY:1700000000.000";
+    const threadId = "slack:C0FIRSTEMPTY:1700000000.000";
     const thread = createTestThread({ id: threadId });
 
     await slackRuntime.handleNewMention(
@@ -2699,7 +2699,7 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const threadId = "slack:C_FIRST_EXISTING:1700000000.000";
+    const threadId = "slack:C0FIRSTEXISTING:1700000000.000";
     const thread = createTestThread({ id: threadId });
     const priorMessage = createTestMessage({
       id: "msg-first-prior",
@@ -2776,7 +2776,7 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const threadId = "slack:D_ORDER:1700000000.000";
+    const threadId = "slack:D0ORDER:1700000000.000";
     const thread = createTestThread({ id: threadId });
     const firstMessage = createTestMessage({
       id: "1700000000.100",
@@ -2836,13 +2836,13 @@ describe("bot handlers (integration)", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_MULTI:1700000000.000" });
+    const thread = createTestThread({ id: "slack:C0MULTI:1700000000.000" });
 
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "msg-t1",
-        threadId: "slack:C_MULTI:1700000000.000",
+        threadId: "slack:C0MULTI:1700000000.000",
         text: "first turn",
         isMention: true,
       }),
@@ -2860,7 +2860,7 @@ describe("bot handlers (integration)", () => {
       thread,
       createTestMessage({
         id: "msg-t2",
-        threadId: "slack:C_MULTI:1700000000.000",
+        threadId: "slack:C0MULTI:1700000000.000",
         text: "second turn",
         isMention: true,
       }),

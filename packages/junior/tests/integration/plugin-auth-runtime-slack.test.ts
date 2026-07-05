@@ -186,7 +186,7 @@ describe("plugin auth runtime slack integration", () => {
   });
 
   it("does not park or deliver plugin auth links for bot-authored messages", async () => {
-    const threadId = "slack:C_PLUGIN_BOT:1700000000.000";
+    const threadId = "slack:C0PLUGINBOT:1700000000.000";
     const { createTestChatRuntime } = chatRuntimeModule!;
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -211,7 +211,7 @@ describe("plugin auth runtime slack integration", () => {
     const destination = {
       platform: "slack" as const,
       teamId: "T123",
-      channelId: "C_PLUGIN_BOT",
+      channelId: "C0PLUGINBOT",
     };
     const thread = createTestThread({
       id: threadId,
@@ -248,7 +248,7 @@ describe("plugin auth runtime slack integration", () => {
         },
         raw: {
           bot_id: "B123456",
-          channel: "C_PLUGIN_BOT",
+          channel: "C0PLUGINBOT",
           team_id: "T123",
           ts: "1700000000.001",
           thread_ts: "1700000000.000",

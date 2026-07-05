@@ -18,7 +18,7 @@ import { slackApiOutbox } from "../../fixtures/slack-api-outbox";
 import { createSlackWebhookTestClient } from "../../fixtures/slack/webhook-client";
 
 const SIGNING_SECRET = "test-signing-secret";
-const BOT_USER_ID = "U_BOT";
+const BOT_USER_ID = "U0BOT";
 const ORIGINAL_ENV = { ...process.env };
 
 function createSlackAdapter() {

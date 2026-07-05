@@ -80,13 +80,13 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005000.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005000.000" });
     const message = createTestMessage({
       id: "m-content-strip",
-      text: "<@U_APP>   please summarize the deploy status",
+      text: "<@U0APP>   please summarize the deploy status",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, message, {
@@ -115,13 +115,13 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005001.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005001.000" });
     const message = createTestMessage({
       id: "m-content-preserve",
-      text: "<@U_APP> remind me to message <@U_ONCALL> after deploy",
+      text: "<@U0APP> remind me to message <@U0ONCALL> after deploy",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, message, {
@@ -129,7 +129,7 @@ describe("Slack behavior: message content", () => {
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
+    expect(calls[0]?.prompt).toContain("message <@U0ONCALL> after deploy");
   });
 
   it("passes legacy attachment text into the current turn prompt", async () => {
@@ -156,15 +156,15 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005002.500" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005002.500" });
     const message = createTestMessage({
       id: "m-content-legacy-attachment",
-      text: "<@U_APP>",
+      text: "<@U0APP>",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
       raw: {
-        channel: "C_BEHAVIOR",
+        channel: "C0BEHAVIOR",
         ts: "1700005002.500",
         thread_ts: "1700005002.500",
         attachments: [
@@ -205,14 +205,14 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005002.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005002.000" });
     const message = createTestMessage({
       id: "m-content-self",
-      text: "<@U_APP> do not respond",
+      text: "<@U0APP> do not respond",
       isMention: true,
       threadId: thread.id,
       author: {
-        userId: "U_BOT",
+        userId: "U0BOT",
         isMe: true,
       },
     });
@@ -294,20 +294,20 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005003.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005003.000" });
     const first = createTestMessage({
       id: "m-content-context-1",
-      text: "<@U_APP> I need the budget by Friday",
+      text: "<@U0APP> I need the budget by Friday",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
     const second = createTestMessage({
       id: "m-content-context-2",
-      text: "<@U_APP> what did I just ask?",
+      text: "<@U0APP> what did I just ask?",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, first, {
@@ -348,7 +348,7 @@ describe("Slack behavior: message content", () => {
         timestamp: 2,
       },
     ] as PiMessage[];
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005005.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.000" });
     await commitMessages({
       conversationId: thread.id,
       messages: priorMessages,
@@ -390,10 +390,10 @@ describe("Slack behavior: message content", () => {
       thread,
       createTestMessage({
         id: "m-content-auto-compact",
-        text: "<@U_APP> continue",
+        text: "<@U0APP> continue",
         isMention: true,
         threadId: thread.id,
-        author: { userId: "U_TESTER" },
+        author: { userId: "U0TESTER" },
       }),
       { destination: createTestDestination(thread) },
     );
@@ -460,7 +460,7 @@ describe("Slack behavior: message content", () => {
         timestamp: 2,
       },
     ] as PiMessage[];
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005006.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005006.000" });
     await commitMessages({
       conversationId: thread.id,
       messages: priorMessages,
@@ -509,10 +509,10 @@ describe("Slack behavior: message content", () => {
       thread,
       createTestMessage({
         id: "m-content-active-session-record",
-        text: "<@U_APP> continue",
+        text: "<@U0APP> continue",
         isMention: true,
         threadId: thread.id,
-        author: { userId: "U_TESTER" },
+        author: { userId: "U0TESTER" },
       }),
       { destination: createTestDestination(thread) },
     );

@@ -111,7 +111,7 @@ describe("conversation message actor identity", () => {
         fullName: "Other Person",
         platform: "slack",
         teamId: "T123",
-        userId: "U_OTHER",
+        userId: "U0OTHER",
         userName: "other",
       }),
     ).toThrow("Message requester user id mismatch");

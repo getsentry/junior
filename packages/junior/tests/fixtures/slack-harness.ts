@@ -73,7 +73,7 @@ export function createTestMessage(args: {
   attachments?: Message["attachments"];
   raw?: Record<string, unknown>;
 }): Message {
-  const threadId = args.threadId ?? "slack:C_TEST:1700000000.000";
+  const threadId = args.threadId ?? "slack:C0TEST:1700000000.000";
   const threadParts = threadId.split(":");
   const inferredChannel = threadParts.length === 3 ? threadParts[1] : undefined;
   const inferredTs = threadParts.length === 3 ? threadParts[2] : undefined;
@@ -162,7 +162,7 @@ export function createTestThread(args: {
   runId?: string;
   threadTs?: string;
 }): TestThread {
-  const id = args.id ?? "slack:C_TEST:1700000000.000";
+  const id = args.id ?? "slack:C0TEST:1700000000.000";
   const channelId = args.channelId ?? toAdapterChannelId(id) ?? id;
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];

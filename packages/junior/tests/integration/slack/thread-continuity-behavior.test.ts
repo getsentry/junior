@@ -70,20 +70,20 @@ describe("Slack behavior: thread continuity", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700003000.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700003000.000" });
     const firstMessage = createTestMessage({
       id: "m-continuity-1",
-      text: "<@U_APP> We rolled back the deploy after a 500 spike. Give me a status update.",
+      text: "<@U0APP> We rolled back the deploy after a 500 spike. Give me a status update.",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
     const secondMessage = createTestMessage({
       id: "m-continuity-2",
-      text: "<@U_APP> Also give one concrete next step for follow-up.",
+      text: "<@U0APP> Also give one concrete next step for follow-up.",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, firstMessage, {

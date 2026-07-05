@@ -724,7 +724,7 @@ describe("dashboard reporting", () => {
       }),
       ...Array.from({ length: 5_000 }, (_, index) =>
         indexedConversation({
-          conversationId: `slack:C_FILL:${index}`,
+          conversationId: `slack:C0FILL:${index}`,
           createdAtMs: startedAtMs + (index + 1) * 1000,
           lastActivityAtMs: startedAtMs + (index + 1) * 1000,
           requester: { fullName: "Filler" },

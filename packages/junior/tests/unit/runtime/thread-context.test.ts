@@ -9,8 +9,8 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 describe("stripLeadingBotMention", () => {
   it("strips the Slack adapter's normalized bot user id mention", () => {
     expect(
-      stripLeadingBotMention("@U_BOT start the incident summary", {
-        botUserId: "U_BOT",
+      stripLeadingBotMention("@U0BOT start the incident summary", {
+        botUserId: "U0BOT",
         stripLeadingSlackMentionToken: true,
       }),
     ).toBe("start the incident summary");
@@ -18,20 +18,20 @@ describe("stripLeadingBotMention", () => {
 
   it("keeps non-bot normalized mentions intact", () => {
     expect(
-      stripLeadingBotMention("@U_OTHER ask junior for help", {
-        botUserId: "U_BOT",
+      stripLeadingBotMention("@U0OTHER ask junior for help", {
+        botUserId: "U0BOT",
         stripLeadingSlackMentionToken: true,
       }),
-    ).toBe("@U_OTHER ask junior for help");
+    ).toBe("@U0OTHER ask junior for help");
   });
 
   it("preserves a referenced user after the leading bot mention", () => {
     expect(
-      stripLeadingBotMention("<@U_BOT> <@U_OTHER> status?", {
-        botUserId: "U_BOT",
+      stripLeadingBotMention("<@U0BOT> <@U0OTHER> status?", {
+        botUserId: "U0BOT",
         stripLeadingSlackMentionToken: true,
       }),
-    ).toBe("<@U_OTHER> status?");
+    ).toBe("<@U0OTHER> status?");
   });
 });
 

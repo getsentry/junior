@@ -21,7 +21,7 @@ describe("uploadFilesToThread", () => {
   it("rejects empty file batches before calling Slack", async () => {
     await expect(
       uploadFilesToThread({
-        channelId: "C-test",
+        channelId: "C0TEST",
         threadTs: "1700000000.000",
         files: [],
       }),
@@ -54,7 +54,7 @@ describe("uploadFilesToThread", () => {
     };
 
     await uploadFilesToThread({
-      channelId: "C-test",
+      channelId: "C0TEST",
       threadTs: "1700000000.000",
       files: [testFile],
     });
@@ -77,7 +77,7 @@ describe("uploadFilesToThread", () => {
     );
     expect(completeCalls).toHaveLength(1);
     expect(completeCalls[0]?.params).toMatchObject({
-      channel_id: "C-test",
+      channel_id: "C0TEST",
       thread_ts: "1700000000.000",
     });
     expect(completeCalls[0]?.params.files).toEqual([
@@ -113,7 +113,7 @@ describe("uploadFilesToThread", () => {
     ];
 
     await uploadFilesToThread({
-      channelId: "C-multi",
+      channelId: "C0MULTI",
       threadTs: "1700000001.000",
       files,
     });
@@ -139,7 +139,7 @@ describe("uploadFilesToThread", () => {
     );
     expect(completeCalls).toHaveLength(1);
     expect(completeCalls[0]?.params).toMatchObject({
-      channel_id: "C-multi",
+      channel_id: "C0MULTI",
       thread_ts: "1700000001.000",
     });
     expect(completeCalls[0]?.params.files).toEqual([
@@ -163,7 +163,7 @@ describe("uploadFilesToThread", () => {
     });
 
     await uploadFilesToThread({
-      channelId: "C-retry",
+      channelId: "C0RETRY",
       threadTs: "1700000002.000",
       files: [{ data: Buffer.from("retry-data"), filename: "retry.png" }],
     });
@@ -192,7 +192,7 @@ describe("uploadFilesToThread", () => {
 
     await expect(
       uploadFilesToThread({
-        channelId: "C-scope",
+        channelId: "C0SCOPE",
         threadTs: "1700000003.000",
         files: [{ data: Buffer.from("scope-data"), filename: "scope.png" }],
       }),

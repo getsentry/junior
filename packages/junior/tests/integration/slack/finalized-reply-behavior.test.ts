@@ -90,12 +90,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006000.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006000.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-1",
-        text: "<@U_APP> say hello",
+        text: "<@U0APP> say hello",
         isMention: true,
         threadId: thread.id,
       }),
@@ -132,12 +132,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006001.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006001.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-2",
-        text: "<@U_APP> summarize the news",
+        text: "<@U0APP> summarize the news",
         isMention: true,
         threadId: thread.id,
       }),
@@ -164,12 +164,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006002.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006002.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-3",
-        text: "<@U_APP> attach the file",
+        text: "<@U0APP> attach the file",
         isMention: true,
         threadId: thread.id,
       }),
@@ -206,12 +206,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006003.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006003.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-4",
-        text: "<@U_APP> post in channel",
+        text: "<@U0APP> post in channel",
         isMention: true,
         threadId: thread.id,
       }),
@@ -245,12 +245,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006005.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006005.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-empty-plan",
-        text: "<@U_APP> reply invisibly",
+        text: "<@U0APP> reply invisibly",
         isMention: true,
         threadId: thread.id,
       }),
@@ -283,12 +283,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006004.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006004.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-5",
-        text: "<@U_APP> react and attach",
+        text: "<@U0APP> react and attach",
         isMention: true,
         threadId: thread.id,
       }),
@@ -321,12 +321,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006005.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006005.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-6",
-        text: "<@U_APP> give me all lines",
+        text: "<@U0APP> give me all lines",
         isMention: true,
         threadId: thread.id,
       }),
@@ -360,12 +360,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006006.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006006.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-7",
-        text: "<@U_APP> send the script",
+        text: "<@U0APP> send the script",
         isMention: true,
         threadId: thread.id,
       }),
@@ -400,12 +400,12 @@ describe("Slack behavior: finalized thread replies", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_FINAL:1700006007.000" });
+    const thread = createTestThread({ id: "slack:C0FINAL:1700006007.000" });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-final-8",
-        text: "<@U_APP> long reply please",
+        text: "<@U0APP> long reply please",
         isMention: true,
         threadId: thread.id,
       }),

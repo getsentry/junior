@@ -14,7 +14,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const SIGNING_SECRET = "test-signing-secret";
-const BOT_USER_ID = "U_BOT";
+const BOT_USER_ID = "U0BOT";
 const slackWebhookClient = createSlackWebhookTestClient({
   signingSecret: SIGNING_SECRET,
 });

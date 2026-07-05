@@ -420,7 +420,7 @@ export const slackApiHandlers = [
 
   http.get("https://slack.com/api/users.info", async ({ request }) => {
     const url = new URL(request.url);
-    const userId = url.searchParams.get("user") ?? "U_TEST";
+    const userId = url.searchParams.get("user") ?? "U0TEST";
 
     capturedSlackApiCalls.push({
       method: "users.info",

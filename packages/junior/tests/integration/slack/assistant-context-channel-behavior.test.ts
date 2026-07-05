@@ -42,25 +42,25 @@ describe("Slack behavior: assistant context channel routing", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:D_DM_THREAD:1700007000.000",
+      id: "slack:D0DMTHREAD:1700007000.000",
       state: {
         artifacts: {
-          assistantContextChannelId: "C_SHARED_CONTEXT",
+          assistantContextChannelId: "C0SHAREDCONTEXT",
         },
       },
     });
     const message = createTestMessage({
       id: "m-assistant-context-1",
-      text: "<@U_APP> create a shared canvas update",
+      text: "<@U0APP> create a shared canvas update",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
     });
 
     await slackRuntime.handleNewMention(thread, message, {
       destination: createTestDestination(thread),
     });
 
-    expect(capturedToolChannelIds).toEqual(["C_SHARED_CONTEXT"]);
+    expect(capturedToolChannelIds).toEqual(["C0SHAREDCONTEXT"]);
   });
 });

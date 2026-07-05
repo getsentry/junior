@@ -108,14 +108,14 @@ describe("Slack behavior: mixed attachment media", () => {
     );
 
     const thread = createTestThread({
-      id: "slack:C_BEHAVIOR:1700004010.000",
+      id: "slack:C0BEHAVIOR:1700004010.000",
     });
     const message = createTestMessage({
       id: "m-attachment-mixed-1",
-      text: "<@U_APP> summarize these files",
+      text: "<@U0APP> summarize these files",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
       attachments: [
         {
           type: "image",
@@ -207,13 +207,13 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004011.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004011.000" });
     const message = createTestMessage({
       id: "m-attachment-mixed-2",
-      text: "<@U_APP> summarize these files",
+      text: "<@U0APP> summarize these files",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
       attachments: [
         {
           type: "image",
@@ -278,13 +278,13 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     });
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004012.000" });
+    const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700004012.000" });
     const message = createTestMessage({
       id: "m-attachment-mixed-3",
-      text: "<@U_APP> what about this image?",
+      text: "<@U0APP> what about this image?",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" },
+      author: { userId: "U0TESTER" },
       attachments: [
         {
           type: "image",

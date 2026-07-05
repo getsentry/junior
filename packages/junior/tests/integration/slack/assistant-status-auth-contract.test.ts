@@ -14,7 +14,7 @@ import {
 const SIGNING_SECRET = "test-signing-secret";
 const DEFAULT_BOT_TOKEN = "xoxb-default";
 const TEAM_BOT_TOKEN = "xoxb-team";
-const BOT_USER_ID = "U_BOT";
+const BOT_USER_ID = "U0BOT";
 const DM_CHANNEL_ID = "D12345";
 const THREAD_TS = "1700000000.000001";
 const INITIAL_LOADING_MESSAGE = "Consulting the orb";

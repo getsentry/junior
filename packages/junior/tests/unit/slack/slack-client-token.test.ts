@@ -40,7 +40,7 @@ describe("getSlackClient token resolution", () => {
   it("fails a workspace-scoped call when no installation token can be resolved", () => {
     getSlackBotTokenMock.mockReturnValue(undefined);
 
-    runWithWorkspaceTeamId("T_OTHER_WORKSPACE", () => {
+    runWithWorkspaceTeamId("T0OTHERWORKSPACE", () => {
       let caught: unknown;
       try {
         getSlackClient();
@@ -50,7 +50,7 @@ describe("getSlackClient token resolution", () => {
       expect(caught).toBeInstanceOf(SlackActionError);
       expect((caught as SlackActionError).code).toBe("missing_token");
       expect((caught as SlackActionError).message).toContain(
-        "T_OTHER_WORKSPACE",
+        "T0OTHERWORKSPACE",
       );
     });
   });

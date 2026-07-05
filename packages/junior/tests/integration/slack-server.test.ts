@@ -26,7 +26,7 @@ describe("Slack MSW server", () => {
         "content-type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams({
-        channel: "C_TEST",
+        channel: "C0TEST",
         text: "hello",
       }).toString(),
     });
@@ -46,7 +46,7 @@ describe("Slack MSW server", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
-          channel_id: "slack:D_TEST",
+          channel_id: "slack:D0TEST",
           thread_ts: "1700000000.100",
           status: "Thinking …",
         }).toString(),

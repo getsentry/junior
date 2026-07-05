@@ -20,7 +20,7 @@ export const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } as const satisfies Destination;
-export const SLACK_BOT_USER_ID = "U_BOT";
+export const SLACK_BOT_USER_ID = "U0BOT";
 export const SLACK_SIGNING_SECRET = "slack-signature-fixture";
 
 export interface ConversationQueueSendRecord {

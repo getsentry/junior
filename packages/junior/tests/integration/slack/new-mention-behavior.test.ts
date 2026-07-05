@@ -69,15 +69,15 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_BEHAVIOR:1700001234.000",
+      id: "slack:C0BEHAVIOR:1700001234.000",
     });
     const message = createTestMessage({
       id: "m-behavior-1",
-      text: "<@U_APP> give me a status update",
+      text: "<@U0APP> give me a status update",
       isMention: true,
       threadId: thread.id,
       author: {
-        userId: "U_TESTER",
+        userId: "U0TESTER",
         userName: "tester",
       },
     });
@@ -112,17 +112,17 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_QUEUED:1700001234.000",
+      id: "slack:C0QUEUED:1700001234.000",
     });
     const queued = createTestMessage({
       id: "m-queued",
-      text: "<@U_APP> first queued request",
+      text: "<@U0APP> first queued request",
       isMention: true,
       threadId: thread.id,
     });
     const latest = createTestMessage({
       id: "m-latest",
-      text: "<@U_APP> latest request",
+      text: "<@U0APP> latest request",
       isMention: true,
       threadId: thread.id,
     });
@@ -195,11 +195,11 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_QUEUED_ATTACHMENTS:1700001234.000",
+      id: "slack:C0QUEUEDATTACHMENTS:1700001234.000",
     });
     const queued = createTestMessage({
       id: "m-queued-file",
-      text: "<@U_APP> review this file first",
+      text: "<@U0APP> review this file first",
       isMention: true,
       threadId: thread.id,
       attachments: [
@@ -213,7 +213,7 @@ describe("Slack behavior: new mention", () => {
     });
     const latest = createTestMessage({
       id: "m-latest-file",
-      text: "<@U_APP> then answer now",
+      text: "<@U0APP> then answer now",
       isMention: true,
       threadId: thread.id,
     });
@@ -262,13 +262,13 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_STATUS:1700002000.000",
+      id: "slack:C0STATUS:1700002000.000",
     });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-status-clear",
-        text: "<@U_APP> run a command",
+        text: "<@U0APP> run a command",
         isMention: true,
         threadId: thread.id,
       }),
@@ -277,7 +277,7 @@ describe("Slack behavior: new mention", () => {
 
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
     expect(slackAdapter.statusCalls.at(-1)).toEqual({
-      channelId: "C_STATUS",
+      channelId: "C0STATUS",
       threadTs: "1700002000.000",
       text: "",
       loadingMessages: undefined,
@@ -300,13 +300,13 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_STATUS:1700003000.000",
+      id: "slack:C0STATUS:1700003000.000",
     });
     await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "m-status-error",
-        text: "<@U_APP> do something",
+        text: "<@U0APP> do something",
         isMention: true,
         threadId: thread.id,
       }),
@@ -315,7 +315,7 @@ describe("Slack behavior: new mention", () => {
 
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
     expect(slackAdapter.statusCalls.at(-1)).toEqual({
-      channelId: "C_STATUS",
+      channelId: "C0STATUS",
       threadTs: "1700003000.000",
       text: "",
       loadingMessages: undefined,
@@ -348,15 +348,15 @@ describe("Slack behavior: new mention", () => {
     });
 
     const thread = createTestThread({
-      id: "slack:C_BEHAVIOR:1700005678.000",
+      id: "slack:C0BEHAVIOR:1700005678.000",
     });
     const message = createTestMessage({
       id: "m-behavior-2",
-      text: "<@U_APP> say hello to the channel",
+      text: "<@U0APP> say hello to the channel",
       isMention: true,
       threadId: thread.id,
       author: {
-        userId: "U_TESTER",
+        userId: "U0TESTER",
         userName: "tester",
       },
     });

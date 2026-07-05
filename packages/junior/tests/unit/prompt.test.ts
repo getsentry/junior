@@ -136,7 +136,7 @@ describe("prompt builders", () => {
         includeSessionContext: false,
         invocation: null,
         requester: {
-          userId: "U_BETA",
+          userId: "U0BETA",
           userName: "dcramer",
         },
         runtime: {
