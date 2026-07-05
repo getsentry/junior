@@ -63,7 +63,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).not.toHaveProperty("sendMessage");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
-    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -72,7 +72,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
-    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -81,7 +81,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
-    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -116,7 +116,7 @@ describe("Slack tool registration", () => {
 
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).toHaveProperty("slackChannelListMessages");
-    expect(tools).toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -171,7 +171,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackCanvasRead");
     expect(tools).not.toHaveProperty("sendMessage");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
-    expect(tools).not.toHaveProperty("slackMessageAddReaction");
+    expect(tools).not.toHaveProperty("addReaction");
   });
 
   it("does not register Slack tools for local destinations", () => {

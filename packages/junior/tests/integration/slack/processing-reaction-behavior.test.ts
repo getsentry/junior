@@ -255,12 +255,12 @@ describe("Slack behavior: processing reaction", () => {
               };
 
               context?.onToolInvocation?.({
-                toolName: "slackMessageAddReaction",
+                toolName: "addReaction",
                 params: { emoji: ":eyes:" },
               });
               return completedAgentRun({
                 text: "Done.",
-                diagnostics: successDiagnostics(["slackMessageAddReaction"]),
+                diagnostics: successDiagnostics(["addReaction"]),
               });
             },
           },

@@ -173,7 +173,7 @@ export function createTools(
     }
 
     if (rawChannelCapabilities.canAddReactions) {
-      tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
+      tools.addReaction = createSlackMessageAddReactionTool(
         slackContext,
         state,
       );

@@ -516,6 +516,10 @@ function nextId() {
   return String(++_seq);
 }
 
+function messageTs(seq: string) {
+  return `17000001.${seq}`;
+}
+
 const DEFAULT_AUTHOR = {
   user_id: "U-test",
   user_name: "testuser",
@@ -548,7 +552,7 @@ export function mention(
       ...opts?.thread,
     },
     message: {
-      id: `m-${seq}`,
+      id: messageTs(seq),
       text,
       is_mention: true,
       author: { ...DEFAULT_AUTHOR, ...opts?.author },
@@ -575,7 +579,7 @@ export function threadMessage(
       ...opts?.thread,
     },
     message: {
-      id: `m-${seq}`,
+      id: messageTs(seq),
       text,
       is_mention: opts?.is_mention ?? false,
       author: { ...DEFAULT_AUTHOR, ...opts?.author },

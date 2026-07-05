@@ -36,7 +36,7 @@ export function shouldKeepProcessingReactionForToolInvocation(
   input: TurnToolInvocation,
 ): boolean {
   return (
-    input.toolName === "slackMessageAddReaction" &&
+    input.toolName === "addReaction" &&
     isProcessingReactionEmoji(input.params.emoji)
   );
 }

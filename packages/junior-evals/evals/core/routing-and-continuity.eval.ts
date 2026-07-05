@@ -116,7 +116,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The normalized transcript contains at least one reaction_added assistant message.",
-          "The assistant tool calls include slackMessageAddReaction for the requested reaction.",
+          "The assistant tool calls include addReaction for the requested reaction.",
           `The visible transcript contains no thread reply; the no-reply marker ${NO_REPLY_MARKER} is only an internal publication signal.`,
         ],
         fail: [
@@ -129,7 +129,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     });
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "slackMessageAddReaction" }),
+        expect.objectContaining({ name: "addReaction" }),
       ]),
     );
     expect(visibleThreadReplies(result.session)).toEqual([]);

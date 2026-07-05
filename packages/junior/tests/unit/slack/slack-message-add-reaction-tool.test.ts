@@ -55,7 +55,7 @@ function createState() {
   };
 }
 
-describe("slackMessageAddReaction tool", () => {
+describe("addReaction tool", () => {
   it("rejects non-alias emoji input", async () => {
     addReactionToMessage.mockReset();
     const tool = createSlackMessageAddReactionTool(

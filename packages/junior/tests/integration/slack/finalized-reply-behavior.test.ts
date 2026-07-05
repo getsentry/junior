@@ -275,7 +275,7 @@ describe("Slack behavior: finalized thread replies", () => {
                   { data: Buffer.from("report"), filename: "report.txt" },
                 ],
                 diagnostics: makeDiagnostics({
-                  toolCalls: ["slackMessageAddReaction"],
+                  toolCalls: ["addReaction"],
                 }),
               }),
           },

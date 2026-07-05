@@ -262,7 +262,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       sendMessageResultTarget(result) === "channel",
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
-  const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
+  const reactionPerformed = successfulToolNames.has("addReaction");
   const markerSideEffectSuccess =
     exactNoReplyMarker &&
     toolErrorCount === 0 &&

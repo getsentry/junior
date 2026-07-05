@@ -236,7 +236,7 @@ describe("buildTurnResult", () => {
       newMessages: [
         {
           role: "toolResult",
-          toolName: "slackMessageAddReaction",
+          toolName: "addReaction",
           isError: false,
           content: [{ type: "text", text: "reaction added" }],
         },
@@ -249,7 +249,7 @@ describe("buildTurnResult", () => {
       userInput: "react and confirm",
       replyFiles: [],
       artifactStatePatch: {},
-      toolCalls: ["slackMessageAddReaction"],
+      toolCalls: ["addReaction"],
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
@@ -269,7 +269,7 @@ describe("buildTurnResult", () => {
       newMessages: [
         {
           role: "toolResult",
-          toolName: "slackMessageAddReaction",
+          toolName: "addReaction",
           isError: false,
           content: [{ type: "text", text: "reaction added" }],
         },
@@ -280,7 +280,7 @@ describe("buildTurnResult", () => {
               type: "text",
               text: JSON.stringify({
                 type: "tool_call",
-                name: "slackMessageAddReaction",
+                name: "addReaction",
                 input: { reaction: "thumbsup" },
               }),
             },
@@ -291,7 +291,7 @@ describe("buildTurnResult", () => {
       userInput: "react and tell me what happened",
       replyFiles: [],
       artifactStatePatch: {},
-      toolCalls: ["slackMessageAddReaction"],
+      toolCalls: ["addReaction"],
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},

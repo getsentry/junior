@@ -38,7 +38,7 @@ export function createSlackMessageAddReactionTool(
         );
       }
 
-      const operationKey = createOperationKey("slackMessageAddReaction", {
+      const operationKey = createOperationKey("addReaction", {
         channel_id: targetChannelId,
         message_ts: targetMessageTs,
         emoji: normalizedEmoji,

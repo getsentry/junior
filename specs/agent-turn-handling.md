@@ -128,7 +128,7 @@ Scenarios:
    - When the user explicitly asks Junior to post, send, say, or share a top-level message in the current Slack channel, Junior must use the `sendMessage` tool with `target: "channel"` when the runtime provides a valid target and must not use a normal thread reply as a substitute for the requested channel post.
    - Channel-target `sendMessage` may send text, sandbox-path files, or both. File-only messages are valid when the user's requested message is represented entirely by attachments.
 3. User asks Junior to react:
-   - When the user explicitly asks Junior to add a Slack reaction, Junior must use the Slack reaction tool when the runtime provides a valid target and must not treat automatic processing reactions as satisfying the user's request.
+   - When the user explicitly asks Junior to add a Slack reaction, Junior must use `addReaction` when the runtime provides a valid target and must not treat automatic processing reactions as satisfying the user's request.
 4. Slack side effect satisfies the turn:
    - When a successful Slack side-effect tool already satisfies the user's request, Junior may suppress a duplicate final thread reply according to the reply-delivery plan when the assistant used the no-reply marker.
    - A successful channel-target `sendMessage` call with no visible final assistant text also satisfies the turn, because the requested channel message has already been delivered.
