@@ -283,7 +283,7 @@ export async function uploadFilesToConversation(input: {
   );
 
   return {
-    files: response.files.flatMap((completion) =>
+    files: (response.files ?? []).flatMap((completion) =>
       (completion.files ?? []).map((file) => (file.id ? { id: file.id } : {})),
     ),
   };

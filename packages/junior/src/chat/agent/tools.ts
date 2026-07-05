@@ -297,11 +297,12 @@ export async function wireAgentTools(
     loadableSkills,
     {
       writeGeneratedArtifacts: async (files) => {
-        args.generatedFiles.push(...files);
-        return await writeSandboxGeneratedArtifacts(
+        const refs = await writeSandboxGeneratedArtifacts(
           await sandboxExecutor.createSandbox(),
           files,
         );
+        args.generatedFiles.push(...files);
+        return refs;
       },
       onGeneratedFiles: (files) => {
         args.replyFiles.push(...files);

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { uploadFilesToThread } from "@/chat/slack/outbound";
+import {
+  uploadFilesToConversation,
+  uploadFilesToThread,
+} from "@/chat/slack/outbound";
 import {
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -146,6 +149,34 @@ describe("uploadFilesToThread", () => {
       { id: "F_TEST_1", title: "a.png" },
       { id: "F_TEST_2", title: "b.jpg" },
     ]);
+  });
+
+  it("treats successful upload responses without file metadata as success", async () => {
+    queueSlackApiResponse("files.getUploadURLExternal", {
+      body: filesGetUploadUrlOk({
+        fileId: "F_NO_METADATA",
+        uploadUrl: "https://files.slack.com/upload/v1/F_NO_METADATA",
+      }),
+    });
+    queueSlackApiResponse("files.completeUploadExternal", {
+      body: { ok: true },
+    });
+
+    await expect(
+      uploadFilesToConversation({
+        channelId: "C0NOMETADATA",
+        files: [
+          {
+            data: Buffer.from("image-data"),
+            filename: "image.png",
+          },
+        ],
+      }),
+    ).resolves.toEqual({ files: [] });
+
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal"),
+    ).toHaveLength(1);
   });
 
   it("retries getUploadURLExternal after rate limit and still uploads file", async () => {
