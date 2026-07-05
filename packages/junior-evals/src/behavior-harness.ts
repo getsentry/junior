@@ -40,7 +40,7 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
-import { executeAgentRun } from "@/chat/agent-run";
+import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";

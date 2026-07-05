@@ -201,7 +201,7 @@ describe("agent dispatch runner", () => {
       expect(context.credentialContext).toEqual({
         actor: { type: "system", id: "scheduler" },
       });
-      expect(context.sandbox?.tracePropagation).toEqual({
+      expect(context.sandboxTracePropagation).toEqual({
         domains: ["*.sentry.io"],
       });
       return completedAgentRun(createReply());

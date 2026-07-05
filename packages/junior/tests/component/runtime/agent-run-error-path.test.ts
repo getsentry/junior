@@ -47,7 +47,7 @@ describe("executeAgentRun error path", () => {
     const outcome = await executeAgentRun({
       input: { messageText: "hello" },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
-      policy: {
+      state: {
         sandbox: {
           sandboxId: "sb-123",
           sandboxDependencyProfileHash: "hash-abc",

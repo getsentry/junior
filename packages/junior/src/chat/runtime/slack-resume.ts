@@ -7,7 +7,7 @@
  */
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import type { AgentRunRequest } from "@/chat/agent";
+import type { AgentRunRequest } from "@/chat/agent/request";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";

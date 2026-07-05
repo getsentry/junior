@@ -1,4 +1,4 @@
-import type { AgentRunRequest } from "@/chat/agent";
+import type { AgentRunRequest } from "@/chat/agent/request";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 
@@ -22,11 +22,8 @@ export function createAgentRunner(
         ...request,
         policy: {
           ...request.policy,
-          sandbox: {
-            ...request.policy?.sandbox,
-            tracePropagation:
-              request.policy?.sandbox?.tracePropagation ?? tracePropagation,
-          },
+          sandboxTracePropagation:
+            request.policy?.sandboxTracePropagation ?? tracePropagation,
         },
       }),
   };

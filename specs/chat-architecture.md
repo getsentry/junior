@@ -51,7 +51,7 @@ flowchart TD
   F --> G[Restore Pi state from reduced session log]
   LA[Local CLI input] --> LB[Direct local runner: persist local turn and load state]
   LB --> G
-  G --> J[agent-run.ts executeAgentRun / continue]
+  G --> J[chat/agent executeAgentRun / continue]
   J --> K[Build prompt context from durable conversation, config, artifacts, sandbox, attachments]
   K --> L[Pi agent continue loop]
   L --> M[Tools, skills, MCP, sandbox]
@@ -83,7 +83,7 @@ Normative rules:
 2. The task execution layer owns queue wake-ups, conversation leases, worker check-ins, and heartbeat recovery. Chat SDK queue/lock semantics are not canonical.
 3. The first-pass local CLI adapter uses the direct local runner from [Local Agent Spec](./local-agent.md). It must not claim mailbox-backed local source semantics until a local mailbox ingress contract exists.
 4. The mailbox worker is the only point that drains inbound messages into persisted agent session context for mailbox-backed paths.
-5. `agent-run.ts` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation.
+5. `chat/agent/` is the only owner of Pi agent execution, prompt/continue selection, timeout detection, and safe-boundary session-log event creation. `chat/agent/index.ts` is its composition root and execution loop; phase modules (`request`, `session`, `skills`, `tools`, `prompt`, `sandbox`, `resume`) own the run phases.
 6. Tool calls and tool failures are internal agent-loop data until the assistant produces final run diagnostics. Tool execution errors must be captured, but they are not automatically terminal user replies. Model-repairable failures must use the tool-error semantics from [Agent Execution Discipline Spec](./agent-execution.md).
 7. User-visible assistant text is posted only after the reply is finalized and planned for destination delivery.
 8. Final run success is defined by the destination delivery port accepting the visible final reply, not by model generation completing. Slack acceptance is one destination implementation.
@@ -290,7 +290,7 @@ Rules:
 
 1. Recovery continues the existing conversation from durable thread state plus the reduced agent-session log keyed by the predictable conversation id. It must not start a second active run for the same conversation.
 2. Conversation mailbox state, queue wake-ups, and leases protect inbound delivery. They do not replace session continuation because they do not carry Junior's canonical agent session log, sandbox/artifact state, pending auth, or final destination delivery state.
-3. `agent-run.ts` appends safe session-log boundaries; the mailbox worker enqueues cooperative continuations; heartbeat re-enqueues expired leases and stranded pending mailbox work.
+3. `chat/agent/` appends safe session-log boundaries; the mailbox worker enqueues cooperative continuations; heartbeat re-enqueues expired leases and stranded pending mailbox work.
 4. Routine cooperative continuation does not create a platform acknowledgement message. Assistant status and `reportProgress` own progress UX.
 5. Queue duplicate and active-lease cases are harmless because queue messages are conversation wake-up nudges, not canonical work records.
 

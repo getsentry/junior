@@ -324,13 +324,13 @@ export async function runAgentDispatchSlice(
         authorizationFlowMode: "disabled",
         configuration,
         channelConfiguration,
+      },
+      state: {
+        artifactState: artifacts,
         sandbox: {
           sandboxId,
           sandboxDependencyProfileHash,
         },
-      },
-      state: {
-        artifactState: artifacts,
       },
       durability: {
         onSandboxAcquired: async (sandbox) => {

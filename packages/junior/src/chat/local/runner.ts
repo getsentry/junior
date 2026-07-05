@@ -23,7 +23,7 @@ import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
-} from "@/chat/agent-run-helpers";
+} from "@/chat/pi/transcript";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -252,13 +252,13 @@ export async function runLocalAgentTurn(
       },
       policy: {
         authorizationFlowMode: "disabled",
+      },
+      state: {
+        artifactState: artifacts,
         sandbox: {
           sandboxId,
           sandboxDependencyProfileHash,
         },
-      },
-      state: {
-        artifactState: artifacts,
       },
       observers: {
         onStatus: async (status) => {

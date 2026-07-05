@@ -29,10 +29,8 @@ import {
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
-import {
-  buildSteeringPiMessage,
-  type AgentRunSteeringMessage,
-} from "@/chat/agent";
+import { buildSteeringPiMessage } from "@/chat/agent/prompt";
+import type { AgentRunSteeringMessage } from "@/chat/agent/request";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -125,7 +123,7 @@ import { persistWithRetry } from "@/chat/services/persist-retry";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
-} from "@/chat/agent-run-helpers";
+} from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 
 /**
@@ -1071,15 +1069,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               authorizationFlowMode:
                 message.author.isBot === true ? "disabled" : undefined,
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
+            },
+            state: {
+              artifactState: preparedState.artifacts,
+              pendingAuth: preparedState.conversation.processing.pendingAuth,
               sandbox: {
                 sandboxId: preparedState.sandboxId,
                 sandboxDependencyProfileHash:
                   preparedState.sandboxDependencyProfileHash,
               },
-            },
-            state: {
-              artifactState: preparedState.artifacts,
-              pendingAuth: preparedState.conversation.processing.pendingAuth,
             },
             observers: {
               onStatus: (nextStatus) => status.update(nextStatus),

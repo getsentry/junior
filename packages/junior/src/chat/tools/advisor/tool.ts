@@ -27,10 +27,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
-import {
-  extractAssistantText,
-  isAssistantMessage,
-} from "@/chat/agent-run-helpers";
+import { extractAssistantText, isAssistantMessage } from "@/chat/pi/transcript";
 import {
   createStateAdvisorSessionStore,
   getAdvisorSessionKey,

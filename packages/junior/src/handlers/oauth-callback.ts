@@ -404,11 +404,11 @@ async function resumeOAuthSessionRecordTurn(
           },
           policy: {
             channelConfiguration: lockedChannelConfiguration,
-            sandbox: getPersistedSandboxState(lockedState),
           },
           state: {
             artifactState: lockedArtifacts,
             pendingAuth: lockedPendingAuth,
+            sandbox: getPersistedSandboxState(lockedState),
           },
           durability: {
             recordPendingAuth: async (nextPendingAuth) => {

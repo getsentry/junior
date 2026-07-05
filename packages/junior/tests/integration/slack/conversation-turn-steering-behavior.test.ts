@@ -14,7 +14,7 @@ import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { AgentRunSteeringMessage } from "@/chat/agent";
+import type { AgentRunSteeringMessage } from "@/chat/agent/request";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";

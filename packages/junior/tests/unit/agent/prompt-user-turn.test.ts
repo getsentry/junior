@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUserTurnText } from "@/chat/agent-run-helpers";
+import { buildUserTurnText } from "@/chat/agent/prompt";
 
 describe("buildUserTurnText", () => {
   it("wraps input in the current instruction boundary without context", () => {

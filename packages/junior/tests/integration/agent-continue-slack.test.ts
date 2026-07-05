@@ -230,7 +230,7 @@ describe("agent continuation Slack integration", () => {
           source: storedSource,
           toolChannelId: "C999",
         }),
-        policy: expect.objectContaining({
+        state: expect.objectContaining({
           sandbox: expect.objectContaining({
             sandboxId: undefined,
             sandboxDependencyProfileHash: undefined,

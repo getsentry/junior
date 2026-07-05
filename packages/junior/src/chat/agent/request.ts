@@ -1,0 +1,271 @@
+/**
+ * Agent run request contract.
+ *
+ * Groups the per-slice run request by the runtime role each field serves and
+ * owns interpretation of the routing group: requester derivation, surface
+ * inference, destination consistency checks, and session identifiers. Run
+ * phases consume these groups directly; callers build them at runtime
+ * boundaries.
+ */
+import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { CredentialContext } from "@/chat/credentials/context";
+import type { PiMessage } from "@/chat/pi/messages";
+import { createRequester, type Requester } from "@/chat/requester";
+import type { SandboxAcquiredState } from "@/chat/sandbox/sandbox";
+import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
+import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
+import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
+import type { SlackConversationContext } from "@/chat/slack/conversation-context";
+import { parseSlackThreadId } from "@/chat/slack/context";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
+import type { AgentTurnSurface } from "@/chat/state/turn-session";
+import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
+import type {
+  ImageGenerateToolDeps,
+  WebFetchToolDeps,
+  WebSearchToolDeps,
+} from "@/chat/tools/types";
+
+export interface AgentRunAttachment {
+  data?: Buffer;
+  mediaType: string;
+  filename?: string;
+  promptText?: string;
+}
+
+export interface AgentRunSteeringMessage {
+  omittedImageAttachmentCount?: number;
+  text: string;
+  timestampMs?: number;
+  userAttachments?: AgentRunAttachment[];
+}
+
+/** Carries the user-visible content and prior transcript for one agent-run slice. */
+export interface AgentRunInput {
+  messageText: string;
+  userAttachments?: AgentRunAttachment[];
+  inboundAttachmentCount?: number;
+  omittedImageAttachmentCount?: number;
+  /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
+  piMessages?: PiMessage[];
+  conversationContext?: string;
+}
+
+/** Carries identity and addressing needed to route tools, auth, and delivery. */
+export interface AgentRunRouting {
+  credentialContext?: CredentialContext;
+  requester?: Requester;
+  source: Source;
+  slackConversation?: SlackConversationContext;
+  destination: Destination;
+  surface?: AgentTurnSurface;
+  dispatch?: {
+    actor?: { id: string; type: string };
+    metadata?: Record<string, string>;
+    plugin?: string;
+  };
+  correlation?: {
+    conversationId?: string;
+    threadId?: string;
+    turnId?: string;
+    runId?: string;
+    channelId?: string;
+    channelName?: string;
+    teamId?: string;
+    messageTs?: string;
+    threadTs?: string;
+    requesterId?: string;
+  };
+  toolChannelId?: string;
+}
+
+/** Carries execution limits and dependency overrides for one run slice. */
+export interface AgentRunPolicy {
+  /** Absolute wall-clock deadline for this host request, in milliseconds. */
+  turnDeadlineAtMs?: number;
+  authorizationFlowMode?: AuthorizationFlowMode;
+  configuration?: Record<string, unknown>;
+  channelConfiguration?: ChannelConfigurationService;
+  skillDirs?: string[];
+  /** Per-slice override for app-owned sandbox egress trace propagation. */
+  sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
+  toolOverrides?: {
+    imageGenerate?: ImageGenerateToolDeps;
+    webFetch?: WebFetchToolDeps;
+    webSearch?: WebSearchToolDeps;
+  };
+}
+
+/** Carries durable state snapshots already loaded by the caller. */
+export interface AgentRunState {
+  artifactState?: ThreadArtifactsState;
+  pendingAuth?: ConversationPendingAuthState;
+  /** Persisted sandbox reuse state from prior slices of this conversation. */
+  sandbox?: {
+    sandboxId?: string;
+    sandboxDependencyProfileHash?: string;
+  };
+}
+
+/**
+ * Carries notification-only callbacks for streaming UI and status surfaces;
+ * their failures never affect the run.
+ */
+export interface AgentRunObservers {
+  onTextDelta?: (deltaText: string) => void | Promise<void>;
+  onAssistantMessageStart?: () => void | Promise<void>;
+  onToolInvocation?: (invocation: {
+    toolName: string;
+    params: Record<string, unknown>;
+  }) => void | Promise<void>;
+  onToolResult?: (result: ToolExecutionReport) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+}
+
+/** Carries durable-worker ports that commit or update resumable run state. */
+export interface AgentRunDurability {
+  onInputCommitted?: () => void | Promise<void>;
+  /** Return true when the durable worker should pause at the next Pi boundary. */
+  shouldYield?: () => boolean;
+  drainSteeringMessages?: (
+    accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
+  ) => Promise<AgentRunSteeringMessage[]>;
+  recordPendingAuth?: (
+    pendingAuth: ConversationPendingAuthState,
+  ) => void | Promise<void>;
+  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
+  onArtifactStateUpdated?: (
+    artifactState: ThreadArtifactsState,
+  ) => void | Promise<void>;
+}
+
+/** Groups the per-slice run request by the runtime role each field serves. */
+export interface AgentRunRequest {
+  input: AgentRunInput;
+  routing: AgentRunRouting;
+  policy?: AgentRunPolicy;
+  state?: AgentRunState;
+  observers?: AgentRunObservers;
+  durability?: AgentRunDurability;
+}
+
+/** Extract conversation and session identifiers from correlation context. */
+export function getSessionIdentifiers(routing: AgentRunRouting): {
+  conversationId?: string;
+  sessionId?: string;
+} {
+  return {
+    conversationId:
+      routing.correlation?.conversationId ??
+      routing.correlation?.threadId ??
+      routing.correlation?.runId,
+    sessionId: routing.correlation?.turnId,
+  };
+}
+
+/** Derive the acting requester, filling platform and team from the destination. */
+export function requesterFromRouting(
+  routing: AgentRunRouting,
+): Requester | undefined {
+  return createRequester(routing.requester, {
+    platform:
+      routing.requester?.platform ??
+      (routing.destination.platform === "slack" ? "slack" : undefined),
+    teamId:
+      (routing.destination.platform === "slack"
+        ? routing.destination.teamId
+        : undefined) ??
+      routing.correlation?.teamId ??
+      (routing.requester?.platform === "slack"
+        ? routing.requester.teamId
+        : undefined),
+    userId: routing.correlation?.requesterId,
+  });
+}
+
+/** Reject requester identities that do not belong to the active destination. */
+export function assertRequesterDestinationMatch(
+  routing: AgentRunRouting,
+): void {
+  const { destination, requester } = routing;
+  if (!requester) {
+    return;
+  }
+  if (requester.platform !== destination.platform) {
+    throw new TypeError(
+      `Requester platform "${requester.platform}" does not match destination platform "${destination.platform}"`,
+    );
+  }
+  if (
+    requester.platform === "slack" &&
+    destination.platform === "slack" &&
+    requester.teamId !== destination.teamId
+  ) {
+    throw new TypeError("Slack requester team does not match destination team");
+  }
+}
+
+/** Reject legacy Slack correlation fields that conflict with the destination. */
+export function assertCorrelationDestinationMatch(
+  routing: AgentRunRouting,
+): void {
+  const { correlation, destination } = routing;
+  if (destination.platform !== "slack") {
+    return;
+  }
+  if (
+    correlation?.channelId !== undefined &&
+    correlation.channelId !== destination.channelId
+  ) {
+    throw new TypeError(
+      "Slack correlation channel does not match destination channel",
+    );
+  }
+  if (
+    correlation?.teamId !== undefined &&
+    correlation.teamId !== destination.teamId
+  ) {
+    throw new TypeError(
+      "Slack correlation team does not match destination team",
+    );
+  }
+}
+
+/** Route tool side effects to the tool channel when one overrides the destination. */
+export function toolInvocationDestination(
+  routing: AgentRunRouting,
+): Destination {
+  if (routing.destination.platform !== "slack" || !routing.toolChannelId) {
+    return routing.destination;
+  }
+  return {
+    platform: "slack",
+    teamId: routing.destination.teamId,
+    channelId: routing.toolChannelId,
+  };
+}
+
+/** Infer the run surface when the caller did not state one. */
+export function surfaceFromRouting(
+  routing: AgentRunRouting,
+): AgentTurnSurface | undefined {
+  if (routing.surface) {
+    return routing.surface;
+  }
+  const conversationId =
+    routing.correlation?.conversationId ??
+    routing.correlation?.threadId ??
+    routing.correlation?.runId;
+  if (
+    routing.slackConversation ||
+    (conversationId ? parseSlackThreadId(conversationId) : undefined)
+  ) {
+    return "slack";
+  }
+  if (conversationId) {
+    return "api";
+  }
+  return undefined;
+}

@@ -117,6 +117,17 @@ export function normalizeGenAiFinishReason(reason: string): string {
   return reason === "toolUse" ? "tool_use" : reason;
 }
 
+/** Truncate message text for log attributes. */
+export function summarizeMessageText(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return "[empty]";
+  }
+  return normalized.length > 1_200
+    ? `${normalized.slice(0, 1_200)}...`
+    : normalized;
+}
+
 function normalizeGenAiFinishReasons(value: unknown): unknown {
   if (typeof value === "string" && value.trim()) {
     return [normalizeGenAiFinishReason(value)];

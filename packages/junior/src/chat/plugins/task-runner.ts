@@ -23,7 +23,7 @@ import {
   isToolResultMessage,
   normalizeToolNameFromResult,
   stripRuntimeTurnContext,
-} from "@/chat/agent-run-helpers";
+} from "@/chat/pi/transcript";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { getPlugins } from "./agent-hooks";
 import {

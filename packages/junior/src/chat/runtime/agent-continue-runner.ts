@@ -387,11 +387,11 @@ export async function continueSlackAgentRun(
             },
             policy: {
               channelConfiguration,
-              sandbox,
             },
             state: {
               artifactState: artifacts,
               pendingAuth: conversation.processing.pendingAuth,
+              sandbox,
             },
             durability: {
               recordPendingAuth: async (nextPendingAuth) => {

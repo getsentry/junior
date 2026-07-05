@@ -559,7 +559,8 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
-import { executeAgentRun, type AgentRunRequest } from "@/chat/agent";
+import { executeAgentRun } from "@/chat/agent";
+import type { AgentRunRequest } from "@/chat/agent/request";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
