@@ -1,4 +1,4 @@
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
 import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
@@ -84,6 +84,7 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
+/** Build the model-facing tool registry from runtime-owned context and capabilities. */
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -97,7 +98,6 @@ export function createTools(
     reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),
-    attachFile: createAttachFileTool(context.sandbox, hooks),
     readFile: createReadFileTool(),
     editFile: createEditFileTool(),
     grep: createGrepTool(),
@@ -112,6 +112,9 @@ export function createTools(
       { writeGeneratedArtifacts: hooks.writeGeneratedArtifacts },
       hooks.toolOverrides?.imageGenerate,
     );
+  }
+  if (context.source.platform !== "slack") {
+    tools.attachFile = createAttachFileTool(context.sandbox, hooks);
   }
 
   if (context.advisor) {
@@ -148,7 +151,7 @@ export function createTools(
     const outputCapabilities = outputChannelId
       ? resolveChannelCapabilities(outputChannelId)
       : undefined;
-    const canPostStandaloneSlackMessage =
+    const canUseInteractiveSlackSideEffects =
       context.surface === undefined || context.surface === "slack";
     const rawChannelCapabilities = resolveChannelCapabilities(
       slackContext.sourceChannelId,
@@ -161,7 +164,10 @@ export function createTools(
       );
     }
 
-    if (outputCapabilities?.canPostToChannel && canPostStandaloneSlackMessage) {
+    if (
+      canUseInteractiveSlackSideEffects &&
+      rawChannelCapabilities.canSendMessage
+    ) {
       tools.sendMessage = createSendMessageTool(slackContext, state, (input) =>
         readSandboxFileUpload(context.sandbox, input),
       );

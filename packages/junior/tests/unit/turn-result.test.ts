@@ -306,75 +306,6 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("suppresses duplicate thread replies after sendMessage succeeds", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "sendMessage",
-          isError: false,
-          content: [{ type: "text", text: "posted" }],
-          details: { ok: true, target: "channel", channel_id: "C123" },
-        },
-        {
-          role: "assistant",
-          content: [{ type: "text", text: NO_REPLY_MARKER }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "say hello to the channel",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.deliveryMode).toBe("channel_only");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-  });
-
-  it("treats empty sendMessage-only turns as channel-only success", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "toolResult",
-          toolName: "sendMessage",
-          isError: false,
-          content: [{ type: "text", text: '{"file_count":1}' }],
-          details: {
-            ok: true,
-            target: "channel",
-            channel_id: "C123",
-            file_count: 1,
-          },
-        },
-      ],
-      userInput: "send the generated image to the channel",
-      replyFiles: [],
-      artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
-      generatedFileCount: 1,
-      shouldTrace: false,
-      spanContext: {},
-      thinkingSelection,
-    });
-
-    expect(reply.text).toBe("");
-    expect(reply.deliveryMode).toBe("channel_only");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: false,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.usedPrimaryText).toBe(false);
-  });
-
   it("keeps pending reply files in the thread after sendMessage succeeds", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -383,7 +314,11 @@ describe("buildTurnResult", () => {
           toolName: "sendMessage",
           isError: false,
           content: [{ type: "text", text: "posted" }],
-          details: { ok: true, target: "channel", channel_id: "C123" },
+          details: {
+            ok: true,
+            channel_id: "C123",
+            thread_ts: "1700000000.321",
+          },
         },
       ],
       userInput: "send the message and attach the report",
@@ -413,7 +348,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
-  it("does not treat thread-target sendMessage as final reply completion", () => {
+  it("does not treat sendMessage as final reply completion", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -423,7 +358,6 @@ describe("buildTurnResult", () => {
           content: [{ type: "text", text: "posted in thread" }],
           details: {
             ok: true,
-            target: "thread",
             channel_id: "C123",
             thread_ts: "1700000000.321",
           },

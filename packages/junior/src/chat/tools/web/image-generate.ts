@@ -184,7 +184,7 @@ export function createImageGenerateTool(
             bytes: artifact.bytes,
           })),
           delivery:
-            "Generated images were written to sandbox paths. Use sendMessage with target `thread` to share or attach the image here. Use target `channel` only if the user explicitly asked for a top-level/current-channel post; after a successful channel send, use the no-reply marker instead of adding a thread acknowledgement.",
+            "Generated images were written to sandbox paths. Use sendMessage to share or attach the image in the active Slack conversation.",
         };
       }
 

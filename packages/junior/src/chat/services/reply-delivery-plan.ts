@@ -7,25 +7,13 @@ export interface ReplyDeliveryPlan {
   attachFiles: ReplyFileDelivery;
 }
 
-/** Determine how a reply should be delivered (thread vs channel, file handling). */
+/** Determine how a normal finalized reply should be delivered. */
 export function buildReplyDeliveryPlan(args: {
-  channelOnlySideEffect: boolean;
-  channelPostPerformed: boolean;
   hasFiles: boolean;
 }): ReplyDeliveryPlan {
-  const mode: ReplyDeliveryMode =
-    args.channelOnlySideEffect && args.channelPostPerformed
-      ? "channel_only"
-      : "thread";
-
-  let attachFiles: ReplyFileDelivery = "none";
-  if (args.hasFiles && mode === "thread") {
-    attachFiles = "inline";
-  }
-
   return {
-    mode,
-    postThreadText: mode === "thread",
-    attachFiles,
+    mode: "thread",
+    postThreadText: true,
+    attachFiles: args.hasFiles ? "inline" : "none",
   };
 }

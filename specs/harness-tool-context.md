@@ -32,7 +32,7 @@ For context-bound side-effect tools, target selection is owned by the harness/ru
 
 Examples:
 
-- First-class Slack delivery tools (channel post, canvas create, list messages, and private thread-read context) resolve their target channel from `ToolRuntimeContext.destination.channelId`. Slack message reactions use `ToolRuntimeContext.source.channelId` and `ToolRuntimeContext.source.messageTs` because they target the current inbound Slack message.
+- First-class Slack delivery tools resolve runtime-owned destinations rather than model-supplied targets. `sendMessage` uses `ToolRuntimeContext.source.channelId` and the active source thread/message timestamp because it sends into the active conversation. Canvas create and channel list messages use `ToolRuntimeContext.destination.channelId`. Slack message reactions use `ToolRuntimeContext.source.channelId` and `ToolRuntimeContext.source.messageTs` because they target the current inbound Slack message.
 - Plugin tools receive `ToolRegistrationHookContext.source` as Junior's shared inbound context. When an outbound target exists, plugins also receive `ToolRegistrationHookContext.destination`. When `source.platform === "slack"`, plugins receive Slack-specific helper context at `ToolRegistrationHookContext.slack`, including source-channel capabilities and any source-bound credential subject. Local hook contexts must not include `slack`.
 - List follow-up operations resolve target artifacts from harness-managed artifact state (`lastListId`, turn-created IDs).
 - Slack Canvas document operations use explicit file-like handles (`canvas`). Canvas IDs and URLs may be attempted directly; Slack file permissions and Canvas metadata decide whether the operation can proceed.
@@ -47,7 +47,7 @@ Examples:
 
 ## Slack-Specific Targeting Rules
 
-1. Channel-scoped Slack delivery tools use `ToolRuntimeContext.destination.channelId` as the outbound target. The model cannot override this. If no destination is present, outbound tools must not register or must fail with an actionable tool input error.
+1. Slack side-effect tools use runtime-owned coordinates. `sendMessage` uses the active source conversation and thread/message timestamp; channel-scoped read or artifact tools use `ToolRuntimeContext.destination.channelId`. The model cannot override these coordinates. If required context is absent, outbound tools must not register or must fail with an actionable tool input error.
 2. Slack reactions use `ToolRuntimeContext.source.channelId` and `ToolRuntimeContext.source.messageTs`.
 3. Canvas creation uses the active Slack outbound destination (`C*`/`G*`/`D*`) without model-provided destination overrides.
 4. Canvas read/edit/write tools are document tools: `canvas` is analogous to a file path, accepts a Slack canvas/file ID or URL, and must not expose Slack section IDs or section lookup criteria.

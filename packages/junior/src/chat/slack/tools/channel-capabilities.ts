@@ -7,6 +7,8 @@ import {
 export interface ChannelCapabilities {
   /** Can create canvases in this channel (C/G/D channels). */
   canCreateCanvas: boolean;
+  /** Can send messages into this conversation scope (C/G/D channels). */
+  canSendMessage: boolean;
   /** Can post standalone messages to this channel (C/G channels only). */
   canPostToChannel: boolean;
   /** Can add reactions to messages (C/G/D channels). */
@@ -19,6 +21,7 @@ export function resolveChannelCapabilities(
 ): ChannelCapabilities {
   return {
     canCreateCanvas: isConversationScopedChannel(channelId),
+    canSendMessage: isConversationScopedChannel(channelId),
     canPostToChannel: isConversationChannel(channelId),
     canAddReactions: isConversationScopedChannel(channelId),
   };

@@ -23,41 +23,31 @@ function visibleText(session: EvalSession): string {
     .join("\n");
 }
 
-function sendMessageTargets(session: EvalSession): unknown[] {
-  return toolCalls(session)
-    .filter((call) => call.name === "sendMessage")
-    .map((call) => call.arguments?.target);
-}
-
 describeEval("Slack Message Delivery", slackEvals, (it) => {
-  it("when asked to post in channel, send a channel message without duplicate thread text", async ({
+  it("when asked for a top-level channel post, explain the limitation instead", async ({
     run,
   }) => {
     const result = await run({
-      events: [mention("@bot say hello to the channel!")],
+      events: [mention("@bot post this to the channel: deploy is unblocked")],
       criteria: rubric({
         pass: [
-          "The normalized transcript contains exactly one hello-style channel_post assistant message with no thread_ts.",
-          "The assistant tool calls include sendMessage with channel target for the requested channel post.",
-          "The normalized transcript does not contain that hello-style message as a thread reply.",
+          "The assistant does not call sendMessage.",
+          "The assistant posts exactly one visible thread reply.",
+          "The reply clearly explains it cannot make top-level channel posts from this runtime or can only send into the active conversation/thread.",
         ],
         fail: [
-          "Do not add a redundant thread reply acknowledging the channel post.",
+          "Do not send the requested text into the active thread with sendMessage.",
+          "Do not claim the message was posted to the channel.",
           `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
         ],
       }),
     });
 
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "sendMessage",
-          arguments: expect.objectContaining({ target: "channel" }),
-        }),
-      ]),
+    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+      "sendMessage",
     );
-    expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when a generated image should be shared here, send it to the thread", async ({
@@ -86,49 +76,14 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
         expect.objectContaining({ name: "imageGenerate" }),
         expect.objectContaining({
           name: "sendMessage",
-          arguments: expect.objectContaining({ target: "thread" }),
         }),
       ]),
     );
-    expect(sendMessageTargets(result.session)).toContain("thread");
-    expect(sendMessageTargets(result.session)).not.toContain("channel");
+    const sendMessageCall = toolCalls(result.session).find(
+      (call) => call.name === "sendMessage",
+    );
+    expect(sendMessageCall?.arguments).not.toHaveProperty("target");
     expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
     expect(visibleThreadReplies(result.session).length).toBeGreaterThan(0);
-  });
-
-  it("when a generated image should be posted to the channel, use channel target", async ({
-    run,
-  }) => {
-    const result = await run({
-      overrides: { mock_image_generation: true },
-      events: [
-        mention(
-          "make a small launch checklist image and post it to the channel",
-        ),
-      ],
-      criteria: rubric({
-        pass: [
-          "The assistant generates an image and posts it as a top-level channel message.",
-          "The assistant does not duplicate that channel post as a normal thread attachment.",
-        ],
-        fail: [
-          "Do not only describe the image in text.",
-          "Do not send the image only into the thread when the user asked to post it to the channel.",
-          "Do not add a redundant thread reply that repeats the posted channel message.",
-        ],
-      }),
-    });
-
-    expect(toolCalls(result.session)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "imageGenerate" }),
-        expect.objectContaining({
-          name: "sendMessage",
-          arguments: expect.objectContaining({ target: "channel" }),
-        }),
-      ]),
-    );
-    expect(sendMessageTargets(result.session)).toContain("channel");
-    expect(sendMessageTargets(result.session)).not.toContain("thread");
   });
 });

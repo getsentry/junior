@@ -46,11 +46,8 @@ const fileInputSchema = Type.Object(
   { additionalProperties: false },
 );
 
-type SendMessageTarget = "channel" | "thread";
-
 interface SendMessageResult {
   ok: true;
-  target: SendMessageTarget;
   channel_id: string;
   file_count?: number;
   file_ids?: string[];
@@ -61,16 +58,6 @@ interface SendMessageResult {
 
 function hasText(text: string | null | undefined): text is string {
   return typeof text === "string" && text.trim().length > 0;
-}
-
-function normalizeSendMessageTarget(target: unknown): SendMessageTarget {
-  if (target == null) {
-    return "channel";
-  }
-  if (target === "channel" || target === "thread") {
-    return target;
-  }
-  throw new ToolInputError("sendMessage target must be `channel` or `thread`.");
 }
 
 function normalizeMessageFiles(
@@ -98,7 +85,7 @@ function fileOperationInput(files: SandboxFileUpload[]) {
   }));
 }
 
-/** Create the current Slack side-effect tool for channel or thread text and file messages. */
+/** Create the Slack side-effect tool for active-conversation text and file messages. */
 export function createSendMessageTool(
   context: SlackToolContext,
   state: ToolState,
@@ -106,18 +93,9 @@ export function createSendMessageTool(
 ) {
   return tool({
     description:
-      "Send a Slack message with optional files. Use target `thread` when the user asks to attach, send, or share files here, in this conversation, or in this thread. Use target `channel` only when the user explicitly asks for a top-level/current-channel post, for example `post this to the channel`. After a successful target `channel` send that satisfies the request, do not add a normal thread acknowledgement; final text should be the no-reply marker. The message can contain text, files, or both; file-only messages are allowed. Do not use for other named channels, inline @mentions, or pinging mentioned users.",
+      "Send a Slack message with optional files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. The message can contain text, files, or both; file-only messages are allowed. Do not use for top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
     inputSchema: Type.Object(
       {
-        target: Type.Optional(
-          Type.Union(
-            [Type.Literal("channel"), Type.Literal("thread"), Type.Null()],
-            {
-              description:
-                "Delivery target. `thread` sends into the current Slack thread. `channel` posts a new top-level channel message and requires explicit channel/top-level intent. Text-only messages default to `channel`; messages with files default to `thread`. Null is treated as omitted.",
-            },
-          ),
-        ),
         text: Type.Optional(
           Type.Union([Type.String({ maxLength: 40000 }), Type.Null()], {
             description:
@@ -136,28 +114,17 @@ export function createSendMessageTool(
       },
       { additionalProperties: false },
     ),
-    execute: async ({ target, text, files }) => {
+    execute: async ({ text, files }) => {
       const filesToSend = normalizeMessageFiles(files);
-      const deliveryTarget = normalizeSendMessageTarget(
-        target ?? (filesToSend.length > 0 ? "thread" : "channel"),
-      );
-      const targetChannelId =
-        deliveryTarget === "thread"
-          ? context.sourceChannelId
-          : context.destinationChannelId;
-      if (!targetChannelId) {
-        throw new ToolInputError(
-          deliveryTarget === "thread"
-            ? "No active Slack source thread is available."
-            : "No active Slack destination is available.",
-        );
+      const activeChannelId = context.sourceChannelId;
+      if (!activeChannelId) {
+        throw new ToolInputError("No active Slack conversation is available.");
       }
-      const threadTs =
-        deliveryTarget === "thread"
-          ? (context.threadTs ?? context.messageTs)
-          : undefined;
-      if (deliveryTarget === "thread" && !threadTs) {
-        throw new ToolInputError("No active Slack thread is available.");
+      const threadTs = context.threadTs ?? context.messageTs;
+      if (!threadTs) {
+        throw new ToolInputError(
+          "No active Slack conversation timestamp is available.",
+        );
       }
       const textToSend = hasText(text) ? text : undefined;
       if (!textToSend && filesToSend.length === 0) {
@@ -170,9 +137,8 @@ export function createSendMessageTool(
         filesToSend.map((file) => materializeFile(file)),
       );
       const operationKey = createOperationKey("sendMessage", {
-        target: deliveryTarget,
-        channel_id: targetChannelId,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
+        channel_id: activeChannelId,
+        thread_ts: threadTs,
         ...(textToSend ? { text: textToSend } : {}),
         ...(materializedFiles.length > 0
           ? { files: fileOperationInput(materializedFiles) }
@@ -193,26 +159,25 @@ export function createSendMessageTool(
       const posted =
         uploads.length === 0 && textToSend
           ? await postSlackMessage({
-              channelId: targetChannelId,
+              channelId: activeChannelId,
               text: textToSend,
-              ...(threadTs ? { threadTs } : {}),
+              threadTs,
               includePermalink: true,
             })
           : undefined;
       const uploaded =
         uploads.length > 0
           ? await uploadFilesToConversation({
-              channelId: targetChannelId,
+              channelId: activeChannelId,
               files: uploads,
-              ...(threadTs ? { threadTs } : {}),
+              threadTs,
               ...(textToSend ? { initialComment: textToSend } : {}),
             })
           : undefined;
       const response = {
         ok: true,
-        target: deliveryTarget,
-        channel_id: targetChannelId,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
+        channel_id: activeChannelId,
+        thread_ts: threadTs,
         ...(posted ? { ts: posted.ts, permalink: posted.permalink } : {}),
         ...(uploads.length > 0 ? { file_count: uploads.length } : {}),
         ...(uploaded?.files

@@ -30,7 +30,7 @@ import type {
   SandboxInstance,
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 import type { Requester } from "@/chat/requester";
 import { z } from "zod";
 

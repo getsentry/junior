@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 
 describe("resolveChannelCapabilities", () => {
   it.each([
@@ -8,6 +8,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "C123",
       expected: {
         canCreateCanvas: true,
+        canSendMessage: true,
         canPostToChannel: true,
         canAddReactions: true,
       },
@@ -17,6 +18,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "G456",
       expected: {
         canCreateCanvas: true,
+        canSendMessage: true,
         canPostToChannel: true,
         canAddReactions: true,
       },
@@ -26,6 +28,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "D789",
       expected: {
         canCreateCanvas: true,
+        canSendMessage: true,
         canPostToChannel: false,
         canAddReactions: true,
       },
@@ -35,6 +38,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: undefined,
       expected: {
         canCreateCanvas: false,
+        canSendMessage: false,
         canPostToChannel: false,
         canAddReactions: false,
       },
@@ -44,6 +48,7 @@ describe("resolveChannelCapabilities", () => {
       channelId: "",
       expected: {
         canCreateCanvas: false,
+        canSendMessage: false,
         canPostToChannel: false,
         canAddReactions: false,
       },

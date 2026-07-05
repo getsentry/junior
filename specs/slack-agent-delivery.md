@@ -152,7 +152,7 @@ Current rules:
 
 1. Do not create a visible Slack text artifact until the assistant reply is final enough to budget, normalize, and persist.
 2. Deliver visible reply text through finalized thread posts, not through incremental text streaming.
-3. Only mark a text-reply turn successful after the final visible Slack reply has been accepted by Slack. When a successful requested Slack side effect, such as a reaction or in-channel post, fully satisfies the turn and the assistant uses the no-reply marker, that side effect is the visible completion.
+3. Only mark a text-reply turn successful after the final visible Slack reply has been accepted by Slack. When a successful requested Slack side effect, such as a reaction, fully satisfies the turn and the assistant uses the no-reply marker, that side effect is the visible completion. `sendMessage` is an active-conversation side effect and does not replace final reply delivery.
 4. If the assistant chose a Slack side-effect tool and that successful side effect already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan only when the assistant used the no-reply marker or produced no assistant text. Delivery code must rely on tool results and structured markers for this decision, not regex or keyword matching against user or assistant prose.
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
@@ -195,7 +195,7 @@ Current rules:
 
 1. Thread replies attach files inline on the first visible reply post when possible.
 2. File-only replies must still create a visible Slack thread reply carrying the file payload.
-3. `sendMessage` with `target: "thread"` may send text, files, or both into the current Slack thread as a side effect. It does not replace the final assistant reply contract.
+3. `sendMessage` may send text, files, or both into the active Slack conversation/thread as a side effect. It has no model-supplied target and does not replace the final assistant reply contract.
 4. If thread text is intentionally suppressed, files may still be delivered through the thread reply planner when the reply contract requires visible artifacts.
 5. Resume and OAuth callback flows must use the same file-delivery semantics as the main runtime path.
 

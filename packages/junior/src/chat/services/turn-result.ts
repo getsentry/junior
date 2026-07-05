@@ -204,13 +204,6 @@ function stripThinkingXmlBlocks(text: string): string {
   return result;
 }
 
-function sendMessageResultTarget(
-  result: unknown,
-): "channel" | "thread" | undefined {
-  const target = (result as { details?: { target?: unknown } }).details?.target;
-  return target === "channel" || target === "thread" ? target : undefined;
-}
-
 /** Process raw agent messages into a structured AgentRunResult. */
 export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const {
@@ -256,30 +249,16 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((result) => normalizeToolNameFromResult(result))
       .filter((value): value is string => Boolean(value)),
   );
-  const channelPostPerformed = successfulToolResults.some(
-    (result) =>
-      normalizeToolNameFromResult(result) === "sendMessage" &&
-      sendMessageResultTarget(result) === "channel",
-  );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
   const markerSideEffectSuccess =
     exactNoReplyMarker &&
     toolErrorCount === 0 &&
-    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
+    (reactionPerformed || replyFiles.length > 0);
   const fileOnlySuccess =
     !rawPrimaryText && toolErrorCount === 0 && replyFiles.length > 0;
-  const channelMessageOnlySuccess =
-    !rawPrimaryText && toolErrorCount === 0 && channelPostPerformed;
-  const sideEffectOnlySuccess =
-    markerSideEffectSuccess || fileOnlySuccess || channelMessageOnlySuccess;
-  const channelOnlySideEffect =
-    channelPostPerformed &&
-    replyFiles.length === 0 &&
-    (exactNoReplyMarker || channelMessageOnlySuccess);
+  const sideEffectOnlySuccess = markerSideEffectSuccess || fileOnlySuccess;
   const baseDeliveryPlan = buildReplyDeliveryPlan({
-    channelOnlySideEffect,
-    channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });
   const lastAssistant = terminalAssistantMessages.at(-1) as
@@ -298,11 +277,9 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   if (exactNoReplyMarker) {
     const markerCategory = reactionPerformed
       ? "reaction"
-      : channelPostPerformed
-        ? "channel_post"
-        : replyFiles.length > 0
-          ? "file"
-          : "none";
+      : replyFiles.length > 0
+        ? "file"
+        : "none";
     const markerContext = {
       slackThreadId: correlation?.threadId,
       slackUserId: correlation?.requesterId,
@@ -405,7 +382,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     resolvedOutcome === "success" &&
     !resolvedText &&
     replyFiles.length === 0 &&
-    (reactionPerformed || channelPostPerformed)
+    reactionPerformed
       ? {
           ...baseDeliveryPlan,
           postThreadText: false,

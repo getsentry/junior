@@ -385,12 +385,11 @@ const CONVERSATION_RULES = [
 
 const SLACK_ACTION_RULES = [
   "- Slack tools target the current runtime context; if the requested Slack target differs, explain the limitation instead of calling the tool.",
-  "- Use sendMessage with target `channel` and addReaction only for explicit user-requested Slack side effects.",
-  "- Generic Slack requests like 'share it here' refer to the current thread. Use sendMessage with target `thread` when you need to send text, files, or both into the current Slack thread; use target `channel` only for explicit channel/top-level post requests.",
-  `- Channel-target sendMessage is visible delivery. After a successful sendMessage with target \`channel\`, do not add a normal thread acknowledgement; final message must be exactly ${NO_REPLY_MARKER} unless there is separate requested content that was not sent to the channel.`,
-  "- Thread-target sendMessage is not final-reply delivery. After using sendMessage with target `thread`, provide a brief normal final answer unless the user requested no further text.",
+  "- Use sendMessage only when the user asks to send, share, or attach text, sandbox-path files, or both in the active Slack conversation.",
+  "- sendMessage has no target argument; it always sends into the active Slack conversation/thread. For top-level channel posts, other channels, or named recipients, explain that this runtime can only send into the active conversation.",
+  "- sendMessage is not final-reply delivery. After using sendMessage, provide a brief normal final answer unless the user requested no further text.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
-  `- Side-effect-only completion for sendMessage target \`channel\` or addReaction: call the requested tool first; if it succeeds and fully satisfies the request, final message must be exactly ${NO_REPLY_MARKER}.`,
+  `- Side-effect-only completion for addReaction: call the requested tool first; if it succeeds and fully satisfies the request, final message must be exactly ${NO_REPLY_MARKER}.`,
 ];
 
 const SAFETY_RULES = [

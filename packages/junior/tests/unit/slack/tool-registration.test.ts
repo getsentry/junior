@@ -58,10 +58,16 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not register channel-scope tools in DM context", () => {
+  it("registers thread sendMessage but not channel-only tools in DM context", () => {
     const tools = createTools([], {}, ctx("D12345"));
 
-    expect(tools).not.toHaveProperty("sendMessage");
+    expect(tools).toHaveProperty("sendMessage");
+    const sendMessageTool = tools.sendMessage;
+    if (!sendMessageTool) {
+      throw new Error("sendMessage tool missing");
+    }
+    expect(sendMessageTool.inputSchema).not.toHaveProperty("properties.target");
+    expect(tools).not.toHaveProperty("attachFile");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
@@ -71,6 +77,7 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, ctx("C12345"));
 
     expect(tools).toHaveProperty("sendMessage");
+    expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
@@ -192,6 +199,7 @@ describe("Slack tool registration", () => {
     expect(
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
+    expect(tools).toHaveProperty("attachFile");
   });
 
   it("registers image generation only when artifact persistence is available", () => {
