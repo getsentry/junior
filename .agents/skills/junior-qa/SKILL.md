@@ -12,20 +12,18 @@ the changed behavior is owned by one.
 
 ## Running the Local CLI
 
-Use the repo wrapper so the command runs from `apps/example` with root and app
-env loaded:
-
-```sh
-pnpm cli -- chat -p "Say exactly: junior qa smoke ok"
-```
-
-For agent behavior, prompts, skills, tools, and model-facing plugin behavior,
-use `chat -p` or interactive `chat` with a prompt that naturally exercises the
-change:
+Use the repo wrapper so commands run from `apps/example` with root and app env
+loaded. Pick the command and prompt that exercise the changed behavior; do not
+treat any example prompt here as the required QA:
 
 ```sh
 pnpm cli -- chat -p "<targeted prompt>"
 ```
+
+For agent behavior, prompts, skills, tools, and model-facing plugin behavior,
+use `chat -p` or interactive `chat` with a prompt that naturally exercises the
+change. A trivial exact-output prompt is only useful when the requested check is
+limited to proving the local runner starts and delivers one response.
 
 For host or plugin CLI behavior, call the command directly through the same
 wrapper:
@@ -74,6 +72,7 @@ tests when the changed contract crosses those boundaries.
 
 Pick the smallest local CLI run that demonstrates the changed behavior:
 
+- Prefer a targeted prompt or direct CLI command tied to the modified feature.
 - Use exact-output prompts for simple agent routing or prompt-context checks.
 - Use natural-language prompts when the behavior is an agent/tool workflow.
 - Use direct plugin commands when the behavior is an operator CLI surface.
