@@ -4,7 +4,7 @@ import { createCanvas } from "@/chat/slack/tools/canvas/api";
 import { mergeRecentCanvases } from "@/chat/slack/tools/canvas/context";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 

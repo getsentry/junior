@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { getModel } from "@earendil-works/pi-ai";

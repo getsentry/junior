@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the sandbox shell tool definition exposed to the agent. */
 export function createBashTool() {

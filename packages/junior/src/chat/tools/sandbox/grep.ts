@@ -12,7 +12,7 @@ import {
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_GREP_LIMIT = 100;

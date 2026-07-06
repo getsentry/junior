@@ -36,8 +36,9 @@ import {
   recordSubagentEnded,
   recordSubagentStarted,
 } from "@/chat/state/session-log";
+import { zodTool } from "@/chat/tool-support/zod-tool";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { z } from "zod";
-import { zodTool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { escapeXml } from "@/chat/xml";
 
 export type AdvisorErrorCode =

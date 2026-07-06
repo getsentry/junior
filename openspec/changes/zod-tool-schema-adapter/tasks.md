@@ -3,7 +3,7 @@
 ## 1. Tool Schema Adapter
 
 - [x] Add a JSON Schema-compatible internal tool schema type.
-- [x] Add `zodTool(...)` beside the existing TypeBox `tool(...)` helper.
+- [x] Add `zodTool(...)` in the internal tool-support layer.
 - [x] Convert Zod schemas to model-facing JSON Schema in the helper.
 - [x] Parse `prepareArguments` with Zod and convert `ZodError` to
       `ToolInputError` with concise model-actionable messages.

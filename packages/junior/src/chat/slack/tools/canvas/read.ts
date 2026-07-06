@@ -2,7 +2,7 @@ import { logWarn } from "@/chat/logging";
 import { readCanvas } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 

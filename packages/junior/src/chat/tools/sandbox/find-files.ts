@@ -10,7 +10,7 @@ import {
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const DEFAULT_FIND_LIMIT = 1000;
 

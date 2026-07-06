@@ -5,7 +5,7 @@ import {
 } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";

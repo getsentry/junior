@@ -9,7 +9,7 @@ import {
   slackChannelIdParam,
 } from "@/chat/slack/id-param";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import {

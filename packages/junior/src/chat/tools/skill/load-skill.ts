@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import {
   loadSkillsByName,

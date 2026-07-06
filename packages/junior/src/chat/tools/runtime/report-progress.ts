@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the internal tool the model uses for sparse progress updates. */
 export function createReportProgressTool() {

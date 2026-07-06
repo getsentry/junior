@@ -3,7 +3,7 @@ import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
   activateProvider(provider: string): Promise<boolean>;

@@ -5,7 +5,7 @@ import {
   storedCanvasUrl,
 } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 

@@ -9,7 +9,7 @@ import {
   slackUserIdParam,
 } from "@/chat/slack/id-param";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const booleanInput = (description: string) =>
   z

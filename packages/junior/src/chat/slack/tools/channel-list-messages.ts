@@ -8,7 +8,7 @@ import {
   parseSlackTimestampParam,
 } from "@/chat/slack/timestamp-param";
 import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 
