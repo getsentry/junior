@@ -1139,6 +1139,57 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toHaveLength(0);
   });
 
+  it("surfaces GitHub pull request validation error details", async () => {
+    const ctx = githubToolsContext({
+      egressFetch: async () =>
+        new Response(
+          JSON.stringify({
+            message: "Validation Failed",
+            errors: [
+              {
+                resource: "PullRequest",
+                field: "base",
+                code: "invalid",
+              },
+            ],
+          }),
+          { status: 422 },
+        ),
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/ops",
+          title: "Typed PR",
+          head: "inc-2297-eap-items-consumer-high-performance",
+          base: "main",
+        },
+        { toolCallId: "call-invalid-pr-base" },
+      ),
+    ).rejects.toThrow(
+      "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
+    );
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/ops",
+          title: "Typed PR",
+          head: "inc-2297-eap-items-consumer-high-performance",
+          base: "master",
+        },
+        { toolCallId: "call-invalid-pr-base" },
+      ),
+    ).rejects.toThrow(
+      "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
+    );
+
+    expect(ctx.egressRequests()).toHaveLength(2);
+  });
+
   it("uses Git smart HTTP write evidence over conflicting read evidence", async () => {
     expect(
       await grantForEgress({

@@ -153,13 +153,14 @@ For PR creation in automation, push explicitly and pass that branch as `head`:
 
 ```bash
 git -C repo push -u origin BRANCH
+gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name
 ```
 
 ```ts
 github_createPullRequest({
   repo: "owner/repo",
   head: "BRANCH",
-  base: "main",
+  base: "<DEFAULT_BRANCH>",
   title: "Example PR",
   body: "Example body",
   draft: true,

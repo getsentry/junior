@@ -32,6 +32,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Check worktree state               | `git -C DIRECTORY status --short --branch`                                                                               |
 | View commit log against base       | `git -C DIRECTORY log BASE..HEAD --oneline`                                                                              |
 | Diff against base                  | `git -C DIRECTORY diff BASE...HEAD`                                                                                      |
+| Resolve default branch             | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                                            |
 | Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                                                    |
 | Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                        |
 | Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                                                 |
@@ -64,7 +65,7 @@ jr-rpc config set github.repo owner/repo
 - A local `git commit` does not call GitHub. Pushing that commit does: `git push` requires `github.contents.write` on the target repo and requester write access.
 - REST Git commit construction also requires `github.contents.write`: `POST /git/blobs`, `POST /git/trees`, `POST /git/commits`, `POST /git/refs`, and `PATCH /git/refs/{ref}`.
 - If the commit changes workflow files under `.github/workflows`, expect `github.workflows.write` in addition to contents write.
-- Before `github_createPullRequest`, push the head branch explicitly. That push requires GitHub write access to the remote.
+- Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
 - Do not use fork creation as the normal PR path. GitHub requires Administration write plus Contents read for `POST /repos/{owner}/{repo}/forks`, and the app must be installed on both source and destination accounts.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
 - `gh pr edit` is not a single-permission command: title/body/base/reviewer changes need pull request write permission; label, assignee, and milestone changes need issue write permission (use the `github-issues` skill); project flags are outside the current GitHub App permission guidance.

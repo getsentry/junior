@@ -190,13 +190,38 @@ function githubApiErrorMessage(payload: unknown): string {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
     const message = (payload as { message?: unknown }).message;
     if (typeof message === "string") {
-      return message;
+      const details = githubApiErrorDetails(payload);
+      return details ? `${message}: ${details}` : message;
     }
   }
   if (typeof payload === "string" && payload.trim()) {
     return payload.trim();
   }
   return "GitHub request failed";
+}
+
+function githubApiErrorDetails(payload: object): string | undefined {
+  const errors = (payload as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) {
+    return undefined;
+  }
+  const details = errors
+    .map((error) => {
+      if (!error || typeof error !== "object" || Array.isArray(error)) {
+        return undefined;
+      }
+      const fields = ["resource", "field", "code", "message"]
+        .map((name) => {
+          const value = (error as Record<string, unknown>)[name];
+          return typeof value === "string" && value.trim()
+            ? `${name}=${value.trim()}`
+            : undefined;
+        })
+        .filter((value): value is string => value !== undefined);
+      return fields.length ? fields.join(" ") : undefined;
+    })
+    .filter((value): value is string => value !== undefined);
+  return details.length ? details.join("; ") : undefined;
 }
 
 function createPullRequestState(

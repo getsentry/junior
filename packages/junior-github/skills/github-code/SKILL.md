@@ -109,7 +109,8 @@ Before creating:
 
 1. Changes committed on a non-default branch.
 2. Push the branch explicitly: `git push -u origin BRANCH`.
-3. Create with explicit targeting: `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "main", title: "...", body: "...", draft: true })`.
+3. Resolve the actual default branch: `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`.
+4. Create with explicit targeting, using that default branch as `base`: `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "<DEFAULT_BRANCH>", title: "...", body: "...", draft: true })`.
 
 Defaults:
 
