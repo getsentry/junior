@@ -31,6 +31,7 @@ import {
 } from "@/chat/tools/skill/mcp-tool-summary";
 import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
 import { createAgentTools } from "@/chat/tools/agent-tools";
+import { planToolExposure } from "@/chat/tool-exposure";
 import {
   createSandboxExecutor,
   type SandboxExecutor,
@@ -350,13 +351,16 @@ export async function wireAgentTools(
     toolRuntimeContext,
   );
 
-  const toolGuidance = Object.entries(
+  const plannedToolExposure = planToolExposure(
     tools as Record<string, AnyToolDefinition>,
-  ).map(([name, definition]) => ({
-    name,
-    promptGuidelines: definition.promptGuidelines,
-    promptSnippet: definition.promptSnippet,
-  }));
+  );
+  const toolGuidance = Object.entries(plannedToolExposure.directTools).map(
+    ([name, definition]) => ({
+      name,
+      promptGuidelines: definition.promptGuidelines,
+      promptSnippet: definition.promptSnippet,
+    }),
+  );
 
   // If a prior turn left an MCP provider pending user authorization, skip
   // eager restoration of that provider here. Without this guard, a later

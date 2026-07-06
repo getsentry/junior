@@ -738,19 +738,17 @@ describe("sandbox egress proxy integration", () => {
     );
 
     const agentTools = createAgentTools(tools, new SkillSandbox([], []), {});
-    const managedEgressRead = agentTools.find(
-      (candidate) => candidate.name === "managedEgress_managedEgressRead",
+    const executeTool = agentTools.find(
+      (candidate) => candidate.name === "executeTool",
     );
-    if (!managedEgressRead) {
-      throw new Error(
-        "managedEgress_managedEgressRead tool was not registered",
-      );
+    if (!executeTool) {
+      throw new Error("executeTool was not registered");
     }
 
-    const result = await managedEgressRead.execute(
-      "tool-call-managed-egress-read",
-      {},
-    );
+    const result = await executeTool.execute("tool-call-managed-egress-read", {
+      tool_name: "managedEgress_managedEgressRead",
+      arguments: {},
+    });
 
     expect(result).toMatchObject({
       details: {

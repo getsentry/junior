@@ -3,6 +3,8 @@ import type { Static, TSchema } from "@sinclair/typebox";
 import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
+export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+
 export interface ToolExecuteOptions {
   experimental_context?: unknown;
   signal?: AbortSignal;
@@ -18,6 +20,7 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
     plugin: string;
   };
   description: string;
+  exposure?: ToolExposure;
   inputSchema: TInputSchema;
   annotations?: ToolAnnotations;
   /**

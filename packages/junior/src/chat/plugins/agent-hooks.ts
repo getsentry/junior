@@ -474,6 +474,7 @@ export function getPluginTools(
         name: localName,
         plugin: pluginName,
       };
+      definition.exposure = "deferred";
       tools[name] = definition;
     }
   }
