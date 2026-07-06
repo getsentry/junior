@@ -1,14 +1,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createEnvFileLoader } from "@/env/files";
 import { loadJuniorTestEnvFiles } from "../../fixtures/env";
 
 const TEST_ENV_KEYS = [
+  "DATABASE_URL",
   "ENV_FILE_PRECEDENCE",
   "ENV_FILE_EXISTING",
   "ENV_FILE_DEFAULT",
+  "JUNIOR_SKIP_POSTGRES_HARNESS",
 ];
 const originalEnv = { ...process.env };
 
@@ -23,12 +25,16 @@ function clearTestEnv(): void {
   }
 }
 
-describe("createEnvFileLoader", () => {
-  afterEach(() => {
-    clearTestEnv();
-    process.env = { ...originalEnv };
-  });
+beforeEach(() => {
+  clearTestEnv();
+});
 
+afterEach(() => {
+  process.env = { ...originalEnv };
+  clearTestEnv();
+});
+
+describe("createEnvFileLoader", () => {
   it("lets later files override earlier values", () => {
     const applyEnvFile = createEnvFileLoader();
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "junior-env-file-"));
@@ -59,11 +65,6 @@ describe("createEnvFileLoader", () => {
 });
 
 describe("loadJuniorTestEnvFiles", () => {
-  afterEach(() => {
-    clearTestEnv();
-    process.env = { ...originalEnv };
-  });
-
   it("loads example env files as defaults before local overrides", () => {
     const workspaceRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), "junior-workspace-env-"),
@@ -103,5 +104,72 @@ describe("loadJuniorTestEnvFiles", () => {
     loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [packageRoot] });
 
     expect(process.env.ENV_FILE_DEFAULT).toBe("example");
+  });
+
+  it("skips the Postgres harness when DATABASE_URL only comes from example defaults", () => {
+    const workspaceRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "junior-workspace-env-"),
+    );
+    const exampleRoot = path.join(workspaceRoot, "apps/example");
+
+    writeFile(
+      path.join(exampleRoot, ".env.example"),
+      [
+        "DATABASE_URL=postgres://junior:junior@localhost:54322/junior",
+        "ENV_FILE_DEFAULT=example",
+        "",
+      ].join("\n"),
+    );
+
+    loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [] });
+
+    expect(process.env.DATABASE_URL).toBe(
+      "postgres://junior:junior@localhost:54322/junior",
+    );
+    expect(process.env.JUNIOR_SKIP_POSTGRES_HARNESS).toBe("1");
+    expect(process.env.ENV_FILE_DEFAULT).toBe("example");
+  });
+
+  it("allows local env files to provide DATABASE_URL", () => {
+    const workspaceRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "junior-workspace-env-"),
+    );
+    const exampleRoot = path.join(workspaceRoot, "apps/example");
+
+    writeFile(
+      path.join(exampleRoot, ".env.example"),
+      ["DATABASE_URL=postgres://example-default", ""].join("\n"),
+    );
+    writeFile(
+      path.join(exampleRoot, ".env.local"),
+      ["DATABASE_URL=postgres://local-override", ""].join("\n"),
+    );
+
+    loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [] });
+
+    expect(process.env.DATABASE_URL).toBe("postgres://local-override");
+    expect(process.env.JUNIOR_SKIP_POSTGRES_HARNESS).toBeUndefined();
+  });
+
+  it("preserves shell-provided DATABASE_URL", () => {
+    const workspaceRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "junior-workspace-env-"),
+    );
+    const exampleRoot = path.join(workspaceRoot, "apps/example");
+    process.env.DATABASE_URL = "postgres://shell";
+
+    writeFile(
+      path.join(exampleRoot, ".env.example"),
+      ["DATABASE_URL=postgres://example-default", ""].join("\n"),
+    );
+    writeFile(
+      path.join(exampleRoot, ".env.local"),
+      ["DATABASE_URL=postgres://local-override", ""].join("\n"),
+    );
+
+    loadJuniorTestEnvFiles({ workspaceRoot, packageRoots: [] });
+
+    expect(process.env.DATABASE_URL).toBe("postgres://shell");
+    expect(process.env.JUNIOR_SKIP_POSTGRES_HARNESS).toBeUndefined();
   });
 });

@@ -16,7 +16,9 @@ declare module "vitest" {
   }
 }
 
-const TEST_DATABASE_URL = process.env.DATABASE_URL;
+const TEST_DATABASE_URL = process.env.JUNIOR_SKIP_POSTGRES_HARNESS
+  ? undefined
+  : process.env.DATABASE_URL;
 
 function assertLocalDatabaseUrl(databaseUrl: string): void {
   const { hostname } = new URL(databaseUrl);
