@@ -13,7 +13,7 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/starlight": "^0.39.2",
     "@sentry/starlight-theme": "catalog:",
-    "astro": "^6.3.7",
+    "astro": "^6.4.6",
     "starlight-typedoc": "^0.23.0",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
