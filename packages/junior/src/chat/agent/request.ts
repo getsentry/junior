@@ -21,7 +21,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
-import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
+import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type {
   ImageGenerateToolDeps,
   WebFetchToolDeps,

@@ -1,7 +1,7 @@
+import { Type } from "@sinclair/typebox";
 import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
-import { z } from "zod";
-import { zodTool } from "@/chat/tools/definition";
-import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import { tool } from "@/chat/tools/definition";
+import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 20;
@@ -185,32 +185,35 @@ function searchProviderCatalog(
 
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
-  return zodTool({
+  return tool({
     description:
       "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, Junior connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
-    inputSchema: z.object({
-      query: z
-        .string()
-        .min(1)
-        .describe(
-          "Optional search terms describing the MCP tool or arguments needed.",
-        )
-        .optional(),
-      provider: z
-        .string()
-        .min(1)
-        .describe(
-          "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
-        )
-        .optional(),
-      max_results: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(MAX_RESULTS)
-        .describe("Maximum matching tool descriptors to return.")
-        .optional(),
-    }),
+    inputSchema: Type.Object(
+      {
+        query: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description:
+              "Optional search terms describing the MCP tool or arguments needed.",
+          }),
+        ),
+        provider: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description:
+              "Optional provider name to list or search within. If configured but not yet connected, Junior activates it on demand.",
+          }),
+        ),
+        max_results: Type.Optional(
+          Type.Integer({
+            minimum: 1,
+            maximum: MAX_RESULTS,
+            description: "Maximum matching tool descriptors to return.",
+          }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
     execute: async ({ query, provider, max_results }) => {
       if (provider) {
         await mcpToolManager.activateProvider(provider);

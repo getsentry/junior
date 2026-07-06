@@ -31,7 +31,7 @@ import {
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import type { SkillInvocation, SkillMetadata } from "@/chat/skills";
-import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { Requester } from "@/chat/requester";

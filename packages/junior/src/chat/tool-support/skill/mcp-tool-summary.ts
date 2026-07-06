@@ -1,4 +1,5 @@
 import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
+import { summarizeInputSchema } from "@/chat/tool-support/schema-summary";
 
 export interface ExposedToolSummary {
   tool_name: string;
@@ -83,7 +84,7 @@ function formatArgumentPlaceholder(name: string, schema: unknown): string {
 }
 
 /** Build a stable model-readable MCP tool signature. */
-export function formatMcpToolSignature(
+function formatMcpToolSignature(
   toolName: string,
   schema: Record<string, unknown>,
 ): string {
@@ -100,7 +101,7 @@ export function formatMcpToolSignature(
 }
 
 /** Build the exact callMcpTool argument shape agents should use. */
-export function formatMcpToolCallExample(
+function formatMcpToolCallExample(
   toolName: string,
   schema: Record<string, unknown>,
 ): ExposedToolSummary["call"] {
@@ -115,20 +116,6 @@ export function formatMcpToolCallExample(
       ),
     ),
   };
-}
-
-/** Summarize an MCP input schema for quick catalog scanning. */
-export function summarizeInputSchema(schema: Record<string, unknown>): string {
-  const properties = getSchemaProperties(schema);
-  const required = getRequiredFields(schema);
-  const propertyNames = Object.keys(properties);
-  if (propertyNames.length === 0) {
-    return "No arguments.";
-  }
-
-  return propertyNames
-    .map((name) => `${name}${required.has(name) ? " (required)" : ""}`)
-    .join(", ");
 }
 
 /** Convert a managed MCP tool descriptor into agent-visible search output. */

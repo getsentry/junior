@@ -18,7 +18,7 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
-import type { ToolExecutionReport } from "@/chat/tools/agent-tools";
+import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,

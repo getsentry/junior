@@ -708,12 +708,12 @@ describe("sandbox egress proxy integration", () => {
     const [
       { createPluginEgress },
       { SkillSandbox },
-      { createAgentTools },
+      { createPiAgentTools },
       toolsModule,
     ] = await Promise.all([
       import("@/chat/egress/plugin"),
       import("@/chat/sandbox/skill-sandbox"),
-      import("@/chat/tools/agent-tools"),
+      import("@/chat/tool-support/pi-tool-adapter"),
       import("@/chat/tools"),
     ]);
     const conversationId = "local:test:plugin-egress-tool";
@@ -737,7 +737,7 @@ describe("sandbox egress proxy integration", () => {
       },
     );
 
-    const agentTools = createAgentTools(tools, new SkillSandbox([], []), {});
+    const agentTools = createPiAgentTools(tools, new SkillSandbox([], []), {});
     const executeTool = agentTools.find(
       (candidate) => candidate.name === "executeTool",
     );

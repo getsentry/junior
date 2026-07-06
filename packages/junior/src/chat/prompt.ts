@@ -26,7 +26,7 @@ import {
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
-import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import type { Destination, Platform, Source } from "@sentry/junior-plugin-api";

@@ -28,9 +28,9 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   toActiveMcpCatalogSummaries,
   type ActiveMcpCatalogSummary,
-} from "@/chat/tools/skill/mcp-tool-summary";
+} from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
-import { createAgentTools } from "@/chat/tools/agent-tools";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import {
   createSandboxExecutor,
@@ -432,7 +432,7 @@ export async function wireAgentTools(
       );
     }
   };
-  const agentTools = createAgentTools(
+  const agentTools = createPiAgentTools(
     tools,
     args.skillSandbox,
     args.spanContext,
@@ -444,7 +444,7 @@ export async function wireAgentTools(
     args.conversationPrivacy,
     args.observers.onToolResult,
   );
-  advisorTools = createAgentTools(
+  advisorTools = createPiAgentTools(
     createAdvisorToolDefinitions(tools),
     args.skillSandbox,
     args.spanContext,

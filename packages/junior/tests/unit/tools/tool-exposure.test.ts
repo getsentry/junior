@@ -4,7 +4,7 @@ import { planToolExposure } from "@/chat/tool-exposure";
 import { tool } from "@/chat/tools/definition";
 
 describe("planToolExposure", () => {
-  it("separates direct, deferred, and excluded tools", () => {
+  it("separates native-visible, catalog-executable, and excluded tools", () => {
     const directDefault = tool({
       description: "Direct by default",
       inputSchema: Type.Object({}),
@@ -39,12 +39,14 @@ describe("planToolExposure", () => {
         modelOnly,
       }),
     ).toEqual({
-      directTools: {
+      catalogTools: {
+        deferred,
         directDefault,
         directExplicit,
       },
-      deferredTools: {
-        deferred,
+      directTools: {
+        directDefault,
+        directExplicit,
       },
       excludedTools: {
         hidden,

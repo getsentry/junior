@@ -23,6 +23,11 @@ import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
+import {
+  prepareCatalogToolCall,
+  resolveCatalogToolCall,
+} from "@/chat/tool-support/catalog-tool-call";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
@@ -30,8 +35,6 @@ import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   createExecuteToolTool,
   EXECUTE_TOOL_NAME,
-  prepareDeferredToolCall,
-  resolveDeferredToolCall,
 } from "@/chat/tools/execute-tool";
 import { planToolExposure } from "@/chat/tool-exposure";
 import {
@@ -39,16 +42,8 @@ import {
   SEARCH_TOOLS_NAME,
 } from "@/chat/tools/search-tools";
 
-export interface ToolExecutionReport {
-  error?: string;
-  ok: boolean;
-  params: Record<string, unknown>;
-  result?: unknown;
-  toolName: string;
-}
-
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
-export function createAgentTools(
+export function createPiAgentTools(
   tools: Record<string, AnyToolDefinition>,
   sandbox: SkillSandbox,
   spanContext: LogContext,
@@ -67,18 +62,15 @@ export function createAgentTools(
   const visibleTools: Record<string, AnyToolDefinition> = {
     ...plannedTools.directTools,
   };
-  const hasDeferredTools = Object.keys(plannedTools.deferredTools).length > 0;
-  if (hasDeferredTools) {
-    if (visibleTools[SEARCH_TOOLS_NAME] || visibleTools[EXECUTE_TOOL_NAME]) {
-      throw new Error(
-        `${SEARCH_TOOLS_NAME} and ${EXECUTE_TOOL_NAME} are reserved for deferred tool discovery`,
-      );
-    }
-    visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
-      plannedTools.deferredTools,
+  if (visibleTools[SEARCH_TOOLS_NAME] || visibleTools[EXECUTE_TOOL_NAME]) {
+    throw new Error(
+      `${SEARCH_TOOLS_NAME} and ${EXECUTE_TOOL_NAME} are reserved for tool catalog discovery`,
     );
-    visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
   }
+  visibleTools[SEARCH_TOOLS_NAME] = createSearchToolsTool(
+    plannedTools.catalogTools,
+  );
+  visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
   const serializeToolPayload = (payload: unknown) =>
@@ -181,6 +173,18 @@ export function createAgentTools(
     });
     return normalized;
   };
+  const reportStatus = async (
+    executionToolName: string,
+    params: Record<string, unknown>,
+  ) => {
+    if (executionToolName !== "reportProgress") {
+      return;
+    }
+    const status = buildReportedProgressStatus(params);
+    if (status) {
+      await onStatus?.(status);
+    }
+  };
   return Object.entries(visibleTools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -202,12 +206,6 @@ export function createAgentTools(
         "app.ai.tool.call.arguments",
         params,
       );
-      if (toolName === "reportProgress") {
-        const status = buildReportedProgressStatus(params);
-        if (status) {
-          await onStatus?.(status);
-        }
-      }
       return withSpan(
         `execute_tool ${toolName}`,
         "gen_ai.execute_tool",
@@ -219,20 +217,22 @@ export function createAgentTools(
 
           try {
             if (toolName === EXECUTE_TOOL_NAME) {
-              const deferredCall = prepareDeferredToolCall(
-                resolveDeferredToolCall(parsed, plannedTools.deferredTools),
+              const catalogCall = prepareCatalogToolCall(
+                resolveCatalogToolCall(parsed, plannedTools.catalogTools),
               );
-              executionToolName = deferredCall.toolName;
-              executionParams = deferredCall.arguments;
+              executionToolName = catalogCall.toolName;
+              executionParams = catalogCall.arguments;
+              await reportStatus(executionToolName, executionParams);
               return await executeDefinition({
                 normalizedToolCallId,
-                params: deferredCall.arguments,
+                params: catalogCall.arguments,
                 signal,
-                toolDef: deferredCall.definition,
-                toolName: deferredCall.toolName,
+                toolDef: catalogCall.definition,
+                toolName: catalogCall.toolName,
               });
             }
 
+            await reportStatus(executionToolName, executionParams);
             return await executeDefinition({
               normalizedToolCallId,
               params: parsed,

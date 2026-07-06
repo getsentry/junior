@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createAgentTools } from "@/chat/tools/agent-tools";
+import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
+import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
 
@@ -25,7 +26,7 @@ const githubSkill: Skill = {
   allowedTools: ["bash"],
 };
 
-describe("createAgentTools", () => {
+describe("Pi tool adapter", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
   });
@@ -33,7 +34,7 @@ describe("createAgentTools", () => {
   it("emits assistant status only for reportProgress", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
-    const [reportProgressTool, bashTool] = createAgentTools(
+    const [reportProgressTool, bashTool] = createPiAgentTools(
       {
         reportProgress: {
           description: "report progress",
@@ -59,6 +60,37 @@ describe("createAgentTools", () => {
     expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
   });
 
+  it("emits assistant status when reportProgress runs through executeTool", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onStatus = vi.fn(async () => undefined);
+    const tools = createPiAgentTools(
+      {
+        reportProgress: createReportProgressTool(),
+      },
+      sandbox,
+      {},
+      onStatus,
+    );
+    const executeTool = tools.find(
+      (candidate) => candidate.name === "executeTool",
+    );
+    if (!executeTool) {
+      throw new Error("executeTool was not registered");
+    }
+
+    await executeTool.execute("tool-progress", {
+      tool_name: "reportProgress",
+      arguments: {
+        message: "  Reviewing catalog execution  ",
+      },
+    });
+
+    expect(onStatus).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenCalledWith({
+      text: "Reviewing catalog execution",
+    });
+  });
+
   it("executes sandbox bash without host credential injection", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const sandboxExecutor = {
@@ -79,7 +111,7 @@ describe("createAgentTools", () => {
       })),
     } as any;
 
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: {
           description: "bash",
@@ -130,7 +162,7 @@ describe("createAgentTools", () => {
       })),
     } as any;
 
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: {
           description: "bash",
@@ -168,7 +200,7 @@ describe("createAgentTools", () => {
       ok: true,
     }));
 
-    const [demoTool] = createAgentTools(
+    const [demoTool] = createPiAgentTools(
       {
         demo: {
           description: "demo",
@@ -210,7 +242,7 @@ describe("createAgentTools", () => {
   it("reports tool call parameters to the caller", async () => {
     const sandbox = new SkillSandbox([], []);
     const onToolCall = vi.fn();
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: {
           description: "bash",
@@ -234,7 +266,7 @@ describe("createAgentTools", () => {
   it("forwards Pi tool preparation metadata", () => {
     const sandbox = new SkillSandbox([], []);
     const prepareArguments = vi.fn((args: unknown) => args as never);
-    const [editTool] = createAgentTools(
+    const [editTool] = createPiAgentTools(
       {
         editFile: {
           description: "edit",
@@ -260,7 +292,7 @@ describe("createAgentTools", () => {
 
   it("marks sandbox bash as sequential", () => {
     const sandbox = new SkillSandbox([], []);
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: createBashTool(),
       },
@@ -315,7 +347,7 @@ describe("createAgentTools", () => {
       })),
     } as any;
 
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: {
           description: "bash",
@@ -368,7 +400,7 @@ describe("createAgentTools", () => {
       })),
     } as any;
 
-    const [bashTool] = createAgentTools(
+    const [bashTool] = createPiAgentTools(
       {
         bash: {
           description: "bash",
