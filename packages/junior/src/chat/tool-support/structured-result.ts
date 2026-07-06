@@ -1,3 +1,4 @@
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { z } from "zod";
 
 export const juniorToolContinuationSchema = z
@@ -51,7 +52,7 @@ export type JuniorToolResult = z.output<typeof juniorToolResultSchema>;
 export interface JuniorToolResultEnvelope<
   TDetails extends JuniorToolResult = JuniorToolResult,
 > {
-  content: [{ type: "text"; text: string }];
+  content: [TextContent, ...(TextContent | ImageContent)[]];
   details: TDetails;
 }
 
@@ -70,10 +71,25 @@ function sortJsonValue(value: unknown): unknown {
   );
 }
 
+export interface JuniorTextToolResultEnvelope<
+  TDetails extends JuniorToolResult = JuniorToolResult,
+> {
+  content: [TextContent];
+  details: TDetails;
+}
+
 /** Create the Pi-compatible transport envelope from one structured result object. */
 export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
   details: TDetails,
-): JuniorToolResultEnvelope<TDetails> {
+): JuniorTextToolResultEnvelope<TDetails>;
+export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
+  details: TDetails,
+  options: { content: Array<TextContent | ImageContent> },
+): JuniorToolResultEnvelope<TDetails>;
+export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
+  details: TDetails,
+  options: { content?: Array<TextContent | ImageContent> } = {},
+): JuniorToolResultEnvelope<TDetails> | JuniorTextToolResultEnvelope<TDetails> {
   const parsed = juniorToolResultSchema.parse(details) as TDetails;
   return {
     content: [
@@ -81,6 +97,7 @@ export function makeStructuredToolResult<TDetails extends JuniorToolResult>(
         type: "text",
         text: JSON.stringify(sortJsonValue(parsed)),
       },
+      ...(options.content ?? []),
     ],
     details: parsed,
   };

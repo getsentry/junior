@@ -168,6 +168,7 @@ describe("McpToolManager", () => {
       throw new Error("MCP structured result should be text content");
     }
     expect(JSON.parse(content.text)).toEqual(result.details);
+    expect(result.content[1]).toEqual({ type: "text", text: "pong" });
 
     await manager.close();
     expect(closeMock).toHaveBeenCalledTimes(1);

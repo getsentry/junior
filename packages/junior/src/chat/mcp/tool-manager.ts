@@ -424,22 +424,25 @@ export class McpToolManager {
               }
 
               const content = toAgentToolContent(result);
-              return makeStructuredToolResult({
-                ok: true,
-                status: "success",
-                target: managedToolName,
-                data: {
-                  content,
+              return makeStructuredToolResult(
+                {
+                  ok: true,
+                  status: "success",
+                  target: managedToolName,
+                  data: {
+                    content,
+                    provider: plugin.manifest.name,
+                    rawResult: result,
+                    tool: tool.name,
+                    tool_name: managedToolName,
+                  },
                   provider: plugin.manifest.name,
                   rawResult: result,
                   tool: tool.name,
                   tool_name: managedToolName,
                 },
-                provider: plugin.manifest.name,
-                rawResult: result,
-                tool: tool.name,
-                tool_name: managedToolName,
-              });
+                { content },
+              );
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&
@@ -460,22 +463,25 @@ export class McpToolManager {
                 // Once auth pause has been requested, return a placeholder result
                 // and let the aborted turn park cleanly instead of surfacing a
                 // spurious tool failure to the model.
-                return makeStructuredToolResult({
-                  ok: true,
-                  status: "success",
-                  target: managedToolName,
-                  data: {
-                    content: parkedContent,
+                return makeStructuredToolResult(
+                  {
+                    ok: true,
+                    status: "success",
+                    target: managedToolName,
+                    data: {
+                      content: parkedContent,
+                      provider: plugin.manifest.name,
+                      rawResult: parkedResult,
+                      tool: tool.name,
+                      tool_name: managedToolName,
+                    },
                     provider: plugin.manifest.name,
                     rawResult: parkedResult,
                     tool: tool.name,
                     tool_name: managedToolName,
                   },
-                  provider: plugin.manifest.name,
-                  rawResult: parkedResult,
-                  tool: tool.name,
-                  tool_name: managedToolName,
-                });
+                  { content: parkedContent },
+                );
               }
               const errorAttributes = {
                 ...baseAttributes,
