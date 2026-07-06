@@ -24,7 +24,7 @@
     "@sentry/junior-scheduler": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",
-    "hono": "^4.12.22"
+    "hono": "^4.12.25"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
