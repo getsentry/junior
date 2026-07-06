@@ -1,10 +1,10 @@
 import { logWarn } from "@/chat/logging";
 import { readCanvas } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
-import { Type } from "@sinclair/typebox";
 
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
@@ -12,32 +12,30 @@ import { Type } from "@sinclair/typebox";
  * canvas body downloaded via the bot's file access.
  */
 export function createSlackCanvasReadTool() {
-  return tool({
+  return zodTool({
     description:
       "Read a bounded line range from a Slack canvas as markdown. Use when you need exact Canvas contents to verify facts or make edits safely. Do not use for generic web pages — use webFetch for those.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        canvas: Type.String({
-          minLength: 1,
-          description:
-            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
-        }),
-        offset: Type.Optional(
-          Type.Integer({
-            minimum: 1,
-            description: "1-indexed line number to start reading from.",
-          }),
+    inputSchema: z.object({
+      canvas: z
+        .string()
+        .min(1)
+        .describe(
+          "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
         ),
-        limit: Type.Optional(
-          Type.Integer({
-            minimum: 1,
-            description: "Maximum number of lines to read. Defaults to 1000.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+      offset: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .describe("1-indexed line number to start reading from.")
+        .optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .describe("Maximum number of lines to read. Defaults to 1000.")
+        .optional(),
+    }),
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

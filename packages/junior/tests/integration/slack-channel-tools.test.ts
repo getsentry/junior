@@ -348,6 +348,35 @@ describe("slack channel tools", () => {
     });
   });
 
+  it("normalizes numeric channel history timestamps before calling Slack", async () => {
+    queueSlackApiResponse("conversations.history", {
+      body: conversationsHistoryPage({
+        messages: [{ ts: "1700000000.300000", text: "hello", user: "U1" }],
+      }),
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      oldest: 1690000000.123456,
+      latest: 1710000000.654321,
+    });
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      channel_id: "C123",
+      count: 1,
+    });
+    expect(
+      getCapturedSlackApiCalls("conversations.history")[0]?.params,
+    ).toMatchObject({
+      channel: "C123",
+      oldest: "1690000000.123456",
+      latest: "1710000000.654321",
+    });
+  });
+
   it("rejects invalid channel history timestamps before calling Slack", async () => {
     const tool = createSlackChannelListMessagesTool(
       createContext("list channel messages"),

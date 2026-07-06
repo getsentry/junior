@@ -1,7 +1,10 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { tool } from "@/chat/tools/definition";
+import {
+  isTypeBoxInputSchema,
+  tool,
+  type AnyToolDefinition,
+} from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export const EXECUTE_TOOL_NAME = "executeTool";
@@ -13,10 +16,10 @@ export interface DeferredToolCall {
 }
 
 function schemaErrorText(
-  definition: AnyToolDefinition,
+  schema: TSchema,
   value: unknown,
 ): string {
-  const firstError = [...Value.Errors(definition.inputSchema, value)][0];
+  const firstError = [...Value.Errors(schema, value)][0];
   if (!firstError) {
     return "invalid arguments";
   }
@@ -98,9 +101,12 @@ export function prepareDeferredToolCall(
   const prepared = call.definition.prepareArguments
     ? call.definition.prepareArguments(call.arguments)
     : call.arguments;
-  if (!Value.Check(call.definition.inputSchema, prepared)) {
+  if (
+    isTypeBoxInputSchema(call.definition.inputSchema) &&
+    !Value.Check(call.definition.inputSchema, prepared)
+  ) {
     throw new ToolInputError(
-      `executeTool arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition, prepared)}`,
+      `executeTool arguments do not match schema for ${call.toolName}: ${schemaErrorText(call.definition.inputSchema, prepared)}`,
     );
   }
   if (!prepared || typeof prepared !== "object" || Array.isArray(prepared)) {

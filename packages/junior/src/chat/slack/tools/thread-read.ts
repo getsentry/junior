@@ -1,4 +1,3 @@
-import { Type } from "@sinclair/typebox";
 import { SlackActionError } from "@/chat/slack/client";
 import { listThreadReplies } from "@/chat/slack/channel";
 import {
@@ -9,7 +8,8 @@ import {
   parseRequiredSlackChannelIdParam,
   slackChannelIdParam,
 } from "@/chat/slack/id-param";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import {
@@ -80,42 +80,38 @@ export function createSlackThreadReadTool(
   context: SlackToolContext,
   deps: { visibilityStore?: DestinationVisibilityReader } = {},
 ) {
-  return tool({
+  return zodTool({
     description:
       "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Only the current conversation and public channels Junior has seen in this workspace are readable.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object({
-      url: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Slack message archive URL, e.g. https://workspace.slack.com/archives/C123/p1700000000123456",
-        }),
-      ),
-      channel_id: Type.Optional(
-        slackChannelIdParam(
-          "Slack channel/conversation ID (e.g. C123). Use with `ts` as an alternative to `url`.",
-        ),
-      ),
-      ts: Type.Optional(
-        slackTimestampParam(
-          "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
-        ),
-      ),
-      limit: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 1000,
-          description: "Maximum number of thread messages to fetch.",
-        }),
-      ),
-      max_pages: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 10,
-          description: "Maximum number of Slack API pages to traverse.",
-        }),
-      ),
+    inputSchema: z.object({
+      url: z
+        .string()
+        .min(1)
+        .describe(
+          "Slack message archive URL, e.g. https://workspace.slack.com/archives/C123/p1700000000123456",
+        )
+        .optional(),
+      channel_id: slackChannelIdParam(
+        "Slack channel/conversation ID (e.g. C123). Use with `ts` as an alternative to `url`.",
+      ).optional(),
+      ts: slackTimestampParam(
+        "Slack message timestamp (e.g. 1700000000.123456). May be the thread root or any message in the thread.",
+      ).optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .describe("Maximum number of thread messages to fetch.")
+        .optional(),
+      max_pages: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .describe("Maximum number of Slack API pages to traverse.")
+        .optional(),
     }),
     execute: async ({ url, channel_id, ts, limit, max_pages }) => {
       let channelId: SlackChannelId;

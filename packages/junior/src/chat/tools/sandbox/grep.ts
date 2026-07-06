@@ -1,5 +1,4 @@
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
@@ -12,7 +11,8 @@ import {
   type SandboxFileSystem,
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_GREP_LIMIT = 100;
@@ -25,6 +25,14 @@ interface GrepResult {
     match_limit_reached?: number;
   };
 }
+
+const booleanInput = (description: string) =>
+  z
+    .preprocess(
+      (value) => (value === "true" ? true : value === "false" ? false : value),
+      z.boolean(),
+    )
+    .describe(description);
 
 function truncateGrepLine(value: string): { line: string; truncated: boolean } {
   if (value.length <= MAX_GREP_LINE_CHARS) {
@@ -201,55 +209,46 @@ export async function grepFiles(params: {
 
 /** Create the sandbox grep tool definition exposed to the agent. */
 export function createGrepTool() {
-  return tool({
+  return zodTool({
     description:
       "Search sandbox workspace file contents. Returns bounded matching lines with file paths and line numbers. Respects path/glob filters and includes truncation notices.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        pattern: Type.String({
-          minLength: 1,
-          description: "Regex pattern or literal text to search for.",
-        }),
-        path: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Directory or file path in the sandbox workspace. Defaults to the workspace root.",
-          }),
-        ),
-        glob: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Optional glob filter such as '*.ts' or '**/*.test.ts'.",
-          }),
-        ),
-        ignoreCase: Type.Optional(
-          Type.Boolean({
-            description: "Whether matching should ignore case.",
-          }),
-        ),
-        literal: Type.Optional(
-          Type.Boolean({
-            description: "Treat pattern as literal text instead of regex.",
-          }),
-        ),
-        context: Type.Optional(
-          Type.Integer({
-            minimum: 0,
-            description: "Number of surrounding context lines to include.",
-          }),
-        ),
-        limit: Type.Optional(
-          Type.Integer({
-            minimum: 1,
-            description: "Maximum matches to return. Defaults to 100.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      pattern: z
+        .string()
+        .min(1)
+        .describe("Regex pattern or literal text to search for."),
+      path: z
+        .string()
+        .min(1)
+        .describe(
+          "Directory or file path in the sandbox workspace. Defaults to the workspace root.",
+        )
+        .optional(),
+      glob: z
+        .string()
+        .min(1)
+        .describe("Optional glob filter such as '*.ts' or '**/*.test.ts'.")
+        .optional(),
+      ignoreCase: booleanInput(
+        "Whether matching should ignore case.",
+      ).optional(),
+      literal: booleanInput(
+        "Treat pattern as literal text instead of regex.",
+      ).optional(),
+      context: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .describe("Number of surrounding context lines to include.")
+        .optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .describe("Maximum matches to return. Defaults to 100.")
+        .optional(),
+    }),
     execute: async () => {
       throw new Error("grep can only run when sandbox execution is enabled.");
     },

@@ -3,29 +3,22 @@ import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createCanvas } from "@/chat/slack/tools/canvas/api";
 import { mergeRecentCanvases } from "@/chat/slack/tools/canvas/context";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 
 /** Create a tool that provisions a new Slack canvas in the active channel. */
 export function createSlackCanvasCreateTool(
   context: SlackToolContext,
   state: ToolState,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Create a Slack canvas for long-form output in the active assistant context channel. Use when the answer is better as a reusable document than a thread reply: long-form research, timelines, bios/profiles, structured notes, plans, comparisons, or anything likely to exceed one compact Slack reply. After creating it, reply with one or two short sentences plus the canvas link; do not recap the canvas contents. Do not use for short answers that fit cleanly in one normal thread reply.",
-    inputSchema: Type.Object({
-      title: Type.String({
-        minLength: 1,
-        maxLength: 160,
-        description: "Canvas title.",
-      }),
-      markdown: Type.String({
-        minLength: 1,
-        description: "Canvas markdown body content.",
-      }),
+    inputSchema: z.object({
+      title: z.string().min(1).max(160).describe("Canvas title."),
+      markdown: z.string().min(1).describe("Canvas markdown body content."),
     }),
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.destinationChannelId;

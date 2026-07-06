@@ -1,10 +1,10 @@
-import { Type } from "@sinclair/typebox";
 import {
   parseSlackChannelId,
   parseSlackUserId,
   type SlackChannelId,
   type SlackUserId,
 } from "@/chat/slack/ids";
+import { z } from "zod";
 
 type RequiredSlackChannelIdParamResult =
   | { ok: true; value: SlackChannelId }
@@ -14,22 +14,16 @@ type RequiredSlackUserIdParamResult =
   | { ok: true; value: SlackUserId }
   | { ok: false; error: string };
 
-// Tool schemas stay TypeBox strings for the model-facing contract; execution
-// parses those values into Zod-branded Slack IDs before provider calls.
+// Tool schemas stay model-facing strings; execution parses those values into
+// Zod-branded Slack IDs before provider calls.
 /** Define a model-facing Slack channel ID parameter. */
 export function slackChannelIdParam(description: string) {
-  return Type.String({
-    minLength: 1,
-    description,
-  });
+  return z.string().min(1).describe(description);
 }
 
 /** Define a model-facing Slack user ID parameter. */
 export function slackUserIdParam(description: string) {
-  return Type.String({
-    minLength: 1,
-    description,
-  });
+  return z.string().min(1).describe(description);
 }
 
 /** Parse a required tool input channel ID into a branded Slack channel ID. */

@@ -14,8 +14,8 @@ import {
   validateAndApplyTextEdits,
   type TextReplacement,
 } from "@/chat/tools/sandbox/text-edits";
-import { Type } from "@sinclair/typebox";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 
 type EditReplacement = TextReplacement;
 
@@ -90,41 +90,35 @@ export async function editFile(params: {
   };
 }
 
-const editReplacementSchema = Type.Object(
-  {
-    oldText: Type.String({
-      minLength: 1,
-      description:
-        "Exact text to replace. It must be unique in the original file and must not overlap another edit.",
-    }),
-    newText: Type.String({
-      description: "Replacement text for this edit.",
-    }),
-  },
-  { additionalProperties: false },
-);
+const editReplacementSchema = z.object({
+  oldText: z
+    .string()
+    .min(1)
+    .describe(
+      "Exact text to replace. It must be unique in the original file and must not overlap another edit.",
+    ),
+  newText: z.string().describe("Replacement text for this edit."),
+});
 
 /** Create the sandbox edit tool definition exposed to the agent. */
 export function createEditFileTool() {
-  return tool({
+  return zodTool({
     description:
       "Edit one sandbox workspace file with exact text replacements. Use for precise changes to existing files; prefer this over writeFile for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same file: use one edits[] call.",
     prepareArguments: prepareEditFileArguments,
     executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        path: Type.String({
-          minLength: 1,
-          description: "Path to edit in the sandbox workspace.",
-        }),
-        edits: Type.Array(editReplacementSchema, {
-          minItems: 1,
-          description:
-            "Exact replacements matched against the original file, not incrementally.",
-        }),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      path: z
+        .string()
+        .min(1)
+        .describe("Path to edit in the sandbox workspace."),
+      edits: z
+        .array(editReplacementSchema)
+        .min(1)
+        .describe(
+          "Exact replacements matched against the original file, not incrementally.",
+        ),
+    }),
     execute: async () => {
       throw new Error(
         "editFile can only run when sandbox execution is enabled.",

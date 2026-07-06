@@ -3,7 +3,6 @@ import {
   type AgentTool,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
-import { Type } from "@sinclair/typebox";
 import { THREAD_STATE_TTL_MS } from "chat";
 import type { AdvisorConfig } from "@/chat/config";
 import {
@@ -37,7 +36,8 @@ import {
   recordSubagentEnded,
   recordSubagentStarted,
 } from "@/chat/state/session-log";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool, type AnyToolDefinition } from "@/chat/tools/definition";
 import { escapeXml } from "@/chat/xml";
 
 export type AdvisorErrorCode =
@@ -145,18 +145,19 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
   const store = context.store ?? createStateAdvisorSessionStore();
   const spanContext = context.logContext ?? {};
 
-  return tool({
+  return zodTool({
     description: ADVISOR_TOOL_DESCRIPTION,
-    inputSchema: Type.Object({
-      question: Type.String({
-        minLength: 1,
-        description: "Focused advisor question or decision point.",
-      }),
-      context: Type.String({
-        minLength: 1,
-        description:
+    inputSchema: z.object({
+      question: z
+        .string()
+        .min(1)
+        .describe("Focused advisor question or decision point."),
+      context: z
+        .string()
+        .min(1)
+        .describe(
           "Curated evidence packet: relevant requirements, constraints, current plan, alternatives, code snippets, diffs, command output, and open questions.",
-      }),
+        ),
     }),
     execute: async (
       { question, context: suppliedContext },

@@ -1,9 +1,9 @@
-import { Type } from "@sinclair/typebox";
 import { setSpanAttributes } from "@/chat/logging";
 import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 
 interface CallMcpToolManager {
   activateProvider(provider: string): Promise<boolean>;
@@ -51,24 +51,21 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 
 /** Create the stable dispatcher for active MCP provider tools. */
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
-  return tool({
+  return zodTool({
     description:
       "Call an active MCP tool by exact tool_name. Use searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
-    inputSchema: Type.Object(
-      {
-        tool_name: Type.String({
-          minLength: 1,
-          description: "Exact MCP tool_name from searchMcpTools.",
-        }),
-        arguments: Type.Optional(
-          Type.Record(Type.String(), Type.Unknown(), {
-            description:
-              'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      tool_name: z
+        .string()
+        .min(1)
+        .describe("Exact MCP tool_name from searchMcpTools."),
+      arguments: z
+        .record(z.string(), z.unknown())
+        .describe(
+          'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
+        )
+        .optional(),
+    }),
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);

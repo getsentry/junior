@@ -1,5 +1,5 @@
-import { tool } from "@/chat/tools/definition";
-import { Type } from "@sinclair/typebox";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
 import {
@@ -83,15 +83,11 @@ export function createImageGenerateTool(
   options: { canSendFilesToActiveConversation?: boolean } = {},
   deps: ImageGenerateToolDeps = {},
 ) {
-  return tool({
+  return zodTool({
     description:
       "Generate images from a prompt. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation requests.",
-    inputSchema: Type.Object({
-      prompt: Type.String({
-        minLength: 1,
-        maxLength: 4000,
-        description: "Image generation prompt.",
-      }),
+    inputSchema: z.object({
+      prompt: z.string().min(1).max(4000).describe("Image generation prompt."),
     }),
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;

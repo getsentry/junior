@@ -5,7 +5,8 @@ import {
   writeCanvasMarkdown,
 } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import {
@@ -15,7 +16,6 @@ import {
   type TextReplacement,
 } from "@/chat/tools/sandbox/text-edits";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 
 function prepareCanvasEditArguments(input: unknown): {
   canvas: string;
@@ -24,42 +24,35 @@ function prepareCanvasEditArguments(input: unknown): {
   return prepareTextReplacementArguments(input);
 }
 
-const editReplacementSchema = Type.Object(
-  {
-    oldText: Type.String({
-      minLength: 1,
-      description:
-        "Exact Canvas markdown to replace. It must be unique in the current Canvas body and must not overlap another edit.",
-    }),
-    newText: Type.String({
-      description: "Replacement Canvas markdown for this edit.",
-    }),
-  },
-  { additionalProperties: false },
-);
+const editReplacementSchema = z.object({
+  oldText: z
+    .string()
+    .min(1)
+    .describe(
+      "Exact Canvas markdown to replace. It must be unique in the current Canvas body and must not overlap another edit.",
+    ),
+  newText: z.string().describe("Replacement Canvas markdown for this edit."),
+});
 
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(state: ToolState) {
-  return tool({
+  return zodTool({
     description:
       "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content; prefer this over slackCanvasWrite for targeted changes. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff. Multiple changes to the same canvas: use one edits[] call.",
     prepareArguments: prepareCanvasEditArguments,
     executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        canvas: Type.String({
-          minLength: 1,
-          description:
-            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL.",
-        }),
-        edits: Type.Array(editReplacementSchema, {
-          minItems: 1,
-          description:
-            "Exact replacements matched against the current Canvas body, not incrementally.",
-        }),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      canvas: z
+        .string()
+        .min(1)
+        .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
+      edits: z
+        .array(editReplacementSchema)
+        .min(1)
+        .describe(
+          "Exact replacements matched against the current Canvas body, not incrementally.",
+        ),
+    }),
     execute: async ({ canvas, edits }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

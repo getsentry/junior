@@ -1,5 +1,5 @@
-import { Type, type Static } from "@sinclair/typebox";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
   cancelResourceEventSubscription,
@@ -10,52 +10,46 @@ import {
 const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-const subscribeInputSchema = Type.Object(
-  {
-    resourceRef: Type.String({
-      description:
-        "Opaque resource ref copied from a subscribable tool result.",
-    }),
-    provider: Type.String({
-      description: "Provider that owns the resource ref.",
-    }),
-    resourceType: Type.String({
-      description: "Provider-defined resource type from the subscribable hint.",
-    }),
-    label: Type.String({
-      description: "Human-readable resource label from the subscribable hint.",
-    }),
-    events: Type.Array(Type.String(), {
-      description:
-        "High-signal event names to deliver to this conversation when they occur.",
-      minItems: 1,
-    }),
-    intent: Type.String({
-      description:
-        "Concise reason this conversation wants these events, used when an event arrives.",
-    }),
-    ttlMs: Type.Optional(
-      Type.Number({
-        description:
-          "How long to keep the subscription active. Defaults to 14 days and is capped at 30 days.",
-      }),
+const subscribeInputSchema = z.object({
+  resourceRef: z
+    .string()
+    .describe("Opaque resource ref copied from a subscribable tool result."),
+  provider: z.string().describe("Provider that owns the resource ref."),
+  resourceType: z
+    .string()
+    .describe("Provider-defined resource type from the subscribable hint."),
+  label: z
+    .string()
+    .describe("Human-readable resource label from the subscribable hint."),
+  events: z
+    .array(z.string())
+    .min(1)
+    .describe(
+      "High-signal event names to deliver to this conversation when they occur.",
     ),
-  },
-  { additionalProperties: false },
-);
+  intent: z
+    .string()
+    .describe(
+      "Concise reason this conversation wants these events, used when an event arrives.",
+    ),
+  ttlMs: z.coerce
+    .number()
+    .describe(
+      "How long to keep the subscription active. Defaults to 14 days and is capped at 30 days.",
+    )
+    .optional(),
+});
 
-const cancelInputSchema = Type.Object(
-  {
-    subscriptionId: Type.String({
-      description:
-        "Subscription id returned by subscribeToResourceEvents or listResourceEventSubscriptions.",
-    }),
-  },
-  { additionalProperties: false },
-);
+const cancelInputSchema = z.object({
+  subscriptionId: z
+    .string()
+    .describe(
+      "Subscription id returned by subscribeToResourceEvents or listResourceEventSubscriptions.",
+    ),
+});
 
-type SubscribeInput = Static<typeof subscribeInputSchema>;
-type CancelInput = Static<typeof cancelInputSchema>;
+type SubscribeInput = z.output<typeof subscribeInputSchema>;
+type CancelInput = z.output<typeof cancelInputSchema>;
 
 function requireConversationContext(context: ToolRuntimeContext): string {
   if (!context.conversationId) {
@@ -115,7 +109,7 @@ function ttlMs(input: SubscribeInput): number {
 export function createSubscribeToResourceEventsTool(
   context: ToolRuntimeContext,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Subscribe the current conversation to high-signal events for a resource returned by a subscribable tool result. Matching events are queued as normal conversation messages; they do not interrupt active work.",
     inputSchema: subscribeInputSchema,
@@ -153,10 +147,10 @@ export function createSubscribeToResourceEventsTool(
 export function createListResourceEventSubscriptionsTool(
   context: ToolRuntimeContext,
 ) {
-  return tool({
+  return zodTool({
     description:
       "List active resource event subscriptions for the current conversation.",
-    inputSchema: Type.Object({}, { additionalProperties: false }),
+    inputSchema: z.object({}),
     async execute() {
       const conversationId = requireConversationContext(context);
       const subscriptions = await listResourceEventSubscriptions({
@@ -182,7 +176,7 @@ export function createListResourceEventSubscriptionsTool(
 export function createCancelResourceEventSubscriptionTool(
   context: ToolRuntimeContext,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Cancel a resource event subscription for the current conversation.",
     inputSchema: cancelInputSchema,

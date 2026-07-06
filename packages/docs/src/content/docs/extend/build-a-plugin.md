@@ -192,8 +192,11 @@ Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `my-provider` tool `ping` is exposed as `myProvider_ping`.
 
 ```ts title="index.ts"
-import { Type } from "@sinclair/typebox";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  definePluginTool,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
 
 export function myProviderPlugin() {
   return defineJuniorPlugin({
@@ -204,14 +207,14 @@ export function myProviderPlugin() {
     hooks: {
       tools(ctx) {
         return {
-          ping: {
+          ping: definePluginTool({
             description: "Check my-provider connectivity.",
-            inputSchema: Type.Object({}),
+            inputSchema: z.object({}),
             execute: async () => {
               ctx.log.info("Running my-provider ping");
               return { ok: true };
             },
-          },
+          }),
         };
       },
     },

@@ -1,7 +1,5 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TSchema } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   PluginToolInputError,
@@ -165,34 +163,35 @@ describe("Slack schedule tools", () => {
       properties?: Record<
         string,
         {
-          anyOf?: Array<{ const?: unknown }>;
+          enum?: unknown[];
           oneOf?: Array<{ const?: unknown }>;
         }
       >;
       required?: string[];
     };
     const scheduleKind = schema.properties?.schedule_kind;
-    const options = (scheduleKind?.anyOf ?? scheduleKind?.oneOf ?? [])
-      .map((option) => option.const)
-      .sort();
+    const options = (scheduleKind?.enum ??
+      scheduleKind?.oneOf?.map((option) => option.const) ??
+      []) as unknown[];
 
     expect(schema.required).toContain("schedule_kind");
-    expect(options).toEqual(["one_off", "recurring"]);
+    expect([...options].sort()).toEqual(["one_off", "recurring"]);
   });
 
   it("accepts null recurrence in the create schema", async () => {
-    const schema = createSlackScheduleCreateTaskTool(createContext())
-      .inputSchema as TSchema;
+    const tool = createSlackScheduleCreateTaskTool(createContext());
 
     expect(
-      Value.Check(schema, {
+      tool.prepareArguments?.({
         task: "Remind Greg to drink water.",
         schedule: "In 1 minute",
         schedule_kind: "one_off",
         next_run_at: "2026-05-28T02:18:48.005Z",
         recurrence: null,
       }),
-    ).toBe(true);
+    ).toMatchObject({
+      recurrence: null,
+    });
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -743,13 +742,14 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
+    const updateTool = createSlackScheduleUpdateTaskTool(context);
 
     await expect(
-      executeTool(createSlackScheduleUpdateTaskTool(context), {
+      executeTool(updateTool, {
         task_id: created.task.id,
         schedule: "Every hour",
         recurrence: "hourly",
-      }),
+      } as unknown as Parameters<NonNullable<typeof updateTool.execute>>[0]),
     ).rejects.toThrow(
       "Recurring scheduled tasks can run at most once per day.",
     );

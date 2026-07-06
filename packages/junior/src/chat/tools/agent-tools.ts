@@ -185,7 +185,7 @@ export function createAgentTools(
     name: toolName,
     label: toolName,
     description: toolDef.description,
-    parameters: toolDef.inputSchema,
+    parameters: toolDef.inputSchema as AgentTool["parameters"],
     prepareArguments: toolDef.prepareArguments,
     executionMode: toolDef.executionMode,
     execute: async (

@@ -1,5 +1,4 @@
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
@@ -10,7 +9,8 @@ import {
   type SandboxFileSystem,
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 
 const DEFAULT_FIND_LIMIT = 1000;
 
@@ -85,34 +85,31 @@ export async function findFiles(params: {
 
 /** Create the sandbox file discovery tool definition exposed to the agent. */
 export function createFindFilesTool() {
-  return tool({
+  return zodTool({
     description:
       "Find sandbox workspace files by glob pattern. Returns bounded paths relative to the search root and skips dependency/cache directories.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        pattern: Type.String({
-          minLength: 1,
-          description:
-            "Glob pattern to match, for example '*.ts', '**/*.json', or 'src/**/*.test.ts'.",
-        }),
-        path: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Directory or file path in the sandbox workspace. Defaults to the workspace root.",
-          }),
+    inputSchema: z.object({
+      pattern: z
+        .string()
+        .min(1)
+        .describe(
+          "Glob pattern to match, for example '*.ts', '**/*.json', or 'src/**/*.test.ts'.",
         ),
-        limit: Type.Optional(
-          Type.Integer({
-            minimum: 1,
-            description:
-              "Maximum number of file paths to return. Defaults to 1000.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+      path: z
+        .string()
+        .min(1)
+        .describe(
+          "Directory or file path in the sandbox workspace. Defaults to the workspace root.",
+        )
+        .optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .describe("Maximum number of file paths to return. Defaults to 1000.")
+        .optional(),
+    }),
     execute: async () => {
       throw new Error(
         "findFiles can only run when sandbox execution is enabled.",

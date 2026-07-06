@@ -1,7 +1,7 @@
-import { Type } from "@sinclair/typebox";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { addReactionToMessage } from "@/chat/slack/outbound";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -12,16 +12,17 @@ export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Add an emoji reaction to the current inbound Slack message. Use when the user asks for a reaction on the current message without another target. Provide a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`), not a unicode emoji glyph. The target message is injected by runtime context; do not use this for arbitrary historical messages.",
-    inputSchema: Type.Object({
-      emoji: Type.String({
-        minLength: 1,
-        maxLength: 64,
-        description:
+    inputSchema: z.object({
+      emoji: z
+        .string()
+        .min(1)
+        .max(64)
+        .describe(
           "Slack emoji alias name to react with (for example `thumbsup`, `white_check_mark`, or `thumbsup::skin-tone-6`). Optional surrounding colons are allowed.",
-      }),
+        ),
     }),
     execute: async ({ emoji }) => {
       const targetChannelId = context.sourceChannelId;

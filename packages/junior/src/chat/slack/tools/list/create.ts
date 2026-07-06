@@ -1,20 +1,16 @@
 import { createTodoList } from "@/chat/slack/tools/list/api";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 
 /** Create a tool that provisions a new Slack todo list. */
 export function createSlackListCreateTool(state: ToolState) {
-  return tool({
+  return zodTool({
     description:
       "Create a Slack todo list for action tracking. Use when the user needs structured tasks with ownership/completion tracking. Do not use for one-off notes without task management needs.",
-    inputSchema: Type.Object({
-      name: Type.String({
-        minLength: 1,
-        maxLength: 160,
-        description: "Name for the new Slack list.",
-      }),
+    inputSchema: z.object({
+      name: z.string().min(1).max(160).describe("Name for the new Slack list."),
     }),
     execute: async ({ name }) => {
       const operationKey = createOperationKey("slackListCreate", { name });

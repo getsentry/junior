@@ -3,34 +3,31 @@ import {
   parseRequiredSlackUserIdParam,
   slackUserIdParam,
 } from "@/chat/slack/id-param";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 
 /** Create a tool that appends items to the active Slack list. */
 export function createSlackListAddItemsTool(state: ToolState) {
-  return tool({
+  return zodTool({
     description:
       "Add tasks to the active Slack list tracked in artifact context. Use when the user wants actionable items recorded in the current thread list. Do not use when no list exists and list creation was not requested.",
-    inputSchema: Type.Object({
-      items: Type.Array(Type.String({ minLength: 1 }), {
-        minItems: 1,
-        maxItems: 25,
-        description: "List item titles to create.",
-      }),
-      assignee_user_id: Type.Optional(
-        slackUserIdParam(
-          "Optional Slack user ID assigned to all created items.",
-        ),
-      ),
-      due_date: Type.Optional(
-        Type.String({
-          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-          description: "Optional due date in YYYY-MM-DD format.",
-        }),
-      ),
+    inputSchema: z.object({
+      items: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(25)
+        .describe("List item titles to create."),
+      assignee_user_id: slackUserIdParam(
+        "Optional Slack user ID assigned to all created items.",
+      ).optional(),
+      due_date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .describe("Optional due date in YYYY-MM-DD format.")
+        .optional(),
     }),
     execute: async ({ items, assignee_user_id, due_date }) => {
       const targetListId = state.getCurrentListId();

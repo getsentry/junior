@@ -1,27 +1,25 @@
-import { tool } from "@/chat/tools/definition";
-import { Type } from "@sinclair/typebox";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 
 /** Create the sandbox shell tool definition exposed to the agent. */
 export function createBashTool() {
-  return tool({
+  return zodTool({
     description:
       "Run a bash command inside the isolated sandbox workspace. Use this for repository inspection/execution tasks that need shell access. Do not use for network-sensitive or destructive actions unless explicitly required.",
-    inputSchema: Type.Object(
-      {
-        command: Type.String({
-          minLength: 1,
-          description: "Bash command to run inside the sandbox.",
-        }),
-        timeoutMs: Type.Optional(
-          Type.Integer({
-            minimum: 1000,
-            description:
-              "Optional command timeout in milliseconds. Use for commands that may hang.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      command: z
+        .string()
+        .min(1)
+        .describe("Bash command to run inside the sandbox."),
+      timeoutMs: z.coerce
+        .number()
+        .int()
+        .min(1000)
+        .describe(
+          "Optional command timeout in milliseconds. Use for commands that may hang.",
+        )
+        .optional(),
+    }),
     // Bash is sequential so sandbox egress auth signals stay command-scoped.
     executionMode: "sequential",
     execute: async () => {

@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { Type } from "@sinclair/typebox";
 import {
   postSlackMessage,
   uploadFilesToConversation,
 } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
@@ -24,27 +24,28 @@ type MessageFileInput = {
   mimeType?: string | null;
 };
 
-const fileInputSchema = Type.Object(
-  {
-    path: Type.String({
-      minLength: 1,
-      description:
-        "Sandbox file path to include in the message. Absolute paths and workspace-relative paths are supported.",
-    }),
-    filename: Type.Optional(
-      Type.Union([Type.String({ minLength: 1 }), Type.Null()], {
-        description:
-          "Optional filename override shown in Slack. Null is treated as omitted.",
-      }),
+const fileInputSchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .describe(
+      "Sandbox file path to include in the message. Absolute paths and workspace-relative paths are supported.",
     ),
-    mimeType: Type.Optional(
-      Type.Union([Type.String({ minLength: 1 }), Type.Null()], {
-        description: "Optional MIME type override. Null is treated as omitted.",
-      }),
+  filename: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Optional filename override shown in Slack. Null is treated as omitted.",
     ),
-  },
-  { additionalProperties: false },
-);
+  mimeType: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Optional MIME type override. Null is treated as omitted."),
+});
 
 interface SendMessageResult {
   ok: true;
@@ -91,29 +92,25 @@ export function createSendMessageTool(
   state: ToolState,
   materializeFile: MaterializeMessageFile,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Send a Slack message with optional files into the active Slack conversation. Use when the user asks to attach, send, or share files here, in this conversation, or in this thread. The message can contain text, files, or both; file-only messages are allowed. Do not use for top-level channel posts, other named channels, inline @mentions, or pinging mentioned users.",
-    inputSchema: Type.Object(
-      {
-        text: Type.Optional(
-          Type.Union([Type.String({ maxLength: 40000 }), Type.Null()], {
-            description:
-              "Slack mrkdwn text to send. Null is treated as omitted.",
-          }),
+    inputSchema: z.object({
+      text: z
+        .string()
+        .max(40000)
+        .nullable()
+        .optional()
+        .describe("Slack mrkdwn text to send. Null is treated as omitted."),
+      files: z
+        .array(fileInputSchema)
+        .min(1)
+        .nullable()
+        .optional()
+        .describe(
+          "Sandbox files to include in the message. Null is treated as omitted.",
         ),
-        files: Type.Optional(
-          Type.Union(
-            [Type.Array(fileInputSchema, { minItems: 1 }), Type.Null()],
-            {
-              description:
-                "Sandbox files to include in the message. Null is treated as omitted.",
-            },
-          ),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    }),
     execute: async ({ text, files }) => {
       const filesToSend = normalizeMessageFiles(files);
       const activeChannelId = context.sourceChannelId;

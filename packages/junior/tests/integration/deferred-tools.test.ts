@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
+  definePluginTool,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { Type } from "@sinclair/typebox";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -140,6 +142,62 @@ describe("deferred tools", () => {
         arguments: {},
       }),
     ).rejects.toThrow("arguments do not match schema");
+  });
+
+  it("executes deferred plugin tools with Zod input parsing", async () => {
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              summarizeAccount: definePluginTool({
+                description: "Summarize account risk.",
+                inputSchema: z.object({
+                  account_id: z.string().min(1),
+                  include_notes: z.coerce.boolean().default(false),
+                }),
+                execute: async ({ account_id, include_notes }) => ({
+                  account_id,
+                  include_notes,
+                  status: "reviewed",
+                }),
+              }),
+            };
+          },
+        },
+      }),
+    ]);
+
+    const tools = createAgentTools(
+      createTools([], {}, runtimeContext()),
+      new SkillSandbox([], []),
+      {},
+    );
+
+    const executeResult = await agentTool(tools, "executeTool").execute(
+      "tool-execute-zod",
+      {
+        tool_name: "agentDemo_summarizeAccount",
+        arguments: { account_id: "A123", include_notes: "true" },
+      },
+    );
+
+    expect(executeResult.details).toEqual({
+      account_id: "A123",
+      include_notes: true,
+      status: "reviewed",
+    });
+    await expect(
+      agentTool(tools, "executeTool").execute("tool-invalid-zod", {
+        tool_name: "agentDemo_summarizeAccount",
+        arguments: { account_id: "" },
+      }),
+    ).rejects.toThrow("Invalid tool arguments");
   });
 
   it("does not let executeTool call direct, hidden, or unknown tools", async () => {

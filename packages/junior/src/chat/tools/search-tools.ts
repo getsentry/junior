@@ -1,4 +1,4 @@
-import { Type, type TSchema } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { tool } from "@/chat/tools/definition";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
@@ -15,7 +15,7 @@ function normalize(value: string): string {
     .trim();
 }
 
-function schemaText(schema: TSchema): string {
+function schemaText(schema: unknown): string {
   try {
     return JSON.stringify(schema);
   } catch {

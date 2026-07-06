@@ -18,6 +18,7 @@ export type {
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
 export {
+  definePluginTool,
   pluginRunContextSchema,
   pluginRunTranscriptEntrySchema,
 } from "@sentry/junior-plugin-api";

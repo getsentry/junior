@@ -65,6 +65,7 @@ title: "@sentry/junior"
 - [createApp](/reference/api/functions/createapp/)
 - [createJuniorReporting](/reference/api/functions/createjuniorreporting/)
 - [defineJuniorPlugins](/reference/api/functions/definejuniorplugins/)
+- [definePluginTool](/reference/api/functions/defineplugintool/)
 - [initSentry](/reference/api/functions/initsentry/)
 - [juniorNitro](/reference/api/functions/juniornitro/)
 - [juniorVercelConfig](/reference/api/functions/juniorvercelconfig/)

@@ -1,5 +1,5 @@
-import { tool } from "@/chat/tools/definition";
-import { Type } from "@sinclair/typebox";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import {
   loadSkillsByName,
@@ -100,14 +100,14 @@ export function createLoadSkillTool(
     ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   },
 ) {
-  return tool({
+  return zodTool({
     description:
       "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the result includes mcp_provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
-    inputSchema: Type.Object({
-      skill_name: Type.String({
-        minLength: 1,
-        description: "Skill name to load, without the leading slash.",
-      }),
+    inputSchema: z.object({
+      skill_name: z
+        .string()
+        .min(1)
+        .describe("Skill name to load, without the leading slash."),
     }),
     execute: async ({ skill_name }) => {
       const result = await loadSkillFromHost(availableSkills, skill_name);

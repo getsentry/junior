@@ -4,30 +4,24 @@ import {
   resolveCanvasTarget,
   storedCanvasUrl,
 } from "@/chat/slack/tools/canvas/context";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(state: ToolState) {
-  return tool({
+  return zodTool({
     description:
       "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation; use slackCanvasEdit for targeted changes to existing canvas content.",
     executionMode: "sequential",
-    inputSchema: Type.Object(
-      {
-        canvas: Type.String({
-          minLength: 1,
-          description:
-            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL.",
-        }),
-        content: Type.String({
-          description: "UTF-8 markdown content to write.",
-        }),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      canvas: z
+        .string()
+        .min(1)
+        .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
+      content: z.string().describe("UTF-8 markdown content to write."),
+    }),
     execute: async ({ canvas, content }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

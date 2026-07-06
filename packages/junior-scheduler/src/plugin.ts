@@ -431,7 +431,7 @@ export function createSchedulerPlugin() {
           ctx.source.platform !== "slack" ||
           ctx.requester?.platform !== "slack"
         ) {
-          return {} as Record<string, PluginToolDefinition<any>>;
+          return {} as Record<string, PluginToolDefinition>;
         }
         const context = createSchedulerToolContext(ctx);
         return {
@@ -440,7 +440,7 @@ export function createSchedulerPlugin() {
           slackScheduleUpdateTask: createSlackScheduleUpdateTaskTool(context),
           slackScheduleDeleteTask: createSlackScheduleDeleteTaskTool(context),
           slackScheduleRunTaskNow: createSlackScheduleRunTaskNowTool(context),
-        } satisfies Record<string, PluginToolDefinition<any>>;
+        } satisfies Record<string, PluginToolDefinition>;
       },
       async heartbeat(ctx) {
         const store = schedulerStore(ctx);

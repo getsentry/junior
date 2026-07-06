@@ -1,12 +1,12 @@
-import { Type } from "@sinclair/typebox";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 
 export function createSystemTimeTool() {
-  return tool({
+  return zodTool({
     description:
       "Return current system time in UTC and local ISO formats. Use when the user asks for current time/date context. Do not use as a substitute for historical or timezone-conversion research.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object({}),
+    inputSchema: z.object({}),
     execute: async () => {
       const now = new Date();
       return {

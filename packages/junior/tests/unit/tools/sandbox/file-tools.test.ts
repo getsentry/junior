@@ -6,7 +6,7 @@ import {
   prepareEditFileArguments,
 } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
-import { grepFiles } from "@/chat/tools/sandbox/grep";
+import { createGrepTool, grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
@@ -176,6 +176,21 @@ describe("sandbox file tools", () => {
         },
       ],
       details: { ok: true, path: "src", truncated: false },
+    });
+  });
+
+  it("prepares grep string booleans like the previous TypeBox schema", () => {
+    const tool = createGrepTool();
+
+    expect(
+      tool.prepareArguments?.({
+        pattern: "hello",
+        ignoreCase: "false",
+        literal: "true",
+      }),
+    ).toMatchObject({
+      ignoreCase: false,
+      literal: true,
     });
   });
 

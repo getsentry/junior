@@ -511,9 +511,6 @@ importers:
       "@sentry/junior-plugin-api":
         specifier: workspace:*
         version: link:../junior-plugin-api
-      "@sinclair/typebox":
-        specifier: ^0.34.49
-        version: 0.34.49
       drizzle-orm:
         specifier: "catalog:"
         version: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(kysely@0.28.17)(pg@8.21.0)(sql.js@1.14.1)
@@ -15000,7 +14997,6 @@ snapshots:
   "@sentry/junior-scheduler@file:packages/junior-scheduler":
     dependencies:
       "@sentry/junior-plugin-api": file:packages/junior-plugin-api
-      "@sinclair/typebox": 0.34.49
       drizzle-orm: 0.45.2
       zod: 4.4.3
     transitivePeerDependencies:
@@ -15037,7 +15033,6 @@ snapshots:
   "@sentry/junior-scheduler@file:packages/junior-scheduler(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)":
     dependencies:
       "@sentry/junior-plugin-api": file:packages/junior-plugin-api
-      "@sinclair/typebox": 0.34.49
       drizzle-orm: 0.45.2(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0)
       zod: 4.4.3
     transitivePeerDependencies:

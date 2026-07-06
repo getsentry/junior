@@ -8,6 +8,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginState } from "./state";
+import { z, type ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;
@@ -115,6 +116,67 @@ export interface PluginToolDefinition<TInput = unknown> {
    */
   promptSnippet?: string;
   execute?: PluginToolExecute<TInput>;
+}
+
+type ZodPluginToolDefinition<TInputSchema extends ZodTypeAny> = Omit<
+  PluginToolDefinition<z.output<TInputSchema>>,
+  "inputSchema" | "prepareArguments"
+> & {
+  inputSchema: TInputSchema;
+  prepareArguments?: (args: unknown) => z.input<TInputSchema>;
+};
+
+function formatZodPath(path: readonly PropertyKey[]): string {
+  return path.length > 0 ? path.map(String).join(".") : "root";
+}
+
+function formatPluginToolInputError(error: z.ZodError): string {
+  const details = error.issues
+    .slice(0, 5)
+    .map((issue) => `${formatZodPath(issue.path)}: ${issue.message}`)
+    .join("; ");
+  return `Invalid tool arguments: ${details || "input did not match schema"}`;
+}
+
+function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
+  schema: TInputSchema,
+  args: unknown,
+): z.output<TInputSchema> {
+  const result = schema.safeParse(args);
+  if (!result.success) {
+    throw new PluginToolInputError(formatPluginToolInputError(result.error), {
+      cause: result.error,
+    });
+  }
+  return result.data;
+}
+
+/**
+ * Define a plugin tool with JSON-Schema-representable Zod input parsing.
+ */
+export function definePluginTool<TInputSchema extends ZodTypeAny>(
+  definition: ZodPluginToolDefinition<TInputSchema>,
+): PluginToolDefinition<z.output<TInputSchema>> {
+  const { inputSchema, prepareArguments, ...tool } = definition;
+  let modelInputSchema: unknown;
+  try {
+    modelInputSchema = z.toJSONSchema(inputSchema);
+  } catch (error) {
+    throw new TypeError(
+      "definePluginTool() inputSchema must be representable as JSON Schema.",
+      { cause: error },
+    );
+  }
+  return {
+    ...tool,
+    inputSchema: modelInputSchema,
+    prepareArguments(args) {
+      return parsePluginToolInput(
+        inputSchema,
+        prepareArguments ? prepareArguments(args) : args,
+      );
+    },
+  };
 }
 
 export interface SlackToolRegistrationHookContext {

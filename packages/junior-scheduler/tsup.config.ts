@@ -9,5 +9,5 @@ export default defineConfig({
   dts: false,
   outDir: "dist",
   clean: true,
-  external: ["@sentry/junior-plugin-api", "@sinclair/typebox"],
+  external: ["@sentry/junior-plugin-api", "zod"],
 });

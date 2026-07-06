@@ -1,8 +1,8 @@
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { getModel } from "@earendil-works/pi-ai";
-import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
 import type { WebSearchToolDeps } from "@/chat/tools/types";
@@ -75,7 +75,7 @@ function isAuthFailure(message: string): boolean {
 }
 
 export function createWebSearchTool(override?: WebSearchToolDeps) {
-  return tool({
+  return zodTool({
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
     annotations: {
@@ -83,19 +83,15 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
       destructiveHint: false,
       openWorldHint: true,
     },
-    inputSchema: Type.Object({
-      query: Type.String({
-        minLength: 1,
-        maxLength: 500,
-        description: "Search query.",
-      }),
-      max_results: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: MAX_RESULTS,
-          description: "Max results to return.",
-        }),
-      ),
+    inputSchema: z.object({
+      query: z.string().min(1).max(500).describe("Search query."),
+      max_results: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_RESULTS)
+        .describe("Max results to return.")
+        .optional(),
     }),
     execute: async ({ query, max_results }) => {
       if (override?.execute) {

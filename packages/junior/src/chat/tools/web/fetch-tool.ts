@@ -1,5 +1,5 @@
-import { tool } from "@/chat/tools/definition";
-import { Type } from "@sinclair/typebox";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
@@ -43,7 +43,7 @@ export function createWebFetchTool(
   options: { canSendFilesToActiveConversation?: boolean } = {},
 ) {
   const override = hooks.toolOverrides?.webFetch;
-  return tool({
+  return zodTool({
     description:
       "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
     annotations: {
@@ -51,19 +51,15 @@ export function createWebFetchTool(
       destructiveHint: false,
       openWorldHint: true,
     },
-    inputSchema: Type.Object({
-      url: Type.String({
-        minLength: 1,
-        description: "HTTP(S) URL to fetch.",
-      }),
-      max_chars: Type.Optional(
-        Type.Integer({
-          minimum: 500,
-          maximum: MAX_FETCH_CHARS,
-          description:
-            "Optional maximum number of extracted characters to return.",
-        }),
-      ),
+    inputSchema: z.object({
+      url: z.string().min(1).describe("HTTP(S) URL to fetch."),
+      max_chars: z.coerce
+        .number()
+        .int()
+        .min(500)
+        .max(MAX_FETCH_CHARS)
+        .describe("Optional maximum number of extracted characters to return.")
+        .optional(),
     }),
     execute: async ({ url, max_chars }) => {
       if (override?.execute) {

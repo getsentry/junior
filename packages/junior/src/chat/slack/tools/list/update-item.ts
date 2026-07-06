@@ -1,36 +1,36 @@
 import { updateListItem } from "@/chat/slack/tools/list/api";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
+
+const booleanInput = (description: string) =>
+  z
+    .preprocess(
+      (value) => (value === "true" ? true : value === "false" ? false : value),
+      z.boolean(),
+    )
+    .describe(description);
+
+const updateListItemInputSchema = z.union([
+  z.object({
+    item_id: z.string().min(1).describe("ID of the Slack list item to update."),
+    completed: booleanInput("Optional completion status update."),
+    title: z.string().min(1).describe("Optional new item title.").optional(),
+  }),
+  z.object({
+    item_id: z.string().min(1).describe("ID of the Slack list item to update."),
+    completed: booleanInput("Optional completion status update.").optional(),
+    title: z.string().min(1).describe("Optional new item title."),
+  }),
+]);
 
 /** Create a tool that updates an item in the active Slack list. */
 export function createSlackListUpdateItemTool(state: ToolState) {
-  return tool({
+  return zodTool({
     description:
       "Update an item in the active Slack list tracked in artifact context (title/completion). Use when the user asks to mark progress or rename a tracked task. Do not use to add new tasks.",
-    inputSchema: Type.Object(
-      {
-        item_id: Type.String({
-          minLength: 1,
-          description: "ID of the Slack list item to update.",
-        }),
-        completed: Type.Optional(
-          Type.Boolean({
-            description: "Optional completion status update.",
-          }),
-        ),
-        title: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description: "Optional new item title.",
-          }),
-        ),
-      },
-      {
-        anyOf: [{ required: ["completed"] }, { required: ["title"] }],
-      },
-    ),
+    inputSchema: updateListItemInputSchema,
     execute: async ({ item_id, completed, title }) => {
       const targetListId = state.getCurrentListId();
       if (!targetListId) {

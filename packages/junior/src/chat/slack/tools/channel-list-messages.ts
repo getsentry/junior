@@ -1,4 +1,3 @@
-import { Type } from "@sinclair/typebox";
 import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -8,9 +7,18 @@ import {
   optionalSlackTimestampParam,
   parseSlackTimestampParam,
 } from "@/chat/slack/timestamp-param";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
+
+const booleanInput = (description: string) =>
+  z
+    .preprocess(
+      (value) => (value === "true" ? true : value === "false" ? false : value),
+      z.boolean(),
+    )
+    .describe(description);
 
 /**
  * Accept numeric Slack ts bounds and recover matching Junior
@@ -18,7 +26,7 @@ import type { SlackToolContext } from "@/chat/slack/tools/context";
  */
 function normalizeRangeTimestamp(
   field: "oldest" | "latest",
-  value: string | undefined,
+  value: number | string | undefined,
   targetChannelId: SlackChannelId,
 ):
   | { ok: true; value: SlackMessageTs | undefined }
@@ -27,7 +35,7 @@ function normalizeRangeTimestamp(
     return { ok: true, value: undefined };
   }
 
-  const trimmed = value.trim();
+  const trimmed = String(value).trim();
   if (!trimmed) {
     return parseSlackTimestampParam(field, value);
   }
@@ -52,43 +60,39 @@ function normalizeRangeTimestamp(
 
 /** Create the active-channel history tool with preflight timestamp normalization. */
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
-  return tool({
+  return zodTool({
     description:
       "List channel messages from Slack history in the active channel context. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object({
-      limit: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 1000,
-          description: "Maximum number of messages to return across pages.",
-        }),
-      ),
-      cursor: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional cursor to continue from a prior call.",
-        }),
-      ),
+    inputSchema: z.object({
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(1000)
+        .describe("Maximum number of messages to return across pages.")
+        .optional(),
+      cursor: z
+        .string()
+        .min(1)
+        .describe("Optional cursor to continue from a prior call.")
+        .optional(),
       oldest: optionalSlackTimestampParam(
         "Optional oldest message timestamp (Slack ts) for range filtering.",
       ),
       latest: optionalSlackTimestampParam(
         "Optional latest message timestamp (Slack ts) for range filtering.",
       ),
-      inclusive: Type.Optional(
-        Type.Boolean({
-          description: "Whether oldest/latest bounds should be inclusive.",
-        }),
-      ),
-      max_pages: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          maximum: 10,
-          description:
-            "Maximum number of API pages to traverse in a single call.",
-        }),
-      ),
+      inclusive: booleanInput(
+        "Whether oldest/latest bounds should be inclusive.",
+      ).optional(),
+      max_pages: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .describe("Maximum number of API pages to traverse in a single call.")
+        .optional(),
     }),
     execute: async ({
       limit,

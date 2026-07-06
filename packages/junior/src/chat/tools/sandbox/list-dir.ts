@@ -1,5 +1,4 @@
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
   isMissingPathError,
@@ -10,7 +9,8 @@ import {
   type SandboxFileSystem,
   type TextSearchResultDetails,
 } from "@/chat/tools/sandbox/file-utils";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
+import { zodTool } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIST_LIMIT = 500;
@@ -110,28 +110,25 @@ export async function listDir(params: {
 
 /** Create the sandbox directory listing tool definition exposed to the agent. */
 export function createListDirTool() {
-  return tool({
+  return zodTool({
     description:
       "List a sandbox workspace directory. Returns sorted entries with '/' suffixes for directories and bounded truncation notices.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        path: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description:
-              "Directory path in the sandbox workspace. Defaults to the workspace root.",
-          }),
-        ),
-        limit: Type.Optional(
-          Type.Integer({
-            minimum: 1,
-            description: "Maximum entries to return. Defaults to 500.",
-          }),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z.object({
+      path: z
+        .string()
+        .min(1)
+        .describe(
+          "Directory path in the sandbox workspace. Defaults to the workspace root.",
+        )
+        .optional(),
+      limit: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .describe("Maximum entries to return. Defaults to 500.")
+        .optional(),
+    }),
     execute: async () => {
       throw new Error(
         "listDir can only run when sandbox execution is enabled.",
