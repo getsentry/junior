@@ -6,6 +6,20 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 
+function legacyContinuation(
+  continuation:
+    | {
+        arguments: Record<string, unknown>;
+      }
+    | undefined,
+): string | undefined {
+  const offset = continuation?.arguments.offset;
+  const limit = continuation?.arguments.limit;
+  return typeof offset === "number" && typeof limit === "number"
+    ? `Read more with offset=${offset} and limit=${limit}.`
+    : undefined;
+}
+
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
  * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
@@ -50,6 +64,7 @@ export function createSlackCanvasReadTool() {
           offset,
           path: result.canvasId,
         });
+        const rangeData = range.details.data;
 
         return {
           ok: true,
@@ -59,12 +74,12 @@ export function createSlackCanvasReadTool() {
           mimetype: result.mimetype,
           filetype: result.filetype,
           original_byte_length: result.byteLength,
-          content: range.content,
-          start_line: range.start_line,
-          end_line: range.end_line,
-          total_lines: range.total_lines,
-          truncated: range.truncated,
-          continuation: range.continuation,
+          content: rangeData.content,
+          start_line: rangeData.start_line,
+          end_line: rangeData.end_line,
+          total_lines: rangeData.total_lines,
+          truncated: range.details.truncated,
+          continuation: legacyContinuation(range.details.continuation),
         };
       } catch (error) {
         const message =

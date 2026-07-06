@@ -3,6 +3,7 @@ import { McpToolError } from "@/chat/mcp/errors";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import { parseMcpProviderFromToolName } from "@/chat/mcp/tool-name";
 import { z } from "zod";
+import { juniorToolResultEnvelopeSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 interface CallMcpToolManager {
@@ -66,6 +67,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         )
         .optional(),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async (input, options) => {
       const { tool_name } = input;
       const provider = parseMcpProviderFromToolName(tool_name);

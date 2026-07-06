@@ -78,23 +78,35 @@ function createMemoryFs(initialFiles: Record<string, string>) {
 
 describe("sandbox file tools", () => {
   it("slices readFile content with continuation metadata", () => {
-    expect(
-      sliceFileContent({
-        content: "one\ntwo\nthree",
-        path: "notes.txt",
-        offset: 2,
-        limit: 1,
-      }),
-    ).toEqual({
-      content: "two",
-      continuation: "Read more with offset=3 and limit=1.",
-      end_line: 2,
+    const result = sliceFileContent({
+      content: "one\ntwo\nthree",
       path: "notes.txt",
-      start_line: 2,
-      success: true,
-      total_lines: 3,
-      truncated: true,
+      offset: 2,
+      limit: 1,
     });
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      target: "notes.txt",
+      truncated: true,
+      data: {
+        content: "two",
+        end_line: 2,
+        path: "notes.txt",
+        start_line: 2,
+        total_lines: 3,
+      },
+      continuation: {
+        tool_name: "readFile",
+        arguments: {
+          path: "notes.txt",
+          offset: 3,
+          limit: 1,
+        },
+      },
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual(result.details);
   });
 
   it("applies exact edits and preserves line endings", async () => {
@@ -114,21 +126,10 @@ describe("sandbox file tools", () => {
       path: "src/app.ts",
       replacements: 1,
     });
+    if (!result.details.ok) {
+      throw new Error("editFile should have succeeded");
+    }
     expect(result.details.diff).toContain("+2 TWO");
-  });
-
-  it("rejects ambiguous exact edits", async () => {
-    const memory = createMemoryFs({
-      "src/app.ts": "same\nsame\n",
-    });
-
-    await expect(
-      editFile({
-        fs: memory.fs,
-        path: "src/app.ts",
-        edits: [{ oldText: "same", newText: "changed" }],
-      }),
-    ).rejects.toThrow("Found 2 occurrences");
   });
 
   it("prepares common edit argument variants", () => {
@@ -151,15 +152,30 @@ describe("sandbox file tools", () => {
       "src/nested/test.ts": "needle again\n",
     });
 
-    await expect(listDir({ fs: memory.fs, path: "src" })).resolves.toEqual({
-      content: [{ type: "text", text: "app.ts\nnested/" }],
-      details: { ok: true, path: "src", truncated: false },
+    await expect(
+      listDir({ fs: memory.fs, path: "src" }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: true,
+        path: "src",
+        status: "success",
+        target: "src",
+        truncated: false,
+        data: {
+          entries: ["app.ts", "nested/"],
+          entry_count: 2,
+        },
+      },
     });
     await expect(
       findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       content: [{ type: "text", text: "app.ts\nnested/test.ts" }],
-      details: { ok: true, path: "src", truncated: false },
+      details: {
+        ok: true,
+        path: "src",
+        truncated: false,
+      },
     });
     await expect(
       grepFiles({
@@ -169,13 +185,20 @@ describe("sandbox file tools", () => {
         literal: true,
       }),
     ).resolves.toMatchObject({
-      content: [
-        {
-          type: "text",
-          text: "app.ts:1: const needle = true;\nnested/test.ts:1: needle again",
+      details: {
+        ok: true,
+        path: "src",
+        status: "success",
+        target: "src",
+        truncated: false,
+        data: {
+          lines: [
+            "app.ts:1: const needle = true;",
+            "nested/test.ts:1: needle again",
+          ],
+          match_count: 2,
         },
-      ],
-      details: { ok: true, path: "src", truncated: false },
+      },
     });
   });
 
@@ -216,11 +239,15 @@ describe("sandbox file tools", () => {
 
     await expect(
       findFiles({ fs: memory.fs, path: "missing", pattern: "*.ts" }),
-    ).resolves.toEqual({
-      content: [{ type: "text", text: "Path not found: missing" }],
+    ).resolves.toMatchObject({
       details: {
         ok: false,
-        error: "not_found",
+        status: "error",
+        target: "missing",
+        error: {
+          kind: "not_found",
+          message: "Path not found: missing",
+        },
         path: "missing",
         truncated: false,
       },
@@ -232,20 +259,30 @@ describe("sandbox file tools", () => {
         pattern: "needle",
         literal: true,
       }),
-    ).resolves.toEqual({
-      content: [{ type: "text", text: "Path not found: missing" }],
+    ).resolves.toMatchObject({
       details: {
         ok: false,
-        error: "not_found",
+        status: "error",
+        target: "missing",
+        error: {
+          kind: "not_found",
+          message: "Path not found: missing",
+        },
         path: "missing",
         truncated: false,
       },
     });
-    await expect(listDir({ fs: memory.fs, path: "missing" })).resolves.toEqual({
-      content: [{ type: "text", text: "Path not found: missing" }],
+    await expect(
+      listDir({ fs: memory.fs, path: "missing" }),
+    ).resolves.toMatchObject({
       details: {
         ok: false,
-        error: "not_found",
+        status: "error",
+        target: "missing",
+        error: {
+          kind: "not_found",
+          message: "Path not found: missing",
+        },
         path: "missing",
         truncated: false,
       },
@@ -270,16 +307,15 @@ describe("sandbox file tools", () => {
 
     await expect(
       findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
-    ).resolves.toEqual({
-      content: [
-        {
-          type: "text",
-          text: `Path not found: ${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
-        },
-      ],
+    ).resolves.toMatchObject({
       details: {
         ok: false,
-        error: "not_found",
+        status: "error",
+        target: "src",
+        error: {
+          kind: "not_found",
+          message: `Path not found: ${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
+        },
         path: "src",
         missing_path: `${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
         truncated: false,
@@ -301,22 +337,25 @@ describe("sandbox file tools", () => {
         context: 1,
       }),
     ).resolves.toMatchObject({
-      content: [
-        {
-          type: "text",
-          text: [
+      details: {
+        ok: true,
+        path: "src",
+        status: "success",
+        target: "src",
+        truncated: false,
+        data: {
+          lines: [
             "app.ts-1- before",
             "app.ts:2: needle one",
             "app.ts:3: needle two",
             "app.ts-4- after",
-          ].join("\n"),
+          ],
         },
-      ],
-      details: { ok: true, path: "src", truncated: false },
+      },
     });
   });
 
-  it("throws ToolInputError for ambiguous edits", async () => {
+  it("returns structured failure for ambiguous edits", async () => {
     const memory = createMemoryFs({
       "src/app.ts": "same\nsame\n",
     });
@@ -327,10 +366,19 @@ describe("sandbox file tools", () => {
         path: "src/app.ts",
         edits: [{ oldText: "same", newText: "changed" }],
       }),
-    ).rejects.toThrow(ToolInputError);
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        status: "error",
+        target: "src/app.ts",
+        error: {
+          kind: "old_text_not_unique",
+        },
+      },
+    });
   });
 
-  it("throws ToolInputError for old text not found", async () => {
+  it("returns structured failure for old text not found", async () => {
     const memory = createMemoryFs({
       "src/app.ts": "hello world\n",
     });
@@ -341,7 +389,16 @@ describe("sandbox file tools", () => {
         path: "src/app.ts",
         edits: [{ oldText: "missing text", newText: "new" }],
       }),
-    ).rejects.toThrow(ToolInputError);
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        status: "error",
+        target: "src/app.ts",
+        error: {
+          kind: "old_text_not_found",
+        },
+      },
+    });
   });
 
   it("throws ToolInputError for workspace path traversal", async () => {

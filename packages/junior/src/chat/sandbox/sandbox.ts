@@ -48,6 +48,7 @@ import {
   sliceFileContent,
 } from "@/chat/tools/sandbox/read-file";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
 // Spec: specs/tracing.md (required sandbox span semantics)
@@ -117,19 +118,61 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 function sandboxStreamInterruptedResult(toolName: string) {
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Sandbox command stream was interrupted during ${toolName}. The operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
-      },
-    ],
-    details: {
-      ok: false,
-      error: "stream_interrupted",
-      tool: toolName,
+  return makeStructuredToolResult({
+    ok: false,
+    status: "error",
+    target: toolName,
+    error: {
+      kind: "stream_interrupted",
+      message: `Sandbox command stream was interrupted during ${toolName}. The operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
+      retryable: true,
     },
-  };
+    tool: toolName,
+  });
+}
+
+function bashToolResult(params: BashCustomCommandResult) {
+  return makeStructuredToolResult({
+    ok: params.ok,
+    status: params.ok ? "success" : "error",
+    target: params.command,
+    data: {
+      command: params.command,
+      cwd: params.cwd,
+      exit_code: params.exit_code,
+      signal: params.signal,
+      timed_out: params.timed_out,
+      stdout: params.stdout,
+      stderr: params.stderr,
+      stdout_truncated: params.stdout_truncated,
+      stderr_truncated: params.stderr_truncated,
+    },
+    truncated: params.stdout_truncated || params.stderr_truncated,
+    ...(!params.ok
+      ? {
+          error: {
+            kind: params.timed_out ? "timeout" : "nonzero_exit",
+            message:
+              params.stderr.trim() ||
+              `Command exited with code ${params.exit_code}`,
+            retryable: params.timed_out,
+          },
+        }
+      : {}),
+    command: params.command,
+    cwd: params.cwd,
+    exit_code: params.exit_code,
+    signal: params.signal,
+    timed_out: params.timed_out,
+    stdout: params.stdout,
+    stderr: params.stderr,
+    stdout_truncated: params.stdout_truncated,
+    stderr_truncated: params.stderr_truncated,
+    ...(params.auth_required ? { auth_required: params.auth_required } : {}),
+    ...(params.permission_denied
+      ? { permission_denied: params.permission_denied }
+      : {}),
+  });
 }
 
 /** Create one sandbox-backed tool executor facade for the current turn. */
@@ -312,7 +355,7 @@ export function createSandboxExecutor(options?: {
       await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
 
     return {
-      result: {
+      result: bashToolResult({
         ok: result.exitCode === 0,
         command,
         cwd: SANDBOX_WORKSPACE_ROOT,
@@ -325,7 +368,7 @@ export function createSandboxExecutor(options?: {
         stderr_truncated: result.stderrTruncated,
         ...(authRequired ? { auth_required: authRequired } : {}),
         ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
-      } as T,
+      }) as T,
     };
   };
 
@@ -443,11 +486,17 @@ export function createSandboxExecutor(options?: {
     );
 
     return {
-      result: {
+      result: makeStructuredToolResult({
         ok: true,
+        status: "success",
+        target: filePath,
+        data: {
+          bytes_written: Buffer.byteLength(content, "utf8"),
+          path: filePath,
+        },
         path: filePath,
         bytes_written: Buffer.byteLength(content, "utf8"),
-      } as T,
+      }) as T,
     };
   };
 
@@ -600,7 +649,10 @@ export function createSandboxExecutor(options?: {
       if (options?.runBashCustomCommand) {
         const custom = await options.runBashCustomCommand(bashCommand);
         if (custom.handled) {
-          return { result: custom.result as T };
+          if (!custom.result) {
+            throw new Error("Custom bash command handler returned no result.");
+          }
+          return { result: bashToolResult(custom.result) as T };
         }
       }
       return await executeBashTool(rawInput, bashCommand, params.signal);

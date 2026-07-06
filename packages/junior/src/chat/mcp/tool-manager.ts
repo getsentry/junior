@@ -18,6 +18,7 @@ import {
   toGenAiPayloadMetadata,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
+import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
@@ -168,9 +169,20 @@ export interface McpToolManagerOptions {
 export interface ManagedMcpToolResult {
   content: Array<TextContent | ImageContent>;
   details: {
+    ok: boolean;
     provider: string;
-    tool: string;
     rawResult: PluginMcpToolCallResult;
+    status: "success" | "error";
+    target: string;
+    tool: string;
+    tool_name: string;
+    data: {
+      content: Array<TextContent | ImageContent>;
+      provider: string;
+      rawResult: PluginMcpToolCallResult;
+      tool: string;
+      tool_name: string;
+    };
   };
 }
 
@@ -411,14 +423,23 @@ export class McpToolManager {
                 });
               }
 
-              return {
-                content: toAgentToolContent(result),
-                details: {
+              const content = toAgentToolContent(result);
+              return makeStructuredToolResult({
+                ok: true,
+                status: "success",
+                target: managedToolName,
+                data: {
+                  content,
                   provider: plugin.manifest.name,
-                  tool: tool.name,
                   rawResult: result,
+                  tool: tool.name,
+                  tool_name: managedToolName,
                 },
-              };
+                provider: plugin.manifest.name,
+                rawResult: result,
+                tool: tool.name,
+                tool_name: managedToolName,
+              });
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&
@@ -432,18 +453,29 @@ export class McpToolManager {
                     authorizationPending: true,
                   },
                 };
-                return {
-                  // Pi turns thrown tool errors into toolResult isError frames.
-                  // Once auth pause has been requested, return a placeholder result
-                  // and let the aborted turn park cleanly instead of surfacing a
-                  // spurious tool failure to the model.
-                  content: [{ type: "text", text: "Authorization pending." }],
-                  details: {
+                const parkedContent = [
+                  { type: "text" as const, text: "Authorization pending." },
+                ];
+                // Pi turns thrown tool errors into toolResult isError frames.
+                // Once auth pause has been requested, return a placeholder result
+                // and let the aborted turn park cleanly instead of surfacing a
+                // spurious tool failure to the model.
+                return makeStructuredToolResult({
+                  ok: true,
+                  status: "success",
+                  target: managedToolName,
+                  data: {
+                    content: parkedContent,
                     provider: plugin.manifest.name,
-                    tool: tool.name,
                     rawResult: parkedResult,
+                    tool: tool.name,
+                    tool_name: managedToolName,
                   },
-                };
+                  provider: plugin.manifest.name,
+                  rawResult: parkedResult,
+                  tool: tool.name,
+                  tool_name: managedToolName,
+                });
               }
               const errorAttributes = {
                 ...baseAttributes,

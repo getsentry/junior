@@ -145,17 +145,29 @@ describe("McpToolManager", () => {
     expect(callToolMock).toHaveBeenCalledWith(plugin, "ping", {
       query: "hello",
     });
-    expect(result).toEqual({
-      content: [{ type: "text", text: "pong" }],
-      details: {
+    expect(result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      target: "mcp__demo__ping",
+      provider: "demo",
+      tool: "ping",
+      tool_name: "mcp__demo__ping",
+      data: {
+        content: [{ type: "text", text: "pong" }],
         provider: "demo",
         tool: "ping",
+        tool_name: "mcp__demo__ping",
         rawResult: {
           content: [{ type: "text", text: "pong" }],
           isError: false,
         },
       },
     });
+    const content = result.content[0];
+    if (content?.type !== "text") {
+      throw new Error("MCP structured result should be text content");
+    }
+    expect(JSON.parse(content.text)).toEqual(result.details);
 
     await manager.close();
     expect(closeMock).toHaveBeenCalledTimes(1);
@@ -221,11 +233,25 @@ describe("McpToolManager", () => {
     );
 
     const resolvedTools = manager.getResolvedActiveTools();
-    await expect(resolvedTools[0]!.execute({})).resolves.toEqual({
-      content: [{ type: "text", text: "Authorization pending." }],
+    await expect(resolvedTools[0]!.execute({})).resolves.toMatchObject({
       details: {
+        ok: true,
+        status: "success",
+        target: "mcp__demo__ping",
         provider: "demo",
         tool: "ping",
+        tool_name: "mcp__demo__ping",
+        data: {
+          content: [{ type: "text", text: "Authorization pending." }],
+          provider: "demo",
+          tool: "ping",
+          tool_name: "mcp__demo__ping",
+          rawResult: {
+            toolResult: {
+              authorizationPending: true,
+            },
+          },
+        },
         rawResult: {
           toolResult: {
             authorizationPending: true,

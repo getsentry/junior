@@ -2,27 +2,66 @@ import {
   normalizeToLf,
   positiveInteger,
 } from "@/chat/tools/sandbox/file-utils";
+import {
+  juniorToolResultEnvelopeSchema,
+  makeStructuredToolResult,
+} from "@/chat/tool-support/structured-result";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const DEFAULT_READ_LIMIT = 1000;
 
 interface TextRangeResult {
+  content: [{ type: "text"; text: string }];
+  details: {
+    ok: true;
+    status: "success";
+    target: string;
+    data: {
+      content: string;
+      end_line?: number;
+      path: string;
+      start_line: number;
+      total_lines: number;
+    };
+    truncated: boolean;
+    continuation?: {
+      tool_name: "readFile";
+      arguments: {
+        path: string;
+        offset: number;
+        limit: number;
+      };
+      reason: string;
+    };
+  };
+}
+
+interface TextRangeMissingPathResult {
+  content: [{ type: "text"; text: string }];
+  details: {
+    ok: false;
+    status: "error";
+    target: string;
+    data: {
+      content: "";
+      path: string;
+    };
+    error: {
+      kind: "not_found";
+      message: string;
+    };
+    truncated: false;
+  };
+}
+
+interface LegacyTextRangeResult {
   content: string;
   end_line?: number;
   path: string;
   start_line: number;
-  success: true;
   total_lines: number;
   truncated: boolean;
-  continuation?: string;
-}
-
-interface TextRangeMissingPathResult {
-  content: "";
-  error: "not_found";
-  path: string;
-  success: false;
 }
 
 /** Return a bounded line window so large files can be read incrementally. */
@@ -45,32 +84,55 @@ export function sliceFileContent(params: {
   const truncated = startIndex > 0 || endLine < lines.length;
   const rangeRequested =
     requestedOffset !== undefined || requestedLimit !== undefined;
-
-  return {
-    content:
-      !rangeRequested && !truncated ? params.content : selected.join("\n"),
+  const returnedContent =
+    !rangeRequested && !truncated ? params.content : selected.join("\n");
+  const range: LegacyTextRangeResult = {
+    content: returnedContent,
     end_line: selected.length > 0 ? endLine : undefined,
     path: params.path,
     start_line: startLine,
-    success: true,
     total_lines: lines.length,
+    truncated,
+  };
+
+  return makeStructuredToolResult({
+    ok: true,
+    status: "success",
+    target: params.path,
+    data: range,
     truncated,
     ...(endLine < lines.length
       ? {
-          continuation: `Read more with offset=${endLine + 1} and limit=${maxLines}.`,
+          continuation: {
+            tool_name: "readFile" as const,
+            arguments: {
+              path: params.path,
+              offset: endLine + 1,
+              limit: maxLines,
+            },
+            reason: "file has more lines",
+          },
         }
       : {}),
-  };
+  });
 }
 
 /** Return a model-visible result for expected missing read targets. */
 export function missingFileResult(path: string): TextRangeMissingPathResult {
-  return {
-    content: "",
-    error: "not_found",
-    path,
-    success: false,
-  };
+  return makeStructuredToolResult({
+    ok: false,
+    status: "error",
+    target: path,
+    data: {
+      content: "",
+      path,
+    },
+    error: {
+      kind: "not_found",
+      message: `File not found: ${path}`,
+    },
+    truncated: false,
+  });
 }
 
 /** Create the sandbox read tool definition exposed to the agent. */
@@ -97,6 +159,7 @@ export function createReadFileTool() {
         .describe("Maximum number of lines to read. Defaults to 1000.")
         .optional(),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async () => {
       throw new Error(
         "readFile can only run when sandbox execution is enabled.",

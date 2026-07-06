@@ -172,8 +172,9 @@ describe("slack channel tools", () => {
       text: "Posting this update",
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       ts: "1700000000.111",
@@ -260,14 +261,16 @@ describe("slack channel tools", () => {
       text: "Incident resolved.",
     });
 
-    expect(first).toMatchObject({
+    expect(first.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       ts: "1700000000.200",
     });
-    expect(second).toMatchObject({
+    expect(second.details).toMatchObject({
       ok: true,
+      status: "success",
       deduplicated: true,
     });
 
@@ -448,8 +451,9 @@ describe("slack channel tools", () => {
       text: "Heads-up update",
     });
 
-    expect(result).toEqual({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       ts: "1700000000.400",
@@ -473,8 +477,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       file_count: 1,
     });
@@ -504,8 +509,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       file_count: 1,
     });
@@ -545,8 +551,9 @@ describe("slack channel tools", () => {
       text: "Thread update.",
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       ts: "1700000000.700",
@@ -578,8 +585,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "D123",
       thread_ts: "1700000000.321",
       file_count: 1,
@@ -607,8 +615,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       file_count: 1,
@@ -637,8 +646,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       file_count: 1,
@@ -667,8 +677,9 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
     });
 
-    expect(result).toMatchObject({
+    expect(result.details).toMatchObject({
       ok: true,
+      status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       file_count: 1,

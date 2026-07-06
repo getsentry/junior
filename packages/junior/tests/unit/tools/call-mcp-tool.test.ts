@@ -1,20 +1,34 @@
 import { describe, expect, it, vi } from "vitest";
 import { McpToolError } from "@/chat/mcp/errors";
+import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 
 describe("callMcpTool", () => {
   it("executes an active MCP tool by disclosed tool_name", async () => {
-    const execute = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "pong" }],
-      details: {
+    const execute = vi.fn(async () =>
+      makeStructuredToolResult({
+        ok: true,
+        status: "success",
+        target: "mcp__demo__ping",
         provider: "demo",
         tool: "ping",
+        tool_name: "mcp__demo__ping",
+        data: {
+          content: [{ type: "text" as const, text: "pong" }],
+          provider: "demo",
+          tool: "ping",
+          tool_name: "mcp__demo__ping",
+          rawResult: {
+            content: [{ type: "text" as const, text: "pong" }],
+            isError: false,
+          },
+        },
         rawResult: {
           content: [{ type: "text" as const, text: "pong" }],
           isError: false,
         },
-      },
-    }));
+      }),
+    );
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
@@ -39,8 +53,13 @@ describe("callMcpTool", () => {
         {},
       ),
     ).resolves.toMatchObject({
-      content: [{ type: "text", text: "pong" }],
-      details: { provider: "demo", tool: "ping" },
+      details: {
+        ok: true,
+        provider: "demo",
+        status: "success",
+        tool: "ping",
+        tool_name: "mcp__demo__ping",
+      },
     });
     expect(execute).toHaveBeenCalledWith(
       { query: "hello" },
@@ -49,17 +68,30 @@ describe("callMcpTool", () => {
   });
 
   it("passes conversation privacy to the managed MCP tool", async () => {
-    const execute = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "pong" }],
-      details: {
+    const execute = vi.fn(async () =>
+      makeStructuredToolResult({
+        ok: true,
+        status: "success",
+        target: "mcp__demo__ping",
         provider: "demo",
         tool: "ping",
+        tool_name: "mcp__demo__ping",
+        data: {
+          content: [{ type: "text" as const, text: "pong" }],
+          provider: "demo",
+          tool: "ping",
+          tool_name: "mcp__demo__ping",
+          rawResult: {
+            content: [{ type: "text" as const, text: "pong" }],
+            isError: false,
+          },
+        },
         rawResult: {
           content: [{ type: "text" as const, text: "pong" }],
           isError: false,
         },
-      },
-    }));
+      }),
+    );
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
@@ -119,17 +151,30 @@ describe("callMcpTool", () => {
   });
 
   it("rejects ambiguous mixed top-level and nested MCP arguments", async () => {
-    const execute = vi.fn(async () => ({
-      content: [{ type: "text" as const, text: "pong" }],
-      details: {
+    const execute = vi.fn(async () =>
+      makeStructuredToolResult({
+        ok: true,
+        status: "success",
+        target: "mcp__demo__ping",
         provider: "demo",
         tool: "ping",
+        tool_name: "mcp__demo__ping",
+        data: {
+          content: [{ type: "text" as const, text: "pong" }],
+          provider: "demo",
+          tool: "ping",
+          tool_name: "mcp__demo__ping",
+          rawResult: {
+            content: [{ type: "text" as const, text: "pong" }],
+            isError: false,
+          },
+        },
         rawResult: {
           content: [{ type: "text" as const, text: "pong" }],
           isError: false,
         },
-      },
-    }));
+      }),
+    );
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [

@@ -69,6 +69,7 @@ export function zodTool<
   const { inputSchema, outputSchema, prepareArguments, execute, ...toolDef } =
     definition;
   let modelInputSchema: JsonSchemaObject;
+  let modelOutputSchema: JsonSchemaObject | undefined;
   try {
     modelInputSchema = z.toJSONSchema(inputSchema) as JsonSchemaObject;
   } catch (error) {
@@ -77,9 +78,20 @@ export function zodTool<
       { cause: error },
     );
   }
+  if (outputSchema) {
+    try {
+      modelOutputSchema = z.toJSONSchema(outputSchema) as JsonSchemaObject;
+    } catch (error) {
+      throw new TypeError(
+        "zodTool() outputSchema must be representable as JSON Schema.",
+        { cause: error },
+      );
+    }
+  }
   return {
     ...toolDef,
     inputSchema: modelInputSchema,
+    ...(modelOutputSchema ? { outputSchema: modelOutputSchema } : {}),
     prepareArguments(args) {
       return parseToolInput(
         inputSchema,

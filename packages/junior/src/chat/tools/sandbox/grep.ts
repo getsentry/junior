@@ -10,21 +10,40 @@ import {
   truncateText,
   type SandboxFileSystem,
   type TextSearchResultDetails,
+  type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  juniorToolResultEnvelopeSchema,
+  makeStructuredToolResult,
+} from "@/chat/tool-support/structured-result";
 
 const DEFAULT_GREP_LIMIT = 100;
 const MAX_GREP_LINE_CHARS = 500;
 
-interface GrepResult {
+interface GrepResultData {
+  context: number;
+  glob?: string;
+  line_count: number;
+  lines: string[];
+  match_count: number;
+  pattern: string;
+  path: string;
+  truncation_reasons?: string[];
+}
+
+interface GrepSuccessResult {
   content: [{ type: "text"; text: string }];
-  details: TextSearchResultDetails & {
+  details: Extract<TextSearchResultDetails, { ok: true }> & {
+    data: GrepResultData;
     line_truncated?: boolean;
     match_limit_reached?: number;
   };
 }
+
+type GrepResult = GrepSuccessResult | TextSearchToolResult;
 
 const booleanInput = (description: string) =>
   z
@@ -187,24 +206,28 @@ export async function grepFiles(params: {
     notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
   }
 
-  return {
-    content: [
-      {
-        type: "text",
-        text:
-          notices.length > 0
-            ? `${bounded.content}\n\n[${notices.join(" ")}]`
-            : bounded.content,
-      },
-    ],
-    details: {
-      ok: true,
+  return makeStructuredToolResult({
+    ok: true,
+    status: "success",
+    target: params.path ?? ".",
+    path: params.path ?? ".",
+    truncated: matchLimitReached || lineTruncated || bounded.truncated,
+    data: {
+      context,
+      ...(params.glob ? { glob: params.glob } : {}),
+      line_count: output.length,
+      lines:
+        bounded.content === "No matches found"
+          ? []
+          : bounded.content.split("\n"),
+      match_count: matchCount,
+      pattern: params.pattern,
       path: params.path ?? ".",
-      truncated: matchLimitReached || lineTruncated || bounded.truncated,
-      ...(matchLimitReached ? { match_limit_reached: limit } : {}),
-      ...(lineTruncated ? { line_truncated: true } : {}),
+      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
     },
-  };
+    ...(matchLimitReached ? { match_limit_reached: limit } : {}),
+    ...(lineTruncated ? { line_truncated: true } : {}),
+  });
 }
 
 /** Create the sandbox grep tool definition exposed to the agent. */
@@ -249,6 +272,7 @@ export function createGrepTool() {
         .describe("Maximum matches to return. Defaults to 100.")
         .optional(),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async () => {
       throw new Error("grep can only run when sandbox execution is enabled.");
     },

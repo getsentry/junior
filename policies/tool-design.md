@@ -24,6 +24,9 @@ contradictory or unsafe requests.
   different mode that requires a real value.
 - Prefer schema and executor alignment over prompt wording when a provider or
   model may serialize absent optional values differently.
+- Keep reusable tool infrastructure in `packages/junior/src/chat/tool-support`.
+  Files under `packages/junior/src/chat/tools` must be concrete tool
+  definitions, tool executors, or tool-family implementation modules.
 - Keep runtime authority, destination, actor, credential, and durable context
   out of model-facing arguments unless the owning spec explicitly allows them;
   see `policies/runtime-boundary-schemas.md`.

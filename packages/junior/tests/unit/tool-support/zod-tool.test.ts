@@ -76,6 +76,13 @@ describe("zodTool", () => {
       execute: async () => ({ ok: false }) as never,
     });
 
+    expect(tool.outputSchema).toMatchObject({
+      properties: {
+        ok: { const: true },
+      },
+      required: ["ok"],
+      type: "object",
+    });
     const parsed = tool.prepareArguments!({ value: "test" });
     await expect(tool.execute?.(parsed, {})).rejects.not.toThrow(
       ToolInputError,

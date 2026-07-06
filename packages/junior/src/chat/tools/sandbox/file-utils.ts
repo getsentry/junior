@@ -2,6 +2,7 @@ import path from "node:path";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 
 export type { SandboxFileSystem };
 
@@ -11,15 +12,24 @@ const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 export type TextSearchResultDetails =
   | {
       ok: true;
+      status?: "success";
+      target?: string;
       path: string;
       truncated: boolean;
+      data?: unknown;
     }
   | {
       ok: false;
-      error: "not_found";
+      status?: "error";
+      target?: string;
+      error: {
+        kind: "not_found";
+        message: string;
+      };
       path: string;
       missing_path?: string;
       truncated: false;
+      data?: unknown;
     };
 
 export interface TextSearchToolResult {
@@ -79,16 +89,22 @@ export function missingPathSearchResult(params: {
   missingPath?: string;
 }): TextSearchToolResult {
   const textPath = params.displayPath ?? params.missingPath ?? params.path;
-  return {
-    content: [{ type: "text", text: `Path not found: ${textPath}` }],
-    details: {
-      ok: false,
-      error: "not_found",
+  return makeStructuredToolResult({
+    ok: false,
+    status: "error",
+    target: params.path,
+    error: {
+      kind: "not_found" as const,
+      message: `Path not found: ${textPath}`,
+    },
+    path: params.path,
+    ...(params.missingPath ? { missing_path: params.missingPath } : {}),
+    truncated: false,
+    data: {
       path: params.path,
       ...(params.missingPath ? { missing_path: params.missingPath } : {}),
-      truncated: false,
     },
-  };
+  });
 }
 
 function escapeRegExp(value: string): string {

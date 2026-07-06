@@ -6,6 +6,10 @@ import {
 } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
+  juniorToolResultEnvelopeSchema,
+  makeStructuredToolResult,
+} from "@/chat/tool-support/structured-result";
+import {
   buildCompactDiff,
   detectLineEnding,
   prepareTextReplacementArguments,
@@ -18,16 +22,48 @@ import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 type EditReplacement = TextReplacement;
+type EditFailureKind =
+  | "not_found"
+  | "old_text_not_found"
+  | "old_text_not_unique"
+  | "overlapping_edits"
+  | "no_change"
+  | "invalid_edit";
 
 interface EditFileResult {
   content: [{ type: "text"; text: string }];
-  details: {
-    diff: string;
-    first_changed_line?: number;
-    ok: true;
-    path: string;
-    replacements: number;
-  };
+  details:
+    | {
+        data: {
+          diff: string;
+          first_changed_line?: number;
+          path: string;
+          replacements: number;
+        };
+        diff: string;
+        first_changed_line?: number;
+        ok: true;
+        path: string;
+        replacements: number;
+        status: "success";
+        target: string;
+      }
+    | {
+        data: {
+          path: string;
+          replacements: number;
+        };
+        error: {
+          kind: EditFailureKind;
+          message: string;
+          retryable: true;
+        };
+        ok: false;
+        path: string;
+        replacements: number;
+        status: "error";
+        target: string;
+      };
 }
 
 interface EditFileInput {
@@ -38,6 +74,48 @@ interface EditFileInput {
 /** Accept common edit argument variants before Pi validates the canonical schema. */
 export function prepareEditFileArguments(input: unknown): EditFileInput {
   return prepareTextReplacementArguments(input);
+}
+
+function editFailureKind(message: string): EditFailureKind {
+  if (message.startsWith("File not found:")) {
+    return "not_found";
+  }
+  if (message.startsWith("Could not find")) {
+    return "old_text_not_found";
+  }
+  if (message.startsWith("Found ") && message.includes(" occurrences ")) {
+    return "old_text_not_unique";
+  }
+  if (message.includes(" overlap ")) {
+    return "overlapping_edits";
+  }
+  if (message.startsWith("No changes made")) {
+    return "no_change";
+  }
+  return "invalid_edit";
+}
+
+function editFailureResult(params: {
+  message: string;
+  path: string;
+  replacements: number;
+}): EditFileResult {
+  return makeStructuredToolResult({
+    ok: false,
+    status: "error",
+    target: params.path,
+    path: params.path,
+    replacements: params.replacements,
+    data: {
+      path: params.path,
+      replacements: params.replacements,
+    },
+    error: {
+      kind: editFailureKind(params.message),
+      message: params.message,
+      retryable: true,
+    },
+  });
 }
 
 /** Apply exact, ordered file replacements through the sandbox filesystem API. */
@@ -52,8 +130,10 @@ export async function editFile(params: {
     rawContent = await params.fs.readFile(filePath, { encoding: "utf8" });
   } catch (error) {
     if (isMissingPathError(error)) {
-      throw new ToolInputError(`File not found: ${params.path}`, {
-        cause: error,
+      return editFailureResult({
+        message: `File not found: ${params.path}`,
+        path: params.path,
+        replacements: params.edits.length,
       });
     }
     throw error;
@@ -61,11 +141,24 @@ export async function editFile(params: {
   const { bom, text } = stripBom(rawContent);
   const lineEnding = detectLineEnding(text);
   const normalizedContent = normalizeToLf(text);
-  const { baseContent, newContent } = validateAndApplyTextEdits(
-    normalizedContent,
-    params.edits,
-    params.path,
-  );
+  let applied: { baseContent: string; newContent: string };
+  try {
+    applied = validateAndApplyTextEdits(
+      normalizedContent,
+      params.edits,
+      params.path,
+    );
+  } catch (error) {
+    if (error instanceof ToolInputError) {
+      return editFailureResult({
+        message: error.message,
+        path: params.path,
+        replacements: params.edits.length,
+      });
+    }
+    throw error;
+  }
+  const { baseContent, newContent } = applied;
   await params.fs.writeFile(
     filePath,
     bom + restoreLineEndings(newContent, lineEnding),
@@ -73,21 +166,21 @@ export async function editFile(params: {
   );
 
   const diff = buildCompactDiff(baseContent, newContent);
-  return {
-    content: [
-      {
-        type: "text",
-        text: `Successfully replaced ${params.edits.length} block(s) in ${params.path}.`,
-      },
-    ],
-    details: {
+  return makeStructuredToolResult({
+    ok: true,
+    status: "success",
+    target: params.path,
+    data: {
       diff: diff.diff,
       first_changed_line: diff.firstChangedLine,
-      ok: true,
       path: params.path,
       replacements: params.edits.length,
     },
-  };
+    diff: diff.diff,
+    first_changed_line: diff.firstChangedLine,
+    path: params.path,
+    replacements: params.edits.length,
+  });
 }
 
 const editReplacementSchema = z.object({
@@ -119,6 +212,7 @@ export function createEditFileTool() {
           "Exact replacements matched against the original file, not incrementally.",
         ),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async () => {
       throw new Error(
         "editFile can only run when sandbox execution is enabled.",

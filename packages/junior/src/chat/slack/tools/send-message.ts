@@ -10,6 +10,10 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
+import {
+  juniorToolResultEnvelopeSchema,
+  makeStructuredToolResult,
+} from "@/chat/tool-support/structured-result";
 
 /** Convert a model-supplied sandbox file path into bytes safe for Slack upload. */
 export type MaterializeMessageFile = (input: {
@@ -49,7 +53,19 @@ const fileInputSchema = z.object({
 
 interface SendMessageResult {
   ok: true;
+  status: "success";
+  target: string;
+  data: {
+    channel_id: string;
+    deduplicated?: boolean;
+    file_count?: number;
+    file_ids?: string[];
+    permalink?: string;
+    thread_ts?: string;
+    ts?: string;
+  };
   channel_id: string;
+  deduplicated?: boolean;
   file_count?: number;
   file_ids?: string[];
   permalink?: string;
@@ -111,6 +127,7 @@ export function createSendMessageTool(
           "Sandbox files to include in the message. Null is treated as omitted.",
         ),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async ({ text, files }) => {
       const filesToSend = normalizeMessageFiles(files);
       const activeChannelId = context.sourceChannelId;
@@ -143,10 +160,14 @@ export function createSendMessageTool(
       });
       const cached = state.getOperationResult<SendMessageResult>(operationKey);
       if (cached) {
-        return {
+        return makeStructuredToolResult({
           ...cached,
+          data: {
+            ...cached.data,
+            deduplicated: true,
+          },
           deduplicated: true,
-        };
+        });
       }
 
       const uploads = materializedFiles.map((file) => ({
@@ -173,6 +194,21 @@ export function createSendMessageTool(
           : undefined;
       const response = {
         ok: true,
+        status: "success" as const,
+        target: `${activeChannelId}:${threadTs}`,
+        data: {
+          channel_id: activeChannelId,
+          thread_ts: threadTs,
+          ...(posted ? { ts: posted.ts, permalink: posted.permalink } : {}),
+          ...(uploads.length > 0 ? { file_count: uploads.length } : {}),
+          ...(uploaded?.files
+            ? {
+                file_ids: uploaded.files
+                  .map((file) => file.id)
+                  .filter((id): id is string => Boolean(id)),
+              }
+            : {}),
+        },
         channel_id: activeChannelId,
         thread_ts: threadTs,
         ...(posted ? { ts: posted.ts, permalink: posted.permalink } : {}),
@@ -186,7 +222,7 @@ export function createSendMessageTool(
           : {}),
       };
       state.setOperationResult(operationKey, response);
-      return response;
+      return makeStructuredToolResult(response);
     },
   });
 }

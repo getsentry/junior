@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
 
+type StructuredSandboxResult = {
+  details: Record<string, unknown>;
+};
+
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
   sandboxCreateMock: vi.fn(),
@@ -708,7 +712,7 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor({ sandboxId: "sbx_bash_timeout" });
     executor.configureSkills([]);
 
-    const responsePromise = executor.execute({
+    const responsePromise = executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "sleep 999",
@@ -718,7 +722,7 @@ describe("createSandboxExecutor", () => {
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
     const response = await responsePromise;
 
-    expect(response.result).toMatchObject({
+    expect(response.result.details).toMatchObject({
       ok: false,
       exit_code: 124,
       timed_out: true,
@@ -748,7 +752,7 @@ describe("createSandboxExecutor", () => {
     executor.configureSkills([]);
     const abortController = new AbortController();
 
-    const responsePromise = executor.execute({
+    const responsePromise = executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "sleep 999",
@@ -760,7 +764,7 @@ describe("createSandboxExecutor", () => {
     abortController.abort();
     const response = await responsePromise;
 
-    expect(response.result).toMatchObject({
+    expect(response.result.details).toMatchObject({
       ok: false,
       exit_code: 130,
       timed_out: false,
@@ -918,20 +922,16 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<{
-      auth_required?: unknown;
-      exit_code: number;
-      permission_denied?: unknown;
-    }>({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "printf stale",
       },
     });
 
-    expect(response.result.exit_code).toBe(1);
-    expect(response.result.auth_required).toBeUndefined();
-    expect(response.result.permission_denied).toBeUndefined();
+    expect(response.result.details.exit_code).toBe(1);
+    expect(response.result.details.auth_required).toBeUndefined();
+    expect(response.result.details.permission_denied).toBeUndefined();
   });
 
   it("attaches sandbox egress auth signals to bash results regardless of exit code", async () => {
@@ -972,18 +972,15 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<{
-      auth_required?: unknown;
-      exit_code: number;
-    }>({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "gh issue create",
       },
     });
 
-    expect(response.result.exit_code).toBe(1);
-    expect(response.result.auth_required).toMatchObject({
+    expect(response.result.details.exit_code).toBe(1);
+    expect(response.result.details.auth_required).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -1037,19 +1034,16 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<{
-      auth_required?: unknown;
-      exit_code: number;
-    }>({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "sentry org list --json 2>&1 | head -20",
       },
     });
 
-    expect(response.result.exit_code).toBe(0);
+    expect(response.result.details.exit_code).toBe(0);
     // Auth signal must be attached even though exit_code is 0
-    expect(response.result.auth_required).toMatchObject({
+    expect(response.result.details.auth_required).toMatchObject({
       provider: "sentry",
       grant: {
         name: "default",
@@ -1103,18 +1097,15 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<{
-      exit_code: number;
-      permission_denied?: unknown;
-    }>({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "git push",
       },
     });
 
-    expect(response.result.exit_code).toBe(1);
-    expect(response.result.permission_denied).toMatchObject({
+    expect(response.result.details.exit_code).toBe(1);
+    expect(response.result.details.permission_denied).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -1174,18 +1165,15 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute<{
-      auth_required?: unknown;
-      exit_code: number;
-    }>({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "gh issue create",
       },
     });
 
-    expect(response.result.exit_code).toBe(1);
-    expect(response.result.auth_required).toMatchObject({
+    expect(response.result.details.exit_code).toBe(1);
+    expect(response.result.details.auth_required).toMatchObject({
       provider: "github",
       grant: {
         name: "user-write",
@@ -1302,14 +1290,14 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "pnpm test",
       },
     });
 
-    expect(response.result).toMatchObject({
+    expect(response.result.details).toMatchObject({
       ok: false,
       exit_code: 125,
       stderr:
@@ -1331,23 +1319,21 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "findFiles",
       input: { pattern: "*.ts" },
     });
 
     expect(response.result).toMatchObject({
-      content: [
-        {
-          type: "text",
-          text: expect.stringContaining(
+      details: {
+        ok: false,
+        status: "error",
+        error: {
+          kind: "stream_interrupted",
+          message: expect.stringContaining(
             "Sandbox command stream was interrupted during findFiles",
           ),
         },
-      ],
-      details: {
-        ok: false,
-        error: "stream_interrupted",
         tool: "findFiles",
       },
     });
@@ -1369,7 +1355,7 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "writeFile",
       input: { path: "file.ts", content: "new content" },
     });
@@ -1377,7 +1363,10 @@ describe("createSandboxExecutor", () => {
     expect(response.result).toMatchObject({
       details: {
         ok: false,
-        error: "stream_interrupted",
+        status: "error",
+        error: {
+          kind: "stream_interrupted",
+        },
         tool: "writeFile",
       },
     });
@@ -1418,7 +1407,7 @@ describe("createSandboxExecutor", () => {
     });
     executor.configureSkills([]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "jr-rpc config get github.repo",
@@ -1429,7 +1418,7 @@ describe("createSandboxExecutor", () => {
       "jr-rpc config get github.repo",
     );
     expect(sandbox.runCommand).not.toHaveBeenCalled();
-    expect(response.result).toMatchObject({
+    expect(response.result.details).toMatchObject({
       ok: true,
       exit_code: 0,
     });
@@ -1571,14 +1560,14 @@ describe("createSandboxExecutor", () => {
     });
     stopCachedSandbox = true;
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "bash",
       input: {
         command: "echo second",
       },
     });
 
-    expect(response.result).toMatchObject({
+    expect(response.result.details).toMatchObject({
       ok: true,
       stdout: "second\n",
       exit_code: 0,
@@ -1609,21 +1598,25 @@ describe("createSandboxExecutor", () => {
       },
     ]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "readFile",
       input: {
         path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       },
     });
 
-    expect(response.result).toEqual({
-      content: "Reference note",
-      end_line: 1,
-      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
-      start_line: 1,
-      success: true,
-      total_lines: 1,
+    expect(response.result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      target: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       truncated: false,
+      data: {
+        content: "Reference note",
+        end_line: 1,
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+        start_line: 1,
+        total_lines: 1,
+      },
     });
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -1651,21 +1644,25 @@ describe("createSandboxExecutor", () => {
       },
     ]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "readFile",
       input: {
         path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
       },
     });
 
-    expect(response.result).toEqual({
-      content: "from sandbox",
-      end_line: 1,
-      path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
-      start_line: 1,
-      success: true,
-      total_lines: 1,
+    expect(response.result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      target: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
       truncated: false,
+      data: {
+        content: "from sandbox",
+        end_line: 1,
+        path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+        start_line: 1,
+        total_lines: 1,
+      },
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -1687,22 +1684,29 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "readFile",
       input: {
         path: "missing.ts",
       },
     });
 
-    expect(response.result).toEqual({
-      content: "",
-      error: "not_found",
-      path: "missing.ts",
-      success: false,
+    expect(response.result.details).toMatchObject({
+      ok: false,
+      status: "error",
+      target: "missing.ts",
+      error: {
+        kind: "not_found",
+        message: "File not found: missing.ts",
+      },
+      data: {
+        content: "",
+        path: "missing.ts",
+      },
     });
   });
 
-  it("throws ToolInputError when editFile targets a missing path", async () => {
+  it("returns a structured failure when editFile targets a missing path", async () => {
     const sandbox = makeSandbox("sbx_missing_edit_file");
     sandbox.fs.readFile.mockRejectedValue(
       Object.assign(new Error("ENOENT: no such file or directory"), {
@@ -1728,7 +1732,19 @@ describe("createSandboxExecutor", () => {
           edits: [{ oldText: "a", newText: "b" }],
         },
       }),
-    ).rejects.toThrow("File not found: missing.ts");
+    ).resolves.toMatchObject({
+      result: {
+        details: {
+          ok: false,
+          status: "error",
+          target: "missing.ts",
+          error: {
+            kind: "not_found",
+            message: "File not found: missing.ts",
+          },
+        },
+      },
+    });
   });
 
   it("keeps sandbox API failures as readFile errors", async () => {
@@ -1791,21 +1807,25 @@ describe("createSandboxExecutor", () => {
       },
     ]);
 
-    const response = await executor.execute({
+    const response = await executor.execute<StructuredSandboxResult>({
       toolName: "readFile",
       input: {
         path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       },
     });
 
-    expect(response.result).toEqual({
-      content: "Sandbox note",
-      end_line: 1,
-      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
-      start_line: 1,
-      success: true,
-      total_lines: 1,
+    expect(response.result.details).toMatchObject({
+      ok: true,
+      status: "success",
+      target: `${sandboxSkillDir("demo-skill")}/references/note.md`,
       truncated: false,
+      data: {
+        content: "Sandbox note",
+        end_line: 1,
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+        start_line: 1,
+        total_lines: 1,
+      },
     });
     expect(sandboxGetMock).toHaveBeenCalledWith({
       name: "sbx_existing",

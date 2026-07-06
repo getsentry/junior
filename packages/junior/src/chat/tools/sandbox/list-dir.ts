@@ -8,19 +8,35 @@ import {
   truncateText,
   type SandboxFileSystem,
   type TextSearchResultDetails,
+  type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import {
+  juniorToolResultEnvelopeSchema,
+  makeStructuredToolResult,
+} from "@/chat/tool-support/structured-result";
 
 const DEFAULT_LIST_LIMIT = 500;
 
-interface ListDirResult {
+interface ListDirResultData {
+  entries: string[];
+  entry_count: number;
+  path: string;
+  total_entries: number;
+  truncation_reasons?: string[];
+}
+
+interface ListDirSuccessResult {
   content: [{ type: "text"; text: string }];
-  details: TextSearchResultDetails & {
+  details: Extract<TextSearchResultDetails, { ok: true }> & {
+    data: ListDirResultData;
     entry_limit_reached?: number;
   };
 }
+
+type ListDirResult = ListDirSuccessResult | TextSearchToolResult;
 
 /** List workspace directories without forcing the model through shell output. */
 export async function listDir(params: {
@@ -89,23 +105,24 @@ export async function listDir(params: {
     notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
   }
 
-  return {
-    content: [
-      {
-        type: "text",
-        text:
-          notices.length > 0
-            ? `${bounded.content}\n\n[${notices.join(" ")}]`
-            : bounded.content,
-      },
-    ],
-    details: {
-      ok: true,
+  return makeStructuredToolResult({
+    ok: true,
+    status: "success",
+    target: params.path ?? ".",
+    path: params.path ?? ".",
+    truncated: entryLimitReached || bounded.truncated,
+    data: {
+      entries:
+        bounded.content === "(empty directory)"
+          ? []
+          : bounded.content.split("\n"),
+      entry_count: output.length,
       path: params.path ?? ".",
-      truncated: entryLimitReached || bounded.truncated,
-      ...(entryLimitReached ? { entry_limit_reached: limit } : {}),
+      total_entries: entries.length,
+      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
     },
-  };
+    ...(entryLimitReached ? { entry_limit_reached: limit } : {}),
+  });
 }
 
 /** Create the sandbox directory listing tool definition exposed to the agent. */
@@ -129,6 +146,7 @@ export function createListDirTool() {
         .describe("Maximum entries to return. Defaults to 500.")
         .optional(),
     }),
+    outputSchema: juniorToolResultEnvelopeSchema,
     execute: async () => {
       throw new Error(
         "listDir can only run when sandbox execution is enabled.",
