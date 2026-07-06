@@ -1,34 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { McpToolError } from "@/chat/mcp/errors";
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 
 describe("callMcpTool", () => {
   it("executes an active MCP tool by disclosed tool_name", async () => {
-    const execute = vi.fn(async () =>
-      makeStructuredToolResult({
-        ok: true,
-        status: "success",
-        target: "mcp__demo__ping",
-        provider: "demo",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-        data: {
-          content: [{ type: "text" as const, text: "pong" }],
-          provider: "demo",
-          tool: "ping",
-          tool_name: "mcp__demo__ping",
-          rawResult: {
-            content: [{ type: "text" as const, text: "pong" }],
-            isError: false,
-          },
-        },
-        rawResult: {
-          content: [{ type: "text" as const, text: "pong" }],
-          isError: false,
-        },
-      }),
-    );
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "pong" }],
+    }));
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
@@ -53,13 +31,7 @@ describe("callMcpTool", () => {
         {},
       ),
     ).resolves.toMatchObject({
-      details: {
-        ok: true,
-        provider: "demo",
-        status: "success",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-      },
+      content: [{ type: "text", text: "pong" }],
     });
     expect(execute).toHaveBeenCalledWith(
       { query: "hello" },
@@ -67,31 +39,50 @@ describe("callMcpTool", () => {
     );
   });
 
-  it("passes conversation privacy to the managed MCP tool", async () => {
-    const execute = vi.fn(async () =>
-      makeStructuredToolResult({
-        ok: true,
-        status: "success",
-        target: "mcp__demo__ping",
-        provider: "demo",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-        data: {
-          content: [{ type: "text" as const, text: "pong" }],
+  it("preserves native MCP content from the managed tool", async () => {
+    const nativeContent = [
+      { type: "text" as const, text: "image generated" },
+      {
+        type: "image" as const,
+        data: "base64-image",
+        mimeType: "image/png",
+      },
+    ];
+    const execute = vi.fn(async () => ({
+      content: nativeContent,
+    }));
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => [
+        {
+          name: "mcp__demo__image",
+          rawName: "image",
           provider: "demo",
-          tool: "ping",
-          tool_name: "mcp__demo__ping",
-          rawResult: {
-            content: [{ type: "text" as const, text: "pong" }],
-            isError: false,
-          },
+          description: "Image",
+          parameters: {},
+          execute,
         },
-        rawResult: {
-          content: [{ type: "text" as const, text: "pong" }],
-          isError: false,
+      ]),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    await expect(
+      callMcpTool.execute!(
+        {
+          tool_name: "mcp__demo__image",
+          arguments: {},
         },
-      }),
-    );
+        {},
+      ),
+    ).resolves.toEqual({
+      content: nativeContent,
+    });
+  });
+
+  it("passes conversation privacy to the managed MCP tool", async () => {
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "pong" }],
+    }));
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [
@@ -151,30 +142,9 @@ describe("callMcpTool", () => {
   });
 
   it("rejects ambiguous mixed top-level and nested MCP arguments", async () => {
-    const execute = vi.fn(async () =>
-      makeStructuredToolResult({
-        ok: true,
-        status: "success",
-        target: "mcp__demo__ping",
-        provider: "demo",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-        data: {
-          content: [{ type: "text" as const, text: "pong" }],
-          provider: "demo",
-          tool: "ping",
-          tool_name: "mcp__demo__ping",
-          rawResult: {
-            content: [{ type: "text" as const, text: "pong" }],
-            isError: false,
-          },
-        },
-        rawResult: {
-          content: [{ type: "text" as const, text: "pong" }],
-          isError: false,
-        },
-      }),
-    );
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "pong" }],
+    }));
     const manager = {
       activateProvider: vi.fn(async () => true),
       getResolvedActiveTools: vi.fn(() => [

@@ -1,5 +1,6 @@
 import { createTodoList } from "@/chat/slack/tools/list/api";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -12,10 +13,12 @@ export function createSlackListCreateTool(state: ToolState) {
     inputSchema: z.object({
       name: z.string().min(1).max(160).describe("Name for the new Slack list."),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ name }) => {
       const operationKey = createOperationKey("slackListCreate", { name });
       const cached = state.getOperationResult<{
         ok: true;
+        status: "success";
         list_id: string;
         permalink: string;
         column_map: unknown;
@@ -36,6 +39,7 @@ export function createSlackListCreateTool(state: ToolState) {
 
       const response = {
         ok: true,
+        status: "success" as const,
         list_id: list.listId,
         permalink: list.permalink,
         column_map: list.listColumnMap,

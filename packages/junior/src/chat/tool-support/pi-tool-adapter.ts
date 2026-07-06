@@ -29,7 +29,7 @@ import {
   resolveCatalogToolCall,
 } from "@/chat/tool-support/catalog-tool-call";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
-import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
+import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
@@ -95,6 +95,23 @@ export function createPiAgentTools(
       );
     }
   };
+  const toolResultOk = (details: unknown, result: unknown): boolean => {
+    if (
+      details &&
+      typeof details === "object" &&
+      typeof (details as { ok?: unknown }).ok === "boolean"
+    ) {
+      return (details as { ok: boolean }).ok;
+    }
+    if (
+      result &&
+      typeof result === "object" &&
+      typeof (result as { ok?: unknown }).ok === "boolean"
+    ) {
+      return (result as { ok: boolean }).ok;
+    }
+    return true;
+  };
   const executeDefinition = async (args: {
     normalizedToolCallId: string | undefined;
     params: Record<string, unknown>;
@@ -104,21 +121,7 @@ export function createPiAgentTools(
   }) => {
     const { normalizedToolCallId, params, signal, toolDef, toolName } = args;
     if (typeof toolDef.execute !== "function") {
-      const resultDetails = { ok: true };
-      const toolResultAttribute = serializeToolPayload(resultDetails);
-      if (toolResultAttribute) {
-        setSpanAttributes({
-          "gen_ai.tool.call.result": toolResultAttribute,
-          ...toGenAiPayloadTraceAttributes(
-            "app.ai.tool.call.result",
-            resultDetails,
-          ),
-        });
-      }
-      return {
-        content: [{ type: "text" as const, text: "ok" }],
-        details: resultDetails,
-      };
+      throw new Error(`Tool ${toolName} does not define an executor.`);
     }
 
     const beforeTool = agentHooks
@@ -144,17 +147,23 @@ export function createPiAgentTools(
           ...(normalizedToolCallId ? { toolCallId: normalizedToolCallId } : {}),
         });
 
-    const normalized = normalizeToolResult(result, isSandbox);
+    const normalized = normalizeToolResult(result, isSandbox, {
+      requireStructuredResult: Boolean(toolDef.outputSchema),
+      toolName,
+    });
     if (isSandbox && pluginAuthOrchestration) {
       await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
     }
-    const resultAttributeValue =
+    let resultAttributeValue = normalized.details;
+    if (
       normalized.details &&
       typeof normalized.details === "object" &&
       "rawResult" in normalized.details &&
       (normalized.details as { rawResult?: unknown }).rawResult !== undefined
-        ? (normalized.details as { rawResult: unknown }).rawResult
-        : normalized.details;
+    ) {
+      resultAttributeValue = (normalized.details as { rawResult: unknown })
+        .rawResult;
+    }
     const toolResultAttribute = serializeToolPayload(resultAttributeValue);
     if (toolResultAttribute) {
       setSpanAttributes({
@@ -166,7 +175,7 @@ export function createPiAgentTools(
       });
     }
     await notifyToolResult({
-      ok: true,
+      ok: toolResultOk(normalized.details, resultAttributeValue),
       params: toolInput,
       result: resultAttributeValue,
       toolName,

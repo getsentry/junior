@@ -374,6 +374,7 @@ describe("slackThreadRead", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error: "Input is not a valid URL",
     });
   });

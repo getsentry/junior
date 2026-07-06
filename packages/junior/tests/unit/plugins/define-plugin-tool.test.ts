@@ -2,17 +2,34 @@ import { describe, expect, it, vi } from "vitest";
 import {
   definePluginTool,
   PluginToolInputError,
+  pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
+const countResultSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  count: z.number(),
+  data: z.object({ count: z.number() }),
+});
+
 describe("definePluginTool", () => {
   it("projects Zod input schemas to JSON Schema and parses tool arguments", async () => {
-    const execute = vi.fn(async (input: { count: number }) => input.count);
+    const execute = vi.fn(
+      async (input: { count: number }) =>
+        ({
+          ok: true,
+          status: "success",
+          data: { count: input.count },
+          count: input.count,
+        }) as const,
+    );
     const tool = definePluginTool({
       description: "Count things.",
       inputSchema: z.object({
         count: z.coerce.number().int(),
       }),
+      outputSchema: countResultSchema,
       execute,
     });
 
@@ -37,12 +54,19 @@ describe("definePluginTool", () => {
       inputSchema: z.object({
         name: z.string().min(1),
       }),
+      outputSchema: countResultSchema,
       prepareArguments(args) {
         return {
           name: (args as { rawName: string }).rawName.trim(),
         };
       },
-      execute: async () => ({ ok: true }),
+      execute: async () =>
+        ({
+          ok: true,
+          status: "success",
+          data: { count: 1 },
+          count: 1,
+        }) as const,
     });
 
     expect(tool.prepareArguments?.({ rawName: " Ada " })).toEqual({
@@ -63,7 +87,14 @@ describe("definePluginTool", () => {
         inputSchema: z.object({
           value: z.string().transform((value) => value.trim()),
         }),
-        execute: async () => ({ ok: true }),
+        outputSchema: countResultSchema,
+        execute: async () =>
+          ({
+            ok: true,
+            status: "success",
+            data: { count: 1 },
+            count: 1,
+          }) as const,
       }),
     ).toThrow(
       "definePluginTool() inputSchema must be representable as JSON Schema.",

@@ -337,6 +337,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         return {
           result: {
             ok: true,
+            status: "success",
             command: "pwd",
             cwd: "/workspace",
             exit_code: 0,

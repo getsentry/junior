@@ -6,7 +6,7 @@ import {
 } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  juniorToolResultEnvelopeSchema,
+  juniorToolResultSchema,
   makeStructuredToolResult,
 } from "@/chat/tool-support/structured-result";
 import {
@@ -212,7 +212,7 @@ export function createEditFileTool() {
           "Exact replacements matched against the original file, not incrementally.",
         ),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     execute: async () => {
       throw new Error(
         "editFile can only run when sandbox execution is enabled.",

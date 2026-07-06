@@ -521,7 +521,14 @@ describe("github plugin", () => {
         },
         { toolCallId: "call-create-issue" },
       ),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createIssue",
+      data: {
+        number: 660,
+        url: "https://github.com/getsentry/junior/issues/660",
+      },
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
@@ -622,13 +629,19 @@ Conversation: \`local:test:old-conversation\`
 
     await expect(
       tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
     await expect(
       tool?.execute?.(input, { toolCallId: "call-idempotent-create" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
@@ -710,7 +723,10 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("HTTP 422");
     await expect(
       tool?.execute?.(input, { toolCallId: "call-definitive-rejection" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
@@ -753,7 +769,10 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("GitHub authorization required");
     await expect(
       tool?.execute?.(input, { toolCallId: "call-auth-required" }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createIssue",
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
     });
@@ -957,7 +976,10 @@ Conversation: \`local:test:old-conversation\`
         },
         { toolCallId: "call-create-pull-request-without-webhooks" },
       ),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
+      ok: true,
+      status: "success",
+      target: "createPullRequest",
       number: 691,
       url: "https://github.com/getsentry/junior/pull/691",
     });

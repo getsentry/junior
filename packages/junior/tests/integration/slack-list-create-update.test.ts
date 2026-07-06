@@ -110,6 +110,7 @@ describe("slack list create/update tools", () => {
 
     expect(result).toEqual({
       ok: true,
+      status: "success",
       list_id: "LIST_ABC",
       item_id: "ROW_77",
       completed: true,

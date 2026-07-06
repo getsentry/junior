@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultEnvelopeSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the sandbox shell tool definition exposed to the agent. */
@@ -21,7 +21,7 @@ export function createBashTool() {
         )
         .optional(),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     // Bash is sequential so sandbox egress auth signals stay command-scoped.
     executionMode: "sequential",
     execute: async () => {

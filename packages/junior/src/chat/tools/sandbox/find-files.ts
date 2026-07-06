@@ -8,18 +8,32 @@ import {
   truncateText,
   type SandboxFileSystem,
   type TextSearchResultDetails,
+  type TextSearchToolResult,
 } from "@/chat/tools/sandbox/file-utils";
 import { z } from "zod";
+import {
+  juniorToolResultSchema,
+  makeStructuredToolResult,
+  type JuniorToolResultEnvelope,
+} from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const DEFAULT_FIND_LIMIT = 1000;
 
-interface FindFilesResult {
-  content: [{ type: "text"; text: string }];
+interface FindFilesSuccessResult {
+  content: JuniorToolResultEnvelope["content"];
   details: TextSearchResultDetails & {
+    data: {
+      files: string[];
+      file_count: number;
+      path: string;
+      truncation_reasons?: string[];
+    };
     result_limit_reached?: number;
   };
 }
+
+type FindFilesResult = FindFilesSuccessResult | TextSearchToolResult;
 
 /** Find workspace files with structured limits instead of ad hoc shell output. */
 export async function findFiles(params: {
@@ -64,23 +78,28 @@ export async function findFiles(params: {
     notices.push(`${MAX_TEXT_CHARS} character output limit reached.`);
   }
 
-  return {
-    content: [
-      {
-        type: "text",
-        text:
-          notices.length > 0
-            ? `${bounded.content}\n\n[${notices.join(" ")}]`
-            : bounded.content,
-      },
-    ],
-    details: {
+  const text =
+    notices.length > 0
+      ? `${bounded.content}\n\n[${notices.join(" ")}]`
+      : bounded.content;
+
+  return makeStructuredToolResult(
+    {
       ok: true,
+      status: "success",
+      target: params.path ?? ".",
       path: params.path ?? ".",
       truncated: limitReached || bounded.truncated,
+      data: {
+        files: relativePaths,
+        file_count: relativePaths.length,
+        path: params.path ?? ".",
+        ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
+      },
       ...(limitReached ? { result_limit_reached: limit } : {}),
     },
-  };
+    { content: [{ type: "text", text }] },
+  ) as FindFilesResult;
 }
 
 /** Create the sandbox file discovery tool definition exposed to the agent. */
@@ -110,6 +129,7 @@ export function createFindFilesTool() {
         .describe("Maximum number of file paths to return. Defaults to 1000.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async () => {
       throw new Error(
         "findFiles can only run when sandbox execution is enabled.",

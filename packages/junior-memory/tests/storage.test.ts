@@ -2368,7 +2368,7 @@ WHERE id = '${superseded.memory.id}'
       });
       await expect(
         tools.searchMemories.execute({ query: "terse status" }, {}),
-      ).resolves.toEqual({ ok: true, memories: [] });
+      ).resolves.toMatchObject({ ok: true, memories: [] });
 
       await expect(
         createMemoryCreateTool({

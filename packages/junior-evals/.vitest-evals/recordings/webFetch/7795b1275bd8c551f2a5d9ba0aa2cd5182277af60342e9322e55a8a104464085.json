@@ -12,7 +12,9 @@
     "content_type": "text/html; charset=utf-8",
     "source_bytes": 91845,
     "extracted_chars": 12496,
-    "truncated": true
+    "truncated": true,
+    "status": "success",
+    "ok": true
   },
   "metadata": {
     "cacheKey": "7795b1275bd8c551f2a5d9ba0aa2cd5182277af60342e9322e55a8a104464085",

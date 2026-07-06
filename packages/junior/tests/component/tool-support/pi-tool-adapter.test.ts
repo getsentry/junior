@@ -36,10 +36,7 @@ describe("Pi tool adapter", () => {
     const onStatus = vi.fn(async () => undefined);
     const [reportProgressTool, bashTool] = createPiAgentTools(
       {
-        reportProgress: {
-          description: "report progress",
-          inputSchema: {} as any,
-        },
+        reportProgress: createReportProgressTool(),
         bash: {
           description: "bash",
           inputSchema: {} as any,
@@ -230,12 +227,12 @@ describe("Pi tool adapter", () => {
       {
         value: "input",
       },
-      {
+      expect.objectContaining({
         experimental_context: sandbox,
         signal: abortController.signal,
         conversationPrivacy: "public",
         toolCallId: "tool-demo",
-      },
+      }),
     );
   });
 
@@ -261,6 +258,48 @@ describe("Pi tool adapter", () => {
     await bashTool!.execute("tool-bash", { command: "which gh" });
 
     expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
+  });
+
+  it("reports structured tool error results to observers", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onToolResult = vi.fn();
+    const [demoTool] = createPiAgentTools(
+      {
+        demo: {
+          description: "demo",
+          inputSchema: {} as any,
+          execute: async () => ({
+            ok: false,
+            status: "error",
+            error: {
+              kind: "not_found",
+              message: "Thing not found.",
+            },
+          }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+      onToolResult,
+    );
+
+    await demoTool!.execute("tool-demo", { id: "missing" });
+
+    expect(onToolResult).toHaveBeenCalledWith({
+      ok: false,
+      params: { id: "missing" },
+      result: expect.objectContaining({
+        ok: false,
+        status: "error",
+      }),
+      toolName: "demo",
+    });
   });
 
   it("forwards Pi tool preparation metadata", () => {

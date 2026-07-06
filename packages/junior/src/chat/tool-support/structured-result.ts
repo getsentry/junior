@@ -3,11 +3,15 @@ import { z } from "zod";
 
 export const juniorToolContinuationSchema = z
   .object({
-    tool_name: z.string().min(1),
     arguments: z.record(z.string(), z.unknown()),
     reason: z.string().min(1).optional(),
   })
   .strict();
+
+export const juniorToolBoundContinuationSchema =
+  juniorToolContinuationSchema.extend({
+    tool_name: z.string().min(1),
+  });
 
 export const juniorToolErrorSchema = z
   .object({
@@ -25,29 +29,19 @@ export const juniorToolResultSchema = z
     data: z.unknown().optional(),
     truncated: z.boolean().optional(),
     continuation: juniorToolContinuationSchema.optional(),
-    error: juniorToolErrorSchema.optional(),
+    error: z.union([juniorToolErrorSchema, z.string()]).optional(),
   })
   .passthrough();
 
-export const juniorToolResultEnvelopeSchema = z
-  .object({
-    content: z.array(
-      z.union([
-        z.object({ type: z.literal("text"), text: z.string() }).strict(),
-        z
-          .object({
-            type: z.literal("image"),
-            data: z.string(),
-            mimeType: z.string(),
-          })
-          .strict(),
-      ]),
-    ),
-    details: juniorToolResultSchema,
-  })
-  .strict();
+export const juniorToolResultWithBoundContinuationSchema =
+  juniorToolResultSchema.extend({
+    continuation: juniorToolBoundContinuationSchema.optional(),
+  });
 
 export type JuniorToolResult = z.output<typeof juniorToolResultSchema>;
+export type JuniorToolResultWithBoundContinuation = z.output<
+  typeof juniorToolResultWithBoundContinuationSchema
+>;
 
 export interface JuniorToolResultEnvelope<
   TDetails extends JuniorToolResult = JuniorToolResult,
@@ -71,7 +65,29 @@ function sortJsonValue(value: unknown): unknown {
   );
 }
 
-export interface JuniorTextToolResultEnvelope<
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+/** Bind continuation metadata to the exposed runtime tool name. */
+export function injectContinuationToolName(
+  details: JuniorToolResult,
+  toolName: string,
+): JuniorToolResult | JuniorToolResultWithBoundContinuation {
+  const parsed = juniorToolResultSchema.parse(details);
+  if (!isRecord(parsed.continuation)) {
+    return parsed;
+  }
+  return juniorToolResultWithBoundContinuationSchema.parse({
+    ...parsed,
+    continuation: {
+      ...parsed.continuation,
+      tool_name: toolName,
+    },
+  });
+}
+
+interface JuniorTextToolResultEnvelope<
   TDetails extends JuniorToolResult = JuniorToolResult,
 > {
   content: [TextContent];

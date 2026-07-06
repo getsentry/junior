@@ -8,6 +8,8 @@
       `truncated`, `continuation`, and `error`.
 - [x] Render model-visible `content` from the same object stored in `details`.
 - [x] Keep the rendered summary deterministic and compact.
+- [x] Preserve native model content for multimodal provider bridge results
+      instead of forcing those outputs through structured text.
 - [x] Treat unexpected implementation failures as thrown errors, not encoded
       `ok=false` results.
 
@@ -15,6 +17,8 @@
 
 - [x] Extend the Zod tool-support path so a tool can declare and validate a
       structured result schema.
+- [x] Define the host Zod tool modes: structured mode with `outputSchema`, and
+      native content mode without tool-authored `details`.
 - [x] Keep output validation failures classified as runtime contract failures,
       not model-repairable input failures.
 - [x] Avoid requiring result schemas for tools that are not part of the first
@@ -34,6 +38,8 @@
       timeout state, and error kind.
 - [x] Convert `callMcpTool` to preserve upstream structured payloads while
       adding Junior-owned status and provider/tool identity.
+- [x] Keep MCP image output in native model content instead of replacing it with
+      only a structured summary.
 - [x] Convert `sendMessage` to return structured channel/thread/message/file
       identifiers, permalink, and deduplication state.
 

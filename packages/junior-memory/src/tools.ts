@@ -1,12 +1,15 @@
-import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
+  definePluginTool,
   getSourceKey,
   PluginToolInputError,
-  type PluginToolDefinition,
+  type PluginToolResult,
   type Source,
   type Requester,
+  pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import {
   createMemoryStore,
   type CreateMemoryInput,
@@ -227,69 +230,59 @@ function requireMemoryContent(value: string): string {
   return value;
 }
 
-type MemoryWriteToolInput = {
-  content: string;
-  expires_at?: string;
-};
-
-const createMemoryInputSchema = Type.Object(
-  {
-    content: Type.String({
-      minLength: 1,
-      maxLength: MAX_TOOL_CONTENT_CHARS,
-      description:
+const createMemoryInputSchema = z
+  .object({
+    content: z
+      .string()
+      .min(1)
+      .max(MAX_TOOL_CONTENT_CHARS)
+      .describe(
         "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
-    }),
-    expires_at: Type.Optional(
-      Type.String({
-        minLength: 1,
-        description:
-          'Expiration selector. Omit or use "never" when the memory should not expire, or use an exact ISO timestamp such as "2027-06-21T00:00:00Z".',
-      }),
-    ),
-  },
-  { additionalProperties: false },
-);
+      ),
+    expires_at: z
+      .string()
+      .min(1)
+      .describe(
+        'Expiration selector. Omit or use "never" when the memory should not expire, or use an exact ISO timestamp such as "2027-06-21T00:00:00Z".',
+      )
+      .optional(),
+  })
+  .strict();
 
-const removeMemoryInputSchema = Type.Object(
-  {
-    id: Type.String({
-      minLength: 1,
-      description: "Memory id or unambiguous short id prefix to remove.",
-    }),
-  },
-  { additionalProperties: false },
-);
+const removeMemoryInputSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1)
+      .describe("Memory id or unambiguous short id prefix to remove."),
+  })
+  .strict();
 
-const listMemoriesInputSchema = Type.Object(
-  {
-    limit: Type.Optional(
-      Type.Number({
-        minimum: 1,
-        maximum: 50,
-        description: "Maximum number of visible memories to return.",
-      }),
-    ),
-  },
-  { additionalProperties: false },
-);
+const listMemoriesInputSchema = z
+  .object({
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .describe("Maximum number of visible memories to return.")
+      .optional(),
+  })
+  .strict();
 
-const searchMemoriesInputSchema = Type.Object(
-  {
-    query: Type.String({
-      minLength: 1,
-      description: "Search query for visible memory content.",
-    }),
-    limit: Type.Optional(
-      Type.Number({
-        minimum: 1,
-        maximum: 50,
-        description: "Maximum number of matching memories to return.",
-      }),
-    ),
-  },
-  { additionalProperties: false },
-);
+const searchMemoriesInputSchema = z
+  .object({
+    query: z
+      .string()
+      .min(1)
+      .describe("Search query for visible memory content."),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .describe("Maximum number of matching memories to return.")
+      .optional(),
+  })
+  .strict();
 
 const memoryToolProjectionSchema = Type.Object(
   {
@@ -303,17 +296,69 @@ const memoryToolProjectionSchema = Type.Object(
 );
 type MemoryToolProjection = Static<typeof memoryToolProjectionSchema>;
 
-function parseToolInput<T>(schema: TSchema, input: unknown): T {
-  try {
-    if (!Value.Check(schema, input)) {
-      throw new Error("Input does not match memory tool schema.");
-    }
-    return Value.Parse(schema, input) as T;
-  } catch (error) {
+type MemoryStructuredToolResult<TData extends Record<string, unknown>> =
+  PluginToolResult &
+    TData & {
+      ok: true;
+      status: "success";
+      target: string;
+      data: TData;
+    };
+
+const memoryProjectionOutputSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  createdAtMs: z.number(),
+  observedAtMs: z.number(),
+  expiresAtMs: z.number().optional(),
+});
+
+const memoryCreateDataOutputSchema = z.object({
+  created: z.boolean(),
+  memory: memoryProjectionOutputSchema,
+});
+
+const memorySingleDataOutputSchema = z.object({
+  memory: memoryProjectionOutputSchema,
+});
+
+const memoryManyDataOutputSchema = z.object({
+  memories: z.array(memoryProjectionOutputSchema),
+});
+
+const memoryCreateOutputSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.string(),
+  data: memoryCreateDataOutputSchema,
+  created: z.boolean(),
+  memory: memoryProjectionOutputSchema,
+});
+
+const memorySingleOutputSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.string(),
+  data: memorySingleDataOutputSchema,
+  memory: memoryProjectionOutputSchema,
+});
+
+const memoryManyOutputSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.string(),
+  data: memoryManyDataOutputSchema,
+  memories: z.array(memoryProjectionOutputSchema),
+});
+
+function parseMemoryToolInput<T>(schema: z.ZodType<T>, input: unknown): T {
+  const result = schema.safeParse(input);
+  if (!result.success) {
     throw new PluginToolInputError("Invalid memory tool input.", {
-      cause: error,
+      cause: result.error,
     });
   }
+  return result.data;
 }
 
 function sourceIdempotencyKey(context: MemoryToolContext): string {
@@ -359,18 +404,29 @@ function compactMemory(memory: MemoryRecord): MemoryToolProjection {
   });
 }
 
+function memoryToolResult<TData extends Record<string, unknown>>(
+  target: string,
+  data: TData,
+): MemoryStructuredToolResult<TData> {
+  return {
+    ok: true,
+    status: "success",
+    target,
+    data,
+    ...data,
+  };
+}
+
 /** Create a tool that submits an explicit memory candidate for storage. */
 export function createMemoryCreateTool(context: MemoryCreateToolContext) {
-  return {
+  return definePluginTool({
     description:
       "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
+    outputSchema: memoryCreateOutputSchema,
     execute: async (input, options) => {
-      const parsedInput = parseToolInput<MemoryWriteToolInput>(
-        createMemoryInputSchema,
-        input,
-      );
+      const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
       const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
       const runtimeContext = memoryRuntimeContext(context);
@@ -439,27 +495,24 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
           asToolInputError(error);
         }
       })();
-      return {
-        ok: true,
+      return memoryToolResult("createMemory", {
         created: result.created,
         memory: compactMemory(result.memory),
-      };
+      });
     },
-  } satisfies PluginToolDefinition<MemoryWriteToolInput>;
+  });
 }
 
 /** Create a tool that archives a visible memory in the active context. */
 export function createMemoryRemoveTool(context: MemoryToolContext) {
-  return {
+  return definePluginTool({
     description:
       "Forget one memory visible in the active context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
     executionMode: "sequential",
     inputSchema: removeMemoryInputSchema,
+    outputSchema: memorySingleOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseToolInput<{ id: string }>(
-        removeMemoryInputSchema,
-        input,
-      );
+      const parsedInput = parseMemoryToolInput(removeMemoryInputSchema, input);
       const memory = await (async () => {
         try {
           return await memoryStore(context).archiveMemory({
@@ -470,46 +523,43 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
           asToolInputError(error);
         }
       })();
-      return {
-        ok: true,
+      return memoryToolResult("removeMemory", {
         memory: compactMemory(memory),
-      };
+      });
     },
-  } satisfies PluginToolDefinition<{ id: string }>;
+  });
 }
 
 /** Create a tool that lists visible active memories in the active context. */
 export function createMemoryListTool(context: MemoryToolContext) {
-  return {
+  return definePluginTool({
     description:
       "List active memories visible in the current context. Use when the user asks what Junior remembers or when memory ids are needed before removing a memory.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: listMemoriesInputSchema,
+    outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseToolInput<{ limit?: number }>(
-        listMemoriesInputSchema,
-        input,
-      );
+      const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
       const memories = await memoryStore(context).listMemories({
         limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
-      return {
-        ok: true,
+      return memoryToolResult("listMemories", {
         memories: memories.map(compactMemory),
-      };
+      });
     },
-  } satisfies PluginToolDefinition<{ limit?: number }>;
+  });
 }
 
 /** Create a tool that searches visible active memories in the active context. */
 export function createMemorySearchTool(context: MemoryToolContext) {
-  return {
+  return definePluginTool({
     description:
       "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current requester and active conversation scopes.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: searchMemoriesInputSchema,
+    outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseToolInput<{ limit?: number; query: string }>(
+      const parsedInput = parseMemoryToolInput(
         searchMemoriesInputSchema,
         input,
       );
@@ -517,10 +567,9 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         query: parsedInput.query,
         limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });
-      return {
-        ok: true,
+      return memoryToolResult("searchMemories", {
         memories: memories.map(compactMemory),
-      };
+      });
     },
-  } satisfies PluginToolDefinition<{ limit?: number; query: string }>;
+  });
 }

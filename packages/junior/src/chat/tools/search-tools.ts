@@ -1,8 +1,9 @@
-import { Type } from "@sinclair/typebox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
 import { summarizeInputSchema } from "@/chat/tool-support/schema-summary";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
 export const SEARCH_TOOLS_NAME = "searchTools";
 
@@ -103,46 +104,47 @@ function toolMetadata(name: string, definition: AnyToolDefinition) {
 export function createSearchToolsTool(
   catalogTools: Record<string, AnyToolDefinition>,
 ) {
-  return tool({
+  return zodTool({
     description:
       "Search the executable tool catalog. Use this to discover exact tool names, owners, schemas, and call notes before calling executeTool.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object(
-      {
-        query: Type.Optional(
-          Type.Union([
-            Type.String({
-              description:
-                "Optional search terms describing the tool, owner, action, or arguments needed. Empty string lists catalog tools.",
-            }),
-            Type.Null(),
-          ]),
-        ),
-        max_results: Type.Optional(
-          Type.Union([
-            Type.Integer({
-              minimum: 1,
-              maximum: MAX_RESULTS,
-              description:
-                "Maximum matching catalog tool descriptors to return.",
-            }),
-            Type.Null(),
-          ]),
-        ),
-      },
-      { additionalProperties: false },
-    ),
+    inputSchema: z
+      .object({
+        query: z
+          .string()
+          .nullable()
+          .describe(
+            "Optional search terms describing the tool, owner, action, or arguments needed. Empty string lists catalog tools.",
+          )
+          .optional(),
+        max_results: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_RESULTS)
+          .nullable()
+          .describe("Maximum matching catalog tool descriptors to return.")
+          .optional(),
+      })
+      .strict(),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;
       const matches = searchCatalogTools(catalogTools, query ?? "").slice(
         0,
         maxResults,
       );
-      return {
+      const data = {
         query: query ?? null,
         total_catalog_tools: Object.keys(catalogTools).length,
         returned_tools: matches.length,
         tools: matches.map((name) => toolMetadata(name, catalogTools[name]!)),
+      };
+      return {
+        ok: true,
+        status: "success" as const,
+        data,
+        ...data,
       };
     },
   });

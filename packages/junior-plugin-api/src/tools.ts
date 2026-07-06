@@ -8,7 +8,7 @@ import type {
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginState } from "./state";
-import { z, type ZodTypeAny } from "zod";
+import { z, type ZodType, type ZodTypeAny } from "zod";
 
 export interface PluginEnv {
   get(key: string): string | undefined;
@@ -90,18 +90,48 @@ export interface PluginToolExecuteOptions {
   toolCallId?: string;
 }
 
-export type PluginToolExecute<TInput = unknown> = {
+export const pluginToolContinuationSchema = z
+  .object({
+    arguments: z.record(z.string(), z.unknown()),
+    reason: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const pluginToolErrorSchema = z
+  .object({
+    kind: z.string().min(1),
+    message: z.string().min(1),
+    retryable: z.boolean().optional(),
+  })
+  .strict();
+
+export const pluginToolResultSchema = z
+  .object({
+    ok: z.boolean(),
+    status: z.enum(["success", "error"]),
+    target: z.string().min(1).optional(),
+    data: z.unknown().optional(),
+    truncated: z.boolean().optional(),
+    continuation: pluginToolContinuationSchema.optional(),
+    error: z.union([pluginToolErrorSchema, z.string()]).optional(),
+  })
+  .passthrough();
+
+export type PluginToolResult = z.output<typeof pluginToolResultSchema>;
+
+export type PluginToolExecute<TInput = unknown, TOutput = unknown> = {
   bivarianceHack(
     input: TInput,
     options: PluginToolExecuteOptions,
-  ): Promise<unknown> | unknown;
+  ): Promise<TOutput> | TOutput;
 }["bivarianceHack"];
 
-export interface PluginToolDefinition<TInput = unknown> {
+export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
   annotations?: unknown;
   description: string;
   executionMode?: unknown;
   inputSchema: unknown;
+  outputSchema?: unknown;
   prepareArguments?: (args: unknown) => unknown;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
@@ -115,15 +145,23 @@ export interface PluginToolDefinition<TInput = unknown> {
    * future major version.
    */
   promptSnippet?: string;
-  execute?: PluginToolExecute<TInput>;
+  execute?: PluginToolExecute<TInput, TOutput>;
 }
 
-type ZodPluginToolDefinition<TInputSchema extends ZodTypeAny> = Omit<
-  PluginToolDefinition<z.output<TInputSchema>>,
-  "inputSchema" | "prepareArguments"
+type ZodPluginToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<PluginToolResult>,
+> = Omit<
+  PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>>,
+  "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
 > & {
   inputSchema: TInputSchema;
+  outputSchema: TOutputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
+  execute?: (
+    input: z.output<TInputSchema>,
+    options: PluginToolExecuteOptions,
+  ) => Promise<z.input<TOutputSchema>> | z.input<TOutputSchema>;
 };
 
 function formatZodPath(path: readonly PropertyKey[]): string {
@@ -152,13 +190,18 @@ function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
 }
 
 /**
- * Define a plugin tool with JSON-Schema-representable Zod input parsing.
+ * Define a plugin tool with Zod input parsing and the structured result contract.
  */
-export function definePluginTool<TInputSchema extends ZodTypeAny>(
-  definition: ZodPluginToolDefinition<TInputSchema>,
-): PluginToolDefinition<z.output<TInputSchema>> {
-  const { inputSchema, prepareArguments, ...tool } = definition;
+export function definePluginTool<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<PluginToolResult>,
+>(
+  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
+): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+  const { inputSchema, outputSchema, prepareArguments, execute, ...tool } =
+    definition;
   let modelInputSchema: unknown;
+  let modelOutputSchema: unknown;
   try {
     modelInputSchema = z.toJSONSchema(inputSchema);
   } catch (error) {
@@ -167,15 +210,35 @@ export function definePluginTool<TInputSchema extends ZodTypeAny>(
       { cause: error },
     );
   }
+  try {
+    modelOutputSchema = z.toJSONSchema(outputSchema);
+  } catch (error) {
+    throw new TypeError(
+      "definePluginTool() outputSchema must be representable as JSON Schema.",
+      { cause: error },
+    );
+  }
   return {
     ...tool,
     inputSchema: modelInputSchema,
+    outputSchema: modelOutputSchema,
     prepareArguments(args) {
       return parsePluginToolInput(
         inputSchema,
         prepareArguments ? prepareArguments(args) : args,
       );
     },
+    ...(execute
+      ? {
+          async execute(input, options) {
+            const result = await execute(
+              input as z.output<TInputSchema>,
+              options,
+            );
+            return outputSchema.parse(pluginToolResultSchema.parse(result));
+          },
+        }
+      : {}),
   };
 }
 

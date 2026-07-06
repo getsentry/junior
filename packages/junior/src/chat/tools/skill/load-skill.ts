@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import {
@@ -8,7 +9,8 @@ import {
 } from "@/chat/skills";
 
 export type LoadSkillResult = {
-  ok?: boolean;
+  ok: boolean;
+  status: "error" | "success";
   error?: string;
   available_skills?: string[];
   skill_name?: string;
@@ -20,7 +22,7 @@ export type LoadSkillResult = {
   instructions?: string;
   mcp_provider?: string;
   available_tool_count?: number;
-};
+} & Record<string, unknown>;
 
 export type LoadSkillMetadata = Pick<
   LoadSkillResult,
@@ -67,6 +69,7 @@ async function loadSkillFromHost(
   if (!skill) {
     return {
       ok: false,
+      status: "error",
       error: `Unknown skill: ${skillName}`,
       available_skills: availableSkills.map((entry) => entry.name),
     };
@@ -81,6 +84,7 @@ async function loadSkillFromHost(
 
   return {
     ok: true,
+    status: "success",
     skill_name: skill.name,
     description: skill.description,
     skill_dir: skillDir,
@@ -109,6 +113,7 @@ export function createLoadSkillTool(
         .min(1)
         .describe("Skill name to load, without the leading slash."),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ skill_name }) => {
       const result = await loadSkillFromHost(availableSkills, skill_name);
       const loadedSkill = toLoadedSkill(result, availableSkills);

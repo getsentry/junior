@@ -2,14 +2,15 @@ import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import {
   createLocalSource,
+  definePluginTool,
   defineJuniorPlugin,
   EgressAuthRequired,
+  pluginToolResultSchema,
   type PluginHooks,
 } from "@sentry/junior-plugin-api";
-import { Type } from "@sinclair/typebox";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { tool } from "@/chat/tools/definition";
+import { z } from "zod";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -30,6 +31,19 @@ const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
 const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
 const OAUTH_BROKER_PROVIDER_HOST = "oauth-broker.example.test";
 const GITHUB_API_HOST = "api.github.com";
+
+const managedEgressReadResultSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  data: z.object({
+    body: z.string(),
+    ok: z.boolean(),
+    status: z.number(),
+  }),
+  body: z.string(),
+  upstream_ok: z.boolean(),
+  upstream_status: z.number(),
+});
 
 type EgressPolicyModule = typeof import("@/chat/sandbox/egress/policy");
 type EgressProxyModule = typeof import("@/chat/sandbox/egress/proxy");
@@ -676,9 +690,10 @@ describe("sandbox egress proxy integration", () => {
       issueCredential,
       tools(ctx) {
         return {
-          managedEgressRead: tool({
+          managedEgressRead: definePluginTool({
             description: "Read managed provider data through host egress",
-            inputSchema: Type.Object({}),
+            inputSchema: z.object({}),
+            outputSchema: managedEgressReadResultSchema,
             async execute() {
               const response = await ctx.egress.fetch({
                 provider: "managed-egress",
@@ -687,11 +702,19 @@ describe("sandbox egress proxy integration", () => {
                   `https://${MANAGED_PROVIDER_HOST}/v1/issues`,
                 ),
               });
-              return {
+              const data = {
                 ok: response.ok,
                 status: response.status,
                 body: await response.text(),
               };
+              return {
+                ok: true,
+                status: "success",
+                data,
+                body: data.body,
+                upstream_ok: data.ok,
+                upstream_status: data.status,
+              } as const;
             },
           }),
         };
@@ -753,8 +776,9 @@ describe("sandbox egress proxy integration", () => {
     expect(result).toMatchObject({
       details: {
         ok: true,
-        status: 200,
+        status: "success",
         body: "provider ok",
+        upstream_status: 200,
       },
     });
     expect(grantForEgress).toHaveBeenCalledWith(

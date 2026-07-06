@@ -1,14 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createLocalSource,
+  definePluginTool,
   defineJuniorPlugin,
+  pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
+import { z } from "zod";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createTools } from "@/chat/tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+
+const customerResultSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  customer_id: z.string(),
+  data: z.object({
+    customer_id: z.string(),
+    status: z.string(),
+  }),
+  status_text: z.string(),
+});
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -51,27 +65,32 @@ describe("Pi tool adapter integration", () => {
         hooks: {
           tools() {
             return {
-              lookupCustomer: tool({
+              lookupCustomer: definePluginTool({
                 description: "Lookup customer health for account review.",
-                inputSchema: Type.Object(
-                  {
-                    customerId: Type.String({
-                      minLength: 1,
-                      description: "Customer identifier to inspect.",
-                    }),
-                  },
-                  { additionalProperties: false },
-                ),
+                inputSchema: z.object({
+                  customerId: z
+                    .string()
+                    .min(1)
+                    .describe("Customer identifier to inspect."),
+                }),
+                outputSchema: customerResultSchema,
                 prepareArguments: (args) => {
                   const input = args as Record<string, unknown>;
                   return typeof input.customer_id === "string"
                     ? { customerId: input.customer_id }
                     : (input as { customerId: string });
                 },
-                execute: async ({ customerId }) => ({
-                  customer_id: customerId,
-                  status: "healthy",
-                }),
+                execute: async ({ customerId }) =>
+                  ({
+                    ok: true,
+                    status: "success",
+                    customer_id: customerId,
+                    data: {
+                      customer_id: customerId,
+                      status: "healthy",
+                    },
+                    status_text: "healthy",
+                  }) as const,
               }),
             };
           },
@@ -127,9 +146,15 @@ describe("Pi tool adapter integration", () => {
         },
       );
 
-      expect(executeResult.details).toEqual({
+      expect(executeResult.details).toMatchObject({
+        ok: true,
+        data: {
+          customer_id: "C123",
+          status: "healthy",
+        },
         customer_id: "C123",
-        status: "healthy",
+        status: "success",
+        status_text: "healthy",
       });
       expect(onToolCall).toHaveBeenCalledWith("agentDemo_lookupCustomer", {
         customerId: "C123",

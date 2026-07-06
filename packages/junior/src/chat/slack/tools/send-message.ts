@@ -10,10 +10,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { ToolState } from "@/chat/tools/types";
-import {
-  juniorToolResultEnvelopeSchema,
-  makeStructuredToolResult,
-} from "@/chat/tool-support/structured-result";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 
 /** Convert a model-supplied sandbox file path into bytes safe for Slack upload. */
 export type MaterializeMessageFile = (input: {
@@ -127,7 +124,7 @@ export function createSendMessageTool(
           "Sandbox files to include in the message. Null is treated as omitted.",
         ),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     execute: async ({ text, files }) => {
       const filesToSend = normalizeMessageFiles(files);
       const activeChannelId = context.sourceChannelId;
@@ -160,14 +157,14 @@ export function createSendMessageTool(
       });
       const cached = state.getOperationResult<SendMessageResult>(operationKey);
       if (cached) {
-        return makeStructuredToolResult({
+        return {
           ...cached,
           data: {
             ...cached.data,
             deduplicated: true,
           },
           deduplicated: true,
-        });
+        };
       }
 
       const uploads = materializedFiles.map((file) => ({
@@ -222,7 +219,7 @@ export function createSendMessageTool(
           : {}),
       };
       state.setOperationResult(operationKey, response);
-      return makeStructuredToolResult(response);
+      return response;
     },
   });
 }

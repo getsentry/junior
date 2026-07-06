@@ -36,6 +36,7 @@ import {
   recordSubagentEnded,
   recordSubagentStarted,
 } from "@/chat/state/session-log";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { z } from "zod";
@@ -48,17 +49,12 @@ export type AdvisorErrorCode =
   | "session_unavailable"
   | "unavailable";
 
-export interface AdvisorToolResult {
-  content: [{ type: "text"; text: string }];
-  details:
-    | {
-        ok: true;
-      }
-    | {
-        error_code: AdvisorErrorCode;
-        ok: false;
-      };
-}
+export type AdvisorToolResult = {
+  memo: string;
+  ok: boolean;
+  status: "error" | "success";
+  error_code?: AdvisorErrorCode;
+} & Record<string, unknown>;
 
 export interface AdvisorToolRuntimeContext {
   config: AdvisorConfig;
@@ -102,20 +98,18 @@ function failure(
   text = `Advisor guidance is unavailable (${errorCode}). Continue only if the next step is clear from verified evidence.`,
 ): AdvisorToolResult {
   return {
-    content: [{ type: "text", text }],
-    details: {
-      ok: false,
-      error_code: errorCode,
-    },
+    ok: false,
+    status: "error",
+    error_code: errorCode,
+    memo: text,
   };
 }
 
 function success(memo: string): AdvisorToolResult {
   return {
-    content: [{ type: "text", text: memo }],
-    details: {
-      ok: true,
-    },
+    ok: true,
+    status: "success",
+    memo,
   };
 }
 
@@ -160,6 +154,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           "Curated evidence packet: relevant requirements, constraints, current plan, alternatives, code snippets, diffs, command output, and open questions.",
         ),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async (
       { question, context: suppliedContext },
       { toolCallId } = {},

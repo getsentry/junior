@@ -14,7 +14,7 @@ import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  juniorToolResultEnvelopeSchema,
+  juniorToolResultSchema,
   makeStructuredToolResult,
 } from "@/chat/tool-support/structured-result";
 
@@ -146,7 +146,7 @@ export function createListDirTool() {
         .describe("Maximum entries to return. Defaults to 500.")
         .optional(),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     execute: async () => {
       throw new Error(
         "listDir can only run when sandbox execution is enabled.",

@@ -79,6 +79,7 @@ describe("createWebSearchTool", () => {
     );
     expect(result).toEqual({
       ok: true,
+      status: "success",
       model: "openai/gpt-5.4",
       query: "vercel ai gateway",
       result_count: 1,
@@ -122,6 +123,7 @@ describe("createWebSearchTool", () => {
       tool.execute({ query: "test query" }, {} as never),
     ).resolves.toEqual({
       ok: false,
+      status: "error",
       query: "test query",
       result_count: 0,
       results: [],
@@ -149,6 +151,7 @@ describe("createWebSearchTool", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(pending).resolves.toEqual({
       ok: false,
+      status: "error",
       query: "test query",
       result_count: 0,
       results: [],
@@ -261,6 +264,7 @@ describe("createWebSearchTool", () => {
     await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
       {
         ok: false,
+        status: "error",
         query: "test",
         result_count: 0,
         results: [],

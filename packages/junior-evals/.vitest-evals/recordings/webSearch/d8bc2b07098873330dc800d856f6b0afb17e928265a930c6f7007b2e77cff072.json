@@ -26,7 +26,8 @@
         "url": "https://forecast.weather.gov/MapClick.php?zoneid=CAZ508",
         "snippet": ""
       }
-    ]
+    ],
+    "status": "success"
   },
   "metadata": {
     "cacheKey": "d8bc2b07098873330dc800d856f6b0afb17e928265a930c6f7007b2e77cff072",

@@ -4,6 +4,7 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   PluginToolInputError,
   type PluginToolDefinition,
+  type PluginToolResult,
 } from "@sentry/junior-plugin-api";
 import {
   createSchedulerSqlStore,
@@ -98,14 +99,26 @@ function createContext(
   };
 }
 
-async function executeTool<TInput>(
-  tool: PluginToolDefinition<TInput>,
+async function executeTool<TInput, TOutput extends PluginToolResult>(
+  tool: PluginToolDefinition<TInput, TOutput>,
   input: TInput,
-) {
+): Promise<TOutput> {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
   return await tool.execute(input, {});
+}
+
+async function executeRegisteredTool<TDetails>(
+  tool: {
+    execute?: (input: unknown, options: {}) => Promise<unknown> | unknown;
+  },
+  input: unknown,
+): Promise<TDetails> {
+  if (typeof tool?.execute !== "function") {
+    throw new Error("tool execute function missing");
+  }
+  return (await tool.execute(input, {})) as TDetails;
 }
 
 function schedulerStore() {
@@ -1322,20 +1335,20 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
       expect(tools).toHaveProperty("scheduler_slackScheduleCreateTask");
 
       // Create a task through the real wired tool.
-      const result = await executeTool(
-        tools.scheduler_slackScheduleCreateTask,
-        {
-          task: "Wiring test: post a weekly digest.",
-          schedule: "Every Monday at 9am",
-          schedule_kind: "recurring",
-          timezone: "America/Los_Angeles",
-          next_run_at: "2026-06-09T16:00:00.000Z",
-          recurrence: "weekly",
-        },
-      );
+      const result = await executeRegisteredTool<{
+        ok: true;
+        task: { id: string };
+      }>(tools.scheduler_slackScheduleCreateTask, {
+        task: "Wiring test: post a weekly digest.",
+        schedule: "Every Monday at 9am",
+        schedule_kind: "recurring",
+        timezone: "America/Los_Angeles",
+        next_run_at: "2026-06-09T16:00:00.000Z",
+        recurrence: "weekly",
+      });
 
       expect(result).toMatchObject({ ok: true });
-      const taskId = (result as { task: { id: string } }).task.id;
+      const taskId = result.task.id;
 
       // Task destination must be the raw DM channel, NOT the assistant context.
       const stored = await store.getTask(taskId);

@@ -147,10 +147,10 @@ describe("advisor tool", () => {
         "Observed race: two workers update the same Slack thread state. Proposed fix: per-thread mutex.",
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
     });
-    expect(result.content[0].text).toBe("  Assessment\nUse a lock.\n");
+    expect(result.memo).toBe("  Assessment\nUse a lock.\n");
     expect(JSON.stringify(contexts[0])).toContain(
       "two workers update the same Slack thread state",
     );
@@ -269,7 +269,7 @@ describe("advisor tool", () => {
     });
 
     expect(runs).toBe(0);
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: false,
       error_code: "invalid_context",
     });

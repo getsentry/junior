@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
@@ -93,6 +94,7 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
         .describe("Max results to return.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ query, max_results }) => {
       if (override?.execute) {
         return override.execute({ query, max_results });
@@ -129,6 +131,7 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
         const results = parseSearchResults(response.toolResults, maxResults);
         return {
           ok: true,
+          status: "success" as const,
           model,
           query,
           result_count: results.length,
@@ -155,6 +158,7 @@ export function createWebSearchTool(override?: WebSearchToolDeps) {
         );
         return {
           ok: false,
+          status: "error" as const,
           query,
           result_count: 0,
           results: [],

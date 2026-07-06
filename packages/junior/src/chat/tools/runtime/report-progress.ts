@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the internal tool the model uses for sparse progress updates. */
@@ -11,6 +12,11 @@ export function createReportProgressTool() {
         .string()
         .min(1)
         .describe("Short user-facing progress message."),
+    }),
+    outputSchema: juniorToolResultSchema,
+    execute: async () => ({
+      ok: true,
+      status: "success" as const,
     }),
   });
 }

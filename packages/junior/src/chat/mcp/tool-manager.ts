@@ -18,7 +18,6 @@ import {
   toGenAiPayloadMetadata,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
@@ -122,6 +121,22 @@ function toAgentToolContent(
   return [{ type: "text", text: "ok" }];
 }
 
+function toModelVisibleMcpContent(
+  result: PluginMcpToolCallResult,
+): Array<TextContent | ImageContent> {
+  const content = toAgentToolContent(result);
+  if (content.some((part) => part.type === "image")) {
+    return content;
+  }
+
+  const structured = summarizeStructuredContent(result.structuredContent);
+  if (structured) {
+    return [{ type: "text", text: structured }];
+  }
+
+  return content;
+}
+
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
   const prefix = `[${provider}]`;
   const details = tool.description?.trim() || tool.title?.trim() || tool.name;
@@ -168,22 +183,6 @@ export interface McpToolManagerOptions {
 
 export interface ManagedMcpToolResult {
   content: Array<TextContent | ImageContent>;
-  details: {
-    ok: boolean;
-    provider: string;
-    rawResult: PluginMcpToolCallResult;
-    status: "success" | "error";
-    target: string;
-    tool: string;
-    tool_name: string;
-    data: {
-      content: Array<TextContent | ImageContent>;
-      provider: string;
-      rawResult: PluginMcpToolCallResult;
-      tool: string;
-      tool_name: string;
-    };
-  };
 }
 
 export interface ManagedMcpToolDescriptor {
@@ -423,26 +422,9 @@ export class McpToolManager {
                 });
               }
 
-              const content = toAgentToolContent(result);
-              return makeStructuredToolResult(
-                {
-                  ok: true,
-                  status: "success",
-                  target: managedToolName,
-                  data: {
-                    content,
-                    provider: plugin.manifest.name,
-                    rawResult: result,
-                    tool: tool.name,
-                    tool_name: managedToolName,
-                  },
-                  provider: plugin.manifest.name,
-                  rawResult: result,
-                  tool: tool.name,
-                  tool_name: managedToolName,
-                },
-                { content },
-              );
+              return {
+                content: toModelVisibleMcpContent(result),
+              };
             } catch (error) {
               if (
                 error instanceof McpAuthorizationRequiredError &&
@@ -451,11 +433,6 @@ export class McpToolManager {
                   error,
                 ))
               ) {
-                const parkedResult = {
-                  toolResult: {
-                    authorizationPending: true,
-                  },
-                };
                 const parkedContent = [
                   { type: "text" as const, text: "Authorization pending." },
                 ];
@@ -463,25 +440,9 @@ export class McpToolManager {
                 // Once auth pause has been requested, return a placeholder result
                 // and let the aborted turn park cleanly instead of surfacing a
                 // spurious tool failure to the model.
-                return makeStructuredToolResult(
-                  {
-                    ok: true,
-                    status: "success",
-                    target: managedToolName,
-                    data: {
-                      content: parkedContent,
-                      provider: plugin.manifest.name,
-                      rawResult: parkedResult,
-                      tool: tool.name,
-                      tool_name: managedToolName,
-                    },
-                    provider: plugin.manifest.name,
-                    rawResult: parkedResult,
-                    tool: tool.name,
-                    tool_name: managedToolName,
-                  },
-                  { content: parkedContent },
-                );
+                return {
+                  content: parkedContent,
+                };
               }
               const errorAttributes = {
                 ...baseAttributes,

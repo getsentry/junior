@@ -47,6 +47,8 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
       execute: async () => {
         return {
           result: {
+            ok: false,
+            status: "error",
             auth_required: {
               authorization: {
                 provider: "eval-oauth",
@@ -62,6 +64,7 @@ vi.mock("@/chat/sandbox/sandbox", async () => {
               kind: "auth_required",
               provider: "eval-oauth",
             },
+            command: "node needs-oauth.js",
             exit_code: 1,
             stderr: "auth required",
             stdout: "",

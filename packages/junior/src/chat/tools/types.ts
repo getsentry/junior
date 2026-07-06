@@ -15,6 +15,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
+import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
 import type {
   LocalRequester,
   Requester,
@@ -29,14 +30,14 @@ export interface WebFetchToolDeps {
   execute?: (input: {
     url: string;
     max_chars?: number;
-  }) => Promise<unknown> | unknown;
+  }) => Promise<JuniorToolResult> | JuniorToolResult;
 }
 
 export interface WebSearchToolDeps {
   execute?: (input: {
     query: string;
     max_results?: number;
-  }) => Promise<unknown> | unknown;
+  }) => Promise<JuniorToolResult> | JuniorToolResult;
 }
 
 /** Sandbox file handle returned to the model after a generated artifact is written. */

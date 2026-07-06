@@ -109,7 +109,10 @@ describe("createSlackCanvasReadTool", () => {
       start_line: number;
       end_line: number;
       total_lines: number;
-      continuation?: string;
+      continuation?: {
+        arguments: Record<string, unknown>;
+        reason?: string;
+      };
     };
 
     expect(result.ok).toBe(true);
@@ -122,9 +125,14 @@ describe("createSlackCanvasReadTool", () => {
     expect(result.start_line).toBe(1);
     expect(result.end_line).toBe(1000);
     expect(result.total_lines).toBe(1005);
-    expect(result.continuation).toBe(
-      "Read more with offset=1001 and limit=1000.",
-    );
+    expect(result.continuation).toEqual({
+      arguments: {
+        canvas: "F0LONG",
+        offset: 1001,
+        limit: 1000,
+      },
+      reason: "file has more lines",
+    });
     expect(result.original_byte_length).toBe(body.length);
   });
 
@@ -158,7 +166,13 @@ describe("createSlackCanvasReadTool", () => {
       end_line: 3,
       total_lines: 4,
       truncated: true,
-      continuation: "Read more with offset=4 and limit=2.",
+      continuation: {
+        arguments: {
+          canvas: "F0WINDOW",
+          offset: 4,
+          limit: 2,
+        },
+      },
     });
   });
 

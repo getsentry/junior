@@ -1,15 +1,15 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import {
+  injectContinuationToolName,
+  juniorToolResultSchema,
+} from "@/chat/tool-support/structured-result";
 
-function isStructuredToolExecutionResult(value: unknown): value is {
-  content: Array<TextContent | ImageContent>;
-  details: unknown;
-} {
-  const content = (value as { content?: unknown } | null)?.content;
+function isToolContent(
+  value: unknown,
+): value is Array<TextContent | ImageContent> {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    Array.isArray(content) &&
-    content.every((part) => {
+    Array.isArray(value) &&
+    value.every((part) => {
       if (!part || typeof part !== "object") {
         return false;
       }
@@ -23,8 +23,32 @@ function isStructuredToolExecutionResult(value: unknown): value is {
         );
       }
       return false;
-    }) &&
+    })
+  );
+}
+
+function isStructuredToolExecutionResult(value: unknown): value is {
+  content: Array<TextContent | ImageContent>;
+  details: unknown;
+} {
+  const content = (value as { content?: unknown } | null)?.content;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    isToolContent(content) &&
     "details" in value
+  );
+}
+
+function isContentOnlyToolExecutionResult(value: unknown): value is {
+  content: Array<TextContent | ImageContent>;
+} {
+  const content = (value as { content?: unknown } | null)?.content;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    isToolContent(content) &&
+    !("details" in value)
   );
 }
 
@@ -37,8 +61,35 @@ function toToolContentText(value: unknown): string {
   }
 }
 
+function withoutFirstGeneratedTextContent(
+  content: Array<TextContent | ImageContent>,
+): Array<TextContent | ImageContent> {
+  const [first, ...rest] = content;
+  if (first?.type === "text") {
+    return rest;
+  }
+  return content;
+}
+
+function replaceGeneratedTextContent(
+  content: Array<TextContent | ImageContent>,
+  text: string,
+): Array<TextContent | ImageContent> {
+  return [
+    {
+      type: "text",
+      text,
+    },
+    ...withoutFirstGeneratedTextContent(content),
+  ];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasContinuation(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.continuation);
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
@@ -128,32 +179,85 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
   ].join("\n");
 }
 
+function unwrapSandboxResult(result: unknown, isSandboxResult: boolean) {
+  return isSandboxResult &&
+    result &&
+    typeof result === "object" &&
+    "result" in result
+    ? (result as { result: unknown }).result
+    : result;
+}
+
+function normalizeDetails(
+  details: unknown,
+  options: { requireStructuredResult?: boolean; toolName?: string },
+): { details: unknown; replaceEnvelopeText: boolean } {
+  const continuationToolName =
+    options.toolName && hasContinuation(details) ? options.toolName : undefined;
+  if (!options.requireStructuredResult && !continuationToolName) {
+    return { details, replaceEnvelopeText: false };
+  }
+
+  const parsed = juniorToolResultSchema.parse(details);
+  if (!continuationToolName) {
+    return { details: parsed, replaceEnvelopeText: false };
+  }
+
+  return {
+    details: injectContinuationToolName(parsed, continuationToolName),
+    replaceEnvelopeText: true,
+  };
+}
+
 /** Unwrap sandbox envelope and detect structured results. */
 export function normalizeToolResult(
   result: unknown,
   isSandboxResult: boolean,
+  options: { requireStructuredResult?: boolean; toolName?: string } = {},
 ): { content: Array<TextContent | ImageContent>; details: unknown } {
-  const unwrapped =
-    isSandboxResult &&
-    result &&
-    typeof result === "object" &&
-    "result" in result
-      ? (result as { result: unknown }).result
-      : result;
+  const unwrapped = unwrapSandboxResult(result, isSandboxResult);
 
   if (isStructuredToolExecutionResult(unwrapped)) {
-    return unwrapped;
+    const normalized = normalizeDetails(unwrapped.details, options);
+    const permissionText = upstreamPermissionDeniedText(normalized.details);
+    if (!permissionText && normalized.details === unwrapped.details) {
+      return unwrapped;
+    }
+    const content =
+      permissionText || normalized.replaceEnvelopeText
+        ? replaceGeneratedTextContent(
+            unwrapped.content,
+            permissionText ?? toToolContentText(normalized.details),
+          )
+        : unwrapped.content;
+    return {
+      content,
+      details: normalized.details,
+    };
   }
 
+  if (isContentOnlyToolExecutionResult(unwrapped)) {
+    if (options.requireStructuredResult) {
+      throw new TypeError(
+        "Structured tools must return details matching their outputSchema.",
+      );
+    }
+    return {
+      content: unwrapped.content,
+      details: { ok: true, status: "success" },
+    };
+  }
+
+  const normalized = normalizeDetails(unwrapped, options);
   return {
     content: [
       {
         type: "text",
         text:
-          upstreamPermissionDeniedText(unwrapped) ??
-          toToolContentText(unwrapped),
+          upstreamPermissionDeniedText(normalized.details) ??
+          toToolContentText(normalized.details),
       },
     ],
-    details: unwrapped,
+    details: normalized.details,
   };
 }

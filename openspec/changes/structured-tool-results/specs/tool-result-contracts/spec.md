@@ -2,19 +2,41 @@
 
 ## ADDED Requirements
 
-### Requirement: Junior-Owned Structured Result Envelope
+### Requirement: Junior-Owned Structured Result Mode
 
-Junior-owned high-leverage tools SHALL support a structured result envelope that
+Junior-owned high-leverage tools SHALL support a structured result mode that
 captures the tool outcome in stable fields while remaining compatible with Pi's
 `AgentToolResult` transport shape.
 
 #### Scenario: Structured result returned to Pi
 
-- **WHEN** a converted Junior-owned tool completes
+- **WHEN** a converted Junior-owned structured tool completes
 - **THEN** it returns Pi-compatible `content` and `details`
 - **AND** `details` contains the structured Junior result object
 - **AND** `content` contains a deterministic compact representation of the same
   result object for the model.
+
+### Requirement: Native Content Bridge Mode
+
+Junior-owned provider bridge tools SHALL preserve native model content when
+structured text would hide multimodal provider payloads.
+
+#### Scenario: MCP tool returns image content
+
+- **WHEN** a managed MCP tool returns image content
+- **THEN** Junior passes the native text/image content to Pi `content`
+- **AND** the managed MCP layer records provider/tool identity and raw provider
+  output through its own tracing/logging
+- **AND** the returned tool result does not author tool-specific `details`
+- **AND** Junior does not replace the image content with only a structured JSON
+  summary.
+
+#### Scenario: MCP tool returns structuredContent without image content
+
+- **WHEN** a managed MCP tool returns `structuredContent` and no image content
+- **THEN** Junior may use the structured provider payload as model-visible text
+- **AND** the managed MCP layer may trace the provider's raw content according to
+  conversation privacy.
 
 ### Requirement: Model-Visible Result Facts
 
@@ -76,6 +98,12 @@ Converted tools SHALL validate declared result schemas at the tool boundary.
 - **THEN** Junior treats the failure as a runtime contract failure
 - **AND** the failure is not classified as a model-repairable input error.
 
+#### Scenario: Structured tool returns native content only
+
+- **WHEN** a tool declares a Junior-owned structured result schema
+- **AND** its executor returns `{ content }` without `details`
+- **THEN** Junior treats the result as a runtime contract failure.
+
 ### Requirement: First-Slice Tool Coverage
 
 The first structured-result implementation SHALL cover tools where reliable
@@ -85,8 +113,12 @@ follow-up or side-effect auditing materially affects agent behavior.
 
 - **WHEN** the first implementation slice is complete
 - **THEN** `bash`, `readFile`, `grep`, `listDir`, `editFile`, `writeFile`,
-  `callMcpTool`, and `sendMessage` return structured result objects
-- **AND** existing unconverted tools continue to work through the legacy result
+  and `sendMessage` return structured result objects
+- **AND** `callMcpTool` preserves provider-native model content without declaring
+  a Junior `outputSchema`
+- **AND** provider bridge tools preserve native model content when required for
+  multimodal output
+- **AND** existing non-Zod tools continue to work through the legacy result
   normalization path.
 
 ### Requirement: Pi Boundary Remains Generic

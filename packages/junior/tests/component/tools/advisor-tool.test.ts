@@ -74,7 +74,7 @@ describe("createAdvisorTool", () => {
       {},
     );
 
-    expect(result).toMatchObject({ details: { ok: true } });
+    expect(result).toMatchObject({ ok: true, status: "success" });
     const startAttributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
       string,
       unknown

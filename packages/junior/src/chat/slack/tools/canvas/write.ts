@@ -5,6 +5,7 @@ import {
   storedCanvasUrl,
 } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -22,10 +23,11 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         .describe("Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL."),
       content: z.string().describe("UTF-8 markdown content to write."),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ canvas, content }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return target;
+        return { ...target, status: "error" as const };
       }
 
       const operationKey = createOperationKey("slackCanvasWrite", {
@@ -34,6 +36,7 @@ export function createSlackCanvasWriteTool(state: ToolState) {
       });
       const cached = state.getOperationResult<{
         ok: true;
+        status: "success";
         canvas_id: string;
         normalized_heading_count: number;
       }>(operationKey);
@@ -55,6 +58,7 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         });
         const response = {
           ok: true,
+          status: "success" as const,
           canvas_id: target.canvasId,
           normalized_heading_count: written.normalizedHeadingCount,
           summary: `Wrote canvas ${target.canvasId}`,
@@ -75,6 +79,7 @@ export function createSlackCanvasWriteTool(state: ToolState) {
         );
         return {
           ok: false,
+          status: "error" as const,
           canvas_id: target.canvasId,
           error: message,
         };

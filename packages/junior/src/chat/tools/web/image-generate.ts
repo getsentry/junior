@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
@@ -89,6 +90,7 @@ export function createImageGenerateTool(
     inputSchema: z.object({
       prompt: z.string().min(1).max(4000).describe("Image generation prompt."),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
       // Raw fetch does not resolve AI Gateway env auth on its own, so this
@@ -170,6 +172,7 @@ export function createImageGenerateTool(
 
         return {
           ok: true,
+          status: "success" as const,
           model,
           prompt,
           enrichedPrompt,
@@ -189,6 +192,7 @@ export function createImageGenerateTool(
 
       return {
         ok: true,
+        status: "success" as const,
         model,
         prompt,
         enrichedPrompt,

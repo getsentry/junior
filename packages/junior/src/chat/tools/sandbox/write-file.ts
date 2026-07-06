@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { juniorToolResultEnvelopeSchema } from "@/chat/tool-support/structured-result";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 /** Create the sandbox full-file write tool definition exposed to the agent. */
@@ -15,7 +15,7 @@ export function createWriteFileTool() {
         .describe("Path to write in the sandbox workspace."),
       content: z.string().describe("UTF-8 file content to write."),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     execute: async () => {
       throw new Error(
         "writeFile can only run when sandbox execution is enabled.",

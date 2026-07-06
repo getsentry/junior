@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
-    "@sinclair/typebox": "^0.34.49"
+    "@sinclair/typebox": "^0.34.49",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

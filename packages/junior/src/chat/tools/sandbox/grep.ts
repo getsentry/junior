@@ -16,7 +16,7 @@ import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import {
-  juniorToolResultEnvelopeSchema,
+  juniorToolResultSchema,
   makeStructuredToolResult,
 } from "@/chat/tool-support/structured-result";
 
@@ -272,7 +272,7 @@ export function createGrepTool() {
         .describe("Maximum matches to return. Defaults to 100.")
         .optional(),
     }),
-    outputSchema: juniorToolResultEnvelopeSchema,
+    outputSchema: juniorToolResultSchema,
     execute: async () => {
       throw new Error("grep can only run when sandbox execution is enabled.");
     },

@@ -43,6 +43,8 @@ describe("web fetch tool", () => {
       }),
     );
     extractWebFetchResponseMock.mockResolvedValue({
+      ok: true,
+      status: "success",
       url: safeUrl.toString(),
       content: "hello",
     });
@@ -54,7 +56,12 @@ describe("web fetch tool", () => {
       {} as never,
     );
 
-    expect(result).toEqual({ url: safeUrl.toString(), content: "hello" });
+    expect(result).toEqual({
+      ok: true,
+      status: "success",
+      url: safeUrl.toString(),
+      content: "hello",
+    });
     expect(assertPublicUrlMock).toHaveBeenCalledTimes(1);
     expect(fetchTextWithRedirectsMock).toHaveBeenCalledTimes(1);
     expect(extractWebFetchResponseMock).toHaveBeenCalledTimes(1);

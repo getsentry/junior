@@ -6,6 +6,7 @@ import {
 } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
@@ -53,10 +54,11 @@ export function createSlackCanvasEditTool(state: ToolState) {
           "Exact replacements matched against the current Canvas body, not incrementally.",
         ),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ canvas, edits }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return target;
+        return { ...target, status: "error" as const };
       }
 
       const operationKey = createOperationKey("slackCanvasEdit", {
@@ -65,6 +67,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
       });
       const cached = state.getOperationResult<{
         ok: true;
+        status: "success";
         canvas_id: string;
         diff: string;
         first_changed_line?: number;
@@ -100,6 +103,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
         );
         const response = {
           ok: true,
+          status: "success" as const,
           canvas_id: target.canvasId,
           title: current.title,
           permalink: current.permalink,
@@ -125,6 +129,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
         );
         return {
           ok: false,
+          status: "error" as const,
           canvas_id: target.canvasId,
           error: message,
         };

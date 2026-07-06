@@ -13,7 +13,6 @@ describe("makeStructuredToolResult", () => {
         path: "notes.txt",
       },
       continuation: {
-        tool_name: "readFile",
         arguments: {
           path: "notes.txt",
           offset: 2,

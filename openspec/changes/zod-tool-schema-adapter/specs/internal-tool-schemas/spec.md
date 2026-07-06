@@ -54,6 +54,30 @@ input failures.
 - **THEN** Junior treats that failure as a tool execution error
 - **AND** the failure is not classified as `tool_input_error`.
 
+### Requirement: Host Zod Tool Result Modes
+
+Host-owned `zodTool(...)` SHALL support structured mode by default and native
+content mode only when no Junior-owned structured output schema is declared.
+
+#### Scenario: Structured host tool
+
+- **WHEN** a host-owned Zod tool declares `outputSchema`
+- **THEN** the schema extends the shared Junior result object
+- **AND** the executor returns the schema-shaped details object
+- **AND** Junior validates the returned details against the declared schema.
+
+#### Scenario: Native content host tool
+
+- **WHEN** a host-owned Zod tool omits `outputSchema`
+- **THEN** the executor returns `{ content }` only
+- **AND** the executor does not author tool-specific `details`.
+
+#### Scenario: Native content returned by a structured host tool
+
+- **WHEN** a host-owned Zod tool declares `outputSchema`
+- **AND** its executor returns `{ content }` without `details`
+- **THEN** Junior treats the output as a runtime contract failure.
+
 ### Requirement: Existing Schema Sources Remain Compatible
 
 The adapter layer SHALL preserve existing support for TypeBox-authored tools,
@@ -68,7 +92,8 @@ provider-owned MCP schemas, and plugin-owned tool schemas during migration.
 
 Plugin-authored tools SHALL support a public `definePluginTool(...)` helper
 that accepts a Zod input schema and infers the plugin executor input type from
-that schema.
+that schema. First-party plugin tools authored through this helper SHALL declare
+a structured `outputSchema`.
 
 #### Scenario: Plugin model-facing parameters
 

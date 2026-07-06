@@ -9,6 +9,7 @@ import {
   slackUserIdParam,
 } from "@/chat/slack/id-param";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const booleanInput = (description: string) =>
@@ -65,6 +66,7 @@ export function createSlackUserLookupTool() {
         "Include bot accounts in name search results. Defaults to false.",
       ).optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({
       user_id,
       email,
@@ -77,6 +79,7 @@ export function createSlackUserLookupTool() {
       if (modes.length === 0) {
         return {
           ok: false,
+          status: "error" as const,
           error:
             "Provide exactly one of user_id, email, or query to look up a Slack user.",
         };
@@ -84,6 +87,7 @@ export function createSlackUserLookupTool() {
       if (modes.length > 1) {
         return {
           ok: false,
+          status: "error" as const,
           error: "Only one of user_id, email, or query can be provided.",
         };
       }
@@ -95,11 +99,16 @@ export function createSlackUserLookupTool() {
             user_id,
           );
           if (!parsedUserId.ok) {
-            return { ok: false, error: parsedUserId.error };
+            return {
+              ok: false,
+              status: "error" as const,
+              error: parsedUserId.error,
+            };
           }
 
           return {
             ok: true,
+            status: "success" as const,
             mode: "user_id",
             user: await lookupSlackUserProfile(parsedUserId.value),
           };
@@ -110,12 +119,18 @@ export function createSlackUserLookupTool() {
           if (!profile) {
             return {
               ok: false,
+              status: "error" as const,
               mode: "email",
               email,
               error: "No Slack user found with that email address.",
             };
           }
-          return { ok: true, mode: "email", user: profile };
+          return {
+            ok: true,
+            status: "success" as const,
+            mode: "email",
+            user: profile,
+          };
         }
 
         const result = await searchSlackUsers({
@@ -127,6 +142,7 @@ export function createSlackUserLookupTool() {
 
         return {
           ok: true,
+          status: "success" as const,
           mode: "query",
           query,
           count: result.users.length,
@@ -139,6 +155,7 @@ export function createSlackUserLookupTool() {
         if (error instanceof SlackActionError) {
           return {
             ok: false,
+            status: "error" as const,
             error: error.message,
             slack_error: error.apiError,
             code: error.code,

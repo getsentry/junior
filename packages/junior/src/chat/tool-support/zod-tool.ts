@@ -1,4 +1,9 @@
-import { z, type ZodTypeAny } from "zod";
+import { z, type ZodType, type ZodTypeAny } from "zod";
+import {
+  juniorToolResultSchema,
+  type JuniorToolResult,
+} from "@/chat/tool-support/structured-result";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type {
   AnyToolDefinition,
   JsonSchemaObject,
@@ -6,10 +11,7 @@ import type {
 } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-type ZodToolDefinition<
-  TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodTypeAny | undefined = undefined,
-> = Pick<
+type ZodToolDefinitionBase<TInputSchema extends ZodTypeAny> = Pick<
   AnyToolDefinition,
   | "identity"
   | "description"
@@ -20,17 +22,57 @@ type ZodToolDefinition<
   | "executionMode"
 > & {
   inputSchema: TInputSchema;
-  outputSchema?: TOutputSchema;
   prepareArguments?: (args: unknown) => z.input<TInputSchema>;
+};
+
+type StructuredToolExecuteResult<
+  TOutputSchema extends ZodType<JuniorToolResult>,
+> = z.input<TOutputSchema>;
+
+interface ContentOnlyToolResult {
+  content: Array<TextContent | ImageContent>;
+  details?: never;
+}
+
+type StructuredZodToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<JuniorToolResult>,
+> = ZodToolDefinitionBase<TInputSchema> & {
+  outputSchema: TOutputSchema;
   execute?: (
     input: z.output<TInputSchema>,
     options: ToolExecuteOptions,
   ) =>
-    | Promise<
-        TOutputSchema extends ZodTypeAny ? z.input<TOutputSchema> : unknown
-      >
-    | (TOutputSchema extends ZodTypeAny ? z.input<TOutputSchema> : unknown);
+    | Promise<StructuredToolExecuteResult<TOutputSchema>>
+    | StructuredToolExecuteResult<TOutputSchema>;
 };
+
+type ContentZodToolDefinition<TInputSchema extends ZodTypeAny> =
+  ZodToolDefinitionBase<TInputSchema> & {
+    outputSchema?: undefined;
+    execute?: (
+      input: z.output<TInputSchema>,
+      options: ToolExecuteOptions,
+    ) => Promise<ContentOnlyToolResult> | ContentOnlyToolResult;
+  };
+
+type ZodToolDefinition<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<JuniorToolResult>,
+> =
+  | StructuredZodToolDefinition<TInputSchema, TOutputSchema>
+  | ContentZodToolDefinition<TInputSchema>;
+
+function isContentOnlyToolResult(
+  value: unknown,
+): value is ContentOnlyToolResult {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Array.isArray((value as { content?: unknown }).content) &&
+    !("details" in value)
+  );
+}
 
 function formatZodPath(path: readonly PropertyKey[]): string {
   return path.length > 0 ? path.map(String).join(".") : "root";
@@ -62,14 +104,22 @@ function parseToolInput<TInputSchema extends ZodTypeAny>(
  */
 export function zodTool<
   TInputSchema extends ZodTypeAny,
-  TOutputSchema extends ZodTypeAny | undefined = undefined,
+  TOutputSchema extends ZodType<JuniorToolResult>,
+>(
+  definition: StructuredZodToolDefinition<TInputSchema, TOutputSchema>,
+): AnyToolDefinition;
+export function zodTool<TInputSchema extends ZodTypeAny>(
+  definition: ContentZodToolDefinition<TInputSchema>,
+): AnyToolDefinition;
+export function zodTool<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<JuniorToolResult>,
 >(
   definition: ZodToolDefinition<TInputSchema, TOutputSchema>,
 ): AnyToolDefinition {
   const { inputSchema, outputSchema, prepareArguments, execute, ...toolDef } =
     definition;
   let modelInputSchema: JsonSchemaObject;
-  let modelOutputSchema: JsonSchemaObject | undefined;
   try {
     modelInputSchema = z.toJSONSchema(inputSchema) as JsonSchemaObject;
   } catch (error) {
@@ -78,6 +128,7 @@ export function zodTool<
       { cause: error },
     );
   }
+  let modelOutputSchema: JsonSchemaObject | undefined;
   if (outputSchema) {
     try {
       modelOutputSchema = z.toJSONSchema(outputSchema) as JsonSchemaObject;
@@ -105,7 +156,15 @@ export function zodTool<
               input as z.output<TInputSchema>,
               options,
             );
-            return outputSchema ? outputSchema.parse(result) : result;
+            if (!outputSchema) {
+              if (isContentOnlyToolResult(result)) {
+                return result;
+              }
+              throw new TypeError(
+                "zodTool() content-only tools must return { content } without details.",
+              );
+            }
+            return outputSchema.parse(juniorToolResultSchema.parse(result));
           },
         }
       : {}),

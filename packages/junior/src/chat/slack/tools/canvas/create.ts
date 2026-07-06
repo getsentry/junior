@@ -4,6 +4,7 @@ import { createCanvas } from "@/chat/slack/tools/canvas/api";
 import { mergeRecentCanvases } from "@/chat/slack/tools/canvas/context";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -20,6 +21,7 @@ export function createSlackCanvasCreateTool(
       title: z.string().min(1).max(160).describe("Canvas title."),
       markdown: z.string().min(1).describe("Canvas markdown body content."),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.destinationChannelId;
       if (!isConversationScopedChannel(targetChannelId)) {
@@ -44,6 +46,7 @@ export function createSlackCanvasCreateTool(
       });
       const cached = state.getOperationResult<{
         ok: true;
+        status: "success";
         canvas_id: string;
         permalink: string;
         summary: string;
@@ -75,6 +78,7 @@ export function createSlackCanvasCreateTool(
 
       const response = {
         ok: true,
+        status: "success" as const,
         canvas_id: created.canvasId,
         permalink: created.permalink,
         summary: `Created canvas ${created.canvasId}`,

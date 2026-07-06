@@ -419,6 +419,9 @@ importers:
       "@sinclair/typebox":
         specifier: ^0.34.49
         version: 0.34.49
+      zod:
+        specifier: "catalog:"
+        version: 4.4.3
     devDependencies:
       "@types/node":
         specifier: ^25.9.1

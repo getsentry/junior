@@ -145,30 +145,7 @@ describe("McpToolManager", () => {
     expect(callToolMock).toHaveBeenCalledWith(plugin, "ping", {
       query: "hello",
     });
-    expect(result.details).toMatchObject({
-      ok: true,
-      status: "success",
-      target: "mcp__demo__ping",
-      provider: "demo",
-      tool: "ping",
-      tool_name: "mcp__demo__ping",
-      data: {
-        content: [{ type: "text", text: "pong" }],
-        provider: "demo",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-        rawResult: {
-          content: [{ type: "text", text: "pong" }],
-          isError: false,
-        },
-      },
-    });
-    const content = result.content[0];
-    if (content?.type !== "text") {
-      throw new Error("MCP structured result should be text content");
-    }
-    expect(JSON.parse(content.text)).toEqual(result.details);
-    expect(result.content[1]).toEqual({ type: "text", text: "pong" });
+    expect(result.content).toEqual([{ type: "text", text: "pong" }]);
 
     await manager.close();
     expect(closeMock).toHaveBeenCalledTimes(1);
@@ -196,6 +173,63 @@ describe("McpToolManager", () => {
     await expect(resolvedTools[0]!.execute({})).rejects.toThrow(
       "expected object, received undefined",
     );
+  });
+
+  it("keeps native MCP image content without duplicating text content", async () => {
+    const plugin = buildPlugin();
+    const manager = new McpToolManager([plugin]);
+    await manager.activateProvider("demo");
+    callToolMock.mockResolvedValueOnce({
+      content: [
+        { type: "text", text: "image generated" },
+        { type: "image", data: "base64-image", mimeType: "image/png" },
+      ],
+      isError: false,
+    });
+
+    const result = await manager.getResolvedActiveTools()[0]!.execute({});
+
+    expect(result.content).toEqual([
+      { type: "text", text: "image generated" },
+      {
+        type: "image",
+        data: "base64-image",
+        mimeType: "image/png",
+      },
+    ]);
+
+    await manager.close();
+  });
+
+  it("uses MCP structuredContent as model-visible text when no image content is present", async () => {
+    const plugin = buildPlugin();
+    const manager = new McpToolManager([plugin]);
+    await manager.activateProvider("demo");
+    callToolMock.mockResolvedValueOnce({
+      content: [{ type: "text", text: "raw text" }],
+      structuredContent: {
+        count: 2,
+        values: ["alpha", "beta"],
+      },
+      isError: false,
+    });
+
+    const result = await manager.getResolvedActiveTools()[0]!.execute({});
+
+    expect(result.content).toEqual([
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            count: 2,
+            values: ["alpha", "beta"],
+          },
+          null,
+          2,
+        ),
+      },
+    ]);
+    await manager.close();
   });
 
   it("surfaces MCP authorization challenges through the callback hook", async () => {
@@ -235,30 +269,7 @@ describe("McpToolManager", () => {
 
     const resolvedTools = manager.getResolvedActiveTools();
     await expect(resolvedTools[0]!.execute({})).resolves.toMatchObject({
-      details: {
-        ok: true,
-        status: "success",
-        target: "mcp__demo__ping",
-        provider: "demo",
-        tool: "ping",
-        tool_name: "mcp__demo__ping",
-        data: {
-          content: [{ type: "text", text: "Authorization pending." }],
-          provider: "demo",
-          tool: "ping",
-          tool_name: "mcp__demo__ping",
-          rawResult: {
-            toolResult: {
-              authorizationPending: true,
-            },
-          },
-        },
-        rawResult: {
-          toolResult: {
-            authorizationPending: true,
-          },
-        },
-      },
+      content: [{ type: "text", text: "Authorization pending." }],
     });
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
   });
@@ -426,11 +437,8 @@ describe("McpToolManager", () => {
     const createPagesTool = manager
       .getResolvedActiveTools()
       .find((t) => t.name === "mcp__notion__notion-create-pages");
-    await expect(createPagesTool!.execute({})).resolves.toMatchObject({
-      details: {
-        provider: "notion",
-        tool: "notion-create-pages",
-      },
+    await expect(createPagesTool!.execute({})).resolves.toEqual({
+      content: [{ type: "text", text: "pong" }],
     });
   });
 

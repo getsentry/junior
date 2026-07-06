@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import {
@@ -113,6 +114,7 @@ export function createSubscribeToResourceEventsTool(
     description:
       "Subscribe the current conversation to high-signal events for a resource returned by a subscribable tool result. Matching events are queued as normal conversation messages; they do not interrupt active work.",
     inputSchema: subscribeInputSchema,
+    outputSchema: juniorToolResultSchema,
     async execute(input: SubscribeInput) {
       const conversationId = requireConversationContext(context);
       const events = cleanStrings(input.events);
@@ -132,12 +134,18 @@ export function createSubscribeToResourceEventsTool(
         resourceRef: input.resourceRef.trim(),
         resourceType: input.resourceType.trim(),
       });
-      return {
+      const details = {
         id: subscription.id,
-        status: subscription.status,
+        subscription_status: subscription.status,
         resourceRef: subscription.resourceRef,
         events: subscription.events,
         expiresAtMs: subscription.expiresAtMs,
+      };
+      return {
+        ok: true,
+        status: "success" as const,
+        data: details,
+        ...details,
       };
     },
   });
@@ -151,12 +159,13 @@ export function createListResourceEventSubscriptionsTool(
     description:
       "List active resource event subscriptions for the current conversation.",
     inputSchema: z.object({}),
+    outputSchema: juniorToolResultSchema,
     async execute() {
       const conversationId = requireConversationContext(context);
       const subscriptions = await listResourceEventSubscriptions({
         conversationId,
       });
-      return {
+      const details = {
         subscriptions: subscriptions.map((subscription) => ({
           id: subscription.id,
           label: subscription.label,
@@ -167,6 +176,12 @@ export function createListResourceEventSubscriptionsTool(
           intent: subscription.intent,
           expiresAtMs: subscription.expiresAtMs,
         })),
+      };
+      return {
+        ok: true,
+        status: "success" as const,
+        data: details,
+        ...details,
       };
     },
   });
@@ -180,6 +195,7 @@ export function createCancelResourceEventSubscriptionTool(
     description:
       "Cancel a resource event subscription for the current conversation.",
     inputSchema: cancelInputSchema,
+    outputSchema: juniorToolResultSchema,
     async execute(input: CancelInput) {
       const conversationId = requireConversationContext(context);
       const subscription = await cancelResourceEventSubscription({
@@ -189,9 +205,15 @@ export function createCancelResourceEventSubscriptionTool(
       if (!subscription) {
         throw new Error("Resource event subscription was not found");
       }
-      return {
+      const details = {
         id: subscription.id,
-        status: subscription.status,
+        subscription_status: subscription.status,
+      };
+      return {
+        ok: true,
+        status: "success" as const,
+        data: details,
+        ...details,
       };
     },
   });

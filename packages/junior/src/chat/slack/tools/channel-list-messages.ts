@@ -8,6 +8,7 @@ import {
   parseSlackTimestampParam,
 } from "@/chat/slack/timestamp-param";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tools/context";
@@ -94,6 +95,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         .describe("Maximum number of API pages to traverse in a single call.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({
       limit,
       cursor,
@@ -113,7 +115,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         targetChannelId,
       );
       if (!normalizedOldest.ok) {
-        return { ok: false, error: normalizedOldest.error };
+        return {
+          ok: false,
+          status: "error" as const,
+          error: normalizedOldest.error,
+        };
       }
       const normalizedLatest = normalizeRangeTimestamp(
         "latest",
@@ -121,7 +127,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         targetChannelId,
       );
       if (!normalizedLatest.ok) {
-        return { ok: false, error: normalizedLatest.error };
+        return {
+          ok: false,
+          status: "error" as const,
+          error: normalizedLatest.error,
+        };
       }
 
       let result;
@@ -142,6 +152,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         ) {
           return {
             ok: false,
+            status: "error" as const,
             error:
               "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
           };
@@ -151,21 +162,14 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       const summary = {
         ok: true,
+        status: "success" as const,
         channel_id: targetChannelId,
         count: result.messages.length,
-        next_cursor: result.nextCursor,
         messages: result.messages,
+        ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
       };
 
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(summary) }],
-        details: {
-          ok: true,
-          channel_id: targetChannelId,
-          count: result.messages.length,
-          ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
-        },
-      };
+      return summary;
     },
   });
 }

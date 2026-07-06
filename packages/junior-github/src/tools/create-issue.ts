@@ -1,12 +1,15 @@
 import {
+  definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
-  type PluginToolDefinition,
   type PluginToolExecuteOptions,
+  type PluginToolResult,
   type ToolRegistrationHookContext,
+  pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
@@ -44,6 +47,21 @@ const createIssueInputSchema = Type.Object(
 );
 type CreateGitHubIssueInput = Static<typeof createIssueInputSchema>;
 
+const createIssueToolInputSchema = z
+  .object({
+    repo: z.string().describe('Repository in "owner/name" format.'),
+    title: z.string().describe("Issue title."),
+    body: z
+      .string()
+      .describe("Issue body. Junior appends the conversation footer.")
+      .optional(),
+    labels: z
+      .array(z.string())
+      .describe("Labels to apply to the issue.")
+      .optional(),
+  })
+  .strict();
+
 const createIssueStateSchema = Type.Union([
   Type.Object(
     {
@@ -72,6 +90,39 @@ type CreateIssueState = Static<typeof createIssueStateSchema>;
 interface GitHubIssueResult {
   number: number;
   url: string;
+}
+
+interface GitHubIssueToolResult extends PluginToolResult, GitHubIssueResult {
+  ok: true;
+  status: "success";
+  target: "createIssue";
+  data: GitHubIssueResult;
+}
+
+const gitHubIssueDataSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+});
+
+const gitHubIssueOutputSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.literal("createIssue"),
+  data: gitHubIssueDataSchema,
+  number: z.number(),
+  url: z.string(),
+});
+
+function gitHubIssueToolResult(
+  result: GitHubIssueResult,
+): GitHubIssueToolResult {
+  return {
+    ok: true,
+    status: "success",
+    target: "createIssue",
+    data: result,
+    ...result,
+  };
 }
 
 function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
@@ -218,13 +269,12 @@ async function createGitHubIssue(
 }
 
 /** Own issue creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubIssueTool(
-  ctx: ToolRegistrationHookContext,
-): PluginToolDefinition<CreateGitHubIssueInput> {
-  return {
+export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
+  return definePluginTool({
     description:
       "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
-    inputSchema: createIssueInputSchema,
+    inputSchema: createIssueToolInputSchema,
+    outputSchema: gitHubIssueOutputSchema,
     async execute(
       input: CreateGitHubIssueInput,
       options: PluginToolExecuteOptions,
@@ -242,10 +292,10 @@ export function createGitHubIssueTool(
         async () => {
           const state = createIssueState(await ctx.state.get(key));
           if (state?.status === "completed") {
-            return {
+            return gitHubIssueToolResult({
               number: state.number,
               url: state.url,
-            };
+            });
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -277,7 +327,7 @@ export function createGitHubIssueTool(
                 { cause: error },
               );
             }
-            return result;
+            return gitHubIssueToolResult(result);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -290,5 +340,5 @@ export function createGitHubIssueTool(
         },
       );
     },
-  };
+  });
 }

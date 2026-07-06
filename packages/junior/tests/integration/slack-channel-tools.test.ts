@@ -172,7 +172,7 @@ describe("slack channel tools", () => {
       text: "Posting this update",
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -261,14 +261,14 @@ describe("slack channel tools", () => {
       text: "Incident resolved.",
     });
 
-    expect(first.details).toMatchObject({
+    expect(first).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
       thread_ts: "1700000000.321",
       ts: "1700000000.200",
     });
-    expect(second.details).toMatchObject({
+    expect(second).toMatchObject({
       ok: true,
       status: "success",
       deduplicated: true,
@@ -301,14 +301,13 @@ describe("slack channel tools", () => {
       max_pages: 3,
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 1,
     });
-    expect(result.details).not.toHaveProperty("next_cursor");
-    const body = JSON.parse(result.content[0].text);
-    expect(body.messages).toMatchObject([
+    expect(result).not.toHaveProperty("next_cursor");
+    expect(result.messages).toMatchObject([
       { ts: "1700000000.300", text: "hello", user: "U1" },
     ]);
 
@@ -337,7 +336,7 @@ describe("slack channel tools", () => {
       latest: " slack:C123:1710000000.000000 ",
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 1,
@@ -366,7 +365,7 @@ describe("slack channel tools", () => {
       latest: 1710000000.654321,
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 1,
@@ -391,6 +390,7 @@ describe("slack channel tools", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error:
         "Invalid `latest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
     });
@@ -408,6 +408,7 @@ describe("slack channel tools", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error:
         "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
     });
@@ -425,6 +426,7 @@ describe("slack channel tools", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error:
         "Invalid `oldest` Slack timestamp. Use a numeric Slack ts like `1712345678.123456`.",
     });
@@ -451,7 +453,7 @@ describe("slack channel tools", () => {
       text: "Heads-up update",
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -477,7 +479,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -509,7 +511,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -551,7 +553,7 @@ describe("slack channel tools", () => {
       text: "Thread update.",
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -585,7 +587,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "D123",
@@ -615,7 +617,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -646,7 +648,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt" }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -677,7 +679,7 @@ describe("slack channel tools", () => {
       files: [{ path: "/tmp/report.txt", filename: null, mimeType: null }],
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       status: "success",
       channel_id: "C123",
@@ -748,14 +750,13 @@ describe("slack channel tools", () => {
       max_pages: 3,
     });
 
-    expect(result.details).toMatchObject({
+    expect(result).toMatchObject({
       ok: true,
       channel_id: "C123",
       count: 2,
     });
-    expect(result.details).not.toHaveProperty("next_cursor");
-    const body = JSON.parse(result.content[0].text);
-    expect(body.messages).toMatchObject([
+    expect(result).not.toHaveProperty("next_cursor");
+    expect(result.messages).toMatchObject([
       { ts: "1700000000.500", text: "page-1", user: "U1" },
       { ts: "1700000000.501", text: "page-2", user: "U2" },
     ]);
@@ -785,6 +786,7 @@ describe("slack channel tools", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error:
         "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
     });

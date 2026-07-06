@@ -25,7 +25,10 @@ makes continuation behavior depend on prose conventions and model inference.
 - Keep Pi's `AgentToolResult` as the transport boundary; do not change Pi.
 - Render a compact deterministic text summary into model-visible `content`.
 - Preserve the same structured object in `details` for UI, reporting, logging,
-  and tests.
+  and tests when a Junior structured result schema owns the output.
+- Preserve native model content for multimodal/provider bridge results when a
+  structured text projection would hide the provider payload, such as MCP image
+  output.
 - Support per-tool result schemas through the existing Zod tool-support layer or
   a small adjacent helper.
 - Convert only high-leverage tools in the first implementation slice:
@@ -46,6 +49,8 @@ makes continuation behavior depend on prose conventions and model inference.
 - Replacing Pi's tool execution envelope.
 - Changing provider-owned MCP result schemas.
 - Converting every tool in one change.
+- Treating remote provider schemas, such as MCP `outputSchema`, as Junior-owned
+  structured result schemas.
 - Adding verbose generic metadata to small tools whose result is already
   unambiguous.
 - Encoding business-specific retry policy inside every result.
@@ -86,6 +91,14 @@ ergonomic. The helper should produce a Pi-compatible result:
 }
 ```
 
+Host-owned `zodTool(...)` has two result modes. Structured mode declares a
+Junior `outputSchema`, validates the returned details object, and lets the
+runtime produce the model-visible projection from those details. Native content
+mode is reserved for multimodal/provider bridge output; it omits a Junior
+`outputSchema` and returns `{ content }` only, with generic base details
+synthesized at the adapter boundary. Native bridge layers own provider-specific
+tracing/logging before adapting their output to this content-only result shape.
+
 The model-visible text should be compact JSON or another deterministic
 machine-readable projection. It should include the fields needed to decide
 whether work is complete, whether more data is available, and what exact tool
@@ -93,10 +106,10 @@ call continues the result.
 
 ## Compatibility
 
-Existing tools may continue returning plain values or hand-built
-`{ content, details }` results during migration. The first implementation should
-be additive and focused on tools where truncation, side effects, or follow-up
-calls matter.
+Existing non-Zod tools may continue returning plain values during migration.
+First-party Zod-authored tools should use structured mode by default. Native
+content mode is an explicit exception for provider or multimodal bridges, not a
+general replacement for structured result schemas.
 
 ## Risks
 

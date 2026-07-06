@@ -27,7 +27,9 @@ export interface WebFetchResponseContent {
   extractedChars: number;
 }
 
-export interface WebFetchResponse {
+export type WebFetchResponse = {
+  ok: true;
+  status: "success";
   url: string;
   content: string;
   title?: string;
@@ -35,7 +37,7 @@ export interface WebFetchResponse {
   source_bytes: number;
   extracted_chars: number;
   truncated: boolean;
-}
+} & Record<string, unknown>;
 
 function normalizeWhitespace(text: string): string {
   return text
@@ -240,6 +242,8 @@ export async function extractWebFetchResponse(
   );
   const extracted = extractContentDetails(body, contentType, safeMaxChars);
   return {
+    ok: true,
+    status: "success",
     url: url.toString(),
     content: extracted.content,
     ...(extracted.title ? { title: extracted.title } : {}),

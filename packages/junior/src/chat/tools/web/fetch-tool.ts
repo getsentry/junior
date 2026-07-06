@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
   FETCH_TIMEOUT_MS,
@@ -61,6 +62,7 @@ export function createWebFetchTool(
         .describe("Optional maximum number of extracted characters to return.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ url, max_chars }) => {
       if (override?.execute) {
         return override.execute({ url, max_chars });
@@ -100,6 +102,7 @@ export function createWebFetchTool(
 
           return {
             ok: true,
+            status: "success" as const,
             url: safeUrl.toString(),
             media_type: contentType,
             bytes: bytes.byteLength,
@@ -126,9 +129,10 @@ export function createWebFetchTool(
         const isClientError = status !== null && status >= 400 && status < 500;
         return {
           ok: false,
+          status: "error" as const,
           url,
           error: message,
-          status,
+          http_status: status,
           retryable: !isClientError,
         };
       }

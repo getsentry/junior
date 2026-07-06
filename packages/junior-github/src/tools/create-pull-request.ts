@@ -1,13 +1,16 @@
 import {
+  definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
   type SubscribableResource,
-  type PluginToolDefinition,
   type PluginToolExecuteOptions,
+  type PluginToolResult,
   type ToolRegistrationHookContext,
+  pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -52,6 +55,23 @@ const createPullRequestInputSchema = Type.Object(
 );
 type CreateGitHubPullRequestInput = Static<typeof createPullRequestInputSchema>;
 
+const createPullRequestToolInputSchema = z
+  .object({
+    repo: z.string().describe('Repository in "owner/name" format.'),
+    title: z.string().describe("Pull request title."),
+    head: z.string().describe("Head branch or owner:branch ref."),
+    base: z.string().describe("Base branch."),
+    body: z
+      .string()
+      .describe("Pull request body. Junior appends the conversation footer.")
+      .optional(),
+    draft: z
+      .boolean()
+      .describe("Whether to open the pull request as a draft.")
+      .optional(),
+  })
+  .strict();
+
 const createPullRequestStateSchema = Type.Union([
   Type.Object(
     {
@@ -87,6 +107,41 @@ interface GitHubPullRequestResult {
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   subscribable?: SubscribableResource;
 }
+
+interface GitHubPullRequestStructuredResult
+  extends PluginToolResult, GitHubPullRequestToolResult {
+  ok: true;
+  status: "success";
+  target: "createPullRequest";
+  data: GitHubPullRequestToolResult;
+}
+
+const subscribableResourceSchema = z
+  .object({
+    provider: z.string(),
+    type: z.string(),
+    resourceRef: z.string(),
+    label: z.string(),
+    supportedEvents: z.array(z.string()),
+    suggestedEvents: z.array(z.string()).optional(),
+  })
+  .strict();
+
+const gitHubPullRequestDataSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  subscribable: subscribableResourceSchema.optional(),
+});
+
+const gitHubPullRequestOutputSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+  target: z.literal("createPullRequest"),
+  data: gitHubPullRequestDataSchema,
+  number: z.number(),
+  url: z.string(),
+  subscribable: subscribableResourceSchema.optional(),
+});
 
 function parseCreatePullRequestInput(
   input: unknown,
@@ -290,14 +345,27 @@ function gitHubPullRequestToolResult(
   };
 }
 
-/** Own PR creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubPullRequestTool(
-  ctx: ToolRegistrationHookContext,
-): PluginToolDefinition<CreateGitHubPullRequestInput> {
+function gitHubPullRequestStructuredResult(
+  input: CreateGitHubPullRequestInput,
+  result: GitHubPullRequestResult,
+): GitHubPullRequestStructuredResult {
+  const data = gitHubPullRequestToolResult(input, result);
   return {
+    ok: true,
+    status: "success",
+    target: "createPullRequest",
+    data,
+    ...data,
+  };
+}
+
+/** Own PR creation so provider writes use host egress and the footer stays deterministic. */
+export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
+  return definePluginTool({
     description:
       "Create a GitHub pull request with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
-    inputSchema: createPullRequestInputSchema,
+    inputSchema: createPullRequestToolInputSchema,
+    outputSchema: gitHubPullRequestOutputSchema,
     async execute(
       input: CreateGitHubPullRequestInput,
       options: PluginToolExecuteOptions,
@@ -315,10 +383,13 @@ export function createGitHubPullRequestTool(
         async () => {
           const state = createPullRequestState(await ctx.state.get(key));
           if (state?.status === "completed") {
-            return gitHubPullRequestToolResult(state.input ?? parsedInput, {
-              number: state.number,
-              url: state.url,
-            });
+            return gitHubPullRequestStructuredResult(
+              state.input ?? parsedInput,
+              {
+                number: state.number,
+                url: state.url,
+              },
+            );
           }
           if (state?.status === "pending") {
             throw new Error(
@@ -354,7 +425,7 @@ export function createGitHubPullRequestTool(
                 { cause: error },
               );
             }
-            return gitHubPullRequestToolResult(parsedInput, result);
+            return gitHubPullRequestStructuredResult(parsedInput, result);
           } catch (error) {
             if (
               isEgressAuthRequired(error) ||
@@ -367,5 +438,5 @@ export function createGitHubPullRequestTool(
         },
       );
     },
-  };
+  });
 }

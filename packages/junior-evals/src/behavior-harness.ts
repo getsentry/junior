@@ -59,6 +59,7 @@ import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import type { DispatchCallback } from "@/chat/agent-dispatch/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import type {
@@ -376,7 +377,7 @@ function createReplayWebFetchDeps(
           }),
         },
       });
-      return result;
+      return juniorToolResultSchema.parse(result);
     },
   };
 }
@@ -424,7 +425,7 @@ function createReplayWebSearchDeps(
           }),
         },
       });
-      return result;
+      return juniorToolResultSchema.parse(result);
     },
   };
 }

@@ -1,10 +1,13 @@
 import {
   createLocalSource,
   createSlackSource,
+  definePluginTool,
   defineJuniorPlugin,
+  pluginToolResultSchema,
   type PluginConversations,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   createPluginHookRunner,
@@ -18,10 +21,26 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
-import { tool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import { Type } from "@sinclair/typebox";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
+
+const demoToolResultSchema = pluginToolResultSchema.extend({
+  ok: z.literal(true),
+  status: z.literal("success"),
+});
+
+function demoPluginTool(description = "Demo tool") {
+  return definePluginTool({
+    description,
+    inputSchema: z.object({}),
+    outputSchema: demoToolResultSchema,
+    execute: () =>
+      ({
+        ok: true,
+        status: "success",
+      }) as const,
+  });
+}
 
 const TEST_REQUESTER = {
   platform: "slack",
@@ -59,10 +78,14 @@ const SLACK_SOURCE = createSlackSource({
 
 class PrototypeTool {
   description = "Prototype tool";
-  inputSchema = Type.Object({});
+  inputSchema = z.toJSONSchema(z.object({}));
+  outputSchema = z.toJSONSchema(demoToolResultSchema);
 
   execute() {
-    return { ok: true };
+    return {
+      ok: true,
+      status: "success",
+    } as const;
   }
 }
 
@@ -400,11 +423,7 @@ describe("agent plugin hooks", () => {
           tools(ctx) {
             expect(ctx.requester).toEqual(TEST_REQUESTER);
             return {
-              demoTool: tool({
-                description: "Demo tool",
-                inputSchema: Type.Object({}),
-                execute: () => ({ ok: true }),
-              }),
+              demoTool: demoPluginTool(),
             };
           },
         },
@@ -464,8 +483,13 @@ describe("agent plugin hooks", () => {
         name: "prototypeTool",
         plugin: "agent-demo",
       });
-      expect(tools.agentDemo_prototypeTool?.execute?.({}, {})).toEqual({
+      const prototypeResult = tools.agentDemo_prototypeTool?.execute?.(
+        {},
+        {},
+      ) as ReturnType<PrototypeTool["execute"]> | undefined;
+      expect(prototypeResult).toEqual({
         ok: true,
+        status: "success",
       });
     } finally {
       setPlugins(previous);
@@ -483,11 +507,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              demoTool: tool({
-                description: "Demo tool",
-                inputSchema: Type.Object({}),
-                execute: () => ({ ok: true }),
-              }),
+              demoTool: demoPluginTool(),
             };
           },
         },
@@ -519,11 +539,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              "not-valid": tool({
-                description: "Demo tool",
-                inputSchema: Type.Object({}),
-                execute: () => ({ ok: true }),
-              }),
+              "not-valid": demoPluginTool(),
             };
           },
         },
@@ -554,11 +570,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools() {
             return {
-              loadSkill: tool({
-                description: "Demo tool",
-                inputSchema: Type.Object({}),
-                execute: () => ({ ok: true }),
-              }),
+              loadSkill: demoPluginTool(),
             };
           },
         },

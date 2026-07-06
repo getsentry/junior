@@ -2,23 +2,10 @@ import { logWarn } from "@/chat/logging";
 import { readCanvas } from "@/chat/slack/tools/canvas/api";
 import { resolveCanvasTarget } from "@/chat/slack/tools/canvas/context";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
-import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
-
-function legacyContinuation(
-  continuation:
-    | {
-        arguments: Record<string, unknown>;
-      }
-    | undefined,
-): string | undefined {
-  const offset = continuation?.arguments.offset;
-  const limit = continuation?.arguments.limit;
-  return typeof offset === "number" && typeof limit === "number"
-    ? `Read more with offset=${offset} and limit=${limit}.`
-    : undefined;
-}
+import { sliceFileContent } from "@/chat/tool-support/text-range-result";
 
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
@@ -50,16 +37,18 @@ export function createSlackCanvasReadTool() {
         .describe("Maximum number of lines to read. Defaults to 1000.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
-        return target;
+        return { ...target, status: "error" as const };
       }
 
       try {
         const result = await readCanvas(target.canvasId);
         const range = sliceFileContent({
           content: normalizeToLf(result.content),
+          continuationArgumentName: "canvas",
           limit,
           offset,
           path: result.canvasId,
@@ -68,6 +57,7 @@ export function createSlackCanvasReadTool() {
 
         return {
           ok: true,
+          status: "success" as const,
           canvas_id: result.canvasId,
           title: result.title,
           permalink: result.permalink,
@@ -79,7 +69,7 @@ export function createSlackCanvasReadTool() {
           end_line: rangeData.end_line,
           total_lines: rangeData.total_lines,
           truncated: range.details.truncated,
-          continuation: legacyContinuation(range.details.continuation),
+          continuation: range.details.continuation,
         };
       } catch (error) {
         const message =
@@ -95,6 +85,7 @@ export function createSlackCanvasReadTool() {
         );
         return {
           ok: false,
+          status: "error" as const,
           canvas_id: target.canvasId,
           error: message,
         };

@@ -58,6 +58,7 @@ describe("slack list tools", () => {
 
     expect(result).toEqual({
       ok: false,
+      status: "error",
       error: "No active list found in artifact context",
     });
     expect(getCapturedSlackApiCalls("slackLists.items.list")).toHaveLength(0);

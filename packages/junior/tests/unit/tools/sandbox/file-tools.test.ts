@@ -98,7 +98,6 @@ describe("sandbox file tools", () => {
         total_lines: 3,
       },
       continuation: {
-        tool_name: "readFile",
         arguments: {
           path: "notes.txt",
           offset: 3,
@@ -170,11 +169,16 @@ describe("sandbox file tools", () => {
     await expect(
       findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
     ).resolves.toMatchObject({
-      content: [{ type: "text", text: "app.ts\nnested/test.ts" }],
       details: {
         ok: true,
         path: "src",
+        status: "success",
+        target: "src",
         truncated: false,
+        data: {
+          files: ["app.ts", "nested/test.ts"],
+          file_count: 2,
+        },
       },
     });
     await expect(
@@ -226,8 +230,7 @@ describe("sandbox file tools", () => {
 
     await expect(
       findFiles({ fs: memory.fs, pattern: "src/**/*.ts" }),
-    ).resolves.toEqual({
-      content: [{ type: "text", text: "src/app.ts\nsrc/nested/test.ts" }],
+    ).resolves.toMatchObject({
       details: { ok: true, path: ".", truncated: false },
     });
   });

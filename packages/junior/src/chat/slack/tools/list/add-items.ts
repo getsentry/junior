@@ -4,6 +4,7 @@ import {
   slackUserIdParam,
 } from "@/chat/slack/id-param";
 import { z } from "zod";
+import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
@@ -29,10 +30,15 @@ export function createSlackListAddItemsTool(state: ToolState) {
         .describe("Optional due date in YYYY-MM-DD format.")
         .optional(),
     }),
+    outputSchema: juniorToolResultSchema,
     execute: async ({ items, assignee_user_id, due_date }) => {
       const targetListId = state.getCurrentListId();
       if (!targetListId) {
-        return { ok: false, error: "No active list found in artifact context" };
+        return {
+          ok: false,
+          status: "error" as const,
+          error: "No active list found in artifact context",
+        };
       }
       const parsedAssigneeUserId =
         assignee_user_id === undefined
@@ -50,6 +56,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
       });
       const cached = state.getOperationResult<{
         ok: true;
+        status: "success";
         list_id: string;
         created_item_ids: string[];
         created_count: number;
@@ -76,6 +83,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
 
       const response = {
         ok: true,
+        status: "success" as const,
         list_id: targetListId,
         created_item_ids: result.createdItemIds,
         created_count: result.createdItemIds.length,
