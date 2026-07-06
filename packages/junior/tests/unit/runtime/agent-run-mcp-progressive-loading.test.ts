@@ -720,7 +720,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
-    expect(agentInitialToolNames[0]).not.toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedSessionRecord = await getAgentTurnSessionRecord(
@@ -757,7 +758,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("loadSkill");
     expect(agentInitialToolNames[1]).toContain("searchMcpTools");
     expect(agentInitialToolNames[1]).toContain("callMcpTool");
-    expect(agentInitialToolNames[1]).not.toContain("searchTools");
+    expect(agentInitialToolNames[1]).toContain("searchTools");
+    expect(agentInitialToolNames[1]).toContain("executeTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
     expect(agentInitialSystemPrompts).toEqual([
       "System prompt",
@@ -806,7 +808,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
-    expect(agentInitialToolNames[0]).not.toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
     expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
     expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([]);
