@@ -195,6 +195,17 @@ interface SubscribedMessageEvent extends EvalBaseEvent {
   type: "subscribed_message";
 }
 
+/**
+ * Messages that are pending together in the conversation mailbox and are
+ * handled as one worker turn: the last message becomes the live turn and the
+ * earlier ones arrive as queued/skipped context, matching production mailbox
+ * batching.
+ */
+interface MessageBatchEvent {
+  events: Array<MentionEvent | SubscribedMessageEvent>;
+  type: "message_batch";
+}
+
 interface AssistantThreadStartedEvent extends EvalBaseEvent {
   type: "assistant_thread_started";
   user_id?: string;
@@ -218,9 +229,19 @@ interface ScheduledTaskDueEvent extends EvalBaseEvent {
 export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
+  | MessageBatchEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent;
+
+/** Expand message batches so consumers can treat scenario events uniformly. */
+function flattenEvalEvents(
+  events: readonly EvalEvent[],
+): Array<Exclude<EvalEvent, MessageBatchEvent>> {
+  return events.flatMap((event) =>
+    event.type === "message_batch" ? event.events : [event],
+  );
+}
 
 interface SubscribedDecisionFixture {
   reason: string;
@@ -824,8 +845,9 @@ function attachTranscriptAccessors(
 
 async function cleanupHarnessThreadState(
   stateAdapter: HarnessStateAdapter,
-  events: readonly EvalEvent[],
+  scenarioEvents: readonly EvalEvent[],
 ): Promise<void> {
+  const events = flattenEvalEvents(scenarioEvents);
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
@@ -1405,7 +1427,7 @@ async function setupHarnessEnvironment(
       scenario.overrides?.credential_providers ?? [],
     );
     const authRequesterUsers = new Set(
-      scenario.events.flatMap((event) =>
+      flattenEvalEvents(scenario.events).flatMap((event) =>
         "message" in event
           ? [event.message.author?.user_id?.trim() || "U-test"]
           : "user_id" in event && event.user_id
@@ -1946,7 +1968,14 @@ async function processEvents(args: {
   };
 
   for (const event of scenario.events) {
-    if (event.type === "new_mention" || event.type === "subscribed_message") {
+    if (event.type === "message_batch") {
+      for (const message of event.events) {
+        enqueueEvent(message);
+      }
+    } else if (
+      event.type === "new_mention" ||
+      event.type === "subscribed_message"
+    ) {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
@@ -1954,8 +1983,12 @@ async function processEvents(args: {
       await runLifecycleEvent(event);
     }
     await maybeAutoCompleteAuth();
-    if (await processNextDelivery()) {
+    let delivered = false;
+    while (await processNextDelivery()) {
+      delivered = true;
       await maybeAutoCompleteAuth();
+    }
+    if (delivered) {
       await drainQueuedConversationWork();
     }
   }

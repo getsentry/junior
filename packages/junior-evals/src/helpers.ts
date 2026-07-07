@@ -587,6 +587,23 @@ export function threadMessage(
   };
 }
 
+/**
+ * Groups messages that are pending together in the conversation mailbox so
+ * the worker handles them as one turn: the last message becomes the live
+ * turn and earlier ones arrive as queued context, matching production
+ * mailbox batching when messages land faster than turns complete.
+ */
+export function batch(
+  ...events: Array<
+    ReturnType<typeof mention> | ReturnType<typeof threadMessage>
+  >
+) {
+  return {
+    type: "message_batch" as const,
+    events,
+  };
+}
+
 interface ResourceEventNotificationOptions {
   eventKey?: string;
   eventType: string;
