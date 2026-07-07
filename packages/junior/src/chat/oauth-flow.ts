@@ -17,7 +17,7 @@ import {
   postSlackEphemeralMessage,
   postSlackMessage,
 } from "@/chat/slack/outbound";
-import { formatSlackLink } from "@/chat/slack/mrkdwn";
+import { formatOAuthAuthorizationMessage } from "@/chat/oauth-authorization-message";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -317,10 +317,12 @@ export async function startOAuthFlow(
       channelId: input.channelId,
       threadTs: input.threadTs,
       userId: input.requesterId,
-      text: `${formatSlackLink(
+      text: formatOAuthAuthorizationMessage({
         authorizationUrl,
-        `Click here to link your ${formatProviderLabel(provider)} account`,
-      )}. Once you've authorized, you'll see a confirmation in Slack.`,
+        label: `Click here to link your ${formatProviderLabel(provider)} account`,
+        completionText:
+          "Once you've authorized, you'll see a confirmation in Slack.",
+      }),
     }),
   };
 }
