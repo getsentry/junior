@@ -5,7 +5,12 @@ import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { Message } from "chat";
+import {
+  Message as ChatMessage,
+  ThreadImpl,
+  type Message,
+  type SerializedMessage,
+} from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import {
   interceptTestHttp,
@@ -40,6 +45,8 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -1174,6 +1181,27 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   };
 }
 
+/** Serialize an eval message fixture the way Slack ingress persists messages. */
+function toSerializedSlackMessage(
+  event: MentionEvent | SubscribedMessageEvent,
+  threadId: string,
+  dateSentMs: number,
+): SerializedMessage {
+  const incoming = toIncomingMessage(event);
+  return {
+    _type: "chat:Message",
+    attachments: [],
+    author: incoming.author,
+    formatted: { type: "root", children: [] },
+    id: incoming.id,
+    isMention: incoming.isMention ?? false,
+    metadata: { dateSent: new Date(dateSentMs).toISOString(), edited: false },
+    raw: incoming.raw,
+    text: incoming.text,
+    threadId,
+  };
+}
+
 function upsertThreadTranscriptMessage(
   transcript: Message[],
   message: Message,
@@ -1736,6 +1764,7 @@ async function processEvents(args: {
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
+  findEvalThread: (threadId: string) => TestThread | undefined;
   readyQueueDeliveries: QueueDelivery[];
 }): Promise<void> {
   const {
@@ -1746,6 +1775,7 @@ async function processEvents(args: {
     conversationWorkQueue,
     slackRuntime,
     getThreadRecord,
+    findEvalThread,
     readyQueueDeliveries,
   } = args;
 
@@ -1792,6 +1822,27 @@ async function processEvents(args: {
     return true;
   };
 
+  // Deliver worker-claimed turns through the harness TestThread so replies
+  // are captured like direct deliveries; the worker's restored thread has no
+  // posting surface on the eval adapter.
+  const workerRuntime: typeof slackRuntime = {
+    ...slackRuntime,
+    async handleNewMention(thread, message, hooks) {
+      await slackRuntime.handleNewMention(
+        findEvalThread(thread.id) ?? thread,
+        message,
+        hooks,
+      );
+    },
+    async handleSubscribedMessage(thread, message, hooks) {
+      await slackRuntime.handleSubscribedMessage(
+        findEvalThread(thread.id) ?? thread,
+        message,
+        hooks,
+      );
+    },
+  };
+
   const drainQueuedConversationWork = async (): Promise<void> => {
     let processed = 0;
     while (conversationWorkQueue.hasQueuedMessages()) {
@@ -1822,13 +1873,53 @@ async function processEvents(args: {
                   });
                 },
               }),
-            runtime: slackRuntime,
+            runtime: workerRuntime,
             state: env.stateAdapter,
           }),
           state: env.stateAdapter,
         },
       );
       await maybeAutoCompleteAuth();
+    }
+  };
+
+  // Persist batch members through real Slack ingress so the conversation
+  // worker claims them as one mailbox batch (latest live, earlier queued).
+  const appendMailboxBatch = async (
+    batch: MessageBatchEvent,
+  ): Promise<void> => {
+    for (const [index, event] of batch.events.entries()) {
+      const { thread, transcript } = getThreadRecord(event.thread);
+      const route =
+        (event.message.is_mention ?? event.type === "new_mention")
+          ? ("mention" as const)
+          : ("subscribed" as const);
+      const message = ChatMessage.fromJSON(
+        toSerializedSlackMessage(event, thread.id, Date.now() + index),
+      );
+      upsertThreadTranscriptMessage(transcript, message);
+      const ingressThread = new ThreadImpl({
+        adapter: getSlackAdapter() as unknown as SlackAdapter,
+        stateAdapter: env.stateAdapter,
+        id: thread.id,
+        channelId: thread.channelId,
+        currentMessage: message,
+        initialMessage: message,
+        isDM: thread.id.startsWith("slack:D"),
+        isSubscribedContext: route === "subscribed",
+      });
+      await appendAndEnqueueInboundMessage({
+        message: buildSlackInboundMessage({
+          conversationId: thread.id,
+          installation: { teamId: EVAL_SLACK_TEAM_ID },
+          message,
+          receivedAtMs: Date.now(),
+          route,
+          thread: ingressThread,
+        }),
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      });
     }
   };
 
@@ -1969,13 +2060,12 @@ async function processEvents(args: {
 
   for (const event of scenario.events) {
     if (event.type === "message_batch") {
-      for (const message of event.events) {
-        enqueueEvent(message);
-      }
-    } else if (
-      event.type === "new_mention" ||
-      event.type === "subscribed_message"
-    ) {
+      await appendMailboxBatch(event);
+      await maybeAutoCompleteAuth();
+      await drainQueuedConversationWork();
+      continue;
+    }
+    if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
@@ -1983,12 +2073,8 @@ async function processEvents(args: {
       await runLifecycleEvent(event);
     }
     await maybeAutoCompleteAuth();
-    let delivered = false;
-    while (await processNextDelivery()) {
-      delivered = true;
+    if (await processNextDelivery()) {
       await maybeAutoCompleteAuth();
-    }
-    if (delivered) {
       await drainQueuedConversationWork();
     }
   }
@@ -2147,6 +2233,7 @@ export async function runEvalScenario(
       conversationWorkQueue,
       slackRuntime,
       getThreadRecord,
+      findEvalThread: (threadId) => threadRecordsById.get(threadId)?.thread,
       readyQueueDeliveries,
     });
 

@@ -99,6 +99,10 @@ export function createTestMessage(args: {
 // ── Fake Slack Adapter ───────────────────────────────────────────────
 
 export class FakeSlackAdapter {
+  // Single-workspace adapter internals so worker paths that wrap Slack work
+  // in runWithSlackInstallation treat this fixture as a default-token install.
+  readonly botUserId = "U_APP";
+  readonly defaultBotTokenProvider = (): string => "xoxb-test-token";
   readonly statusCalls: Array<{
     channelId: string;
     threadTs: string;
