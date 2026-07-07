@@ -59,7 +59,7 @@ describe("conversation SQL store", () => {
         fixture.sql.query(
           "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
         ),
-      ).resolves.toHaveLength(3);
+      ).resolves.toHaveLength(migrations.length);
     } finally {
       await fixture.close();
     }

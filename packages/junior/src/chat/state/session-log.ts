@@ -192,6 +192,7 @@ function migrateStoredEntry(value: unknown): unknown {
   }
 
   const migrated = { ...record };
+  // TODO(v0.91.0): Remove legacy requester session-log entry migration.
   if ("requester" in migrated && !("actor" in migrated)) {
     migrated.actor = migrated.requester;
   }
@@ -685,13 +686,14 @@ async function defaultStore(): Promise<SessionLogStore> {
   return stateStore();
 }
 
+/** Read entries through the decode boundary before materializing projections. */
 async function loadEntries(
   args: Scope & {
     store?: SessionLogStore;
   },
 ): Promise<SessionLogEntry[]> {
   const store = args.store ?? (await defaultStore());
-  return await store.read(args);
+  return (await store.read(args)).map(decode);
 }
 
 /** Load chronological host-only runtime activity entries for reporting. */
@@ -718,8 +720,7 @@ export async function loadMessages(
     return [];
   }
 
-  const store = args.store ?? (await defaultStore());
-  const messages = projectMessages(await store.read(args), args.sessionId);
+  const messages = projectMessages(await loadEntries(args), args.sessionId);
   return messages.length >= messageCount
     ? messages.slice(0, messageCount)
     : undefined;
@@ -732,8 +733,7 @@ export async function loadProjection(
     sessionId?: string;
   },
 ): Promise<PiMessage[]> {
-  const store = args.store ?? (await defaultStore());
-  return project(await store.read(args), args.sessionId).messages;
+  return project(await loadEntries(args), args.sessionId).messages;
 }
 
 /**
@@ -746,8 +746,7 @@ export async function loadProjectionWithActor(
     sessionId?: string;
   },
 ): Promise<SessionProjection> {
-  const store = args.store ?? (await defaultStore());
-  return project(await store.read(args), args.sessionId);
+  return project(await loadEntries(args), args.sessionId);
 }
 
 /** Load MCP providers that were durably connected in this conversation. */

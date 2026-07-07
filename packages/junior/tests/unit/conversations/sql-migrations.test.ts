@@ -76,7 +76,7 @@ describe("conversation SQL migrations", () => {
     expect(executor.statements[0]).toContain(
       "CREATE TABLE IF NOT EXISTS junior_schema_migrations",
     );
-    expect(executor.transactions).toHaveLength(3);
+    expect(executor.transactions).toHaveLength(migrations.length);
     expect(executor.transactions[0]).toEqual(
       expect.arrayContaining([
         expect.stringContaining("CREATE TABLE IF NOT EXISTS junior_identities"),
@@ -97,6 +97,17 @@ describe("conversation SQL migrations", () => {
         ),
         expect.stringContaining("INSERT INTO junior_users"),
         expect.stringContaining("UPDATE junior_identities AS identity"),
+        expect.stringContaining("INSERT INTO junior_schema_migrations"),
+      ]),
+    );
+    expect(executor.transactions[3]).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "UPDATE junior_conversations\n  SET actor_identity_id = requester_identity_id",
+        ),
+        expect.stringContaining(
+          "ALTER TABLE junior_conversations\n  DROP COLUMN IF EXISTS requester_identity_id",
+        ),
         expect.stringContaining("INSERT INTO junior_schema_migrations"),
       ]),
     );

@@ -139,6 +139,7 @@ describe("persistAuthPauseSessionRecord", () => {
       await import("@/chat/state/turn-session");
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
     await stateAdapter.set(
       "junior:agent_turn_session:conversation-legacy:turn-legacy",
       {

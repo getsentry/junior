@@ -930,8 +930,8 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       status: "deleted",
       executionActor: {
-        type: "system",
-        id: "scheduled-task",
+        platform: "system",
+        name: "scheduled-task",
       },
       task: {
         text: "Team-owned digest: Summarize open scheduler issues.",
