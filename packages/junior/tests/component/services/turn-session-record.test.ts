@@ -134,6 +134,46 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("migrates legacy requester turn-session records while reading", async () => {
+    const { getAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.set(
+      "junior:agent_turn_session:conversation-legacy:turn-legacy",
+      {
+        version: 1,
+        conversationId: "conversation-legacy",
+        sessionId: "turn-legacy",
+        sliceId: 1,
+        state: "completed",
+        startedAtMs: 1,
+        lastProgressAtMs: 2,
+        updatedAtMs: 3,
+        committedMessageCount: 0,
+        cumulativeDurationMs: 0,
+        requester: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+          userName: "alice",
+        },
+      },
+      60_000,
+    );
+
+    await expect(
+      getAgentTurnSessionRecord("conversation-legacy", "turn-legacy"),
+    ).resolves.toMatchObject({
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+        userName: "alice",
+      },
+    });
+  });
+
   it("records Slack turn activity in SQL conversation metadata", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =

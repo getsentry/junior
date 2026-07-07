@@ -355,8 +355,9 @@ function githubIssueCredentialContext(input: {
     set: vi.fn(),
     withRefresh: vi.fn(async (callback) => await callback()),
   };
+  const actor = input.actor ?? { type: "user" as const, userId: "U123" };
   return {
-    actor: input.actor ?? { type: "user" as const, userId: "U123" },
+    actor,
     ...(input.credentialSubjectToken
       ? { credentialSubject: { type: "user" as const, userId: "U456" } }
       : {}),
@@ -365,7 +366,7 @@ function githubIssueCredentialContext(input: {
     log: pluginLog,
     plugin: { name: "github" },
     tokens: {
-      ...(input.actor?.type !== "system" ? { currentUser } : {}),
+      ...(actor.platform !== "system" ? { currentUser } : {}),
       ...(input.credentialSubjectToken ? { credentialSubject } : {}),
     },
   };

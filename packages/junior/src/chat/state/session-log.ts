@@ -179,6 +179,35 @@ function rawKey(scope: Scope): string {
   return [AGENT_SESSION_LOG_PREFIX, scope.conversationId].join(":");
 }
 
+function storedRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function migrateStoredEntry(value: unknown): unknown {
+  const record = storedRecord(value);
+  if (!record) {
+    return value;
+  }
+
+  const migrated = { ...record };
+  if ("requester" in migrated && !("actor" in migrated)) {
+    migrated.actor = migrated.requester;
+  }
+  delete migrated.requester;
+
+  if (migrated.type === "requester_recorded") {
+    migrated.type = "actor_recorded";
+  }
+  if ("requesterId" in migrated && !("actorId" in migrated)) {
+    migrated.actorId = migrated.requesterId;
+  }
+  delete migrated.requesterId;
+
+  return migrated;
+}
+
 function normalizeMessageCount(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
 }
@@ -470,7 +499,7 @@ function decode(value: unknown): SessionLogEntry {
     return decode(JSON.parse(value) as unknown);
   }
 
-  const parsed = sessionLogEntrySchema.safeParse(value);
+  const parsed = sessionLogEntrySchema.safeParse(migrateStoredEntry(value));
   if (parsed.success) {
     return parsed.data;
   }

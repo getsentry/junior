@@ -352,6 +352,60 @@ describe("agent session log store", () => {
     ).resolves.toEqual([replacement, next]);
   });
 
+  it("migrates legacy requester log metadata while reading", async () => {
+    const store = memoryStore();
+    const first: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    store.entries.push(
+      {
+        schemaVersion: 1,
+        type: "pi_message",
+        message: first,
+        requester: { slackUserId: "U123", email: "alice@sentry.io" },
+      } as unknown as SessionLogEntry,
+      {
+        schemaVersion: 1,
+        type: "requester_recorded",
+        requester: { slackUserId: "U456", email: "bob@sentry.io" },
+      } as unknown as SessionLogEntry,
+      {
+        schemaVersion: 1,
+        type: "authorization_completed",
+        createdAtMs: 2,
+        kind: "plugin",
+        provider: "github",
+        requesterId: "U456",
+        authorizationId: "auth-1",
+      } as unknown as SessionLogEntry,
+    );
+
+    await expect(
+      loadProjectionWithActor({
+        store,
+        conversationId: "conversation-1",
+      }),
+    ).resolves.toMatchObject({
+      messages: [
+        first,
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: 'Authorization completed for provider "github". Continue the blocked request and retry the provider operation if needed.',
+            },
+          ],
+          timestamp: 2,
+        },
+      ],
+      actor: { slackUserId: "U456", email: "bob@sentry.io" },
+    });
+  });
+
   it("records connected MCP providers outside the Pi projection", async () => {
     const store = memoryStore();
     const message: PiMessage = {

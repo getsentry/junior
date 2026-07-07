@@ -222,8 +222,8 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
-  const actor =
-    parsed.actor === undefined ? undefined : parseActor(parsed.actor);
+  const actorValue = parsed.actor ?? parsed.requester;
+  const actor = actorValue === undefined ? undefined : parseActor(actorValue);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
   const turnStartMessageIndex = toNonNegativeInteger(
@@ -243,7 +243,7 @@ function parseAgentTurnSessionFields(
     updatedAtMs === undefined ||
     (parsed.destination !== undefined && !destination) ||
     (parsed.source !== undefined && !source) ||
-    (parsed.actor !== undefined && !actor)
+    (actorValue !== undefined && !actor)
   ) {
     return undefined;
   }
