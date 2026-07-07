@@ -357,7 +357,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     expect(agentCalls).toEqual([
       {
-        context: expect.any(String),
+        context: undefined,
         prompt: "start the incident summary",
         steeringTexts: ["include the rollback owner"],
       },
@@ -383,7 +383,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     expect(agentCalls).toEqual([
       {
-        context: expect.any(String),
+        context: undefined,
         prompt: "start the incident summary",
         steeringTexts: ["include the rollback owner"],
       },

@@ -217,14 +217,13 @@ function appendRecentThreadMessagesToContext(
     conversationContext,
     messages,
   );
-  return [
+  const contextParts = [
     options?.includeConversationContext === false
       ? undefined
       : conversationContext?.trim(),
     recentThreadMessages,
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join("\n\n");
+  ].filter((part): part is string => Boolean(part));
+  return contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 }
 
 function queuedInstructionActor(
@@ -1106,7 +1105,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const promptConversationContext = appendRecentThreadMessagesToContext(
             preparedState.conversationContext,
             options.queuedMessages ?? [],
-            { includeConversationContext: !hasDurablePromptHistory },
           );
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
