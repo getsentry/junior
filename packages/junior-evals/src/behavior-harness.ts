@@ -2166,7 +2166,9 @@ export async function runEvalScenario(
           (!usesMemoryPlugin || plugin.manifest.name !== "memory"),
       ),
     ]);
-    const slackAdapter = new FakeSlackAdapter();
+    // Eval fixtures mention the bot as <@U_APP>; single-workspace mode lets
+    // worker-claimed mailbox turns run under runWithSlackInstallation.
+    const slackAdapter = new FakeSlackAdapter({ botUserId: "U_APP" });
     const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {

@@ -99,10 +99,21 @@ export function createTestMessage(args: {
 // ── Fake Slack Adapter ───────────────────────────────────────────────
 
 export class FakeSlackAdapter {
-  // Single-workspace adapter internals so worker paths that wrap Slack work
-  // in runWithSlackInstallation treat this fixture as a default-token install.
-  readonly botUserId = "U_APP";
-  readonly defaultBotTokenProvider = (): string => "xoxb-test-token";
+  // Providing a bot user id opts this fixture into single-workspace install
+  // mode: runWithSlackInstallation requires defaultBotTokenProvider (and a
+  // resolved bot user id) before it runs worker-claimed Slack turns. Leaving
+  // it unset keeps the legacy behavior, including generic leading-mention
+  // stripping instead of exact bot-id stripping.
+  readonly botUserId?: string;
+  readonly defaultBotTokenProvider?: () => string;
+
+  constructor(options?: { botUserId?: string }) {
+    if (options?.botUserId) {
+      this.botUserId = options.botUserId;
+      this.defaultBotTokenProvider = () => "xoxb-test-token";
+    }
+  }
+
   readonly statusCalls: Array<{
     channelId: string;
     threadTs: string;
