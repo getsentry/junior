@@ -18,7 +18,30 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:check
+      - run: pnpm skills:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm --filter @sentry/junior build
+      - run: pnpm --filter @sentry/junior-example build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
+      - run: pnpm docs:check
+
+  test-unit:
+    name: "Test (${{ matrix.shard }}/${{ matrix.total }})"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -46,6 +69,67 @@ jobs:
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       REDIS_URL: redis://localhost:6379
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+        total: [2]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sentry/junior test:coverage -- --shard=${{ matrix.shard }}/${{ matrix.total }}
+
+      - name: Upload coverage and test results
+        if: ${{ !cancelled() }}
+        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: packages/junior/coverage/coverage-final.json
+          coverage-format: istanbul
+          disable-search: true
+          junit-xml-pattern: packages/junior/coverage/results.junit.xml
+          fail_ci_if_error: false
+          informational-project: true
+          informational-patch: true
+
+  test-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @sentry/junior-memory test
+      - run: pnpm --filter @sentry/junior-github test
+      - run: pnpm --filter @sentry/junior-dashboard test:coverage
+
+      - name: Upload dashboard coverage and test results
+        if: ${{ !cancelled() }}
+        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: packages/junior-dashboard/coverage/coverage-final.json
+          coverage-format: istanbul
+          disable-search: true
+          junit-xml-pattern: packages/junior-dashboard/coverage/results.junit.xml
+          fail_ci_if_error: false
+          informational-project: true
+          informational-patch: true
+
+  test-e2e:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -57,32 +141,45 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm release:check
-      - run: pnpm skills:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test:ci
       - run: pnpm test:e2e:dashboard
-      - run: pnpm --filter @sentry/junior-example build
-        env:
-          JUNIOR_SKIP_SNAPSHOT: "1"
-      - run: pnpm docs:check
 
-      - name: Upload coverage and test results
-        if: ${{ !cancelled() }}
-        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+  # Aggregator job — preserved as `test` to keep any existing branch-protection required checks intact.
+  # All real work happens in checks / test-unit / test-packages / test-e2e above.
+  test:
+    runs-on: ubuntu-latest
+    needs: [checks, test-unit, test-packages, test-e2e]
+    if: ${{ always() }}
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.checks.result }}" != "success" || \
+                "${{ needs['test-unit'].result }}" != "success" || \
+                "${{ needs['test-packages'].result }}" != "success" || \
+                "${{ needs['test-e2e'].result }}" != "success" ]]; then
+            echo "One or more jobs failed:"
+            echo "  checks: ${{ needs.checks.result }}"
+            echo "  test-unit: ${{ needs['test-unit'].result }}"
+            echo "  test-packages: ${{ needs['test-packages'].result }}"
+            echo "  test-e2e: ${{ needs['test-e2e'].result }}"
+            exit 1
+          fi
+
+  artifacts:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
-          coverage-format: istanbul
-          disable-search: true
-          junit-xml-pattern: packages/**/coverage/results.junit.xml
-          fail_ci_if_error: false
-          informational-project: true
-          informational-patch: true
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
 
       - name: Pack release artifacts
-        if: github.event_name == 'push'
         run: |
           mkdir -p artifacts
           pnpm --filter @sentry/junior pack --pack-destination artifacts
@@ -103,7 +200,6 @@ jobs:
           ls -la artifacts
 
       - name: Upload release artifacts
-        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.sha }}
