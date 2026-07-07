@@ -215,6 +215,12 @@ export async function runLocalAgentTurn(
   let piMessagesBeforeRun:
     | Awaited<ReturnType<typeof loadLocalPiMessages>>
     | undefined;
+  const localActor = {
+    fullName: "Local CLI",
+    platform: "local" as const,
+    userId: "local-cli",
+    userName: "local",
+  };
   try {
     const piMessages = await loadLocalPiMessages({
       conversationId: input.conversationId,
@@ -231,16 +237,11 @@ export async function runLocalAgentTurn(
       },
       routing: {
         credentialContext: {
-          actor: { type: "system", id: "local-cli" },
+          actor: { platform: "system", name: "local-cli" },
         },
         destination,
         source,
-        requester: {
-          fullName: "Local CLI",
-          platform: "local",
-          userId: "local-cli",
-          userName: "local",
-        },
+        actor: localActor,
         surface: "internal",
         correlation: {
           conversationId: input.conversationId,
@@ -364,6 +365,7 @@ export async function runLocalAgentTurn(
       usage: reply.diagnostics.usage,
       destination,
       source,
+      actor: localActor,
       surface: "internal",
       logContext: { modelId: reply.diagnostics.modelId },
     });

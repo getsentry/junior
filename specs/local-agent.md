@@ -120,14 +120,14 @@ Rules:
 
 ### Identity And Credentials
 
-Local chat has a local requester identity for runtime/plugin context, but it
-does not have a Slack requester or user-bound credential actor.
+Local chat has a local actor identity for runtime/plugin context, but it
+does not have a Slack actor or user-bound credential actor.
 
 Rules:
 
-1. Local chat runs as credential actor `{ type: "system", id: "local-cli" }`.
-2. Local chat may populate requester `{ platform: "local", userId: "local-cli" }`.
-3. Local chat must not populate Slack requester fields.
+1. Local chat runs as credential actor `{ platform: "system", name: "local-cli" }`.
+2. Local chat may populate actor `{ platform: "local", userId: "local-cli" }`.
+3. Local chat must not populate Slack actor fields.
 4. Local chat must not use Slack private auth, Slack ephemeral messages, or Slack
    OAuth continuation notices.
 5. Local chat runs with `authorizationFlowMode: "disabled"` until a local auth
@@ -137,7 +137,7 @@ Rules:
    `local-cli` system actor.
 7. Missing user-bound provider credentials must fail with an explicit local
    error. The runtime must not silently fall back to a Slack user, task creator,
-   last requester, or `unknown` actor.
+   last actor, or `unknown` actor.
 
 ### Runtime Wiring
 
@@ -253,7 +253,7 @@ Required checks:
    unsupported forms without side effects.
 3. Integration: `junior chat -p "hello"` reaches the shared conversation
    runtime with `source.platform: "local"`, actor `local-cli`, and no
-   Slack requester.
+   Slack actor.
 4. Integration: local CLI does not construct Slack `Thread`, Slack `Message`, or
    Slack adapter wrappers.
 5. Integration: two messages in the same interactive process preserve visible

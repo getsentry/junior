@@ -71,7 +71,7 @@ This spec follows the domain naming policy in
 [`policies/interface-design.md`](../policies/interface-design.md). Its core
 nouns are `Conversation`, `Source`, `Destination`, `InboundMessage`,
 `AgentInput`, `AgentRun`, `ExecutionSlice`, `AgentStep`, `Lease`, and
-`Requester`. Use `Source` for where input came from and `Destination` for where
+`Actor`. Use `Source` for where input came from and `Destination` for where
 Junior should send output. `event` source records represent subscribed
 resource-event notifications accepted into the durable mailbox and queued like
 other inbound source records.
@@ -191,7 +191,7 @@ type Destination =
       conversationId: string;
     };
 
-// Canonical stored Slack requester from `packages/junior/src/chat/requester.ts`.
+// Canonical stored Slack actor from `packages/junior/src/chat/actor.ts`.
 // New records include Slack platform, team, user, and optional display/contact
 // fields. Legacy records may omit team metadata.
 interface AgentInput {
@@ -231,7 +231,7 @@ interface Conversation {
   destination?: Destination;
   title?: string;
   channelName?: string;
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
   source?: Source;
 
   execution: ConversationExecution;
@@ -587,7 +587,7 @@ Rules:
 4. Local CLI may stream assistant deltas and status updates to stdout/stderr, but
    the finalized reply remains the delivery outcome recorded for the
    conversation.
-5. Local CLI must not fabricate Slack requesters, Slack destinations, Slack
+5. Local CLI must not fabricate Slack actors, Slack destinations, Slack
    thread ids, Slack message timestamps, or Slack assistant lifecycle events.
 6. Local CLI interactive authorization is disabled until a local auth contract
    exists. Missing provider credentials must surface as an explicit local error

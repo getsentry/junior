@@ -65,7 +65,7 @@ Good body:
 >
 > Action taken on behalf of Carol.
 
-## Distinct reporter/requester
+## Distinct reporter/actor
 
 Good body:
 
@@ -86,4 +86,4 @@ Good body:
 - Restating the title as the first sentence of the body
 - Including fix suggestions when the thread only describes the problem
 - Dumping a list of URLs without inline context
-- Conflating the reporter with the action requester when they differ
+- Conflating the reporter with the action actor when they differ

@@ -68,9 +68,9 @@ function createToolContext(
     conversationId: request.routing.correlation?.conversationId,
     destination: request.routing.destination,
     egress: {} as ToolRuntimeContext["egress"],
-    requester:
-      request.routing.requester?.platform === "slack"
-        ? request.routing.requester
+    actor:
+      request.routing.actor?.platform === "slack"
+        ? request.routing.actor
         : undefined,
     sandbox,
     source: request.routing.source,
@@ -190,7 +190,7 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: {
+        actor: {
           platform: "slack",
           teamId: SLACK_DESTINATION.teamId,
           userId: "U123",
@@ -263,7 +263,7 @@ describe("agent continuation Slack integration", () => {
           omittedImageAttachmentCount: 1,
         }),
         routing: expect.objectContaining({
-          requester: expect.objectContaining({
+          actor: expect.objectContaining({
             email: "testuser@example.com",
             fullName: "Test User",
             userId: "U123",
@@ -337,7 +337,7 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
-  it("resumes and delivers when the continuation record is missing stored requester profile data", async () => {
+  it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     const sessionRecord =
@@ -358,7 +358,7 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: {
+        actor: {
           platform: "slack",
           teamId: SLACK_DESTINATION.teamId,
           userId: "U123",
@@ -420,7 +420,7 @@ describe("agent continuation Slack integration", () => {
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "resume this request" }),
         routing: expect.objectContaining({
-          requester: {
+          actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
@@ -451,7 +451,7 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 4,
         errorMessage: "Agent turn timed out",
-        requester: {
+        actor: {
           platform: "slack",
           teamId: SLACK_DESTINATION.teamId,
           userId: "U123",
@@ -603,8 +603,8 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
-  it("terminally fails with a visible fallback when no stored requester can be recovered", async () => {
-    // Issue #727: a missing stored requester must never throw out of the
+  it("terminally fails with a visible fallback when no stored actor can be recovered", async () => {
+    // Issue #727: a missing stored actor must never throw out of the
     // continue callback (a throw NACKs the queue delivery and wedges the
     // conversation forever).
     const conversationId = "slack:C123:1712345.0010";
@@ -679,7 +679,7 @@ describe("agent continuation Slack integration", () => {
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Stored Slack requester missing for continuation",
+      errorMessage: "Stored Slack actor missing for continuation",
     });
     expect(slackApiOutbox.messages()).toEqual([
       expect.objectContaining({
@@ -694,9 +694,9 @@ describe("agent continuation Slack integration", () => {
     ]);
   });
 
-  it("recovers the resume requester from the durable conversation record", async () => {
+  it("recovers the resume actor from the durable conversation record", async () => {
     // Issue #727 recovery path: older session records were persisted without
-    // a requester; the durable conversation work record still carries the
+    // a actor; the durable conversation work record still carries the
     // matching identity, so the resume completes instead of failing.
     const conversationId = "slack:C123:1712345.0011";
     const sessionId = "turn_msg_11";
@@ -722,7 +722,7 @@ describe("agent continuation Slack integration", () => {
     await taskExecutionStoreModule.recordConversationActivity({
       conversationId,
       destination: SLACK_DESTINATION,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         slackUserId: "U123",
@@ -778,7 +778,7 @@ describe("agent continuation Slack integration", () => {
       expect.objectContaining({
         input: expect.objectContaining({ messageText: "resume this request" }),
         routing: expect.objectContaining({
-          requester: expect.objectContaining({
+          actor: expect.objectContaining({
             userId: "U123",
             userName: "testuser",
             fullName: "Test User",
@@ -819,7 +819,7 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: {
+        actor: {
           platform: "slack",
           teamId: SLACK_DESTINATION.teamId,
           userId: "U123",
@@ -928,7 +928,7 @@ describe("agent continuation Slack integration", () => {
           timestamp: 1,
         },
       ],
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
@@ -1143,7 +1143,7 @@ describe("agent continuation Slack integration", () => {
         resumeReason: "timeout",
         resumedFromSliceId: 1,
         errorMessage: "Agent turn timed out",
-        requester: {
+        actor: {
           platform: "slack",
           teamId: SLACK_DESTINATION.teamId,
           userId: "U123",

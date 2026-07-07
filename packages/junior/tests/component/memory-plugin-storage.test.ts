@@ -135,7 +135,7 @@ WHERE table_name = 'junior_memory_memories'
     try {
       await migrateMemorySchema(fixture);
       const conversationId = "slack:C123:1718800000.000000";
-      const requester = {
+      const actor = {
         platform: "slack" as const,
         teamId: "T123",
         userId: "U123",
@@ -150,7 +150,7 @@ WHERE table_name = 'junior_memory_memories'
       });
       const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
         conversationId,
-        requester,
+        actor,
         source,
       });
       await store.createMemory({
@@ -176,7 +176,7 @@ WHERE table_name = 'junior_memory_memories'
             return new Response("ok");
           },
         },
-        requester,
+        actor,
         sandbox: {} as Parameters<typeof getPluginTools>[0]["sandbox"],
         source,
         userText: "remember memory plugin facts",

@@ -19,7 +19,7 @@ import {
   type PluginRegistration,
   type PluginStoredTokens,
   type PluginUserTokenSlot,
-  type Requester,
+  type Actor,
   type SandboxPrepareHookContext,
 } from "@sentry/junior-plugin-api";
 import {
@@ -269,31 +269,40 @@ function isSlackUserId(value: string): boolean {
   return /^[UW][A-Z0-9]{5,}$/.test(value);
 }
 
-function requesterDisplayName(
-  value: unknown,
-  requester?: Requester,
-): string | undefined {
+function isUserActor(
+  actor: Actor | undefined,
+): actor is Extract<Actor, { userId: string }> {
+  return Boolean(actor && "userId" in actor);
+}
+
+function actorDisplayName(value: unknown, actor?: Actor): string | undefined {
   const name = cleanIdentityPart(value);
   if (
     !name ||
     name.toLowerCase() === "unknown" ||
-    name === cleanIdentityPart(requester?.userId)
+    name === cleanIdentityPart(isUserActor(actor) ? actor.userId : undefined)
   ) {
     return undefined;
   }
   return isSlackUserId(name) ? undefined : name;
 }
 
-function requesterName(requester?: Requester): string | undefined {
+function actorName(actor?: Actor): string | undefined {
+  if (!isUserActor(actor)) {
+    return undefined;
+  }
   return (
-    requesterDisplayName(requester?.fullName, requester) ||
-    requesterDisplayName(requester?.userName, requester) ||
+    actorDisplayName(actor?.fullName, actor) ||
+    actorDisplayName(actor?.userName, actor) ||
     undefined
   );
 }
 
-function requesterEmail(requester?: Requester): string | undefined {
-  const email = cleanIdentityPart(requester?.email);
+function actorEmail(actor?: Actor): string | undefined {
+  if (!isUserActor(actor)) {
+    return undefined;
+  }
+  const email = cleanIdentityPart(actor?.email);
   return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : undefined;
 }
 
@@ -313,12 +322,12 @@ if [ -z "$message_file" ]; then
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: requester commit attribution was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: actor commit attribution was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
   exit 1
 fi
 
 if [ "\${GIT_AUTHOR_NAME:-}" != "$JUNIOR_GIT_AUTHOR_NAME" ] || [ "\${GIT_AUTHOR_EMAIL:-}" != "$JUNIOR_GIT_AUTHOR_EMAIL" ]; then
-  echo "Junior GitHub plugin internal error: Git author was not set to the resolved requester identity. Do not override Git author manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: Git author was not set to the resolved actor identity. Do not override Git author manually; report this configuration error." >&2
   exit 1
 fi
 
@@ -1518,11 +1527,11 @@ export function githubPlugin(
         if (!botName || !botEmail) {
           return;
         }
-        const authorName = requesterName(ctx.requester);
-        const authorEmail = requesterEmail(ctx.requester);
+        const authorName = actorName(ctx.actor);
+        const authorEmail = actorEmail(ctx.actor);
         if ((!authorName || !authorEmail) && isGitCommitCommand(command)) {
           ctx.decision.deny(
-            "Junior GitHub plugin could not determine a resolved requester name and email for commit attribution. This is an internal request-context error; do not set author env vars manually.",
+            "Junior GitHub plugin could not determine a resolved actor name and email for commit attribution. This is an internal request-context error; do not set author env vars manually.",
           );
           return;
         }

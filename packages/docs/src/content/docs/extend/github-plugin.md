@@ -2,7 +2,7 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for GitHub issue and pull request workflows.
 type: tutorial
-summary: Set up GitHub App installation reads and requester-attributed GitHub writes.
+summary: Set up GitHub App installation reads and actor-attributed GitHub writes.
 prerequisites:
   - /extend/
 related:
@@ -47,7 +47,7 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-`appPermissions` should match the permissions configured on the GitHub App. These values do not make installation-token reads write-capable: Junior requests read-level installation tokens for `installation-read` traffic and omits permissions that GitHub does not expose at `read`. Writes still require the requester, or an explicitly delegated user subject, to complete the private GitHub App OAuth flow.
+`appPermissions` should match the permissions configured on the GitHub App. These values do not make installation-token reads write-capable: Junior requests read-level installation tokens for `installation-read` traffic and omits permissions that GitHub does not expose at `read`. Writes still require the actor, or an explicitly delegated user subject, to complete the private GitHub App OAuth flow.
 
 ## Configure environment variables
 
@@ -157,7 +157,7 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use GitHub App installation tokens that Junior downscopes to read. GitHub account identity checks and write requests require the requester to authorize the GitHub App, then use that user's GitHub App user-to-server token.
+- App-readable requests use GitHub App installation tokens that Junior downscopes to read. GitHub account identity checks and write requests require the actor to authorize the GitHub App, then use that user's GitHub App user-to-server token.
 - GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Effective write access comes from the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
 - The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow issued credentials.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
@@ -175,7 +175,7 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 - GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported PR watch event. Use one of the configured event types above.
 - GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource event subscription for that PR and event type. A successful webhook alone does not create a subscription.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
-- Private OAuth prompt for GitHub writes: the requester has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
+- Private OAuth prompt for GitHub writes: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
 - Fork creation failures: GitHub requires `Administration: write` and `Contents: read`, plus app installation on both source and destination accounts. Routine PR creation should push a branch explicitly and use `gh pr create --head` instead of creating a fork.
 

@@ -29,7 +29,7 @@ export function canReusePendingAuthLink(args: {
   nowMs?: number;
   pendingAuth?: ConversationPendingAuthState;
   provider: string;
-  requesterId: string;
+  actorId: string;
   scope?: string;
   sessionId: string;
 }): boolean {
@@ -41,7 +41,7 @@ export function canReusePendingAuthLink(args: {
   return (
     pendingAuth.kind === args.kind &&
     pendingAuth.provider === args.provider &&
-    pendingAuth.requesterId === args.requesterId &&
+    pendingAuth.actorId === args.actorId &&
     pendingAuth.scope === args.scope &&
     pendingAuth.sessionId === args.sessionId &&
     pendingAuth.linkSentAtMs + AUTH_LINK_REUSE_WINDOW_MS >
@@ -53,7 +53,7 @@ export function getConversationPendingAuth(args: {
   conversation: ThreadConversationState;
   kind: AuthorizationPauseKind;
   provider: string;
-  requesterId: string;
+  actorId: string;
   scope?: string;
 }): ConversationPendingAuthState | undefined {
   const pendingAuth = args.conversation.processing.pendingAuth;
@@ -63,7 +63,7 @@ export function getConversationPendingAuth(args: {
   if (
     pendingAuth.kind !== args.kind ||
     pendingAuth.provider !== args.provider ||
-    pendingAuth.requesterId !== args.requesterId ||
+    pendingAuth.actorId !== args.actorId ||
     pendingAuth.scope !== args.scope
   ) {
     return undefined;

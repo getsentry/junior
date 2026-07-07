@@ -5,7 +5,7 @@ prev: false
 title: "ConversationFeed"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:226](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L226)
+Defined in: [junior/src/reporting/conversations.ts:268](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L268)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:226](https://github.com/getse
 
 > **conversations**: [`ConversationSummaryReport`](/reference/api/interfaces/conversationsummaryreport/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:227](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L227)
+Defined in: [junior/src/reporting/conversations.ts:269](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L269)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:227](https://github.com/getse
 
 > **generatedAt**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:229](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L229)
+Defined in: [junior/src/reporting/conversations.ts:271](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L271)
 
 ---
 
@@ -29,4 +29,4 @@ Defined in: [junior/src/reporting/conversations.ts:229](https://github.com/getse
 
 > **source**: `"conversation_index"`
 
-Defined in: [junior/src/reporting/conversations.ts:228](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L228)
+Defined in: [junior/src/reporting/conversations.ts:270](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L270)

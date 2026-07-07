@@ -140,7 +140,7 @@ Handlers must not receive:
 ### Admin Boundary
 
 Plugin CLI commands are operator/admin surfaces. They do not run as a Slack
-requester or local chat requester unless the command explicitly accepts a
+actor or local chat actor unless the command explicitly accepts a
 context selector and maps it through the same identity rules as runtime code.
 
 For production deployments, remote or hosted admin commands require a separate

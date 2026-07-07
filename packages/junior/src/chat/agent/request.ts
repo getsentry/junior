@@ -2,16 +2,20 @@
  * Agent run request contract.
  *
  * Groups the per-slice run request by the runtime role each field serves and
- * owns interpretation of the routing group: requester derivation, surface
+ * owns interpretation of the routing group: actor derivation, surface
  * inference, destination consistency checks, and session identifiers. Run
  * phases consume these groups directly; callers build them at runtime
  * boundaries.
  */
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type {
+  Destination,
+  Source,
+  SystemActor,
+} from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createRequester, type Requester } from "@/chat/requester";
+import { createActor, isUserActor, type Actor } from "@/chat/actor";
 import type { SandboxAcquiredState } from "@/chat/sandbox/sandbox";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
@@ -65,13 +69,13 @@ export interface AgentRunInput {
 /** Carries identity and addressing needed to route tools, auth, and delivery. */
 export interface AgentRunRouting {
   credentialContext?: CredentialContext;
-  requester?: Requester;
+  actor?: Actor;
   source: Source;
   slackConversation?: SlackConversationContext;
   destination: Destination;
   surface?: AgentTurnSurface;
   dispatch?: {
-    actor?: { id: string; type: string };
+    actor?: SystemActor;
     metadata?: Record<string, string>;
     plugin?: string;
   };
@@ -85,7 +89,7 @@ export interface AgentRunRouting {
     teamId?: string;
     messageTs?: string;
     threadTs?: string;
-    requesterId?: string;
+    actorId?: string;
   };
   toolChannelId?: string;
 }
@@ -174,45 +178,57 @@ export function getSessionIdentifiers(routing: AgentRunRouting): {
   };
 }
 
-/** Derive the acting requester, filling platform and team from the destination. */
-export function requesterFromRouting(
-  routing: AgentRunRouting,
-): Requester | undefined {
-  return createRequester(routing.requester, {
-    platform:
-      routing.requester?.platform ??
-      (routing.destination.platform === "slack" ? "slack" : undefined),
-    teamId:
-      (routing.destination.platform === "slack"
-        ? routing.destination.teamId
-        : undefined) ??
-      routing.correlation?.teamId ??
-      (routing.requester?.platform === "slack"
-        ? routing.requester.teamId
-        : undefined),
-    userId: routing.correlation?.requesterId,
-  });
+/** Derive the acting actor, filling platform and team from the destination. */
+export function actorFromRouting(routing: AgentRunRouting): Actor | undefined {
+  if (routing.dispatch?.actor) {
+    return routing.dispatch.actor;
+  }
+  const userActor = createActor(
+    isUserActor(routing.actor) ? routing.actor : undefined,
+    {
+      platform:
+        (isUserActor(routing.actor) ? routing.actor.platform : undefined) ??
+        (routing.destination.platform === "slack" ? "slack" : undefined),
+      teamId:
+        (routing.destination.platform === "slack"
+          ? routing.destination.teamId
+          : undefined) ??
+        routing.correlation?.teamId ??
+        (routing.actor?.platform === "slack"
+          ? routing.actor.teamId
+          : undefined),
+      userId: routing.correlation?.actorId,
+    },
+  );
+  if (userActor) {
+    return userActor;
+  }
+  if (
+    routing.credentialContext &&
+    !("type" in routing.credentialContext.actor)
+  ) {
+    return routing.credentialContext.actor;
+  }
+  return undefined;
 }
 
-/** Reject requester identities that do not belong to the active destination. */
-export function assertRequesterDestinationMatch(
-  routing: AgentRunRouting,
-): void {
-  const { destination, requester } = routing;
-  if (!requester) {
+/** Reject actor identities that do not belong to the active destination. */
+export function assertActorDestinationMatch(routing: AgentRunRouting): void {
+  const { destination, actor } = routing;
+  if (!actor) {
     return;
   }
-  if (requester.platform !== destination.platform) {
+  if (actor.platform !== destination.platform) {
     throw new TypeError(
-      `Requester platform "${requester.platform}" does not match destination platform "${destination.platform}"`,
+      `Actor platform "${actor.platform}" does not match destination platform "${destination.platform}"`,
     );
   }
   if (
-    requester.platform === "slack" &&
+    actor.platform === "slack" &&
     destination.platform === "slack" &&
-    requester.teamId !== destination.teamId
+    actor.teamId !== destination.teamId
   ) {
-    throw new TypeError("Slack requester team does not match destination team");
+    throw new TypeError("Slack actor team does not match destination team");
   }
 }
 

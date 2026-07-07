@@ -6,7 +6,7 @@ import {
   PluginToolInputError,
   type PluginToolResult,
   type Source,
-  type Requester,
+  type Actor,
   pluginToolResultSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -43,8 +43,8 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "Personal memory requires requester context.",
-  "User-subject memory requires requester context.",
+  "Personal memory requires actor context.",
+  "User-subject memory requires actor context.",
 ]);
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
@@ -53,7 +53,7 @@ export interface MemoryToolContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
-  requester?: Requester;
+  actor?: Actor;
   source: Source;
   userText?: string;
 }
@@ -86,7 +86,7 @@ function memoryRuntimeContext(
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : {}),
-    ...(context.requester ? { requester: context.requester } : {}),
+    ...(context.actor ? { actor: context.actor } : {}),
     source: context.source,
   });
 }
@@ -384,9 +384,9 @@ function createInput(
   } satisfies CreateMemoryInput;
 }
 
-function targetForKind(kind: MemoryKind): "requester" | "conversation" {
+function targetForKind(kind: MemoryKind): "actor" | "conversation" {
   if (kind === "preference") {
-    return "requester";
+    return "actor";
   }
   return "conversation";
 }
@@ -554,7 +554,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current requester and active conversation scopes.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current actor and active conversation scopes.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: searchMemoriesInputSchema,
     outputSchema: memoryManyOutputSchema,

@@ -112,8 +112,8 @@ Scenarios:
 
 1. Follow-up references prior answer:
    - When the user asks a follow-up that depends on Junior's prior thread answer, Junior must answer from prior thread context without repeating already resolved clarifying questions.
-2. Requester differs from original reporter:
-   - When a different user asks a follow-up in the same Slack thread, Junior must treat the current user as the requester while preserving attribution for earlier messages and subjects.
+2. Actor differs from original reporter:
+   - When a different user asks a follow-up in the same Slack thread, Junior must treat the current user as the actor while preserving attribution for earlier messages and subjects.
 
 ### 7. Slack Side-Effect Intent
 

@@ -57,7 +57,7 @@ export function buildJuniorSqlConversation(
       platform: "slack",
       teamId: "T123",
     },
-    requester: {
+    actor: {
       platform: "slack",
       slackUserId: "U123",
       teamId: "T123",

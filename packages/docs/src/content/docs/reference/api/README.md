@@ -7,6 +7,7 @@ title: "@sentry/junior"
 
 ## Interfaces
 
+- [ActorIdentity](/reference/api/interfaces/actoridentity/)
 - [ConversationFeed](/reference/api/interfaces/conversationfeed/)
 - [ConversationReport](/reference/api/interfaces/conversationreport/)
 - [ConversationRunReport](/reference/api/interfaces/conversationrunreport/)
@@ -33,7 +34,6 @@ title: "@sentry/junior"
 - [PluginReport](/reference/api/interfaces/pluginreport/)
 - [PluginTaskContext](/reference/api/interfaces/plugintaskcontext/)
 - [PluginTaskDefinition](/reference/api/interfaces/plugintaskdefinition/)
-- [RequesterIdentity](/reference/api/interfaces/requesteridentity/)
 - [RuntimeInfoReport](/reference/api/interfaces/runtimeinforeport/)
 - [SkillReport](/reference/api/interfaces/skillreport/)
 - [TranscriptMessage](/reference/api/interfaces/transcriptmessage/)

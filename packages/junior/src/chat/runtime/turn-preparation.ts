@@ -230,7 +230,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       await deps.hydrateConversationVisionContext(conversation, {
         threadId: args.context.threadId,
         channelId: args.context.channelId,
-        requesterId: args.context.requesterId,
+        actorId: args.context.actorId,
         runId: args.context.runId,
         threadTs: getThreadTs(args.context.threadId),
       });
@@ -239,7 +239,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     await deps.compactConversationIfNeeded(conversation, {
       threadId: args.context.threadId,
       channelId: args.context.channelId,
-      requesterId: args.context.requesterId,
+      actorId: args.context.actorId,
       runId: args.context.runId,
     });
 

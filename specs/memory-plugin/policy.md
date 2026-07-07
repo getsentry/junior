@@ -129,18 +129,18 @@ accepted team fact.
 ### Personal Scope Authorship
 
 Personal-scoped memories may store public/shareable first-person facts only for
-the current author/requester. The author can explicitly ask Junior to remember
+the current author/actor. The author can explicitly ask Junior to remember
 `I prefer terse code reviews` or `I am the release captain for Project Atlas`.
 Another participant cannot create a personal memory such as `David prefers
 terse code reviews` or `David is the release captain` on David's behalf.
 
 Stored personal content must not include the author's display name, `the
-requester`, `the user`, `I`, or `my`. Ownership lives in the personal scope and
+actor`, `the user`, `I`, or `my`. Ownership lives in the personal scope and
 user subject fields. Content should be rendered with user-relative perspective
 only when recalled.
 
 Personal-scoped memories can also store public/shareable `general` subject
-knowledge for the requester when explicitly requested, but they cannot target
+knowledge for the actor when explicitly requested, but they cannot target
 another user as the subject. Third-person facts belong only in conversation
 scope when they are clean operational knowledge for the current public
 conversation and pass the normal third-party policy. They are not personal
@@ -201,7 +201,7 @@ Policy still disallows passive extraction by category, including:
 For V1, passive extraction should store conversation-scoped operational
 knowledge by default. Passive personal memory from public conversations requires
 clear first-person source evidence from the user and must still be visible only
-to that requester. Explicit memory-management tool calls suppress passive
+to that actor. Explicit memory-management tool calls suppress passive
 extraction for the same completed session so the tool path owns its effect.
 
 ## Automatic Injection Policy
@@ -220,7 +220,7 @@ Users may explicitly store public/shareable personal preferences about
 themselves when the requested memory passes policy. This includes ordinary
 technical and workplace preferences or opinions, such as language, tool,
 repository, product, communication, and workflow preferences, when they are
-authored by the current requester and do not include private or sensitive
+authored by the current actor and do not include private or sensitive
 content.
 
 The explicit tool path must use the same agentic policy guidance as passive

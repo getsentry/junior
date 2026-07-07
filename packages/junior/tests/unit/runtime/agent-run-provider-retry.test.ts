@@ -385,7 +385,7 @@ describe("executeAgentRun provider retry", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-1",
           turnId: "turn-1",
@@ -476,7 +476,7 @@ describe("executeAgentRun provider retry", () => {
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
-          requester: { platform: "slack", teamId: "T123", userId: "U123" },
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
           correlation: {
             conversationId: "slack:C123:1712345.0001",
             turnId: "turn-steering",
@@ -551,7 +551,7 @@ describe("executeAgentRun provider retry", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-yield",
           turnId: "turn-yield",
@@ -600,7 +600,7 @@ describe("executeAgentRun provider retry", () => {
     const outcome = await executeAgentRun({
       input: { messageText: "help me" },
       routing: {
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-yield-steering",
           turnId: "turn-yield-steering",
@@ -658,7 +658,7 @@ describe("executeAgentRun provider retry", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-yield-persist-failure",
           turnId: "turn-yield-persist-failure",
@@ -695,7 +695,7 @@ describe("executeAgentRun provider retry", () => {
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
-          requester: { platform: "slack", teamId: "T123", userId: "U123" },
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
           correlation: {
             conversationId: "conversation-tool-activity",
             turnId: "turn-tool-activity",
@@ -737,7 +737,7 @@ describe("executeAgentRun provider retry", () => {
         routing: {
           destination: TEST_DESTINATION,
           source: TEST_SOURCE,
-          requester: { platform: "slack", teamId: "T123", userId: "U123" },
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
           correlation: {
             conversationId,
             turnId: sessionId,
@@ -772,7 +772,7 @@ describe("executeAgentRun provider retry", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: { platform: "slack", teamId: "T123", userId: "U123" },
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
         correlation: {
           conversationId: "conversation-steering-failure",
           turnId: "turn-steering-failure",

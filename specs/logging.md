@@ -169,7 +169,7 @@ Rules:
 - `messaging.destination.name` (channel identifier)
 - `messaging.message.id` (message ts/id when available)
 - `messaging.message.conversation_id` (thread id)
-- `enduser.id` (requester user id)
+- `enduser.id` (actor user id)
 
 ### GenAI
 

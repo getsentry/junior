@@ -63,7 +63,8 @@ async function persistCompletedSessionForFakeReply(
   await persistCompletedSessionRecord({
     conversationId,
     destination: context.destination,
-    requester: context.requester,
+    actor:
+      context.actor && "platform" in context.actor ? context.actor : undefined,
     source: context.source,
     sessionId,
     sliceId: 1,
@@ -78,7 +79,7 @@ async function persistCompletedSessionForFakeReply(
 }
 
 describe("local agent runner", () => {
-  it("runs a local message without Slack requester or destination state", async () => {
+  it("runs a local message without Slack actor or destination state", async () => {
     const conversationId = normalizeLocalConversationId({
       alias: "demo",
       cwd: "/tmp/local-agent-runner-one",
@@ -113,7 +114,7 @@ describe("local agent runner", () => {
         policy: expect.objectContaining({ authorizationFlowMode: "disabled" }),
         routing: expect.objectContaining({
           credentialContext: {
-            actor: { type: "system", id: "local-cli" },
+            actor: { platform: "system", name: "local-cli" },
           },
           destination: {
             platform: "local",
@@ -123,7 +124,7 @@ describe("local agent runner", () => {
         }),
       }),
     );
-    expect(contexts[0]?.requester).toEqual({
+    expect(contexts[0]?.actor).toEqual({
       fullName: "Local CLI",
       platform: "local",
       userId: "local-cli",
@@ -178,12 +179,12 @@ describe("local agent runner", () => {
 
       context.onToolInvocation?.({
         toolName: "createMemory",
-        params: { content: "The requester prefers short updates." },
+        params: { content: "The actor prefers short updates." },
       });
       await context.onToolResult?.({
         ok: true,
         toolName: "createMemory",
-        params: { content: "The requester prefers short updates." },
+        params: { content: "The actor prefers short updates." },
         result: { ok: true },
       });
       return completedAgentRun(
@@ -213,14 +214,14 @@ describe("local agent runner", () => {
     expect(invocations).toEqual([
       {
         toolName: "createMemory",
-        params: { content: "The requester prefers short updates." },
+        params: { content: "The actor prefers short updates." },
       },
     ]);
     expect(results).toEqual([
       {
         ok: true,
         toolName: "createMemory",
-        params: { content: "The requester prefers short updates." },
+        params: { content: "The actor prefers short updates." },
         result: { ok: true },
       },
     ]);
@@ -308,7 +309,7 @@ describe("local agent runner", () => {
             text: "captured",
           },
         ],
-        requester: expect.objectContaining({
+        actor: expect.objectContaining({
           platform: "local",
           userId: "local-cli",
         }),

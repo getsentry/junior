@@ -42,7 +42,7 @@ export interface McpAuthOrchestrationInput {
   abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
-  requesterId?: string;
+  actorId?: string;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -85,7 +85,7 @@ export function createMcpAuthOrchestration(
   const authProviderFactory = async (
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
-    if (!input.conversationId || !input.sessionId || !input.requesterId) {
+    if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
     }
     if (
@@ -103,7 +103,7 @@ export function createMcpAuthOrchestration(
       destination: input.destination,
       source: input.source,
       sessionId: input.sessionId,
-      userId: input.requesterId,
+      userId: input.actorId,
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.threadTs ? { threadTs: input.threadTs } : {}),
@@ -125,8 +125,8 @@ export function createMcpAuthOrchestration(
     const authSessionId = authSessionIdsByProvider.get(provider);
     const conversationId = input.conversationId;
     const sessionId = input.sessionId;
-    const requesterId = input.requesterId;
-    if (!authSessionId || !conversationId || !sessionId || !requesterId) {
+    const actorId = input.actorId;
+    if (!authSessionId || !conversationId || !sessionId || !actorId) {
       throw new Error(
         `Missing MCP auth session context for plugin "${provider}"`,
       );
@@ -161,7 +161,7 @@ export function createMcpAuthOrchestration(
       pendingAuth: input.pendingAuth,
       kind: "mcp",
       provider,
-      requesterId,
+      actorId,
       sessionId,
     });
     const providerLabel = formatProviderLabel(provider);
@@ -190,7 +190,7 @@ export function createMcpAuthOrchestration(
     await recordPendingAuth({
       kind: "mcp",
       provider,
-      requesterId,
+      actorId,
       sessionId,
       linkSentAtMs: reusingPendingLink
         ? input.pendingAuth!.linkSentAtMs
@@ -200,7 +200,7 @@ export function createMcpAuthOrchestration(
       conversationId,
       kind: "mcp",
       provider,
-      requesterId,
+      actorId,
       authorizationId: authorizationId({
         kind: "mcp",
         provider,

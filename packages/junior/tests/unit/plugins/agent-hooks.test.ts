@@ -42,7 +42,7 @@ function demoPluginTool(description = "Demo tool") {
   });
 }
 
-const TEST_REQUESTER = {
+const TEST_ACTOR = {
   platform: "slack",
   teamId: "T123",
   userId: "U123",
@@ -263,7 +263,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           async userPrompt(ctx) {
-            expect(ctx.requester).toBeUndefined();
+            expect(ctx.actor).toBeUndefined();
             expect(ctx.source).toEqual(LOCAL_SOURCE);
             expect(ctx.text).toBe("remember this");
             expect(ctx).toHaveProperty("embedder");
@@ -421,7 +421,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.requester).toEqual(TEST_REQUESTER);
+            expect(ctx.actor).toEqual(TEST_ACTOR);
             return {
               demoTool: demoPluginTool(),
             };
@@ -432,7 +432,7 @@ describe("agent plugin hooks", () => {
     try {
       const tools = getPluginTools({
         destination: SLACK_DESTINATION,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         egress: TEST_EGRESS,
         source: SLACK_SOURCE,
         sandbox: {} as any,
@@ -1019,15 +1019,15 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           async sandboxPrepare(ctx) {
-            expect(ctx.requester).toEqual(TEST_REQUESTER);
+            expect(ctx.actor).toEqual(TEST_ACTOR);
             await ctx.sandbox.writeFile({
               path: `${ctx.sandbox.juniorRoot}/prepared.txt`,
-              content: ctx.requester?.userId ?? "",
+              content: TEST_ACTOR.userId,
             });
           },
           beforeToolExecute(ctx) {
-            expect(ctx.requester).toEqual(TEST_REQUESTER);
-            ctx.env.set("AGENT_PLUGIN", ctx.requester?.userId ?? "");
+            expect(ctx.actor).toEqual(TEST_ACTOR);
+            ctx.env.set("AGENT_PLUGIN", TEST_ACTOR.userId);
             if (
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
@@ -1053,7 +1053,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const runner = createPluginHookRunner({
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
       });
 
       await runner.prepareSandbox(fakeSandbox(writes));
@@ -1165,7 +1165,7 @@ describe("getPluginTools channel resolution", () => {
         channelId: "COUT",
       },
       egress: TEST_EGRESS,
-      requester: TEST_REQUESTER,
+      actor: TEST_ACTOR,
       sandbox: {} as any,
     });
 
@@ -1185,7 +1185,7 @@ describe("getPluginTools channel resolution", () => {
         channelId: "COUT",
       },
       egress: TEST_EGRESS,
-      requester: TEST_REQUESTER,
+      actor: TEST_ACTOR,
       sandbox: {} as any,
     });
 

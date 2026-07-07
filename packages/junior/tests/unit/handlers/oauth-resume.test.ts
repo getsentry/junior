@@ -119,7 +119,7 @@ describe("resumeAuthorizedRequest", () => {
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0001"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
       },
       agentRunner: { run: () => new Promise<never>(() => {}) },
@@ -164,7 +164,7 @@ describe("resumeAuthorizedRequest", () => {
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0004"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
       },
       agentRunner: {
@@ -209,7 +209,7 @@ describe("resumeAuthorizedRequest", () => {
             },
             destination: TEST_SLACK_DESTINATION,
             source: testSlackSource("1700000000.0005"),
-            requester: {
+            actor: {
               platform: "slack",
               teamId: "T-test",
               userId: "U-test",
@@ -275,7 +275,7 @@ describe("resumeAuthorizedRequest", () => {
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0006"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
       },
       agentRunner: {
@@ -327,7 +327,7 @@ describe("resumeAuthorizedRequest", () => {
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0002"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
       },
       agentRunner: {
@@ -357,7 +357,7 @@ describe("resumeAuthorizedRequest", () => {
           },
           destination: TEST_SLACK_DESTINATION,
           source: testSlackSource("1700000000.0003"),
-          requester: { platform: "slack", teamId: "T-test", userId: "U-test" },
+          actor: { platform: "slack", teamId: "T-test", userId: "U-test" },
         },
       },
       agentRunner: {

@@ -16,7 +16,7 @@ import {
   buildConversations,
   conversationRuntimeMs,
   conversationDisplayTitle,
-  conversationRequesterLabel,
+  conversationActorLabel,
   conversationPath,
   filterRecentConversations,
   formatDurationTick,
@@ -358,7 +358,7 @@ function chartTooltipRows(
   detail: ConversationDetailFeed | undefined,
 ): Array<[string, ReactNode]> {
   const session = point.conversation;
-  const requester = conversationRequesterLabel(point.conversation);
+  const actor = conversationActorLabel(point.conversation);
   const location = session
     ? slackLocationLabel(session, { includeId: false })
     : undefined;
@@ -396,7 +396,7 @@ function chartTooltipRows(
           ),
         ]
       : null,
-    requester ? ["requester", requester] : null,
+    actor ? ["actor", actor] : null,
     location ? ["surface", location] : null,
   ];
   return rows.filter((row): row is [string, ReactNode] => row !== null);

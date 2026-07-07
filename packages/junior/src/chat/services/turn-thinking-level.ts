@@ -165,7 +165,7 @@ export async function selectTurnThinkingLevel(args: {
   conversationContext?: string;
   context?: {
     channelId?: string;
-    requesterId?: string;
+    actorId?: string;
     runId?: string;
     threadId?: string;
   };
@@ -187,7 +187,7 @@ export async function selectTurnThinkingLevel(args: {
   const logContext: LogContext = {
     slackThreadId: args.context?.threadId,
     slackChannelId: args.context?.channelId,
-    slackUserId: args.context?.requesterId,
+    slackUserId: args.context?.actorId,
     runId: args.context?.runId,
     modelId: args.fastModelId,
   };
@@ -213,7 +213,7 @@ export async function selectTurnThinkingLevel(args: {
           modelId: args.fastModelId,
           threadId: args.context?.threadId ?? "",
           channelId: args.context?.channelId ?? "",
-          requesterId: args.context?.requesterId ?? "",
+          actorId: args.context?.actorId ?? "",
           runId: args.context?.runId ?? "",
         },
         prompt,

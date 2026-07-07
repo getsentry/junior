@@ -34,7 +34,7 @@ function mockSystemPrompt(): string {
     "",
     "- Default application repo: acme/junior-demo.",
     "- Default package namespace: @acme/junior.",
-    "- Open pull requests as drafts unless the requester asks for ready review.",
+    "- Open pull requests as drafts unless the actor asks for ready review.",
     "",
     "# Slack Output",
     "",
@@ -555,7 +555,7 @@ export function longReleaseConversation(
           outputTokens: 1037,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           fullName: "Jordan Blake",
           slackUserId: "UQA777",
           slackUserName: "jordan",
@@ -585,7 +585,7 @@ export function longReleaseConversation(
           outputTokens: 5765,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           fullName: "Jordan Blake",
           slackUserId: "UQA777",
           slackUserName: "jordan",

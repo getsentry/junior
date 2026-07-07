@@ -38,7 +38,7 @@ export type {
   ConversationSurface,
   ConversationToolActivityReport,
   ConversationUsage,
-  RequesterIdentity,
+  ActorIdentity,
   TranscriptMessage,
   TranscriptPart,
   TranscriptPartType,

@@ -15,7 +15,7 @@ import {
 } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
-import type { Requester } from "@/chat/requester";
+import type { Actor } from "@/chat/actor";
 import {
   loadTurnSessionRecord,
   persistAuthPauseSessionRecord,
@@ -43,7 +43,7 @@ interface ResumeStateArgs {
   getLoadedSkillNames: () => string[];
   logContext: SessionRecordLogContext;
   recordActiveMcpProviders: () => Promise<void>;
-  requester?: Requester;
+  actor?: Actor;
   runSource: Source;
   sessionConversationId?: string;
   sessionId?: string;
@@ -91,7 +91,7 @@ export function createResumeState(args: ResumeStateArgs) {
     sessionId: args.sessionId!,
     loadedSkillNames: args.getLoadedSkillNames(),
     logContext: args.logContext,
-    requester: args.requester,
+    actor: args.actor,
     ...(args.surface ? { surface: args.surface } : {}),
   });
 

@@ -45,7 +45,7 @@ import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
-import type { Requester } from "@/chat/requester";
+import { isUserActor, type Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
@@ -65,7 +65,7 @@ import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifac
 interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
-  actorRequester?: Requester;
+  currentActor?: Actor;
   artifactStatePatch: Partial<ThreadArtifactsState>;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
@@ -116,13 +116,14 @@ export async function wireAgentTools(
   args: ToolWiringArgs,
 ): Promise<ToolWiring> {
   const runSource = args.routing.source;
-  const authRequesterId =
-    args.routing.credentialContext?.actor.type === "user"
+  const authActorId =
+    args.routing.credentialContext &&
+    "type" in args.routing.credentialContext.actor
       ? args.routing.credentialContext.actor.userId
       : undefined;
   const userTokenStore = createUserTokenStore();
   const pluginHooks = createPluginHookRunner({
-    requester: args.actorRequester,
+    actor: args.currentActor,
   });
   const sandboxExecutor = createSandboxExecutor({
     sandboxId: args.state.sandbox?.sandboxId,
@@ -143,7 +144,9 @@ export async function wireAgentTools(
       const result = await maybeExecuteJrRpcCustomCommand(command, {
         activeSkill: args.skillSandbox.getActiveSkill(),
         channelConfiguration: args.policy.channelConfiguration,
-        requesterId: args.actorRequester?.userId,
+        actorId: isUserActor(args.currentActor)
+          ? args.currentActor.userId
+          : undefined,
         onConfigurationValueChanged: (key, value) => {
           if (value === undefined) {
             delete args.configurationValues[key];
@@ -174,7 +177,7 @@ export async function wireAgentTools(
     abortAgent: args.abortAgent,
     conversationId: args.sessionConversationId,
     sessionId: args.sessionId,
-    requesterId: authRequesterId,
+    actorId: authActorId,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,
@@ -196,7 +199,7 @@ export async function wireAgentTools(
     abortAgent: args.abortAgent,
     conversationId: args.sessionConversationId,
     sessionId: args.sessionId,
-    requesterId: authRequesterId,
+    actorId: authActorId,
     channelId: slackChannelId,
     destination: args.routing.destination,
     source: runSource,
@@ -273,10 +276,8 @@ export async function wireAgentTools(
     toolRuntimeContext = {
       ...commonToolRuntimeContext,
       destination: toolDestination,
-      requester:
-        args.actorRequester?.platform === "slack"
-          ? args.actorRequester
-          : undefined,
+      actor:
+        args.currentActor?.platform === "slack" ? args.currentActor : undefined,
       source: runSource,
     };
   } else {
@@ -286,10 +287,8 @@ export async function wireAgentTools(
     toolRuntimeContext = {
       ...commonToolRuntimeContext,
       destination: toolDestination,
-      requester:
-        args.actorRequester?.platform === "local"
-          ? args.actorRequester
-          : undefined,
+      actor:
+        args.currentActor?.platform === "local" ? args.currentActor : undefined,
       source: runSource,
     };
   }

@@ -4,7 +4,7 @@ import { createLocalJuniorSqlFixture } from "../../../fixtures/sql";
 import { seedPeople } from "./fixture";
 
 describe("people list API", () => {
-  test("lists people by shared verified requester identity", async () => {
+  test("lists people by shared verified actor identity", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
     const fixture = await createLocalJuniorSqlFixture();
@@ -16,28 +16,28 @@ describe("people list API", () => {
         db: fixture.sql.db(),
       });
 
-      expect(report.people.map((person) => person.requester.email)).toEqual([
+      expect(report.people.map((person) => person.actor.email)).toEqual([
         "bob@example.com",
         "alice@example.com",
         "later@example.com",
       ]);
       expect(
         report.people.find(
-          (person) => person.requester.email === "alice@example.com",
+          (person) => person.actor.email === "alice@example.com",
         ),
       ).toMatchObject({
         active: 0,
         activeDays: 2,
         conversations: 2,
         failed: 1,
-        requester: {
+        actor: {
           email: "alice@example.com",
           fullName: "Alice Example",
         },
       });
       expect(
         report.people.some(
-          (person) => person.requester.email === "untrusted@example.com",
+          (person) => person.actor.email === "untrusted@example.com",
         ),
       ).toBe(false);
       expect(report.source).toBe("conversation_index");

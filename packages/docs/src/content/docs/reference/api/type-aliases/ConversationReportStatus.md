@@ -7,4 +7,4 @@ title: "ConversationReportStatus"
 
 > **ConversationReportStatus** = `"active"` \| `"completed"` \| `"failed"` \| `"hung"` \| `"superseded"`
 
-Defined in: [junior/src/reporting/conversations.ts:80](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L80)
+Defined in: [junior/src/reporting/conversations.ts:98](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L98)

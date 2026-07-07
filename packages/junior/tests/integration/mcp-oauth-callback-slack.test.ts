@@ -2,7 +2,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSlackSource,
-  type Requester,
+  type Actor,
   type Source,
 } from "@sentry/junior-plugin-api";
 import {
@@ -115,7 +115,7 @@ async function createPendingAuthSession(args: {
 
 async function createAwaitingMcpTurnRecord(args: {
   conversationId: string;
-  requester?: Requester;
+  actor?: Actor;
   includeSource?: boolean;
   sessionId: string;
   source?: Source;
@@ -138,7 +138,7 @@ async function createAwaitingMcpTurnRecord(args: {
         timestamp: 1,
       },
     ],
-    requester: args.requester ?? {
+    actor: args.actor ?? {
       platform: "slack",
       teamId: SLACK_DESTINATION.teamId,
       userId: "U123",
@@ -240,7 +240,7 @@ describe("mcp oauth callback slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -266,7 +266,7 @@ describe("mcp oauth callback slack integration", () => {
     });
     await createAwaitingMcpTurnRecord({
       conversationId: "conversation-1",
-      requester: {
+      actor: {
         platform: "slack",
         teamId: "T123",
         userId: "U123",
@@ -377,7 +377,7 @@ describe("mcp oauth callback slack integration", () => {
           ),
         }),
         routing: expect.objectContaining({
-          requester: expect.objectContaining({
+          actor: expect.objectContaining({
             email: "stored@example.com",
             fullName: "Stored User",
             platform: "slack",
@@ -466,7 +466,7 @@ describe("mcp oauth callback slack integration", () => {
     );
   });
 
-  it("fails MCP OAuth resume when stored requester team mismatches destination", async () => {
+  it("fails MCP OAuth resume when stored actor team mismatches destination", async () => {
     const threadId = "slack:C123:1700000000.006";
     const sessionId = "turn_user-6";
 
@@ -486,7 +486,7 @@ describe("mcp oauth callback slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -495,7 +495,7 @@ describe("mcp oauth callback slack integration", () => {
     });
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: "T999",
         userId: "U123",
@@ -527,8 +527,7 @@ describe("mcp oauth callback slack integration", () => {
       turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Stored Slack requester identity did not match OAuth requester",
+      errorMessage: "Stored Slack actor identity did not match OAuth actor",
     });
   });
 
@@ -567,7 +566,7 @@ describe("mcp oauth callback slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -609,7 +608,7 @@ describe("mcp oauth callback slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -747,7 +746,7 @@ describe("mcp oauth callback slack integration", () => {
             pendingAuth: {
               kind: "mcp",
               provider: EVAL_MCP_AUTH_PROVIDER,
-              requesterId: "U123",
+              actorId: "U123",
               sessionId,
               linkSentAtMs: 1,
             },
@@ -813,7 +812,7 @@ describe("mcp oauth callback slack integration", () => {
             pendingAuth: {
               kind: "mcp",
               provider: EVAL_MCP_AUTH_PROVIDER,
-              requesterId: "U123",
+              actorId: "U123",
               sessionId,
               linkSentAtMs: 1,
             },
@@ -842,7 +841,7 @@ describe("mcp oauth callback slack integration", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
 
-  it("does not resume MCP OAuth with a mismatched stored requester", async () => {
+  it("does not resume MCP OAuth with a mismatched stored actor", async () => {
     const sessionId = "turn_user-7";
     await stateAdapterModule
       .getStateAdapter()
@@ -865,7 +864,7 @@ describe("mcp oauth callback slack integration", () => {
             pendingAuth: {
               kind: "mcp",
               provider: EVAL_MCP_AUTH_PROVIDER,
-              requesterId: "U123",
+              actorId: "U123",
               sessionId,
               linkSentAtMs: 1,
             },
@@ -873,8 +872,8 @@ describe("mcp oauth callback slack integration", () => {
         },
       });
     await createAwaitingMcpTurnRecord({
-      conversationId: "conversation-mismatched-requester",
-      requester: {
+      conversationId: "conversation-mismatched-actor",
+      actor: {
         platform: "slack",
         teamId: "T123",
         userId: "U999",
@@ -887,7 +886,7 @@ describe("mcp oauth callback slack integration", () => {
     });
 
     const authProvider = await createPendingAuthSession({
-      conversationId: "conversation-mismatched-requester",
+      conversationId: "conversation-mismatched-actor",
       sessionId,
       userMessage: "list mcp data",
       channelId: "C123",
@@ -907,13 +906,12 @@ describe("mcp oauth callback slack integration", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
-        "conversation-mismatched-requester",
+        "conversation-mismatched-actor",
         sessionId,
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Stored Slack requester identity did not match OAuth requester",
+      errorMessage: "Stored Slack actor identity did not match OAuth actor",
     });
   });
 });

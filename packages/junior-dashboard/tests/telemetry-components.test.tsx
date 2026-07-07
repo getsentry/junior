@@ -31,7 +31,7 @@ import type {
   ConversationSummary,
   ConversationTurn,
   DashboardData,
-  RequesterProfile,
+  ActorProfile,
 } from "../src/client/types";
 
 afterEach(() => {
@@ -65,7 +65,7 @@ function dashboardData(
       generatedAt: "2026-01-01T00:00:00.000Z",
       hung: 0,
       locations: [],
-      requesters: [],
+      actors: [],
       sampleLimit: 0,
       sampleSize: 0,
       source: "conversation_index",
@@ -273,8 +273,8 @@ describe("dashboard telemetry components", () => {
     );
   });
 
-  it("renders requester profiles with activity and recent conversations", () => {
-    const profile: RequesterProfile = {
+  it("renders actor profiles with activity and recent conversations", () => {
+    const profile: ActorProfile = {
       activityDays: [
         {
           active: 0,
@@ -315,7 +315,7 @@ describe("dashboard telemetry components", () => {
           id: "turn-1",
           lastProgressAt: "2026-01-02T00:00:00.000Z",
           lastSeenAt: "2026-01-02T00:00:00.000Z",
-          requesterIdentity: {
+          actorIdentity: {
             email: "avery@example.com",
             fullName: "Avery Example",
           },
@@ -324,7 +324,7 @@ describe("dashboard telemetry components", () => {
           surface: "slack",
         },
       ],
-      requester: {
+      actor: {
         email: "avery@example.com",
         fullName: "Avery Example",
         slackUserName: "avery",
@@ -403,7 +403,7 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("People failed to load");
     expect(html).toContain("People telemetry is unavailable");
-    expect(html).not.toContain("No requester telemetry with trusted email");
+    expect(html).not.toContain("No actor telemetry with trusted email");
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {
@@ -744,7 +744,7 @@ describe("dashboard telemetry components", () => {
       status: "completed",
       surface: "slack",
       displayTitle: "Conversation",
-      requesterIdentity: {
+      actorIdentity: {
         email: "avery@example.com",
         fullName: "Avery Example",
       },
@@ -822,7 +822,7 @@ describe("dashboard telemetry components", () => {
         id: "turn-1",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:02.000Z",
-        requesterIdentity: {
+        actorIdentity: {
           email: "morgan@example.com",
           fullName: "Morgan",
         },
@@ -837,7 +837,7 @@ describe("dashboard telemetry components", () => {
         id: "turn-2",
         lastProgressAt: "2026-01-01T00:02:01.000Z",
         lastSeenAt: "2026-01-01T00:02:02.000Z",
-        requesterIdentity: { fullName: "Casey" },
+        actorIdentity: { fullName: "Casey" },
         startedAt: "2026-01-01T00:02:00.000Z",
         status: "completed",
         surface: "internal",
@@ -847,7 +847,7 @@ describe("dashboard telemetry components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter
         initialEntries={[
-          "/conversations?q=checkout&source=slack&requester=morgan%40example.com",
+          "/conversations?q=checkout&source=slack&actor=morgan%40example.com",
         ]}
       >
         <ConversationsPage data={data} />
@@ -856,7 +856,7 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain('aria-label="Search conversations"');
     expect(html).toContain('aria-label="Source"');
-    expect(html).toContain('aria-label="Requester"');
+    expect(html).toContain('aria-label="Actor"');
     expect(html).toContain("Checkout latency triage");
     expect(html).toContain("1 of 2 conversations");
     expect(html).not.toContain("Memory cleanup");
@@ -875,7 +875,7 @@ describe("dashboard telemetry components", () => {
         id: "turn-1",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:02.000Z",
-        requesterIdentity: { fullName: "Avery" },
+        actorIdentity: { fullName: "Avery" },
         startedAt: "2026-01-01T00:00:00.000Z",
         status: "completed",
         surface: "slack",
@@ -888,7 +888,7 @@ describe("dashboard telemetry components", () => {
         id: "turn-2",
         lastProgressAt: "2026-01-01T00:02:01.000Z",
         lastSeenAt: "2026-01-01T00:02:02.000Z",
-        requesterIdentity: { fullName: "Avery" },
+        actorIdentity: { fullName: "Avery" },
         startedAt: "2026-01-01T00:02:00.000Z",
         status: "failed",
         surface: "slack",
@@ -902,7 +902,7 @@ describe("dashboard telemetry components", () => {
         id: "old-turn",
         lastProgressAt: "2025-12-20T00:00:01.000Z",
         lastSeenAt: "2025-12-20T00:00:02.000Z",
-        requesterIdentity: { fullName: "Casey" },
+        actorIdentity: { fullName: "Casey" },
         startedAt: "2025-12-20T00:00:00.000Z",
         status: "completed",
         surface: "slack",
@@ -928,7 +928,7 @@ describe("dashboard telemetry components", () => {
           runs: 1,
         },
       ],
-      requesters: [
+      actors: [
         {
           active: 0,
           conversations: 2,

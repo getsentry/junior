@@ -2,18 +2,20 @@ import { z } from "zod";
 import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
-  localRequesterSchema,
+  localActorSchema,
   platformSchema,
-  requesterSchema,
-  slackRequesterSchema,
+  actorSchema,
+  slackActorSchema,
+  systemActorSchema,
   sourceSchema,
 } from "./schemas";
 
 /** Runtime platform name without source or destination coordinates. */
 export type Platform = z.output<typeof platformSchema>;
-export type Requester = z.output<typeof requesterSchema>;
-export type SlackRequester = z.output<typeof slackRequesterSchema>;
-export type LocalRequester = z.output<typeof localRequesterSchema>;
+export type Actor = z.output<typeof actorSchema>;
+export type SlackActor = z.output<typeof slackActorSchema>;
+export type LocalActor = z.output<typeof localActorSchema>;
+export type SystemActor = z.output<typeof systemActorSchema>;
 export type Source = z.output<typeof sourceSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
@@ -73,7 +75,7 @@ interface BaseInvocationContext {
 export interface SlackInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: SlackDestination;
-  requester?: SlackRequester;
+  actor?: SlackActor;
   /** Runtime-owned source where the invocation came from. */
   source: SlackSource;
 }
@@ -81,7 +83,7 @@ export interface SlackInvocationContext extends BaseInvocationContext {
 export interface LocalInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: LocalDestination;
-  requester?: LocalRequester;
+  actor?: LocalActor;
   /** Runtime-owned source where the invocation came from. */
   source: LocalSource;
 }

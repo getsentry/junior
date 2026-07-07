@@ -13,7 +13,7 @@ Junior contracts instead of Slack, Vercel, GitHub, or other provider primitives.
   and provider-specific formatting primitives belong in the provider-owned
   module or feature folder.
 - Cross-provider code should accept Junior-owned contracts such as
-  `Destination`, `Source`, requester identity, local ports, or feature-owned
+  `Destination`, `Source`, actor identity, local ports, or feature-owned
   projections instead of provider SDK types.
 - Provider-specific side effects must be exposed through narrow capability
   ports or provider-owned services. Do not import provider infrastructure to

@@ -31,7 +31,7 @@ Skills describe behavior. Plugins declare authority.
 
 - Secrets never belong in skill files or committed manifests.
 - Manifest env var names may be committed; secret values stay in deployment configuration.
-- Runtime credential leases are requester-bound; sandbox command leases are command-scoped.
+- Runtime credential leases are actor-bound; sandbox command leases are command-scoped.
 - Missing or stale OAuth is handled by Junior's private authorization flow.
 
 ## Dependencies

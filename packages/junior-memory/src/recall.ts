@@ -1,8 +1,4 @@
-import type {
-  PromptMessage,
-  Requester,
-  Source,
-} from "@sentry/junior-plugin-api";
+import type { PromptMessage, Actor, Source } from "@sentry/junior-plugin-api";
 import {
   createMemoryStore,
   type MemoryDb,
@@ -21,7 +17,7 @@ export interface MemoryRecallContext {
   embedder?: MemoryEmbeddingProvider;
   /** Maximum cosine distance for vector recall. Passed through to the memory store. */
   maxVectorDistance?: number;
-  requester?: Requester;
+  actor?: Actor;
   source: Source;
   text: string;
 }
@@ -74,19 +70,15 @@ export async function createMemoryPromptMessages(
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : {}),
-    ...(context.requester ? { requester: context.requester } : {}),
+    ...(context.actor ? { actor: context.actor } : {}),
     source: context.source,
   });
-  const memories = await createMemoryStore(
-    context.db,
-    runtimeContext,
-    {
-      ...(context.embedder ? { embedder: context.embedder } : {}),
-      ...(context.maxVectorDistance !== undefined
-        ? { maxVectorDistance: context.maxVectorDistance }
-        : {}),
-    },
-  ).searchMemories({
+  const memories = await createMemoryStore(context.db, runtimeContext, {
+    ...(context.embedder ? { embedder: context.embedder } : {}),
+    ...(context.maxVectorDistance !== undefined
+      ? { maxVectorDistance: context.maxVectorDistance }
+      : {}),
+  }).searchMemories({
     query: context.text,
     limit: DEFAULT_RECALL_LIMIT,
   });

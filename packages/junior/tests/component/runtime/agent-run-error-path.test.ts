@@ -92,14 +92,14 @@ describe("executeAgentRun error path", () => {
     ).rejects.toThrow("Assistant reply generation requires a destination");
   });
 
-  it("hard-fails requester and destination platform mismatches", async () => {
+  it("hard-fails actor and destination platform mismatches", async () => {
     await expect(
       executeAgentRun({
         input: { messageText: "hello" },
         routing: {
           destination: LOCAL_DESTINATION,
           source: LOCAL_SOURCE,
-          requester: {
+          actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
@@ -107,7 +107,7 @@ describe("executeAgentRun error path", () => {
         },
       }),
     ).rejects.toThrow(
-      'Requester platform "slack" does not match destination platform "local"',
+      'Actor platform "slack" does not match destination platform "local"',
     );
   });
 

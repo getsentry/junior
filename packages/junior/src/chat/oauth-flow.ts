@@ -38,7 +38,7 @@ export type OAuthStatePayload = {
 };
 
 type OAuthFlowInput = {
-  requesterId: string;
+  actorId: string;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -262,7 +262,7 @@ export async function startOAuthFlow(
   await getStateAdapter().set(
     `oauth-state:${state}`,
     {
-      userId: input.requesterId,
+      userId: input.actorId,
       provider,
       ...(input.channelId ? { channelId: input.channelId } : {}),
       ...(input.destination ? { destination: input.destination } : {}),
@@ -316,7 +316,7 @@ export async function startOAuthFlow(
     delivery: await deliverPrivateMessage({
       channelId: input.channelId,
       threadTs: input.threadTs,
-      userId: input.requesterId,
+      userId: input.actorId,
       text: formatOAuthAuthorizationMessage({
         authorizationUrl,
         label: `Click here to link your ${formatProviderLabel(provider)} account`,

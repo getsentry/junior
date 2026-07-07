@@ -17,7 +17,7 @@ describe("people profile API", () => {
       });
 
       expect(report).toMatchObject({
-        requester: {
+        actor: {
           email: "alice@example.com",
           fullName: "Alice Example",
         },
@@ -62,7 +62,7 @@ describe("people profile API", () => {
         },
       );
       expect(untrusted).toMatchObject({
-        requester: {
+        actor: {
           email: "untrusted@example.com",
         },
         totals: {
@@ -74,7 +74,7 @@ describe("people profile API", () => {
         db: fixture.sql.db(),
       });
       expect(blank).toMatchObject({
-        requester: {
+        actor: {
           email: "",
         },
         sampleSize: 0,
@@ -91,7 +91,7 @@ describe("people profile API", () => {
         },
       );
       expect(backfilled).toMatchObject({
-        requester: {
+        actor: {
           email: "nameless@example.com",
           fullName: "Named Later",
         },

@@ -205,11 +205,11 @@ describe("Slack behavior: subscribed messages", () => {
     expect(replyContexts).toEqual([
       expect.objectContaining({
         credentialContext: {
-          actor: { type: "system", id: "resource-event" },
+          actor: { platform: "system", name: "resource-event" },
         },
-        requester: undefined,
+        actor: undefined,
         correlation: expect.objectContaining({
-          requesterId: undefined,
+          actorId: undefined,
         }),
       }),
     ]);

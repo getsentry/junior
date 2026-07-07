@@ -10,7 +10,7 @@ import {
   buildConversations,
   conversationDisplayTitle,
   conversationFromDetail,
-  conversationRequesterLabel,
+  conversationActorLabel,
   formatConversationDuration,
   formatRelativeTime,
   formatTime,
@@ -177,8 +177,8 @@ function ConversationIdentity(props: {
   conversationId: string | undefined;
   detail: ConversationDetailFeed | undefined;
 }) {
-  const email = props.conversation?.requesterIdentity?.email?.trim();
-  const owner = conversationRequesterLabel(props.conversation);
+  const email = props.conversation?.actorIdentity?.email?.trim();
+  const owner = conversationActorLabel(props.conversation);
   const id = props.conversationId ?? props.conversation?.id;
 
   return (

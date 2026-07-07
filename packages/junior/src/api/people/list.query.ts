@@ -1,8 +1,8 @@
 import type {
-  RequesterDirectoryReport,
-  RequesterIdentity,
-  RequesterSummaryReport,
-  RequesterTotalsReport,
+  ActorDirectoryReport,
+  ActorIdentity,
+  ActorSummaryReport,
+  ActorTotalsReport,
 } from "./types";
 import {
   addSignals,
@@ -11,23 +11,21 @@ import {
   mergeIdentity,
   reportDate,
   reportTime,
-  requesterRows,
+  actorRows,
   SAMPLE_LIMIT,
   signals,
   summaryFromRow,
   type PeopleApiQueryOptions,
 } from "./shared";
 
-type DirectoryAccumulator = RequesterTotalsReport & {
+type DirectoryAccumulator = ActorTotalsReport & {
   activeDates: Set<string>;
   firstSeenMs: number;
   lastSeenMs: number;
-  requester: RequesterIdentity & { email: string };
+  actor: ActorIdentity & { email: string };
 };
 
-function directoryItem(
-  accumulator: DirectoryAccumulator,
-): RequesterSummaryReport {
+function directoryItem(accumulator: DirectoryAccumulator): ActorSummaryReport {
   return {
     active: accumulator.active,
     activeDays: accumulator.activeDates.size,
@@ -37,7 +35,7 @@ function directoryItem(
     firstSeenAt: new Date(accumulator.firstSeenMs).toISOString(),
     hung: accumulator.hung,
     lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
-    requester: accumulator.requester,
+    actor: accumulator.actor,
     runs: accumulator.runs,
   };
 }
@@ -45,15 +43,15 @@ function directoryItem(
 /** Load the people list from the configured or injected SQL database. */
 export async function readPeopleListFromSql(
   options: PeopleApiQueryOptions = {},
-): Promise<RequesterDirectoryReport> {
+): Promise<ActorDirectoryReport> {
   const nowMs = Date.now();
-  const { rows, truncated } = await requesterRows(options);
+  const { rows, truncated } = await actorRows(options);
   const people = new Map<string, DirectoryAccumulator>();
 
   for (const row of rows) {
     const summary = summaryFromRow(row, nowMs);
-    const requester = identityWithEmail(summary.requesterIdentity);
-    if (!requester) continue;
+    const actor = identityWithEmail(summary.actorIdentity);
+    if (!actor) continue;
 
     const firstSeenMs =
       reportTime(summary.startedAt) ?? row.createdAt.getTime();
@@ -61,23 +59,23 @@ export async function readPeopleListFromSql(
       reportTime(summary.lastSeenAt) ?? row.lastActivityAt.getTime();
     const date = reportDate(summary.lastSeenAt);
     const accumulator =
-      people.get(requester.email) ??
+      people.get(actor.email) ??
       ({
         ...emptyTotals(),
         activeDates: new Set<string>(),
         firstSeenMs,
         lastSeenMs,
-        requester,
+        actor,
       } satisfies DirectoryAccumulator);
 
-    accumulator.requester = mergeIdentity(accumulator.requester, requester);
+    accumulator.actor = mergeIdentity(accumulator.actor, actor);
     accumulator.conversations += 1;
     accumulator.runs += 1;
     addSignals(accumulator, signals(summary));
     accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
     accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);
     if (date) accumulator.activeDates.add(date);
-    people.set(requester.email, accumulator);
+    people.set(actor.email, accumulator);
   }
 
   return {
@@ -89,7 +87,7 @@ export async function readPeopleListFromSql(
           (reportTime(right.lastSeenAt) ?? 0) -
             (reportTime(left.lastSeenAt) ?? 0) ||
           right.conversations - left.conversations ||
-          left.requester.email.localeCompare(right.requester.email),
+          left.actor.email.localeCompare(right.actor.email),
       ),
     sampleLimit: SAMPLE_LIMIT,
     sampleSize: rows.length,

@@ -33,7 +33,7 @@ export interface ConversationMemoryService {
     context: {
       threadId?: string;
       channelId?: string;
-      requesterId?: string;
+      actorId?: string;
       runId?: string;
     },
   ) => Promise<void>;
@@ -260,7 +260,7 @@ async function summarizeConversationChunk(
   context: {
     threadId?: string;
     channelId?: string;
-    requesterId?: string;
+    actorId?: string;
     runId?: string;
   },
   deps: ConversationMemoryDeps,
@@ -296,7 +296,7 @@ async function summarizeConversationChunk(
         modelId: botConfig.fastModelId,
         threadId: context.threadId ?? "",
         channelId: context.channelId ?? "",
-        requesterId: context.requesterId ?? "",
+        actorId: context.actorId ?? "",
         runId: context.runId ?? "",
       },
     });
@@ -309,7 +309,7 @@ async function summarizeConversationChunk(
       "conversation_compaction_summary_failed",
       {
         slackThreadId: context.threadId,
-        slackUserId: context.requesterId,
+        slackUserId: context.actorId,
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
@@ -391,7 +391,7 @@ async function compactConversationIfNeededWithDeps(
   context: {
     threadId?: string;
     channelId?: string;
-    requesterId?: string;
+    actorId?: string;
     runId?: string;
   },
   deps: ConversationMemoryDeps,

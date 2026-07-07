@@ -31,7 +31,7 @@ model calls, embeddings, logging, and multi-user visibility.
 
 The store must derive authority-bearing fields from Junior runtime context:
 
-- requester identity
+- actor identity
 - source platform
 - tenant/workspace/org boundary when available
 - destination or conversation identity
@@ -55,7 +55,7 @@ authorization is a separate host boundary.
 
 ## Multi-User Visibility
 
-Personal memory is visible only to the same requester in a compatible runtime
+Personal memory is visible only to the same actor in a compatible runtime
 context.
 
 Public Slack conversation memory is visible across the same Slack workspace.
@@ -71,7 +71,7 @@ unsupported network sources need an explicit privacy contract before passive
 learning is enabled there.
 
 Personal-scoped `user` subject memories may be created only by the current
-author/requester and must contain public/shareable first-person content. An
+author/actor and must contain public/shareable first-person content. An
 explicit tool request to store private, sensitive, or third-party personal
 profile content must fail with a model-visible input error.
 

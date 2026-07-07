@@ -67,7 +67,7 @@ extraction, graph, or admin consumer that needs them.
 
 Stored memory content must be canonical fact text, not perspective or
 provenance text. Runtime ownership, subject, source, actor, thread, channel,
-and requester identity belong in structured columns. They must not be baked
+and actor identity belong in structured columns. They must not be baked
 into the `content` prose.
 
 Examples:
@@ -75,7 +75,7 @@ Examples:
 - Good: `Prefers terse PR summaries`
 - Good: `Favorite CLI QA snack is mango chips`
 - Good: `Deploy runbooks require staging checks first`
-- Bad: `The requester prefers terse PR summaries`
+- Bad: `The actor prefers terse PR summaries`
 - Bad: `David prefers terse PR summaries`
 - Bad: `My favorite CLI QA snack is mango chips`
 - Bad: `This thread says deploy runbooks require staging checks first`
@@ -110,12 +110,12 @@ and model-extracted entity subjects must not become authorization principals.
 
 The storage model must support these V1 visibility scopes:
 
-- personal memory owned by the current requester identity
+- personal memory owned by the current actor identity
 - conversation memory owned by the current public Slack workspace or
   private/local source conversation
 
 The stored scope must be derived from runtime context before write. Model-visible
-tool input cannot provide requester ids, actor ids, workspace ids, channel ids,
+tool input cannot provide actor ids, actor ids, workspace ids, channel ids,
 thread ids, or arbitrary conversation ids.
 
 The store must be able to filter active visible records by:
@@ -140,7 +140,7 @@ equality and very-high embedding similarity when embeddings are available.
 Exact content remains one suppression signal, not a durable identity for memory
 facts.
 
-Conservative supersession may run after duplicate suppression for requester
+Conservative supersession may run after duplicate suppression for actor
 preference memories. The store must consider only active memories in the same
 scope, subject, and kind, and must mark old rows superseded only when the memory
 agent confidently decides that the new preference replaces the same mutable
@@ -260,7 +260,7 @@ Memory creation follows this order:
 3. Run deterministic structural validation for schemas, authority fields,
    lifecycle bounds, idempotency, and storage constraints.
 4. Resolve idempotent retries and conservative duplicate matches before insert.
-5. For requester preference memories, adjudicate conservative supersession after
+5. For actor preference memories, adjudicate conservative supersession after
    duplicate suppression and before insert.
 6. Insert the memory record transactionally. When supersession was confidently
    adjudicated, mark still-active superseded rows and delete their derived

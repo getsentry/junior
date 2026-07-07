@@ -65,18 +65,16 @@ export function ConversationFilterSelect(props: {
 /** Render the conversation list search and facet controls as one compact toolbar. */
 export function ConversationListToolbar(props: {
   query: string;
-  requester: string;
-  requesterOptions: ConversationListFilterOption[];
+  actor: string;
+  actorOptions: ConversationListFilterOption[];
   source: string;
   sourceOptions: ConversationListFilterOption[];
   onQueryChange(value: string): void;
-  onRequesterChange(value: string): void;
+  onActorChange(value: string): void;
   onSourceChange(value: string): void;
   onClear?(): void;
 }) {
-  const filtered = Boolean(
-    props.query.trim() || props.requester || props.source,
-  );
+  const filtered = Boolean(props.query.trim() || props.actor || props.source);
   return (
     <div className="border-b border-white/10 bg-[#050505] px-3 py-3">
       <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(14rem,1fr)_minmax(9rem,13rem)_minmax(11rem,16rem)_auto]">
@@ -94,11 +92,11 @@ export function ConversationListToolbar(props: {
           onChange={props.onSourceChange}
         />
         <ConversationFilterSelect
-          allLabel="All requesters"
-          label="Requester"
-          options={props.requesterOptions}
-          value={props.requester}
-          onChange={props.onRequesterChange}
+          allLabel="All actors"
+          label="Actor"
+          options={props.actorOptions}
+          value={props.actor}
+          onChange={props.onActorChange}
         />
         {filtered && props.onClear ? (
           <Button

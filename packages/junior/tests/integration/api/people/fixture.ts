@@ -15,7 +15,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C1",
     },
-    requester: {
+    actor: {
       email: "Alice@Example.com",
       fullName: "Alice Example",
       platform: "slack",
@@ -40,7 +40,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       updatedAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
     },
     lastActivityAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
-    requester: {
+    actor: {
       email: "alice@example.com",
       fullName: "Provider Specific Alice",
       platform: "slack",
@@ -57,7 +57,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C2",
     },
-    requester: {
+    actor: {
       email: "bob@example.com",
       fullName: "Bob Example",
       platform: "slack",
@@ -74,7 +74,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C1",
     },
-    requester: {
+    actor: {
       email: "later@example.com",
       fullName: "Later Assignee",
       platform: "slack",
@@ -91,7 +91,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C3",
     },
-    requester: {
+    actor: {
       fullName: "No Email",
       platform: "slack",
       slackUserId: "U3",
@@ -123,7 +123,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     conversationId: "slack:C5:untrusted",
     schemaVersion: 1,
     source: "slack",
-    requesterIdentityId: "untrusted-identity",
+    actorIdentityId: "untrusted-identity",
     createdAt: now,
     lastActivityAt: now,
     updatedAt: now,
@@ -142,7 +142,7 @@ export async function seedDisplayNameBackfill(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C6",
     },
-    requester: {
+    actor: {
       email: "nameless@example.com",
       platform: "slack",
       slackUserId: "U-nameless-1",
@@ -158,7 +158,7 @@ export async function seedDisplayNameBackfill(fixture: LocalJuniorSqlFixture) {
       teamId: "T1",
       channelId: "C6",
     },
-    requester: {
+    actor: {
       email: "NameLess@Example.com",
       fullName: "Named Later",
       platform: "slack",

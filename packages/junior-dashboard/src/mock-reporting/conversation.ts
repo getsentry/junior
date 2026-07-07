@@ -5,7 +5,7 @@ import type {
   ConversationRunReport,
   ConversationSurface,
   ConversationUsage,
-  RequesterIdentity,
+  ActorIdentity,
   TranscriptMessage,
 } from "@sentry/junior/reporting";
 
@@ -24,7 +24,7 @@ export type MockRunOptions = {
   id?: string;
   lastProgressAt?: string;
   lastSeenAt?: string;
-  requesterIdentity?: RequesterIdentity;
+  actorIdentity?: ActorIdentity;
   sentryTraceUrl?: string;
   startedAt?: string;
   status?: ConversationReportStatus;
@@ -64,8 +64,8 @@ export function mockRun(options: MockRunOptions = {}): ConversationRunReport {
     ...(options.cumulativeUsage !== undefined
       ? { cumulativeUsage: options.cumulativeUsage }
       : {}),
-    ...(options.requesterIdentity !== undefined
-      ? { requesterIdentity: options.requesterIdentity }
+    ...(options.actorIdentity !== undefined
+      ? { actorIdentity: options.actorIdentity }
       : {}),
     ...(options.sentryTraceUrl !== undefined
       ? { sentryTraceUrl: options.sentryTraceUrl }

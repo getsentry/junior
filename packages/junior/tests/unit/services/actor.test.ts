@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  createRequester,
-  createSlackRequester,
+  createActor,
+  createSlackActor,
   isActorUserId,
   parseActorUserId,
-  parseStoredSlackRequester,
-  toStoredSlackRequester,
-} from "@/chat/requester";
+  parseStoredSlackActor,
+  toStoredSlackActor,
+} from "@/chat/actor";
 
-describe("requester", () => {
+describe("actor", () => {
   it("parses exact actor user ids without accepting synthetic values", () => {
     expect(parseActorUserId("U039RR91S")).toBe("U039RR91S");
     expect(parseActorUserId(" U039RR91S ")).toBeUndefined();
@@ -20,7 +20,7 @@ describe("requester", () => {
 
   it("does not promote Slack ids into actor display names", () => {
     expect(
-      createRequester(
+      createActor(
         {
           fullName: "U039RR91S",
           platform: "slack",
@@ -35,7 +35,7 @@ describe("requester", () => {
 
   it("does not promote synthetic unknown display names", () => {
     expect(
-      createRequester(
+      createActor(
         {
           fullName: "unknown",
           platform: "slack",
@@ -48,9 +48,9 @@ describe("requester", () => {
     ).toEqual({ platform: "slack", teamId: "T123", userId: "U039RR91S" });
   });
 
-  it("builds local requester identities without Slack team state", () => {
+  it("builds local actor identities without Slack team state", () => {
     expect(
-      createRequester(
+      createActor(
         {
           fullName: "Local CLI",
           platform: "local",
@@ -69,7 +69,7 @@ describe("requester", () => {
 
   it("does not preserve synthetic unknown actor ids", () => {
     expect(
-      createRequester(
+      createActor(
         {
           fullName: "David Cramer",
           platform: "slack",
@@ -82,9 +82,9 @@ describe("requester", () => {
     ).toBeUndefined();
   });
 
-  it("builds Slack requester from the resolved Slack profile", () => {
+  it("builds Slack actor from the resolved Slack profile", () => {
     expect(
-      createSlackRequester("T123", "U039RR91S", {
+      createSlackActor("T123", "U039RR91S", {
         email: "david@example.com",
         fullName: "David Cramer",
         userName: "dcramer",
@@ -101,7 +101,7 @@ describe("requester", () => {
 
   it("drops profile fields when caller context points at a different user", () => {
     expect(
-      createRequester(
+      createActor(
         {
           email: "david@example.com",
           fullName: "David Cramer",
@@ -116,30 +116,30 @@ describe("requester", () => {
   });
 
   it("omits unresolved Slack profile fields instead of inventing identity", () => {
-    expect(createSlackRequester("T123", "U039RR91S", null)).toEqual({
+    expect(createSlackActor("T123", "U039RR91S", null)).toEqual({
       platform: "slack",
       teamId: "T123",
       userId: "U039RR91S",
     });
     expect(
-      createSlackRequester("T123", "U039RR91S", {
+      createSlackActor("T123", "U039RR91S", {
         email: "noreply",
       }),
     ).toEqual({ platform: "slack", teamId: "T123", userId: "U039RR91S" });
   });
 
-  it("requires Slack team and user ids when building Slack requester", () => {
-    expect(() => createSlackRequester("T123", "", null)).toThrow(
-      "Slack requester requires team and user ids",
+  it("requires Slack team and user ids when building Slack actor", () => {
+    expect(() => createSlackActor("T123", "", null)).toThrow(
+      "Slack actor requires team and user ids",
     );
-    expect(() => createSlackRequester("", "U039RR91S", null)).toThrow(
-      "Slack requester requires team and user ids",
+    expect(() => createSlackActor("", "U039RR91S", null)).toThrow(
+      "Slack actor requires team and user ids",
     );
   });
 
-  it("parses canonical serialized Slack requesters without repair", () => {
+  it("parses canonical serialized Slack actors without repair", () => {
     expect(
-      parseStoredSlackRequester({
+      parseStoredSlackActor({
         email: "david@example.com",
         fullName: "David Cramer",
         platform: "slack",
@@ -156,21 +156,21 @@ describe("requester", () => {
       teamId: "T123",
     });
     expect(
-      parseStoredSlackRequester({
+      parseStoredSlackActor({
         slackUserId: " U039RR91S ",
       }),
     ).toBeUndefined();
     expect(
-      parseStoredSlackRequester({
+      parseStoredSlackActor({
         platform: "slack",
         slackUserId: "U039RR91S",
       }),
     ).toBeUndefined();
   });
 
-  it("converts runtime requesters to durable Slack requester state", () => {
+  it("converts runtime actors to durable Slack actor state", () => {
     expect(
-      toStoredSlackRequester({
+      toStoredSlackActor({
         email: "david@example.com",
         fullName: "David Cramer",
         platform: "slack",

@@ -120,7 +120,7 @@ function createSchedulerToolContext(
   return {
     credentialSubject: ctx.slack?.credentialSubject,
     source: ctx.source.platform === "slack" ? ctx.source : undefined,
-    requester: ctx.requester?.platform === "slack" ? ctx.requester : undefined,
+    actor: ctx.actor?.platform === "slack" ? ctx.actor : undefined,
     store: schedulerStore(ctx),
     userText: ctx.userText,
   };
@@ -429,7 +429,7 @@ export function createSchedulerPlugin() {
       tools(ctx) {
         if (
           ctx.source.platform !== "slack" ||
-          ctx.requester?.platform !== "slack"
+          ctx.actor?.platform !== "slack"
         ) {
           return {} as Record<string, PluginToolDefinition>;
         }

@@ -59,7 +59,7 @@ function reporting(): JuniorReporting {
         generatedAt: "2026-06-12T00:00:00.000Z",
         hung: 0,
         locations: [],
-        requesters: [],
+        actors: [],
         runs: 0,
         sampleLimit: 0,
         sampleSize: 0,

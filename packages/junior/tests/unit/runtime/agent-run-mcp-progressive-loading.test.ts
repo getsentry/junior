@@ -92,7 +92,7 @@ function makeDemoMcpTools() {
   return [makeDemoMcpTool("ping"), makeDemoMcpTool("mutate")];
 }
 
-const TEST_REQUESTER = {
+const TEST_ACTOR = {
   platform: "slack",
   teamId: "T123",
   userId: "U123",
@@ -613,7 +613,7 @@ function makeAgentRunRequest(
 
         type: "priv",
       }),
-      requester: TEST_REQUESTER,
+      actor: TEST_ACTOR,
       correlation: {
         channelId: "C123",
         conversationId: args.conversationId,
@@ -742,7 +742,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       expect.objectContaining({
         kind: "mcp",
         provider: "demo",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "turn-1",
       }),
     ]);

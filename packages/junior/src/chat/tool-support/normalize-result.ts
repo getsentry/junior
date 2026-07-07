@@ -173,7 +173,7 @@ function upstreamPermissionDeniedText(value: unknown): string | undefined {
     ...(sso ? [`Provider SSO: ${sso}`] : []),
     ...(command ? [`Command: ${command}`] : []),
     "",
-    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block; diagnose provider-side permissions, installation scope, SSO, or requester-provider account access.",
+    "Junior had a credential lease for this grant and forwarded the request. Do not diagnose this as a missing user token or a local Junior runtime block; diagnose provider-side permissions, installation scope, SSO, or actor-provider account access.",
     ...(stderr ? ["", `stderr:\n${stderr}`] : []),
     ...(stdout ? ["", `stdout:\n${stdout}`] : []),
   ].join("\n");

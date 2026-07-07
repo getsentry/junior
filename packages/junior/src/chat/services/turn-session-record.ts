@@ -5,7 +5,7 @@ import {
   type AgentTurnSurface,
 } from "@/chat/state/turn-session";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type { Destination, Requester, Source } from "@sentry/junior-plugin-api";
+import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -30,7 +30,7 @@ export interface TurnSessionState {
 
 interface SessionRecordLogContext {
   threadId?: string;
-  requesterId?: string;
+  actorId?: string;
   channelId?: string;
   runId?: string;
   assistantUserName?: string;
@@ -53,7 +53,7 @@ function logSessionRecordError(
     eventName,
     {
       slackThreadId: args.logContext.threadId,
-      slackUserId: args.logContext.requesterId,
+      slackUserId: args.logContext.actorId,
       slackChannelId: args.logContext.channelId,
       runId: args.logContext.runId,
       assistantUserName: args.logContext.assistantUserName,
@@ -135,7 +135,7 @@ export async function persistRunningSessionRecord(args: {
   messages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  requester?: Requester;
+  actor?: Actor;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
@@ -171,8 +171,8 @@ export async function persistRunningSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.requester ?? latestSessionRecord?.requester)
-        ? { requester: args.requester ?? latestSessionRecord?.requester }
+      ...((args.actor ?? latestSessionRecord?.actor)
+        ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
@@ -224,7 +224,7 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  requester?: Requester;
+  actor?: Actor;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
@@ -277,8 +277,8 @@ export async function persistCompletedSessionRecord(args: {
               args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
           }
         : {}),
-      ...((args.requester ?? latestSessionRecord?.requester)
-        ? { requester: args.requester ?? latestSessionRecord?.requester }
+      ...((args.actor ?? latestSessionRecord?.actor)
+        ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
@@ -313,7 +313,7 @@ export async function completeDeliveredTurn(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   messages: PiMessage[];
-  requester?: Requester;
+  actor?: Actor;
   sessionId: string;
   sliceId: number;
   source: Source;
@@ -334,7 +334,7 @@ export async function completeDeliveredTurn(args: {
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     logContext: args.logContext,
-    requester: args.requester,
+    actor: args.actor,
     surface: args.surface,
     turnStartMessageIndex: args.turnStartMessageIndex,
   });
@@ -357,7 +357,7 @@ export async function persistAuthPauseSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: Requester;
+  actor?: Actor;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -405,8 +405,8 @@ export async function persistAuthPauseSessionRecord(args: {
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
-      ...((args.requester ?? latestSessionRecord?.requester)
-        ? { requester: args.requester ?? latestSessionRecord?.requester }
+      ...((args.actor ?? latestSessionRecord?.actor)
+        ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
@@ -444,7 +444,7 @@ export async function persistTimeoutSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: Requester;
+  actor?: Actor;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -500,8 +500,8 @@ export async function persistTimeoutSessionRecord(args: {
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
         errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
-        ...((args.requester ?? latestSessionRecord?.requester)
-          ? { requester: args.requester ?? latestSessionRecord?.requester }
+        ...((args.actor ?? latestSessionRecord?.actor)
+          ? { actor: args.actor ?? latestSessionRecord?.actor }
           : {}),
         ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
           ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
@@ -534,8 +534,8 @@ export async function persistTimeoutSessionRecord(args: {
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
-      ...((args.requester ?? latestSessionRecord?.requester)
-        ? { requester: args.requester ?? latestSessionRecord?.requester }
+      ...((args.actor ?? latestSessionRecord?.actor)
+        ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
@@ -572,7 +572,7 @@ export async function persistYieldSessionRecord(args: {
   loadedSkillNames?: string[];
   errorMessage: string;
   logContext: SessionRecordLogContext;
-  requester?: Requester;
+  actor?: Actor;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {
@@ -619,8 +619,8 @@ export async function persistYieldSessionRecord(args: {
       resumeReason: "yield",
       resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
       errorMessage: args.errorMessage,
-      ...((args.requester ?? latestSessionRecord?.requester)
-        ? { requester: args.requester ?? latestSessionRecord?.requester }
+      ...((args.actor ?? latestSessionRecord?.actor)
+        ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),
       ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
         ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }

@@ -1355,12 +1355,12 @@ function findLatestOAuthStateFromSlackCalls(args: {
 
 async function autoCompleteMcpOauth(args: {
   provider: string;
-  requesterUserId: string;
+  actorUserId: string;
   consumedSessions: Set<string>;
 }): Promise<boolean> {
   const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
   const authSession = await getLatestMcpAuthSessionForUserProvider(
-    args.requesterUserId,
+    args.actorUserId,
     provider,
   );
   if (!authSession || args.consumedSessions.has(authSession.authSessionId)) {
@@ -1417,7 +1417,7 @@ async function autoCompleteOauth(args: {
 // ---------------------------------------------------------------------------
 
 interface HarnessEnvironment {
-  authRequesterUsers: Set<string>;
+  authActorUsers: Set<string>;
   autoCompleteMcpOauthProviders: Set<string>;
   autoCompleteOauthProviders: Set<string>;
   credentialProviders: Set<"github" | "sentry">;
@@ -1454,7 +1454,7 @@ async function setupHarnessEnvironment(
     const credentialProviders = new Set(
       scenario.overrides?.credential_providers ?? [],
     );
-    const authRequesterUsers = new Set(
+    const authActorUsers = new Set(
       flattenEvalEvents(scenario.events).flatMap((event) =>
         "message" in event
           ? [event.message.author?.user_id?.trim() || "U-test"]
@@ -1463,8 +1463,8 @@ async function setupHarnessEnvironment(
             : [],
       ),
     );
-    if (authRequesterUsers.size === 0) {
-      authRequesterUsers.add("U-test");
+    if (authActorUsers.size === 0) {
+      authActorUsers.add("U-test");
     }
 
     configureCredentialProviderEnv(credentialProviders);
@@ -1491,19 +1491,16 @@ async function setupHarnessEnvironment(
     resetSkillDiscoveryCache();
     resetTestGitHubHttpFixtures();
     await cleanupHarnessThreadState(stateAdapter, scenario.events);
-    await cleanupMcpAuthState(
-      authRequesterUsers,
-      autoCompleteMcpOauthProviders,
-    );
-    await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
-    await cleanupOAuthTokens(authRequesterUsers, credentialProviders);
+    await cleanupMcpAuthState(authActorUsers, autoCompleteMcpOauthProviders);
+    await cleanupOAuthTokens(authActorUsers, autoCompleteOauthProviders);
+    await cleanupOAuthTokens(authActorUsers, credentialProviders);
     await seedCredentialProviderTokens({
       providers: credentialProviders,
-      userIds: authRequesterUsers,
+      userIds: authActorUsers,
     });
 
     return {
-      authRequesterUsers,
+      authActorUsers,
       autoCompleteMcpOauthProviders,
       autoCompleteOauthProviders,
       credentialProviders,
@@ -1532,14 +1529,11 @@ async function teardownHarnessEnvironment(
   pluginCatalogRuntime.setConfig(undefined);
   await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
   await cleanupMcpAuthState(
-    env.authRequesterUsers,
+    env.authActorUsers,
     env.autoCompleteMcpOauthProviders,
   );
-  await cleanupOAuthTokens(
-    env.authRequesterUsers,
-    env.autoCompleteOauthProviders,
-  );
-  await cleanupOAuthTokens(env.authRequesterUsers, env.credentialProviders);
+  await cleanupOAuthTokens(env.authActorUsers, env.autoCompleteOauthProviders);
+  await cleanupOAuthTokens(env.authActorUsers, env.credentialProviders);
   await env.egressServer?.close();
   env.envSnapshot.restore();
   await env.pluginApp?.cleanup();
@@ -1784,10 +1778,10 @@ async function processEvents(args: {
 
   const maybeAutoCompleteAuth = async (): Promise<void> => {
     for (const provider of env.autoCompleteMcpOauthProviders) {
-      for (const requesterUserId of env.authRequesterUsers) {
+      for (const actorUserId of env.authActorUsers) {
         await autoCompleteMcpOauth({
           provider,
-          requesterUserId,
+          actorUserId,
           consumedSessions: consumedMcpAuthSessions,
         });
       }

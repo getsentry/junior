@@ -31,8 +31,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - Resolve provider from the Vercel Sandbox forwarded host for proxied sandbox egress.
 - Require a signed credential context before issuing provider credentials. The context has a current execution actor and may carry an explicit user credential subject.
 - Credential contexts must carry exact real actor ids. Synthetic sentinel values such as `unknown` are invalid for user actors, system actors, and delegated user subjects.
-- Actor, requester, system actor, service-principal, and delegated credential subject semantics follow the [Identity Spec](./identity.md). Credential brokers must not infer actor identity from requester metadata, creator metadata, destination, or display profile fields.
-- Agent reply callers pass credential context explicitly. Requester and correlation metadata are not credential inputs.
+- Actor, actor, system actor, service-principal, and delegated credential subject semantics follow the [Identity Spec](./identity.md). Credential brokers must not infer actor identity from actor metadata, creator metadata, destination, or display profile fields.
+- Agent reply callers pass credential context explicitly. Actor and correlation metadata are not credential inputs.
 - The current actor controls provider permission envelopes. A user credential subject only identifies which stored user OAuth token may be used.
 - System actors may carry an explicit user credential subject only from a runtime boundary that bound or verified the subject for that action. Plugin dispatch accepts the plugin-facing unbound Slack DM subject, signs it at dispatch creation, and stores only the bound subject in dispatch and sandbox egress contexts.
 - User-owned OAuth credentials require either a current user actor or an explicit user credential subject. System actors without a user subject may use only provider credentials that are explicitly service-principal or install-owned, such as GitHub App installation credentials or static operator env credentials.
@@ -77,7 +77,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 ### Permission model
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
-- The GitHub plugin selects `installation-read` grants for app-readable egress, `user-read` for requester-account identity reads, and `user-write` for write egress, then issues GitHub App installation tokens or GitHub App user-to-server OAuth tokens for those grants.
+- The GitHub plugin selects `installation-read` grants for app-readable egress, `user-read` for actor-account identity reads, and `user-write` for write egress, then issues GitHub App installation tokens or GitHub App user-to-server OAuth tokens for those grants.
 - GitHub App user-to-server tokens are not OAuth-scope-authorized. GitHub returns `scope: ""` for these token responses. Their effective access is the intersection of the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
 - Any configured GitHub user OAuth scope string is a Junior-local reauthorization contract only. It must not be treated as provider-verified proof that GitHub granted those scopes or as a mechanism for expanding GitHub App permissions.
 - When issuing installation tokens, the GitHub plugin requests an explicit read-only permission body.
@@ -135,5 +135,5 @@ Emit events without secret material:
 
 - Skill-level capability allowlists.
 - Model-visible auth-management commands.
-- Provider-specific policy engines beyond requester and turn scoping.
+- Provider-specific policy engines beyond actor and turn scoping.
 - Using arbitrary skill prose as an authority source for runtime package installation, MCP setup, command env, or credential configuration.

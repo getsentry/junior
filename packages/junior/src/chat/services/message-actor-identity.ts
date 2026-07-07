@@ -1,15 +1,15 @@
 import type { Author, Message } from "chat";
 import {
-  createRequester,
-  createSlackRequester,
+  createActor,
+  createSlackActor,
   isActorUserId,
   parseActorUserId,
-  type Requester,
-  type SlackRequester,
-  type SlackRequesterProfile,
-} from "@/chat/requester";
+  type SlackActor,
+  type SlackActorProfile,
+  type UserActor,
+} from "@/chat/actor";
 
-const messageActors = new WeakMap<Message, Requester>();
+const messageActors = new WeakMap<Message, UserActor>();
 interface MessageAuthorIdentity {
   email?: string;
   fullName?: string;
@@ -17,58 +17,58 @@ interface MessageAuthorIdentity {
   userName?: string;
 }
 
-type MessageActorIdentity = Requester | MessageAuthorIdentity;
+type MessageActorIdentity = UserActor | MessageAuthorIdentity;
 
-function canonicalUserId(author: Author, requester: Requester): string {
+function canonicalUserId(author: Author, actor: UserActor): string {
   const authorUserId = parseActorUserId(author.userId);
-  if (authorUserId && authorUserId !== requester.userId) {
-    throw new Error("Message requester user id mismatch");
+  if (authorUserId && authorUserId !== actor.userId) {
+    throw new Error("Message actor user id mismatch");
   }
-  const userId = authorUserId ?? requester.userId;
+  const userId = authorUserId ?? actor.userId;
   if (!userId) {
-    throw new Error("Message requester requires a user id");
+    throw new Error("Message actor requires a user id");
   }
   return userId;
 }
 
-function requesterFromAuthor(author: Author): MessageActorIdentity | undefined {
+function actorFromAuthor(author: Author): MessageActorIdentity | undefined {
   const userId = parseActorUserId(author.userId);
   return userId ? { userId } : undefined;
 }
 
-function applyRequesterToAuthor(author: Author, requester: Requester): void {
-  if (!isActorUserId(requester.userId)) {
-    throw new Error("Message requester requires a user id");
+function applyActorToAuthor(author: Author, actor: UserActor): void {
+  if (!isActorUserId(actor.userId)) {
+    throw new Error("Message actor requires a user id");
   }
-  author.userId = requester.userId;
-  author.userName = requester.userName ?? "";
-  author.fullName = requester.fullName ?? "";
+  author.userId = actor.userId;
+  author.userName = actor.userName ?? "";
+  author.fullName = actor.fullName ?? "";
 }
 
 /** Preserve runtime-owned identity on Chat SDK messages before persistence. */
 export function bindMessageActorIdentity(
   message: Message,
-  requester: Requester,
-): Requester {
-  const userId = canonicalUserId(message.author, requester);
-  const actorRequester = createRequester(requester, {
-    platform: requester.platform,
-    ...(requester.platform === "slack" ? { teamId: requester.teamId } : {}),
+  actor: UserActor,
+): UserActor {
+  const userId = canonicalUserId(message.author, actor);
+  const currentActor = createActor(actor, {
+    platform: actor.platform,
+    ...(actor.platform === "slack" ? { teamId: actor.teamId } : {}),
     userId,
   });
-  if (!actorRequester) {
-    throw new Error("Message requester requires a user id");
+  if (!currentActor) {
+    throw new Error("Message actor requires a user id");
   }
-  messageActors.set(message, actorRequester);
-  applyRequesterToAuthor(message.author, actorRequester);
-  return actorRequester;
+  messageActors.set(message, currentActor);
+  applyActorToAuthor(message.author, currentActor);
+  return currentActor;
 }
 
 /** Read message identity without promoting adapter display fallbacks. */
 export function getMessageActorIdentity(
   message: Message,
 ): MessageActorIdentity | undefined {
-  return messageActors.get(message) ?? requesterFromAuthor(message.author);
+  return messageActors.get(message) ?? actorFromAuthor(message.author);
 }
 
 /** Attach Slack display fields only after the author id is exact. */
@@ -78,14 +78,12 @@ export async function ensureSlackMessageActorIdentity(
   lookupSlackUser: (
     teamId: string,
     userId: string,
-  ) => Promise<SlackRequesterProfile | null | undefined>,
-): Promise<SlackRequester> {
+  ) => Promise<SlackActorProfile | null | undefined>,
+): Promise<SlackActor> {
   const existing = messageActors.get(message);
   if (existing) {
     if (existing.platform !== "slack") {
-      throw new Error(
-        "Slack message actor identity requires a Slack requester",
-      );
+      throw new Error("Slack message actor identity requires a Slack actor");
     }
     return existing;
   }
@@ -93,12 +91,12 @@ export async function ensureSlackMessageActorIdentity(
   if (!userId) {
     throw new Error("Slack message actor identity requires a user id");
   }
-  const requester = bindMessageActorIdentity(
+  const actor = bindMessageActorIdentity(
     message,
-    createSlackRequester(teamId, userId, await lookupSlackUser(teamId, userId)),
+    createSlackActor(teamId, userId, await lookupSlackUser(teamId, userId)),
   );
-  if (requester.platform !== "slack") {
-    throw new Error("Slack message actor identity requires a Slack requester");
+  if (actor.platform !== "slack") {
+    throw new Error("Slack message actor identity requires a Slack actor");
   }
-  return requester;
+  return actor;
 }

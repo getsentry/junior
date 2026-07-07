@@ -36,9 +36,9 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ### Section boundaries
 
-`buildSystemPrompt({ source })` must receive the active source and return the byte-stable static prompt variant for that source platform. It must not read requester/thread/session/runtime/model/provider/catalog data, and it must not include content that can vary between conversations or turns within the same platform. Deployment-stable assistant identity and deployment-stable world context from `WORLD.md` belong here. Platform-specific mechanics, such as Slack output rules or local terminal output rules, may differ by `source.platform`. This preserves provider prompt-prefix caching per platform and keeps multi-turn behavior consistent inside each platform.
+`buildSystemPrompt({ source })` must receive the active source and return the byte-stable static prompt variant for that source platform. It must not read actor/thread/session/runtime/model/provider/catalog data, and it must not include content that can vary between conversations or turns within the same platform. Deployment-stable assistant identity and deployment-stable world context from `WORLD.md` belong here. Platform-specific mechanics, such as Slack output rules or local terminal output rules, may differ by `source.platform`. This preserves provider prompt-prefix caching per platform and keeps multi-turn behavior consistent inside each platform.
 
-`buildTurnContextPrompt(...)` owns session bootstrap prompt context. It is attached to the first model-visible user message in a Pi session projection, including requester identity, available capabilities, configuration, artifacts, model-actionable runtime identifiers, and resumed-turn context. Completed turns may store that bootstrap context as part of durable Pi history so later follow-up messages can avoid duplicating it. Compaction replacement history must omit stale bootstrap context; the next user turn after a projection reset receives fresh bootstrap context exactly once.
+`buildTurnContextPrompt(...)` owns session bootstrap prompt context. It is attached to the first model-visible user message in a Pi session projection, including actor identity, available capabilities, configuration, artifacts, model-actionable runtime identifiers, and resumed-turn context. Completed turns may store that bootstrap context as part of durable Pi history so later follow-up messages can avoid duplicating it. Compaction replacement history must omit stale bootstrap context; the next user turn after a projection reset receives fresh bootstrap context exactly once.
 
 Turn context may disclose dynamic capability surfaces that the model can act on, such as available skill names/descriptions, active MCP catalog summaries, and tool guidance attached to the current native tool set. It must not separately disclose plugin ownership or installed plugin/provider catalogs as prompt knowledge. If the model needs plugin-specific behavior, that behavior must arrive through the loaded skill body, tool description, tool schema, `promptSnippet`, or `promptGuidelines`.
 
@@ -60,7 +60,7 @@ The combined prompt surface must keep these concerns distinct:
 
 Context blocks describe facts. Operating-rule and output sections carry instructions.
 
-Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile requester, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in session bootstrap context.
+Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile actor, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in session bootstrap context.
 
 Trusted deployment-authored Markdown files, such as `SOUL.md` and `WORLD.md`, should render as Markdown sections rather than raw XML payloads. XML-style tags are appropriate for generated runtime blocks whose dynamic values are escaped. Do not add generic wrapper markers that only repeat child-section meaning, such as wrapping all operating rule sections in an additional behavior tag or wrapping all capability blocks in an additional capabilities tag.
 
@@ -68,7 +68,7 @@ Trusted deployment-authored Markdown files, such as `SOUL.md` and `WORLD.md`, sh
 
 Every model-visible active user task assembled by the Junior turn runtime must render the user-authored task text inside `<current-instruction>`. This wrapper is required even when there is no thread background, dispatch metadata, plugin contribution, attachment, or runtime context. It applies to Slack turns, local turns, dispatched or scheduled work that enters the shared agent-run boundary, and queued steering messages injected during an active turn.
 
-Thread background, runtime context, plugin prompt contributions, requester/configuration metadata, and attachments must remain outside `<current-instruction>` as sibling blocks or content parts. Internal helper prompts and subagent/tool prompts may use task-specific wrappers when they are not model-visible Junior user turns.
+Thread background, runtime context, plugin prompt contributions, actor/configuration metadata, and attachments must remain outside `<current-instruction>` as sibling blocks or content parts. Internal helper prompts and subagent/tool prompts may use task-specific wrappers when they are not model-visible Junior user turns.
 
 Session bootstrap context is injected on the first model-visible user message in each Pi session. Ordinary follow-up messages in the same session must not duplicate that bootstrap context. When compaction creates a replacement projection, the replacement history must omit the old bootstrap context; the next user turn starts a new Pi session projection and receives fresh bootstrap context exactly once.
 
@@ -134,7 +134,7 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 
 Sandbox workspace mechanics belong in sandbox tool descriptions, schemas, and results rather than global prompt prose. The core prompt may tell the model to treat unavailable sandbox execution as a blocker instead of implying local inspection succeeded.
 
-Runtime facts should live in a compact runtime block inside session bootstrap context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
+Runtime facts should live in a compact runtime block inside session bootstrap context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix actor, artifacts, or configuration defaults into that runtime block.
 
 Runtime tracing and logging correlation identifiers, such as `trace_id`, are observability data, not model-actionable context, and must not be included in prompt runtime context.
 

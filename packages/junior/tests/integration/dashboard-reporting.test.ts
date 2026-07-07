@@ -29,7 +29,7 @@ if (!TEST_DATABASE_URL) {
   );
 }
 
-function slackRequester(fullName: string, userId = "U1") {
+function slackActor(fullName: string, userId = "U1") {
   return {
     fullName,
     platform: "slack" as const,
@@ -351,7 +351,7 @@ describe("dashboard reporting", () => {
 
     await initConversationContext("slack:C1:111", {
       channelName: "first-channel",
-      originRequester: { fullName: "First Requester" },
+      originActor: { fullName: "First Actor" },
       originSurface: "slack",
       startedAtMs,
     });
@@ -359,7 +359,7 @@ describe("dashboard reporting", () => {
     vi.setSystemTime(Date.now() + THREAD_STATE_TTL_MS - 1_000);
     await initConversationContext("slack:C1:111", {
       channelName: "later-channel",
-      originRequester: { fullName: "Later Requester" },
+      originActor: { fullName: "Later Actor" },
       originSurface: "slack",
       startedAtMs: Date.now(),
     });
@@ -368,7 +368,7 @@ describe("dashboard reporting", () => {
     await expect(getConversationDetails("slack:C1:111")).resolves.toMatchObject(
       {
         channelName: "first-channel",
-        originRequester: { fullName: "First Requester" },
+        originActor: { fullName: "First Actor" },
         startedAtMs,
       },
     );
@@ -396,7 +396,7 @@ describe("dashboard reporting", () => {
 
     await initConversationContext("slack:C1:malformed", {
       channelName: "later-channel",
-      originRequester: { fullName: "Later Requester" },
+      originActor: { fullName: "Later Actor" },
       originSurface: "slack",
       startedAtMs: Date.now(),
     });
@@ -408,7 +408,7 @@ describe("dashboard reporting", () => {
       displayTitle: "Existing Title",
     });
     expect(details).not.toHaveProperty("channelName");
-    expect(details).not.toHaveProperty("originRequester");
+    expect(details).not.toHaveProperty("originActor");
     expect(details).not.toHaveProperty("startedAtMs");
   });
 
@@ -489,7 +489,7 @@ describe("dashboard reporting", () => {
         channelName: "proj-alpha",
         conversationId: `slack:C1:${index}`,
         cumulativeDurationMs: index + 1,
-        requester: slackRequester("Avery"),
+        actor: slackActor("Avery"),
         sessionId: `turn-${index}`,
         sliceId: 1,
         startedAtMs: Date.now() - index * 1000,
@@ -504,7 +504,7 @@ describe("dashboard reporting", () => {
     expect(feed.conversations).toHaveLength(50);
     expect(stats).toMatchObject({
       conversations: 55,
-      requesters: [
+      actors: [
         expect.objectContaining({
           conversations: 55,
           label: "Avery",
@@ -518,7 +518,7 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("reports aggregate conversation stats by requester and location", async () => {
+  it("reports aggregate conversation stats by actor and location", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const { readConversationStatsReport } =
@@ -530,7 +530,7 @@ describe("dashboard reporting", () => {
           conversationId: "slack:C2:300",
           createdAtMs: Date.parse("2026-05-20T10:00:00.000Z"),
           lastActivityAtMs: Date.parse("2026-05-20T10:02:00.000Z"),
-          requester: { fullName: "Casey" },
+          actor: { fullName: "Casey" },
           source: "slack",
         }),
         indexedConversation({
@@ -542,7 +542,7 @@ describe("dashboard reporting", () => {
             updatedAtMs: Date.parse("2026-06-01T10:04:00.000Z"),
           },
           lastActivityAtMs: Date.parse("2026-06-01T10:04:00.000Z"),
-          requester: { fullName: "Blake" },
+          actor: { fullName: "Blake" },
           source: "slack",
           visibility: "public",
         }),
@@ -554,7 +554,7 @@ describe("dashboard reporting", () => {
             updatedAtMs: Date.parse("2026-06-04T11:02:00.000Z"),
           },
           lastActivityAtMs: Date.parse("2026-06-04T11:02:00.000Z"),
-          requester: { fullName: "Avery" },
+          actor: { fullName: "Avery" },
           source: "slack",
         }),
       ]),
@@ -565,7 +565,7 @@ describe("dashboard reporting", () => {
       conversations: 2,
       durationMs: 0,
       failed: 1,
-      requesters: [
+      actors: [
         {
           active: 1,
           conversations: 1,
@@ -610,7 +610,7 @@ describe("dashboard reporting", () => {
 
     await initConversationContext("slack:C1:100", {
       channelName: "proj-alpha",
-      originRequester: { fullName: "Origin Requester" },
+      originActor: { fullName: "Origin Actor" },
       originSurface: "slack",
       startedAtMs: Date.parse("2026-06-04T10:00:00.000Z"),
     });
@@ -619,7 +619,7 @@ describe("dashboard reporting", () => {
       cumulativeDurationMs: 1_000,
       destination: { platform: "slack", teamId: "T1", channelId: "C1" },
       destinationVisibility: "public",
-      requester: slackRequester("Later Requester"),
+      actor: slackActor("Later Actor"),
       sessionId: "turn-1",
       sliceId: 1,
       startedAtMs: Date.parse("2026-06-04T10:05:00.000Z"),
@@ -629,10 +629,10 @@ describe("dashboard reporting", () => {
     const feed = await createJuniorReporting().listConversations();
 
     expect(
-      feed.conversations.map((conversation) => conversation.requesterIdentity),
+      feed.conversations.map((conversation) => conversation.actorIdentity),
     ).toEqual([
       expect.objectContaining({
-        fullName: "Origin Requester",
+        fullName: "Origin Actor",
       }),
     ]);
     expect(feed.conversations).toEqual([
@@ -652,7 +652,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_scheduler",
       cumulativeDurationMs: 2_000,
-      requester: slackRequester("Scheduler"),
+      actor: slackActor("Scheduler"),
       sessionId: "dispatch:scheduler",
       sliceId: 1,
       state: "completed",
@@ -661,7 +661,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_api",
       cumulativeDurationMs: 1_000,
-      requester: slackRequester("API"),
+      actor: slackActor("API"),
       sessionId: "dispatch:api",
       sliceId: 1,
       state: "completed",
@@ -686,7 +686,7 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       channelName: "proj-alpha",
       conversationId: "slack:C1:failed",
-      requester: slackRequester("Avery"),
+      actor: slackActor("Avery"),
       sessionId: "turn-failed",
       sliceId: 1,
       state: "failed",
@@ -698,7 +698,7 @@ describe("dashboard reporting", () => {
     expect(stats).toMatchObject({
       failed: 1,
       runs: 1,
-      requesters: [
+      actors: [
         expect.objectContaining({
           failed: 1,
           label: "Avery",
@@ -719,7 +719,7 @@ describe("dashboard reporting", () => {
         conversationId: "slack:C1:baseline",
         createdAtMs: startedAtMs,
         lastActivityAtMs: latestAtMs,
-        requester: { fullName: "Blake" },
+        actor: { fullName: "Blake" },
         source: "slack",
       }),
       ...Array.from({ length: 5_000 }, (_, index) =>
@@ -727,7 +727,7 @@ describe("dashboard reporting", () => {
           conversationId: `slack:C0FILL:${index}`,
           createdAtMs: startedAtMs + (index + 1) * 1000,
           lastActivityAtMs: startedAtMs + (index + 1) * 1000,
-          requester: { fullName: "Filler" },
+          actor: { fullName: "Filler" },
           source: "slack",
         }),
       ),
@@ -1602,7 +1602,7 @@ describe("dashboard reporting", () => {
       sliceId: 1,
       state: "completed",
       channelName: "secret-dm-name",
-      requester: {
+      actor: {
         email: "david@sentry.io",
         platform: "slack",
         teamId: "T1",
@@ -1638,7 +1638,7 @@ describe("dashboard reporting", () => {
       channelName: "Direct Message",
       channelNameRedacted: true,
       id: "turn-private",
-      requesterIdentity: {
+      actorIdentity: {
         email: "david@sentry.io",
         slackUserId: "U1",
       },
@@ -1649,7 +1649,7 @@ describe("dashboard reporting", () => {
       transcriptRedactionReason: "non_public_conversation",
       transcript: [],
     });
-    expect(report.runs[0]).not.toHaveProperty("requester");
+    expect(report.runs[0]).not.toHaveProperty("actor");
     expect(JSON.stringify(report)).not.toContain("private question");
     expect(JSON.stringify(report)).not.toContain("private answer");
     expect(JSON.stringify(report)).not.toContain("private value");

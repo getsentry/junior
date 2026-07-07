@@ -30,7 +30,7 @@ import type { SkillInvocation, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
-import type { Requester } from "@/chat/requester";
+import { isUserActor, type Actor } from "@/chat/actor";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type {
   AgentRunInput,
@@ -341,7 +341,7 @@ function userPromptContentMatches(
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
 export async function assemblePrompt(args: {
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
-  actorRequester?: Requester;
+  currentActor?: Actor;
   artifactState?: ThreadArtifactsState;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
@@ -412,7 +412,7 @@ export async function assemblePrompt(args: {
               }
             : undefined,
           invocation: args.invocation,
-          requester: args.actorRequester,
+          actor: isUserActor(args.currentActor) ? args.currentActor : undefined,
           artifactState: args.artifactState,
           configuration: args.configurationValues,
         })

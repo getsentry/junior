@@ -41,8 +41,8 @@ const dispatchStatusSchema = z.enum([
 ]);
 const dispatchActorSchema = z
   .object({
-    type: z.literal("system"),
-    id: nonEmptyExactStringSchema,
+    platform: z.literal("system"),
+    name: nonEmptyExactStringSchema,
   })
   .strict();
 const credentialSubjectBindingSchema = z
@@ -317,7 +317,7 @@ export async function createOrGetDispatch(args: {
 
     const metadata = normalizeMetadata(args.options.metadata);
     const record: DispatchRecord = {
-      actor: { type: "system", id: args.plugin },
+      actor: { platform: "system", name: args.plugin },
       attempt: 0,
       createdAtMs: args.nowMs,
       ...(args.options.credentialSubject

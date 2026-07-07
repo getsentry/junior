@@ -54,11 +54,11 @@ import { acquireActiveLock } from "@/chat/state/locks";
 import { persistYieldSessionRecord } from "@/chat/services/turn-session-record";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import {
-  createSlackRequester,
-  createSlackResumeRequester,
-  type Requester,
-  type SlackRequester,
-} from "@/chat/requester";
+  createSlackActor,
+  createSlackResumeActor,
+  type Actor,
+  type SlackActor,
+} from "@/chat/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -193,29 +193,29 @@ async function failContinuationStartup(args: {
 }
 
 /**
- * Resolve the resume requester without ever throwing for missing identity.
+ * Resolve the resume actor without ever throwing for missing identity.
  *
  * A throw escaping `beforeStart` NACKs the continue queue delivery and
  * permanently wedges the conversation (issue #727), so identity gaps must
  * resolve to `undefined` and let the caller fail the session visibly. When
- * the session record lacks a usable requester, recovery consults the durable
+ * the session record lacks a usable actor, recovery consults the durable
  * conversation work record — but only an identity that matches the resume
  * actor (team + user) is ever rebuilt; we never fabricate one.
  */
-async function resolveContinuationRequester(args: {
+async function resolveContinuationActor(args: {
   conversationId: string;
-  sessionRecordRequester: Requester | undefined;
+  sessionRecordActor: Actor | undefined;
   teamId: string;
   userId: string;
-}): Promise<SlackRequester | undefined> {
-  const stored = args.sessionRecordRequester;
+}): Promise<SlackActor | undefined> {
+  const stored = args.sessionRecordActor;
   if (
     stored?.platform === "slack" &&
     stored.teamId === args.teamId &&
     stored.userId === args.userId
   ) {
-    return createSlackResumeRequester({
-      requester: stored,
+    return createSlackResumeActor({
+      actor: stored,
       teamId: args.teamId,
       userId: args.userId,
     });
@@ -224,16 +224,16 @@ async function resolveContinuationRequester(args: {
   const work = await getConversationWorkState({
     conversationId: args.conversationId,
   });
-  const workRequester = work?.requester;
+  const workActor = work?.actor;
   if (
-    workRequester &&
-    workRequester.teamId === args.teamId &&
-    workRequester.slackUserId === args.userId
+    workActor &&
+    workActor.teamId === args.teamId &&
+    workActor.slackUserId === args.userId
   ) {
-    return createSlackRequester(args.teamId, args.userId, {
-      email: workRequester.email,
-      fullName: workRequester.fullName,
-      userName: workRequester.slackUserName,
+    return createSlackActor(args.teamId, args.userId, {
+      email: workActor.email,
+      fullName: workActor.fullName,
+      userName: workActor.slackUserName,
     });
   }
 
@@ -332,16 +332,16 @@ export async function continueSlackAgentRun(
           payload.destination,
           "Slack continuation",
         );
-        const requester = await resolveContinuationRequester({
+        const actor = await resolveContinuationActor({
           conversationId: payload.conversationId,
-          sessionRecordRequester: activeSessionRecord.requester,
+          sessionRecordActor: activeSessionRecord.actor,
           teamId: destination.teamId,
           userId: userMessage.author.userId,
         });
-        if (!requester) {
+        if (!actor) {
           await failStrandedSessionWithFallback({
             conversationId: payload.conversationId,
-            errorMessage: "Stored Slack requester missing for continuation",
+            errorMessage: "Stored Slack actor missing for continuation",
             sessionRecord: activeSessionRecord,
           });
           return false;
@@ -369,10 +369,10 @@ export async function continueSlackAgentRun(
               credentialContext: {
                 actor: {
                   type: "user",
-                  userId: requester.userId,
+                  userId: actor.userId,
                 },
               },
-              requester,
+              actor,
               destination: payload.destination,
               source: activeSessionRecord.source,
               correlation: {
@@ -380,7 +380,7 @@ export async function continueSlackAgentRun(
                 turnId: payload.sessionId,
                 channelId: thread.channelId,
                 threadTs: thread.threadTs,
-                requesterId: requester.userId,
+                actorId: actor.userId,
               },
               toolChannelId:
                 artifacts.assistantContextChannelId ?? thread.channelId,
@@ -552,7 +552,7 @@ async function recoverStrandedRunningSession(args: {
     messages: sessionRecord.piMessages,
     errorMessage: "Recovered running session after hard worker death",
     logContext: { modelId: botConfig.modelId },
-    requester: sessionRecord.requester,
+    actor: sessionRecord.actor,
     surface: sessionRecord.surface,
   });
   if (!parked) {

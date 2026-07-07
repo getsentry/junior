@@ -28,7 +28,7 @@ import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { createRequester, parseActorUserId } from "@/chat/requester";
+import { createActor, parseActorUserId } from "@/chat/actor";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -469,7 +469,7 @@ async function handleSlashCommandForm(args: {
     "Slack slash command payload",
   );
   const teamId = args.params.get("team_id") ?? undefined;
-  const userIdentity = createRequester(
+  const userIdentity = createActor(
     {
       platform: "slack",
       teamId,

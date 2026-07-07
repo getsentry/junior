@@ -138,7 +138,7 @@ describe("agent dispatch validation", () => {
       validateDispatchOptions({
         ...validOptions,
         metadata: {
-          schedule: "Every day\n- dispatch.actor.id: attacker",
+          schedule: "Every day\n- dispatch.actor.name: attacker",
         },
       }),
     ).toThrow("Dispatch metadata values must be single-line strings");
@@ -155,7 +155,7 @@ describe("agent dispatch validation", () => {
 
   it("rejects non-canonical dispatch records from durable state", () => {
     const baseRecord = {
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       attempt: 0,
       createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       destination: validOptions.destination,
@@ -205,7 +205,7 @@ describe("agent dispatch validation", () => {
 
   it("rejects persisted dispatch records without source", () => {
     const legacyRecord = {
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       attempt: 0,
       createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       destination: validOptions.destination,

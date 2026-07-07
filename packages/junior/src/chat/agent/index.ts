@@ -77,9 +77,9 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   assertCorrelationDestinationMatch,
-  assertRequesterDestinationMatch,
+  assertActorDestinationMatch,
   getSessionIdentifiers,
-  requesterFromRouting,
+  actorFromRouting,
   surfaceFromRouting,
   type AgentRunRequest,
 } from "@/chat/agent/request";
@@ -165,7 +165,7 @@ async function executeAgentRunInPrivacyContext(
   if (!routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  assertRequesterDestinationMatch(routing);
+  assertActorDestinationMatch(routing);
   assertCorrelationDestinationMatch(routing);
 
   const replyStartedAtMs = Date.now();
@@ -190,23 +190,23 @@ async function executeAgentRunInPrivacyContext(
   let canRecordMcpProviders = false;
   let turnUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
-  const requester = requesterFromRouting(routing);
+  const actor = actorFromRouting(routing);
   const surface = surfaceFromRouting(routing);
   const runSource = routing.source;
   const userInput = input.messageText;
   const credentialActor = routing.credentialContext?.actor;
   const credentialActorLogContext = credentialActor
     ? {
-        actorType: credentialActor.type,
+        actorType: "type" in credentialActor ? credentialActor.type : "system",
         actorId:
-          credentialActor.type === "user"
+          "type" in credentialActor
             ? credentialActor.userId
-            : credentialActor.id,
+            : credentialActor.name,
       }
     : {};
   const sessionRecordLogContext = {
     threadId: routing.correlation?.threadId,
-    requesterId: routing.correlation?.requesterId,
+    actorId: routing.correlation?.actorId,
     channelId: routing.correlation?.channelId,
     runId: routing.correlation?.runId,
     ...credentialActorLogContext,
@@ -248,7 +248,7 @@ async function executeAgentRunInPrivacyContext(
     const spanContext: LogContext = {
       conversationId: sessionConversationId,
       slackThreadId: routing.correlation?.threadId,
-      slackUserId: routing.correlation?.requesterId,
+      slackUserId: routing.correlation?.actorId,
       slackChannelId: routing.correlation?.channelId,
       runId: routing.correlation?.runId,
       ...credentialActorLogContext,
@@ -310,7 +310,7 @@ async function executeAgentRunInPrivacyContext(
       getLoadedSkillNames: () => loadedSkillNamesForResume,
       logContext: sessionRecordLogContext,
       recordActiveMcpProviders,
-      requester,
+      actor,
       runSource,
       sessionConversationId,
       sessionId,
@@ -396,7 +396,7 @@ async function executeAgentRunInPrivacyContext(
       context: {
         threadId: routing.correlation?.threadId,
         channelId: routing.correlation?.channelId,
-        requesterId: routing.correlation?.requesterId,
+        actorId: routing.correlation?.actorId,
         runId: routing.correlation?.runId,
       },
       currentTurnBlocks: routerBlocks,
@@ -425,7 +425,7 @@ async function executeAgentRunInPrivacyContext(
     setTags({
       conversationId: spanContext.conversationId,
       slackThreadId: routing.correlation?.threadId,
-      slackUserId: routing.correlation?.requesterId,
+      slackUserId: routing.correlation?.actorId,
       slackChannelId: routing.correlation?.channelId,
       runId: routing.correlation?.runId,
       ...credentialActorLogContext,
@@ -437,7 +437,7 @@ async function executeAgentRunInPrivacyContext(
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
       activeSkills,
-      actorRequester: requester,
+      currentActor: actor,
       artifactStatePatch,
       availableSkills,
       configurationValues,
@@ -482,7 +482,7 @@ async function executeAgentRunInPrivacyContext(
       shouldPromptAgent,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
-      actorRequester: requester,
+      currentActor: actor,
       artifactState: state.artifactState,
       availableSkills,
       configurationValues,
@@ -901,7 +901,7 @@ async function executeAgentRunInPrivacyContext(
       "assistant_reply_generation_failed",
       {
         slackThreadId: routing.correlation?.threadId,
-        slackUserId: routing.correlation?.requesterId,
+        slackUserId: routing.correlation?.actorId,
         slackChannelId: routing.correlation?.channelId,
         runId: routing.correlation?.runId,
         ...credentialActorLogContext,

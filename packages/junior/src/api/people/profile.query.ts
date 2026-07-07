@@ -1,9 +1,9 @@
 import type {
   ConversationStatsItem,
   ConversationSummaryReport,
-  RequesterActivityDayReport,
-  RequesterIdentity,
-  RequesterProfileReport,
+  ActorActivityDayReport,
+  ActorIdentity,
+  ActorProfileReport,
 } from "./types";
 import {
   ACTIVITY_DAYS,
@@ -18,7 +18,7 @@ import {
   RECENT_LIMIT,
   reportDate,
   reportTime,
-  requesterRows,
+  actorRows,
   SAMPLE_LIMIT,
   signals,
   slackLocationLabel,
@@ -28,7 +28,7 @@ import {
   type PeopleApiQueryOptions,
 } from "./shared";
 
-function emptyProfile(email: string, nowMs: number): RequesterProfileReport {
+function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   const end = new Date(nowMs);
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
@@ -38,7 +38,7 @@ function emptyProfile(email: string, nowMs: number): RequesterProfileReport {
     generatedAt: new Date(nowMs).toISOString(),
     locations: [],
     recentConversations: [],
-    requester: { email },
+    actor: { email },
     sampleLimit: SAMPLE_LIMIT,
     sampleSize: 0,
     source: "conversation_index",
@@ -54,27 +54,27 @@ function emptyProfile(email: string, nowMs: number): RequesterProfileReport {
 export async function readPeopleProfileFromSql(
   email: string,
   options: PeopleApiQueryOptions = {},
-): Promise<RequesterProfileReport> {
+): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     return emptyProfile("", nowMs);
   }
 
-  const { rows, truncated } = await requesterRows(options, normalizedEmail);
-  let requester: (RequesterIdentity & { email: string }) | undefined;
+  const { rows, truncated } = await actorRows(options, normalizedEmail);
+  let actor: (ActorIdentity & { email: string }) | undefined;
   const totals = emptyTotals();
   const activeDates = new Set<string>();
-  const days = new Map<string, RequesterActivityDayReport>();
+  const days = new Map<string, ActorActivityDayReport>();
   const locations = new Map<string, ConversationStatsItem>();
   const surfaces = new Map<string, ConversationStatsItem>();
   const recentConversations: ConversationSummaryReport[] = [];
 
   for (const row of rows) {
     const summary = summaryFromRow(row, nowMs);
-    const identity = identityWithEmail(summary.requesterIdentity);
+    const identity = identityWithEmail(summary.actorIdentity);
     if (identity) {
-      requester = requester ? mergeIdentity(requester, identity) : identity;
+      actor = actor ? mergeIdentity(actor, identity) : identity;
     }
     recentConversations.push(summary);
 
@@ -127,7 +127,7 @@ export async function readPeopleProfileFromSql(
           right.conversationId.localeCompare(left.conversationId),
       )
       .slice(0, RECENT_LIMIT),
-    requester: requester ?? { email: normalizedEmail },
+    actor: actor ?? { email: normalizedEmail },
     sampleLimit: SAMPLE_LIMIT,
     sampleSize: rows.length,
     source: "conversation_index",

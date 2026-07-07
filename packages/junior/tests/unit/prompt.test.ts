@@ -74,7 +74,7 @@ describe("prompt builders", () => {
       availableSkills: [],
       activeMcpCatalogs: [],
       dispatch: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         plugin: "scheduler",
         source: createSlackSource({
           teamId: "T123",
@@ -102,8 +102,8 @@ describe("prompt builders", () => {
     expect(prompt).toContain(
       "- dispatch.delivery: the runtime delivers the final answer to the destination",
     );
-    expect(prompt).toContain("- dispatch.actor.type: system");
-    expect(prompt).toContain("- dispatch.actor.id: scheduler");
+    expect(prompt).toContain("- dispatch.actor.platform: system");
+    expect(prompt).toContain("- dispatch.actor.name: scheduler");
     expect(prompt).toContain("- source.platform: slack");
     expect(prompt).toContain("- destination.channel_id: C123");
     expect(prompt).toContain(
@@ -135,7 +135,7 @@ describe("prompt builders", () => {
         },
         includeSessionContext: false,
         invocation: null,
-        requester: {
+        actor: {
           userId: "U0BETA",
           userName: "dcramer",
         },

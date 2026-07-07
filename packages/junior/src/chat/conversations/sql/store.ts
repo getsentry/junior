@@ -5,10 +5,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
-import {
-  parseStoredSlackRequester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import { migrateSchema } from "./migrations";
 import type {
   JuniorSqlDatabase,
@@ -37,7 +34,7 @@ type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
   conversation: ConversationRow;
   destinationVisibility: JuniorDestinationVisibility | null;
-  requesterIdentity: IdentityRow | null;
+  actorIdentity: IdentityRow | null;
 }
 
 interface DestinationUpsert {
@@ -98,20 +95,20 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
   return undefined;
 }
 
-function identityFromRequester(
-  requester: StoredSlackRequester | undefined,
+function identityFromActor(
+  actor: StoredSlackActor | undefined,
 ): IdentityUpsert | undefined {
-  if (!requester?.slackUserId) {
+  if (!actor?.slackUserId) {
     return undefined;
   }
   return {
     kind: "user",
     provider: "slack",
-    providerTenantId: requester.teamId,
-    providerSubjectId: requester.slackUserId,
-    ...(requester.fullName ? { displayName: requester.fullName } : {}),
-    ...(requester.slackUserName ? { handle: requester.slackUserName } : {}),
-    ...(requester.email ? { email: requester.email, emailVerified: true } : {}),
+    providerTenantId: actor.teamId,
+    providerSubjectId: actor.slackUserId,
+    ...(actor.fullName ? { displayName: actor.fullName } : {}),
+    ...(actor.slackUserName ? { handle: actor.slackUserName } : {}),
+    ...(actor.email ? { email: actor.email, emailVerified: true } : {}),
     metadata: { platform: "slack" },
   };
 }
@@ -150,7 +147,7 @@ function actorIdentityForConversation(
   conversation: Conversation,
 ): IdentityUpsert | undefined {
   return (
-    identityFromRequester(conversation.requester) ??
+    identityFromActor(conversation.actor) ??
     systemIdentityFromSource(conversation.source)
   );
 }
@@ -232,10 +229,10 @@ function privacyFromRow(
   return row.destinationVisibility === "public" ? "public" : "private";
 }
 
-function requesterFromIdentityRow(
+function actorFromIdentityRow(
   identity: IdentityRow | null,
-  fallback: StoredSlackRequester | undefined,
-): StoredSlackRequester | undefined {
+  fallback: StoredSlackActor | undefined,
+): StoredSlackActor | undefined {
   if (!identity || identity.provider !== "slack") {
     return fallback;
   }
@@ -267,9 +264,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     row.destination === undefined || row.destination === null
       ? undefined
       : parseDestination(row.destination);
-  const requester = requesterFromIdentityRow(
-    readRow.requesterIdentity,
-    parseStoredSlackRequester(row.requester),
+  const actor = actorFromIdentityRow(
+    readRow.actorIdentity,
+    parseStoredSlackActor(row.actor),
   );
   if (
     row.destination !== undefined &&
@@ -278,8 +275,8 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
   ) {
     throw new Error("Conversation record destination is invalid");
   }
-  if (row.requester !== undefined && row.requester !== null && !requester) {
-    throw new Error("Conversation record requester is invalid");
+  if (row.actor !== undefined && row.actor !== null && !actor) {
+    throw new Error("Conversation record actor is invalid");
   }
   const source =
     row.source === undefined || row.source === null
@@ -305,7 +302,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     updatedAtMs: requiredMsFromDate(row.updatedAt),
     execution,
     ...(destination ? { destination } : {}),
-    ...(requester ? { requester } : {}),
+    ...(actor ? { actor } : {}),
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(source ? { source } : {}),
     ...(row.title ? { title: row.title } : {}),
@@ -347,10 +344,10 @@ function assertSameConversationDestination(args: {
   );
 }
 
-function mergeRequester(
-  current: StoredSlackRequester | undefined,
-  next: StoredSlackRequester | undefined,
-): StoredSlackRequester | undefined {
+function mergeActor(
+  current: StoredSlackActor | undefined,
+  next: StoredSlackActor | undefined,
+): StoredSlackActor | undefined {
   if (!current) {
     return next;
   }
@@ -427,7 +424,7 @@ export class SqlStore implements ConversationStore {
     conversationId: string;
     destination?: Destination;
     nowMs?: number;
-    requester?: StoredSlackRequester;
+    actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
     visibility?: ConversationPrivacy;
@@ -462,7 +459,7 @@ export class SqlStore implements ConversationStore {
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
           channelName: current.channelName ?? args.channelName,
-          requester: mergeRequester(current.requester, args.requester),
+          actor: mergeActor(current.actor, args.actor),
           title: current.title ?? args.title,
           lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
           updatedAtMs: nowMs,
@@ -483,7 +480,7 @@ export class SqlStore implements ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    requester?: StoredSlackRequester;
+    actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;
@@ -499,7 +496,7 @@ export class SqlStore implements ConversationStore {
           updatedAtMs: args.updatedAtMs,
           ...(args.channelName ? { channelName: args.channelName } : {}),
           ...(args.destination ? { destination: args.destination } : {}),
-          ...(args.requester ? { requester: args.requester } : {}),
+          ...(args.actor ? { actor: args.actor } : {}),
           ...(args.source ? { source: args.source } : {}),
           ...(args.title ? { title: args.title } : {}),
           ...(args.visibility ? { visibility: args.visibility } : {}),
@@ -542,7 +539,7 @@ export class SqlStore implements ConversationStore {
                 existing.lastActivityAtMs,
                 conversation.lastActivityAtMs,
               ),
-              requester: existing.requester ?? conversation.requester,
+              actor: existing.actor ?? conversation.actor,
               source: existing.source ?? conversation.source,
               title: existing.title ?? conversation.title,
               updatedAtMs: Math.max(
@@ -570,7 +567,7 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
-        requesterIdentity: juniorIdentities,
+        actorIdentity: juniorIdentities,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -579,7 +576,7 @@ export class SqlStore implements ConversationStore {
       )
       .leftJoin(
         juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .orderBy(
         desc(juniorConversations.lastActivityAt),
@@ -644,7 +641,7 @@ export class SqlStore implements ConversationStore {
       .select({
         conversation: juniorConversations,
         destinationVisibility: juniorDestinations.visibility,
-        requesterIdentity: juniorIdentities,
+        actorIdentity: juniorIdentities,
       })
       .from(juniorConversations)
       .leftJoin(
@@ -653,7 +650,7 @@ export class SqlStore implements ConversationStore {
       )
       .leftJoin(
         juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .where(eq(juniorConversations.conversationId, conversationId));
     return rows[0];
@@ -678,16 +675,6 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const requesterIdentityObservation = identityFromRequester(
-      conversation.requester,
-    );
-    const requesterIdentity = requesterIdentityObservation
-      ? await upsertIdentity(
-          this.executor,
-          requesterIdentityObservation,
-          conversation.updatedAtMs,
-        )
-      : undefined;
     const actorIdentityObservation = actorIdentityForConversation(conversation);
     const actorIdentity = actorIdentityObservation
       ? await upsertIdentity(
@@ -709,10 +696,9 @@ export class SqlStore implements ConversationStore {
         destinationId: destinationId ?? null,
         destination: conversation.destination ?? null,
         actorIdentityId: actorIdentity?.id ?? null,
-        requesterIdentityId: requesterIdentity?.id ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
-        requester: conversation.requester ?? null,
+        actor: conversation.actor ?? null,
         channelName: conversation.channelName ?? null,
         title: conversation.title ?? null,
         createdAt: dateFromMs(conversation.createdAtMs),
@@ -743,10 +729,9 @@ export class SqlStore implements ConversationStore {
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           destination: sql`coalesce(excluded.destination_json, ${juniorConversations.destination})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
-          requesterIdentityId: sql`coalesce(excluded.requester_identity_id, ${juniorConversations.requesterIdentityId})`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
-          requester: sql`coalesce(excluded.requester_json, ${juniorConversations.requester})`,
+          actor: sql`coalesce(excluded.actor_json, ${juniorConversations.actor})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
           createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,

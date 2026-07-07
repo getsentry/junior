@@ -13,7 +13,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 
 - Current user actors and system actors.
 - Service-principal and install-owned credential identities.
-- Slack message authors, requesters, task creators, and conversation managers.
+- Slack message authors, actors, task creators, and conversation managers.
 - Delegated credential subjects for stored user OAuth lookup.
 - Destination identity for platform conversations, dispatch records, sandbox sessions, and context-bound tools.
 - Identity context carried through ingress, queue work, callbacks, dispatch records, scheduler tasks, sandbox egress, and conversation state.
@@ -31,10 +31,9 @@ Define how Junior carries human, system, delegated, destination, and display ide
 - **Actor:** the current authority for behavior. An actor is either a user actor or a system actor.
 - **User actor:** the human currently asking Junior to act.
 - **System actor:** a named Junior-owned execution authority, such as `scheduler` or a plugin dispatch actor.
-- **Requester:** the interactive Slack user actor for a live turn or requester-sensitive side effect. Runtime requester state carries Slack platform, workspace/team id, user id, and optional display/contact fields.
 - **Author:** the actor metadata persisted with a conversation message for transcript attribution.
 - **Creator:** audit and notification metadata for durable objects such as scheduled tasks. Creator is not automatically the actor for later execution.
-- **Credential subject:** an explicit subject used only to choose a stored user OAuth token. It is not the current actor and does not grant requester semantics.
+- **Credential subject:** an explicit subject used only to choose a stored user OAuth token. It is not the current actor and does not grant actor semantics.
 - **Service principal:** a provider credential identity owned by the installation, app, or operator environment. It is not a user actor and must be selected by the current actor's credential envelope.
 - **Destination identity:** the Slack conversation, dispatch destination, sandbox session, or artifact scope where behavior executes.
 - **Display identity:** profile fields shown to humans. Display identity is presentation data, not authority.
@@ -68,7 +67,7 @@ Invalid owned identity state is a broken contract. The correct outcome is fail c
 
 The current actor controls the permission envelope for behavior.
 
-Actor, author, creator, requester, credential subject, service principal, destination, and display identity are separate fields with separate meanings:
+Actor, author, creator, actor, credential subject, service principal, destination, and display identity are separate fields with separate meanings:
 
 - An actor authorizes current behavior.
 - A persisted author attributes a conversation message.
@@ -84,13 +83,13 @@ Copying one role into another is allowed only where a spec names that exact tran
 
 System actors are first-class actors, not absent users. They must have stable names and explicit credential envelopes.
 
-System actors do not imply a human requester, do not start interactive auth flows, and do not inherit creator or channel-member credentials. They may use service-principal or install-owned credentials only when the provider broker explicitly supports that system actor envelope.
+System actors do not imply a human actor, do not start interactive auth flows, and do not inherit creator or channel-member credentials. They may use service-principal or install-owned credentials only when the provider broker explicitly supports that system actor envelope.
 
 If a system actor needs a stored user OAuth token, the run must carry an explicit delegated credential subject allowed by the relevant spec. That subject still does not become the actor.
 
 ### Scheduler And Dispatch
 
-Scheduled runs execute as a Junior system actor, not as the user who created the task. Creator metadata may be used for audit and private notification, but not as requester identity.
+Scheduled runs execute as a Junior system actor, not as the user who created the task. Creator metadata may be used for audit and private notification, but not as actor identity.
 
 Plugin dispatch also executes as a system actor unless a future spec defines a different actor model. Plugin metadata and idempotency keys are correlation data, not actor sources.
 
@@ -104,7 +103,7 @@ Slack identity state.
 First implementation rules:
 
 1. Local CLI runs execute as the named Junior system actor `local-cli`.
-2. Local CLI runs do not have a Slack requester unless they are replaying a
+2. Local CLI runs do not have a Slack actor unless they are replaying a
    verified Slack-originated continuation, which ordinary local chat does not do.
 3. Local CLI destination identity uses a local conversation/session id, not a
    Slack channel id or Slack thread timestamp.
@@ -112,36 +111,36 @@ First implementation rules:
    separate local user/auth contract exists.
 5. If a future local mode needs user-bound credentials, it must introduce an
    explicit non-Slack user actor and credential-subject contract instead of
-   reusing Slack requester fields.
+   reusing Slack actor fields.
 
-### Turn Continuation Requester Identity
+### Turn Continuation Actor Identity
 
 A turn continuation resumes the same actor turn in a later execution context
-(timeout resume, auth resume). Requester identity for a continuation MUST be
+(timeout resume, auth resume). Actor identity for a continuation MUST be
 reconstructed from the durable turn session record, not from a new Slack profile
 lookup.
 
-At the start of a Slack turn the requester identity resolved at the Slack
-boundary is persisted in `AgentTurnSessionRecord.requester`. That stored
-requester is owned state for the lifetime of the turn. Continuation endpoints
-MUST reconstruct runtime `Requester` state from this stored requester when
+At the start of a Slack turn the actor identity resolved at the Slack
+boundary is persisted in `AgentTurnSessionRecord.actor`. That stored
+actor is owned state for the lifetime of the turn. Continuation endpoints
+MUST reconstruct runtime `Actor` state from this stored actor when
 resuming.
 
-Canonical stored Slack requesters include `platform: "slack"`, `teamId`,
+Canonical stored Slack actors include `platform: "slack"`, `teamId`,
 `slackUserId`, and optional display/contact fields. Continuation endpoints MUST
 assert stored `teamId` and `slackUserId` against the active source and
-turn author when those fields are present. Legacy stored requesters without
+turn author when those fields are present. Legacy stored actors without
 `teamId` may reuse display/contact fields only after the stored `slackUserId`
-matches the turn author; the runtime requester still uses the active source
+matches the turn author; the runtime actor still uses the active source
 team id.
 
-Continuation endpoints MUST NOT call live Slack requester helpers such as
-`lookupSlackRequester` to re-derive requester display or contact fields.
+Continuation endpoints MUST NOT call live Slack actor helpers such as
+`lookupSlackActor` to re-derive actor display or contact fields.
 Those helpers are fresh-turn boundary resolution paths. Re-querying Slack during
 continuation creates a dependency on external profile availability that can cause
-requester display and contact fields to disappear across serverless invocations.
+actor display and contact fields to disappear across serverless invocations.
 
-If a session record does not contain stored requester display or contact fields
+If a session record does not contain stored actor display or contact fields
 (for example, records that predate this contract), the continuation proceeds
 with actor id only and no recovered display fields. It MUST NOT perform a live
 Slack lookup to repair missing fields.
@@ -155,11 +154,11 @@ Slack boundary path.
 
 User-authored conversation messages must carry exact author identity when they are committed to durable state. Conversation rendering may sanitize display labels so platform ids are not shown as names, but it must not repair or reinterpret stored author ids.
 
-Prompt context must preserve who is asking now versus who authored prior messages. A later user in the same Slack thread becomes the current requester for the new turn without changing attribution for earlier messages.
+Prompt context must preserve who is asking now versus who authored prior messages. A later user in the same Slack thread becomes the current actor for the new turn without changing attribution for earlier messages.
 
 ### Slack Side Effects
 
-Requester-sensitive Slack side effects, including ephemeral responses and OAuth continuations, must use the current requester actor id from turn context. They must not fall back to channel id, bot id, last human author, task creator, or display profile fields.
+Actor-sensitive Slack side effects, including ephemeral responses and OAuth continuations, must use the current actor id from turn context. They must not fall back to channel id, bot id, last human author, task creator, or display profile fields.
 
 Destination-sensitive Slack side effects must use runtime-owned destination context. Model arguments may not override context-bound destinations unless a separate spec allows it.
 
@@ -170,7 +169,7 @@ Destination-sensitive Slack side effects must use runtime-owned destination cont
 - Malformed actor identity in owned state fails closed and should be investigated or migrated explicitly.
 - Missing display identity may degrade presentation only; it must not change the actor id or credential subject.
 - Missing delegated user credentials block the run or start the approved private auth flow only when the current actor model permits it.
-- Missing system-actor credential envelopes block system work rather than falling back to a creator, last author, or requester-shaped user.
+- Missing system-actor credential envelopes block system work rather than falling back to a creator, last author, or actor-shaped user.
 
 ## Observability
 
@@ -188,21 +187,21 @@ Logs and spans must keep these roles distinct. They must not include OAuth token
 
 Use integration tests for behavior that crosses real runtime boundaries:
 
-- Slack ingress persists the real requester/author identity and rejects synthetic or malformed actor ids.
-- Slack DM and channel paths preserve the current requester through first delivery, retry, and continuation.
-- Turn continuation identity: seed a session record with `AgentTurnSessionRecord.requester` containing Slack user id, username, full name, and email; resume through a continuation endpoint while making live Slack profile lookup unavailable; verify the resumed turn receives requester identity from the stored session record and that no live Slack lookup is performed.
-- Workspace-scoped requester identity: seed a session record with canonical Slack requester state containing `platform`, `teamId`, and `slackUserId`; resume through a continuation endpoint; verify mismatched stored team or user ids fail closed.
-- Absent continuation identity: when a continuation session record has no stored requester display or contact fields, verify the resumed turn proceeds with actor id only and does not attempt a live Slack lookup.
-- Scheduler dispatch runs with a system actor and does not use creator identity as requester.
+- Slack ingress persists the real actor/author identity and rejects synthetic or malformed actor ids.
+- Slack DM and channel paths preserve the current actor through first delivery, retry, and continuation.
+- Turn continuation identity: seed a session record with `AgentTurnSessionRecord.actor` containing Slack user id, username, full name, and email; resume through a continuation endpoint while making live Slack profile lookup unavailable; verify the resumed turn receives actor identity from the stored session record and that no live Slack lookup is performed.
+- Workspace-scoped actor identity: seed a session record with canonical Slack actor state containing `platform`, `teamId`, and `slackUserId`; resume through a continuation endpoint; verify mismatched stored team or user ids fail closed.
+- Absent continuation identity: when a continuation session record has no stored actor display or contact fields, verify the resumed turn proceeds with actor id only and does not attempt a live Slack lookup.
+- Scheduler dispatch runs with a system actor and does not use creator identity as actor.
 - Plugin dispatch carries a system actor through callback, retry, continuation, credential context, and Slack delivery.
 - Private direct scheduled tasks may carry an explicit credential subject; group, private channel, public channel, and unknown-audience tasks may not.
 - Sandbox egress and credential injection reject signed contexts with malformed actors or subjects.
 - System actors use only explicit service-principal, install-owned, or delegated credential envelopes.
-- Requester-sensitive Slack side effects use the current actor id.
+- Actor-sensitive Slack side effects use the current actor id.
 
 Use unit tests for small parsing, signing, and assertion helpers.
 
-Use evals only when the contract depends on model interpretation, such as preserving current requester semantics in natural-language follow-up handling.
+Use evals only when the contract depends on model interpretation, such as preserving current actor semantics in natural-language follow-up handling.
 
 ## Related Specs
 

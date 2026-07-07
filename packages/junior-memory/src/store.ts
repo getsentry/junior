@@ -290,7 +290,7 @@ export interface MemoryStore {
   ): Promise<ArchiveExpiredMemoriesResult>;
   /** Archive a visible memory in the current runtime context. */
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
-  /** Store a personal memory for the current requester. */
+  /** Store a personal memory for the current actor. */
   createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult>;
   /** Store a conversation memory for the current source conversation. */
   createConversationMemory(

@@ -27,7 +27,7 @@ surface and credential sources may exist.
 
 Credentials are not ambient. When sandbox traffic reaches a registered
 provider's declared domain, the runtime fetches a credential for the current
-requester and turn, then injects it automatically. If no registered provider
+actor and turn, then injects it automatically. If no registered provider
 owns the destination domain, the request is not given provider auth.
 
 ## Validation

@@ -260,7 +260,7 @@ function slackContext(
   const threadTs = overrides.threadTs ?? "1718800000.000000";
   return {
     conversationId: `slack:${channelId}:${threadTs}`,
-    requester: {
+    actor: {
       platform: "slack" as const,
       teamId,
       userId: overrides.userId ?? "U123",
@@ -291,7 +291,7 @@ function localContext(
   const conversationId = overrides.conversationId ?? "local:junior:memory-test";
   return {
     conversationId,
-    requester: {
+    actor: {
       platform: "local" as const,
       userId: overrides.userId ?? "local-user",
     },
@@ -326,7 +326,7 @@ function completedRun(
         text: "Got it.",
       },
     ],
-    requester: runtime.requester,
+    actor: runtime.actor,
     runId: "local-turn-1",
     source: runtime.source,
     ...overrides,
@@ -369,7 +369,7 @@ function testCanonicalContent(content: string): string {
 }
 
 function allowMemory(
-  target: "requester" | "conversation",
+  target: "actor" | "conversation",
   onRequest?: (request: CreateMemoryRequest) => void,
 ): MemoryReviewer {
   return {
@@ -377,7 +377,7 @@ function allowMemory(
       onRequest?.(candidate);
       return {
         decision: "store",
-        kind: target === "requester" ? "preference" : "knowledge",
+        kind: target === "actor" ? "preference" : "knowledge",
         content: testCanonicalContent(candidate.content),
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
@@ -455,7 +455,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("parses canonical requester extraction into stored memory text", async () => {
+  it("parses canonical actor extraction into stored memory text", async () => {
     const model: PluginModel = {
       async completeObject() {
         return {
@@ -1127,7 +1127,7 @@ describe("memory plugin storage", () => {
                     text: "I prefer private Slack context skips.",
                   },
                 ],
-                requester: privateContext.requester,
+                actor: privateContext.actor,
                 source: privateContext.source,
               });
             },
@@ -1164,7 +1164,7 @@ describe("memory plugin storage", () => {
                     text: "I prefer Slack message key validation.",
                   },
                 ],
-                requester: runtime.requester,
+                actor: runtime.actor,
                 source: createSlackSource({
                   teamId: runtime.source.teamId,
                   channelId: runtime.source.channelId,
@@ -1185,7 +1185,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores requester memories from local completed sessions", async () => {
+  it("stores actor memories from local completed sessions", async () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
@@ -1215,7 +1215,7 @@ describe("memory plugin storage", () => {
                     text: "I prefer local passive memory QA.",
                   },
                 ],
-                requester: runtime.requester,
+                actor: runtime.actor,
                 source: runtime.source,
               });
             },
@@ -1238,7 +1238,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores conversation memories without requester context", async () => {
+  it("stores conversation memories without actor context", async () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
@@ -1247,7 +1247,7 @@ describe("memory plugin storage", () => {
       },
       {
         kind: "preference",
-        content: "Prefers requester-only memory.",
+        content: "Prefers actor-only memory.",
       },
     ]);
     const runtime = localContext();
@@ -1265,7 +1265,7 @@ describe("memory plugin storage", () => {
                   platform: "local",
                   conversationId: runtime.conversationId,
                 },
-                requester: undefined,
+                actor: undefined,
                 transcript: [
                   {
                     type: "message",
@@ -1299,9 +1299,9 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const requesterContext = slackContext();
+      const actorContext = slackContext();
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), requesterContext, {
+      const store = createMemoryStore(memoryDb(fixture), actorContext, {
         now: () => nowMs,
       });
 
@@ -1356,12 +1356,12 @@ ORDER BY created_at_ms ASC
         expect.objectContaining({ id: personal.memory.id }),
       ]);
 
-      const otherRequesterStore = createMemoryStore(
+      const otherActorStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({ userId: "U456" }),
         { now: () => nowMs },
       );
-      await expect(otherRequesterStore.listMemories({})).resolves.toEqual([
+      await expect(otherActorStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
       const otherConversationStore = createMemoryStore(
@@ -2225,7 +2225,7 @@ WHERE id = '${superseded.memory.id}'
     try {
       const reviewedRequests: CreateMemoryRequest[] = [];
       const context = {
-        agent: allowMemory("requester", (request) => {
+        agent: allowMemory("actor", (request) => {
           reviewedRequests.push(request);
         }),
         db: memoryDb(fixture),
@@ -2272,7 +2272,7 @@ WHERE id = '${superseded.memory.id}'
         content: "I prefer terse status updates.",
         runtimeContext: {
           conversationId: "slack:C123:1718800000.000000",
-          requester: {
+          actor: {
             platform: "slack",
             teamId: "T123",
             userId: "U123",
@@ -2447,15 +2447,15 @@ WHERE id = '${superseded.memory.id}'
       ).rejects.toThrow(PluginToolInputError);
       await expect(
         createMemoryCreateTool({
-          agent: allowMemory("requester"),
+          agent: allowMemory("actor"),
           db: memoryDb(fixture),
           source: slackContext().source,
         }).execute(
           {
-            content: "I prefer requester context failures to be visible.",
+            content: "I prefer actor context failures to be visible.",
             expires_at: "never",
           },
-          { toolCallId: "tool-create-missing-requester" },
+          { toolCallId: "tool-create-missing-actor" },
         ),
       ).rejects.toThrow(PluginToolInputError);
       await expect(
@@ -2629,12 +2629,12 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const firstTool = createMemoryCreateTool({
-        agent: allowMemory("requester"),
+        agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext(),
       });
       const secondTool = createMemoryCreateTool({
-        agent: allowMemory("requester"),
+        agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
       });
@@ -2795,7 +2795,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("supersedes old requester preferences when adjudication is confident", async () => {
+  it("supersedes old actor preferences when adjudication is confident", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -3247,7 +3247,7 @@ INSERT INTO junior_memory_memories (
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
         store.listMemories({
-          requester: { platform: "local", userId: "local-user" },
+          actor: { platform: "local", userId: "local-user" },
         } as unknown as Parameters<typeof store.listMemories>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 

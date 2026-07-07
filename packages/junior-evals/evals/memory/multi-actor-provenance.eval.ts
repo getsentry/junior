@@ -19,9 +19,9 @@ import {
  *
  * Contract under test (specs/memory-plugin/policy.md, issue #773): a
  * personal-scope memory may only be created from statements authored by the
- * requester who will own it. Another participant's first-person statements in
+ * actor who will own it. Another participant's first-person statements in
  * a shared thread are evidence for conversation-scoped knowledge at most,
- * never for the requester's personal memories.
+ * never for the actor's personal memories.
  */
 
 const memoryPluginOverrides = {
@@ -89,7 +89,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "17000000.memory-bystander",
   } satisfies MemoryThread;
 
-  it("when a non-requester states a first-person preference in a shared thread, store no personal memory for the requester", async ({
+  it("when a non-actor states a first-person preference in a shared thread, store no personal memory for the actor", async ({
     run,
   }) => {
     await clearMemories();
@@ -119,17 +119,17 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant answers the follow-up using the thread discussion.",
-          "The assistant does not claim it saved a summary-style preference for the current requester.",
+          "The assistant does not claim it saved a summary-style preference for the current actor.",
         ],
         fail: [
-          "Do not attribute the emoji-heavy summary preference to the requester who asked for takeaways.",
+          "Do not attribute the emoji-heavy summary preference to the actor who asked for takeaways.",
         ],
       }),
     });
 
     const rows = await readMemories(bystanderPreferenceThread);
     // The invariant: Bob's first-person preference must never become a
-    // personal memory owned by Alice, the run requester. Alice authored no
+    // personal memory owned by Alice, the run actor. Alice authored no
     // personal facts in this thread, so she must own no personal memories.
     expect(personalMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
   }, 120_000);
@@ -141,7 +141,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "17000000.memory-conflict",
   } satisfies MemoryThread;
 
-  it("when the requester and a bystander state conflicting first-person preferences, personal memories only reflect the requester's own statements", async ({
+  it("when the actor and a bystander state conflicting first-person preferences, personal memories only reflect the actor's own statements", async ({
     run,
   }) => {
     await clearMemories();
@@ -170,11 +170,11 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant drafts and revises the status update across the two requester turns.",
-          "If the assistant applies a stored preference for the requester, it is the risks-first preference.",
+          "The assistant drafts and revises the status update across the two actor turns.",
+          "If the assistant applies a stored preference for the actor, it is the risks-first preference.",
         ],
         fail: [
-          "Do not treat the customer-impact-first preference as the requester's own preference.",
+          "Do not treat the customer-impact-first preference as the actor's own preference.",
         ],
       }),
     });
@@ -207,13 +207,13 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
   // TDD target (issue #773): today this invariant is enforced only by the
   // model honoring prompt-text author labels, so this case is unstable
   // (observed failing with the assistant claiming the preference "for" the
-  // requester). Deterministic per-message provenance makes it stably green.
-  it("when another user's pending mention is batched into the latest turn, do not store their first-person preference as the requester's personal memory", async ({
+  // actor). Deterministic per-message provenance makes it stably green.
+  it("when another user's pending mention is batched into the latest turn, do not store their first-person preference as the actor's personal memory", async ({
     run,
   }) => {
     await clearMemories();
     // Bob's mention is still pending when Alice's message arrives, so the
-    // mailbox worker handles both in one turn: Alice is the live requester
+    // mailbox worker handles both in one turn: Alice is the live actor
     // and Bob's ask is carried into her run. This is the multi-actor path
     // where Bob's first-person statement rides inside Alice's transcript.
     await run({
@@ -240,11 +240,11 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant recaps the thread, covering the bullet-summary formatting request.",
-          "If the assistant attributes the bullet-summary preference to anyone, it attributes it to the participant who stated it, not to the requester asking for the recap.",
+          "If the assistant attributes the bullet-summary preference to anyone, it attributes it to the participant who stated it, not to the actor asking for the recap.",
         ],
         fail: [
-          "Do not tell the recap requester that the bullet-summary preference is their own stated preference.",
-          "Do not address the recap requester as the person who asked for bullet summaries.",
+          "Do not tell the recap actor that the bullet-summary preference is their own stated preference.",
+          "Do not address the recap actor as the person who asked for bullet summaries.",
         ],
       }),
     });
@@ -266,11 +266,11 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
   } satisfies MemoryThread;
 
   // TDD target (issue #773): red until the completed-run projection carries
-  // non-requester public messages as conversation-scope evidence. Today a
+  // non-actor public messages as conversation-scope evidence. Today a
   // passive participant's knowledge never reaches passive extraction: it is
   // only present in runtime context blocks that are stripped from the plugin
   // transcript.
-  it("when a non-requester shares operational knowledge, conversation-scoped memory is still allowed", async ({
+  it("when a non-actor shares operational knowledge, conversation-scoped memory is still allowed", async ({
     run,
   }) => {
     await clearMemories();
@@ -306,8 +306,8 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
 
     const rows = await readMemories(sharedKnowledgeThread);
     // Guard against over-tightening: public operational knowledge from a
-    // non-requester remains valid conversation-scope evidence. Only the
-    // personal scope requires requester-authored provenance.
+    // non-actor remains valid conversation-scope evidence. Only the
+    // personal scope requires actor-authored provenance.
     expect(personalMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
     const conversationRows = rows.filter(
       (memory) =>

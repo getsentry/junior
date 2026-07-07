@@ -2,7 +2,7 @@ import type { Message, Thread } from "chat";
 
 export interface TurnContext {
   channelId?: string;
-  requesterId?: string;
+  actorId?: string;
   threadId?: string;
   runId?: string;
 }

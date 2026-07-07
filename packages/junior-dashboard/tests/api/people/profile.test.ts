@@ -26,7 +26,7 @@ describe("people profile route", () => {
     expect(response.status).toBe(200);
     expect(readPeopleProfile).toHaveBeenCalledWith("Person+Alerts@Example.com");
     expect(await response.json()).toMatchObject({
-      requester: {
+      actor: {
         email: "Person+Alerts@Example.com",
       },
       totals: {

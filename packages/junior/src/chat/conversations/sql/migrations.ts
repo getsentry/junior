@@ -256,6 +256,62 @@ CREATE INDEX IF NOT EXISTS junior_identities_verified_email_idx
 `,
 ] as const;
 
+const actorCutoverStatements = [
+  `
+UPDATE junior_conversations
+  SET actor_identity_id = requester_identity_id
+  WHERE requester_identity_id IS NOT NULL
+`,
+  `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'junior_conversations'
+      AND column_name = 'requester_json'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'junior_conversations'
+      AND column_name = 'actor_json'
+  ) THEN
+    ALTER TABLE junior_conversations
+      RENAME COLUMN requester_json TO actor_json;
+  END IF;
+END $$;
+`,
+  `
+ALTER TABLE junior_conversations
+  ADD COLUMN IF NOT EXISTS actor_json JSONB
+`,
+  `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'junior_conversations'
+      AND column_name = 'requester_json'
+  ) THEN
+    UPDATE junior_conversations
+      SET actor_json = COALESCE(actor_json, requester_json);
+  END IF;
+END $$;
+`,
+  `
+DROP INDEX IF EXISTS junior_conversations_requester_activity_idx
+`,
+  `
+ALTER TABLE junior_conversations
+  DROP COLUMN IF EXISTS requester_identity_id
+`,
+  `
+ALTER TABLE junior_conversations
+  DROP COLUMN IF EXISTS requester_json
+`,
+] as const;
+
 export const migrations = [
   defineMigration("0001_conversation_core", coreMetadataStatements),
   defineMigration(
@@ -263,6 +319,7 @@ export const migrations = [
     destinationVisibilityBackfillStatements,
   ),
   defineMigration("0003_user_identities", userIdentityStatements),
+  defineMigration("0004_actor_cutover", actorCutoverStatements),
 ] as const;
 
 export { schema };

@@ -49,7 +49,7 @@ function leaseKey(
 ): string {
   const actor = context.credentials.actor;
   const actorKey =
-    actor.type === "user" ? `user:${actor.userId}` : `system:${actor.id}`;
+    "type" in actor ? `user:${actor.userId}` : `system:${actor.name}`;
   return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grantName}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
@@ -138,7 +138,7 @@ function getSandboxEgressSecret(): string {
 /**
  * Create the signed Junior credential context embedded in the proxy URL.
  *
- * The token binds requester credentials to a specific sandbox egress id and a
+ * The token binds actor credentials to a specific sandbox egress id and a
  * short expiry. Vercel OIDC proves which VM sent a request; this token proves
  * which Junior actor and credential context that VM is allowed to use.
  */

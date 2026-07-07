@@ -16,14 +16,14 @@ import type {
   SkillReport,
 } from "@sentry/junior/reporting";
 import type {
-  RequesterDirectoryReport,
-  RequesterIdentity as ApiRequesterIdentity,
-  RequesterSummaryReport,
-  RequesterTotalsReport,
+  ActorDirectoryReport,
+  ActorIdentity as ApiActorIdentity,
+  ActorSummaryReport,
+  ActorTotalsReport,
 } from "@sentry/junior/api/people/list";
 import type {
-  RequesterActivityDayReport,
-  RequesterProfileReport,
+  ActorActivityDayReport,
+  ActorProfileReport,
 } from "@sentry/junior/api/people/profile";
 
 export type Health = HealthReport;
@@ -45,17 +45,17 @@ export type ConversationSubagentTranscript =
 
 export type ConversationStatsItem = ReportingConversationStatsItem;
 
-export type RequesterIdentity = ApiRequesterIdentity;
+export type ActorIdentity = ApiActorIdentity;
 
-export type RequesterActivityDay = RequesterActivityDayReport;
+export type ActorActivityDay = ActorActivityDayReport;
 
-export type RequesterDirectory = RequesterDirectoryReport;
+export type ActorDirectory = ActorDirectoryReport;
 
-export type RequesterProfile = RequesterProfileReport;
+export type ActorProfile = ActorProfileReport;
 
-export type RequesterSummary = RequesterSummaryReport;
+export type ActorSummary = ActorSummaryReport;
 
-export type RequesterTotals = RequesterTotalsReport;
+export type ActorTotals = ActorTotalsReport;
 
 export type TurnUsage = ConversationUsage;
 
@@ -136,7 +136,7 @@ export type Conversation = {
   id: string;
   lastProgressAt: string;
   lastSeenAt: string;
-  requesterIdentity?: RequesterIdentity;
+  actorIdentity?: ActorIdentity;
   sentryTraceUrl?: string;
   startedAt: string;
   status: ConversationSummary["status"];

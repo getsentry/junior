@@ -182,12 +182,12 @@ describe("agent dispatch runner", () => {
     const dispatchConversationId = getDispatchConversationId(created.record);
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
       const context = flattenAgentRunRequestForTest(request);
-      expect(context.requester).toBeUndefined();
+      expect(context.actor).toBeUndefined();
       expect(context.authorizationFlowMode).toBe("disabled");
       expect(context.surface).toBe("api");
       expect(context.source).toEqual(slackSource());
       expect(context.dispatch).toEqual({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         metadata: { runId: "run-1" },
         plugin: "scheduler",
       });
@@ -198,7 +198,7 @@ describe("agent dispatch runner", () => {
         teamId: "T123",
       });
       expect(context.credentialContext).toEqual({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
       });
       expect(context.sandboxTracePropagation).toEqual({
         domains: ["*.sentry.io"],
@@ -438,7 +438,7 @@ describe("agent dispatch runner", () => {
     });
   });
 
-  it("passes delegated credential subjects without changing the requester actor", async () => {
+  it("passes delegated credential subjects without changing the actor", async () => {
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
         channel: "D123",
@@ -458,9 +458,9 @@ describe("agent dispatch runner", () => {
     });
     const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
       const context = flattenAgentRunRequestForTest(request);
-      expect(context.requester).toBeUndefined();
+      expect(context.actor).toBeUndefined();
       expect(context.credentialContext).toEqual({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
           userId: "U123",

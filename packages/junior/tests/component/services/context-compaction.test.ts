@@ -171,7 +171,7 @@ describe("context compaction projection reset", () => {
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { commitMessages, loadProjection, loadProjectionWithRequester } =
+    const { commitMessages, loadProjection, loadProjectionWithActor } =
       await import("@/chat/state/session-log");
 
     const priorMessages = [
@@ -182,7 +182,7 @@ describe("context compaction projection reset", () => {
       conversationId: "conversation-1",
       messages: priorMessages,
       ttlMs: 60_000,
-      requester: {
+      actor: {
         slackUserId: "U123",
         slackUserName: "alice",
         fullName: "Alice Example",
@@ -218,10 +218,10 @@ describe("context compaction projection reset", () => {
       loadProjection({ conversationId: "conversation-1" }),
     ).resolves.toEqual(compactedMessages);
     await expect(
-      loadProjectionWithRequester({ conversationId: "conversation-1" }),
+      loadProjectionWithActor({ conversationId: "conversation-1" }),
     ).resolves.toMatchObject({
       messages: compactedMessages,
-      requester: {
+      actor: {
         slackUserId: "U123",
         slackUserName: "alice",
         fullName: "Alice Example",

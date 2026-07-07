@@ -2,7 +2,7 @@ import { Link } from "react-router";
 
 import {
   conversationDisplayTitle,
-  conversationRequesterLabel,
+  conversationActorLabel,
   peoplePath,
   visualStatusForConversation,
 } from "../format";
@@ -29,8 +29,8 @@ export function ConversationSummary(props: { conversation: Conversation }) {
 }
 
 function ConversationIdentity(props: { conversation: Conversation }) {
-  const email = props.conversation.requesterIdentity?.email?.trim();
-  const owner = conversationRequesterLabel(props.conversation);
+  const email = props.conversation.actorIdentity?.email?.trim();
+  const owner = conversationActorLabel(props.conversation);
   const id = props.conversation.id;
 
   if (!owner) return id;

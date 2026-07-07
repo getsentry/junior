@@ -30,13 +30,13 @@ describe("credential context", () => {
     ).toBe("U123");
     expect(
       credentialUserSubjectId({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: delegatedSubject,
       }),
     ).toBe("U123");
     expect(
       credentialUserSubjectId({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
       }),
     ).toBeUndefined();
   });
@@ -50,16 +50,16 @@ describe("credential context", () => {
     ).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: delegatedSubject,
       }),
     ).toEqual({
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       subject: delegatedSubject,
     });
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: unboundDelegatedSubject,
       }),
     ).toBeUndefined();
@@ -70,17 +70,17 @@ describe("credential context", () => {
     expect(parseCredentialContext({})).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "unknown" },
+        actor: { platform: "system", name: "unknown" },
       }),
     ).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "" },
+        actor: { platform: "system", name: "" },
       }),
     ).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: " scheduler " },
+        actor: { platform: "system", name: " scheduler " },
       }),
     ).toBeUndefined();
     expect(
@@ -100,13 +100,13 @@ describe("credential context", () => {
     ).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: { type: "user", userId: "U123" },
       }),
     ).toBeUndefined();
     expect(
       parseCredentialContext({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           ...delegatedSubject,
           userId: "unknown",

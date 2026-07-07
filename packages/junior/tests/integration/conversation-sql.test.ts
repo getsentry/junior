@@ -67,7 +67,7 @@ ORDER BY indexname ASC
           "junior_conversations_last_activity_idx",
           "junior_conversations_origin_idx",
           "junior_conversations_pkey",
-          "junior_conversations_requester_activity_idx",
+          "junior_conversations_actor_activity_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
           "junior_identities_kind_provider_idx",
@@ -130,7 +130,7 @@ INSERT INTO junior_conversations (
   conversation_id,
   source,
   destination_json,
-  requester_json,
+  actor_json,
   channel_name,
   title,
   created_at,
@@ -143,7 +143,7 @@ INSERT INTO junior_conversations (
           conversation.conversationId,
           conversation.source,
           JSON.stringify(conversation.destination),
-          JSON.stringify(conversation.requester),
+          JSON.stringify(conversation.actor),
           conversation.channelName,
           conversation.title,
           conversation.createdAt.toISOString(),
@@ -158,12 +158,12 @@ INSERT INTO junior_conversations (
         conversation_id: string;
         destination_json: unknown;
         execution_status: string;
-        requester_json: unknown;
+        actor_json: unknown;
         source: string;
         title: string;
       }>(
         `
-SELECT conversation_id, source, destination_json, requester_json, channel_name, title, execution_status
+SELECT conversation_id, source, destination_json, actor_json, channel_name, title, execution_status
 FROM junior_conversations
 WHERE conversation_id = $1
 `,
@@ -188,7 +188,7 @@ WHERE conversation_id = $1
           platform: "slack",
           teamId: "T123",
         },
-        requester_json: {
+        actor_json: {
           platform: "slack",
           slackUserId: "U123",
           teamId: "T123",

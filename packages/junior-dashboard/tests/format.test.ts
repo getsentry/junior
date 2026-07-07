@@ -6,8 +6,8 @@ import {
   conversationDisplayTitle,
   conversationFromDetail,
   conversationIdentityMeta,
-  conversationRequesterLabel,
-  conversationRequesterOptions,
+  conversationActorLabel,
+  conversationActorOptions,
   conversationSourceOptions,
   filterConversationList,
   formatConversationDuration,
@@ -16,7 +16,7 @@ import {
   formatTurnDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
-  requesterLabel,
+  actorLabel,
   slackLocationLabel,
   summarizeMessages,
   summarizeToolCalls,
@@ -104,7 +104,7 @@ describe("dashboard token formatting", () => {
   it("summarizes tooltip metrics from visible transcripts", () => {
     const turn = {
       id: "turn-1",
-      requesterIdentity: { fullName: "alice" },
+      actorIdentity: { fullName: "alice" },
       status: "completed",
       transcriptAvailable: true,
       transcript: [
@@ -319,7 +319,7 @@ describe("dashboard token formatting", () => {
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
-        requesterIdentity: {
+        actorIdentity: {
           slackUserId: "U1",
           slackUserName: "Alice Reviewer",
         },
@@ -340,9 +340,9 @@ describe("dashboard token formatting", () => {
     expect(conversationIdentityMeta(undefined, undefined)).toBe("");
   });
 
-  it("keeps Slack display names with spaces as requester labels", () => {
+  it("keeps Slack display names with spaces as actor labels", () => {
     expect(
-      requesterLabel({ slackUserId: "U1", slackUserName: "Alice Reviewer" }),
+      actorLabel({ slackUserId: "U1", slackUserName: "Alice Reviewer" }),
     ).toBe("Alice Reviewer");
   });
 
@@ -391,7 +391,7 @@ describe("dashboard token formatting", () => {
           id: "turn-1",
           lastProgressAt: "2026-06-01T10:05:00.000Z",
           lastSeenAt: "2026-06-01T10:05:00.000Z",
-          requesterIdentity: { email: "alice@example.com" },
+          actorIdentity: { email: "alice@example.com" },
           startedAt: "2026-06-01T10:00:00.000Z",
           status: "completed",
           surface: "slack",
@@ -455,7 +455,7 @@ describe("dashboard token formatting", () => {
     expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
   });
 
-  it("keeps requester labels even when the title matches", () => {
+  it("keeps actor labels even when the title matches", () => {
     const conversations: ConversationSummary[] = [
       {
         channel: "C1",
@@ -466,7 +466,7 @@ describe("dashboard token formatting", () => {
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
-        requesterIdentity: {
+        actorIdentity: {
           fullName: "alice",
           slackUserId: "U1",
         },
@@ -477,13 +477,13 @@ describe("dashboard token formatting", () => {
     ];
     const [conversation] = buildConversations(conversations);
 
-    expect(conversationRequesterLabel(conversation)).toBe("alice");
+    expect(conversationActorLabel(conversation)).toBe("alice");
     expect(conversationIdentityMeta(conversation, conversation?.id)).toBe(
       "alice · slack:C1:123",
     );
   });
 
-  it("filters conversation rows by text, source, and requester", () => {
+  it("filters conversation rows by text, source, and actor", () => {
     const conversations = buildConversations([
       {
         channel: "C1",
@@ -494,7 +494,7 @@ describe("dashboard token formatting", () => {
         id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
-        requesterIdentity: {
+        actorIdentity: {
           email: "morgan@example.com",
           fullName: "Morgan Lee",
         },
@@ -509,7 +509,7 @@ describe("dashboard token formatting", () => {
         id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
-        requesterIdentity: { fullName: "Casey" },
+        actorIdentity: { fullName: "Casey" },
         startedAt: "2026-06-01T11:00:00.000Z",
         status: "completed",
         surface: "internal",
@@ -520,21 +520,21 @@ describe("dashboard token formatting", () => {
       { label: "internal", value: "internal" },
       { label: "slack", value: "slack" },
     ]);
-    expect(conversationRequesterOptions(conversations)).toEqual([
+    expect(conversationActorOptions(conversations)).toEqual([
       { label: "Casey", value: "Casey" },
       { label: "Morgan Lee", value: "morgan@example.com" },
     ]);
     expect(
       filterConversationList(conversations, {
         query: "checkout",
-        requester: "morgan@example.com",
+        actor: "morgan@example.com",
         source: "slack",
       }).map((conversation) => conversation.id),
     ).toEqual(["slack:C1:123"]);
     expect(
       filterConversationList(conversations, {
         query: "checkout",
-        requester: "Casey",
+        actor: "Casey",
         source: "slack",
       }),
     ).toEqual([]);

@@ -8,7 +8,7 @@ import type {
   ConversationFilter,
   ConversationSummary,
   MarkupNode,
-  RequesterIdentity,
+  ActorIdentity,
   TranscriptViewMessage,
   TranscriptViewPart,
   TurnUsage,
@@ -390,7 +390,7 @@ function transcriptMessageAuthor(
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return "Junior";
   if (kind === "user") {
-    return requesterLabel(turn.requesterIdentity) ?? "User";
+    return actorLabel(turn.actorIdentity) ?? "User";
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -572,30 +572,30 @@ export function conversationDisplayTitle(
   return conversation?.displayTitle ?? "Conversation";
 }
 
-/** Prefer stable requester identifiers while keeping Slack ids as a last resort. */
-export function requesterLabel(
-  requester: RequesterIdentity | undefined,
+/** Prefer stable actor identifiers while keeping Slack ids as a last resort. */
+export function actorLabel(
+  actor: ActorIdentity | undefined,
 ): string | undefined {
-  const email = requester?.email?.trim() || undefined;
-  const fullName = requester?.fullName?.trim() || undefined;
-  const slackUserName = requester?.slackUserName?.trim() || undefined;
-  return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
+  const email = actor?.email?.trim() || undefined;
+  const fullName = actor?.fullName?.trim() || undefined;
+  const slackUserName = actor?.slackUserName?.trim() || undefined;
+  return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
-/** Derive the conversation owner label from structured requester identity. */
-export function conversationRequesterLabel(
+/** Derive the conversation owner label from structured actor identity. */
+export function conversationActorLabel(
   conversation: Conversation | undefined,
 ): string | undefined {
-  return requesterLabel(conversation?.requesterIdentity);
+  return actorLabel(conversation?.actorIdentity);
 }
 
-/** Return the stable requester key used by dashboard list filters. */
-export function conversationRequesterKey(
+/** Return the stable actor key used by dashboard list filters. */
+export function conversationActorKey(
   conversation: Conversation | undefined,
 ): string | undefined {
   return (
-    conversation?.requesterIdentity?.email?.trim() ||
-    conversationRequesterLabel(conversation)
+    conversation?.actorIdentity?.email?.trim() ||
+    conversationActorLabel(conversation)
   );
 }
 
@@ -605,7 +605,7 @@ export function conversationIdentityMeta(
   conversationId: string | undefined,
 ): string {
   const id = conversationId ?? conversation?.id;
-  const owner = conversationRequesterLabel(conversation);
+  const owner = conversationActorLabel(conversation);
   if (!id) return owner ?? "";
   return owner ? `${owner} · ${id}` : id;
 }
@@ -683,7 +683,7 @@ export function conversationPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}`;
 }
 
-/** Build the canonical requester profile route for a trusted email address. */
+/** Build the canonical actor profile route for a trusted email address. */
 export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;
 }
@@ -939,7 +939,7 @@ export function buildConversations(
           : sortedTurns.some(isFailedConversationSummary)
             ? "failed"
             : newest.status;
-      const requesterTurn = sortedTurns.find((turn) => turn.requesterIdentity);
+      const actorTurn = sortedTurns.find((turn) => turn.actorIdentity);
       return {
         channel: newest.channel,
         channelName: recentTurns.find((turn) => turn.channelName)?.channelName,
@@ -947,7 +947,7 @@ export function buildConversations(
         id,
         lastProgressAt: newest.lastProgressAt,
         lastSeenAt: newest.lastSeenAt,
-        requesterIdentity: requesterTurn?.requesterIdentity,
+        actorIdentity: actorTurn?.actorIdentity,
         sentryTraceUrl: newest.sentryTraceUrl,
         startedAt: oldest.startedAt,
         status,
@@ -1019,7 +1019,7 @@ export function filterConversations(
 
 export type ConversationListFilters = {
   query?: string;
-  requester?: string;
+  actor?: string;
   source?: string;
 };
 
@@ -1045,7 +1045,7 @@ function uniqueConversationOptions(
 }
 
 function conversationSearchHaystack(conversation: Conversation): string {
-  const requester = conversation.requesterIdentity;
+  const actor = conversation.actorIdentity;
   return [
     conversation.displayTitle,
     conversation.id,
@@ -1053,10 +1053,10 @@ function conversationSearchHaystack(conversation: Conversation): string {
     conversation.channelName,
     conversation.status,
     conversation.surface,
-    requester?.email,
-    requester?.fullName,
-    requester?.slackUserId,
-    requester?.slackUserName,
+    actor?.email,
+    actor?.fullName,
+    actor?.slackUserId,
+    actor?.slackUserName,
   ]
     .filter(Boolean)
     .join(" ")
@@ -1074,17 +1074,17 @@ export function conversationSourceOptions(
   );
 }
 
-/** Return requester filter options present in the loaded conversation rows. */
-export function conversationRequesterOptions(
+/** Return actor filter options present in the loaded conversation rows. */
+export function conversationActorOptions(
   conversations: Conversation[],
 ): ConversationListFilterOption[] {
   return uniqueConversationOptions(
     conversations,
-    conversationRequesterKey,
+    conversationActorKey,
     (conversation, value) =>
-      conversation.requesterIdentity?.fullName?.trim() ||
-      conversation.requesterIdentity?.email?.trim() ||
-      conversation.requesterIdentity?.slackUserName?.trim() ||
+      conversation.actorIdentity?.fullName?.trim() ||
+      conversation.actorIdentity?.email?.trim() ||
+      conversation.actorIdentity?.slackUserName?.trim() ||
       value,
   );
 }
@@ -1096,11 +1096,11 @@ export function filterConversationList(
 ): Conversation[] {
   const query = filters.query?.trim().toLowerCase();
   const source = filters.source?.trim();
-  const requester = filters.requester?.trim();
+  const actor = filters.actor?.trim();
 
   return conversations.filter((conversation) => {
     if (source && conversation.surface !== source) return false;
-    if (requester && conversationRequesterKey(conversation) !== requester) {
+    if (actor && conversationActorKey(conversation) !== actor) {
       return false;
     }
     if (query && !conversationSearchHaystack(conversation).includes(query)) {

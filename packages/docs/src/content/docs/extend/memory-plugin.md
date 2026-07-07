@@ -52,13 +52,13 @@ export const plugins = defineJuniorPlugins([
 
 ## Configure environment variables
 
-| Variable                 | Required | Purpose                                                                                     |
-| ------------------------ | -------- | ------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`           | Yes      | Postgres connection string for memory storage.                                              |
-| `JUNIOR_DATABASE_DRIVER` | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments. |
-| `AI_EMBEDDING_MODEL`     | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims). |
-| `AI_MEMORY_MODEL`        | No       | Model for memory classification and consolidation. Defaults to the app's structured model.  |
-| `MEMORY_RECALL_MAX_VECTOR_DISTANCE` | No | Maximum cosine distance for vector recall candidates. Values 0–1; lower = stricter. Values above 1 are clamped to 1. Default `0.45` suits `text-embedding-3-small`. Tune when changing `AI_EMBEDDING_MODEL`. |
+| Variable                            | Required | Purpose                                                                                                                                                                                                      |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                      | Yes      | Postgres connection string for memory storage.                                                                                                                                                               |
+| `JUNIOR_DATABASE_DRIVER`            | No       | SQL client driver: `neon` (default) or `postgres`. Set `postgres` for non-Neon deployments.                                                                                                                  |
+| `AI_EMBEDDING_MODEL`                | No       | Embedding model for vector search. Defaults to `openai/text-embedding-3-small` (1536 dims).                                                                                                                  |
+| `AI_MEMORY_MODEL`                   | No       | Model for memory classification and consolidation. Defaults to the app's structured model.                                                                                                                   |
+| `MEMORY_RECALL_MAX_VECTOR_DISTANCE` | No       | Maximum cosine distance for vector recall candidates. Values 0–1; lower = stricter. Values above 1 are clamped to 1. Default `0.45` suits `text-embedding-3-small`. Tune when changing `AI_EMBEDDING_MODEL`. |
 
 `AI_EMBEDDING_MODEL` must produce 1536-dimensional vectors. Changing this value after memories exist requires flushing the `junior_memory_embeddings` table and re-running to regenerate vectors with the new model.
 
@@ -76,7 +76,7 @@ On a fresh database, this creates the `vector` extension, the `junior_memory_mem
 
 ## Verify
 
-Confirm memory storage and recall work end to end. In a Slack conversation where Junior has requester context, ask Junior to store an explicit memory:
+Confirm memory storage and recall work end to end. In a Slack conversation where Junior has actor context, ask Junior to store an explicit memory:
 
 ```text
 Remember that I prefer concise bullet-point summaries
@@ -88,7 +88,7 @@ Then verify recall by listing memories directly:
 what memories do you have about me?
 ```
 
-Junior should list the stored preference. To confirm cross-conversation recall, start a new conversation as the same requester and ask:
+Junior should list the stored preference. To confirm cross-conversation recall, start a new conversation as the same actor and ask:
 
 ```text
 What do you remember about my preferences?

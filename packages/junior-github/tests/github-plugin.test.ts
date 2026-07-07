@@ -52,7 +52,7 @@ class TestTokenStore {
   }
 }
 
-function beforeToolContext(requester: {
+function beforeToolContext(actor: {
   email?: string;
   fullName?: string;
   userId?: string;
@@ -84,7 +84,7 @@ function beforeToolContext(requester: {
       },
       plugin: { name: "github" },
       db,
-      requester,
+      actor,
       tool: {
         input: { command: "git commit -m test" },
         name: "bash",
@@ -175,8 +175,8 @@ function mockGitHubUserApi(input?: {
       return HttpResponse.json(
         input?.payload ?? {
           id: 12345,
-          login: "requester",
-          html_url: "https://github.com/requester",
+          login: "actor",
+          html_url: "https://github.com/actor",
         },
         { status: input?.status ?? 200 },
       );
@@ -306,7 +306,9 @@ function githubToolsContext(input?: {
 }
 
 function githubIssueCredentialContext(input: {
-  actor?: { type: "system"; id: string } | { type: "user"; userId: string };
+  actor?:
+    | { platform: "system"; name: string }
+    | { type: "user"; userId: string };
   credentialSubjectToken?: {
     account?: { id: string; label?: string; url?: string };
     accessToken: string;
@@ -1475,7 +1477,7 @@ Conversation: \`local:test:old-conversation\`
       },
     });
     const result = await plugin.hooks?.issueCredential?.({
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       grant: {
         name: "installation-read",
         access: "read",
@@ -1527,7 +1529,7 @@ Conversation: \`local:test:old-conversation\`
 
     const plugin = githubPlugin();
     const ctx = {
-      actor: { type: "system" as const, id: "scheduler" },
+      actor: { platform: "system" as const, name: "scheduler" },
       grant: {
         name: "installation-read",
         access: "read" as const,
@@ -1575,7 +1577,7 @@ Conversation: \`local:test:old-conversation\`
   it("requires user authorization context before issuing a user-write lease", async () => {
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const missingActor = await plugin.hooks?.issueCredential?.({
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       grant: { name: "user-write", access: "write" },
       db,
       log: pluginLog,
@@ -1629,8 +1631,8 @@ Conversation: \`local:test:old-conversation\`
       lease: {
         account: {
           id: "12345",
-          label: "requester",
-          url: "https://github.com/requester",
+          label: "actor",
+          url: "https://github.com/actor",
         },
         authorization: {
           type: "oauth",
@@ -1669,8 +1671,8 @@ Conversation: \`local:test:old-conversation\`
 
     expect(account).toEqual({
       id: "12345",
-      label: "requester",
-      url: "https://github.com/requester",
+      label: "actor",
+      url: "https://github.com/actor",
     });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -1710,7 +1712,7 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({ additionalUserScopes: ["repo"] });
     const result = await plugin.hooks?.issueCredential?.(
       githubIssueCredentialContext({
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         grant: {
           name: "user-write",
           access: "write",
@@ -1804,8 +1806,8 @@ Conversation: \`local:test:old-conversation\`
           {
             account: {
               id: "12345",
-              label: "requester",
-              url: "https://github.com/requester",
+              label: "actor",
+              url: "https://github.com/actor",
             },
             accessToken: "fresh-token",
             expiresAt: Date.now() + 60 * 60_000,
@@ -1851,8 +1853,8 @@ Conversation: \`local:test:old-conversation\`
     const storedToken: PluginStoredTokens = {
       account: {
         id: "12345",
-        label: "requester",
-        url: "https://github.com/requester",
+        label: "actor",
+        url: "https://github.com/actor",
       },
       accessToken: "stale-token",
       expiresAt: Date.now() + 60_000,
@@ -1933,8 +1935,8 @@ Conversation: \`local:test:old-conversation\`
     const storedToken: PluginStoredTokens = {
       account: {
         id: "12345",
-        label: "requester",
-        url: "https://github.com/requester",
+        label: "actor",
+        url: "https://github.com/actor",
       },
       accessToken: "stale-token",
       expiresAt: Date.now() + 60_000,
@@ -2158,7 +2160,7 @@ Conversation: \`local:test:old-conversation\`
       "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>",
     );
     expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the resolved requester identity",
+      "Git author was not set to the resolved actor identity",
     );
     expect(started).toEqual([
       "core.hooksPath",
@@ -2168,7 +2170,7 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
-  it("injects requester author and Junior coauthor env only for resolved requester identity", () => {
+  it("injects actor author and Junior coauthor env only for resolved actor identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2195,7 +2197,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("denies git commits when requester identity is an unresolved Slack id", () => {
+  it("denies git commits when actor identity is an unresolved Slack id", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2208,11 +2210,11 @@ Conversation: \`local:test:old-conversation\`
 
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toContain("resolved requester name and email");
+    expect(before.denial).toContain("resolved actor name and email");
     expect(before.env).toEqual({});
   });
 
-  it("denies git commits when requester display identity is synthetic unknown", () => {
+  it("denies git commits when actor display identity is synthetic unknown", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2226,7 +2228,7 @@ Conversation: \`local:test:old-conversation\`
 
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toContain("resolved requester name and email");
+    expect(before.denial).toContain("resolved actor name and email");
     expect(before.env).toEqual({});
   });
 });

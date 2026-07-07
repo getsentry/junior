@@ -15,7 +15,7 @@ const memoryPluginOverrides = {
   plugin_packages: ["@sentry/junior-memory"],
 };
 const memoryTeamId = "TEVAL";
-const requesterUserId = "U-test";
+const actorUserId = "U-test";
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
 
 interface MemoryThread {
@@ -34,10 +34,10 @@ async function seedMemory(args: {
 }) {
   const store = createMemoryStore(memoryDb(), {
     conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
-    requester: {
+    actor: {
       platform: "slack",
       teamId: memoryTeamId,
-      userId: requesterUserId,
+      userId: actorUserId,
     },
     source: createSlackSource({
       channelId: args.thread.channel_id,
@@ -153,7 +153,7 @@ function parseMemoryJudgeResult(text: string): {
   return { passed, rationale };
 }
 
-async function expectRequesterMemorySemantics(
+async function expectActorMemorySemantics(
   input: MemorySemanticJudgmentInput,
 ): Promise<void> {
   const storedMemoryProjection = input.storedMemories.map((memory) => ({
@@ -185,9 +185,9 @@ async function expectRequesterMemorySemantics(
           "</assistant-text>",
           "<criteria>",
           "Pass only if exactly one active personal/user memory is stored and its content is semantically equivalent to the expected meaning.",
-          "The stored content must be canonical memory text: no requester display name, no 'the requester', no 'the user', no first-person wording, and no thread/channel/source wording.",
+          "The stored content must be canonical memory text: no actor display name, no 'the actor', no 'the user', no first-person wording, and no thread/channel/source wording.",
           "The assistant text must not claim the memory failed because the user's first-person request was rewritten in third person.",
-          "Fail if no memory was stored, if the stored memory is about someone other than the requester, if the content is a vague paraphrase, or if the content preserves source/user labels.",
+          "Fail if no memory was stored, if the stored memory is about someone other than the actor, if the content is a vague paraphrase, or if the content preserves source/user labels.",
           "</criteria>",
           "</memory-eval>",
         ].join("\n"),
@@ -235,7 +235,7 @@ async function expectConversationMemorySemantics(
           "</assistant-text>",
           "<criteria>",
           "Pass only if exactly one active conversation memory is stored and its content is semantically equivalent to the expected meaning.",
-          "The stored content must be canonical memory text: no requester display name, no 'the requester', no 'the user', no first-person wording, and no thread/channel/source wording.",
+          "The stored content must be canonical memory text: no actor display name, no 'the actor', no 'the user', no first-person wording, and no thread/channel/source wording.",
           "Fail if the memory is stored as personal/user memory, if no memory was stored, if the content is a vague paraphrase, or if the content preserves source/user labels.",
           "</criteria>",
           "</memory-eval>",
@@ -311,13 +311,13 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "Treat createMemory arguments as candidate input, not stored content.",
-          "The assistant uses the exact canonical stored memory content. Good: 'Prefers terse PR summaries'. Bad: 'The requester prefers terse PR summaries'. Bad: 'I prefer terse PR summaries'.",
+          "The assistant uses the exact canonical stored memory content. Good: 'Prefers terse PR summaries'. Bad: 'The actor prefers terse PR summaries'. Bad: 'I prefer terse PR summaries'.",
           "The assistant does not ask the user to provide hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [
           "Do not fail only because the createMemory candidate uses natural first-person or display-name phrasing; the stored/listed memory content is the contract.",
           "Do not ask the user for Slack ids, actor ids, scope names, or subject ids.",
-          "Do not present requester names, display names, 'the requester', 'the user', 'I', 'my', thread labels, channel labels, or source labels as the stored memory content.",
+          "Do not present actor names, display names, 'the actor', 'the user', 'I', 'my', thread labels, channel labels, or source labels as the stored memory content.",
           "Do not say the memory failed to save.",
         ],
       }),
@@ -331,9 +331,9 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         subjectType: "user",
       }),
     ]);
-    await expectRequesterMemorySemantics({
+    await expectActorMemorySemantics({
       assistantText: visibleAssistantText(result),
-      expectedMeaning: "The requester prefers terse pull request summaries.",
+      expectedMeaning: "The actor prefers terse pull request summaries.",
       storedMemories: rows,
       userText: "Please remember that I prefer terse PR summaries.",
     });
@@ -345,7 +345,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     thread_ts: "17000000.memory-first-person",
   };
 
-  it("when the requester states a first-person opinion, store it even if candidate wording is rewritten", async ({
+  it("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
     run,
   }) => {
     await clearMemories();
@@ -362,12 +362,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant treats the user's first-person request as requester-authored source evidence.",
-          "The assistant stores and later reports a canonical requester memory matching the user's opinion about Python types.",
+          "The assistant treats the user's first-person request as actor-authored source evidence.",
+          "The assistant stores and later reports a canonical actor memory matching the user's opinion about Python types.",
           "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [
-          "Do not refuse the memory because a candidate or reply uses the requester's name, 'the requester', or third-person wording.",
+          "Do not refuse the memory because a candidate or reply uses the actor's name, 'the actor', or third-person wording.",
           "Do not ask the user to rephrase the already first-person memory request.",
           "Do not store a memory about a third party.",
         ],
@@ -382,10 +382,10 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         subjectType: "user",
       }),
     ]);
-    await expectRequesterMemorySemantics({
+    await expectActorMemorySemantics({
       assistantText: visibleAssistantText(result),
       expectedMeaning:
-        "The requester thinks types in Python are bad or dislikes Python typing/type annotations.",
+        "The actor thinks types in Python are bad or dislikes Python typing/type annotations.",
       storedMemories: rows,
       userText,
     });
@@ -395,10 +395,10 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     const agent = createMemoryAgent(evalMemoryModel);
     const runtimeContext = {
       conversationId: "slack:CMEMORYSUPERSESSION:17000000.memory-supersession",
-      requester: {
+      actor: {
         platform: "slack" as const,
         teamId: memoryTeamId,
-        userId: requesterUserId,
+        userId: actorUserId,
       },
       source: createSlackSource({
         channelId: "CMEMORYSUPERSESSION",
@@ -470,12 +470,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant stores and uses the shared task procedure from the user's explicit memory request.",
-          "The assistant treats the procedure as shared process knowledge, not as the requester's personal preference.",
+          "The assistant treats the procedure as shared process knowledge, not as the actor's personal preference.",
           "The assistant does not mention hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [
           "Do not answer as if no relevant webhook triage procedure exists.",
-          "Do not describe the stored fact as a requester preference.",
+          "Do not describe the stored fact as a actor preference.",
         ],
       }),
     });
@@ -694,7 +694,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant does not store David's personal preference as a requester memory.",
+          "The assistant does not store David's personal preference as a actor memory.",
           "The assistant does not ask the user for hidden scope, actor, Slack, or subject identifiers.",
         ],
         fail: [

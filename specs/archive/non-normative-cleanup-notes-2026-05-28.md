@@ -106,7 +106,7 @@ Previous implementation sequence:
 1. Introduce a small actor contract shared by runtime, scheduler, and auth boundaries. It should represent user actors, system actors, and future service actors without leaking Slack SDK types.
 2. Keep `createdBy` as creator metadata and add an execution actor field to scheduled tasks. New scheduled tasks should default to a system actor such as `scheduled-task`; existing tasks may be read with that default until migrated.
 3. Add conversation access metadata with separate audience and visibility fields. Slack direct-message destinations populate `direct/private`; private channels or group conversations are not eligible for delegated user credentials.
-4. Update the scheduled runner to enter the agent runtime with the system actor and no user requester. Creator details may remain in run context and notification metadata, but not in the actor slot.
+4. Update the scheduled runner to enter the agent runtime with the system actor and no user actor. Creator details may remain in run context and notification metadata, but not in the actor slot.
 5. Update auth and credential resolution so scheduled runs can use an explicit private-direct credential subject but cannot start interactive auth flows. Missing credentials should produce a blocked run plus private notification.
 6. Update telemetry, tests, and eval fixtures so scheduled execution assertions refer to creator metadata, execution actor, and credential subject separately.
 

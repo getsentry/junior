@@ -4,6 +4,7 @@ import {
   pluginGrantSchema,
   pluginProviderAccountSchema,
   type PluginAuthorization,
+  type PluginCredentialActor,
   type PluginCredentialResult,
   type PluginGrant,
   type PluginProviderAccount,
@@ -189,15 +190,7 @@ export function hasEgressCredentialHooks(provider: string): boolean {
 }
 
 export interface IssueCredentialInput {
-  actor:
-    | {
-        type: "system";
-        id: string;
-      }
-    | {
-        type: "user";
-        userId: string;
-      };
+  actor: PluginCredentialActor;
   credentialSubject?: {
     type: "user";
     userId: string;
@@ -239,8 +232,7 @@ export async function issuePluginCredential(
   if (!plugin || !hook) {
     throw new Error(`Plugin "${input.provider}" has no issueCredential hook`);
   }
-  const currentUserId =
-    input.actor.type === "user" ? input.actor.userId : undefined;
+  const currentUserId = "type" in input.actor ? input.actor.userId : undefined;
   const credentialSubjectUserId = input.credentialSubject?.userId;
   const result = await hook({
     ...basePluginContext(plugin),

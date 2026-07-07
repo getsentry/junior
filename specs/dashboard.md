@@ -79,10 +79,8 @@ modules under `@sentry/junior/api/people/*` and read the SQL schema directly
 with Drizzle:
 
 ```ts
-export function readPeopleList(): Promise<RequesterDirectoryReport>;
-export function readPeopleProfile(
-  email: string,
-): Promise<RequesterProfileReport>;
+export function readPeopleList(): Promise<ActorDirectoryReport>;
+export function readPeopleProfile(email: string): Promise<ActorProfileReport>;
 ```
 
 These modules are consumed by the dashboard API route wrappers and must not
@@ -139,8 +137,8 @@ The dashboard package owns browser-facing routes:
 | `GET /`                            | Better Auth session unless auth is explicitly disabled | React command-center UI.            |
 | `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.      |
 | `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React conversation-detail UI.       |
-| `GET /people`                      | Better Auth session unless auth is explicitly disabled | React requester-directory UI.       |
-| `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React requester-profile UI.         |
+| `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.           |
+| `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.             |
 | `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.          |
 | `GET /_junior/dashboard/client.js` | Better Auth session unless auth is explicitly disabled | Dashboard browser bundle.           |
 | `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks. |
@@ -158,8 +156,8 @@ public health route bypass dashboard auth.
 | `GET /api/skills`                                                    | Discovered skill inventory.                                             |
 | `GET /api/conversations`                                             | Conversation feed from SQL `ConversationStore` records.                 |
 | `GET /api/conversations/stats`                                       | Aggregate conversation stats, leaderboards, and sampling metadata.      |
-| `GET /api/people`                                                    | Requester directory derived from trusted requester emails.              |
-| `GET /api/people/:email`                                             | Requester profile activity, stats, and recent conversation summaries.   |
+| `GET /api/people`                                                    | Actor directory derived from trusted actor emails.                      |
+| `GET /api/people/:email`                                             | Actor profile activity, stats, and recent conversation summaries.       |
 | `GET /api/plugin-reports`                                            | Sanitized plugin operational summaries.                                 |
 | `/api/plugins/:plugin/**`                                            | Authenticated plugin-contributed APIs.                                  |
 | `GET /api/conversations/:conversation`                               | Conversation header metadata and transcript from expiring session logs. |
@@ -240,7 +238,7 @@ private route handlers.
 
 Core reporting code belongs under `packages/junior/src/reporting/**` and must
 use neutral reporting names such as `ConversationReport`,
-`ConversationStatsReport`, and `RequesterIdentity`. Dashboard-specific names
+`ConversationStatsReport`, and `ActorIdentity`. Dashboard-specific names
 belong in `packages/junior-dashboard/**`.
 
 Reporting interfaces are read-only and must not:
@@ -300,7 +298,7 @@ The dashboard must treat this index as the conversation feed. It should not
 reconstruct the primary conversation list by grouping recent agent-run rows in
 the React client. Agent-run rows may still be joined on detail views or
 secondary per-conversation views, but conversation identity, title, source,
-location, requester, and latest activity come from the conversation record.
+location, actor, and latest activity come from the conversation record.
 
 Conversation stats must be exposed through `GET /api/conversations/stats`,
 not reconstructed from the recent conversation feed in the React client. The report
@@ -312,11 +310,11 @@ sample cap and should be treated as bounded, even when the backing index cannot
 prove an additional record exists. A stats-reporting failure must not make the
 core dashboard health, conversation feed, or plugin inventory unavailable.
 Stats reports are conversation-index aggregates. They count conversations,
-latest status, requester, and location from durable conversation records.
+latest status, actor, and location from durable conversation records.
 Duration and token totals stay on feed/detail run reports until the SQL model
 has a durable run-summary table.
 
-People list and profile APIs must read durable requester identities from the
+People list and profile APIs must read durable actor identities from the
 SQL conversation index with Drizzle. They must not use `JuniorReporting`,
 plugin reporting hooks, or expiring turn-session summary state.
 

@@ -62,7 +62,7 @@ interface PluginHooks {
 
 - active source context
 - default outbound destination, when present
-- requester, when present
+- actor, when present
 - `conversationId`: opaque Junior session identity (e.g. `slack:{channelId}:{threadTs}` for interactive turns)
 - `source`: runtime-owned shared `Source`; Slack sources carry raw `teamId`, `channelId`, and optional thread/message timestamps
 - `destination`: runtime-owned shared outbound `Destination`, when an outbound target is available

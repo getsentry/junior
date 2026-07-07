@@ -19,7 +19,7 @@ related:
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                        |
 | `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.                                                                               |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.       |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress requester context.                                                                          |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                              |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                            |
 | `JUNIOR_SLASH_COMMAND`                      | No          | Slack slash command for account-management flows. Defaults to `/jr`; the Slack app command must match this value.                                     |
 | `AI_MODEL`                                  | No          | Primary model selection override for main agent runs. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per run automatically.        |
@@ -43,7 +43,7 @@ Generate `JUNIOR_SECRET` with Node, then store the generated value in every envi
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox requester context signed with the previous value.
+Use one stable value per deployment. Rotating it invalidates pending internal queue callbacks and sandbox actor context signed with the previous value.
 
 ## Dashboard auth
 
@@ -76,9 +76,9 @@ If your build command runs `junior snapshot create`:
 
 ## Sandbox credential egress
 
-If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The proxy verifies each Vercel-signed sandbox request and requires a signed requester context before it injects credentials lazily.
+If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The proxy verifies each Vercel-signed sandbox request and requires a signed actor context before it injects credentials lazily.
 
-The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authenticate the sandbox VM; requester authorization comes from the forwarding-route context signed with `JUNIOR_SECRET` and bound to that VM session. No separate audience, project, or team env vars are required for the proxy.
+The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authenticate the sandbox VM; actor authorization comes from the forwarding-route context signed with `JUNIOR_SECRET` and bound to that VM session. No separate audience, project, or team env vars are required for the proxy.
 
 | Variable          | Required    | Purpose                                                                      |
 | ----------------- | ----------- | ---------------------------------------------------------------------------- |

@@ -12,9 +12,9 @@ import type {
   ConversationSummaryReport,
   PeopleConversationStatus,
   PeopleConversationSurface,
-  RequesterActivityDayReport,
-  RequesterIdentity,
-  RequesterTotalsReport,
+  ActorActivityDayReport,
+  ActorIdentity,
+  ActorTotalsReport,
 } from "./types";
 
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
@@ -170,7 +170,7 @@ export function summaryFromRow(
     startedAt: row.createdAt.toISOString(),
     status: statusFromRow(row, nowMs),
     surface,
-    requesterIdentity: {
+    actorIdentity: {
       email: row.email,
       ...(row.fullName ? { fullName: row.fullName } : {}),
       slackUserId: row.providerSubjectId,
@@ -183,7 +183,7 @@ export function summaryFromRow(
 }
 
 /** Build a zeroed totals object for people API aggregations. */
-export function emptyTotals(): RequesterTotalsReport {
+export function emptyTotals(): ActorTotalsReport {
   return {
     active: 0,
     activeDays: 0,
@@ -209,7 +209,7 @@ export function emptyStatsItem(label: string): ConversationStatsItem {
 }
 
 /** Build a zeroed activity day for the people profile window. */
-export function emptyActivityDay(date: string): RequesterActivityDayReport {
+export function emptyActivityDay(date: string): ActorActivityDayReport {
   return {
     active: 0,
     conversations: 0,
@@ -232,7 +232,7 @@ export function signals(summary: ConversationSummaryReport) {
 
 /** Add status counters into a people API aggregate row. */
 export function addSignals(
-  target: Pick<RequesterTotalsReport, "active" | "failed" | "hung">,
+  target: Pick<ActorTotalsReport, "active" | "failed" | "hung">,
   value: ReturnType<typeof signals>,
 ): void {
   target.active += value.active ? 1 : 0;
@@ -240,27 +240,25 @@ export function addSignals(
   target.hung += value.hung ? 1 : 0;
 }
 
-/** Return only requester identities that can be grouped by normalized email. */
+/** Return only actor identities that can be grouped by normalized email. */
 export function identityWithEmail(
-  requester: RequesterIdentity | undefined,
-): (RequesterIdentity & { email: string }) | undefined {
-  const email = normalizeEmail(requester?.email);
+  actor: ActorIdentity | undefined,
+): (ActorIdentity & { email: string }) | undefined {
+  const email = normalizeEmail(actor?.email);
   if (!email) return undefined;
   return {
     email,
-    ...(requester?.fullName ? { fullName: requester.fullName } : {}),
-    ...(requester?.slackUserId ? { slackUserId: requester.slackUserId } : {}),
-    ...(requester?.slackUserName
-      ? { slackUserName: requester.slackUserName }
-      : {}),
+    ...(actor?.fullName ? { fullName: actor.fullName } : {}),
+    ...(actor?.slackUserId ? { slackUserId: actor.slackUserId } : {}),
+    ...(actor?.slackUserName ? { slackUserName: actor.slackUserName } : {}),
   };
 }
 
 /** Preserve the first observed person fields while filling missing details. */
 export function mergeIdentity(
-  current: RequesterIdentity & { email: string },
-  next: RequesterIdentity & { email: string },
-): RequesterIdentity & { email: string } {
+  current: ActorIdentity & { email: string },
+  next: ActorIdentity & { email: string },
+): ActorIdentity & { email: string } {
   return {
     email: current.email,
     ...((current.fullName ?? next.fullName)
@@ -277,10 +275,10 @@ export function mergeIdentity(
 
 /** Fill the fixed people profile activity window from sparse day totals. */
 export function activityDays(
-  days: Map<string, RequesterActivityDayReport>,
+  days: Map<string, ActorActivityDayReport>,
   nowMs: number,
-): RequesterActivityDayReport[] {
-  const items: RequesterActivityDayReport[] = [];
+): ActorActivityDayReport[] {
+  const items: ActorActivityDayReport[] = [];
   const end = new Date(nowMs);
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
@@ -308,8 +306,8 @@ export function statsItems(map: Map<string, ConversationStatsItem>) {
   );
 }
 
-/** Read verified requester conversation rows directly from the SQL identity model. */
-export async function requesterRows(
+/** Read verified actor conversation rows directly from the SQL identity model. */
+export async function actorRows(
   options: PeopleApiQueryOptions = {},
   email?: string,
 ) {
@@ -335,7 +333,7 @@ export async function requesterRows(
     .from(juniorConversations)
     .innerJoin(
       juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
     .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
     .leftJoin(
@@ -364,5 +362,5 @@ export async function requesterRows(
 }
 
 export type PeopleConversationRow = Awaited<
-  ReturnType<typeof requesterRows>
+  ReturnType<typeof actorRows>
 >["rows"][number];

@@ -11,8 +11,8 @@ import type {
   Identity,
   Plugin,
   PluginReportFeed,
-  RequesterDirectory,
-  RequesterProfile,
+  ActorDirectory,
+  ActorProfile,
   Runtime,
   Skill,
 } from "./types";
@@ -89,7 +89,7 @@ function emptyConversationStatsReport(): ConversationStatsReport {
     generatedAt: new Date(nowMs).toISOString(),
     hung: 0,
     locations: [],
-    requesters: [],
+    actors: [],
     sampleLimit: 0,
     sampleSize: 0,
     source: "conversation_index",
@@ -120,8 +120,8 @@ async function readPluginReports(): Promise<PluginReportFeed> {
   return await read<PluginReportFeed>("/api/plugin-reports");
 }
 
-async function readRequesterDirectory(): Promise<RequesterDirectory> {
-  return await read<RequesterDirectory>("/api/people");
+async function readActorDirectory(): Promise<ActorDirectory> {
+  return await read<ActorDirectory>("/api/people");
 }
 
 /** Fetch dashboard shell data shared across browser routes. */
@@ -159,22 +159,22 @@ export function useConversationsData() {
   });
 }
 
-/** Fetch the requester directory used by the People dashboard route. */
-export function useRequesterDirectoryData() {
+/** Fetch the actor directory used by the People dashboard route. */
+export function useActorDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "people"],
-    queryFn: readRequesterDirectory,
+    queryFn: readActorDirectory,
     retry: false,
   });
 }
 
-/** Fetch one requester profile for the People detail dashboard route. */
-export function useRequesterProfileData(email: string | undefined) {
+/** Fetch one actor profile for the People detail dashboard route. */
+export function useActorProfileData(email: string | undefined) {
   return useQuery({
     enabled: Boolean(email),
     queryKey: ["dashboard", "people", email],
-    queryFn: async (): Promise<RequesterProfile> =>
-      read<RequesterProfile>(`/api/people/${encodeURIComponent(email!)}`),
+    queryFn: async (): Promise<ActorProfile> =>
+      read<ActorProfile>(`/api/people/${encodeURIComponent(email!)}`),
     retry: false,
   });
 }

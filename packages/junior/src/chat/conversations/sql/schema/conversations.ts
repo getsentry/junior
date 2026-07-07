@@ -4,7 +4,7 @@ import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
-import type { StoredSlackRequester } from "@/chat/requester";
+import type { StoredSlackActor } from "@/chat/actor";
 import type {
   ConversationSource,
   ConversationStatus,
@@ -26,16 +26,13 @@ export const juniorConversations = pgTable(
     actorIdentityId: text("actor_identity_id").references(
       () => juniorIdentities.id,
     ),
-    requesterIdentityId: text("requester_identity_id").references(
-      () => juniorIdentities.id,
-    ),
     creatorIdentityId: text("creator_identity_id").references(
       () => juniorIdentities.id,
     ),
     credentialSubjectIdentityId: text(
       "credential_subject_identity_id",
     ).references(() => juniorIdentities.id),
-    requester: jsonb("requester_json").$type<StoredSlackRequester>(),
+    actor: jsonb("actor_json").$type<StoredSlackActor>(),
     channelName: text("channel_name"),
     title: text("title"),
     createdAt: timestamptz("created_at").notNull(),
@@ -67,10 +64,6 @@ export const juniorConversations = pgTable(
     ),
     index("junior_conversations_actor_activity_idx").on(
       table.actorIdentityId,
-      table.lastActivityAt.desc(),
-    ),
-    index("junior_conversations_requester_activity_idx").on(
-      table.requesterIdentityId,
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_origin_idx").on(

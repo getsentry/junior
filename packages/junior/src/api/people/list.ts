@@ -1,14 +1,14 @@
 import { readPeopleListFromSql } from "./list.query";
-import type { RequesterDirectoryReport } from "./types";
+import type { ActorDirectoryReport } from "./types";
 
 /** Load the people list from verified user identities in SQL. */
-export async function readPeopleList(): Promise<RequesterDirectoryReport> {
+export async function readPeopleList(): Promise<ActorDirectoryReport> {
   return readPeopleListFromSql();
 }
 
 export type {
-  RequesterDirectoryReport,
-  RequesterIdentity,
-  RequesterSummaryReport,
-  RequesterTotalsReport,
+  ActorDirectoryReport,
+  ActorIdentity,
+  ActorSummaryReport,
+  ActorTotalsReport,
 } from "./types";

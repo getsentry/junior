@@ -13,10 +13,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
-import {
-  parseStoredSlackRequester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -124,7 +121,7 @@ export interface Conversation {
   destination?: Destination;
   execution: ConversationExecution;
   lastActivityAtMs: number;
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
   schemaVersion: 1;
   source?: Source;
   title?: string;
@@ -371,8 +368,8 @@ export function isFinalAttempt(
   );
 }
 
-function normalizeRequester(value: unknown): StoredSlackRequester | undefined {
-  return parseStoredSlackRequester(value);
+function normalizeActor(value: unknown): StoredSlackActor | undefined {
+  return parseStoredSlackActor(value);
 }
 
 function normalizeLease(value: unknown): Lease | undefined {
@@ -509,8 +506,8 @@ function normalizeConversation(
     ...(toOptionalString(value.channelName)
       ? { channelName: toOptionalString(value.channelName) }
       : {}),
-    ...(normalizeRequester(value.requester)
-      ? { requester: normalizeRequester(value.requester) }
+    ...(normalizeActor(value.actor)
+      ? { actor: normalizeActor(value.actor) }
       : {}),
     ...(normalizeSource(value.source)
       ? { source: normalizeSource(value.source) }
@@ -1216,7 +1213,7 @@ export async function recordConversationActivity(args: {
   conversationId: string;
   destination?: Destination;
   nowMs?: number;
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
   source?: Source;
   state?: StateAdapter;
   title?: string;
@@ -1251,8 +1248,8 @@ export async function recordConversationActivity(args: {
       ...((current.channelName ?? args.channelName)
         ? { channelName: current.channelName ?? args.channelName }
         : {}),
-      ...((current.requester ?? args.requester)
-        ? { requester: current.requester ?? args.requester }
+      ...((current.actor ?? args.actor)
+        ? { actor: current.actor ?? args.actor }
         : {}),
       ...((current.title ?? args.title)
         ? { title: current.title ?? args.title }
@@ -1281,7 +1278,7 @@ export async function recordConversationExecution(args: {
     updatedAtMs?: number;
   };
   lastActivityAtMs: number;
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
   source?: Source;
   state?: StateAdapter;
   title?: string;
@@ -1320,8 +1317,8 @@ export async function recordConversationExecution(args: {
           ...((current.channelName ?? args.channelName)
             ? { channelName: current.channelName ?? args.channelName }
             : {}),
-          ...((current.requester ?? args.requester)
-            ? { requester: current.requester ?? args.requester }
+          ...((current.actor ?? args.actor)
+            ? { actor: current.actor ?? args.actor }
             : {}),
           ...((current.title ?? args.title)
             ? { title: current.title ?? args.title }

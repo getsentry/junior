@@ -110,7 +110,7 @@ function upsertDispatchUserMessage(args: {
     ),
     createdAtMs: args.nowMs,
     author: {
-      userName: `system:${args.dispatch.actor.id}`,
+      userName: `system:${args.dispatch.actor.name}`,
       isBot: true,
     },
     meta: {
@@ -215,8 +215,8 @@ export async function runAgentDispatchSlice(
     slackThreadId: conversationId,
     slackChannelId: dispatch.destination.channelId,
     runId: dispatch.id,
-    actorType: dispatch.actor.type,
-    actorId: dispatch.actor.id,
+    actorType: dispatch.actor.platform,
+    actorId: dispatch.actor.name,
     assistantUserName: botConfig.userName,
   };
   const destinationLockId = getDispatchDestinationLockId(dispatch.destination);
@@ -475,6 +475,7 @@ export async function runAgentDispatchSlice(
         usage: reply.diagnostics.usage,
         destination: dispatch.destination,
         source: dispatch.source,
+        actor: dispatch.actor,
         surface: "api",
         logContext: {
           threadId: conversationId,

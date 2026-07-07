@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseActorUserId } from "@/chat/requester";
+import { parseActorUserId } from "@/chat/actor";
 
 const exactActorIdSchema = z
   .string()
@@ -23,8 +23,8 @@ const credentialUserActorSchema = z
 
 const credentialSystemActorSchema = z
   .object({
-    type: z.literal("system"),
-    id: exactActorIdSchema,
+    platform: z.literal("system"),
+    name: exactActorIdSchema,
   })
   .strict();
 
@@ -64,7 +64,7 @@ export type CredentialContext = z.output<typeof credentialContextSchema>;
 export function credentialUserSubjectId(
   context: CredentialContext,
 ): string | undefined {
-  if (context.actor.type === "user") {
+  if ("type" in context.actor) {
     return context.actor.userId;
   }
   return "subject" in context ? context.subject?.userId : undefined;

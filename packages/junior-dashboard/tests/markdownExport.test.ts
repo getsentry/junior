@@ -22,7 +22,7 @@ describe("dashboard markdown export", () => {
           id: "turn-1",
           lastProgressAt: "2026-01-01T00:00:07.000Z",
           lastSeenAt: "2026-01-01T00:00:07.000Z",
-          requesterIdentity: { fullName: "Alice" },
+          actorIdentity: { fullName: "Alice" },
           startedAt,
           status: "completed",
           surface: "slack",
@@ -86,7 +86,7 @@ describe("dashboard markdown export", () => {
 
     expect(markdown).toContain("# Copy button discussion");
     expect(markdown).toContain("- Conversation ID: `slack:C1:222`");
-    expect(markdown).toContain("- Requester: Alice");
+    expect(markdown).toContain("- Actor: Alice");
     expect(markdown).toContain("- Location: #eng (C1)");
     expect(markdown).toContain("## Transcript");
     expect(markdown).not.toContain("## Turn");
@@ -194,7 +194,7 @@ describe("dashboard markdown export", () => {
           id: "turn-private",
           lastProgressAt: "2026-01-01T00:00:07.000Z",
           lastSeenAt: "2026-01-01T00:00:07.000Z",
-          requesterIdentity: { email: "alice@example.com" },
+          actorIdentity: { email: "alice@example.com" },
           startedAt: "2026-01-01T00:00:00.000Z",
           status: "completed",
           surface: "slack",

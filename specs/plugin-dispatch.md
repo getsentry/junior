@@ -101,7 +101,7 @@ type Dispatch = {
 - Source identifies where the autonomous request originated; it is prompt-visible context and tool invocation context, not a credential grant.
 - Input is the current request text inserted as user-role synthetic conversation content.
 - Metadata is bounded plugin-owned dispatch context. The normal turn-context builder may render it as background facts for the model, but it must not affect authorization, credential selection, or routing.
-- System dispatches have no requester, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
+- System dispatches execute with a named system actor, no implicit creator-derived user OAuth token access, and no interactive auth continuation. The runtime may expose service-principal or install-owned provider credentials according to the system actor's credential envelope. If a dispatch carries an explicit user credential subject, brokers may use it only for stored user OAuth lookup; provider brokers must not treat creator metadata or credential subjects as the current actor.
 - Plugin-provided user credential subjects use the stable unbound shape: `type`, `userId`, and `allowedWhen`. Plugin input must not include a binding or signature; bindings are runtime-owned.
 - Explicit user credential subjects are accepted only for Slack one-to-one DM destinations. Before persisting a dispatch record, core binds the subject to the dispatch destination with the current runtime secret and verifies the signed `teamId`/`channelId` proof locally. Dispatch must not make Slack API calls just to re-check a subject from an already verified turn context.
 - Persisted dispatch records that carry a bound credential subject must keep the subject binding's Slack team id and channel id equal to the record destination.
@@ -285,7 +285,7 @@ Use integration tests for:
 - internal callback signature verification
 - stale core dispatch recovery bounded separately from plugin heartbeat work
 - expired lookup behavior
-- system actor dispatch does not use requester OAuth or interactive auth
+- system actor dispatch does not use actor OAuth or interactive auth
 
 Use unit tests for:
 

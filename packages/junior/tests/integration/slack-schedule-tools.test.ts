@@ -75,7 +75,7 @@ function createContext(
 
       type: "priv",
     }),
-    requester: {
+    actor: {
       platform: "slack",
       teamId,
       userId: "U123",
@@ -91,7 +91,7 @@ function createContext(
     createSlackDirectCredentialSubject({
       channelId: context.source?.channelId,
       teamId: context.source?.teamId,
-      userId: context.requester?.userId,
+      userId: context.actor?.userId,
     });
   return {
     ...context,
@@ -291,7 +291,7 @@ describe("Slack schedule tools", () => {
   it("does not store Slack ids as creator display identity", async () => {
     const created = (await createTask(
       createContext({
-        requester: {
+        actor: {
           platform: "slack",
           teamId: TEST_TEAM_ID,
           userId: "U039RR91S",
@@ -310,10 +310,10 @@ describe("Slack schedule tools", () => {
     );
   });
 
-  it("rejects synthetic unknown requester ids before creating a task", async () => {
+  it("rejects synthetic unknown actor ids before creating a task", async () => {
     const rejected = createTask(
       createContext({
-        requester: {
+        actor: {
           platform: "slack",
           teamId: TEST_TEAM_ID,
           userId: "unknown",
@@ -325,7 +325,7 @@ describe("Slack schedule tools", () => {
 
     await expect(rejected).rejects.toThrow(PluginToolInputError);
     await expect(rejected).rejects.toThrow(
-      "No active Slack requester context is available.",
+      "No active Slack actor context is available.",
     );
     await expect(
       schedulerStore().listTasksForTeam(TEST_TEAM_ID),
@@ -882,13 +882,13 @@ describe("Slack schedule tools", () => {
     );
   });
 
-  it("allows another requester to manage tasks in the same Slack destination", async () => {
+  it("allows another actor to manage tasks in the same Slack destination", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const otherRequester = createContext({
-      requester: {
+    const otherActor = createContext({
+      actor: {
         platform: "slack",
         teamId: TEST_TEAM_ID,
         userId: "U999",
@@ -898,14 +898,14 @@ describe("Slack schedule tools", () => {
     });
 
     const updated = await executeTool(
-      createSlackScheduleUpdateTaskTool(otherRequester),
+      createSlackScheduleUpdateTaskTool(otherActor),
       {
         task_id: created.task.id,
         task: "Team-owned digest: Summarize open scheduler issues.",
       },
     );
     const deleted = await executeTool(
-      createSlackScheduleDeleteTaskTool(otherRequester),
+      createSlackScheduleDeleteTaskTool(otherActor),
       {
         task_id: created.task.id,
       },
@@ -1201,7 +1201,7 @@ describe("Slack schedule tools", () => {
         channelId: context.source?.channelId,
       },
       createdBy: {
-        slackUserId: context.requester?.userId,
+        slackUserId: context.actor?.userId,
       },
     });
     expect(due?.statusReason).toBeUndefined();
@@ -1317,7 +1317,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
           teamId: TEAM_ID,
           channelId: "DDM",
         },
-        requester: {
+        actor: {
           platform: "slack",
           teamId: TEAM_ID,
           userId: "U123",

@@ -3,7 +3,7 @@ import type {
   LocalInvocationContext,
   PluginEmbedder,
   PluginModel,
-  Requester,
+  Actor,
   SlackInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
@@ -66,14 +66,14 @@ export interface PluginEgress {
 }
 
 export interface SandboxPrepareHookContext extends PluginContext {
-  requester?: Requester;
+  actor?: Actor;
   sandbox: PluginSandbox;
 }
 
 export interface BeforeToolExecuteHookContext extends PluginContext {
   decision: PluginDecision;
   env: PluginEnv;
-  requester?: Requester;
+  actor?: Actor;
   tool: {
     input: Record<string, unknown>;
     name: string;

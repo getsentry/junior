@@ -57,7 +57,7 @@ describe("agent continuation runner callbacks", () => {
       destination: SLACK_DESTINATION,
       source: SLACK_SOURCE,
       resumeReason: "timeout",
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
@@ -129,7 +129,7 @@ describe("agent continuation runner callbacks", () => {
             if (!prepared.replyContext) {
               throw new Error("Expected prepared continuation reply context");
             }
-            expect(prepared.replyContext.routing.requester).toEqual({
+            expect(prepared.replyContext.routing.actor).toEqual({
               email: "stored@example.com",
               fullName: "Stored User",
               platform: "slack",
@@ -165,7 +165,7 @@ describe("agent continuation runner callbacks", () => {
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
@@ -242,7 +242,7 @@ describe("agent continuation runner callbacks", () => {
     });
   });
 
-  it("fails before continuing when stored requester and message author differ", async () => {
+  it("fails before continuing when stored actor and message author differ", async () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord = await upsertAgentTurnSessionRecord({
@@ -252,7 +252,7 @@ describe("agent continuation runner callbacks", () => {
       state: "awaiting_resume",
       destination: SLACK_DESTINATION,
       resumeReason: "timeout",
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U999",
@@ -301,7 +301,7 @@ describe("agent continuation runner callbacks", () => {
     const { continueSlackAgentRun } =
       await import("@/chat/runtime/agent-continue-runner");
 
-    // A mismatched stored requester must never throw out of the continue
+    // A mismatched stored actor must never throw out of the continue
     // callback (issue #727: a throw NACKs the queue delivery and wedges the
     // conversation); it terminally fails the session instead.
     await expect(
@@ -328,7 +328,7 @@ describe("agent continuation runner callbacks", () => {
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage: "Stored Slack requester missing for continuation",
+      errorMessage: "Stored Slack actor missing for continuation",
     });
   });
 });

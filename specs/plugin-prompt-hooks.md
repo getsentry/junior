@@ -96,7 +96,7 @@ interface SystemPromptContext {
 
 System prompt contributions:
 
-1. Must not include requester-specific, conversation-specific, or private data.
+1. Must not include actor-specific, conversation-specific, or private data.
 2. Must not include provider credentials, authorization URLs, tokens, or raw
    tool payloads.
 3. Must be byte-stable for the same installed plugin configuration and source
@@ -118,7 +118,7 @@ run. Steering messages delivered while that run is already active do not invoke
 
 Rules:
 
-1. User prompt contributions may depend on the current requester, source,
+1. User prompt contributions may depend on the current actor, source,
    destination, conversation id, user text, and plugin state.
 2. User prompt contributions must be inserted into the model-visible user
    message, not the static system prompt.
@@ -144,7 +144,7 @@ interface UserPromptContext {
   embedder: PluginEmbedder;
   log: PluginLogger;
   plugin: PluginMetadata;
-  requester?: Requester;
+  actor?: Actor;
   source: Source;
   state: PluginState;
   text: string;
@@ -193,7 +193,7 @@ The context must not expose:
 
 The memory plugin should use the generic prompt hook surface as follows:
 
-1. `userPrompt(ctx)` retrieves memories visible to the current requester and
+1. `userPrompt(ctx)` retrieves memories visible to the current actor and
    source, then returns a concise memory block for the run's triggering prompt.
 2. `tools(ctx)` may expose explicit local memory tools such as `createMemory`,
    `removeMemory`, `listMemories`, and `searchMemories`; the host exposes them
@@ -212,7 +212,7 @@ V1 memory tools are context-bound:
 
 1. Tool schemas must not expose model-supplied Slack team ids, channel ids,
    user ids, or arbitrary visibility overrides.
-2. Creation scope derives from runtime-owned requester, source, and
+2. Creation scope derives from runtime-owned actor, source, and
    destination context.
 3. Listing and removal must show or affect only memories visible in the current
    context.
@@ -262,7 +262,7 @@ arguments, raw tool results, or cross-plugin state.
 Use integration tests for:
 
 - plugin system prompt contributions appear in the static prompt without
-  exposing requester-specific data
+  exposing actor-specific data
 - plugin user prompt contributions appear in model-visible user prompt context
 - user prompt hooks run once for the triggering user prompt of each agent run
 - user prompt hooks do not run for steering messages delivered during an active

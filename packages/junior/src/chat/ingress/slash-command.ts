@@ -4,7 +4,7 @@ import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { logInfo } from "@/chat/logging";
 import { getChatConfig } from "@/chat/config";
-import { parseActorUserId } from "@/chat/requester";
+import { parseActorUserId } from "@/chat/actor";
 
 async function postEphemeral(
   event: SlashCommandEvent,
@@ -13,10 +13,10 @@ async function postEphemeral(
   await event.channel.postEphemeral(event.user, text, { fallbackToDM: false });
 }
 
-function requireRequesterId(event: SlashCommandEvent): string {
+function requireActorId(event: SlashCommandEvent): string {
   const userId = parseActorUserId(event.user.userId);
   if (!userId) {
-    throw new Error("Slack slash command requires a requester user id");
+    throw new Error("Slack slash command requires a actor user id");
   }
   return userId;
 }
@@ -27,7 +27,7 @@ function getCommandName(): string {
 
 async function handleLink(
   event: SlashCommandEvent,
-  requesterId: string,
+  actorId: string,
   provider: string,
 ): Promise<void> {
   if (!pluginCatalogRuntime.isProvider(provider)) {
@@ -45,7 +45,7 @@ async function handleLink(
 
   const raw = event.raw as { channel_id?: string };
   const result = await startOAuthFlow(provider, {
-    requesterId,
+    actorId,
     channelId: raw.channel_id,
   });
 
@@ -69,7 +69,7 @@ async function handleLink(
 
 async function handleUnlink(
   event: SlashCommandEvent,
-  requesterId: string,
+  actorId: string,
   provider: string,
 ): Promise<void> {
   if (!pluginCatalogRuntime.isProvider(provider)) {
@@ -86,11 +86,11 @@ async function handleUnlink(
   }
 
   const tokenStore = createUserTokenStore();
-  await tokenStore.delete(requesterId, provider);
+  await tokenStore.delete(actorId, provider);
 
   logInfo(
     "slash_command_unlink",
-    { slackUserId: requesterId },
+    { slackUserId: actorId },
     { "app.credential.provider": provider },
     `Unlinked ${formatProviderLabel(provider)} account via ${getCommandName()} slash command`,
   );
@@ -124,11 +124,11 @@ export async function handleSlashCommand(
   }
 
   const normalized = provider.toLowerCase();
-  const requesterId = requireRequesterId(event);
+  const actorId = requireActorId(event);
 
   if (subcommand === "link") {
-    await handleLink(event, requesterId, normalized);
+    await handleLink(event, actorId, normalized);
   } else {
-    await handleUnlink(event, requesterId, normalized);
+    await handleUnlink(event, actorId, normalized);
   }
 }

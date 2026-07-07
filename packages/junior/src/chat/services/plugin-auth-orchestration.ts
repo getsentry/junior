@@ -51,7 +51,7 @@ export interface PluginAuthOrchestrationInput {
   abortAgent: () => void;
   conversationId?: string;
   sessionId?: string;
-  requesterId?: string;
+  actorId?: string;
   channelId?: string;
   destination?: Destination;
   source?: Source;
@@ -140,7 +140,7 @@ export function createPluginAuthOrchestration(
     if (pendingPause) {
       throw pendingPause;
     }
-    if (!input.requesterId || !pluginCatalogRuntime.getOAuthConfig(provider)) {
+    if (!input.actorId || !pluginCatalogRuntime.getOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
     if (input.authorizationFlowMode === "disabled") {
@@ -161,7 +161,7 @@ export function createPluginAuthOrchestration(
           pendingAuth: input.pendingAuth,
           kind: "plugin",
           provider,
-          requesterId: input.requesterId,
+          actorId: input.actorId,
           sessionId: input.sessionId,
           ...(options?.scope ? { scope: options.scope } : {}),
         })
@@ -169,7 +169,7 @@ export function createPluginAuthOrchestration(
 
     if (!reusingPendingLink) {
       const oauthResult = await startOAuthFlow(provider, {
-        requesterId: input.requesterId,
+        actorId: input.actorId,
         channelId: input.channelId,
         destination: input.destination,
         source: input.source,
@@ -193,17 +193,17 @@ export function createPluginAuthOrchestration(
 
     if (
       options?.unlinkExistingProvider &&
-      input.requesterId &&
+      input.actorId &&
       input.userTokenStore
     ) {
-      await unlinkProvider(input.requesterId, provider, input.userTokenStore);
+      await unlinkProvider(input.actorId, provider, input.userTokenStore);
     }
 
     if (input.sessionId && recordPendingAuth) {
       await recordPendingAuth({
         kind: "plugin",
         provider,
-        requesterId: input.requesterId,
+        actorId: input.actorId,
         ...(options?.scope ? { scope: options.scope } : {}),
         sessionId: input.sessionId,
         linkSentAtMs: reusingPendingLink
@@ -216,7 +216,7 @@ export function createPluginAuthOrchestration(
         conversationId: input.conversationId,
         kind: "plugin",
         provider,
-        requesterId: input.requesterId,
+        actorId: input.actorId,
         authorizationId: authorizationId({
           kind: "plugin",
           provider,
@@ -262,7 +262,7 @@ export function createPluginAuthOrchestration(
         );
       }
 
-      if (!input.requesterId || !input.userTokenStore) {
+      if (!input.actorId || !input.userTokenStore) {
         if (input.authorizationFlowMode === "disabled") {
           throw new AuthorizationFlowDisabledError("plugin", provider);
         }

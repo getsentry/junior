@@ -7,7 +7,7 @@ import type { Skill } from "@/chat/skills";
 type JrRpcDeps = {
   activeSkill: Skill | null;
   channelConfiguration?: ChannelConfigurationService;
-  requesterId?: string;
+  actorId?: string;
   onConfigurationValueChanged?: (
     key: string,
     value: unknown | undefined,
@@ -68,7 +68,6 @@ function parsePrefixFlag(
     error: "jr-rpc config list accepts optional --prefix <value>\n",
   };
 }
-
 
 /** Build a stderr warning when a config key is not declared by any installed plugin. */
 function buildUnknownKeyWarning(key: string): string {
@@ -177,7 +176,7 @@ async function handleConfigCommand(
       const entry = await configuration.set({
         key,
         value,
-        updatedBy: deps.requesterId,
+        updatedBy: deps.actorId,
         source: "jr-rpc",
       });
       logInfo(

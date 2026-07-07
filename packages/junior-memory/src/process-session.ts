@@ -39,9 +39,9 @@ const extractedMemoryCacheSchema = z.array(
     .transform(parseExtractedMemory),
 );
 
-function targetForKind(kind: MemoryKind): "requester" | "conversation" {
+function targetForKind(kind: MemoryKind): "actor" | "conversation" {
   if (kind === "preference") {
-    return "requester";
+    return "actor";
   }
   return "conversation";
 }
@@ -132,7 +132,7 @@ export async function processMemorySession(
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
     conversationId: run.conversationId,
-    ...(run.requester ? { requester: run.requester } : {}),
+    ...(run.actor ? { actor: run.actor } : {}),
     source: run.source,
   });
   const agent = createMemoryAgent(context.model);
@@ -164,7 +164,7 @@ export async function processMemorySession(
       await store.createConversationMemory(input);
       continue;
     }
-    if (!run.requester) {
+    if (!run.actor) {
       continue;
     }
     await store.createMemory(input);

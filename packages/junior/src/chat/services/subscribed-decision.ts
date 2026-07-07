@@ -22,7 +22,7 @@ export interface SubscribedDecisionInput {
   isExplicitMention?: boolean;
   context: {
     threadId?: string;
-    requesterId?: string;
+    actorId?: string;
     channelId?: string;
     runId?: string;
   };
@@ -470,7 +470,7 @@ export async function decideSubscribedThreadReply(args: {
         modelId: args.modelId,
         threadId: args.input.context.threadId ?? "",
         channelId: args.input.context.channelId ?? "",
-        requesterId: args.input.context.requesterId ?? "",
+        actorId: args.input.context.actorId ?? "",
         runId: args.input.context.runId ?? "",
       },
     });

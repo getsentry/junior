@@ -152,7 +152,7 @@ describe("Slack conversation work execution", () => {
     ]);
   });
 
-  it("routes resource-event mailbox records without Slack requester lookup", async () => {
+  it("routes resource-event mailbox records without Slack actor lookup", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
@@ -406,7 +406,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("binds resolved Slack requester before runtime handling", async () => {
+  it("binds resolved Slack actor before runtime handling", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();

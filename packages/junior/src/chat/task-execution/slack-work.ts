@@ -32,7 +32,7 @@ import {
 } from "@/chat/slack/adapter-context";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { parseActorUserId, type SlackRequesterProfile } from "@/chat/requester";
+import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
 import {
   createSlackDestination,
   requireSlackDestination,
@@ -92,7 +92,7 @@ export interface CreateSlackConversationWorkerOptions {
   lookupSlackUser?: (
     teamId: string,
     userId: string,
-  ) => Promise<SlackRequesterProfile | null | undefined>;
+  ) => Promise<SlackActorProfile | null | undefined>;
   resumeAwaitingContinuation: (conversationId: string) => Promise<boolean>;
   conversationStore?: ConversationStore;
   runtime: SlackInboxTurnRuntime;
@@ -317,7 +317,7 @@ async function bindSlackActorIdentities(args: {
   lookupSlackUser: (
     teamId: string,
     userId: string,
-  ) => Promise<SlackRequesterProfile | null | undefined>;
+  ) => Promise<SlackActorProfile | null | undefined>;
   messages: Message[];
   teamId: string;
 }): Promise<void> {

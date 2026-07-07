@@ -213,7 +213,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
         destination: inboundMessage("activity").destination,
-        requester: {
+        actor: {
           email: "user@example.com",
           fullName: "Runtime User",
           platform: "slack",
@@ -251,13 +251,12 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
           destinationProvider: juniorDestinations.provider,
           destinationProviderSubject: juniorDestinations.providerDestinationId,
           destinationTenant: juniorDestinations.providerTenantId,
-          requesterEmail: juniorIdentities.email,
-          requesterHandle: juniorIdentities.handle,
-          requesterIdentityId: juniorConversations.requesterIdentityId,
-          requesterKind: juniorIdentities.kind,
-          requesterProvider: juniorIdentities.provider,
-          requesterProviderSubject: juniorIdentities.providerSubjectId,
-          requesterTenant: juniorIdentities.providerTenantId,
+          actorEmail: juniorIdentities.email,
+          actorHandle: juniorIdentities.handle,
+          actorKind: juniorIdentities.kind,
+          actorProvider: juniorIdentities.provider,
+          actorProviderSubject: juniorIdentities.providerSubjectId,
+          actorTenant: juniorIdentities.providerTenantId,
         })
         .from(juniorConversations)
         .innerJoin(
@@ -266,24 +265,23 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
         )
         .innerJoin(
           juniorIdentities,
-          eq(juniorIdentities.id, juniorConversations.requesterIdentityId),
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
         )
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
       expect(linkedRows).toEqual([
         {
-          actorIdentityId: linkedRows[0]?.requesterIdentityId,
+          actorIdentityId: linkedRows[0]?.actorIdentityId,
           destinationId: linkedRows[0]?.destinationId,
           destinationKind: "channel",
           destinationProvider: "slack",
           destinationProviderSubject: "C123",
           destinationTenant: "T123",
-          requesterEmail: "user@example.com",
-          requesterHandle: "runtime-user",
-          requesterIdentityId: linkedRows[0]?.requesterIdentityId,
-          requesterKind: "user",
-          requesterProvider: "slack",
-          requesterProviderSubject: "U123",
-          requesterTenant: "T123",
+          actorEmail: "user@example.com",
+          actorHandle: "runtime-user",
+          actorKind: "user",
+          actorProvider: "slack",
+          actorProviderSubject: "U123",
+          actorTenant: "T123",
         },
       ]);
     } finally {
@@ -291,7 +289,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
     }
   });
 
-  it("links requester identities to users by case-insensitive verified email", async () => {
+  it("links actor identities to users by case-insensitive verified email", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -343,7 +341,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity").destination,
-        requester: {
+        actor: {
           platform: "slack",
           slackUserId: "U123",
           teamId: "T123",
@@ -371,11 +369,11 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       ]);
       expect(secondIdentity.userId).toBe(identity.userId);
 
-      const requesterConversations = await store.listByActivity({ limit: 5 });
-      expect(requesterConversations).toMatchObject([
+      const actorConversations = await store.listByActivity({ limit: 5 });
+      expect(actorConversations).toMatchObject([
         {
           conversationId: CONVERSATION_ID,
-          requester: {
+          actor: {
             email: "alice@example.com",
             fullName: "Alice Example",
             slackUserId: "U123",
@@ -461,7 +459,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
     }
   });
 
-  it("fills missing requester identity from later trusted profile observations", async () => {
+  it("fills missing actor identity from later trusted profile observations", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -471,7 +469,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity-fill").destination,
-        requester: {
+        actor: {
           platform: "slack",
           slackUserId: "U123",
           teamId: "T123",
@@ -482,7 +480,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("identity-fill").destination,
-        requester: {
+        actor: {
           email: "Casey@Example.com",
           fullName: "Casey Example",
           platform: "slack",
@@ -496,7 +494,7 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       await expect(store.listByActivity({ limit: 5 })).resolves.toMatchObject([
         {
           conversationId: CONVERSATION_ID,
-          requester: {
+          actor: {
             email: "casey@example.com",
             fullName: "Casey Example",
             slackUserId: "U123",
@@ -655,7 +653,7 @@ INSERT INTO junior_destinations (
 INSERT INTO junior_conversations (
   conversation_id,
   destination_json,
-  requester_json,
+  actor_json,
   created_at,
   last_activity_at,
   updated_at,

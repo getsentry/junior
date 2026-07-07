@@ -351,8 +351,8 @@ function buildLogContext(
   >,
   args: {
     channelId?: string;
-    requesterId?: string;
-    requesterUserName?: string;
+    actorId?: string;
+    actorUserName?: string;
     threadId?: string;
     runId?: string;
   },
@@ -360,8 +360,8 @@ function buildLogContext(
   return {
     conversationId: args.threadId ?? args.runId,
     slackThreadId: args.threadId,
-    slackUserId: args.requesterId,
-    slackUserName: args.requesterUserName,
+    slackUserId: args.actorId,
+    slackUserName: args.actorUserName,
     slackChannelId: args.channelId,
     runId: args.runId,
     assistantUserName: deps.assistantUserName,
@@ -369,7 +369,7 @@ function buildLogContext(
   };
 }
 
-function requesterUserName(message: Message): string | undefined {
+function actorUserName(message: Message): string | undefined {
   return getMessageActorIdentity(message)?.userName;
 }
 
@@ -390,8 +390,8 @@ export function createSlackTurnRuntime<
 ): SlackTurnRuntime<TPreparedState, TAssistantEvent> {
   const logContext = (args: {
     channelId?: string;
-    requesterId?: string;
-    requesterUserName?: string;
+    actorId?: string;
+    actorUserName?: string;
     threadId?: string;
     runId?: string;
   }): RuntimeLogContext => buildLogContext(deps, args);
@@ -500,7 +500,7 @@ export function createSlackTurnRuntime<
     const { message } = candidate;
     const context: TurnContext = {
       threadId: deps.getThreadId(thread, message),
-      requesterId: message.author.userId,
+      actorId: message.author.userId,
       channelId: deps.getChannelId(thread, message),
       runId: deps.getRunId(thread, message),
     };
@@ -541,8 +541,8 @@ export function createSlackTurnRuntime<
       "subscribed_message_reply_skipped",
       logContext({
         threadId: args.context.threadId,
-        requesterId: args.context.requesterId,
-        requesterUserName: requesterUserName(args.message),
+        actorId: args.context.actorId,
+        actorUserName: actorUserName(args.message),
         channelId: args.context.channelId,
         runId: args.context.runId,
       }),
@@ -706,8 +706,8 @@ export function createSlackTurnRuntime<
           pending: skippedSteeringMessages,
           context: logContext({
             threadId: deps.getThreadId(thread, message),
-            requesterId: message.author.userId,
-            requesterUserName: requesterUserName(message),
+            actorId: message.author.userId,
+            actorUserName: actorUserName(message),
             channelId: deps.getChannelId(thread, message),
             runId: deps.getRunId(thread, message),
           }),
@@ -720,8 +720,8 @@ export function createSlackTurnRuntime<
         const context = logContext({
           threadId,
           channelId,
-          requesterId: message.author.userId,
-          requesterUserName: requesterUserName(message),
+          actorId: message.author.userId,
+          actorUserName: actorUserName(message),
           runId,
         });
         processingReaction = await processingReactions.start(context, message);
@@ -796,8 +796,8 @@ export function createSlackTurnRuntime<
         }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
-          requesterId: message.author.userId,
-          requesterUserName: requesterUserName(message),
+          actorId: message.author.userId,
+          actorUserName: actorUserName(message),
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
@@ -812,8 +812,8 @@ export function createSlackTurnRuntime<
             "mention_handler_read_only_channel",
             logContext({
               threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: requesterUserName(message),
+              actorId: message.author.userId,
+              actorUserName: actorUserName(message),
               channelId: deps.getChannelId(thread, message),
               runId: deps.getRunId(thread, message),
             }),
@@ -857,8 +857,8 @@ export function createSlackTurnRuntime<
             pending: skippedSteeringMessages,
             context: logContext({
               threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: requesterUserName(message),
+              actorId: message.author.userId,
+              actorUserName: actorUserName(message),
               channelId: deps.getChannelId(thread, message),
               runId: deps.getRunId(thread, message),
             }),
@@ -885,8 +885,8 @@ export function createSlackTurnRuntime<
           pending: skippedSteeringMessages,
           context: logContext({
             threadId: deps.getThreadId(thread, message),
-            requesterId: message.author.userId,
-            requesterUserName: requesterUserName(message),
+            actorId: message.author.userId,
+            actorUserName: actorUserName(message),
             channelId: deps.getChannelId(thread, message),
             runId: deps.getRunId(thread, message),
           }),
@@ -898,13 +898,13 @@ export function createSlackTurnRuntime<
         const runId = deps.getRunId(thread, message);
         const isResourceEventNotification =
           isResourceEventNotificationMessage(message);
-        const requesterId = isResourceEventNotification
+        const actorId = isResourceEventNotification
           ? undefined
           : message.author.userId;
         const turnContext = logContext({
           threadId,
-          requesterId,
-          requesterUserName: requesterUserName(message),
+          actorId,
+          actorUserName: actorUserName(message),
           channelId,
           runId,
         });
@@ -926,7 +926,7 @@ export function createSlackTurnRuntime<
           };
           const threadContext: TurnContext = {
             threadId,
-            requesterId,
+            actorId,
             channelId,
             runId,
           };
@@ -1098,8 +1098,8 @@ export function createSlackTurnRuntime<
         }
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
-          requesterId: message.author.userId,
-          requesterUserName: requesterUserName(message),
+          actorId: message.author.userId,
+          actorUserName: actorUserName(message),
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
@@ -1114,8 +1114,8 @@ export function createSlackTurnRuntime<
             "subscribed_message_handler_read_only_channel",
             logContext({
               threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: requesterUserName(message),
+              actorId: message.author.userId,
+              actorUserName: actorUserName(message),
               channelId: deps.getChannelId(thread, message),
               runId: deps.getRunId(thread, message),
             }),
@@ -1160,8 +1160,8 @@ export function createSlackTurnRuntime<
             pending: skippedSteeringMessages,
             context: logContext({
               threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: requesterUserName(message),
+              actorId: message.author.userId,
+              actorUserName: actorUserName(message),
               channelId: deps.getChannelId(thread, message),
               runId: deps.getRunId(thread, message),
             }),

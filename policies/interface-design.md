@@ -23,7 +23,7 @@ Interfaces should expose the smallest useful capability while keeping ownership,
   boundary being named.
 - Spend local context instead of repeating it. A function imported from `state/session-log` can be `commitMessages`; it does not need to be `commitAgentSessionLogMessages`.
 - Spend parent-object context in field names. Inside `Conversation`, prefer
-  `execution`, `destination`, and `requester` over names that repeat
+  `execution`, `destination`, and `actor` over names that repeat
   `Conversation`.
 - Let folders and file names carry domain context. Prefer `state/session-log.ts` over `state/agent-session-log-store.ts`, and avoid names that repeat parent directories, suffix every file with its technical role, or encode the whole call path.
 - Name modules by the concern they own, not by the adapter or mechanism they happen to use. `session-log` is better than `redis-session-log` when Redis is only one backing implementation.

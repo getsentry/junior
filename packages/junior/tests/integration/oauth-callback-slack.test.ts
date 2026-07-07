@@ -236,7 +236,7 @@ describe("oauth callback slack integration", () => {
       ],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: "T123",
         userId: "U123",
@@ -325,7 +325,7 @@ describe("oauth callback slack integration", () => {
             pendingAuth: {
               kind: "plugin",
               provider: "eval-oauth",
-              requesterId: "U123",
+              actorId: "U123",
               scope: "read",
               sessionId,
               linkSentAtMs: 1,
@@ -373,7 +373,7 @@ describe("oauth callback slack integration", () => {
           ),
         }),
         routing: expect.objectContaining({
-          requester: expect.objectContaining({
+          actor: expect.objectContaining({
             email: "stored@example.com",
             fullName: "Stored User",
             platform: "slack",
@@ -386,7 +386,7 @@ describe("oauth callback slack integration", () => {
           correlation: expect.objectContaining({
             channelId: "C123",
             threadTs: "1700000000.009",
-            requesterId: "U123",
+            actorId: "U123",
           }),
           toolChannelId: "C999",
         }),
@@ -456,7 +456,7 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
-  it("fails a session-recorded OAuth resume with mismatched requester team", async () => {
+  it("fails a session-recorded OAuth resume with mismatched actor team", async () => {
     const conversationId = "slack:C123:1700000000.012";
     const sessionId = "turn_msg_12";
 
@@ -470,7 +470,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: "T999",
         userId: "U123",
@@ -478,7 +478,7 @@ describe("oauth callback slack integration", () => {
     });
     await stateAdapterModule
       .getStateAdapter()
-      .set("oauth-state:eval-oauth-mismatched-requester-state", {
+      .set("oauth-state:eval-oauth-mismatched-actor-state", {
         userId: "U123",
         provider: "eval-oauth",
         channelId: "C123",
@@ -509,7 +509,7 @@ describe("oauth callback slack integration", () => {
             pendingAuth: {
               kind: "plugin",
               provider: "eval-oauth",
-              requesterId: "U123",
+              actorId: "U123",
               scope: "read",
               sessionId,
               linkSentAtMs: 1,
@@ -520,7 +520,7 @@ describe("oauth callback slack integration", () => {
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
-      state: "eval-oauth-mismatched-requester-state",
+      state: "eval-oauth-mismatched-actor-state",
       code: "eval-oauth-code",
       agentRunner: testAgentRunner,
     });
@@ -534,8 +534,7 @@ describe("oauth callback slack integration", () => {
       ),
     ).resolves.toMatchObject({
       state: "failed",
-      errorMessage:
-        "Stored Slack requester identity did not match OAuth requester",
+      errorMessage: "Stored Slack actor identity did not match OAuth actor",
     });
   });
 
@@ -574,7 +573,7 @@ describe("oauth callback slack integration", () => {
           pendingAuth: {
             kind: "plugin",
             provider: "eval-oauth",
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -616,7 +615,7 @@ describe("oauth callback slack integration", () => {
           pendingAuth: {
             kind: "plugin",
             provider: "eval-oauth",
-            requesterId: "U123",
+            actorId: "U123",
             sessionId,
             linkSentAtMs: 1,
           },
@@ -637,7 +636,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      actor: { platform: "slack", teamId: "T123", userId: "U123" },
     });
     await stateAdapterModule
       .getStateAdapter()
@@ -731,7 +730,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
@@ -748,7 +747,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: {
+      actor: {
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
@@ -803,7 +802,7 @@ describe("oauth callback slack integration", () => {
             pendingAuth: {
               kind: "plugin",
               provider: "eval-oauth",
-              requesterId: "U123",
+              actorId: "U123",
               sessionId: newSessionId,
               linkSentAtMs: 1,
             },
@@ -856,7 +855,7 @@ describe("oauth callback slack integration", () => {
       piMessages: [],
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      requester: { platform: "slack", teamId: "T123", userId: "U123" },
+      actor: { platform: "slack", teamId: "T123", userId: "U123" },
     });
 
     await stateAdapterModule

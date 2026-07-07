@@ -40,7 +40,7 @@ async function recordCompletedSession(args: {
       ...destination,
       conversationId: args.conversationId,
     },
-    requester: {
+    actor: {
       fullName: "Local CLI",
       platform: "local",
       userId: "local-cli",
@@ -155,7 +155,7 @@ describe("plugin background tasks", () => {
       sessionId: runSessionId,
       sliceId: 1,
       source: runSource,
-      requester: {
+      actor: {
         fullName: "Local CLI",
         platform: "local",
         userId: "local-cli",
@@ -201,7 +201,7 @@ describe("plugin background tasks", () => {
             text: "Understood.",
           },
         ],
-        requester: {
+        actor: {
           fullName: "Local CLI",
           platform: "local",
           userId: "local-cli",

@@ -37,15 +37,12 @@ export function maybeUpdateAssistantTitle(args: {
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantTitle">;
   modelId: string;
-  requesterId?: string;
+  actorId?: string;
   runId?: string;
   threadId?: string;
 }): Promise<{ sourceMessageId: string; title?: string } | undefined> {
   const assistantThreadContext = args.assistantThreadContext;
-  if (
-    !assistantThreadContext?.channelId ||
-    !assistantThreadContext.threadTs
-  ) {
+  if (!assistantThreadContext?.channelId || !assistantThreadContext.threadTs) {
     return Promise.resolve(undefined);
   }
 
@@ -68,7 +65,7 @@ export function maybeUpdateAssistantTitle(args: {
         "thread_title_generation_failed",
         {
           slackThreadId: args.threadId,
-          slackUserId: args.requesterId,
+          slackUserId: args.actorId,
           slackChannelId: args.channelId,
           runId: args.runId,
           assistantUserName: args.assistantUserName,
@@ -112,7 +109,7 @@ export function maybeUpdateAssistantTitle(args: {
             "thread_title_generation_permission_denied",
             {
               slackThreadId: args.threadId,
-              slackUserId: args.requesterId,
+              slackUserId: args.actorId,
               slackChannelId: args.channelId,
               runId: args.runId,
               assistantUserName: args.assistantUserName,
@@ -126,7 +123,7 @@ export function maybeUpdateAssistantTitle(args: {
             "thread_title_slack_update_failed",
             {
               slackThreadId: args.threadId,
-              slackUserId: args.requesterId,
+              slackUserId: args.actorId,
               slackChannelId: args.channelId,
               runId: args.runId,
               assistantUserName: args.assistantUserName,

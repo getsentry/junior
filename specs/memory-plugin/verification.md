@@ -76,11 +76,11 @@ Use integration tests for:
   `junior upgrade`
 - storage migrations provide the authoritative memory-record mechanism required
   by `storage.md`
-- explicit memory creation stores a personal memory under the current requester
+- explicit memory creation stores a personal memory under the current actor
 - explicit conversation memory stores under the current conversation without
   accepting model-supplied Slack ids
 - explicit personal user-subject memory can be created only for the current
-  requester/author
+  actor/author
 - explicit personal memory rejects third-party user profile facts such as
   storing `David is xyz` on David's behalf
 - explicit memory creation is rejected when it violates workplace-sensitive

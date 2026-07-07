@@ -9,7 +9,7 @@ const GITHUB_REPO_RE = new RegExp(
 /** Apply explicit provider-default config requests that do not need agent reasoning. */
 export async function maybeApplyProviderDefaultConfigRequest(args: {
   channelConfiguration?: ChannelConfigurationService;
-  requesterId?: string;
+  actorId?: string;
   text: string;
 }): Promise<{ text: string } | null> {
   const match = GITHUB_REPO_RE.exec(args.text);
@@ -21,7 +21,7 @@ export async function maybeApplyProviderDefaultConfigRequest(args: {
   await args.channelConfiguration.set({
     key: "github.repo",
     value: repo,
-    updatedBy: args.requesterId,
+    updatedBy: args.actorId,
     source: "provider-default-config",
   });
 

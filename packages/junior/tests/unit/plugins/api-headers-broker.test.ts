@@ -4,7 +4,7 @@ import type { PluginManifest } from "@/chat/plugins/types";
 
 const ORIGINAL_ENV = { ...process.env };
 const SYSTEM_CREDENTIAL_CONTEXT = {
-  actor: { type: "system" as const, id: "scheduler" },
+  actor: { platform: "system" as const, name: "scheduler" },
 };
 
 const MANIFEST: PluginManifest = {

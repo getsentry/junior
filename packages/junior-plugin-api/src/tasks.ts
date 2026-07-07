@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
-import { destinationSchema, requesterSchema, sourceSchema } from "./schemas";
+import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
 import type { PluginState } from "./state";
 
 /** One normalized transcript entry from the completed run exposed to plugin tasks. */
@@ -34,7 +34,7 @@ export const pluginRunContextSchema = z
     completedAtMs: z.number().finite(),
     conversationId: z.string().min(1),
     destination: destinationSchema,
-    requester: requesterSchema.optional(),
+    actor: actorSchema,
     runId: z.string().min(1),
     source: sourceSchema,
     transcript: z.array(pluginRunTranscriptEntrySchema),

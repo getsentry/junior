@@ -47,7 +47,7 @@ export type {
   PluginPackageContentItemReport,
   PluginPackageContentReport,
   PluginReport,
-  RequesterIdentity,
+  ActorIdentity,
   RuntimeInfoReport,
   SkillReport,
   TranscriptMessage,

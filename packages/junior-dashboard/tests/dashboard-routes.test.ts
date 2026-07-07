@@ -77,7 +77,7 @@ function reporting(): JuniorReporting {
             surface: "slack",
             displayTitle: "Conversation",
             channel: "C1",
-            requesterIdentity: {
+            actorIdentity: {
               email: "person@sentry.io",
               fullName: "Person Example",
             },
@@ -104,7 +104,7 @@ function reporting(): JuniorReporting {
             runs: 1,
           },
         ],
-        requesters: [
+        actors: [
           {
             active: 1,
             conversations: 1,
@@ -592,7 +592,7 @@ describe("dashboard routes", () => {
     expect(await conversationStats.json()).toMatchObject({
       active: 1,
       conversations: 1,
-      requesters: [{ label: "Unknown", conversations: 1 }],
+      actors: [{ label: "Unknown", conversations: 1 }],
       sampleLimit: 1,
       sampleSize: 1,
       source: "conversation_index",
@@ -636,7 +636,7 @@ describe("dashboard routes", () => {
     expect(conversationStats.status).toBe(200);
     expect(await conversationStats.json()).toMatchObject({
       conversations: 0,
-      requesters: [],
+      actors: [],
       sampleLimit: 0,
       sampleSize: 0,
       source: "conversation_index",

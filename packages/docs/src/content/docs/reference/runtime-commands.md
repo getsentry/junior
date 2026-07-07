@@ -27,7 +27,7 @@ Different plugins authenticate in different ways, but the visible pattern stays 
 - GitHub uses host-managed GitHub App access configured by the operator.
 - OAuth-based plugins such as Sentry send sign-in links privately to the requesting user.
 - If a user token is stale or no longer has access, Junior prompts for re-authorization instead of asking users to manage tokens manually.
-- Credentials are fetched for the current requester and turn when sandbox traffic reaches a registered provider domain; they are not kept as ambient chat-session auth.
+- Credentials are fetched for the current actor and turn when sandbox traffic reaches a registered provider domain; they are not kept as ambient chat-session auth.
 - GitHub capability and repo scoping are lightweight safety rails meant to reduce accidental writes and wrong-target mutations. They are not a hard boundary against an agent that is already allowed to request broader GitHub credentials.
 
 ## Context behavior

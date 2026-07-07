@@ -98,9 +98,9 @@ Use `additionalUserScopes` only when an integration flow requires specific GitHu
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe app-readable API methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, GraphQL `POST` bodies that prove the operation is a query, and `git-upload-pack` use the `installation-read` grant. `GET /user` uses the `user-read` grant so account identity checks use the requester token. Write-specific REST URLs, GraphQL mutations/subscriptions, unknown GraphQL `POST` bodies, other non-read API methods, and `git-receive-pack` use the `user-write` grant.
-- `user-read` and `user-write` require the requester, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
-- Git commits use the requester as the commit author, Junior as committer, and a Junior `Co-Authored-By` trailer.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe app-readable API methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, GraphQL `POST` bodies that prove the operation is a query, and `git-upload-pack` use the `installation-read` grant. `GET /user` uses the `user-read` grant so account identity checks use the actor token. Write-specific REST URLs, GraphQL mutations/subscriptions, unknown GraphQL `POST` bodies, other non-read API methods, and `git-receive-pack` use the `user-write` grant.
+- `user-read` and `user-write` require the actor, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
+- Git commits use the actor as the commit author, Junior as committer, and a Junior `Co-Authored-By` trailer.
 - Issued credentials are reused only within the current turn, credential leases are cached separately by plugin grant name, and upstream 403 permission denials clear the cached lease before the next retry.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
@@ -132,7 +132,7 @@ The plugin uses `installation-read` for read-only GitHub traffic and `user-write
 
 Committing and pushing code uses more than one GitHub surface:
 
-- Creating the local Git commit does not call GitHub. Junior sets the requester as author and the GitHub App bot as committer in the sandbox.
+- Creating the local Git commit does not call GitHub. Junior sets the actor as author and the GitHub App bot as committer in the sandbox.
 - Pushing a branch with Git smart HTTP (`git push`) uses the `user-write` grant and requires the GitHub App to have `Contents: write` on the target repository. The requesting user must also have write access to that repository.
 - REST Git database writes used by some `gh` flows also require `Contents: write`: create blob (`POST /git/blobs`), create tree (`POST /git/trees`), create commit (`POST /git/commits`), and create/update refs (`POST /git/refs`, `PATCH /git/refs/{ref}`). Changes to workflow files may also require `Workflows: write`.
 - Opening the PR after the branch exists is separate: `github_createPullRequest` needs pull-request write permission, but it should not create or push commits itself.

@@ -90,7 +90,7 @@ import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/
 import { ALL } from "@/handlers/sandbox-egress-proxy";
 
 const EGRESS_ID = "junior-sbx";
-const REQUESTER_ID = "U123";
+const ACTOR_ID = "U123";
 
 let activeCredentialToken: string | undefined;
 
@@ -154,7 +154,7 @@ function headerOnlyPlugin() {
   };
 }
 
-function setSandboxEgressUserActor(userId = REQUESTER_ID): void {
+function setSandboxEgressUserActor(userId = ACTOR_ID): void {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: { actor: { type: "user", userId } },
     egressId: EGRESS_ID,
@@ -167,7 +167,7 @@ function setSandboxEgressSystemActor(input?: {
 }): void {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: {
-      actor: { type: "system", id: "scheduler" },
+      actor: { platform: "system", name: "scheduler" },
       ...(input?.subject ? { subject: input.subject } : {}),
     },
     egressId: EGRESS_ID,
@@ -287,7 +287,7 @@ describe("sandbox egress proxy", () => {
     expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
     const token = createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -420,7 +420,7 @@ describe("sandbox egress proxy", () => {
 
     expect(() =>
       createSandboxEgressCredentialToken({
-        credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+        credentials: { actor: { type: "user", userId: ACTOR_ID } },
         egressId: EGRESS_ID,
         ttlMs: 60_000,
       }),
@@ -527,7 +527,7 @@ describe("sandbox egress proxy", () => {
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
-      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      context: { actor: { type: "user", userId: ACTOR_ID } },
       provider: "sentry",
       reason: "sandbox-egress:sentry:read",
     });
@@ -595,10 +595,10 @@ describe("sandbox egress proxy", () => {
   it("rejects unbound delegated credential subjects under signed egress contexts", async () => {
     activeCredentialToken = createSandboxEgressCredentialToken({
       credentials: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
-          userId: REQUESTER_ID,
+          userId: ACTOR_ID,
           allowedWhen: "private-direct-conversation",
         } as any,
       },
@@ -624,7 +624,7 @@ describe("sandbox egress proxy", () => {
     setSandboxEgressSystemActor({
       subject: {
         type: "user",
-        userId: REQUESTER_ID,
+        userId: ACTOR_ID,
         allowedWhen: "private-direct-conversation",
         binding: {
           type: "slack-direct-conversation",
@@ -646,10 +646,10 @@ describe("sandbox egress proxy", () => {
     expect(response.status).toBe(200);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
       context: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
-          userId: REQUESTER_ID,
+          userId: ACTOR_ID,
           allowedWhen: "private-direct-conversation",
           binding: {
             type: "slack-direct-conversation",
@@ -797,7 +797,7 @@ describe("sandbox egress proxy", () => {
     await expect(secondResponse.text()).resolves.toBe("Bearer token-u456");
 
     expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(1, {
-      context: { actor: { type: "user", userId: REQUESTER_ID } },
+      context: { actor: { type: "user", userId: ACTOR_ID } },
       provider: "sentry",
       reason: "sandbox-egress:sentry:read",
     });
@@ -926,8 +926,8 @@ describe("sandbox egress proxy", () => {
         lease: {
           account: {
             id: "12345",
-            label: "requester",
-            url: "https://github.com/requester",
+            label: "actor",
+            url: "https://github.com/actor",
           },
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           headerTransforms: [
@@ -1014,8 +1014,8 @@ describe("sandbox egress proxy", () => {
         provider: "github",
         account: {
           id: "12345",
-          label: "requester",
-          url: "https://github.com/requester",
+          label: "actor",
+          url: "https://github.com/actor",
         },
         grant: {
           name: "user-write",
@@ -1225,7 +1225,7 @@ describe("sandbox egress proxy", () => {
 
   it("rejects credential context tokens from a different sandbox session", async () => {
     activeCredentialToken = createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: "different-egress-session",
       ttlMs: 60_000,
     });

@@ -20,7 +20,7 @@ Plugin-owned SQL extensions are governed by `./plugin-database.md`.
 - Conversation records and query indexes.
 - Execution status summaries and run/checkpoint timestamps.
 - Conversation display details such as title, channel, source, destination, and
-  requester.
+  actor.
 - Conversation-scoped configuration entries.
 - Artifact, sandbox, scheduler task, and session/run summary references.
 - SQL schema migration and backfill deployment behavior on Vercel with Neon
@@ -111,13 +111,13 @@ transactional invariants:
 - `junior_conversations`
   - `conversation_id`, `source`, origin fields, `destination_id`,
     role-specific identity references (`actor_identity_id`,
-    `requester_identity_id`, `creator_identity_id`,
+    `actor_identity_id`, `creator_identity_id`,
     `credential_subject_identity_id`), provider detail JSON, `channel_name`,
     `title`, `created_at`, `last_activity_at`, `updated_at`,
     `execution_status`, `run_id`, and checkpoint/enqueue timestamps
 
-Identities model provider-scoped principals, not just requesters. A Slack user
-turn may use the same identity row for actor and requester. Scheduled work uses
+Identities model provider-scoped principals, not just actors. A Slack user
+turn may use the same identity row for actor and actor. Scheduled work uses
 a system actor identity, may record a separate creator identity, and only uses a
 credential-subject identity when a separate credential contract allows it.
 Plugin dispatch follows the same role separation. This keeps future web,
@@ -155,7 +155,7 @@ authority consumed by redaction, transcript access, and dashboard reporting
 ### Retention And Erasure
 
 SQL conversation metadata is durable and includes personal data: identity
-display and contact fields, requester JSON, generated titles, and channel
+display and contact fields, actor JSON, generated titles, and channel
 names.
 
 - Transcript bodies stay in state-backed storage and expire with the retention

@@ -53,7 +53,7 @@ export interface ConversationPendingAuthState {
   kind: AuthorizationPauseKind;
   linkSentAtMs: number;
   provider: string;
-  requesterId: string;
+  actorId: string;
   scope?: string;
   sessionId: string;
 }
@@ -200,14 +200,14 @@ function coercePendingAuthState(
 
   const kind = value.kind;
   const provider = toOptionalString(value.provider);
-  const requesterId = toOptionalString(value.requesterId);
+  const actorId = toOptionalString(value.actorId);
   const scope = toOptionalString(value.scope);
   const sessionId = toOptionalString(value.sessionId);
   const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
   if (
     (kind !== "mcp" && kind !== "plugin") ||
     !provider ||
-    !requesterId ||
+    !actorId ||
     !sessionId ||
     typeof linkSentAtMs !== "number"
   ) {
@@ -217,7 +217,7 @@ function coercePendingAuthState(
   return {
     kind,
     provider,
-    requesterId,
+    actorId,
     ...(scope ? { scope } : {}),
     sessionId,
     linkSentAtMs,

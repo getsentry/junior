@@ -61,7 +61,7 @@ Private conversations may expose bounded metadata when it is needed for
 debuggability and does not reveal raw content:
 
 - conversation id and turn/session id
-- requester identity used for audit/correlation
+- actor identity used for audit/correlation
 - message role and timestamp
 - message count and tool-call count
 - payload byte/character size

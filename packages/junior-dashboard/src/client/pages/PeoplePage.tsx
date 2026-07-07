@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { Mail, UserRound } from "lucide-react";
 
-import { useRequesterDirectoryData, useRequesterProfileData } from "../api";
+import { useActorDirectoryData, useActorProfileData } from "../api";
 import { Button } from "../components/Button";
 import { ConversationList } from "../components/ConversationList";
 import { ConversationSearchInput } from "../components/ConversationListControls";
@@ -23,37 +23,31 @@ import {
 import { cn } from "../styles";
 import type {
   ConversationStatsItem,
-  RequesterActivityDay,
-  RequesterDirectory,
-  RequesterProfile,
-  RequesterSummary,
-  RequesterTotals,
+  ActorActivityDay,
+  ActorDirectory,
+  ActorProfile,
+  ActorSummary,
+  ActorTotals,
 } from "../types";
 
 type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
 
-function requesterName(person: Pick<RequesterSummary, "requester">): string {
+function actorName(person: Pick<ActorSummary, "actor">): string {
   return (
-    person.requester.fullName ??
-    person.requester.slackUserName ??
-    person.requester.email
+    person.actor.fullName ?? person.actor.slackUserName ?? person.actor.email
   );
 }
 
-function personMeta(person: RequesterSummary): string {
+function personMeta(person: ActorSummary): string {
   const pieces = [
-    person.requester.email,
-    person.requester.slackUserName
-      ? `@${person.requester.slackUserName}`
-      : undefined,
+    person.actor.email,
+    person.actor.slackUserName ? `@${person.actor.slackUserName}` : undefined,
     `last ${formatRelativeTime(person.lastSeenAt)}`,
   ];
   return pieces.filter(Boolean).join(" / ");
 }
 
-function sampleLabel(
-  data: Pick<RequesterDirectory, "sampleSize" | "truncated">,
-) {
+function sampleLabel(data: Pick<ActorDirectory, "sampleSize" | "truncated">) {
   return `${formatCompactNumber(data.sampleSize)} sampled conversations${
     data.truncated ? " / limited sample" : ""
   }`;
@@ -64,18 +58,18 @@ function runtimeLabel(durationMs: number, conversations: number): string {
   return formatMs(durationMs);
 }
 
-/** Render the requester directory from dashboard reporting data. */
+/** Render the actor directory from dashboard reporting data. */
 export function PeoplePage() {
-  const query = useRequesterDirectoryData();
+  const query = useActorDirectoryData();
   return <PeoplePageContent data={query.data} error={query.error} />;
 }
 
-/** Render loaded, failed, and empty requester directory states. */
+/** Render loaded, failed, and empty actor directory states. */
 export function PeoplePageContent({
   data,
   error,
 }: {
-  data: RequesterDirectory | undefined;
+  data: ActorDirectory | undefined;
   error: unknown;
 }) {
   const [peopleSearch, setPeopleSearch] = useState("");
@@ -92,7 +86,7 @@ export function PeoplePageContent({
             <SectionTitle>People</SectionTitle>
             <div className="mt-1 break-words text-[0.82rem] leading-relaxed text-[#b8b8b8]">
               {data
-                ? `${people.length} of ${data.people.length} requesters / ${sampleLabel(data)}`
+                ? `${people.length} of ${data.people.length} actors / ${sampleLabel(data)}`
                 : "People failed to load"}
             </div>
           </div>
@@ -116,7 +110,7 @@ export function PeoplePageContent({
         ) : (
           <div className="p-3">
             <EmptyTelemetry>
-              No requester telemetry with trusted email.
+              No actor telemetry with trusted email.
             </EmptyTelemetry>
           </div>
         )}
@@ -126,18 +120,18 @@ export function PeoplePageContent({
 }
 
 function filterPeople(
-  people: RequesterSummary[],
+  people: ActorSummary[],
   query: string,
   sort: PeopleSort,
-): RequesterSummary[] {
+): ActorSummary[] {
   const normalized = query.trim().toLowerCase();
   const filtered = normalized
     ? people.filter((person) =>
         [
-          person.requester.email,
-          person.requester.fullName,
-          person.requester.slackUserId,
-          person.requester.slackUserName,
+          person.actor.email,
+          person.actor.fullName,
+          person.actor.slackUserId,
+          person.actor.slackUserName,
         ]
           .filter(Boolean)
           .join(" ")
@@ -196,7 +190,7 @@ function PeopleToolbar(props: {
   );
 }
 
-function PeopleDirectory(props: { people: RequesterSummary[] }) {
+function PeopleDirectory(props: { people: ActorSummary[] }) {
   if (props.people.length === 0) {
     return (
       <div className="p-3">
@@ -210,7 +204,7 @@ function PeopleDirectory(props: { people: RequesterSummary[] }) {
         className="sticky top-0 z-[1] grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-3 border-b border-white/10 bg-[#050505] px-3 py-2 text-[0.76rem] font-semibold uppercase leading-none text-[#888] max-md:hidden"
         role="row"
       >
-        <div>Requester</div>
+        <div>Actor</div>
         <div className="justify-self-end">Conversations</div>
         <div className="justify-self-end">Active days</div>
         <div className="justify-self-end">Runtime</div>
@@ -218,8 +212,8 @@ function PeopleDirectory(props: { people: RequesterSummary[] }) {
       {props.people.map((person) => (
         <Link
           className="grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-3 border-b border-l-4 border-b-white/10 border-l-[#22a06b] bg-[#0b0b0b] px-3 py-3 text-inherit no-underline transition-colors hover:bg-[#151515] max-md:grid-cols-1 max-md:px-4 max-md:py-4"
-          key={person.requester.email}
-          to={peoplePath(person.requester.email)}
+          key={person.actor.email}
+          to={peoplePath(person.actor.email)}
         >
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
@@ -228,7 +222,7 @@ function PeopleDirectory(props: { people: RequesterSummary[] }) {
               </span>
               <div className="min-w-0">
                 <div className="truncate text-[1.02rem] font-bold leading-tight text-white">
-                  {requesterName(person)}
+                  {actorName(person)}
                 </div>
                 <div className="mt-1 truncate text-[0.82rem] leading-tight text-[#b8b8b8]">
                   {personMeta(person)}
@@ -255,11 +249,11 @@ function DirectoryNumber(props: { value: number }) {
   );
 }
 
-/** Render one requester's profile and recent conversation history. */
+/** Render one actor's profile and recent conversation history. */
 export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
-  const query = useRequesterProfileData(email);
+  const query = useActorProfileData(email);
   if (!query.data && !query.error) {
     return <LoadingView label="Loading profile" />;
   }
@@ -279,7 +273,7 @@ export function PersonProfilePage() {
   );
 }
 
-export function Profile(props: { profile: RequesterProfile }) {
+export function Profile(props: { profile: ActorProfile }) {
   const profile = props.profile;
   const [recentSearch, setRecentSearch] = useState("");
   const conversations = buildConversations(profile.recentConversations);
@@ -297,14 +291,14 @@ export function Profile(props: { profile: RequesterProfile }) {
               </span>
               <div className="min-w-0">
                 <h2 className="m-0 truncate text-2xl font-extrabold leading-tight tracking-normal text-white">
-                  {profile.requester.fullName ??
-                    profile.requester.slackUserName ??
-                    profile.requester.email}
+                  {profile.actor.fullName ??
+                    profile.actor.slackUserName ??
+                    profile.actor.email}
                 </h2>
                 <div className="mt-1 break-words text-[0.88rem] leading-relaxed text-[#b8b8b8]">
-                  {profile.requester.email}
-                  {profile.requester.slackUserName
-                    ? ` / @${profile.requester.slackUserName}`
+                  {profile.actor.email}
+                  {profile.actor.slackUserName
+                    ? ` / @${profile.actor.slackUserName}`
                     : ""}
                 </div>
               </div>
@@ -368,7 +362,7 @@ export function Profile(props: { profile: RequesterProfile }) {
   );
 }
 
-function ProfileMetrics(props: { totals: RequesterTotals }) {
+function ProfileMetrics(props: { totals: ActorTotals }) {
   const totals = props.totals;
   const metrics = [
     ["conversations", formatCompactNumber(totals.conversations)],
@@ -395,22 +389,19 @@ function ProfileMetrics(props: { totals: RequesterTotals }) {
   );
 }
 
-function ContributionGrid(props: { days: RequesterActivityDay[] }) {
+function ContributionGrid(props: { days: ActorActivityDay[] }) {
   const max = Math.max(1, ...props.days.map((day) => day.conversations));
-  const weeks: Array<Array<RequesterActivityDay | null>> = [];
+  const weeks: Array<Array<ActorActivityDay | null>> = [];
   const leadingDays = props.days[0]
     ? new Date(`${props.days[0].date}T00:00:00Z`).getUTCDay()
     : 0;
-  const cells: Array<RequesterActivityDay | null> = [
+  const cells: Array<ActorActivityDay | null> = [
     ...Array.from({ length: leadingDays }, () => null),
     ...props.days,
   ];
   while (cells.length > 0 && cells.length % 7 !== 0) cells.push(null);
   for (let index = 0; index < cells.length; index += 7) {
-    const week: Array<RequesterActivityDay | null> = cells.slice(
-      index,
-      index + 7,
-    );
+    const week: Array<ActorActivityDay | null> = cells.slice(index, index + 7);
     while (week.length < 7) week.push(null);
     weeks.push(week);
   }

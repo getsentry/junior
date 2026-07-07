@@ -25,7 +25,7 @@ const FIXTURE_PLUGIN_ROOT = path.resolve(
 );
 const BASE_URL = "https://junior.example.com";
 const EGRESS_ID = "sbx_integration_session";
-const REQUESTER_ID = "U123";
+const ACTOR_ID = "U123";
 const PROVIDER_HOST = "sandbox-egress.example.test";
 const MANAGED_PROVIDER_HOST = "managed-egress.example.test";
 const MANAGED_PROVIDER_SUBDOMAIN = "api.managed-egress.example.test";
@@ -301,7 +301,7 @@ describe("sandbox egress proxy integration", () => {
 
   it("injects provider credentials through real plugin and broker wiring without command session state", async () => {
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -349,7 +349,7 @@ describe("sandbox egress proxy integration", () => {
     delete process.env.SANDBOX_EGRESS_TEST_TOKEN; // remove env token so broker has no credential
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -382,7 +382,7 @@ describe("sandbox egress proxy integration", () => {
     await registerOAuthBrokerPlugin();
 
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -424,7 +424,7 @@ describe("sandbox egress proxy integration", () => {
       egressTracePropagationDomains: ["*.managed-egress.example.test"],
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -478,7 +478,7 @@ describe("sandbox egress proxy integration", () => {
   it("strips trace headers from unconfigured real plugin egress wiring", async () => {
     await registerManagedEgressPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -527,7 +527,7 @@ describe("sandbox egress proxy integration", () => {
 
   it("reuses broker-managed credentials across read and write egress", async () => {
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -574,7 +574,7 @@ describe("sandbox egress proxy integration", () => {
 
   it("intercepts credential-injected provider traffic before live forwarding", async () => {
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -611,7 +611,7 @@ describe("sandbox egress proxy integration", () => {
   it("uses plugin egress hooks to issue request-scoped credentials", async () => {
     await registerManagedEgressPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -749,7 +749,7 @@ describe("sandbox egress proxy integration", () => {
           conversationId,
         },
         egress: createPluginEgress({
-          credentialContext: { actor: { type: "user", userId: REQUESTER_ID } },
+          credentialContext: { actor: { type: "user", userId: ACTOR_ID } },
           fetch: upstreamFetch as typeof fetch,
           pluginAuth: {
             handleAuthRequired: vi.fn(),
@@ -792,7 +792,7 @@ describe("sandbox egress proxy integration", () => {
     );
     expect(issueCredential).toHaveBeenCalledWith(
       expect.objectContaining({
-        actor: { type: "user", userId: REQUESTER_ID },
+        actor: { type: "user", userId: ACTOR_ID },
         grant: {
           name: "installation-read",
           access: "read",
@@ -810,7 +810,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -857,7 +857,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -901,7 +901,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -947,7 +947,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1024,7 +1024,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1072,7 +1072,7 @@ describe("sandbox egress proxy integration", () => {
   it("denies raw GitHub REST issue creation before credential injection", async () => {
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1110,7 +1110,7 @@ describe("sandbox egress proxy integration", () => {
   it("denies raw GitHub GraphQL issue creation before credential injection", async () => {
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1155,7 +1155,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1204,7 +1204,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1250,7 +1250,7 @@ describe("sandbox egress proxy integration", () => {
   it("denies oversized raw GitHub GraphQL before credential injection", async () => {
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1299,7 +1299,7 @@ describe("sandbox egress proxy integration", () => {
       },
     });
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });
@@ -1356,7 +1356,7 @@ describe("sandbox egress proxy integration", () => {
     delete process.env.GITHUB_INSTALLATION_ID;
     await registerGitHubPlugin();
     const credentialToken = modules.session.createSandboxEgressCredentialToken({
-      credentials: { actor: { type: "user", userId: REQUESTER_ID } },
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
       egressId: EGRESS_ID,
       ttlMs: 60_000,
     });

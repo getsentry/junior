@@ -15,7 +15,8 @@ import { createMemoryPromptMessages } from "./recall";
 import type { MemoryDb } from "./store";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
-const MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV = "MEMORY_RECALL_MAX_VECTOR_DISTANCE";
+const MEMORY_RECALL_MAX_VECTOR_DISTANCE_ENV =
+  "MEMORY_RECALL_MAX_VECTOR_DISTANCE";
 const DEFAULT_RECALL_MAX_VECTOR_DISTANCE = 0.45;
 
 export interface MemoryPluginOptions {
@@ -52,14 +53,14 @@ function memoryToolContext(ctx: {
   conversationId?: string;
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
-  requester?: MemoryToolContext["requester"];
+  actor?: MemoryToolContext["actor"];
   source: MemoryToolContext["source"];
   userText?: string;
 }): MemoryToolContext {
   return {
     agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-    ...(ctx.requester ? { requester: ctx.requester } : {}),
+    ...(ctx.actor ? { actor: ctx.actor } : {}),
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : {}),
     source: ctx.source,
@@ -72,7 +73,7 @@ function memoryCreateToolContext(ctx: {
   conversationId?: string;
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
-  requester?: MemoryCreateToolContext["requester"];
+  actor?: MemoryCreateToolContext["actor"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   userText?: string;
@@ -133,7 +134,7 @@ export function createMemoryPlugin(options: MemoryPluginOptions = {}) {
       async userPrompt(ctx) {
         return await createMemoryPromptMessages({
           ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-          ...(ctx.requester ? { requester: ctx.requester } : {}),
+          ...(ctx.actor ? { actor: ctx.actor } : {}),
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
           maxVectorDistance: recallMaxVectorDistance(options),

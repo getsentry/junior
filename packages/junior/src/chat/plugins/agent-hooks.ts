@@ -31,7 +31,7 @@ import type {
 } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
-import type { Requester } from "@/chat/requester";
+import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 
 /** Signal that a plugin intentionally denied a tool execution. */
@@ -121,7 +121,7 @@ function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "requester" | "source" | "userText"
+    "conversationId" | "destination" | "actor" | "source" | "userText"
   >,
 ): UserPromptContext {
   const base = basePluginContext(plugin);
@@ -142,8 +142,7 @@ function invocationPluginContext(
     return {
       ...common,
       destination: context.destination,
-      requester:
-        context.requester?.platform === "slack" ? context.requester : undefined,
+      actor: context.actor?.platform === "slack" ? context.actor : undefined,
     };
   }
   if (context.destination.platform !== "local") {
@@ -154,8 +153,7 @@ function invocationPluginContext(
   return {
     ...common,
     destination: context.destination,
-    requester:
-      context.requester?.platform === "local" ? context.requester : undefined,
+    actor: context.actor?.platform === "local" ? context.actor : undefined,
   };
 }
 
@@ -311,7 +309,7 @@ export async function getPluginSystemPromptContributions(
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "requester" | "source" | "userText"
+    "conversationId" | "destination" | "actor" | "source" | "userText"
   >;
 }): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
@@ -397,7 +395,7 @@ export function getPluginTools(
       ? createSlackDirectCredentialSubject({
           channelId: slackToolContext.sourceChannelId,
           teamId: slackToolContext.teamId,
-          userId: slackToolContext.requester?.userId,
+          userId: slackToolContext.actor?.userId,
         })
       : undefined;
     const slackContext: SlackToolRegistrationHookContext | undefined =
@@ -418,10 +416,7 @@ export function getPluginTools(
       }
       pluginContext = {
         ...basePluginContext(plugin),
-        requester:
-          context.requester?.platform === "slack"
-            ? context.requester
-            : undefined,
+        actor: context.actor?.platform === "slack" ? context.actor : undefined,
         conversationId: context.conversationId,
         destination: context.destination,
         slack: slackContext!,
@@ -440,10 +435,7 @@ export function getPluginTools(
       }
       pluginContext = {
         ...basePluginContext(plugin),
-        requester:
-          context.requester?.platform === "local"
-            ? context.requester
-            : undefined,
+        actor: context.actor?.platform === "local" ? context.actor : undefined,
         conversationId: context.conversationId,
         destination: context.destination,
         source: context.source,
@@ -921,7 +913,7 @@ function createSandboxCapability(sandbox: SandboxInstance): PluginSandbox {
 /** Create one runner over runtime hook plugins registered by the app. */
 export function createPluginHookRunner(
   input: {
-    requester?: Requester;
+    actor?: Actor;
   } = {},
 ): PluginHookRunner {
   const loaded = getPlugins();
@@ -943,7 +935,7 @@ export function createPluginHookRunner(
         );
         await hook({
           ...basePluginContext(plugin),
-          requester: input.requester,
+          actor: input.actor,
           sandbox: sandboxCapability,
         });
       }
@@ -962,7 +954,7 @@ export function createPluginHookRunner(
         let denied: string | undefined;
         await hook({
           ...basePluginContext(plugin),
-          requester: input.requester,
+          actor: input.actor,
           tool: {
             name: tool.name,
             input: nextInput,

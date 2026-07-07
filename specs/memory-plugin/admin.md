@@ -51,10 +51,10 @@ the model tool surface.
 ## Admin Context
 
 The command must run with a host/admin context, not as an inferred Slack or
-local chat requester.
+local chat actor.
 
 Commands that operate on user-visible memory must require explicit selectors
-such as requester identity, conversation identity, source platform, or memory
+such as actor identity, conversation identity, source platform, or memory
 id. Selectors are resolved through the same storage visibility model used by
 runtime code; display names and labels are not authorities.
 

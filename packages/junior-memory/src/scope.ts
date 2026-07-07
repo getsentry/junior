@@ -31,15 +31,15 @@ function sourceConversationKey(ctx: MemoryRuntimeContext): string | undefined {
   return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
 }
 
-function requesterScopeKey(ctx: MemoryRuntimeContext): string | undefined {
-  const requester = ctx.requester;
-  if (!requester?.userId) {
+function actorScopeKey(ctx: MemoryRuntimeContext): string | undefined {
+  const actor = ctx.actor;
+  if (!actor?.userId) {
     return undefined;
   }
-  if (requester.platform === "slack") {
-    return `slack:${requester.teamId}:${requester.userId}`;
+  if (actor.platform === "slack") {
+    return `slack:${actor.teamId}:${actor.userId}`;
   }
-  return `local:${requester.userId}`;
+  return `local:${actor.userId}`;
 }
 
 /** Derive the authority-bearing key for a requested memory scope. */
@@ -48,9 +48,9 @@ export function deriveMemoryScope(
   scope: MemoryScope,
 ): ResolvedMemoryScope {
   if (scope === "personal") {
-    const scopeKey = requesterScopeKey(ctx);
+    const scopeKey = actorScopeKey(ctx);
     if (!scopeKey) {
-      throw new Error("Personal memory requires requester context.");
+      throw new Error("Personal memory requires actor context.");
     }
     return { scope, scopeKey };
   }
@@ -68,9 +68,9 @@ export function deriveMemorySubject(
   scope: ResolvedMemoryScope,
 ): ResolvedMemorySubject {
   if (scope.scope === "personal") {
-    const subjectKey = requesterScopeKey(ctx);
+    const subjectKey = actorScopeKey(ctx);
     if (!subjectKey) {
-      throw new Error("User-subject memory requires requester context.");
+      throw new Error("User-subject memory requires actor context.");
     }
     return { subjectType: "user", subjectKey };
   }
@@ -92,7 +92,7 @@ export function deriveVisibleMemoryScopes(
   try {
     scopes.push(deriveMemoryScope(ctx, "personal"));
   } catch {
-    // Personal memory is optional when a runtime surface has no requester.
+    // Personal memory is optional when a runtime surface has no actor.
   }
   try {
     scopes.push(deriveMemoryScope(ctx, "conversation"));

@@ -31,7 +31,7 @@ history and do not invoke `userPrompt` again.
 
 The plugin must:
 
-1. Derive visible memory scopes from `ctx.requester`, `ctx.source`,
+1. Derive visible memory scopes from `ctx.actor`, `ctx.source`,
    `ctx.destination`, and `ctx.conversationId`.
 2. Query active visible memories relevant to `ctx.text`.
 3. Return one concise prompt contribution containing only accepted memory
@@ -55,7 +55,7 @@ been included by automatic injection in an earlier run.
 
 Retrieval must filter by visibility before prompt rendering:
 
-- matching personal requester scope
+- matching personal actor scope
 - matching conversation scope
 - future install policy allows recall for the memory kind, scope, and source
   when that policy surface exists

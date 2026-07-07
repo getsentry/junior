@@ -34,6 +34,7 @@ import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
+import { isUserActor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
@@ -167,9 +168,12 @@ function getResumeLogContext(
   return {
     conversationId: routing?.correlation?.conversationId ?? lockKey,
     slackThreadId: routing?.correlation?.threadId ?? lockKey,
-    slackUserId:
-      routing?.requester?.userId ?? routing?.correlation?.requesterId,
-    slackUserName: routing?.requester?.userName,
+    slackUserId: isUserActor(routing?.actor)
+      ? routing.actor.userId
+      : routing?.correlation?.actorId,
+    slackUserName: isUserActor(routing?.actor)
+      ? routing.actor.userName
+      : undefined,
     slackChannelId: args.channelId,
     runId: routing?.correlation?.runId,
     assistantUserName: botConfig.userName,
@@ -274,9 +278,11 @@ function createResumeReplyContext(
         channelId:
           replyContext.routing.correlation?.channelId ?? args.channelId,
         threadTs: replyContext.routing.correlation?.threadTs ?? args.threadTs,
-        requesterId:
-          replyContext.routing.correlation?.requesterId ??
-          replyContext.routing.requester?.userId,
+        actorId:
+          replyContext.routing.correlation?.actorId ??
+          (isUserActor(replyContext.routing.actor)
+            ? replyContext.routing.actor.userId
+            : undefined),
       },
     },
     policy: {
@@ -336,7 +342,7 @@ export async function resumeSlackTurn(
   let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredAuthInfo:
-    | { providerDisplayName: string; requesterId: string | undefined }
+    | { providerDisplayName: string; actorId: string | undefined }
     | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
@@ -352,22 +358,28 @@ export async function resumeSlackTurn(
       runArgs = { ...args, ...preparedArgs };
     }
 
-    if (!runArgs.replyContext?.routing.requester?.userId) {
+    const activeReplyContext = runArgs.replyContext;
+    if (!activeReplyContext) {
       throw new Error(
-        "Resumed turn requires replyContext.routing.requester.userId",
+        "Resumed turn requires replyContext.routing.actor.userId",
       );
     }
-    const credentialContext = runArgs.replyContext.routing.credentialContext;
+    const resumeActor = activeReplyContext.routing.actor;
+    if (!isUserActor(resumeActor)) {
+      throw new Error(
+        "Resumed turn requires replyContext.routing.actor.userId",
+      );
+    }
+    const credentialContext = activeReplyContext.routing.credentialContext;
     if (!credentialContext) {
       throw new Error("Resumed turn requires replyContext.credentialContext");
     }
     if (
-      credentialContext.actor.type !== "user" ||
-      credentialContext.actor.userId !==
-        runArgs.replyContext.routing.requester.userId
+      !("type" in credentialContext.actor) ||
+      credentialContext.actor.userId !== resumeActor.userId
     ) {
       throw new Error(
-        "Resumed turn credential actor must match replyContext.routing.requester.userId",
+        "Resumed turn credential actor must match replyContext.routing.actor.userId",
       );
     }
 
@@ -418,7 +430,7 @@ export async function resumeSlackTurn(
         deferredPauseKind = "auth";
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
-          requesterId: runArgs.replyContext?.routing.requester?.userId,
+          actorId: resumeActor.userId,
         };
         deferredPauseHandler = async () => {
           await onAuthPause({
@@ -478,11 +490,13 @@ export async function resumeSlackTurn(
           currentUsage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
           source: replyContext.routing.source,
-          requester: replyContext.routing.requester,
+          actor: replyContext.routing.actor,
           surface: "slack",
           logContext: {
             threadId: replyContext.routing.correlation.threadId,
-            requesterId: replyContext.routing.requester?.userId,
+            actorId: isUserActor(replyContext.routing.actor)
+              ? replyContext.routing.actor.userId
+              : undefined,
             channelId: runArgs.channelId,
             runId: replyContext.routing.correlation.runId,
             assistantUserName: botConfig.userName,
@@ -575,7 +589,7 @@ export async function resumeSlackTurn(
           runArgs.channelId,
           runArgs.threadTs,
           buildAuthPauseResponse(
-            deferredAuthInfo.requesterId,
+            deferredAuthInfo.actorId,
             deferredAuthInfo.providerDisplayName,
           ),
           footer,

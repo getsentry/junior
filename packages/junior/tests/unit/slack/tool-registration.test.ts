@@ -139,7 +139,7 @@ describe("Slack tool registration", () => {
           teamId: "T123",
           channelId: "C12345",
         },
-        requester: {
+        actor: {
           platform: "slack",
           teamId: "T123",
           userId: "U123",
@@ -155,7 +155,7 @@ describe("Slack tool registration", () => {
     expect(complete).toHaveProperty("scheduler_slackScheduleRunTaskNow");
   });
 
-  it("does not register schedule tools without a requester", () => {
+  it("does not register schedule tools without a actor", () => {
     const tools = createTools(
       [],
       {},

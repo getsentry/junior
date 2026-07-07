@@ -225,13 +225,13 @@ Scheduled tasks must distinguish these V1 identities:
 - **Conversation manager:** any user who can post or trigger Junior in the destination Slack conversation window. This controls who may list, pause, resume, delete, or run-now the task for that same conversation.
 - **Execution actor:** the actor used for the autonomous scheduled run. For scheduled tasks, this is a Junior system actor, not a Slack user.
 
-Scheduled runs must not pass the creator as the runtime requester or treat the creator as if they were present and acting during the run. Audit and correlation metadata should include both the system execution actor and creator metadata. Auth decisions must use the execution actor unless the task stores an explicit credential subject allowed by the private direct conversation exception below.
+Scheduled runs must not pass the creator as the runtime actor or treat the creator as if they were present and acting during the run. Audit and correlation metadata should include both the system execution actor and creator metadata. Auth decisions must use the execution actor unless the task stores an explicit credential subject allowed by the private direct conversation exception below.
 
-V1 scheduled execution has no user requester. User OAuth tokens cannot be used merely because that user created the task. Authorization flows are disabled during scheduled runs, and authorization links must not be posted publicly. If no usable system credential or explicit credential subject exists, Junior must block the run and privately notify the creator when possible.
+V1 scheduled execution has no user actor. User OAuth tokens cannot be used merely because that user created the task. Authorization flows are disabled during scheduled runs, and authorization links must not be posted publicly. If no usable system credential or explicit credential subject exists, Junior must block the run and privately notify the creator when possible.
 
 The scheduler chooses the execution actor and forwards explicit credential subjects; it does not encode provider-specific permission policy. Agent runtime and provider brokers own the credential envelope for the current actor, such as safe read-only GitHub App credentials for system actors.
 
-Exception: a scheduled task created in a private direct conversation may store an explicit credential subject for the requester who created the task. This subject is not the execution actor and does not make the creator the requester for the scheduled run. It is only an auth subject that lets credential resolution use that user's already-connected provider credentials during autonomous execution. The exception requires both:
+Exception: a scheduled task created in a private direct conversation may store an explicit credential subject for the actor who created the task. This subject is not the execution actor and does not make the creator the actor for the scheduled run. It is only an auth subject that lets credential resolution use that user's already-connected provider credentials during autonomous execution. The exception requires both:
 
 - `conversationAccess.audience = direct`
 - `conversationAccess.visibility = private`
@@ -303,7 +303,7 @@ Use integration tests for runtime/storage contracts that do not depend on model 
 - stale one-off, recurring, and run-now occurrences skip without dispatch
 - stale recovery dedupes equivalent active tasks in the same destination
 - blocked auth path for missing non-user credentials
-- scheduled runner passes a system actor rather than the creator as requester
+- scheduled runner passes a system actor rather than the creator as actor
 - user OAuth tokens are not used implicitly for scheduled tasks
 - private direct scheduled tasks may carry an explicit user credential subject
 - private group/channel scheduled tasks do not carry user credential subjects

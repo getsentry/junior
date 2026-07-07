@@ -3,7 +3,7 @@ import type {
   ConversationStatsItem as DashboardConversationStatsItem,
   ConversationStatsReport as DashboardConversationStatsReport,
   ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscriptReport,
-  RequesterIdentity as DashboardRequesterIdentity,
+  ActorIdentity as DashboardActorIdentity,
   ConversationFeed as DashboardConversationFeed,
   ConversationSummaryReport as DashboardConversationSummary,
   ConversationUsage as DashboardRunUsage,
@@ -90,7 +90,7 @@ function publicIncidentConversation(
           totalTokens: 9700,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "avery@sentry.io",
           fullName: "Avery Stone",
           slackUserId: "UQA111",
@@ -189,7 +189,7 @@ function publicIncidentConversation(
           totalTokens: 9250,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "morgan@sentry.io",
           fullName: "Morgan Lee",
           slackUserId: "UQA222",
@@ -284,7 +284,7 @@ function activeConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 8420,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "sam@sentry.io",
           fullName: "Sam Rivera",
           slackUserId: "UQA333",
@@ -355,7 +355,7 @@ function privateConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 3540,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "private-user@sentry.io",
           slackUserId: "UQA444",
           slackUserName: "private-user",
@@ -462,7 +462,7 @@ function hungConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 12_000,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "dana@sentry.io",
           fullName: "Dana Chen",
           slackUserId: "UQA555",
@@ -540,7 +540,7 @@ function failedConversation(nowMs: number): DashboardConversationReport {
           totalTokens: 4890,
         },
         surface: "slack",
-        requesterIdentity: {
+        actorIdentity: {
           email: "riley@sentry.io",
           fullName: "Riley Patel",
           slackUserId: "UQA666",
@@ -774,7 +774,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
                 name: "advisor",
                 input: {
                   question:
-                    "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
+                    "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
                 },
               }),
             ],
@@ -789,7 +789,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
                 output: {
                   verdict: "proceed",
                   summary:
-                    "Use trusted requesterIdentity.email, keep metrics to conversations/runtime/tokens, and make profile activity scannable before adding heavier analytics.",
+                    "Use trusted actorIdentity.email, keep metrics to conversations/runtime/tokens, and make profile activity scannable before adding heavier analytics.",
                 },
               }),
             ],
@@ -823,7 +823,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
                     },
                   ],
                   summary:
-                    "Add requester activity grid, recent conversations, and email profile links.",
+                    "Add actor activity grid, recent conversations, and email profile links.",
                 },
               }),
             ],
@@ -846,7 +846,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
                   risks: {
                     auth: "dashboard routes remain authenticated",
                     privacy:
-                      "requester emails are trusted from normalized reporting identity",
+                      "actor emails are trusted from normalized reporting identity",
                   },
                 },
               }),
@@ -911,7 +911,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             parts: [
               {
                 type: "text",
-                text: "Implemented the people profile route, linked requester emails, and tightened the dashboard widgets based on the advisor review.",
+                text: "Implemented the people profile route, linked actor emails, and tightened the dashboard widgets based on the advisor review.",
               },
             ],
           }),
@@ -925,7 +925,7 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             status: "completed",
             args: {
               question:
-                "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
+                "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
             },
             subagents: [
               mockSubagentActivity({
@@ -1014,7 +1014,7 @@ function dashboardQaAdvisorTranscript(
       parts: [
         {
           type: "text",
-          text: "Review the dashboard plan before editing. Focus on whether requester email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
+          text: "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
         },
       ],
     }),
@@ -1024,7 +1024,7 @@ function dashboardQaAdvisorTranscript(
       parts: [
         {
           type: "text",
-          text: "Requester identity email is a reasonable profile key because reporting already normalizes trusted identities. Keep the first cut narrow: total conversations, runtime, token volume, recent conversations, and a contribution-style activity grid. Avoid attention widgets until there is an explicit operator workflow.",
+          text: "Actor identity email is a reasonable profile key because reporting already normalizes trusted identities. Keep the first cut narrow: total conversations, runtime, token volume, recent conversations, and a contribution-style activity grid. Avoid attention widgets until there is an explicit operator workflow.",
         },
       ],
     }),
@@ -1137,7 +1137,7 @@ function conversationStatsReportFromSummaries(
   summaries: DashboardConversationSummary[],
 ): DashboardConversationStatsReport {
   const conversations = recentConversationGroups(nowMs, summaries);
-  const requesters = new Map<string, DashboardConversationStatsItem>();
+  const actors = new Map<string, DashboardConversationStatsItem>();
   const locations = new Map<string, DashboardConversationStatsItem>();
   let durationMs = 0;
   let tokens: number | undefined;
@@ -1155,29 +1155,25 @@ function conversationStatsReportFromSummaries(
     failed += signals.failed ? 1 : 0;
     hung += signals.hung ? 1 : 0;
 
-    const requesterRuns = new Map<string, RunContribution[]>();
+    const actorRuns = new Map<string, RunContribution[]>();
     for (const contribution of contributions) {
-      const requester =
-        requesterLabel(contribution.run.requesterIdentity) ?? "Unknown";
-      requesterRuns.set(requester, [
-        ...(requesterRuns.get(requester) ?? []),
-        contribution,
-      ]);
+      const actor = actorLabel(contribution.run.actorIdentity) ?? "Unknown";
+      actorRuns.set(actor, [...(actorRuns.get(actor) ?? []), contribution]);
     }
 
-    for (const [requester, requesterContributions] of requesterRuns) {
-      const item = requesters.get(requester) ?? emptyStatsItem(requester);
-      const requesterSignals = statusSignals(
-        requesterContributions.map((contribution) => contribution.run),
+    for (const [actor, actorContributions] of actorRuns) {
+      const item = actors.get(actor) ?? emptyStatsItem(actor);
+      const actorSignals = statusSignals(
+        actorContributions.map((contribution) => contribution.run),
       );
       item.conversations += 1;
-      item.runs += requesterContributions.length;
-      item.durationMs += contributionDurationTotal(requesterContributions);
-      item.active += requesterSignals.active ? 1 : 0;
-      item.failed += requesterSignals.failed ? 1 : 0;
-      item.hung += requesterSignals.hung ? 1 : 0;
-      addItemTokens(item, contributionTokenTotal(requesterContributions));
-      requesters.set(requester, item);
+      item.runs += actorContributions.length;
+      item.durationMs += contributionDurationTotal(actorContributions);
+      item.active += actorSignals.active ? 1 : 0;
+      item.failed += actorSignals.failed ? 1 : 0;
+      item.hung += actorSignals.hung ? 1 : 0;
+      addItemTokens(item, contributionTokenTotal(actorContributions));
+      actors.set(actor, item);
     }
 
     const location = locationLabel(newestRun(runs));
@@ -1200,7 +1196,7 @@ function conversationStatsReportFromSummaries(
     generatedAt: iso(nowMs),
     hung,
     locations: statsItems(locations),
-    requesters: statsItems(requesters),
+    actors: statsItems(actors),
     sampleLimit: summaries.length,
     sampleSize: summaries.length,
     source: "conversation_index",
@@ -1332,13 +1328,13 @@ function contributionTokenTotal(
   );
 }
 
-function requesterLabel(
-  requester: DashboardRequesterIdentity | undefined,
+function actorLabel(
+  actor: DashboardActorIdentity | undefined,
 ): string | undefined {
-  const email = requester?.email?.trim() || undefined;
-  const fullName = requester?.fullName?.trim() || undefined;
-  const slackUserName = requester?.slackUserName?.trim() || undefined;
-  return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
+  const email = actor?.email?.trim() || undefined;
+  const fullName = actor?.fullName?.trim() || undefined;
+  const slackUserName = actor?.slackUserName?.trim() || undefined;
+  return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
 function locationLabel(turn: DashboardConversationSummary): string {

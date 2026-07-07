@@ -6,7 +6,7 @@ import {
   sourceSchema,
   type PluginCredentialSubject,
   type SlackDestination,
-  type SlackRequester,
+  type SlackActor,
   type SlackSource,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -24,7 +24,7 @@ import type {
 
 export interface SchedulerToolContext {
   credentialSubject?: PluginCredentialSubject;
-  requester?: SlackRequester;
+  actor?: SlackActor;
   source?: SlackSource;
   store: SchedulerStore;
   userText?: string;
@@ -129,26 +129,22 @@ export function requireActiveConversation(
   };
 }
 
-/** Require a concrete Slack requester before creating scheduler ownership state. */
-export function requireRequester(
+/** Require a concrete Slack actor before creating scheduler ownership state. */
+export function requireActor(
   context: SchedulerToolContext,
 ): ScheduledTaskPrincipal {
-  if (context.requester?.platform !== "slack") {
-    throwToolInputError("No active Slack requester context is available.");
+  if (context.actor?.platform !== "slack") {
+    throwToolInputError("No active Slack actor context is available.");
   }
-  const userId = context.requester?.userId?.trim();
+  const userId = context.actor?.userId?.trim();
   if (!userId || userId.toLowerCase() === "unknown") {
-    throwToolInputError("No active Slack requester context is available.");
+    throwToolInputError("No active Slack actor context is available.");
   }
 
   return sanitizeScheduledTaskPrincipal({
     slackUserId: userId,
-    ...(context.requester?.userName
-      ? { userName: context.requester.userName }
-      : {}),
-    ...(context.requester?.fullName
-      ? { fullName: context.requester.fullName }
-      : {}),
+    ...(context.actor?.userName ? { userName: context.actor.userName } : {}),
+    ...(context.actor?.fullName ? { fullName: context.actor.fullName } : {}),
   });
 }
 

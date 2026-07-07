@@ -164,7 +164,7 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("prepares resource-event notifications without a requester", async () => {
+    it("prepares resource-event notifications without a actor", async () => {
       const deps = createMockDeps({
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
@@ -182,7 +182,7 @@ describe("createSlackTurnRuntime", () => {
       expect(deps.prepareTurnState).toHaveBeenCalledWith(
         expect.objectContaining({
           context: expect.objectContaining({
-            requesterId: undefined,
+            actorId: undefined,
           }),
         }),
       );

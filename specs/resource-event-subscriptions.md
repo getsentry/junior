@@ -110,7 +110,7 @@ Rules:
 
 1. Tools derive `conversationId` and destination from runtime-owned context.
 2. Tool schemas must not accept Slack team ids, channel ids, thread timestamps,
-   requester ids, credentials, or provider secrets.
+   actor ids, credentials, or provider secrets.
 3. `intent` is required and must summarize why this conversation wants the
    event. Event notifications render it back to the agent.
 4. Core owns TTL defaults and enforces an upper bound.

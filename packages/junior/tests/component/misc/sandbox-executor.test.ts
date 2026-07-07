@@ -1193,7 +1193,7 @@ describe("createSandboxExecutor", () => {
       expect(
         parseSandboxEgressCredentialToken(activeCredentialToken),
       ).toMatchObject({
-        credentials: { actor: { type: "system", id: "scheduler" } },
+        credentials: { actor: { platform: "system", name: "scheduler" } },
         egressId: "sbx_authorize_system_credentials_session",
       });
       return {
@@ -1213,7 +1213,7 @@ describe("createSandboxExecutor", () => {
     const executor = createSandboxExecutor({
       sandboxId: "sbx_authorize_system_credentials",
       credentialEgress: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
       },
     });
     executor.configureSkills([]);

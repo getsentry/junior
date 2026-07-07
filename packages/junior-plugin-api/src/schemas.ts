@@ -80,33 +80,41 @@ export const pluginCredentialSubjectSchema = z
   })
   .strict();
 
-/** Shared exact actor profile fields for platform-scoped requesters. */
-const requesterProfileSchema = {
+/** Shared exact actor profile fields for platform-scoped actors. */
+const actorProfileSchema = {
   email: nonBlankStringSchema.optional(),
   fullName: nonBlankStringSchema.optional(),
   userId: exactActorUserIdSchema,
   userName: nonBlankStringSchema.optional(),
 };
 
-export const slackRequesterSchema = z
+export const slackActorSchema = z
   .object({
-    ...requesterProfileSchema,
+    ...actorProfileSchema,
     platform: z.literal("slack"),
     teamId: slackTeamIdSchema,
   })
   .strict();
 
-export const localRequesterSchema = z
+export const localActorSchema = z
   .object({
-    ...requesterProfileSchema,
+    ...actorProfileSchema,
     platform: z.literal("local"),
   })
   .strict();
 
-/** Runtime-provided requester identity visible to plugin hooks. */
-export const requesterSchema = z.discriminatedUnion("platform", [
-  slackRequesterSchema,
-  localRequesterSchema,
+export const systemActorSchema = z
+  .object({
+    platform: z.literal("system"),
+    name: exactActorUserIdSchema,
+  })
+  .strict();
+
+/** Runtime-provided actor identity visible to plugin hooks. */
+export const actorSchema = z.discriminatedUnion("platform", [
+  slackActorSchema,
+  localActorSchema,
+  systemActorSchema,
 ]);
 
 const dispatchMetadataSchema = z

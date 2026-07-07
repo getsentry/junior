@@ -253,8 +253,8 @@ describe("buildHomeView", () => {
         ...validToken,
         account: {
           id: "12345",
-          label: "requester",
-          url: "https://github.com/requester",
+          label: "actor",
+          url: "https://github.com/actor",
         },
       },
     });
@@ -266,7 +266,7 @@ describe("buildHomeView", () => {
     );
     expect(section).toBeDefined();
     expect(section?.text?.text).toContain(
-      "Connected as <https://github.com/requester|requester>",
+      "Connected as <https://github.com/actor|actor>",
     );
     expect(store.get).toHaveBeenCalledWith("U123", "github");
     expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");

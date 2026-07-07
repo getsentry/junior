@@ -148,7 +148,7 @@ describe("normalizeToolResult", () => {
       permission_denied: {
         account: {
           id: "12345",
-          label: "requester",
+          label: "actor",
         },
         acceptedPermissions: "contents=write",
         grant: {
@@ -188,7 +188,7 @@ describe("normalizeToolResult", () => {
       ),
     });
     expect(result.content[0]).toMatchObject({
-      text: expect.stringContaining("Provider account: requester (12345)"),
+      text: expect.stringContaining("Provider account: actor (12345)"),
     });
     expect(result.content[0]).toMatchObject({
       text: expect.stringContaining(

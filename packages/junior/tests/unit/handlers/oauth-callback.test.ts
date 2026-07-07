@@ -8,7 +8,7 @@ const {
   EXAMPLE_OAUTH_CONFIG,
   GITHUB_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
-  lookupSlackRequesterMock,
+  lookupSlackActorMock,
   resolvePluginOAuthAccountMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
@@ -39,7 +39,7 @@ const {
     treatEmptyScopeAsUnreported: true,
     callbackPath: "/api/oauth/callback/github",
   },
-  lookupSlackRequesterMock: vi.fn(),
+  lookupSlackActorMock: vi.fn(),
   resolvePluginOAuthAccountMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
@@ -100,7 +100,7 @@ vi.mock("@/chat/config", async (importOriginal) => {
 });
 
 vi.mock("@/chat/slack/user", () => ({
-  lookupSlackRequester: lookupSlackRequesterMock,
+  lookupSlackActor: lookupSlackActorMock,
 }));
 
 vi.mock("@/chat/plugins/credential-hooks", () => ({
@@ -125,12 +125,12 @@ beforeEach(async () => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   await disconnectStateAdapter();
   await getStateAdapter().connect();
-  lookupSlackRequesterMock.mockReset();
-  lookupSlackRequesterMock.mockResolvedValue({
+  lookupSlackActorMock.mockReset();
+  lookupSlackActorMock.mockResolvedValue({
     platform: "slack",
     teamId: "T777",
     userId: "U777",
-    userName: "requester",
+    userName: "actor",
   });
   resolvePluginOAuthAccountMock.mockReset();
   resolvePluginOAuthAccountMock.mockResolvedValue(undefined);
@@ -468,8 +468,8 @@ describe("oauth callback handler", () => {
     configureGitHubOAuthEnv();
     resolvePluginOAuthAccountMock.mockResolvedValue({
       id: "12345",
-      label: "requester",
-      url: "https://github.com/requester",
+      label: "actor",
+      url: "https://github.com/actor",
     });
     mockJsonFetch({
       access_token: "github-user-token",
@@ -498,8 +498,8 @@ describe("oauth callback handler", () => {
       accessToken: "github-user-token",
       account: {
         id: "12345",
-        label: "requester",
-        url: "https://github.com/requester",
+        label: "actor",
+        url: "https://github.com/actor",
       },
       refreshToken: "github-refresh-token",
     });

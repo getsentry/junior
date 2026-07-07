@@ -1,11 +1,11 @@
 /**
- * Canonical requester identity.
+ * Canonical actor identity.
  *
- * Runtime requesters are platform-scoped actors. Stored Slack requester parsing
+ * Runtime actors are platform-scoped actors. Stored Slack actor parsing
  * remains explicit so durable conversation metadata is not repaired on read.
  */
 import { z } from "zod";
-import { requesterSchema } from "@sentry/junior-plugin-api";
+import { actorSchema } from "@sentry/junior-plugin-api";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 
 const SLACK_USER_ID_DISPLAY_PATTERN = /^[UW][A-Z0-9]{5,}$/;
@@ -16,7 +16,7 @@ const exactStoredStringSchema = z
   .min(1)
   .refine((value) => value === value.trim());
 
-export const storedSlackRequesterSchema = z
+export const storedSlackActorSchema = z
   .object({
     email: exactStoredStringSchema.optional(),
     fullName: exactStoredStringSchema.optional(),
@@ -27,42 +27,53 @@ export const storedSlackRequesterSchema = z
   })
   .strict();
 
-interface BaseRequester {
+interface BaseActor {
   email?: string;
   fullName?: string;
   userId: string;
   userName?: string;
 }
 
-export interface SlackRequester extends BaseRequester {
+export interface SlackActor extends BaseActor {
   platform: "slack";
   teamId: string;
 }
 
-export interface LocalRequester extends BaseRequester {
+export interface LocalActor extends BaseActor {
   platform: "local";
 }
 
-export type Requester = SlackRequester | LocalRequester;
+export interface SystemActor {
+  platform: "system";
+  name: string;
+}
 
-export interface SlackRequesterProfile {
+export type UserActor = SlackActor | LocalActor;
+export type Actor = UserActor | SystemActor;
+
+export interface SlackActorProfile {
   email?: string;
   fullName?: string;
   userName?: string;
 }
 
-export type StoredSlackRequester = z.output<typeof storedSlackRequesterSchema>;
+export type StoredSlackActor = z.output<typeof storedSlackActorSchema>;
 
-/** Parse a serialized runtime requester that crossed a durable boundary. */
-export function parseRequester(value: unknown): Requester | undefined {
-  const result = requesterSchema.safeParse(value);
+/** Parse a serialized runtime actor that crossed a durable boundary. */
+export function parseActor(value: unknown): Actor | undefined {
+  const result = actorSchema.safeParse(value);
   return result.success ? result.data : undefined;
 }
 
-interface RequesterInput {
+/** Return whether an actor is a platform-scoped user actor. */
+export function isUserActor(actor: Actor | undefined): actor is UserActor {
+  return Boolean(actor && "userId" in actor);
+}
+
+interface ActorInput {
   email?: string;
   fullName?: string;
-  platform?: Requester["platform"];
+  platform?: UserActor["platform"];
   teamId?: string;
   userId?: string;
   userName?: string;
@@ -81,7 +92,7 @@ function isSlackUserId(value: string): boolean {
   return SLACK_USER_ID_DISPLAY_PATTERN.test(value);
 }
 
-function cleanRequesterDisplayName(
+function cleanActorDisplayName(
   value: string | undefined,
   userId?: string,
 ): string | undefined {
@@ -98,7 +109,7 @@ function cleanRequesterDisplayName(
   return isSlackUserId(displayName) ? undefined : displayName;
 }
 
-function cleanRequesterEmail(value: string | undefined): string | undefined {
+function cleanActorEmail(value: string | undefined): string | undefined {
   const email = clean(value);
   return email && EMAIL_PATTERN.test(email) ? email : undefined;
 }
@@ -119,15 +130,15 @@ export function isActorUserId(value: string | undefined): value is string {
   return parseActorUserId(value) === value;
 }
 
-/** Build Junior's canonical platform requester from exact actor ids and profile data. */
-export function createRequester(
-  input: RequesterInput | undefined,
+/** Build Junior's canonical platform actor from exact actor ids and profile data. */
+export function createActor(
+  input: ActorInput | undefined,
   context: {
-    platform?: Requester["platform"];
+    platform?: UserActor["platform"];
     teamId?: string;
     userId?: string;
   },
-): Requester | undefined {
+): UserActor | undefined {
   const platform = context.platform ?? input?.platform;
   if (!platform) {
     return undefined;
@@ -140,8 +151,8 @@ export function createRequester(
   if (input?.userId !== undefined && !inputUserId) {
     return undefined;
   }
-  const requesterUserId = contextUserId ?? inputUserId;
-  if (!requesterUserId) {
+  const actorUserId = contextUserId ?? inputUserId;
+  if (!actorUserId) {
     return undefined;
   }
 
@@ -153,8 +164,8 @@ export function createRequester(
   if (input?.teamId !== undefined && !inputTeamId) {
     return undefined;
   }
-  const requesterTeamId = contextTeamId ?? inputTeamId;
-  if (platform === "slack" && !requesterTeamId) {
+  const actorTeamId = contextTeamId ?? inputTeamId;
+  if (platform === "slack" && !actorTeamId) {
     return undefined;
   }
 
@@ -164,43 +175,43 @@ export function createRequester(
       !contextTeamId ||
       !inputTeamId ||
       contextTeamId === inputTeamId);
-  const requester = {
-    ...(canUseInputProfile && cleanRequesterEmail(input?.email)
-      ? { email: cleanRequesterEmail(input?.email) }
+  const actor = {
+    ...(canUseInputProfile && cleanActorEmail(input?.email)
+      ? { email: cleanActorEmail(input?.email) }
       : {}),
     ...(canUseInputProfile &&
-    cleanRequesterDisplayName(input?.fullName, requesterUserId)
+    cleanActorDisplayName(input?.fullName, actorUserId)
       ? {
-          fullName: cleanRequesterDisplayName(input?.fullName, requesterUserId),
+          fullName: cleanActorDisplayName(input?.fullName, actorUserId),
         }
       : {}),
     platform,
-    userId: requesterUserId,
+    userId: actorUserId,
     ...(canUseInputProfile &&
-    cleanRequesterDisplayName(input?.userName, requesterUserId)
+    cleanActorDisplayName(input?.userName, actorUserId)
       ? {
-          userName: cleanRequesterDisplayName(input?.userName, requesterUserId),
+          userName: cleanActorDisplayName(input?.userName, actorUserId),
         }
       : {}),
   };
   if (platform === "slack") {
-    return { ...requester, platform, teamId: requesterTeamId! };
+    return { ...actor, platform, teamId: actorTeamId! };
   }
-  return { ...requester, platform };
+  return { ...actor, platform };
 }
 
-/** Build Junior's canonical requester from Slack profile data. */
-export function createSlackRequester(
+/** Build Junior's canonical actor from Slack profile data. */
+export function createSlackActor(
   teamId: string,
   userId: string,
-  profile: SlackRequesterProfile | null | undefined,
-): SlackRequester {
+  profile: SlackActorProfile | null | undefined,
+): SlackActor {
   const actorUserId = parseActorUserId(userId);
   const actorTeamId = parseSlackTeamId(teamId);
   if (!actorTeamId || !actorUserId) {
-    throw new Error("Slack requester requires team and user ids");
+    throw new Error("Slack actor requires team and user ids");
   }
-  const requester = createRequester(
+  const actor = createActor(
     {
       email: profile?.email,
       fullName: profile?.fullName,
@@ -211,17 +222,17 @@ export function createSlackRequester(
     },
     { teamId: actorTeamId, userId: actorUserId },
   );
-  if (!requester || requester.platform !== "slack") {
-    throw new Error("Slack requester requires team and user ids");
+  if (!actor || actor.platform !== "slack") {
+    throw new Error("Slack actor requires team and user ids");
   }
-  return requester;
+  return actor;
 }
 
-/** Parse a serialized Slack requester that crossed a runtime boundary. */
-export function parseStoredSlackRequester(
+/** Parse a serialized Slack actor that crossed a runtime boundary. */
+export function parseStoredSlackActor(
   value: unknown,
-): StoredSlackRequester | undefined {
-  const parsed = storedSlackRequesterSchema.safeParse(value);
+): StoredSlackActor | undefined {
+  const parsed = storedSlackActorSchema.safeParse(value);
   if (!parsed.success) {
     return undefined;
   }
@@ -246,42 +257,40 @@ export function parseStoredSlackRequester(
   return parsed.data;
 }
 
-/** Convert a runtime Slack requester into its durable session shape. */
-export function toStoredSlackRequester(
-  requester: SlackRequester,
-): StoredSlackRequester {
+/** Convert a runtime Slack actor into its durable session shape. */
+export function toStoredSlackActor(actor: SlackActor): StoredSlackActor {
   return {
-    ...(requester.email ? { email: requester.email } : {}),
-    ...(requester.fullName ? { fullName: requester.fullName } : {}),
-    platform: requester.platform,
-    slackUserId: requester.userId,
-    ...(requester.userName ? { slackUserName: requester.userName } : {}),
-    teamId: requester.teamId,
+    ...(actor.email ? { email: actor.email } : {}),
+    ...(actor.fullName ? { fullName: actor.fullName } : {}),
+    platform: actor.platform,
+    slackUserId: actor.userId,
+    ...(actor.userName ? { slackUserName: actor.userName } : {}),
+    teamId: actor.teamId,
   };
 }
 
-/** Resolve a Slack resume requester from stored profile data and the active actor. */
-export function createSlackResumeRequester(args: {
-  requester?: Requester;
+/** Resolve a Slack resume actor from stored profile data and the active actor. */
+export function createSlackResumeActor(args: {
+  actor?: UserActor;
   teamId: string;
   userId: string;
-}): SlackRequester {
-  if (args.requester) {
+}): SlackActor {
+  if (args.actor) {
     if (
-      args.requester.platform !== "slack" ||
-      args.requester.teamId !== args.teamId ||
-      args.requester.userId !== args.userId
+      args.actor.platform !== "slack" ||
+      args.actor.teamId !== args.teamId ||
+      args.actor.userId !== args.userId
     ) {
-      throw new Error("Stored Slack requester did not match resume actor");
+      throw new Error("Stored Slack actor did not match resume actor");
     }
   }
-  const requester = createRequester(args.requester, {
+  const actor = createActor(args.actor, {
     platform: "slack",
     teamId: args.teamId,
     userId: args.userId,
   });
-  if (!requester || requester.platform !== "slack") {
-    throw new Error("Slack requester requires team and user ids");
+  if (!actor || actor.platform !== "slack") {
+    throw new Error("Slack actor requires team and user ids");
   }
-  return requester;
+  return actor;
 }

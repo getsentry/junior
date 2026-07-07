@@ -6,7 +6,7 @@ import {
   loadConnectedMcpProviders,
   loadMessages,
   loadProjection,
-  loadProjectionWithRequester,
+  loadProjectionWithActor,
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
@@ -429,7 +429,7 @@ describe("agent session log store", () => {
       conversationId: "conversation-1",
       kind: "plugin",
       provider: "sentry",
-      requesterId: "U123",
+      actorId: "U123",
       authorizationId: "auth-1",
       delivery: "private_link_sent",
       ttlMs: 60_000,
@@ -439,7 +439,7 @@ describe("agent session log store", () => {
       conversationId: "conversation-1",
       kind: "plugin",
       provider: "sentry",
-      requesterId: "U123",
+      actorId: "U123",
       authorizationId: "auth-1",
       delivery: "private_link_sent",
       ttlMs: 60_000,
@@ -449,7 +449,7 @@ describe("agent session log store", () => {
       conversationId: "conversation-1",
       kind: "plugin",
       provider: "sentry",
-      requesterId: "U123",
+      actorId: "U123",
       authorizationId: "auth-1",
       ttlMs: 60_000,
     });
@@ -458,7 +458,7 @@ describe("agent session log store", () => {
       conversationId: "conversation-1",
       kind: "plugin",
       provider: "sentry",
-      requesterId: "U123",
+      actorId: "U123",
       authorizationId: "auth-1",
       ttlMs: 60_000,
     });
@@ -477,7 +477,7 @@ describe("agent session log store", () => {
         createdAtMs: 1_000,
         kind: "plugin",
         provider: "sentry",
-        requesterId: "U123",
+        actorId: "U123",
         authorizationId: "auth-1",
         delivery: "private_link_sent",
       },
@@ -488,7 +488,7 @@ describe("agent session log store", () => {
         createdAtMs: 1_000,
         kind: "plugin",
         provider: "sentry",
-        requesterId: "U123",
+        actorId: "U123",
         authorizationId: "auth-1",
       },
     ]);
@@ -526,8 +526,8 @@ describe("agent session log store", () => {
   });
 });
 
-describe("session log requester identity", () => {
-  it("attaches requester to the last new user message on commit", async () => {
+describe("session log actor identity", () => {
+  it("attaches actor to the last new user message on commit", async () => {
     const store = memoryStore();
     const contextMsg: PiMessage = {
       role: "user",
@@ -545,7 +545,7 @@ describe("session log requester identity", () => {
       conversationId: "conv-req-1",
       messages: [contextMsg, turnMsg],
       ttlMs: 60_000,
-      requester: {
+      actor: {
         slackUserId: "U123",
         slackUserName: "alice",
         fullName: "Alice Example",
@@ -553,24 +553,24 @@ describe("session log requester identity", () => {
       },
     });
 
-    // Requester is attached to the LAST new user message (turnMsg), not contextMsg
+    // Actor is attached to the LAST new user message (turnMsg), not contextMsg
     const entries = store.entries;
     const piEntries = entries.filter((e) => e.type === "pi_message");
     expect(piEntries).toHaveLength(2);
-    expect((piEntries[0] as { requester?: unknown }).requester).toBeUndefined();
-    expect((piEntries[1] as { requester?: unknown }).requester).toMatchObject({
+    expect((piEntries[0] as { actor?: unknown }).actor).toBeUndefined();
+    expect((piEntries[1] as { actor?: unknown }).actor).toMatchObject({
       slackUserId: "U123",
       slackUserName: "alice",
       fullName: "Alice Example",
       email: "alice@sentry.io",
     });
 
-    // Requester is NOT on the Pi message object (not model-visible)
-    const msgPayload = piEntries[1] as { message?: { requester?: unknown } };
-    expect(msgPayload.message?.requester).toBeUndefined();
+    // Actor is NOT on the Pi message object (not model-visible)
+    const msgPayload = piEntries[1] as { message?: { actor?: unknown } };
+    expect(msgPayload.message?.actor).toBeUndefined();
   });
 
-  it("derives requester from session log via loadProjectionWithRequester", async () => {
+  it("derives actor from session log via loadProjectionWithActor", async () => {
     const store = memoryStore();
     const turnMsg: PiMessage = {
       role: "user",
@@ -583,24 +583,24 @@ describe("session log requester identity", () => {
       conversationId: "conv-req-2",
       messages: [turnMsg],
       ttlMs: 60_000,
-      requester: { slackUserId: "U456", email: "bob@sentry.io" },
+      actor: { slackUserId: "U456", email: "bob@sentry.io" },
     });
 
-    const { loadProjectionWithRequester } =
+    const { loadProjectionWithActor } =
       await import("@/chat/state/session-log");
-    const projection = await loadProjectionWithRequester({
+    const projection = await loadProjectionWithActor({
       store,
       conversationId: "conv-req-2",
     });
 
-    expect(projection.requester).toMatchObject({
+    expect(projection.actor).toMatchObject({
       slackUserId: "U456",
       email: "bob@sentry.io",
     });
     expect(projection.messages).toHaveLength(1);
   });
 
-  it("records requester metadata without resetting session-scoped facts", async () => {
+  it("records actor metadata without resetting session-scoped facts", async () => {
     const store = memoryStore();
     const turnMsg: PiMessage = {
       role: "user",
@@ -625,22 +625,22 @@ describe("session log requester identity", () => {
       conversationId: "conv-req-3",
       messages: [turnMsg],
       ttlMs: 60_000,
-      requester: { slackUserId: "U999", email: "drew@sentry.io" },
+      actor: { slackUserId: "U999", email: "drew@sentry.io" },
     });
 
     expect(store.entries.map((entry) => entry.type)).toEqual([
       "pi_message",
       "mcp_provider_connected",
-      "requester_recorded",
+      "actor_recorded",
     ]);
     await expect(
-      loadProjectionWithRequester({
+      loadProjectionWithActor({
         store,
         conversationId: "conv-req-3",
       }),
     ).resolves.toMatchObject({
       messages: [turnMsg],
-      requester: {
+      actor: {
         slackUserId: "U999",
         email: "drew@sentry.io",
       },
@@ -653,7 +653,7 @@ describe("session log requester identity", () => {
     ).resolves.toEqual(["github"]);
   });
 
-  it("preserves requester through a projection reset without a new requester", async () => {
+  it("preserves actor through a projection reset without a new actor", async () => {
     const store = memoryStore();
     const msg1: PiMessage = {
       role: "user",
@@ -666,13 +666,13 @@ describe("session log requester identity", () => {
       timestamp: 2,
     } as PiMessage;
 
-    // First commit with requester
+    // First commit with actor
     await commitMessages({
       store,
       conversationId: "conv-req-4",
       messages: [msg1],
       ttlMs: 60_000,
-      requester: { slackUserId: "U789", email: "carol@sentry.io" },
+      actor: { slackUserId: "U789", email: "carol@sentry.io" },
     });
 
     // Trigger a reset by replacing history
@@ -683,14 +683,14 @@ describe("session log requester identity", () => {
       ttlMs: 60_000,
     });
 
-    const { loadProjectionWithRequester } =
+    const { loadProjectionWithActor } =
       await import("@/chat/state/session-log");
-    const projection = await loadProjectionWithRequester({
+    const projection = await loadProjectionWithActor({
       store,
       conversationId: "conv-req-4",
     });
 
-    expect(projection.requester?.slackUserId).toBe("U789");
+    expect(projection.actor?.slackUserId).toBe("U789");
     expect(projection.messages).toHaveLength(1);
   });
 });

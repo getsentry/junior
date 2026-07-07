@@ -25,7 +25,7 @@ memory_listMemories
 memory_searchMemories
 ```
 
-Tool schemas must be context-bound. All tools derive requester, source,
+Tool schemas must be context-bound. All tools derive actor, source,
 destination, conversation, and tenant/workspace authority from runtime context.
 
 ### memory_createMemory
@@ -39,7 +39,7 @@ destination, conversation, and tenant/workspace authority from runtime context.
 
 `memory_createMemory` must not accept:
 
-- requester id
+- actor id
 - actor id
 - Slack team id
 - Slack channel id
@@ -60,9 +60,9 @@ or canonical stored content.
 
 Ordinary technical, workflow, communication, tool, language, product,
 repository, or project preferences and opinions are valid candidates when the
-current requester explicitly asks Junior to remember them. The outer agent
+current actor explicitly asks Junior to remember them. The outer agent
 should call `memory_createMemory` for those requests instead of asking the
-requester to rephrase them as safer memory text. The memory agent owns the
+actor to rephrase them as safer memory text. The memory agent owns the
 semantic store-or-reject decision and canonical rewrite.
 
 The outer agent should not call `memory_createMemory` for ordinary organic
@@ -75,7 +75,7 @@ clearly durable and useful beyond the active task.
 The explicit tool path uses runtime context for source and idempotency. It must
 run through the memory agent's explicit-create review path. The memory agent
 decides store/reject, memory kind, and canonical perspective-neutral content.
-The plugin derives the storage target from the reviewed kind: requester for
+The plugin derives the storage target from the reviewed kind: actor for
 `preference`, conversation for `procedure` and `knowledge`.
 
 The model cannot provide arbitrary scope enums, subject ids, Slack user ids,
@@ -129,7 +129,7 @@ where the model needs a more specific lookup than automatic recall supplied.
 
 `memory_searchMemories` must not accept:
 
-- requester id
+- actor id
 - actor id
 - Slack team id
 - Slack channel id

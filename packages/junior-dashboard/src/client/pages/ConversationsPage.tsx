@@ -8,7 +8,7 @@ import { SectionHeader } from "../components/SectionHeader";
 import { SectionTitle } from "../components/SectionTitle";
 import {
   buildConversations,
-  conversationRequesterOptions,
+  conversationActorOptions,
   conversationSourceOptions,
   filterConversationList,
   filterConversations,
@@ -22,16 +22,16 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   const [params, setParams] = useSearchParams();
   const filter = getFilter(params.get("filter"));
   const query = params.get("q") ?? "";
-  const requester = params.get("requester") ?? "";
+  const actor = params.get("actor") ?? "";
   const source = params.get("source") ?? "";
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const sourceOptions = conversationSourceOptions(conversations);
-  const requesterOptions = conversationRequesterOptions(conversations);
+  const actorOptions = conversationActorOptions(conversations);
   const statusConversations = filterConversations(conversations, filter);
   const visibleConversations = filterConversationList(statusConversations, {
     query,
-    requester,
+    actor,
     source,
   });
   const search = params.toString();
@@ -45,7 +45,7 @@ export function ConversationsPage(props: { data?: DashboardData }) {
     setParams(next);
   }
 
-  function updateParam(name: "q" | "requester" | "source", value: string) {
+  function updateParam(name: "q" | "actor" | "source", value: string) {
     const next = new URLSearchParams(params);
     const nextValue = name === "q" ? value : value.trim();
     if (nextValue.trim()) {
@@ -59,7 +59,7 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   function clearListFilters() {
     const next = new URLSearchParams(params);
     next.delete("q");
-    next.delete("requester");
+    next.delete("actor");
     next.delete("source");
     setParams(next, { replace: true });
   }
@@ -80,12 +80,12 @@ export function ConversationsPage(props: { data?: DashboardData }) {
           </SectionHeader>
           <ConversationListToolbar
             query={query}
-            requester={requester}
-            requesterOptions={requesterOptions}
+            actor={actor}
+            actorOptions={actorOptions}
             source={source}
             sourceOptions={sourceOptions}
             onQueryChange={(value) => updateParam("q", value)}
-            onRequesterChange={(value) => updateParam("requester", value)}
+            onActorChange={(value) => updateParam("actor", value)}
             onSourceChange={(value) => updateParam("source", value)}
             onClear={clearListFilters}
           />

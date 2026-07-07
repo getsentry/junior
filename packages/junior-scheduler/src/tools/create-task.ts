@@ -12,7 +12,7 @@ import {
   isValidTimeZone,
   parseNextRunAtMs,
   requireActiveConversation,
-  requireRequester,
+  requireActor,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
   schedulerStore,
@@ -64,7 +64,7 @@ export function createSlackScheduleCreateTaskTool(
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input) => {
       const destination = requireActiveConversation(context);
-      const requester = requireRequester(context);
+      const actor = requireActor(context);
 
       const nowMs = Date.now();
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
@@ -92,7 +92,7 @@ export function createSlackScheduleCreateTaskTool(
         id: buildTaskId(),
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
-        createdBy: requester,
+        createdBy: actor,
         conversationAccess,
         ...(credentialSubject ? { credentialSubject } : {}),
         destination,

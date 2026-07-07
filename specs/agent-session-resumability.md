@@ -189,7 +189,7 @@ happened:
   successfully connected and its tool catalog listed for this session.
 - `authorization_requested`: records that the runtime sent or reused a private
   authorization link for provider work that blocked the current session.
-- `authorization_completed`: records that the requester completed the
+- `authorization_completed`: records that the actor completed the
   authorization callback for the blocked provider work.
 - `tool_execution_started`: records that the parent run started a tool call so
   operator-facing activity views can show in-flight work before Pi emits the

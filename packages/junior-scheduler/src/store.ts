@@ -89,8 +89,8 @@ const taskRecordSchema = z
     destination: slackDestinationSchema,
     executionActor: z
       .object({
-        type: z.literal("system"),
-        id: z.string(),
+        platform: z.literal("system"),
+        name: z.string(),
       })
       .strict()
       .optional(),

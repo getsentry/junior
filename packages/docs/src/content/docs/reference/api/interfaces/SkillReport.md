@@ -5,7 +5,7 @@ prev: false
 title: "SkillReport"
 ---
 
-Defined in: [junior/src/reporting.ts:55](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L55)
+Defined in: [junior/src/reporting.ts:58](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L58)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting.ts:55](https://github.com/getsentry/junior/blo
 
 > **name**: `string`
 
-Defined in: [junior/src/reporting.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L56)
+Defined in: [junior/src/reporting.ts:59](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L59)
 
 ---
 
@@ -21,4 +21,4 @@ Defined in: [junior/src/reporting.ts:56](https://github.com/getsentry/junior/blo
 
 > `optional` **pluginProvider?**: `string`
 
-Defined in: [junior/src/reporting.ts:57](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L57)
+Defined in: [junior/src/reporting.ts:60](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L60)

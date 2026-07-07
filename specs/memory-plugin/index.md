@@ -82,14 +82,14 @@ Read these files as one canonical spec:
 
 V1 memory must satisfy these product stories:
 
-1. As a requester, I can ask Junior to remember a public/shareable first-person
+1. As a actor, I can ask Junior to remember a public/shareable first-person
    fact about me and have Junior recall it for me later.
-2. As a requester, I cannot create a personal memory about another person,
+2. As a actor, I cannot create a personal memory about another person,
    because personal user-subject memories are owned by the current
-   author/requester.
+   author/actor.
 3. As a public conversation participant, I can ask Junior to remember shared
    operational knowledge for that conversation.
-4. As a requester, I can list, search, and remove memories visible in the
+4. As a actor, I can list, search, and remove memories visible in the
    current context without giving the model actor ids, Slack ids, or arbitrary
    scope selectors.
 5. As an installer, I can enable memory knowing private, sensitive, and secret
@@ -203,11 +203,11 @@ Core owns:
 The plugin stores one semantic `kind` for V1 extraction, storage, rendering, and
 future lifecycle policy:
 
-| Kind         | Meaning                                                                                  |
-| ------------ | ---------------------------------------------------------------------------------------- |
-| `preference` | Stable requester-owned preference, opinion, habit, identity fact, or workflow preference |
-| `procedure`  | Reusable task, lookup, process, runbook, or decision-path instruction                    |
-| `knowledge`  | Stable shared project, workspace, operational, or domain fact                            |
+| Kind         | Meaning                                                                              |
+| ------------ | ------------------------------------------------------------------------------------ |
+| `preference` | Stable actor-owned preference, opinion, habit, identity fact, or workflow preference |
+| `procedure`  | Reusable task, lookup, process, runbook, or decision-path instruction                |
+| `knowledge`  | Stable shared project, workspace, operational, or domain fact                        |
 
 Every stored memory is still a self-contained fact. `kind` is the single
 classification layer; V1 does not keep a second storage `type` taxonomy.
@@ -217,8 +217,8 @@ that describes an obligation remains ordinary `knowledge` or `procedure` unless
 the user explicitly creates a scheduled task through the scheduler workflow.
 
 V1 passive extraction must not create personal identity or relationship memories
-about third parties. Public/shareable requester identity facts may be stored
-only as requester-owned memories when they pass policy; a future graph/entity
+about third parties. Public/shareable actor identity facts may be stored
+only as actor-owned memories when they pass policy; a future graph/entity
 index can derive richer identity or relationship structure from authoritative
 memory rows if needed.
 
@@ -228,18 +228,18 @@ V1 supports two visibility scopes:
 
 | Scope          | Stored authority                                | Visible to                                                 |
 | -------------- | ----------------------------------------------- | ---------------------------------------------------------- |
-| `personal`     | current requester actor                         | same requester in compatible runtime context               |
+| `personal`     | current actor                                   | same actor in compatible runtime context                   |
 | `conversation` | source-derived conversation or public workspace | public Slack workspace, or same private/local conversation |
 
 Rules:
 
 1. Scope is derived from runtime context. Model-visible tool arguments never
-   provide requester ids, team ids, channel ids, thread ids, or conversation ids.
+   provide actor ids, team ids, channel ids, thread ids, or conversation ids.
 2. Personal memory is the default for first-person facts in interactive
    requests.
-   The current author/requester must be the subject of any personal-scoped
+   The current author/actor must be the subject of any personal-scoped
    identity, preference, or relationship fact. For example, `I am on the
-billing team` may become a personal memory for that requester, while `David
+billing team` may become a personal memory for that actor, while `David
 is on the billing team` is not a valid personal memory when written by
    someone else.
 3. Conversation memory may be created only when the user explicitly frames the
@@ -251,7 +251,7 @@ is on the billing team` is not a valid personal memory when written by
 5. Subject fields describe what the memory is about; they do not broaden
    visibility beyond the stored scope.
 6. Stored content must not include ownership, source, or perspective labels
-   such as `the requester`, `the user`, display names, `I`, `my`, `this
+   such as `the actor`, `the user`, display names, `I`, `my`, `this
 thread`, or channel labels. Those facts belong in structured scope, subject,
    and source fields; prompt rendering may add perspective later.
 
@@ -262,13 +262,13 @@ V1 supports a small subject model rather than a graph:
 
 | Subject type   | Meaning                                      | Subject key                                       |
 | -------------- | -------------------------------------------- | ------------------------------------------------- |
-| `user`         | public/shareable fact about the current user | current requester actor key                       |
+| `user`         | public/shareable fact about the current user | current actor key                                 |
 | `conversation` | norm or fact about the current conversation  | current source-derived conversation/workspace key |
 | `general`      | project, product, repository, or domain fact | none                                              |
 
 Rules:
 
-1. `user` subject is allowed only for the current author/requester. V1 does not
+1. `user` subject is allowed only for the current author/actor. V1 does not
    let one participant create another user's personal profile memory.
 2. `conversation` subject is derived from the current runtime conversation.
 3. `general` subject is for public/shareable operational or domain knowledge
@@ -290,8 +290,8 @@ inside its stored scope without special private/sensitive handling.
 
 Rules:
 
-1. `personal` scope means requester-owned visibility for public/shareable
-   first-person memories authored by that requester. It does not mean the
+1. `personal` scope means actor-owned visibility for public/shareable
+   first-person memories authored by that actor. It does not mean the
    content may be private, sensitive, secret, or third-party profile data.
 2. `conversation` scope means the memory may be recalled in the same
    conversation. It must be appropriate as shared conversation knowledge.

@@ -5,7 +5,7 @@ prev: false
 title: "TranscriptMessage"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L160)
+Defined in: [junior/src/reporting/conversations.ts:179](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L179)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getse
 
 > **parts**: [`TranscriptPart`](/reference/api/interfaces/transcriptpart/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L161)
+Defined in: [junior/src/reporting/conversations.ts:180](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L180)
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getse
 
 > **role**: [`TranscriptRole`](/reference/api/type-aliases/transcriptrole/)
 
-Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L162)
+Defined in: [junior/src/reporting/conversations.ts:181](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L181)
 
 ---
 
@@ -29,4 +29,4 @@ Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getse
 
 > `optional` **timestamp?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L163)
+Defined in: [junior/src/reporting/conversations.ts:182](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L182)

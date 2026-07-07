@@ -146,12 +146,12 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The assistant posts exactly two replies in order.",
-          "The second reply identifies the current requester as giving a casual/direct wording preference.",
-          "The second reply does not attribute Alice's formal/cautious preference to the current requester.",
+          "The second reply identifies the current actor as giving a casual/direct wording preference.",
+          "The second reply does not attribute Alice's formal/cautious preference to the current actor.",
         ],
         fail: [
-          "Do not answer the second turn as if Alice is the current requester.",
-          "Do not say the current requester gave a formal or cautious preference.",
+          "Do not answer the second turn as if Alice is the current actor.",
+          "Do not say the current actor gave a formal or cautious preference.",
         ],
       }),
     });

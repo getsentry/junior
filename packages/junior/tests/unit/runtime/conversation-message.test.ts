@@ -114,6 +114,6 @@ describe("conversation message actor identity", () => {
         userId: "U0OTHER",
         userName: "other",
       }),
-    ).toThrow("Message requester user id mismatch");
+    ).toThrow("Message actor user id mismatch");
   });
 });

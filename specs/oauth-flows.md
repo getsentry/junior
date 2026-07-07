@@ -61,7 +61,7 @@ Agent: loads the matching plugin skill and runs the real provider command
   ├─ If credential setup is unavailable or no OAuth authorization metadata is present:
   │    • runtime surfaces the host-provided credential failure message
   │    • runtime does not start a user OAuth flow
-  ├─ If the requester is a Slack bot or other non-human actor:
+  ├─ If the actor is a Slack bot or other non-human actor:
   │    • runtime surfaces a terminal authorization failure
   │    • runtime does not create pending auth or deliver private auth links
   └─ OAuth-paused runs end cleanly; they are not kept as the active in-flight run
@@ -74,7 +74,7 @@ Provider: redirects to /api/oauth/callback/<provider>?code=...&state=...
   │
   ├─ Callback validates state and provider match
   ├─ Callback exchanges code for tokens
-  ├─ Callback stores tokens by requester ID + provider
+  ├─ Callback stores tokens by actor ID + provider
   ├─ Callback appends `authorization_completed` to the agent session log
   ├─ Callback refreshes App Home connected-account state (best effort)
   └─ Callback resumes only if the blocked request is still the latest relevant thread request; otherwise it stores tokens and stays silent in Slack
@@ -98,7 +98,7 @@ Agent: calls an MCP tool from the same plugin
   ├─ Runtime appends `authorization_requested` to the agent session log
   ├─ Historical turn-session record is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
-  ├─ Bot or non-human Slack requesters fail terminally without pending auth or links
+  ├─ Bot or non-human Slack actors fail terminally without pending auth or links
   └─ Current run ends cleanly; it is not kept as the active in-flight run
   │
   ▼
@@ -143,10 +143,10 @@ Purpose:
 ### Thread-local pending auth
 
 - Stored in persisted thread conversation state, not in `activeTurnId`
-- Value: `{ kind, provider, requesterId, sessionId, scope?, linkSentAtMs }`
+- Value: `{ kind, provider, actorId, sessionId, scope?, linkSentAtMs }`
 - Purpose:
   - remembers which blocked request is eligible for auto-resume
-  - deduplicates repeated prompts only when `kind`, `provider`, `requesterId`,
+  - deduplicates repeated prompts only when `kind`, `provider`, `actorId`,
     `scope`, and `sessionId` all match a fresh already-sent private link
   - lets callbacks suppress stale resumes after newer thread activity
 - Callback freshness uses the latest real human request in the thread:

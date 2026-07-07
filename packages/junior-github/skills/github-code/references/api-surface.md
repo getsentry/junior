@@ -62,7 +62,7 @@ jr-rpc config set github.repo owner/repo
 
 - Prefer `--json` output for machine-readable parsing where available.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
-- A local `git commit` does not call GitHub. Pushing that commit does: `git push` requires `github.contents.write` on the target repo and requester write access.
+- A local `git commit` does not call GitHub. Pushing that commit does: `git push` requires `github.contents.write` on the target repo and actor write access.
 - REST Git commit construction also requires `github.contents.write`: `POST /git/blobs`, `POST /git/trees`, `POST /git/commits`, `POST /git/refs`, and `PATCH /git/refs/{ref}`.
 - If the commit changes workflow files under `.github/workflows`, expect `github.workflows.write` in addition to contents write.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.

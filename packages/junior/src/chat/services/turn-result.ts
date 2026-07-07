@@ -146,7 +146,7 @@ export interface TurnResultInput {
   thinkingSelection: TurnThinkingSelection;
   correlation?: {
     threadId?: string;
-    requesterId?: string;
+    actorId?: string;
     channelId?: string;
     runId?: string;
   };
@@ -267,7 +267,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     const markerCategory = reactionPerformed ? "reaction" : "none";
     const markerContext = {
       slackThreadId: correlation?.threadId,
-      slackUserId: correlation?.requesterId,
+      slackUserId: correlation?.actorId,
       slackChannelId: correlation?.channelId,
       runId: correlation?.runId,
       assistantUserName,
@@ -300,7 +300,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       "ai_no_reply_marker_mixed_text",
       {
         slackThreadId: correlation?.threadId,
-        slackUserId: correlation?.requesterId,
+        slackUserId: correlation?.actorId,
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,
@@ -324,7 +324,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       "ai_model_response_empty",
       {
         slackThreadId: correlation?.threadId,
-        slackUserId: correlation?.requesterId,
+        slackUserId: correlation?.actorId,
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,

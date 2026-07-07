@@ -281,7 +281,7 @@ const TEST_SOURCE = createSlackSource({
   type: "priv",
 });
 
-const TEST_REQUESTER = {
+const TEST_ACTOR = {
   platform: "slack",
   teamId: "T123",
   userId: "U123",
@@ -325,7 +325,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-1",
           turnId: "turn-1",
@@ -384,7 +384,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-timeout-cap",
           turnId: "turn-timeout-cap",
@@ -420,7 +420,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-short-deadline",
           turnId: "turn-short-deadline",
@@ -454,7 +454,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-2",
           turnId: "turn-2",
@@ -496,7 +496,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-hung",
           turnId: "turn-hung",
@@ -541,7 +541,7 @@ describe("executeAgentRun agent continuation", () => {
       routing: {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
-        requester: TEST_REQUESTER,
+        actor: TEST_ACTOR,
         correlation: {
           conversationId: "conversation-retry",
           turnId: "turn-retry",

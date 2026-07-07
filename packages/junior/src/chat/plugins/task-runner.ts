@@ -176,7 +176,7 @@ async function loadPluginRun(
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: record.destination,
-    ...(record.requester ? { requester: record.requester } : {}),
+    ...(record.actor ? { actor: record.actor } : {}),
     runId: record.sessionId,
     source: record.source,
     transcript: sessionMessages

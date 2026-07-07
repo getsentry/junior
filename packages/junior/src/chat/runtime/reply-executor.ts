@@ -84,11 +84,12 @@ import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
-  toStoredSlackRequester,
+  toStoredSlackActor,
   parseActorUserId,
-  type SlackRequester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+  type Actor,
+  type SlackActor,
+  type StoredSlackActor,
+} from "@/chat/actor";
 import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
@@ -150,8 +151,8 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
   );
 }
 
-function turnRequester(requester: SlackRequester): StoredSlackRequester {
-  return toStoredSlackRequester(requester);
+function turnActor(actor: SlackActor): StoredSlackActor {
+  return toStoredSlackActor(actor);
 }
 
 /**
@@ -253,7 +254,7 @@ function resourceEventCredentialContext(
   message: Message,
 ): CredentialContext | undefined {
   return isResourceEventMessage(message)
-    ? { actor: { type: "system", id: "resource-event" } }
+    ? { actor: { platform: "system", name: "resource-event" } }
     : undefined;
 }
 
@@ -368,7 +369,7 @@ interface ReplyExecutorDeps {
     attachments: Message["attachments"] | undefined,
     context: {
       threadId?: string;
-      requesterId?: string;
+      actorId?: string;
       channelId?: string;
       runId?: string;
       conversation?: PreparedTurnState["conversation"];
@@ -487,18 +488,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           ({
             actor: { type: "user", userId: message.author.userId },
           } satisfies CredentialContext);
-        const requester =
-          credentialContext.actor.type === "user"
+        const actor =
+          "type" in credentialContext.actor
             ? await ensureSlackMessageActorIdentity(
                 message,
                 teamId,
                 deps.services.lookupSlackUser,
               )
             : undefined;
-        const storedRequester = requester
-          ? turnRequester(requester)
-          : undefined;
-        const slackRequesterId = requester?.userId;
+        const executionActor: Actor | undefined =
+          "type" in credentialContext.actor ? actor : credentialContext.actor;
+        const storedActor = actor ? turnActor(actor) : undefined;
+        const slackActorId = actor?.userId;
 
         const preparedState =
           options.preparedState ??
@@ -512,7 +513,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             queuedMessages: options.queuedMessages,
             context: {
               threadId,
-              requesterId: slackRequesterId,
+              actorId: slackActorId,
               channelId,
               runId,
             },
@@ -540,11 +541,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const postAuthPauseNotice = async (
           providerDisplayName: string,
         ): Promise<void> => {
-          if (!requester) {
-            throw new Error("Slack auth pause notice requires a requester");
+          if (!actor) {
+            throw new Error("Slack auth pause notice requires an actor");
           }
           const text = buildAuthPauseResponse(
-            requester.userId,
+            actor.userId,
             providerDisplayName,
           );
           const footer = buildSlackReplyFooter({ conversationId });
@@ -599,7 +600,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   attachments,
                   {
                     threadId,
-                    requesterId: isResourceEventMessage(queued.message)
+                    actorId: isResourceEventMessage(queued.message)
                       ? undefined
                       : queued.message.author.userId,
                     channelId,
@@ -680,7 +681,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             await commitMessages({
               conversationId,
               messages: [...projection, ...missing],
-              requester: storedRequester,
+              actor: storedActor,
               ttlMs: THREAD_STATE_TTL_MS,
             });
             return true;
@@ -786,7 +787,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         }
         const configReply = await maybeApplyProviderDefaultConfigRequest({
           channelConfiguration: preparedState.channelConfiguration,
-          requesterId: requester?.userId,
+          actorId: actor?.userId,
           text: effectiveUserText,
         });
         if (configReply) {
@@ -838,7 +839,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             startedAtMs: turnStartedAtMs,
             state: "running",
             surface: "slack",
-            requester,
+            actor,
             destination,
             destinationVisibility,
             source,
@@ -855,7 +856,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           void initConversationContext(conversationId, {
             channelName,
             originSurface: "slack",
-            originRequester: storedRequester,
+            originActor: storedActor,
             startedAtMs: turnStartedAtMs,
           }).catch((error) => {
             logException(
@@ -907,15 +908,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         });
         await options.onTurnStatePersisted?.();
 
-        if (requester) {
+        if (actor) {
           setSentryUser({
-            id: requester.userId,
-            ...(requester.userName ? { username: requester.userName } : {}),
-            ...(requester.email ? { email: requester.email } : {}),
+            id: actor.userId,
+            ...(actor.userName ? { username: actor.userName } : {}),
+            ...(actor.email ? { email: actor.email } : {}),
           });
         }
-        if (requester?.userName) {
-          setTags({ slackUserName: requester.userName });
+        if (actor?.userName) {
+          setTags({ slackUserName: actor.userName });
         }
         const turnAttachments = collectTurnAttachments(
           message,
@@ -925,7 +926,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           turnAttachments,
           {
             threadId,
-            requesterId: slackRequesterId,
+            actorId: slackActorId,
             channelId,
             runId,
             conversation: preparedState.conversation,
@@ -997,7 +998,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 metadata: {
                   threadId,
-                  requesterId: slackRequesterId,
+                  actorId: slackActorId,
                   channelId,
                   runId,
                 },
@@ -1036,7 +1037,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             generateThreadTitle: deps.services.generateThreadTitle,
             getSlackAdapter: deps.getSlackAdapter,
             modelId: botConfig.fastModelId,
-            requesterId: slackRequesterId,
+            actorId: slackActorId,
             runId,
             threadId,
           });
@@ -1099,9 +1100,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           const activeInstructionAuthorId =
-            requester?.userId ?? parseActorUserId(message.author.userId);
+            actor?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
-            requester?.fullName ?? requester?.userName;
+            actor?.fullName ?? actor?.userName;
           const promptConversationContext = appendRecentThreadMessagesToContext(
             preparedState.conversationContext,
             options.queuedMessages ?? [],
@@ -1145,7 +1146,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
             routing: {
               credentialContext,
-              requester,
+              actor,
               slackConversation,
               source,
               destination,
@@ -1160,7 +1161,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 runId,
                 channelId,
                 channelName,
-                requesterId: slackRequesterId,
+                actorId: slackActorId,
               },
               toolChannelId,
             },
@@ -1217,7 +1218,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
           });
           if (outcome.status === "awaiting_auth") {
-            if (!requester) {
+            if (!actor) {
               const text = `I could not act on this subscribed event because ${outcome.providerDisplayName} needs user authorization. Ask me in this thread to connect ${outcome.providerDisplayName} before retrying.`;
               await postThreadReply(
                 buildSlackOutputMessage(text),
@@ -1439,13 +1440,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 messages: reply.piMessages,
                 logContext: {
                   threadId,
-                  requesterId: slackRequesterId,
+                  actorId: slackActorId,
                   channelId,
                   runId,
                   assistantUserName: botConfig.userName,
                   modelId: reply.diagnostics.modelId,
                 },
-                requester,
+                actor: executionActor,
                 surface: "slack",
               });
             } else if (conversationId) {
@@ -1458,7 +1459,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sliceId: 1,
                 startedAtMs: message.metadata.dateSent.getTime(),
                 state: "completed",
-                requester,
+                actor: executionActor,
                 destination,
                 destinationVisibility,
                 source,
@@ -1625,7 +1626,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   sliceId: 1,
                   startedAtMs: message.metadata.dateSent.getTime(),
                   state: "failed",
-                  requester,
+                  actor,
                   destination,
                   destinationVisibility,
                   source,

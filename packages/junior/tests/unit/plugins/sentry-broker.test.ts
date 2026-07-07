@@ -17,7 +17,7 @@ const USER_CREDENTIAL_CONTEXT = {
   actor: { type: "user" as const, userId: "U123" },
 };
 const SYSTEM_CREDENTIAL_CONTEXT = {
-  actor: { type: "system" as const, id: "scheduler" },
+  actor: { platform: "system" as const, name: "scheduler" },
 };
 
 const SENTRY_MANIFEST: PluginManifest = {
@@ -416,7 +416,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
       context: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
           userId: "U123",

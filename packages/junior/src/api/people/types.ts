@@ -9,7 +9,7 @@ export type PeopleConversationSurface =
   | "scheduler"
   | "slack";
 
-export interface RequesterIdentity {
+export interface ActorIdentity {
   email?: string;
   fullName?: string;
   slackUserId?: string;
@@ -29,7 +29,7 @@ export interface ConversationSummaryReport {
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;
-  requesterIdentity?: RequesterIdentity;
+  actorIdentity?: ActorIdentity;
 }
 
 export interface ConversationStatsItem {
@@ -43,7 +43,7 @@ export interface ConversationStatsItem {
   tokens?: number;
 }
 
-export interface RequesterActivityDayReport {
+export interface ActorActivityDayReport {
   active: number;
   conversations: number;
   date: string;
@@ -54,7 +54,7 @@ export interface RequesterActivityDayReport {
   tokens?: number;
 }
 
-export interface RequesterTotalsReport {
+export interface ActorTotalsReport {
   active: number;
   activeDays: number;
   conversations: number;
@@ -65,32 +65,32 @@ export interface RequesterTotalsReport {
   tokens?: number;
 }
 
-export interface RequesterSummaryReport extends RequesterTotalsReport {
+export interface ActorSummaryReport extends ActorTotalsReport {
   firstSeenAt: string;
   lastSeenAt: string;
-  requester: RequesterIdentity & { email: string };
+  actor: ActorIdentity & { email: string };
 }
 
-export interface RequesterDirectoryReport {
+export interface ActorDirectoryReport {
   generatedAt: string;
-  people: RequesterSummaryReport[];
+  people: ActorSummaryReport[];
   sampleLimit: number;
   sampleSize: number;
   source: "conversation_index";
   truncated: boolean;
 }
 
-export interface RequesterProfileReport {
-  activityDays: RequesterActivityDayReport[];
+export interface ActorProfileReport {
+  activityDays: ActorActivityDayReport[];
   generatedAt: string;
   locations: ConversationStatsItem[];
   recentConversations: ConversationSummaryReport[];
-  requester: RequesterIdentity & { email: string };
+  actor: ActorIdentity & { email: string };
   sampleLimit: number;
   sampleSize: number;
   source: "conversation_index";
   surfaces: ConversationStatsItem[];
-  totals: RequesterTotalsReport;
+  totals: ActorTotalsReport;
   truncated: boolean;
   windowEnd: string;
   windowStart: string;

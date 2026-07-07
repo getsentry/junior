@@ -4,7 +4,7 @@ import type {
   Platform,
   PluginContext,
   PluginEmbedder,
-  Requester,
+  Actor,
   Source,
 } from "./context";
 import type { PluginState } from "./state";
@@ -31,7 +31,7 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
   destination: Destination;
   embedder: PluginEmbedder;
-  requester?: Requester;
+  actor?: Actor;
   source: Source;
   state: PluginState;
   text: string;

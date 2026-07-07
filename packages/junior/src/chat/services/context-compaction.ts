@@ -54,7 +54,7 @@ export interface CompactContextArgs {
   piMessages: PiMessage[];
   metadata?: {
     channelId?: string;
-    requesterId?: string;
+    actorId?: string;
     runId?: string;
     threadId?: string;
   };
@@ -268,7 +268,7 @@ async function summarizeContext(
       modelId: botConfig.fastModelId,
       threadId: args.metadata?.threadId ?? "",
       channelId: args.metadata?.channelId ?? "",
-      requesterId: args.metadata?.requesterId ?? "",
+      actorId: args.metadata?.actorId ?? "",
       runId: args.metadata?.runId ?? "",
     },
   });
@@ -354,7 +354,7 @@ async function maybeCompactWithDeps(
       "context_compaction_summary_failed",
       {
         slackThreadId: args.metadata?.threadId,
-        slackUserId: args.metadata?.requesterId,
+        slackUserId: args.metadata?.actorId,
         slackChannelId: args.metadata?.channelId,
         runId: args.metadata?.runId,
         assistantUserName: botConfig.userName,

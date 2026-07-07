@@ -1,10 +1,10 @@
 import { readPeopleProfileFromSql } from "./profile.query";
-import type { RequesterProfileReport } from "./types";
+import type { ActorProfileReport } from "./types";
 
 /** Load one person profile from verified user identities in SQL. */
 export async function readPeopleProfile(
   email: string,
-): Promise<RequesterProfileReport> {
+): Promise<ActorProfileReport> {
   return readPeopleProfileFromSql(email);
 }
 
@@ -13,8 +13,8 @@ export type {
   ConversationSummaryReport,
   PeopleConversationStatus,
   PeopleConversationSurface,
-  RequesterActivityDayReport,
-  RequesterIdentity,
-  RequesterProfileReport,
-  RequesterTotalsReport,
+  ActorActivityDayReport,
+  ActorIdentity,
+  ActorProfileReport,
+  ActorTotalsReport,
 } from "./types";

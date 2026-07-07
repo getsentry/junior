@@ -1,6 +1,7 @@
 import type {
   PluginCredentialSubject,
   SlackDestination,
+  SystemActor,
 } from "@sentry/junior-plugin-api";
 
 export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
@@ -19,14 +20,11 @@ export interface ScheduledTaskPrincipal {
   userName?: string;
 }
 
-export interface ScheduledTaskExecutionActor {
-  type: "system";
-  id: string;
-}
+export type ScheduledTaskExecutionActor = SystemActor;
 
 export const SCHEDULED_TASK_SYSTEM_ACTOR = Object.freeze({
-  type: "system",
-  id: "scheduled-task",
+  platform: "system",
+  name: "scheduled-task",
 } satisfies ScheduledTaskExecutionActor);
 
 export interface ScheduledTaskConversationAccess {

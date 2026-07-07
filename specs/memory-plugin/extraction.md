@@ -33,9 +33,9 @@ A candidate may be stored only when all of these are true:
    a tool result, system capability, implementation detail, or prompt/routing
    rule.
 9. Personal-scoped identity, preference, or relationship facts are first-person
-   facts authored by the current requester, not third-person profile facts
+   facts authored by the current actor, not third-person profile facts
    about someone else.
-10. It has a valid subject type: `user` for the current requester,
+10. It has a valid subject type: `user` for the current actor,
     `conversation` for the current conversation, or `general` for public
     operational/domain knowledge.
 
@@ -54,7 +54,7 @@ Examples that must not be stored:
 - `The OAuth token is xoxb-...`
 - `David is on the billing team.` when proposed as David's personal memory by
   someone other than David
-- `The requester prefers concise technical answers.`
+- `The actor prefers concise technical answers.`
 - `My favorite CLI QA snack is mango chips.`
 - `This thread says incident follow-up lives in Linear.`
 - `The user is somewhere next week.`
@@ -78,7 +78,7 @@ The `processSession` task must:
    delivery.
 2. Receive task params that contain stable references only, such as
    `conversationId` and `sessionId`. Params must not duplicate raw messages,
-   source, destination, requester, tool payloads, or model output.
+   source, destination, actor, tool payloads, or model output.
 3. Load a bounded core-owned run projection from transcript/session storage.
    The projection may include normalized user-authored messages, assistant
    reply text, and bounded tool-result text, but not raw Pi internals, raw tool
@@ -103,7 +103,7 @@ The `processSession` task must:
 9. Extract candidate facts with a structured model output contract.
 10. Reject malformed, incoherent, unsafe, out-of-scope, redundant, or
     non-durable facts.
-11. Assign requester or conversation target from the memory kind returned by
+11. Assign actor or conversation target from the memory kind returned by
     the memory agent, while deriving all authority-bearing ids from runtime
     context.
 12. Insert accepted memories idempotently with a stable key derived through the
@@ -151,16 +151,16 @@ Passive run extraction must follow these rules:
     may store the answer only when user-authored factual text or a non-memory
     tool result supports it.
 15. Personal-scoped memories must be public/shareable first-person facts from
-    the current author/requester, and should be stored passively only when they
+    the current author/actor, and should be stored passively only when they
     are clearly durable and useful beyond the active task.
-16. Assign `user` subject only for the current author/requester; do not create
+16. Assign `user` subject only for the current author/actor; do not create
     third-party user subjects in V1.
 17. Preserve provenance for third-party claims when the source matters for
     correctness.
 18. Store the minimum useful assertion rather than a direct quote or broad
     summary.
 19. Store ownership, subject, and provenance in structured fields, not content
-    prose. Remove requester names, display names, `the requester`, `the user`,
+    prose. Remove actor names, display names, `the actor`, `the user`,
     `I`, `my`, thread labels, channel labels, and source labels from accepted
     content.
 
@@ -218,20 +218,20 @@ candidate memories. Each candidate includes:
 
 The memory agent should return one object per distinct source assertion rather
 than separate categorized arrays. The runtime derives storage target from
-`kind`: requester memory for `preference`, conversation memory for `procedure`
+`kind`: actor memory for `preference`, conversation memory for `procedure`
 and `knowledge`.
 
 Conversation-target passive memories in V1 are the primary path for learning
 how work gets done: task procedures, runbooks, project facts, channel norms,
-and operational knowledge. Requester-target passive memories are secondary and
+and operational knowledge. Actor-target passive memories are secondary and
 limited to clearly durable first-person preferences, opinions, and habits.
-Broader public requester facts can still be handled by the explicit reviewed
+Broader public actor facts can still be handled by the explicit reviewed
 `createMemory` path. Rejections are represented by omitting a candidate from the
 array.
 
-The content field is canonical stored memory text. Requester memory content
+The content field is canonical stored memory text. Actor memory content
 must omit ownership from prose because ownership lives in structured metadata.
-For example, `I prefer terse PR summaries` should become requester memory
+For example, `I prefer terse PR summaries` should become actor memory
 `Prefers terse PR summaries`, and `This thread says deploy runbooks require
 staging checks first` should become conversation memory `Deploy runbooks require
 staging checks first`.

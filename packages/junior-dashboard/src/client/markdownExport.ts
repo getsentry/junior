@@ -2,7 +2,7 @@ import {
   conversationDisplayTitle,
   formatMs,
   formatUsageTotal,
-  requesterLabel,
+  actorLabel,
   slackLocationLabel,
   stringifyPartValue,
   transcriptRoleKind,
@@ -33,11 +33,7 @@ export function buildConversationMarkdown(
   lines.push(`# ${headingText(conversationTitle(detail, conversation))}`, "");
   addMetaLine(lines, "Conversation ID", inlineCode(detail.conversationId));
   addMetaLine(lines, "Generated", detail.generatedAt);
-  addMetaLine(
-    lines,
-    "Requester",
-    conversationRequester(conversation, firstTurn),
-  );
+  addMetaLine(lines, "Actor", conversationActor(conversation, firstTurn));
   addMetaLine(lines, "Location", conversationLocation(conversation, firstTurn));
   addMetaLine(
     lines,
@@ -249,15 +245,11 @@ function conversationTitle(
   return conversation ? conversationDisplayTitle(conversation) : "Conversation";
 }
 
-function conversationRequester(
+function conversationActor(
   conversation: Conversation | undefined,
   turn: ConversationTurn | undefined,
 ): string {
-  return (
-    requesterLabel(
-      conversation?.requesterIdentity ?? turn?.requesterIdentity,
-    ) ?? ""
-  );
+  return actorLabel(conversation?.actorIdentity ?? turn?.actorIdentity) ?? "";
 }
 
 function conversationLocation(
@@ -274,7 +266,7 @@ function messageRoleLabel(
 ): string {
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return "Junior";
-  if (kind === "user") return requesterLabel(turn.requesterIdentity) ?? "User";
+  if (kind === "user") return actorLabel(turn.actorIdentity) ?? "User";
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
   return headingText(message.role || "Unknown");

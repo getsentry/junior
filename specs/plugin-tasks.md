@@ -190,7 +190,7 @@ interface PluginRunContext {
   completedAtMs: number;
   conversationId: string;
   destination: Destination;
-  requester?: Requester;
+  actor: Actor;
   runId: string;
   source: Source;
   transcript: PluginRunTranscriptEntry[];
@@ -207,7 +207,7 @@ type PluginRunTranscriptEntry =
 ```
 
 The projection may include normalized user-authored text, assistant reply text,
-tool-result text, source, destination, and requester. It must not expose raw Pi
+tool-result text, source, destination, and actor. It must not expose raw Pi
 internals, raw tool arguments, full unbounded transcript history, provider
 credentials, OAuth tokens, Slack tokens, or private binary payloads.
 

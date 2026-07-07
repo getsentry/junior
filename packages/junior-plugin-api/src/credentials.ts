@@ -178,8 +178,8 @@ export type PluginCredentialResult = z.output<
 
 export type PluginCredentialActor =
   | {
-      type: "system";
-      id: string;
+      platform: "system";
+      name: string;
     }
   | {
       type: "user";

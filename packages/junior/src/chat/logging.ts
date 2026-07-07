@@ -1481,7 +1481,7 @@ function sentryUserFromIdentity(identity: SentryUserIdentity): Sentry.User {
   };
 }
 
-/** Bind requester identity to Sentry's native user fields. */
+/** Bind actor identity to Sentry's native user fields. */
 export function setSentryUser(identity: SentryUserIdentity | undefined): void {
   if (!identity) return;
   Sentry.setUser(sentryUserFromIdentity(identity));

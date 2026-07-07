@@ -13,7 +13,7 @@ import {
   formatMessageTimestamp,
   formatMs,
   formatTurnDuration,
-  requesterLabel,
+  actorLabel,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -566,7 +566,7 @@ function redactedMessageSize(part: TranscriptViewPart): string | undefined {
 }
 
 function turnActorLabel(turn: ConversationTurn): string {
-  return requesterLabel(turn.requesterIdentity) ?? "User";
+  return actorLabel(turn.actorIdentity) ?? "User";
 }
 
 function turnMessageSummary(turn: ConversationTurn) {

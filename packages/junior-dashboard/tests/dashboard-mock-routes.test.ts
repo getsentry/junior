@@ -69,7 +69,7 @@ function reporting(): JuniorReporting {
         generatedAt: "2026-05-29T00:00:00.000Z",
         hung: 0,
         locations: [],
-        requesters: [],
+        actors: [],
         sampleLimit: 1,
         sampleSize: 1,
         source: "conversation_index",

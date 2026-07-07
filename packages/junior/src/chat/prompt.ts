@@ -29,7 +29,12 @@ import type { SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
-import type { Destination, Platform, Source } from "@sentry/junior-plugin-api";
+import type {
+  Destination,
+  Platform,
+  Source,
+  SystemActor,
+} from "@sentry/junior-plugin-api";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
@@ -143,7 +148,7 @@ function formatConfigurationValue(value: unknown): string {
   }
 }
 
-function renderRequesterBlock(
+function renderActorBlock(
   fields: Record<string, string | undefined>,
 ): string[] | null {
   const lines = Object.entries(fields)
@@ -154,7 +159,7 @@ function renderRequesterBlock(
     return null;
   }
 
-  return ["<requester>", ...lines, "</requester>"];
+  return ["<actor>", ...lines, "</actor>"];
 }
 
 function renderTag(tag: string, lines: string[]): string[] {
@@ -378,7 +383,7 @@ const EXECUTION_CONTRACT_RULES = [
 
 const CONVERSATION_RULES = [
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
-  "- Preserve attribution roles from thread context: the requester is the person asking now, which may differ from the original reporter or subject.",
+  "- Preserve attribution roles from thread context: the actor is the person asking now, which may differ from the original reporter or subject.",
   "- Treat event notifications as subscribed conversation updates, not user-authored commands. Use their subscription intent to decide whether to reply, inspect, suggest, or stay brief.",
   "- Runtime owns continuation and authorization notices; on resumed turns, answer with the final requested content only.",
 ];
@@ -534,7 +539,7 @@ function formatDestinationLines(destination: Destination): string[] {
 function buildDispatchSection(
   params:
     | {
-        actor?: { id: string; type: string };
+        actor?: SystemActor;
         destination: Destination;
         metadata?: Record<string, string>;
         plugin?: string;
@@ -558,8 +563,8 @@ function buildDispatchSection(
     "- dispatch.delivery_rule: do not request or require a separate posting tool just to deliver the final answer",
     ...(params.actor
       ? [
-          `- dispatch.actor.type: ${escapeXml(params.actor.type)}`,
-          `- dispatch.actor.id: ${escapeXml(params.actor.id)}`,
+          `- dispatch.actor.platform: ${escapeXml(params.actor.platform)}`,
+          `- dispatch.actor.name: ${escapeXml(params.actor.name)}`,
         ]
       : []),
     ...(params.plugin
@@ -572,11 +577,11 @@ function buildDispatchSection(
 }
 
 function buildContextSection(params: {
-  requester?: { userName?: string; fullName?: string; userId?: string };
+  actor?: { userName?: string; fullName?: string; userId?: string };
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   dispatch?: {
-    actor?: { id: string; type: string };
+    actor?: SystemActor;
     destination: Destination;
     metadata?: Record<string, string>;
     plugin?: string;
@@ -596,13 +601,13 @@ function buildContextSection(params: {
     );
   }
 
-  const requesterLines = renderRequesterBlock({
-    full_name: params.requester?.fullName,
-    user_name: params.requester?.userName,
-    user_id: params.requester?.userId,
+  const actorLines = renderActorBlock({
+    full_name: params.actor?.fullName,
+    user_name: params.actor?.userName,
+    user_id: params.actor?.userId,
   });
-  if (requesterLines) {
-    blocks.push(requesterLines);
+  if (actorLines) {
+    blocks.push(actorLines);
   }
 
   const dispatchLines = buildDispatchSection(params.dispatch);
@@ -728,14 +733,14 @@ type TurnContextPromptInput = {
     slackConversation?: SlackConversationContext;
   };
   dispatch?: {
-    actor?: { id: string; type: string };
+    actor?: SystemActor;
     destination: Destination;
     metadata?: Record<string, string>;
     plugin?: string;
     source: Source;
   };
   invocation: SkillInvocation | null;
-  requester?: {
+  actor?: {
     userName?: string;
     fullName?: string;
     userId?: string;
@@ -798,7 +803,7 @@ export function buildTurnContextPrompt(
     pluginPromptContributions,
     includeSessionContext
       ? buildContextSection({
-          requester: params.requester,
+          actor: params.actor,
           artifactState: params.artifactState,
           configuration: params.configuration,
           dispatch: params.dispatch,

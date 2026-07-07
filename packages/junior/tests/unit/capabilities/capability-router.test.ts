@@ -54,7 +54,7 @@ describe("provider credential router", () => {
 
     await router.issue({
       context: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
           userId: "U123",
@@ -73,7 +73,7 @@ describe("provider credential router", () => {
 
     expect(broker.issue).toHaveBeenCalledWith({
       context: {
-        actor: { type: "system", id: "scheduler" },
+        actor: { platform: "system", name: "scheduler" },
         subject: {
           type: "user",
           userId: "U123",

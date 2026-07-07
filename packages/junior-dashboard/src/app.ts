@@ -224,7 +224,7 @@ function emptyConversationStatsReport(): ConversationStatsReport {
     generatedAt: new Date(nowMs).toISOString(),
     hung: 0,
     locations: [],
-    requesters: [],
+    actors: [],
     sampleLimit: 0,
     sampleSize: 0,
     source: "conversation_index",

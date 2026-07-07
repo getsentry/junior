@@ -1,6 +1,6 @@
 import type { JuniorReporting } from "@sentry/junior/reporting";
-import type { RequesterDirectoryReport } from "@sentry/junior/api/people/list";
-import type { RequesterProfileReport } from "@sentry/junior/api/people/profile";
+import type { ActorDirectoryReport } from "@sentry/junior/api/people/list";
+import type { ActorProfileReport } from "@sentry/junior/api/people/profile";
 
 /** Provide the minimal dashboard reporting surface unrelated API routes need. */
 export function dashboardReporting(): JuniorReporting {
@@ -69,7 +69,7 @@ export function dashboardReporting(): JuniorReporting {
 }
 
 /** Return the fixture response for the people list route. */
-export function directoryReport(): RequesterDirectoryReport {
+export function directoryReport(): ActorDirectoryReport {
   return {
     generatedAt: "2026-06-15T12:00:00.000Z",
     people: [
@@ -82,7 +82,7 @@ export function directoryReport(): RequesterDirectoryReport {
         firstSeenAt: "2026-06-10T10:03:00.000Z",
         hung: 0,
         lastSeenAt: "2026-06-12T11:01:00.000Z",
-        requester: {
+        actor: {
           email: "person@example.com",
           fullName: "Person Example",
         },
@@ -99,13 +99,13 @@ export function directoryReport(): RequesterDirectoryReport {
 /** Return the fixture response for the people profile route. */
 export async function profileReport(
   email: string,
-): Promise<RequesterProfileReport> {
+): Promise<ActorProfileReport> {
   return {
     activityDays: [],
     generatedAt: "2026-06-15T12:00:00.000Z",
     locations: [],
     recentConversations: [],
-    requester: { email },
+    actor: { email },
     sampleLimit: 5000,
     sampleSize: 1,
     source: "conversation_index",

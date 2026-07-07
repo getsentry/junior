@@ -1,5 +1,5 @@
 import { Message, type Adapter, type Attachment } from "chat";
-import { parseActorUserId } from "@/chat/requester";
+import { parseActorUserId } from "@/chat/actor";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly

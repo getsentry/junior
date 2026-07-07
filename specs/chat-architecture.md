@@ -110,14 +110,14 @@ Data authority by stage:
 
 Related contract ownership:
 
-| Spec                              | Owns                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `./chat-architecture.md`          | End-to-end agent-run data flow, data authority, and module boundaries.                     |
-| `./task-execution.md`             | Conversation mailbox, queue wake-up, lease, cooperative yield, and heartbeat repair.       |
-| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, and session lifecycle.                      |
-| `./identity.md`                   | Actor, system actor, requester, author, creator, subject, and display identity separation. |
-| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, pause acknowledgements, and final reply delivery.       |
-| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping.     |
+| Spec                              | Owns                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| `./chat-architecture.md`          | End-to-end agent-run data flow, data authority, and module boundaries.                 |
+| `./task-execution.md`             | Conversation mailbox, queue wake-up, lease, cooperative yield, and heartbeat repair.   |
+| `./agent-session-resumability.md` | Session-log schema, Pi `continue()` semantics, and session lifecycle.                  |
+| `./identity.md`                   | Actor, system actor, actor, author, creator, subject, and display identity separation. |
+| `./slack-agent-delivery.md`       | Slack entry surfaces, progress UX, pause acknowledgements, and final reply delivery.   |
+| `./slack-outbound-contract.md`    | Slack API write boundary, formatting, file upload, reactions, and Slack error mapping. |
 
 ### File Tree Responsibilities
 
@@ -181,7 +181,7 @@ interface ChatRuntimeFactory {
 - Slack adapters own Slack-only concerns: signature verification, Slack ID parsing, mention stripping, subscribed-thread routing input, assistant lifecycle events, Slack profile lookup, Slack status, Slack files, Slack reactions, and Slack markdown/output formatting.
 - Local CLI adapters own terminal input/output, local conversation selection, and optional local state configuration.
 - Platform adapters must not call the Pi agent directly. They hand normalized input to the shared conversation runtime or append mailbox work for the shared worker.
-- Platform adapters must not fabricate Slack-shaped requesters, destinations, or thread ids for non-Slack sources.
+- Platform adapters must not fabricate Slack-shaped actors, destinations, or thread ids for non-Slack sources.
 
 Target role:
 

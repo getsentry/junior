@@ -8,7 +8,7 @@
  * Two independent keys, each written by a single owner:
  *
  *   junior:conversation:{id}:context   — written once at turn start via
- *     setIfNotExists; owns channelName, originSurface, originRequester,
+ *     setIfNotExists; owns channelName, originSurface, originActor,
  *     startedAtMs. Subsequent turns refresh the TTL without changing the
  *     original context.
  *
@@ -21,10 +21,7 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import { isRecord, toOptionalNumber } from "@/chat/coerce";
-import {
-  parseStoredSlackRequester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import { getStateAdapter } from "./adapter";
 import type { AgentTurnSurface } from "./turn-session";
 
@@ -53,8 +50,8 @@ export interface ConversationDetailsRecord {
   channelName?: string;
   /** Surface on which the conversation was started. */
   originSurface?: AgentTurnSurface;
-  /** Requester who initiated the conversation (first turn). */
-  originRequester?: StoredSlackRequester;
+  /** Actor who initiated the conversation (first turn). */
+  originActor?: StoredSlackActor;
   /** Timestamp of the first turn in the conversation. */
   startedAtMs?: number;
 }
@@ -63,10 +60,8 @@ export interface ConversationDetailsRecord {
 // Parsing helpers
 // ---------------------------------------------------------------------------
 
-function parseOriginRequester(
-  value: unknown,
-): StoredSlackRequester | undefined {
-  return parseStoredSlackRequester(value);
+function parseOriginActor(value: unknown): StoredSlackActor | undefined {
+  return parseStoredSlackActor(value);
 }
 
 function parseOriginSurface(value: unknown): AgentTurnSurface | undefined {
@@ -84,22 +79,20 @@ function parseOriginSurface(value: unknown): AgentTurnSurface | undefined {
 interface StoredContext {
   channelName?: string;
   originSurface?: AgentTurnSurface;
-  originRequester?: StoredSlackRequester;
+  originActor?: StoredSlackActor;
   startedAtMs: number;
 }
 
 function storedContextFromInput(context: {
   channelName?: string;
   originSurface?: AgentTurnSurface;
-  originRequester?: StoredSlackRequester;
+  originActor?: StoredSlackActor;
   startedAtMs: number;
 }): StoredContext {
   return {
     ...(context.channelName ? { channelName: context.channelName } : {}),
     ...(context.originSurface ? { originSurface: context.originSurface } : {}),
-    ...(context.originRequester
-      ? { originRequester: context.originRequester }
-      : {}),
+    ...(context.originActor ? { originActor: context.originActor } : {}),
     startedAtMs: context.startedAtMs,
   };
 }
@@ -115,8 +108,8 @@ function parseContext(value: unknown): StoredContext | undefined {
     ...(parseOriginSurface(value.originSurface)
       ? { originSurface: parseOriginSurface(value.originSurface) }
       : {}),
-    ...(parseOriginRequester(value.originRequester)
-      ? { originRequester: parseOriginRequester(value.originRequester) }
+    ...(parseOriginActor(value.originActor)
+      ? { originActor: parseOriginActor(value.originActor) }
       : {}),
     startedAtMs,
   };
@@ -155,7 +148,7 @@ export async function initConversationContext(
   context: {
     channelName?: string;
     originSurface?: AgentTurnSurface;
-    originRequester?: StoredSlackRequester;
+    originActor?: StoredSlackActor;
     startedAtMs: number;
   },
 ): Promise<void> {
@@ -230,9 +223,7 @@ export async function getConversationDetails(
       : {}),
     ...(context?.channelName ? { channelName: context.channelName } : {}),
     ...(context?.originSurface ? { originSurface: context.originSurface } : {}),
-    ...(context?.originRequester
-      ? { originRequester: context.originRequester }
-      : {}),
+    ...(context?.originActor ? { originActor: context.originActor } : {}),
     ...(context?.startedAtMs !== undefined
       ? { startedAtMs: context.startedAtMs }
       : {}),

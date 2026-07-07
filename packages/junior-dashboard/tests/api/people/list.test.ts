@@ -29,7 +29,7 @@ describe("people list route", () => {
       people: [
         {
           conversations: 2,
-          requester: {
+          actor: {
             email: "person@example.com",
             fullName: "Person Example",
           },

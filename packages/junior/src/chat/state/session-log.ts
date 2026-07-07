@@ -11,10 +11,7 @@ import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { z } from "zod";
 import { getChatConfig } from "@/chat/config";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
-import {
-  storedSlackRequesterSchema,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+import { storedSlackActorSchema, type StoredSlackActor } from "@/chat/actor";
 import {
   getConnectedStateContext,
   getStateAdapter,
@@ -31,7 +28,7 @@ const piMessageEntrySchema = z.object({
   type: z.literal("pi_message"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   message: piMessageSchema,
-  requester: storedSlackRequesterSchema.optional(),
+  actor: storedSlackActorSchema.optional(),
 });
 
 const projectionResetEntrySchema = z.object({
@@ -39,14 +36,14 @@ const projectionResetEntrySchema = z.object({
   type: z.literal("projection_reset"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   messages: z.array(piMessageSchema),
-  requester: storedSlackRequesterSchema.optional(),
+  actor: storedSlackActorSchema.optional(),
 });
 
-const requesterRecordedEntrySchema = z.object({
+const actorRecordedEntrySchema = z.object({
   schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
-  type: z.literal("requester_recorded"),
+  type: z.literal("actor_recorded"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
-  requester: storedSlackRequesterSchema,
+  actor: storedSlackActorSchema,
 });
 
 const mcpProviderConnectedEntrySchema = z.object({
@@ -68,7 +65,7 @@ const authorizationRequestedEntrySchema = z.object({
   createdAtMs: z.number().int().nonnegative(),
   kind: authorizationKindSchema,
   provider: z.string().min(1),
-  requesterId: z.string().min(1),
+  actorId: z.string().min(1),
   authorizationId: z.string().min(1),
   delivery: z.union([
     z.literal("private_link_sent"),
@@ -83,7 +80,7 @@ const authorizationCompletedEntrySchema = z.object({
   createdAtMs: z.number().int().nonnegative(),
   kind: authorizationKindSchema,
   provider: z.string().min(1),
-  requesterId: z.string().min(1),
+  actorId: z.string().min(1),
   authorizationId: z.string().min(1),
 });
 
@@ -136,7 +133,7 @@ const subagentEndedEntrySchema = z.object({
 const sessionLogEntrySchema = z.discriminatedUnion("type", [
   piMessageEntrySchema,
   projectionResetEntrySchema,
-  requesterRecordedEntrySchema,
+  actorRecordedEntrySchema,
   mcpProviderConnectedEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
@@ -145,7 +142,7 @@ const sessionLogEntrySchema = z.discriminatedUnion("type", [
   subagentEndedEntrySchema,
 ]);
 
-/** Requester identity stored with turn-start messages for durable continuation. */
+/** Actor identity stored with turn-start messages for durable continuation. */
 export type SessionLogEntry = z.infer<typeof sessionLogEntrySchema>;
 export type AuthorizationKind = z.infer<typeof authorizationKindSchema>;
 export type TranscriptRef = z.infer<typeof transcriptRefSchema>;
@@ -287,40 +284,40 @@ function findLastIndex<T>(
 function piEntry(
   message: PiMessage,
   sessionId: string,
-  requester?: StoredSlackRequester,
+  actor?: StoredSlackActor,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
     type: "pi_message",
     sessionId,
     message,
-    ...(requester ? { requester } : {}),
+    ...(actor ? { actor } : {}),
   };
 }
 
 function resetEntry(
   messages: PiMessage[],
   sessionId: string,
-  requester?: StoredSlackRequester,
+  actor?: StoredSlackActor,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
     type: "projection_reset",
     sessionId,
     messages,
-    ...(requester ? { requester } : {}),
+    ...(actor ? { actor } : {}),
   };
 }
 
-function requesterRecordedEntry(
-  requester: StoredSlackRequester,
+function actorRecordedEntry(
+  actor: StoredSlackActor,
   sessionId: string,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
-    type: "requester_recorded",
+    type: "actor_recorded",
     sessionId,
-    requester,
+    actor,
   };
 }
 
@@ -359,7 +356,7 @@ function authorizationRequestedEntry(args: {
   kind: AuthorizationKind;
   sessionId: string;
   provider: string;
-  requesterId: string;
+  actorId: string;
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): SessionLogEntry {
@@ -370,7 +367,7 @@ function authorizationRequestedEntry(args: {
     createdAtMs: args.createdAtMs,
     kind: args.kind,
     provider: args.provider,
-    requesterId: args.requesterId,
+    actorId: args.actorId,
     authorizationId: args.authorizationId,
     delivery: args.delivery,
   };
@@ -381,7 +378,7 @@ function authorizationCompletedEntry(args: {
   kind: AuthorizationKind;
   sessionId: string;
   provider: string;
-  requesterId: string;
+  actorId: string;
   authorizationId: string;
 }): SessionLogEntry {
   return {
@@ -391,7 +388,7 @@ function authorizationCompletedEntry(args: {
     createdAtMs: args.createdAtMs,
     kind: args.kind,
     provider: args.provider,
-    requesterId: args.requesterId,
+    actorId: args.actorId,
     authorizationId: args.authorizationId,
   };
 }
@@ -483,31 +480,31 @@ function decode(value: unknown): SessionLogEntry {
 
 export interface SessionProjection {
   messages: PiMessage[];
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
 }
 
 /**
- * Materialize Pi messages and requester identity from log entries.
+ * Materialize Pi messages and actor identity from log entries.
  *
- * Requester is taken from the latest requester-bearing user pi_message,
- * requester_recorded event, or projection_reset event.
+ * Actor is taken from the latest actor-bearing user pi_message,
+ * actor_recorded event, or projection_reset event.
  */
 function project(
   entries: SessionLogEntry[],
   sessionId?: string,
 ): SessionProjection {
   let messages: PiMessage[] = [];
-  let requester: StoredSlackRequester | undefined;
+  let actor: StoredSlackActor | undefined;
   for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "pi_message") {
       messages.push(entry.message);
-      if (entry.message.role === "user" && entry.requester) {
-        requester = entry.requester;
+      if (entry.message.role === "user" && entry.actor) {
+        actor = entry.actor;
       }
       continue;
     }
-    if (entry.type === "requester_recorded") {
-      requester = entry.requester;
+    if (entry.type === "actor_recorded") {
+      actor = entry.actor;
       continue;
     }
     if (entry.type === "authorization_completed") {
@@ -516,13 +513,13 @@ function project(
     }
     if (entry.type === "projection_reset") {
       messages = [...entry.messages];
-      if (entry.requester) {
-        requester = entry.requester;
+      if (entry.actor) {
+        actor = entry.actor;
       }
       continue;
     }
   }
-  return { messages, requester };
+  return { messages, actor };
 }
 
 function projectMessages(
@@ -554,44 +551,38 @@ function commitEntries(
   nextMessages: PiMessage[],
   sessionId: string,
   entries: SessionLogEntry[],
-  existingRequester?: StoredSlackRequester,
-  requester?: StoredSlackRequester,
+  existingActor?: StoredSlackActor,
+  actor?: StoredSlackActor,
 ): { entries: SessionLogEntry[]; sessionId: string } {
   const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
   if (matchingPrefix === existingMessages.length) {
     const newMessages = nextMessages.slice(matchingPrefix);
     if (
       newMessages.length === 0 &&
-      requester &&
-      !isDeepStrictEqual(existingRequester, requester)
+      actor &&
+      !isDeepStrictEqual(existingActor, actor)
     ) {
       return {
-        entries: [requesterRecordedEntry(requester, sessionId)],
+        entries: [actorRecordedEntry(actor, sessionId)],
         sessionId,
       };
     }
-    // Attach requester to the last new user message — the current turn's
+    // Attach actor to the last new user message — the current turn's
     // input. Using last rather than first avoids tagging older context
     // messages that may be included at the head of a fresh commit.
-    const requesterIndex = requester
+    const actorIndex = actor
       ? findLastIndex(newMessages, (m) => m.role === "user")
       : -1;
     return {
       entries: newMessages.map((message, index) =>
-        piEntry(
-          message,
-          sessionId,
-          index === requesterIndex ? requester : undefined,
-        ),
+        piEntry(message, sessionId, index === actorIndex ? actor : undefined),
       ),
       sessionId,
     };
   }
   const resetSessionId = nextSessionId(entries);
   return {
-    entries: [
-      resetEntry(nextMessages, resetSessionId, requester ?? existingRequester),
-    ],
+    entries: [resetEntry(nextMessages, resetSessionId, actor ?? existingActor)],
     sessionId: resetSessionId,
   };
 }
@@ -717,10 +708,10 @@ export async function loadProjection(
 }
 
 /**
- * Load the Pi-message projection and derived requester identity in one read.
+ * Load the Pi-message projection and derived actor identity in one read.
  * Used at continuation boundaries to avoid a second log scan.
  */
-export async function loadProjectionWithRequester(
+export async function loadProjectionWithActor(
   args: Scope & {
     store?: SessionLogStore;
     sessionId?: string;
@@ -766,7 +757,7 @@ export async function recordAuthorizationRequested(
     store?: SessionLogStore;
     kind: AuthorizationKind;
     provider: string;
-    requesterId: string;
+    actorId: string;
     authorizationId: string;
     delivery: "private_link_sent" | "private_link_reused";
     ttlMs: number;
@@ -792,7 +783,7 @@ export async function recordAuthorizationRequested(
         kind: args.kind,
         sessionId,
         provider: args.provider,
-        requesterId: args.requesterId,
+        actorId: args.actorId,
         authorizationId: args.authorizationId,
         delivery: args.delivery,
       }),
@@ -807,7 +798,7 @@ export async function recordAuthorizationCompleted(
     store?: SessionLogStore;
     kind: AuthorizationKind;
     provider: string;
-    requesterId: string;
+    actorId: string;
     authorizationId: string;
     ttlMs: number;
   },
@@ -832,7 +823,7 @@ export async function recordAuthorizationCompleted(
         kind: args.kind,
         sessionId,
         provider: args.provider,
-        requesterId: args.requesterId,
+        actorId: args.actorId,
         authorizationId: args.authorizationId,
       }),
     ],
@@ -954,7 +945,7 @@ export async function commitMessages(
     store?: SessionLogStore;
     messages: PiMessage[];
     ttlMs: number;
-    requester?: StoredSlackRequester;
+    actor?: StoredSlackActor;
   },
 ): Promise<{ sessionId: string }> {
   const store = args.store ?? (await defaultStore());
@@ -966,8 +957,8 @@ export async function commitMessages(
     args.messages,
     currentId,
     entries,
-    existingProjection.requester,
-    args.requester,
+    existingProjection.actor,
+    args.actor,
   );
   await store.append({
     scope: args,

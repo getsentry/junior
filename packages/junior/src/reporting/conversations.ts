@@ -46,10 +46,10 @@ import {
 } from "@/chat/state/session-log";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
-  toStoredSlackRequester,
-  type Requester,
-  type StoredSlackRequester,
-} from "@/chat/requester";
+  toStoredSlackActor,
+  type Actor,
+  type StoredSlackActor,
+} from "@/chat/actor";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getConversationStore } from "@/chat/db";
 import type {
@@ -112,7 +112,7 @@ export interface ConversationUsage {
   totalTokens?: number;
 }
 
-export interface RequesterIdentity {
+export interface ActorIdentity {
   email?: string;
   fullName?: string;
   slackUserId?: string;
@@ -132,7 +132,7 @@ export interface ConversationSummaryReport {
   lastProgressAt: string;
   completedAt?: string;
   surface: ConversationSurface;
-  requesterIdentity?: RequesterIdentity;
+  actorIdentity?: ActorIdentity;
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;
@@ -290,7 +290,7 @@ export interface ConversationStatsReport {
   generatedAt: string;
   hung: number;
   locations: ConversationStatsItem[];
-  requesters: ConversationStatsItem[];
+  actors: ConversationStatsItem[];
   sampleLimit: number;
   sampleSize: number;
   source: "conversation_index";
@@ -346,30 +346,28 @@ function surfaceFromSource(
   return surfaceFromConversationId(conversationId);
 }
 
-function requesterIdentityReport(
-  requester: StoredSlackRequester | undefined,
-): RequesterIdentity | undefined {
-  if (!requester) return undefined;
-  const identity: RequesterIdentity = {
-    ...(requester.email !== undefined ? { email: requester.email } : {}),
-    ...(requester.fullName !== undefined
-      ? { fullName: requester.fullName }
+function actorIdentityReport(
+  actor: StoredSlackActor | undefined,
+): ActorIdentity | undefined {
+  if (!actor) return undefined;
+  const identity: ActorIdentity = {
+    ...(actor.email !== undefined ? { email: actor.email } : {}),
+    ...(actor.fullName !== undefined ? { fullName: actor.fullName } : {}),
+    ...(actor.slackUserId !== undefined
+      ? { slackUserId: actor.slackUserId }
       : {}),
-    ...(requester.slackUserId !== undefined
-      ? { slackUserId: requester.slackUserId }
-      : {}),
-    ...(requester.slackUserName !== undefined
-      ? { slackUserName: requester.slackUserName }
+    ...(actor.slackUserName !== undefined
+      ? { slackUserName: actor.slackUserName }
       : {}),
   };
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
-function sessionRequesterIdentityReport(
-  requester: Requester | undefined,
-): RequesterIdentity | undefined {
-  return requester?.platform === "slack"
-    ? requesterIdentityReport(toStoredSlackRequester(requester))
+function sessionActorIdentityReport(
+  actor: Actor | undefined,
+): ActorIdentity | undefined {
+  return actor?.platform === "slack"
+    ? actorIdentityReport(toStoredSlackActor(actor))
     : undefined;
 }
 
@@ -429,9 +427,9 @@ function sessionReportFromSummary(
       channelName: effectiveChannelName,
     }) ??
     surfaceFallbackLabel(effectiveSurface);
-  const requesterIdentity =
-    requesterIdentityReport(details?.originRequester) ??
-    sessionRequesterIdentityReport(summary.requester);
+  const actorIdentity =
+    actorIdentityReport(details?.originActor) ??
+    sessionActorIdentityReport(summary.actor);
   const sentryTraceUrl = summary.traceId
     ? buildSentryTraceUrl(summary.traceId)
     : undefined;
@@ -450,7 +448,7 @@ function sessionReportFromSummary(
     cumulativeDurationMs: summary.cumulativeDurationMs,
     ...(cumulativeUsage ? { cumulativeUsage } : {}),
     surface: effectiveSurface,
-    ...(requesterIdentity ? { requesterIdentity } : {}),
+    ...(actorIdentity ? { actorIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(privateLabel ? { channelNameRedacted: true } : {}),
@@ -578,10 +576,10 @@ function applyConversationIndexMetadata(args: {
     args.conversation,
     args.details,
   );
-  const requesterIdentity =
-    requesterIdentityReport(args.details?.originRequester) ??
-    args.report.requesterIdentity ??
-    requesterIdentityReport(args.conversation.requester);
+  const actorIdentity =
+    actorIdentityReport(args.details?.originActor) ??
+    args.report.actorIdentity ??
+    actorIdentityReport(args.conversation.actor);
   const status = statusFromConversation(
     args.conversation,
     args.report.status,
@@ -603,7 +601,7 @@ function applyConversationIndexMetadata(args: {
     status,
     lastSeenAt: new Date(lastSeenAtMs).toISOString(),
     surface,
-    ...(requesterIdentity ? { requesterIdentity } : {}),
+    ...(actorIdentity ? { actorIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(effectiveChannelName ? { channelName: effectiveChannelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
@@ -618,8 +616,8 @@ function sessionReportFromConversation(
   const surface =
     details?.originSurface ??
     surfaceFromSource(conversation.source, conversation.conversationId);
-  const requesterIdentity = requesterIdentityReport(
-    details?.originRequester ?? conversation.requester,
+  const actorIdentity = actorIdentityReport(
+    details?.originActor ?? conversation.actor,
   );
   const slackThread = parseSlackThreadId(conversation.conversationId);
   const channelName = channelNameFromConversation(conversation, details);
@@ -639,7 +637,7 @@ function sessionReportFromConversation(
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation, undefined, nowMs),
     surface,
-    ...(requesterIdentity ? { requesterIdentity } : {}),
+    ...(actorIdentity ? { actorIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
@@ -740,13 +738,11 @@ function contributionTokenTotal(
   );
 }
 
-function requesterLabel(
-  requester: RequesterIdentity | undefined,
-): string | undefined {
-  const email = requester?.email?.trim() || undefined;
-  const fullName = requester?.fullName?.trim() || undefined;
-  const slackUserName = requester?.slackUserName?.trim() || undefined;
-  return email ?? fullName ?? slackUserName ?? requester?.slackUserId;
+function actorLabel(actor: ActorIdentity | undefined): string | undefined {
+  const email = actor?.email?.trim() || undefined;
+  const fullName = actor?.fullName?.trim() || undefined;
+  const slackUserName = actor?.slackUserName?.trim() || undefined;
+  return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
 function slackStatsLocationLabel(
@@ -912,7 +908,7 @@ function buildConversationStatsReport(args: {
   truncated: boolean;
 }): ConversationStatsReport {
   const conversations = recentConversationGroups(args);
-  const requesters = new Map<string, ConversationStatsItem>();
+  const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
   let durationMs = 0;
   let tokens: number | undefined;
@@ -930,29 +926,25 @@ function buildConversationStatsReport(args: {
     failed += conversationSignals.failed ? 1 : 0;
     hung += conversationSignals.hung ? 1 : 0;
 
-    const requesterRuns = new Map<string, RunContribution[]>();
+    const actorRuns = new Map<string, RunContribution[]>();
     for (const contribution of contributions) {
-      const requester =
-        requesterLabel(contribution.run.requesterIdentity) ?? "Unknown";
-      requesterRuns.set(requester, [
-        ...(requesterRuns.get(requester) ?? []),
-        contribution,
-      ]);
+      const actor = actorLabel(contribution.run.actorIdentity) ?? "Unknown";
+      actorRuns.set(actor, [...(actorRuns.get(actor) ?? []), contribution]);
     }
 
-    for (const [requester, requesterContributions] of requesterRuns) {
-      const item = requesters.get(requester) ?? emptyStatsItem(requester);
+    for (const [actor, actorContributions] of actorRuns) {
+      const item = actors.get(actor) ?? emptyStatsItem(actor);
       const signals = statusSignals(
-        requesterContributions.map((contribution) => contribution.run),
+        actorContributions.map((contribution) => contribution.run),
       );
       item.conversations += 1;
-      item.runs += requesterContributions.length;
-      item.durationMs += contributionDurationTotal(requesterContributions);
+      item.runs += actorContributions.length;
+      item.durationMs += contributionDurationTotal(actorContributions);
       item.active += signals.active ? 1 : 0;
       item.failed += signals.failed ? 1 : 0;
       item.hung += signals.hung ? 1 : 0;
-      addItemTokens(item, contributionTokenTotal(requesterContributions));
-      requesters.set(requester, item);
+      addItemTokens(item, contributionTokenTotal(actorContributions));
+      actors.set(actor, item);
     }
 
     const location = locationLabel(newestRun(runs));
@@ -975,7 +967,7 @@ function buildConversationStatsReport(args: {
     generatedAt: args.generatedAt,
     hung,
     locations: statsItems(locations),
-    requesters: statsItems(requesters),
+    actors: statsItems(actors),
     sampleLimit: args.sampleLimit,
     sampleSize: args.sampleSize,
     source: "conversation_index",

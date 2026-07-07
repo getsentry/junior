@@ -100,7 +100,7 @@ Set the core runtime variables in Vercel:
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                               |
 | `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting.        |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver: `neon` or `postgres`. Defaults to `neon`.                   |
-| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox requester context.                        |
+| `JUNIOR_SECRET`                             | Yes         | Signs internal callbacks and sandbox actor context.                            |
 | `CRON_SECRET`                               | Yes         | Authenticates Vercel Cron requests to the internal heartbeat route.            |
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.       |

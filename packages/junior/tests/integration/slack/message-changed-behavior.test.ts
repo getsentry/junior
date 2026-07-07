@@ -271,7 +271,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
                 ...flattenAgentRunRequestForTest(request),
               };
 
-              expect(context?.requester).toEqual({
+              expect(context?.actor).toEqual({
                 email: "david@example.com",
                 fullName: "David Cramer",
                 platform: "slack",

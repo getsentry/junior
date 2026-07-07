@@ -43,8 +43,8 @@ import {
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
-import { createSlackResumeRequester, type Requester } from "@/chat/requester";
-import { lookupSlackRequester } from "@/chat/slack/user";
+import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
+import { lookupSlackActor } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
@@ -197,7 +197,7 @@ async function resumeOAuthSessionRecordTurn(
     conversation,
     kind: "plugin",
     provider: stored.provider,
-    requesterId: stored.userId,
+    actorId: stored.userId,
     ...(stored.scope ? { scope: stored.scope } : {}),
   });
 
@@ -273,7 +273,7 @@ async function resumeOAuthSessionRecordTurn(
         conversation: lockedConversation,
         kind: "plugin",
         provider: stored.provider,
-        requesterId: stored.userId,
+        actorId: stored.userId,
         ...(stored.scope ? { scope: stored.scope } : {}),
       });
       const lockedSessionId =
@@ -331,10 +331,12 @@ async function resumeOAuthSessionRecordTurn(
       const lockedChannelConfiguration = getChannelConfigurationServiceById(
         stored.channelId!,
       );
-      let requester: Requester;
+      let actor: Actor;
       try {
-        requester = createSlackResumeRequester({
-          requester: lockedSessionRecord.requester,
+        actor = createSlackResumeActor({
+          actor: isUserActor(lockedSessionRecord.actor)
+            ? lockedSessionRecord.actor
+            : undefined,
           teamId: destination.teamId,
           userId: lockedUserMessage.author.userId,
         });
@@ -343,8 +345,7 @@ async function resumeOAuthSessionRecordTurn(
           conversationId: stored.resumeConversationId!,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage:
-            "Stored Slack requester identity did not match OAuth requester",
+          errorMessage: "Stored Slack actor identity did not match OAuth actor",
         });
         return false;
       }
@@ -362,7 +363,7 @@ async function resumeOAuthSessionRecordTurn(
         conversationId: stored.resumeConversationId!,
         kind: "plugin",
         provider: stored.provider,
-        requesterId: stored.userId,
+        actorId: stored.userId,
         authorizationId: pluginAuthorizationId({
           provider: stored.provider,
           sessionId: lockedSessionId,
@@ -386,10 +387,10 @@ async function resumeOAuthSessionRecordTurn(
             credentialContext: {
               actor: {
                 type: "user",
-                userId: requester.userId,
+                userId: actor.userId,
               },
             },
-            requester,
+            actor,
             destination,
             source: lockedSessionRecord.source,
             correlation: {
@@ -397,7 +398,7 @@ async function resumeOAuthSessionRecordTurn(
               turnId: lockedSessionId,
               channelId: stored.channelId!,
               threadTs: stored.threadTs!,
-              requesterId: requester.userId,
+              actorId: actor.userId,
             },
             toolChannelId:
               lockedArtifacts.assistantContextChannelId ?? stored.channelId!,
@@ -506,10 +507,7 @@ async function resumePendingOAuthMessage(
     stored.destination,
     "OAuth pending message resume",
   );
-  const requester = await lookupSlackRequester(
-    destination.teamId,
-    stored.userId,
-  );
+  const actor = await lookupSlackActor(destination.teamId, stored.userId);
   const messageTs = getTurnUserSlackMessageTs(latestUserMessage);
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
@@ -527,14 +525,14 @@ async function resumePendingOAuthMessage(
         credentialContext: {
           actor: { type: "user", userId: stored.userId },
         },
-        requester,
+        actor,
         destination: stored.destination,
         source,
         correlation: {
           conversationId: threadId,
           channelId: stored.channelId,
           threadTs: stored.threadTs,
-          requesterId: stored.userId,
+          actorId: stored.userId,
         },
       },
       policy: {

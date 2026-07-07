@@ -85,7 +85,7 @@ This policy applies to:
   so the egress proxy forwards REST API and git HTTPS traffic through
   host-managed credential transforms.
 - Disable git credential helpers in sandbox env (`GIT_ASKPASS`, `credential.helper=`) so git never sends its own auth — the proxy header transform is the sole credential source.
-- Set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` from the resolved requester
+- Set `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` from the resolved actor
   identity for commit authorship. Set `GIT_COMMITTER_NAME` and
   `GIT_COMMITTER_EMAIL` from the configured GitHub App bot identity, and append
   Junior as the commit co-author trailer.

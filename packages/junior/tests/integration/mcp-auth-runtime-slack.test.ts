@@ -501,7 +501,7 @@ describe("mcp auth runtime slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId: turnId,
             linkSentAtMs: expect.any(Number),
           },
@@ -728,7 +728,7 @@ describe("mcp auth runtime slack integration", () => {
           pendingAuth: {
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
-            requesterId: "U123",
+            actorId: "U123",
             sessionId: turnId,
             linkSentAtMs: expect.any(Number),
           },
@@ -965,18 +965,18 @@ describe("mcp auth runtime slack integration", () => {
 
   it.each([
     {
-      label: "same requester",
-      currentRequesterId: "U123",
-      currentRequesterName: "dcramer",
+      label: "same actor",
+      currentActorId: "U123",
+      currentActorName: "dcramer",
     },
     {
-      label: "different requester",
-      currentRequesterId: "U999",
-      currentRequesterName: "paul",
+      label: "different actor",
+      currentActorId: "U999",
+      currentActorName: "paul",
     },
   ])(
     "does not abort unrelated turns for the $label when MCP auth is already pending from a prior turn",
-    async ({ currentRequesterId, currentRequesterName }) => {
+    async ({ currentActorId, currentActorName }) => {
       const threadId = "slack:C126:1700000000.004";
       const { createTestChatRuntime } = chatRuntimeModule;
       const { slackRuntime } = createTestChatRuntime({
@@ -1043,7 +1043,7 @@ describe("mcp auth runtime slack integration", () => {
             pendingAuth: {
               kind: "mcp",
               provider: EVAL_MCP_AUTH_PROVIDER,
-              requesterId: "U123",
+              actorId: "U123",
               sessionId: "turn_user-auth",
               linkSentAtMs: expect.any(Number),
             },
@@ -1063,8 +1063,8 @@ describe("mcp auth runtime slack integration", () => {
           text: "what time is it?", // completely unrelated to eval-auth
           isMention: true,
           author: {
-            userId: currentRequesterId,
-            userName: currentRequesterName,
+            userId: currentActorId,
+            userName: currentActorName,
           },
           raw: {
             channel: "C126",

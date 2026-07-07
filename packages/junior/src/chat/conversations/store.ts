@@ -1,6 +1,6 @@
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type { StoredSlackRequester } from "@/chat/requester";
+import type { StoredSlackActor } from "@/chat/actor";
 
 export type ConversationSource =
   | "api"
@@ -33,7 +33,7 @@ export interface Conversation {
   destination?: Destination;
   execution: ConversationExecution;
   lastActivityAtMs: number;
-  requester?: StoredSlackRequester;
+  actor?: StoredSlackActor;
   schemaVersion: 1;
   source?: ConversationSource;
   title?: string;
@@ -57,7 +57,7 @@ export interface ConversationStore {
     conversationId: string;
     destination?: Destination;
     nowMs?: number;
-    requester?: StoredSlackRequester;
+    actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
     /** Source-confirmed visibility from the current event's signal only. */
@@ -71,7 +71,7 @@ export interface ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
-    requester?: StoredSlackRequester;
+    actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
     updatedAtMs: number;

@@ -27,7 +27,7 @@ session-wide sandbox state.
 - Use short-lived scoped credentials.
 - Let registered plugin providers determine which credentials may be injected for matching domains.
 - Fetch credentials from the host when sandbox traffic hits a declared provider domain.
-- Keep sandbox egress authorization bound to the requester context, sandbox VM session, and forwarded provider domain.
+- Keep sandbox egress authorization bound to the actor context, sandbox VM session, and forwarded provider domain.
 - Mint provider credentials lazily at the egress proxy, not when a plugin loads or a command starts.
 - Do not guess provider intent from command text for token scoping; use request-time provider/domain matching.
 - Inject scoped auth at the host proxy boundary instead of exposing raw tokens.

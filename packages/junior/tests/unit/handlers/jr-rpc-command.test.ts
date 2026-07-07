@@ -52,7 +52,7 @@ describe("jr-rpc custom command", () => {
       "jr-rpc config get github.repo",
       {
         activeSkill,
-        requesterId: "U123",
+        actorId: "U123",
       },
     );
 
@@ -72,7 +72,7 @@ describe("jr-rpc custom command", () => {
       {
         activeSkill,
         channelConfiguration: configuration,
-        requesterId: "U123",
+        actorId: "U123",
         onConfigurationValueChanged,
       },
     );
@@ -87,7 +87,7 @@ describe("jr-rpc custom command", () => {
       {
         activeSkill,
         channelConfiguration: configuration,
-        requesterId: "U123",
+        actorId: "U123",
       },
     );
     const handled = expectHandled(getResult);
@@ -119,7 +119,7 @@ describe("jr-rpc custom command", () => {
       {
         activeSkill,
         channelConfiguration: configuration,
-        requesterId: "U123",
+        actorId: "U123",
       },
     );
     const handled = expectHandled(result);
@@ -192,7 +192,7 @@ describe("jr-rpc custom command", () => {
       {
         activeSkill,
         channelConfiguration: configuration,
-        requesterId: "U123",
+        actorId: "U123",
         onConfigurationValueChanged,
       },
     );
@@ -218,7 +218,11 @@ describe("jr-rpc custom command", () => {
             displayName: "Cloudflare",
             description: "Cloudflare plugin",
             capabilities: [],
-            configKeys: ["cloudflare.account.id", "cloudflare.zone.id", "cloudflare.worker.name"],
+            configKeys: [
+              "cloudflare.account.id",
+              "cloudflare.zone.id",
+              "cloudflare.worker.name",
+            ],
           },
         },
       ],
@@ -230,7 +234,7 @@ describe("jr-rpc custom command", () => {
         {
           activeSkill,
           channelConfiguration: configuration,
-          requesterId: "U123",
+          actorId: "U123",
         },
       );
       const handled = expectHandled(result);
@@ -255,7 +259,11 @@ describe("jr-rpc custom command", () => {
             displayName: "Cloudflare",
             description: "Cloudflare plugin",
             capabilities: [],
-            configKeys: ["cloudflare.account.id", "cloudflare.zone.id", "cloudflare.worker.name"],
+            configKeys: [
+              "cloudflare.account.id",
+              "cloudflare.zone.id",
+              "cloudflare.worker.name",
+            ],
           },
         },
       ],
@@ -267,7 +275,7 @@ describe("jr-rpc custom command", () => {
         {
           activeSkill,
           channelConfiguration: configuration,
-          requesterId: "U123",
+          actorId: "U123",
         },
       );
       const handled = expectHandled(result);

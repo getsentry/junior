@@ -15,7 +15,7 @@ function pendingAuth(
   overrides: Partial<{
     kind: "mcp" | "plugin";
     provider: string;
-    requesterId: string;
+    actorId: string;
     sessionId: string;
     linkSentAtMs: number;
   }> = {},
@@ -23,7 +23,7 @@ function pendingAuth(
   return {
     kind: "mcp" as const,
     provider: "eval-auth",
-    requesterId: "U123",
+    actorId: "U123",
     sessionId: "run_1",
     linkSentAtMs: NOW - 60_000,
     ...overrides,
@@ -56,7 +56,7 @@ function pendingAuthState(sessionId: string): ConversationPendingAuthState {
   return {
     kind: "plugin",
     provider: "eval-auth",
-    requesterId: "U123",
+    actorId: "U123",
     sessionId,
     linkSentAtMs: NOW,
   };
@@ -68,7 +68,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         pendingAuth: pendingAuth({ linkSentAtMs: NOW - 60_000 }),
         nowMs: NOW,
@@ -81,7 +81,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         pendingAuth: pendingAuth({
           linkSentAtMs: NOW - REUSE_WINDOW_MS + 1,
@@ -96,7 +96,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         pendingAuth: pendingAuth({ linkSentAtMs: NOW - REUSE_WINDOW_MS }),
         nowMs: NOW,
@@ -104,12 +104,12 @@ describe("canReusePendingAuthLink", () => {
     ).toBe(false);
   });
 
-  it("does not reuse a link from a different requester or provider", () => {
+  it("does not reuse a link from a different actor or provider", () => {
     expect(
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U999",
+        actorId: "U999",
         sessionId: "run_1",
         pendingAuth: pendingAuth(),
         nowMs: NOW,
@@ -120,7 +120,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "other-provider",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         pendingAuth: pendingAuth(),
         nowMs: NOW,
@@ -133,7 +133,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "plugin",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         pendingAuth: pendingAuth({ kind: "mcp" }),
         nowMs: NOW,
@@ -146,7 +146,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_2",
         pendingAuth: pendingAuth(),
         nowMs: NOW,
@@ -159,7 +159,7 @@ describe("canReusePendingAuthLink", () => {
       canReusePendingAuthLink({
         kind: "mcp",
         provider: "eval-auth",
-        requesterId: "U123",
+        actorId: "U123",
         sessionId: "run_1",
         nowMs: NOW,
       }),

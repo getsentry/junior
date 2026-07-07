@@ -16,11 +16,7 @@ import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
-import type {
-  LocalRequester,
-  Requester,
-  SlackRequester,
-} from "@/chat/requester";
+import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -82,7 +78,7 @@ interface BaseToolRuntimeContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
 
-  requester?: Requester;
+  actor?: Actor;
   /** Runtime-owned source where this invocation came from. */
   source: Source;
   /** Runtime surface that owns final delivery semantics for this turn. */
@@ -97,13 +93,13 @@ interface BaseToolRuntimeContext {
 
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
   destination: SlackDestination;
-  requester?: SlackRequester;
+  actor?: SlackActor;
   source: SlackSource;
 }
 
 interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
-  requester?: LocalRequester;
+  actor?: LocalActor;
   source: LocalSource;
   slack?: never;
 }

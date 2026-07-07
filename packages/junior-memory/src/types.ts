@@ -1,8 +1,8 @@
 import {
-  localRequesterSchema,
+  localActorSchema,
   localSourceSchema,
   platformSchema,
-  slackRequesterSchema,
+  slackActorSchema,
   slackSourceSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -34,7 +34,7 @@ const nonEmptyStringSchema = z.string().min(1);
 export const slackMemoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
-    requester: slackRequesterSchema.optional(),
+    actor: slackActorSchema.optional(),
     source: slackSourceSchema,
   })
   .strict();
@@ -43,7 +43,7 @@ export const slackMemoryRuntimeContextSchema = z
 export const localMemoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
-    requester: localRequesterSchema.optional(),
+    actor: localActorSchema.optional(),
     source: localSourceSchema,
   })
   .strict();

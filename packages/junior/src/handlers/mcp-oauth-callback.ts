@@ -53,7 +53,7 @@ import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
-import { createSlackResumeRequester, type Requester } from "@/chat/requester";
+import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 
 const CALLBACK_PAGES = {
@@ -209,7 +209,7 @@ async function resumeAuthorizedMcpTurn(args: {
     conversation,
     kind: "mcp",
     provider,
-    requesterId: authSession.userId,
+    actorId: authSession.userId,
   });
   const resolvedSessionId = pendingAuth?.sessionId ?? authSession.sessionId;
   const userMessage = getTurnUserMessage(conversation, resolvedSessionId);
@@ -248,7 +248,7 @@ async function resumeAuthorizedMcpTurn(args: {
         conversation: lockedConversation,
         kind: "mcp",
         provider,
-        requesterId: authSession.userId,
+        actorId: authSession.userId,
       });
       const lockedSessionId =
         lockedPendingAuth?.sessionId ?? authSession.sessionId;
@@ -305,10 +305,12 @@ async function resumeAuthorizedMcpTurn(args: {
       const lockedChannelConfiguration = getChannelConfigurationServiceById(
         authSession.channelId!,
       );
-      let requester: Requester;
+      let actor: Actor;
       try {
-        requester = createSlackResumeRequester({
-          requester: lockedSessionRecord.requester,
+        actor = createSlackResumeActor({
+          actor: isUserActor(lockedSessionRecord.actor)
+            ? lockedSessionRecord.actor
+            : undefined,
           teamId: destination.teamId,
           userId: authSession.userId,
         });
@@ -317,8 +319,7 @@ async function resumeAuthorizedMcpTurn(args: {
           conversationId: authSession.conversationId,
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
-          errorMessage:
-            "Stored Slack requester identity did not match OAuth requester",
+          errorMessage: "Stored Slack actor identity did not match OAuth actor",
         });
         return false;
       }
@@ -336,7 +337,7 @@ async function resumeAuthorizedMcpTurn(args: {
         conversationId: authSession.conversationId,
         kind: "mcp",
         provider,
-        requesterId: authSession.userId,
+        actorId: authSession.userId,
         authorizationId: mcpAuthorizationId({
           provider,
           sessionId: lockedSessionId,
@@ -356,9 +357,9 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           routing: {
             credentialContext: {
-              actor: { type: "user", userId: requester.userId },
+              actor: { type: "user", userId: actor.userId },
             },
-            requester,
+            actor,
             destination,
             source: lockedSessionRecord.source,
             correlation: {
@@ -366,7 +367,7 @@ async function resumeAuthorizedMcpTurn(args: {
               turnId: lockedSessionId,
               channelId: authSession.channelId,
               threadTs: authSession.threadTs,
-              requesterId: requester.userId,
+              actorId: actor.userId,
             },
             toolChannelId:
               authSession.toolChannelId ??
