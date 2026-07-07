@@ -9,8 +9,22 @@ import {
 } from "@/chat/slack/output";
 import {
   ensureBlockSpacing,
+  formatSlackLink,
   normalizeSlackReplyMarkdown,
 } from "@/chat/slack/mrkdwn";
+
+describe("formatSlackLink", () => {
+  it("escapes URLs and labels for Slack explicit link syntax", () => {
+    expect(
+      formatSlackLink(
+        "https://mcp.linear.app/authorize?response_type=code&scope=read+write&resource=https%3A%2F%2Fmcp.linear.app%2Fmcp",
+        "Click <here> & authorize",
+      ),
+    ).toBe(
+      "<https://mcp.linear.app/authorize?response_type=code&amp;scope=read+write&amp;resource=https%3A%2F%2Fmcp.linear.app%2Fmcp|Click &lt;here&gt; &amp; authorize>",
+    );
+  });
+});
 
 describe("normalizeSlackReplyMarkdown", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {

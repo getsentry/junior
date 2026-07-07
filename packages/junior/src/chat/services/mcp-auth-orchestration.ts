@@ -22,6 +22,7 @@ import {
   AuthorizationPauseError,
   type AuthorizationFlowMode,
 } from "@/chat/services/auth-pause";
+import { formatSlackLink } from "@/chat/slack/mrkdwn";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { recordAuthorizationRequested } from "@/chat/state/session-log";
@@ -170,7 +171,10 @@ export function createMcpAuthOrchestration(
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         userId: authSession.userId,
-        text: `<${authSession.authorizationUrl}|Click here to link your ${providerLabel} MCP access>. Once you've authorized, this thread will continue automatically.`,
+        text: `${formatSlackLink(
+          authSession.authorizationUrl,
+          `Click here to link your ${providerLabel} MCP access`,
+        )}. Once you've authorized, this thread will continue automatically.`,
       });
       if (!delivery) {
         throw new Error(

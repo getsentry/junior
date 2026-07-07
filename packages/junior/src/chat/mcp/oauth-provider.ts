@@ -29,6 +29,18 @@ function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
   };
 }
 
+function clientAllowsRedirectUri(
+  clientInformation: OAuthClientInformationMixed,
+  callbackUrl: string,
+): boolean {
+  const redirectUris = (clientInformation as { redirect_uris?: unknown })
+    .redirect_uris;
+  if (!Array.isArray(redirectUris)) {
+    return true;
+  }
+  return redirectUris.includes(callbackUrl);
+}
+
 export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   readonly clientMetadata: OAuthClientMetadata;
 
@@ -61,7 +73,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       session.userId,
       session.provider,
     );
-    return credentials?.clientInformation;
+    const clientInformation = credentials?.clientInformation;
+    if (!clientInformation) {
+      return undefined;
+    }
+    if (clientAllowsRedirectUri(clientInformation, this.callbackUrl)) {
+      return clientInformation;
+    }
+    return undefined;
   }
 
   async saveClientInformation(

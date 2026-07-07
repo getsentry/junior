@@ -1,5 +1,26 @@
 import { truncateStatusText } from "@/chat/slack/status-format";
 
+/** Escape dynamic text for Slack mrkdwn without changing intended formatting. */
+export function escapeSlackMrkdwnText(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+/** Escape a URL for Slack explicit link syntax while preserving query semantics. */
+export function escapeSlackLinkUrl(url: string): string {
+  return url
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "%3C")
+    .replaceAll(">", "%3E");
+}
+
+/** Build a Slack explicit link from dynamic URL and label values. */
+export function formatSlackLink(url: string, label: string): string {
+  return `<${escapeSlackLinkUrl(url)}|${escapeSlackMrkdwnText(label)}>`;
+}
+
 function readInlineCodeSpan(
   line: string,
   start: number,

@@ -141,6 +141,44 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
     );
   });
 
+  it("ignores cached client information registered for a different callback URL", async () => {
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+      clientInformation: {
+        client_id: "client-1",
+        redirect_uris: ["https://old.example.com/callback"],
+      },
+      discoveryState: { authorization_server: "https://example.com" },
+    });
+
+    const provider = new StateBackedMcpOAuthClientProvider(
+      "auth-session-1",
+      "https://junior.example.com/callback",
+    );
+
+    await expect(provider.clientInformation()).resolves.toBeUndefined();
+    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
+  });
+
+  it("reuses cached client information registered for the current callback URL", async () => {
+    const clientInformation = {
+      client_id: "client-1",
+      redirect_uris: ["https://junior.example.com/callback"],
+    };
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+      clientInformation,
+    });
+
+    const provider = new StateBackedMcpOAuthClientProvider(
+      "auth-session-1",
+      "https://junior.example.com/callback",
+    );
+
+    await expect(provider.clientInformation()).resolves.toEqual(
+      clientInformation,
+    );
+    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
+  });
+
   it("creates the auth session lazily when redirecting to authorization", async () => {
     getMcpAuthSessionMock.mockResolvedValue(undefined);
 

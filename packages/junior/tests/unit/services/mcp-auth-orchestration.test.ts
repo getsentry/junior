@@ -136,7 +136,8 @@ describe("createMcpAuthOrchestration", () => {
     const abortAgent = vi.fn();
     const recordPendingAuth = vi.fn();
     getMcpAuthSession.mockResolvedValue({
-      authorizationUrl: "https://mcp.example/authorize",
+      authorizationUrl:
+        "https://mcp.example/authorize?response_type=code&scope=read+write&resource=https%3A%2F%2Fmcp.example%2Fmcp",
       channelId: "C123",
       threadTs: "1700000000.000000",
       userId: "U123",
@@ -172,6 +173,7 @@ describe("createMcpAuthOrchestration", () => {
 
     expect(deliverPrivateMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        text: "<https://mcp.example/authorize?response_type=code&amp;scope=read+write&amp;resource=https%3A%2F%2Fmcp.example%2Fmcp|Click here to link your github MCP access>. Once you've authorized, this thread will continue automatically.",
         userId: "U123",
       }),
     );

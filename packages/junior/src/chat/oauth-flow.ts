@@ -17,6 +17,7 @@ import {
   postSlackEphemeralMessage,
   postSlackMessage,
 } from "@/chat/slack/outbound";
+import { formatSlackLink } from "@/chat/slack/mrkdwn";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -309,13 +310,17 @@ export async function startOAuthFlow(
     "Initiated OAuth authorization code flow",
   );
 
+  const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   return {
     ok: true,
     delivery: await deliverPrivateMessage({
       channelId: input.channelId,
       threadTs: input.threadTs,
       userId: input.requesterId,
-      text: `<${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}|Click here to link your ${formatProviderLabel(provider)} account>. Once you've authorized, you'll see a confirmation in Slack.`,
+      text: `${formatSlackLink(
+        authorizationUrl,
+        `Click here to link your ${formatProviderLabel(provider)} account`,
+      )}. Once you've authorized, you'll see a confirmation in Slack.`,
     }),
   };
 }

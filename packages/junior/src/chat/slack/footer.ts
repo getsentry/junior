@@ -1,6 +1,7 @@
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
+import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 
 interface SlackMrkdwnTextObject {
   text: string;
@@ -36,20 +37,6 @@ interface SlackReplyFooterItem {
 
 export interface SlackReplyFooter {
   items: SlackReplyFooterItem[];
-}
-
-function escapeSlackMrkdwn(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-function escapeSlackLinkUrl(url: string): string {
-  return url
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "%3C")
-    .replaceAll(">", "%3E");
 }
 
 /**
@@ -103,8 +90,8 @@ export function buildSlackReplyBlocks(
       elements: footer.items.map((item) => ({
         type: "mrkdwn",
         text: item.url
-          ? `*${escapeSlackMrkdwn(item.label)}:* <${escapeSlackLinkUrl(item.url)}|${escapeSlackMrkdwn(item.value)}>`
-          : `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
+          ? `*${escapeSlackMrkdwnText(item.label)}:* ${formatSlackLink(item.url, item.value)}`
+          : `*${escapeSlackMrkdwnText(item.label)}:* ${escapeSlackMrkdwnText(item.value)}`,
       })),
     });
   }
