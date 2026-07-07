@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 
 const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
@@ -716,7 +717,7 @@ describe("executeAgentRun provider retry", () => {
     const sessionId = "turn-replay";
     const checkpointedPrompt = {
       role: "user",
-      content: [{ type: "text", text: "help me" }],
+      content: [{ type: "text", text: renderCurrentInstruction("help me") }],
       timestamp: 5,
     } satisfies PiMessage;
     await turnSessionState.upsertAgentTurnSessionRecord({

@@ -15,6 +15,7 @@ import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 interface FakeReplyCall {
   prompt: string;
+  piMessages?: unknown[];
 }
 
 function toPostedText(value: unknown): string {
@@ -102,8 +103,9 @@ describe("Slack behavior: new mention", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.input.messageText;
+              const context = flattenAgentRunRequestForTest(request);
 
-              fakeReplyCalls.push({ prompt });
+              fakeReplyCalls.push({ prompt, piMessages: context.piMessages });
               return completedReply("Handled both updates.");
             },
           },
@@ -136,11 +138,11 @@ describe("Slack behavior: new mention", () => {
     });
 
     expect(fakeReplyCalls).toHaveLength(1);
-    expect(fakeReplyCalls[0]?.prompt).toContain("first queued request");
     expect(fakeReplyCalls[0]?.prompt).toContain("latest request");
-    expect(
-      fakeReplyCalls[0]?.prompt.indexOf("first queued request"),
-    ).toBeLessThan(fakeReplyCalls[0]?.prompt.indexOf("latest request") ?? -1);
+    expect(fakeReplyCalls[0]?.prompt).not.toContain("first queued request");
+    expect(JSON.stringify(fakeReplyCalls[0]?.piMessages)).toContain(
+      "first queued request",
+    );
     const state = thread.getState() as {
       conversation?: {
         messages?: Array<{ id: string; text: string }>;
@@ -165,6 +167,7 @@ describe("Slack behavior: new mention", () => {
       attachmentText?: string;
       filenames: string[];
       inboundAttachmentCount?: number;
+      piMessages?: unknown[];
       prompt: string;
     }> = [];
 
@@ -186,6 +189,7 @@ describe("Slack behavior: new mention", () => {
                   (attachment) => attachment.filename ?? "",
                 ),
                 attachmentText: attachments[0]?.data?.toString("utf8"),
+                piMessages: context?.piMessages,
               });
               return completedReply("Handled queued attachment.");
             },
@@ -228,12 +232,15 @@ describe("Slack behavior: new mention", () => {
 
     expect(fakeReplyCalls).toEqual([
       expect.objectContaining({
-        prompt: expect.stringContaining("review this file first"),
+        prompt: "then answer now",
         inboundAttachmentCount: 1,
         filenames: ["queued-notes.txt"],
         attachmentText: "queued attachment notes",
       }),
     ]);
+    expect(JSON.stringify(fakeReplyCalls[0]?.piMessages)).toContain(
+      "review this file first",
+    );
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
       "Handled queued attachment.",

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
@@ -1011,57 +1012,11 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(turnContextInputs.at(-1)?.includeSessionContext).toBe(true);
   });
 
-  it("does not duplicate a raw current prompt from a no-checkpoint resume record", async () => {
-    listToolsMock.mockReset();
-    listToolsMock.mockResolvedValue(makeDemoMcpTools());
-    const rawCurrentPrompt = {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>\nlegacy bootstrap\n</runtime-turn-context>",
-        },
-        { type: "text", text: "continue after auth" },
-      ],
-      timestamp: 2,
-    } as PiMessage;
-    const storedMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "prior question" }],
-        timestamp: 1,
-      },
-      rawCurrentPrompt,
-    ] as PiMessage[];
-    await upsertAgentTurnSessionRecord({
-      conversationId: "conversation-raw-current-resume",
-      sessionId: "turn-raw-current-resume",
-      sliceId: 2,
-      state: "awaiting_resume",
-      piMessages: storedMessages,
-      resumeReason: "auth",
-      errorMessage: "authorization required",
-    });
-
-    await executeAgentRun(
-      makeAgentRunRequest("continue after auth", {
-        conversationId: "conversation-raw-current-resume",
-        threadTs: "1712345.0092",
-        turnId: "turn-raw-current-resume",
-      }),
-    );
-
-    expect(promptSeedMessages.at(-1)).toEqual([storedMessages[0]]);
-    expect(JSON.stringify(promptMessages.at(-1))).toContain(
-      "continue after auth",
-    );
-  });
-
-  it("does not duplicate an unescaped wrapped current prompt from a no-checkpoint resume record", async () => {
+  it("does not duplicate an exact current prompt from a no-checkpoint resume record", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
     const messageText = `continue & <auth> &lt;literal&gt; "now"`;
-    const rawCurrentPrompt = {
+    const currentPrompt = {
       role: "user",
       content: [
         {
@@ -1070,7 +1025,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         },
         {
           type: "text",
-          text: `<current-instruction>\n${messageText}\n</current-instruction>`,
+          text: renderCurrentInstruction(messageText),
         },
       ],
       timestamp: 2,
@@ -1081,11 +1036,11 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "prior question" }],
         timestamp: 1,
       },
-      rawCurrentPrompt,
+      currentPrompt,
     ] as PiMessage[];
     await upsertAgentTurnSessionRecord({
-      conversationId: "conversation-unescaped-current-resume",
-      sessionId: "turn-unescaped-current-resume",
+      conversationId: "conversation-current-resume",
+      sessionId: "turn-current-resume",
       sliceId: 2,
       state: "awaiting_resume",
       piMessages: storedMessages,
@@ -1095,9 +1050,9 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     await executeAgentRun(
       makeAgentRunRequest(messageText, {
-        conversationId: "conversation-unescaped-current-resume",
+        conversationId: "conversation-current-resume",
         threadTs: "1712345.0093",
-        turnId: "turn-unescaped-current-resume",
+        turnId: "turn-current-resume",
       }),
     );
 

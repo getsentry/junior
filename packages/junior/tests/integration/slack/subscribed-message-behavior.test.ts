@@ -376,7 +376,7 @@ describe("Slack behavior: subscribed messages", () => {
 
   it("treats queued explicit mentions as part of the subscribed turn", async () => {
     let classifierCalled = false;
-    const replyCalls: string[] = [];
+    const replyCalls: Array<{ piMessages?: unknown[]; prompt: string }> = [];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -392,8 +392,9 @@ describe("Slack behavior: subscribed messages", () => {
           agentRunner: {
             run: async (request) => {
               const prompt = request.input.messageText;
+              const context = flattenAgentRunRequestForTest(request);
 
-              replyCalls.push(prompt);
+              replyCalls.push({ prompt, piMessages: context.piMessages });
               return completedReply("Handled queued subscribed turn.");
             },
           },
@@ -428,8 +429,11 @@ describe("Slack behavior: subscribed messages", () => {
 
     expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
-    expect(replyCalls[0]).toContain("first queued request");
-    expect(replyCalls[0]).toContain("latest follow-up");
+    expect(replyCalls[0]?.prompt).toContain("latest follow-up");
+    expect(replyCalls[0]?.prompt).not.toContain("first queued request");
+    expect(JSON.stringify(replyCalls[0]?.piMessages)).toContain(
+      "first queued request",
+    );
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
       "Handled queued subscribed turn.",
