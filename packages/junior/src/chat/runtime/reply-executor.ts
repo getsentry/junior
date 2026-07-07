@@ -1012,6 +1012,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             }
           }
+          const hasDurablePromptHistory = Boolean(piMessages?.length);
           const queuedInstructionPiMessages = (
             await resolveSteeringMessages(
               (options.queuedMessages ?? []).filter(
@@ -1102,11 +1103,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             requester?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
             requester?.fullName ?? requester?.userName;
-          const hasPromptHistory = Boolean(piMessages?.length);
           const promptConversationContext = appendRecentThreadMessagesToContext(
             preparedState.conversationContext,
             options.queuedMessages ?? [],
-            { includeConversationContext: !hasPromptHistory },
+            { includeConversationContext: !hasDurablePromptHistory },
           );
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
@@ -1137,7 +1137,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   : {}),
                 ...(slackMessageTs ? { slackTs: slackMessageTs } : {}),
               },
-              includeConversationContextWithPiMessages: hasPromptHistory,
+              includeConversationContextWithPiMessages: hasDurablePromptHistory,
               messageText: effectiveUserText,
               conversationContext: promptConversationContext,
               piMessages,

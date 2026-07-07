@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildUserTurnText } from "@/chat/agent/prompt";
+import { buildPromptInput, buildUserTurnText } from "@/chat/agent/prompt";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 
 describe("buildUserTurnText", () => {
@@ -77,5 +77,28 @@ describe("buildUserTurnText", () => {
         "</current-instruction>",
       ].join("\n"),
     );
+  });
+
+  it("can include fresh context alongside existing Pi messages", () => {
+    const input = buildPromptInput({
+      includeConversationContextWithPiMessages: true,
+      messageText: "what now?",
+      conversationContext:
+        "<recent-thread-messages>\n  <message>add customer impact</message>\n</recent-thread-messages>",
+      piMessages: [{ role: "user" } as never],
+    });
+
+    expect(input.userContentParts[0]).toEqual({
+      type: "text",
+      text: [
+        "<recent-thread-messages>",
+        "  <message>add customer impact</message>",
+        "</recent-thread-messages>",
+        "",
+        "<current-instruction>",
+        "what now?",
+        "</current-instruction>",
+      ].join("\n"),
+    });
   });
 });

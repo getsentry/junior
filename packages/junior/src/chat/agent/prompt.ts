@@ -68,7 +68,9 @@ export interface PromptAssembly {
 }
 
 function isStructuredThreadContext(context: string): boolean {
-  return /^<thread-(compactions|transcript)>/.test(context);
+  return /^<(recent-thread-messages|thread-(compactions|transcript))>/.test(
+    context,
+  );
 }
 
 function renderThreadContextForPrompt(context: string): string {
