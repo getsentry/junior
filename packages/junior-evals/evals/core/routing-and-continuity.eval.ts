@@ -108,6 +108,60 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     });
   });
 
+  const currentInstructionAuthorThread = {
+    id: "thread-current-instruction-author",
+    channel_id: "CCURRENTINSTRUCTIONAUTHOR",
+    thread_ts: "17000000.current-instruction-author",
+  };
+
+  it("when a different participant gives a first-person follow-up, treat it as their request", async ({
+    run,
+  }) => {
+    const result = await run({
+      events: [
+        mention(
+          "For the rollout summary, my preferred wording is formal and cautious.",
+          {
+            thread: currentInstructionAuthorThread,
+            author: {
+              user_id: "U_ALICE",
+              user_name: "alice",
+              full_name: "Alice Example",
+            },
+          },
+        ),
+        threadMessage(
+          "<@U_APP> For the rollout summary, my preferred wording is casual and direct. What wording preference did I just give you?",
+          {
+            thread: currentInstructionAuthorThread,
+            is_mention: true,
+            author: {
+              user_id: "U_RYAN",
+              user_name: "ryan",
+              full_name: "Ryan Example",
+            },
+          },
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply identifies the current requester as giving a casual/direct wording preference.",
+          "The second reply does not attribute Alice's formal/cautious preference to the current requester.",
+        ],
+        fail: [
+          "Do not answer the second turn as if Alice is the current requester.",
+          "Do not say the current requester gave a formal or cautious preference.",
+        ],
+      }),
+    });
+
+    const replies = visibleThreadReplies(result.session);
+    expect(replies).toHaveLength(2);
+    const secondReply = textContent(replies[1]?.content).toLowerCase();
+    expect(secondReply).toMatch(/casual|direct/);
+  });
+
   it("when the request is reaction-only, add a reaction without reply clutter", async ({
     run,
   }) => {

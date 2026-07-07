@@ -237,7 +237,7 @@ function getQueuedMessages(
         options.explicitMention || Boolean(message.isMention),
     });
     return {
-      explicitMention: options.explicitMention || Boolean(message.isMention),
+      explicitMention: Boolean(message.isMention),
       message,
       rawText: appendSlackLegacyAttachmentText(message.text, message.raw),
       userText: appendSlackLegacyAttachmentText(stripped, message.raw),

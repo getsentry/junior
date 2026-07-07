@@ -35,7 +35,14 @@ export interface AgentRunAttachment {
   promptText?: string;
 }
 
+export interface AgentRunInstructionActor {
+  authorId?: string;
+  authorName?: string;
+  slackTs?: string;
+}
+
 export interface AgentRunSteeringMessage {
+  actor?: AgentRunInstructionActor;
   omittedImageAttachmentCount?: number;
   text: string;
   timestampMs?: number;
@@ -44,6 +51,8 @@ export interface AgentRunSteeringMessage {
 
 /** Carries the user-visible content and prior transcript for one agent-run slice. */
 export interface AgentRunInput {
+  actor?: AgentRunInstructionActor;
+  includeConversationContextWithPiMessages?: boolean;
   messageText: string;
   userAttachments?: AgentRunAttachment[];
   inboundAttachmentCount?: number;

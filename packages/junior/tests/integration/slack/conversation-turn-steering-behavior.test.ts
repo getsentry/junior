@@ -244,6 +244,7 @@ describe("Slack behavior: durable turn steering", () => {
     const releaseAgent = deferred();
     let blockingCallReleased = false;
     const agentCalls: Array<{
+      context?: string;
       prompt: string;
       steeringTexts: string[];
     }> = [];
@@ -268,7 +269,11 @@ describe("Slack behavior: durable turn steering", () => {
       }
 
       const steeringTexts = steeringMessages.map((message) => message.text);
-      agentCalls.push({ prompt, steeringTexts });
+      agentCalls.push({
+        context: request.input.conversationContext,
+        prompt,
+        steeringTexts,
+      });
       return completedAgentRun({
         text: [
           `Handled initial: ${prompt}`,
@@ -352,6 +357,7 @@ describe("Slack behavior: durable turn steering", () => {
 
     expect(agentCalls).toEqual([
       {
+        context: expect.any(String),
         prompt: "start the incident summary",
         steeringTexts: ["include the rollback owner"],
       },
@@ -377,13 +383,13 @@ describe("Slack behavior: durable turn steering", () => {
 
     expect(agentCalls).toEqual([
       {
+        context: expect.any(String),
         prompt: "start the incident summary",
         steeringTexts: ["include the rollback owner"],
       },
       {
-        prompt: expect.stringMatching(
-          /add customer impact\s+finish with the next action/,
-        ),
+        context: expect.stringContaining("add customer impact"),
+        prompt: "finish with the next action",
         steeringTexts: [],
       },
     ]);

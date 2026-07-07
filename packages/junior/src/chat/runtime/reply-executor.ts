@@ -49,7 +49,6 @@ import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
-  combineTurnText,
   type PrepareTurnStateInput,
   type QueuedTurnMessage,
   type TurnMessageText,
@@ -86,10 +85,14 @@ import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
   toStoredSlackRequester,
+  parseActorUserId,
   type SlackRequester,
   type StoredSlackRequester,
 } from "@/chat/requester";
-import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import {
+  ensureSlackMessageActorIdentity,
+  getMessageActorIdentity,
+} from "@/chat/services/message-actor-identity";
 import type { AgentContinueRequest } from "@/chat/services/agent-continue";
 import {
   CooperativeTurnYieldError,
@@ -125,6 +128,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
+import { escapeXml } from "@/chat/xml";
 
 /**
  * Persist post-delivery thread state with a short retry so a transient state
@@ -166,6 +170,76 @@ function parkedInputKey(message: PiMessage): string | undefined {
       ? String((first as { text?: unknown }).text ?? "")
       : "";
   return `${message.timestamp}:${text}`;
+}
+
+function renderRecentThreadMessages(
+  conversationContext: string | undefined,
+  messages: QueuedTurnMessage[],
+): string | undefined {
+  const passiveMessages = messages.filter((queued) => {
+    if (queued.explicitMention) {
+      return false;
+    }
+    const slackTs = queuedInstructionActor(queued)?.slackTs;
+    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
+  });
+  if (passiveMessages.length === 0) {
+    return undefined;
+  }
+  const lines = ["<recent-thread-messages>"];
+  for (const queued of passiveMessages) {
+    const actor = queuedInstructionActor(queued);
+    const attrs = [
+      actor?.authorId ? `author_id="${escapeXml(actor.authorId)}"` : undefined,
+      actor?.authorName
+        ? `author_name="${escapeXml(actor.authorName)}"`
+        : undefined,
+      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
+    ]
+      .filter((attr): attr is string => Boolean(attr))
+      .join(" ");
+    lines.push(
+      attrs ? `  <message ${attrs}>` : "  <message>",
+      escapeXml(queued.userText),
+      "  </message>",
+    );
+  }
+  lines.push("</recent-thread-messages>");
+  return lines.join("\n");
+}
+
+function appendRecentThreadMessagesToContext(
+  conversationContext: string | undefined,
+  messages: QueuedTurnMessage[],
+  options?: { includeConversationContext?: boolean },
+): string | undefined {
+  const recentThreadMessages = renderRecentThreadMessages(
+    conversationContext,
+    messages,
+  );
+  return [
+    options?.includeConversationContext === false
+      ? undefined
+      : conversationContext?.trim(),
+    recentThreadMessages,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+}
+
+function queuedInstructionActor(
+  queued: QueuedTurnMessage,
+): AgentRunSteeringMessage["actor"] {
+  const actor = getMessageActorIdentity(queued.message);
+  const authorId =
+    actor?.userId ?? parseActorUserId(queued.message.author.userId);
+  const authorName = actor?.fullName ?? actor?.userName;
+  const slackTs = getSlackMessageTs(queued.message);
+  return {
+    ...(authorId ? { authorId } : {}),
+    ...(authorName ? { authorName } : {}),
+    ...(slackTs ? { slackTs } : {}),
+  };
 }
 
 function isResourceEventMessage(message: Message): boolean {
@@ -397,10 +471,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message.raw,
           ),
         };
-        const effectiveUserText = combineTurnText(
-          options.queuedMessages ?? [],
-          currentText,
-        ).userText;
         await Promise.all(
           (options.queuedMessages ?? [])
             .filter((queued) => !isResourceEventMessage(queued.message))
@@ -412,6 +482,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               ),
             ),
         );
+        const effectiveUserText = currentText.userText;
         const credentialContext =
           resourceEventCredentialContext(message) ??
           ({
@@ -518,6 +589,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
               return {
+                actor: queuedInstructionActor(queued),
                 text: queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
@@ -940,6 +1012,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             }
           }
+          const queuedInstructionPiMessages = (
+            await resolveSteeringMessages(
+              (options.queuedMessages ?? []).filter(
+                (queued) => queued.explicitMention,
+              ),
+            )
+          ).map(buildSteeringPiMessage);
+          if (queuedInstructionPiMessages.length > 0) {
+            piMessages = [
+              ...(piMessages ?? []),
+              ...queuedInstructionPiMessages,
+            ];
+          }
 
           status.start();
           const assistantTitleTask = maybeUpdateAssistantTitle({
@@ -1013,6 +1098,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
+          const activeInstructionAuthorId =
+            requester?.userId ?? parseActorUserId(message.author.userId);
+          const activeInstructionAuthorName =
+            requester?.fullName ?? requester?.userName;
+          const hasPromptHistory = Boolean(piMessages?.length);
+          const promptConversationContext = appendRecentThreadMessagesToContext(
+            preparedState.conversationContext,
+            options.queuedMessages ?? [],
+            { includeConversationContext: !hasPromptHistory },
+          );
           const drainSteeringMessages = options.drainSteeringMessages
             ? async (
                 accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
@@ -1033,8 +1128,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             : undefined;
           const outcome = await deps.services.agentRunner.run({
             input: {
+              actor: {
+                ...(activeInstructionAuthorId
+                  ? { authorId: activeInstructionAuthorId }
+                  : {}),
+                ...(activeInstructionAuthorName
+                  ? { authorName: activeInstructionAuthorName }
+                  : {}),
+                ...(slackMessageTs ? { slackTs: slackMessageTs } : {}),
+              },
+              includeConversationContextWithPiMessages: hasPromptHistory,
               messageText: effectiveUserText,
-              conversationContext: preparedState.conversationContext,
+              conversationContext: promptConversationContext,
               piMessages,
               inboundAttachmentCount: turnAttachments.length,
               omittedImageAttachmentCount,

@@ -6,11 +6,7 @@
  * contributions, bootstrap turn context, resume-safe history trimming, and
  * the redacted telemetry view of the input messages.
  */
-import { z } from "zod";
-import {
-  extractCurrentInstructionBody,
-  renderCurrentInstruction,
-} from "@/chat/current-instruction";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
@@ -38,6 +34,7 @@ import type { Requester } from "@/chat/requester";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type {
   AgentRunInput,
+  AgentRunInstructionActor,
   AgentRunRouting,
   AgentRunSteeringMessage,
 } from "@/chat/agent/request";
@@ -48,13 +45,6 @@ const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 export type UserContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
-
-const legacyStoredTextPartSchema = z
-  .object({
-    text: z.string(),
-    type: z.literal("text"),
-  })
-  .strict();
 
 type UserTurnAttachment = NonNullable<AgentRunInput["userAttachments"]>[number];
 
@@ -94,9 +84,10 @@ function renderThreadContextForPrompt(context: string): string {
 export function buildUserTurnText(
   userInput: string,
   conversationContext?: string,
+  actor?: AgentRunInstructionActor,
 ): string {
   const trimmedContext = conversationContext?.trim();
-  const currentInstruction = renderCurrentInstruction(userInput);
+  const currentInstruction = renderCurrentInstruction(userInput, actor);
 
   if (!trimmedContext) {
     return currentInstruction;
@@ -276,12 +267,15 @@ function buildUserTurnInput(args: {
 /** Build the prompt-facing user input, keeping router text aligned with Pi content. */
 export function buildPromptInput(input: AgentRunInput): PromptInput {
   const promptConversationContext =
-    input.piMessages && input.piMessages.length > 0
+    input.piMessages &&
+    input.piMessages.length > 0 &&
+    !input.includeConversationContextWithPiMessages
       ? undefined
       : input.conversationContext;
   const userTurnText = buildUserTurnText(
     input.messageText,
     promptConversationContext,
+    input.actor,
   );
   return buildUserTurnInput({
     omittedImageAttachmentCount: input.omittedImageAttachmentCount ?? 0,
@@ -299,7 +293,7 @@ export function buildSteeringPiMessage(
   message: AgentRunSteeringMessage,
 ): PiMessage {
   const { userContentParts } = buildUserTurnInput({
-    userTurnText: buildUserTurnText(message.text),
+    userTurnText: buildUserTurnText(message.text, undefined, message.actor),
     userAttachments: message.userAttachments,
     omittedImageAttachmentCount: message.omittedImageAttachmentCount ?? 0,
   });
@@ -335,49 +329,11 @@ function withoutTrailingUncheckpointedUserPrompt(
   return messages.slice(0, -1);
 }
 
-/** Match stored resume prompts against the current wrapped prompt shape. */
 function userPromptContentMatches(
   storedContent: unknown,
   currentContent: UserContentPart[],
 ): boolean {
-  if (JSON.stringify(storedContent) === JSON.stringify(currentContent)) {
-    return true;
-  }
-  if (!Array.isArray(storedContent)) {
-    return false;
-  }
-  if (storedContent.length !== currentContent.length) {
-    return false;
-  }
-
-  return storedContent.every((storedPart, index) => {
-    const currentPart = currentContent[index];
-    if (index === 0 && currentPart?.type === "text") {
-      const legacyTextPart = legacyStoredTextPartSchema.safeParse(storedPart);
-      if (legacyTextPart.success) {
-        // TODO(v0.84.0): Remove legacy unwrapped resume prompt matching after
-        // pre-current-instruction session records expire.
-        return legacyTextPartMatchesCurrentText(
-          legacyTextPart.data.text,
-          currentPart.text,
-        );
-      }
-    }
-
-    return JSON.stringify(storedPart) === JSON.stringify(currentPart);
-  });
-}
-
-function legacyTextPartMatchesCurrentText(
-  storedText: string,
-  currentText: string,
-): boolean {
-  const storedInstructionBody = extractCurrentInstructionBody(storedText);
-  if (storedInstructionBody !== undefined) {
-    return renderCurrentInstruction(storedInstructionBody) === currentText;
-  }
-
-  return renderCurrentInstruction(storedText) === currentText;
+  return JSON.stringify(storedContent) === JSON.stringify(currentContent);
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */
