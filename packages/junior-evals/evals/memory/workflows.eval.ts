@@ -291,7 +291,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const explicitRememberThread = {
     id: "thread-memory-explicit-remember",
     channel_id: "CMEMORYEXPLICIT",
-    thread_ts: "17000000.memory-explicit",
+    thread_ts: "17000000.000001",
   };
 
   it("when explicitly asked to remember a public first-person preference, store one personal memory", async ({
@@ -342,7 +342,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
     channel_id: "CMEMORYFIRSTPERSON",
-    thread_ts: "17000000.memory-first-person",
+    thread_ts: "17000000.000002",
   };
 
   it("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
@@ -394,7 +394,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   it("when adjudicating preference supersession, distinguish replacement from additive preferences", async () => {
     const agent = createMemoryAgent(evalMemoryModel);
     const runtimeContext = {
-      conversationId: "slack:CMEMORYSUPERSESSION:17000000.memory-supersession",
+      conversationId: "slack:CMEMORYSUPERSESSION:17000000.000003",
       actor: {
         platform: "slack" as const,
         teamId: memoryTeamId,
@@ -402,9 +402,9 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       },
       source: createSlackSource({
         channelId: "CMEMORYSUPERSESSION",
-        messageTs: "17000000.memory-supersession",
+        messageTs: "17000000.000003",
         teamId: memoryTeamId,
-        threadTs: "17000000.memory-supersession",
+        threadTs: "17000000.000003",
 
         type: "priv",
       }),
@@ -448,7 +448,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     channel_type: "channel",
     id: "thread-memory-explicit-task-procedure",
     channel_id: "CMEMORYEXPLICITTASK",
-    thread_ts: "17000000.memory-explicit-task",
+    thread_ts: "17000000.000004",
   } satisfies MemoryThread;
 
   it("when explicitly asked to remember a shared task procedure, store it as conversation memory", async ({
@@ -513,7 +513,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     channel_type: "channel",
     id: "thread-memory-passive-task-procedure",
     channel_id: "CMEMORYPASSIVETASK",
-    thread_ts: "17000000.memory-passive-task",
+    thread_ts: "17000000.000005",
   } satisfies MemoryThread;
 
   it("when organic conversation teaches a task procedure, store and recall it as conversation memory", async ({
@@ -578,7 +578,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     channel_type: "channel",
     id: "thread-memory-passive-conversation",
     channel_id: "CMEMORYPASSIVECONVERSATION",
-    thread_ts: "17000000.memory-passive-conversation",
+    thread_ts: "17000000.000006",
   } satisfies MemoryThread;
 
   it("when organic conversation reveals operational knowledge, store and recall it as conversation memory", async ({
@@ -643,7 +643,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     channel_type: "channel",
     id: "thread-memory-passive-volatile-answer",
     channel_id: "CMEMORYVOLATILE",
-    thread_ts: "17000000.memory-volatile-answer",
+    thread_ts: "17000000.000007",
   } satisfies MemoryThread;
 
   it("when organic conversation reports a point-in-time analytics answer, store no memory", async ({
@@ -678,7 +678,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const thirdPartyRememberThread = {
     id: "thread-memory-third-party-remember",
     channel_id: "CMEMORYTHIRDPARTY",
-    thread_ts: "17000000.memory-third-party",
+    thread_ts: "17000000.000008",
   };
 
   it("when asked to remember another person's personal preference, store nothing", async ({
@@ -710,7 +710,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const autoRecallThread = {
     id: "thread-memory-auto-recall",
     channel_id: "CMEMORYAUTORECALL",
-    thread_ts: "17000000.memory-auto-recall",
+    thread_ts: "17000000.000009",
   };
 
   it("automatically injects relevant memories without requiring a recall tool", async ({
@@ -755,7 +755,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const passiveDedupeThread = {
     id: "thread-memory-passive-dedupe",
     channel_id: "CMEMORYPASSIVEDEDUPE",
-    thread_ts: "17000000.memory-passive-dedupe",
+    thread_ts: "17000000.000010",
   };
 
   it("does not passively duplicate an existing semantic memory", async ({
@@ -800,7 +800,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
   const removeThread = {
     id: "thread-memory-remove",
     channel_id: "CMEMORYREMOVE",
-    thread_ts: "17000000.memory-remove",
+    thread_ts: "17000000.000011",
   };
 
   it("when asked to forget a remembered preference, archive the matching memory", async ({
