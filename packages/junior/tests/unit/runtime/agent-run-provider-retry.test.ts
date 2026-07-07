@@ -487,7 +487,11 @@ describe("executeAgentRun provider retry", () => {
         durability: {
           drainSteeringMessages: async (inject) => {
             const messages = [
-              { text: "actually do the other thing", timestampMs: 2_000 },
+              {
+                text: "actually do the other thing",
+                timestampMs: 2_000,
+                provenance: { authority: "instruction" as const },
+              },
             ];
             await inject(messages);
             injectedTexts.push(...messages.map((message) => message.text));
@@ -613,7 +617,11 @@ describe("executeAgentRun provider retry", () => {
       durability: {
         drainSteeringMessages: async (inject) => {
           const messages = [
-            { text: "actually do the other thing", timestampMs: 2_000 },
+            {
+              text: "actually do the other thing",
+              timestampMs: 2_000,
+              provenance: { authority: "instruction" as const },
+            },
           ];
           await inject(messages);
           return messages;
@@ -783,7 +791,11 @@ describe("executeAgentRun provider retry", () => {
       durability: {
         drainSteeringMessages: async (inject) => {
           const messages = [
-            { text: "actually do the other thing", timestampMs: 2_000 },
+            {
+              text: "actually do the other thing",
+              timestampMs: 2_000,
+              provenance: { authority: "instruction" as const },
+            },
           ];
           try {
             await inject(messages);

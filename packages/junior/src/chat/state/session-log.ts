@@ -9,6 +9,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { z } from "zod";
+import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
 import { getChatConfig } from "@/chat/config";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { storedSlackActorSchema, type StoredSlackActor } from "@/chat/actor";
@@ -18,36 +19,98 @@ import {
 } from "@/chat/state/adapter";
 
 const AGENT_SESSION_LOG_PREFIX = "junior:agent-session-log";
-const AGENT_SESSION_LOG_SCHEMA_VERSION = 1;
+const AGENT_SESSION_LOG_SCHEMA_VERSION = 2;
 const INITIAL_SESSION_ID = "session_0";
 const SESSION_ID_PREFIX = "session_";
 const STATE_STORE_LOCK_TTL_MS = 5_000;
 
+// Decode both the current (v2, per-entry provenance) and legacy (v1,
+// latest-wins actor) session-log shapes; new writes always emit v2.
+const schemaVersionSchema = z.union([z.literal(1), z.literal(2)]);
+
+const piMessageAuthoritySchema = z.union([
+  z.literal("instruction"),
+  z.literal("context"),
+]);
+
+const piMessageProvenanceSchema = z
+  .object({
+    authority: piMessageAuthoritySchema,
+    actor: actorSchema.optional(),
+  })
+  .strict();
+
+/** Whether a user-role Pi message is a durable instruction or ambient context. */
+export type PiMessageAuthority = z.output<typeof piMessageAuthoritySchema>;
+/** Per-message record of the actor a Pi message came from and its authority weight. */
+export type PiMessageProvenance = z.output<typeof piMessageProvenanceSchema>;
+
+const unattributedContextProvenance: PiMessageProvenance = {
+  authority: "context",
+};
+
+function instructionProvenance(actor?: Actor): PiMessageProvenance {
+  return actor
+    ? { authority: "instruction", actor }
+    : { authority: "instruction" };
+}
+
+/** A provenance entry carries no signal when it is unattributed ambient context. */
+function isDefaultContextProvenance(provenance: PiMessageProvenance): boolean {
+  return provenance.authority === "context" && !provenance.actor;
+}
+
+/**
+ * Recover per-message provenance from a legacy v1 pi_message. A stored Slack
+ * actor on the entry meant that user message was the turn instruction, so it
+ * decodes to an authored instruction when the identity is intact; anything
+ * missing or malformed fails closed to unauthored context.
+ */
+function legacyActorProvenance(actor: StoredSlackActor): PiMessageProvenance {
+  if (actor.teamId && actor.slackUserId && actor.platform) {
+    return instructionProvenance({
+      platform: "slack",
+      teamId: actor.teamId,
+      userId: actor.slackUserId,
+      ...(actor.slackUserName ? { userName: actor.slackUserName } : {}),
+      ...(actor.fullName ? { fullName: actor.fullName } : {}),
+      ...(actor.email ? { email: actor.email } : {}),
+    });
+  }
+  return unattributedContextProvenance;
+}
+
 const piMessageEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("pi_message"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   message: piMessageSchema,
+  provenance: piMessageProvenanceSchema.optional(),
+  // Legacy v1 latest-wins actor, decoded into provenance on read.
   actor: storedSlackActorSchema.optional(),
 });
 
 const projectionResetEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("projection_reset"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   messages: z.array(piMessageSchema),
+  provenance: z.array(piMessageProvenanceSchema).optional(),
+  // Legacy v1 latest-wins actor; v1 resets carry no per-message provenance.
   actor: storedSlackActorSchema.optional(),
 });
 
+// Legacy v1 latest-wins actor event, decoded but not projected: attribution
+// that cannot be aligned to a specific message fails closed to context.
 const actorRecordedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("actor_recorded"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   actor: storedSlackActorSchema,
 });
 
 const mcpProviderConnectedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("mcp_provider_connected"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   provider: z.string().min(1),
@@ -59,7 +122,7 @@ const authorizationKindSchema = z.union([
 ]);
 
 const authorizationRequestedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("authorization_requested"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   createdAtMs: z.number().int().nonnegative(),
@@ -74,7 +137,7 @@ const authorizationRequestedEntrySchema = z.object({
 });
 
 const authorizationCompletedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("authorization_completed"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   createdAtMs: z.number().int().nonnegative(),
@@ -91,7 +154,7 @@ const transcriptRefSchema = z.object({
 });
 
 const toolExecutionStartedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("tool_execution_started"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   createdAtMs: z.number().int().nonnegative(),
@@ -101,7 +164,7 @@ const toolExecutionStartedEntrySchema = z.object({
 });
 
 const subagentStartedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("subagent_started"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   subagentInvocationId: z.string().min(1),
@@ -115,7 +178,7 @@ const subagentStartedEntrySchema = z.object({
 });
 
 const subagentEndedEntrySchema = z.object({
-  schemaVersion: z.literal(AGENT_SESSION_LOG_SCHEMA_VERSION),
+  schemaVersion: schemaVersionSchema,
   type: z.literal("subagent_ended"),
   sessionId: z.string().min(1).default(INITIAL_SESSION_ID),
   subagentInvocationId: z.string().min(1),
@@ -301,53 +364,40 @@ function projectionEntries(
     .filter((entry) => entrySessionId(entry) === currentId);
 }
 
-function findLastIndex<T>(
-  values: T[],
-  predicate: (value: T) => boolean,
-): number {
-  for (let index = values.length - 1; index >= 0; index -= 1) {
-    if (predicate(values[index]!)) return index;
-  }
-  return -1;
-}
-
 function piEntry(
   message: PiMessage,
   sessionId: string,
-  actor?: StoredSlackActor,
+  provenance?: PiMessageProvenance,
 ): SessionLogEntry {
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
     type: "pi_message",
     sessionId,
     message,
-    ...(actor ? { actor } : {}),
+    // Ambient context is the decode default, so only attributed/instruction
+    // provenance needs to be persisted on the entry.
+    ...(provenance && !isDefaultContextProvenance(provenance)
+      ? { provenance }
+      : {}),
   };
 }
 
 function resetEntry(
   messages: PiMessage[],
   sessionId: string,
-  actor?: StoredSlackActor,
+  provenance: PiMessageProvenance[],
 ): SessionLogEntry {
+  if (provenance.length !== messages.length) {
+    throw new Error(
+      "projection_reset provenance must align one-to-one with messages",
+    );
+  }
   return {
     schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
     type: "projection_reset",
     sessionId,
     messages,
-    ...(actor ? { actor } : {}),
-  };
-}
-
-function actorRecordedEntry(
-  actor: StoredSlackActor,
-  sessionId: string,
-): SessionLogEntry {
-  return {
-    schemaVersion: AGENT_SESSION_LOG_SCHEMA_VERSION,
-    type: "actor_recorded",
-    sessionId,
-    actor,
+    provenance,
   };
 }
 
@@ -508,48 +558,64 @@ function decode(value: unknown): SessionLogEntry {
   return piEntry(piMessageSchema.parse(value), INITIAL_SESSION_ID);
 }
 
+/** Aligned Pi-message projection: `provenance[i]` describes `messages[i]`. */
 export interface SessionProjection {
   messages: PiMessage[];
-  actor?: StoredSlackActor;
+  provenance: PiMessageProvenance[];
+}
+
+/** Decode the provenance a projected pi_message carries, tolerating v1 shapes. */
+function piEntryProvenance(
+  entry: Extract<SessionLogEntry, { type: "pi_message" }>,
+): PiMessageProvenance {
+  if (entry.provenance) {
+    return entry.provenance;
+  }
+  if (entry.actor) {
+    return legacyActorProvenance(entry.actor);
+  }
+  return unattributedContextProvenance;
 }
 
 /**
- * Materialize Pi messages and actor identity from log entries.
+ * Materialize Pi messages and per-message provenance from log entries.
  *
- * Actor is taken from the latest actor-bearing user pi_message,
- * actor_recorded event, or projection_reset event.
+ * Each projected message carries its own provenance instead of a single
+ * latest-wins actor; legacy entries without provenance decode as
+ * unauthored context, and misaligned reset provenance fails closed.
  */
 function project(
   entries: SessionLogEntry[],
   sessionId?: string,
 ): SessionProjection {
   let messages: PiMessage[] = [];
-  let actor: StoredSlackActor | undefined;
+  let provenance: PiMessageProvenance[] = [];
   for (const entry of projectionEntries(entries, sessionId)) {
     if (entry.type === "pi_message") {
       messages.push(entry.message);
-      if (entry.message.role === "user" && entry.actor) {
-        actor = entry.actor;
-      }
-      continue;
-    }
-    if (entry.type === "actor_recorded") {
-      actor = entry.actor;
+      provenance.push(piEntryProvenance(entry));
       continue;
     }
     if (entry.type === "authorization_completed") {
       messages.push(authorizationObservationMessage(entry));
+      provenance.push(unattributedContextProvenance);
       continue;
     }
     if (entry.type === "projection_reset") {
-      messages = [...entry.messages];
-      if (entry.actor) {
-        actor = entry.actor;
+      const resetProvenance =
+        entry.provenance ??
+        entry.messages.map(() => unattributedContextProvenance);
+      if (resetProvenance.length !== entry.messages.length) {
+        throw new Error(
+          "projection_reset provenance must align one-to-one with messages",
+        );
       }
+      messages = [...entry.messages];
+      provenance = [...resetProvenance];
       continue;
     }
   }
-  return { messages, actor };
+  return { messages, provenance };
 }
 
 function projectMessages(
@@ -557,6 +623,62 @@ function projectMessages(
   sessionId?: string,
 ): PiMessage[] {
   return project(entries, sessionId).messages;
+}
+
+/** Find the newest instruction actor, used for latest-actor compatibility. */
+function latestInstructionActor(
+  provenance: PiMessageProvenance[],
+): Actor | undefined {
+  for (let index = provenance.length - 1; index >= 0; index -= 1) {
+    const entry = provenance[index]!;
+    if (entry.authority === "instruction" && entry.actor) {
+      return entry.actor;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Stable identity key for an actor: platform + name for system actors,
+ * platform + team + user for Slack, platform + user otherwise. Never uses
+ * display fields, so the same human under two profiles collapses to one
+ * identity.
+ */
+function actorIdentityKey(actor: Actor): string {
+  if (actor.platform === "system") {
+    return `system ${actor.name}`;
+  }
+  return actor.platform === "slack"
+    ? `slack ${actor.teamId} ${actor.userId}`
+    : `${actor.platform} ${actor.userId}`;
+}
+
+/**
+ * All distinct actors annotated on instruction-authority messages, in
+ * first-seen order — the run's actors. This is attribution, never
+ * authority: it exists so provenance consumers know which actors
+ * contributed instructions to a run. It must never feed credential
+ * issuance, credential-subject selection, or scope ownership.
+ * Unattributable instructions (no resolvable actor) never join;
+ * distinctness is by identity ids only, never display fields.
+ */
+export function instructionActors(
+  provenance: PiMessageProvenance[],
+): Actor[] {
+  const seen = new Set<string>();
+  const actors: Actor[] = [];
+  for (const entry of provenance) {
+    if (entry.authority !== "instruction" || !entry.actor) {
+      continue;
+    }
+    const identity = actorIdentityKey(entry.actor);
+    if (seen.has(identity)) {
+      continue;
+    }
+    seen.add(identity);
+    actors.push(entry.actor);
+  }
+  return actors;
 }
 
 function connectedMcpProviders(
@@ -572,47 +694,79 @@ function connectedMcpProviders(
   return [...providers].sort((left, right) => left.localeCompare(right));
 }
 
+function isUserMessage(message: PiMessage): boolean {
+  return (message as { role?: unknown }).role === "user";
+}
+
+/**
+ * Resolve the aligned provenance to persist for `nextMessages`.
+ *
+ * Explicit per-message provenance always wins; otherwise the unchanged prefix
+ * reuses its committed provenance, new messages default to unauthored context,
+ * and any new-user-message default (the turn author's instruction) is attached
+ * to the last new user message — the current turn's input.
+ */
+function resolveCommitProvenance(args: {
+  existing: SessionProjection;
+  nextMessages: PiMessage[];
+  explicitProvenance?: PiMessageProvenance[];
+  newMessageProvenance?: PiMessageProvenance;
+}): PiMessageProvenance[] {
+  if (args.explicitProvenance) {
+    if (args.explicitProvenance.length !== args.nextMessages.length) {
+      throw new Error("commit provenance must align one-to-one with messages");
+    }
+    return args.explicitProvenance;
+  }
+  const matchingPrefix = countMatchingPrefix(
+    args.existing.messages,
+    args.nextMessages,
+  );
+  const provenance = args.nextMessages.map((_, index) =>
+    index < matchingPrefix
+      ? (args.existing.provenance[index] ?? unattributedContextProvenance)
+      : unattributedContextProvenance,
+  );
+  if (args.newMessageProvenance) {
+    for (
+      let index = args.nextMessages.length - 1;
+      index >= matchingPrefix;
+      index -= 1
+    ) {
+      if (isUserMessage(args.nextMessages[index]!)) {
+        provenance[index] = args.newMessageProvenance;
+        break;
+      }
+    }
+  }
+  return provenance;
+}
+
 /**
  * Commit by appending when history advanced normally, or by writing an explicit
  * projection reset when the runtime intentionally replaces visible history.
  */
 function commitEntries(
-  existingMessages: PiMessage[],
+  existing: SessionProjection,
   nextMessages: PiMessage[],
+  nextProvenance: PiMessageProvenance[],
   sessionId: string,
   entries: SessionLogEntry[],
-  existingActor?: StoredSlackActor,
-  actor?: StoredSlackActor,
 ): { entries: SessionLogEntry[]; sessionId: string } {
-  const matchingPrefix = countMatchingPrefix(existingMessages, nextMessages);
-  if (matchingPrefix === existingMessages.length) {
+  const matchingPrefix = countMatchingPrefix(existing.messages, nextMessages);
+  if (matchingPrefix === existing.messages.length) {
     const newMessages = nextMessages.slice(matchingPrefix);
-    if (
-      newMessages.length === 0 &&
-      actor &&
-      !isDeepStrictEqual(existingActor, actor)
-    ) {
-      return {
-        entries: [actorRecordedEntry(actor, sessionId)],
-        sessionId,
-      };
-    }
-    // Attach actor to the last new user message — the current turn's
-    // input. Using last rather than first avoids tagging older context
-    // messages that may be included at the head of a fresh commit.
-    const actorIndex = actor
-      ? findLastIndex(newMessages, (m) => m.role === "user")
-      : -1;
+    const newProvenance = nextProvenance.slice(matchingPrefix);
     return {
       entries: newMessages.map((message, index) =>
-        piEntry(message, sessionId, index === actorIndex ? actor : undefined),
+        piEntry(message, sessionId, newProvenance[index]),
       ),
       sessionId,
     };
   }
   const resetSessionId = nextSessionId(entries);
   return {
-    entries: [resetEntry(nextMessages, resetSessionId, actor ?? existingActor)],
+    entries: [resetEntry(nextMessages, resetSessionId, nextProvenance)],
     sessionId: resetSessionId,
   };
 }
@@ -726,6 +880,28 @@ export async function loadMessages(
     : undefined;
 }
 
+/** Load the committed Pi-message projection with aligned per-message provenance. */
+export async function loadMessagesWithProvenance(
+  args: Scope & {
+    store?: SessionLogStore;
+    messageCount: number;
+    sessionId?: string;
+  },
+): Promise<SessionProjection | undefined> {
+  const messageCount = normalizeMessageCount(args.messageCount);
+  if (messageCount === 0) {
+    return { messages: [], provenance: [] };
+  }
+
+  const projection = project(await loadEntries(args), args.sessionId);
+  return projection.messages.length >= messageCount
+    ? {
+        messages: projection.messages.slice(0, messageCount),
+        provenance: projection.provenance.slice(0, messageCount),
+      }
+    : undefined;
+}
+
 /** Load the full current Pi-message projection for a conversation. */
 export async function loadProjection(
   args: Scope & {
@@ -737,16 +913,46 @@ export async function loadProjection(
 }
 
 /**
- * Load the Pi-message projection and derived actor identity in one read.
- * Used at continuation boundaries to avoid a second log scan.
+ * Load the Pi-message projection with aligned per-message provenance in one
+ * read. Used at continuation boundaries to avoid a second log scan.
  */
-export async function loadProjectionWithActor(
+export async function loadProjectionWithProvenance(
   args: Scope & {
     store?: SessionLogStore;
     sessionId?: string;
   },
 ): Promise<SessionProjection> {
   return project(await loadEntries(args), args.sessionId);
+}
+
+/**
+ * Load the projection with the latest instruction actor as a stored Slack
+ * actor. Retained for callers that still key on a single latest actor; it
+ * derives the actor from per-message provenance rather than a latest-wins
+ * field.
+ */
+export async function loadProjectionWithActor(
+  args: Scope & {
+    store?: SessionLogStore;
+    sessionId?: string;
+  },
+): Promise<{ messages: PiMessage[]; actor?: StoredSlackActor }> {
+  const projection = project(await loadEntries(args), args.sessionId);
+  const actor = latestInstructionActor(projection.provenance);
+  if (actor?.platform === "slack") {
+    return {
+      messages: projection.messages,
+      actor: {
+        platform: "slack",
+        slackUserId: actor.userId,
+        teamId: actor.teamId,
+        ...(actor.userName ? { slackUserName: actor.userName } : {}),
+        ...(actor.fullName ? { fullName: actor.fullName } : {}),
+        ...(actor.email ? { email: actor.email } : {}),
+      },
+    };
+  }
+  return { messages: projection.messages };
 }
 
 /** Load MCP providers that were durably connected in this conversation. */
@@ -973,20 +1179,30 @@ export async function commitMessages(
     store?: SessionLogStore;
     messages: PiMessage[];
     ttlMs: number;
-    actor?: StoredSlackActor;
+    /** Explicit per-message provenance aligned one-to-one with `messages`. */
+    provenance?: PiMessageProvenance[];
+    /** Default applied to the last new user message when no explicit array. */
+    newMessageProvenance?: PiMessageProvenance;
   },
-): Promise<{ sessionId: string }> {
+): Promise<{ sessionId: string; provenance: PiMessageProvenance[] }> {
   const store = args.store ?? (await defaultStore());
   const entries = await store.read(args);
   const existingProjection = project(entries);
   const currentId = currentSessionId(entries);
+  const nextProvenance = resolveCommitProvenance({
+    existing: existingProjection,
+    nextMessages: args.messages,
+    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+    ...(args.newMessageProvenance
+      ? { newMessageProvenance: args.newMessageProvenance }
+      : {}),
+  });
   const commit = commitEntries(
-    existingProjection.messages,
+    existingProjection,
     args.messages,
+    nextProvenance,
     currentId,
     entries,
-    existingProjection.actor,
-    args.actor,
   );
   await store.append({
     scope: args,
@@ -995,5 +1211,41 @@ export async function commitMessages(
   });
   return {
     sessionId: commit.sessionId,
+    provenance: nextProvenance,
   };
+}
+
+/** Build an instruction-provenance record for the given actor. */
+export function instructionProvenanceFor(
+  actor: Actor | undefined,
+): PiMessageProvenance {
+  return instructionProvenance(actor);
+}
+
+/** Unattributed ambient-context provenance for non-instruction Pi messages. */
+export const contextProvenance: PiMessageProvenance =
+  unattributedContextProvenance;
+
+/**
+ * Parse durably-stored message provenance, failing closed on misalignment.
+ *
+ * A missing field is a legacy record: it materializes as unauthored context of
+ * the expected length. A present-but-malformed or wrong-length value returns
+ * undefined so callers reject the record rather than zip a mismatched array.
+ */
+export function parseStoredMessageProvenance(
+  value: unknown,
+  expectedLength: number,
+): PiMessageProvenance[] | undefined {
+  if (value === undefined) {
+    return Array.from(
+      { length: expectedLength },
+      () => unattributedContextProvenance,
+    );
+  }
+  const parsed = z.array(piMessageProvenanceSchema).safeParse(value);
+  if (!parsed.success || parsed.data.length !== expectedLength) {
+    return undefined;
+  }
+  return parsed.data;
 }

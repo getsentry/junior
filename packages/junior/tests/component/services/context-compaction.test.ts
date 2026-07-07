@@ -182,11 +182,16 @@ describe("context compaction projection reset", () => {
       conversationId: "conversation-1",
       messages: priorMessages,
       ttlMs: 60_000,
-      actor: {
-        slackUserId: "U123",
-        slackUserName: "alice",
-        fullName: "Alice Example",
-        email: "alice@sentry.io",
+      newMessageProvenance: {
+        authority: "instruction",
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+          userName: "alice",
+          fullName: "Alice Example",
+          email: "alice@sentry.io",
+        },
       },
     });
     const conversation = coerceThreadConversationState({});

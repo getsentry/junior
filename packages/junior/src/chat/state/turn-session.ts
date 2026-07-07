@@ -16,7 +16,16 @@ import { isRecord } from "@/chat/coerce";
 import { parseDestination } from "@/chat/destination";
 import type { PiMessage } from "@/chat/pi/messages";
 import { parseActor, toStoredSlackActor, type Actor } from "@/chat/actor";
-import { commitMessages, loadMessages, loadProjection } from "./session-log";
+import {
+  commitMessages,
+  instructionActors,
+  instructionProvenanceFor,
+  loadMessagesWithProvenance,
+  loadProjectionWithProvenance,
+  parseStoredMessageProvenance,
+  type PiMessageProvenance,
+  type SessionProjection,
+} from "./session-log";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
@@ -55,6 +64,16 @@ export interface AgentTurnSessionRecord {
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
   piMessages: PiMessage[];
+  /** Per-message provenance aligned one-to-one with `piMessages`. */
+  piMessageProvenance: PiMessageProvenance[];
+  /**
+   * All distinct actors annotated on this run's committed instruction-authority
+   * messages, in first-seen order. Derived from `piMessageProvenance` at
+   * materialization — never persisted separately, so it cannot drift from
+   * provenance. Attribution only; never an authority source.
+   */
+  actors: Actor[];
+  /** The single actor this run executes as (credential binding, auth flows). */
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
@@ -70,20 +89,26 @@ export interface AgentTurnSessionRecord {
 
 export type AgentTurnSessionSummary = Omit<
   AgentTurnSessionRecord,
-  "errorMessage" | "piMessages" | "turnStartMessageIndex"
+  | "errorMessage"
+  | "actors"
+  | "piMessages"
+  | "piMessageProvenance"
+  | "turnStartMessageIndex"
 >;
 
 interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
-  "piMessages"
+  "actors" | "piMessages" | "piMessageProvenance"
 > {
   committedMessageCount: number;
+  /** Provenance aligned to the committed message count, persisted for durability. */
+  committedMessageProvenance: PiMessageProvenance[];
   logSessionId?: string;
 }
 
 type ParsedAgentTurnSessionFields = Omit<
   StoredAgentTurnSessionRecord,
-  "committedMessageCount"
+  "committedMessageCount" | "committedMessageProvenance"
 >;
 
 function agentTurnSessionKey(
@@ -303,10 +328,19 @@ function parseAgentTurnSessionRecord(
   if (!fields || committedMessageCount === undefined) {
     return undefined;
   }
+  const committedMessageProvenance = parseStoredMessageProvenance(
+    parsed.committedMessageProvenance,
+    committedMessageCount,
+  );
+  if (!committedMessageProvenance) {
+    // Misaligned durable provenance fails closed rather than being zipped.
+    return undefined;
+  }
 
   return {
     ...fields,
     committedMessageCount,
+    committedMessageProvenance,
   };
 }
 
@@ -402,33 +436,36 @@ async function recordConversationActivityMetadata(args: {
  * Rehydrate the continuable Pi boundary from the session log, tolerating a
  * compacted projection when the exact historical prefix is no longer visible.
  */
-function materializePiMessages(
+function materializePiProjection(
   committedMessageCount: number,
   includeProjectionTail: boolean,
-  sessionMessages: PiMessage[] | undefined,
-  sessionProjection: PiMessage[],
-): PiMessage[] | undefined {
+  sessionMessages: SessionProjection | undefined,
+  sessionProjection: SessionProjection,
+): SessionProjection | undefined {
   if (committedMessageCount === 0) {
     return sessionProjection;
   }
   if (
     includeProjectionTail &&
-    sessionProjection.length >= committedMessageCount
+    sessionProjection.messages.length >= committedMessageCount
   ) {
     return sessionProjection;
   }
   if (sessionMessages) {
     return sessionMessages;
   }
-  if (sessionProjection.length >= committedMessageCount) {
-    return sessionProjection.slice(0, committedMessageCount);
+  if (sessionProjection.messages.length >= committedMessageCount) {
+    return {
+      messages: sessionProjection.messages.slice(0, committedMessageCount),
+      provenance: sessionProjection.provenance.slice(0, committedMessageCount),
+    };
   }
   return undefined;
 }
 
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
-  piMessages: PiMessage[],
+  piProjection: SessionProjection,
 ): AgentTurnSessionRecord {
   return {
     version: stored.version,
@@ -440,7 +477,9 @@ function materializeAgentTurnSessionRecord(
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
-    piMessages,
+    piMessages: piProjection.messages,
+    piMessageProvenance: piProjection.provenance,
+    actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
     ...(stored.source ? { source: stored.source } : {}),
@@ -490,26 +529,26 @@ export async function getAgentTurnSessionRecord(
     return undefined;
   }
 
-  const sessionMessages = await loadMessages({
+  const sessionMessages = await loadMessagesWithProvenance({
     conversationId,
     messageCount: parsed.committedMessageCount,
     ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
-  const sessionProjection = await loadProjection({
+  const sessionProjection = await loadProjectionWithProvenance({
     conversationId,
     ...(parsed.logSessionId ? { sessionId: parsed.logSessionId } : {}),
   });
-  const piMessages = materializePiMessages(
+  const piProjection = materializePiProjection(
     parsed.committedMessageCount,
     parsed.state === "running" || parsed.state === "awaiting_resume",
     sessionMessages,
     sessionProjection,
   );
-  if (!piMessages) {
+  if (!piProjection) {
     return undefined;
   }
 
-  return materializeAgentTurnSessionRecord(parsed, piMessages);
+  return materializeAgentTurnSessionRecord(parsed, piProjection);
 }
 
 /** Build the storage record that advances optimistic resume versioning. */
@@ -521,6 +560,7 @@ function buildStoredRecord(args: {
   destination?: Destination;
   source?: Source;
   committedMessageCount: number;
+  committedMessageProvenance: PiMessageProvenance[];
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
   logSessionId?: string;
@@ -549,6 +589,7 @@ function buildStoredRecord(args: {
     lastProgressAtMs: args.lastProgressAtMs ?? nowMs,
     updatedAtMs: nowMs,
     committedMessageCount: args.committedMessageCount,
+    committedMessageProvenance: args.committedMessageProvenance,
     ...(args.logSessionId ? { logSessionId: args.logSessionId } : {}),
     cumulativeDurationMs: args.cumulativeDurationMs,
     ...(args.cumulativeUsage ? { cumulativeUsage: args.cumulativeUsage } : {}),
@@ -580,6 +621,7 @@ async function setStoredRecord(args: {
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
+  piMessageProvenance: PiMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
 }): Promise<AgentTurnSessionRecord> {
@@ -593,6 +635,7 @@ async function setStoredRecord(args: {
   );
   const {
     committedMessageCount: _committedMessageCount,
+    committedMessageProvenance: _committedMessageProvenance,
     errorMessage: _errorMessage,
     logSessionId: _logSessionId,
     turnStartMessageIndex: _turnStartMessageIndex,
@@ -605,7 +648,10 @@ async function setStoredRecord(args: {
     nowMs: Date.now(),
     summary,
   });
-  return materializeAgentTurnSessionRecord(args.record, [...args.piMessages]);
+  return materializeAgentTurnSessionRecord(args.record, {
+    messages: [...args.piMessages],
+    provenance: [...args.piMessageProvenance],
+  });
 }
 
 /**
@@ -627,6 +673,7 @@ async function updateAgentTurnSessionState(args: {
 
   return await setStoredRecord({
     piMessages: args.existing.piMessages,
+    piMessageProvenance: args.existing.piMessageProvenance,
     ttlMs: AGENT_TURN_SESSION_TTL_MS,
     record: buildStoredRecord({
       conversationId: args.existing.conversationId,
@@ -634,6 +681,7 @@ async function updateAgentTurnSessionState(args: {
       sliceId: args.existing.sliceId,
       state: args.state,
       committedMessageCount: parsed.committedMessageCount,
+      committedMessageProvenance: parsed.committedMessageProvenance,
       ...(parsed.channelName ? { channelName: parsed.channelName } : {}),
       startedAtMs: parsed.startedAtMs,
       lastProgressAtMs: parsed.lastProgressAtMs,
@@ -700,10 +748,16 @@ export async function upsertAgentTurnSessionRecord(args: {
     args.sessionId,
   );
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  // Attribute new user input to the turn's actor as an instruction; the session
+  // log reuses committed provenance for the unchanged prefix and defaults the
+  // rest to context. Platform-neutral so local identities are preserved too.
+  const instructionActor = args.actor ?? existingRecord?.actor;
   const commit = await commitMessages({
     conversationId: args.conversationId,
     messages: args.piMessages,
-    actor: sessionLogActor(args.actor ?? existingRecord?.actor),
+    ...(instructionActor
+      ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
+      : {}),
     ttlMs,
   });
 
@@ -711,8 +765,10 @@ export async function upsertAgentTurnSessionRecord(args: {
     conversationStore: args.conversationStore,
     destinationVisibility: args.destinationVisibility,
     piMessages: args.piMessages,
+    piMessageProvenance: commit.provenance,
     ttlMs,
     record: buildStoredRecord({
+      committedMessageProvenance: commit.provenance,
       ...((args.channelName ?? existingRecord?.channelName)
         ? { channelName: args.channelName ?? existingRecord?.channelName }
         : {}),

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   createLocalSource,
+  createSlackSource,
   defineJuniorPlugin,
   type PluginRunContext,
 } from "@sentry/junior-plugin-api";
@@ -183,11 +184,30 @@ describe("plugin background tasks", () => {
         conversationId: runConversationId,
         destination: runDestination,
         runId: runSessionId,
+        // Exposed from the full-run provenance: the single instruction author.
+        actors: [
+          {
+            fullName: "Local CLI",
+            platform: "local",
+            userId: "local-cli",
+            userName: "local",
+          },
+        ],
         transcript: [
           {
             type: "message",
             role: "user",
             text: "I prefer pull request summaries with test evidence.",
+            provenance: {
+              authority: "instruction",
+              actor: {
+                fullName: "Local CLI",
+                platform: "local",
+                userId: "local-cli",
+                userName: "local",
+              },
+            },
+            isRunActor: true,
           },
           {
             type: "toolResult",
@@ -210,6 +230,336 @@ describe("plugin background tasks", () => {
         source: runSource,
       }),
     ]);
+  });
+
+  it("exposes only the instruction content when a user turn embeds another user's thread-transcript block", async () => {
+    const runId = randomUUID();
+    const runConversationId = `${conversationId}-embedded-${runId}`;
+    const runSessionId = `${sessionId}:embedded:${runId}`;
+    const runSource = createLocalSource(runConversationId);
+    const queue = new PluginTaskQueueTestAdapter();
+    const loadedRuns: PluginRunContext[] = [];
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-embedded-demo",
+          displayName: "Task Embedded Demo",
+          description: "Task embedded demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    // The live runtime embeds prior-thread context (here Bob's verbatim
+    // message) in the same user-turn text that carries the current
+    // instruction. The projection must never surface that embedded text on an
+    // instruction-authority entry.
+    const embeddedUserText = [
+      "<thread-transcript>",
+      '  <message index="1" role="user" author="bob" actor_id="U_BOB">',
+      "  I prefer really short, emoji-heavy summaries when these get written up.",
+      "  </message>",
+      "</thread-transcript>",
+      "",
+      '<current-instruction author_id="local-cli">',
+      "What are the takeaways so far?",
+      "</current-instruction>",
+    ].join("\n");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: runConversationId,
+      destination: { ...destination, conversationId: runConversationId },
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: embeddedUserText }],
+        },
+        { role: "assistant", content: "Here are the takeaways." },
+      ] as PiMessage[],
+      sessionId: runSessionId,
+      sliceId: 1,
+      source: runSource,
+      actor: {
+        fullName: "Local CLI",
+        platform: "local",
+        userId: "local-cli",
+        userName: "local",
+      },
+      state: "completed",
+      surface: "internal",
+      turnStartMessageIndex: 0,
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: runConversationId, sessionId: runSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    const transcript = loadedRuns[0]!.transcript;
+    const instructionEntries = transcript.filter(
+      (entry) =>
+        entry.type === "message" &&
+        entry.role === "user" &&
+        entry.provenance?.authority === "instruction",
+    );
+    expect(instructionEntries).toEqual([
+      {
+        type: "message",
+        role: "user",
+        text: "What are the takeaways so far?",
+        provenance: {
+          authority: "instruction",
+          actor: {
+            fullName: "Local CLI",
+            platform: "local",
+            userId: "local-cli",
+            userName: "local",
+          },
+        },
+        isRunActor: true,
+      },
+    ]);
+    // Bob's embedded preference must not appear in ANY instruction-authority
+    // entry, so a passive consumer cannot cite Alice's instruction while
+    // reading Bob's text out of the same block.
+    for (const entry of instructionEntries) {
+      expect(entry.type === "message" && entry.text).not.toMatch(/emoji/i);
+      expect(entry.type === "message" && entry.text).not.toMatch(
+        /thread-transcript/,
+      );
+    }
+  });
+
+  it("projects prior public Slack thread messages as context-authority transcript entries", async () => {
+    const teamId = "T123";
+    const channelId = "C123";
+    const slackConversationId = "slack:C123:1700000000.000000";
+    const slackSessionId = "slack-session-context";
+    const alice = {
+      platform: "slack",
+      teamId,
+      userId: "U_ALICE",
+      userName: "alice",
+    } as const;
+    const source = createSlackSource({
+      teamId,
+      channelId,
+      type: "pub",
+      messageTs: "1700000000.000100",
+      threadTs: "1700000000.000000",
+    });
+    const loadedRuns: PluginRunContext[] = [];
+    const queue = new PluginTaskQueueTestAdapter();
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { persistThreadStateById } =
+      await import("@/chat/runtime/thread-state");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-context-demo",
+          displayName: "Task Context Demo",
+          description: "Task context demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    await persistThreadStateById(slackConversationId, {
+      conversation: coerceThreadConversationState({
+        conversation: {
+          messages: [
+            {
+              id: "m-bob",
+              role: "user",
+              text: "Bob's prior note: incident runbooks live in Notion.",
+              createdAtMs: 1,
+              author: { userId: "U_BOB", userName: "bob" },
+            },
+            {
+              id: "m-alice",
+              role: "user",
+              text: "Deploy the release now.",
+              createdAtMs: 2,
+              author: { userId: "U_ALICE", userName: "alice" },
+            },
+          ],
+        },
+      }),
+    });
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      piMessages: [
+        { role: "user", content: "Deploy the release now." },
+        { role: "assistant", content: "On it." },
+      ] as PiMessage[],
+      sessionId: slackSessionId,
+      sliceId: 1,
+      source,
+      actor: alice,
+      state: "completed",
+      surface: "slack",
+      turnStartMessageIndex: 0,
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: slackConversationId, sessionId: slackSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    const transcript = loadedRuns[0]!.transcript;
+    expect(transcript).toContainEqual({
+      type: "message",
+      role: "user",
+      text: "Bob's prior note: incident runbooks live in Notion.",
+      provenance: {
+        authority: "context",
+        actor: { platform: "slack", teamId, userId: "U_BOB", userName: "bob" },
+      },
+      isRunActor: false,
+    });
+    // The active run-actor instruction appears once; the context projection is
+    // deduplicated against messages already present in the run transcript.
+    expect(
+      transcript.filter(
+        (entry) =>
+          entry.type === "message" && entry.text === "Deploy the release now.",
+      ),
+    ).toEqual([
+      {
+        type: "message",
+        role: "user",
+        text: "Deploy the release now.",
+        provenance: { authority: "instruction", actor: alice },
+        isRunActor: true,
+      },
+    ]);
+  });
+
+  it("adds no context transcript entries for private Slack sources", async () => {
+    const teamId = "T123";
+    const channelId = "D123";
+    const slackConversationId = "slack:D123:1700000000.000000";
+    const slackSessionId = "slack-session-private";
+    const alice = {
+      platform: "slack",
+      teamId,
+      userId: "U_ALICE",
+      userName: "alice",
+    } as const;
+    const source = createSlackSource({
+      teamId,
+      channelId,
+      type: "priv",
+      messageTs: "1700000000.000100",
+      threadTs: "1700000000.000000",
+    });
+    const loadedRuns: PluginRunContext[] = [];
+    const queue = new PluginTaskQueueTestAdapter();
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { persistThreadStateById } =
+      await import("@/chat/runtime/thread-state");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-private-demo",
+          displayName: "Task Private Demo",
+          description: "Task private demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    await persistThreadStateById(slackConversationId, {
+      conversation: coerceThreadConversationState({
+        conversation: {
+          messages: [
+            {
+              id: "m-bob",
+              role: "user",
+              text: "Bob's private note stays out of the transcript.",
+              createdAtMs: 1,
+              author: { userId: "U_BOB", userName: "bob" },
+            },
+          ],
+        },
+      }),
+    });
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      piMessages: [
+        { role: "user", content: "Handle this direct message." },
+        { role: "assistant", content: "Sure." },
+      ] as PiMessage[],
+      sessionId: slackSessionId,
+      sliceId: 1,
+      source,
+      actor: alice,
+      state: "completed",
+      surface: "slack",
+      turnStartMessageIndex: 0,
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: slackConversationId, sessionId: slackSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    const transcript = loadedRuns[0]!.transcript;
+    expect(
+      transcript.some(
+        (entry) =>
+          entry.type === "message" && entry.provenance?.authority === "context",
+      ),
+    ).toBe(false);
+    expect(
+      transcript.some(
+        (entry) =>
+          entry.type === "message" &&
+          entry.text === "Bob's private note stays out of the transcript.",
+      ),
+    ).toBe(false);
   });
 
   it("lets task failures bubble to the queue retry boundary", async () => {

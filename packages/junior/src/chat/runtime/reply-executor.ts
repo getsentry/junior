@@ -84,6 +84,7 @@ import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import {
+  createActor,
   toStoredSlackActor,
   parseActorUserId,
   type Actor,
@@ -120,7 +121,14 @@ import {
   initConversationContext,
   setConversationTitle,
 } from "@/chat/state/conversation-details";
-import { commitMessages, loadProjection } from "@/chat/state/session-log";
+import {
+  commitMessages,
+  contextProvenance,
+  instructionProvenanceFor,
+  loadProjection,
+  loadProjectionWithProvenance,
+  type PiMessageProvenance,
+} from "@/chat/state/session-log";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
@@ -240,6 +248,33 @@ function queuedInstructionActor(
     ...(authorName ? { authorName } : {}),
     ...(slackTs ? { slackTs } : {}),
   };
+}
+
+/**
+ * Provenance for a queued or steered Slack message: a user-authored instruction
+ * attributed to the message's own author, or unauthored context for
+ * system-originated resource events.
+ */
+function queuedInstructionProvenance(
+  queued: QueuedTurnMessage,
+  teamId: string,
+): PiMessageProvenance {
+  if (isResourceEventMessage(queued.message)) {
+    return contextProvenance;
+  }
+  const identity = getMessageActorIdentity(queued.message);
+  const author =
+    identity && "platform" in identity
+      ? identity
+      : createActor(
+          { userId: parseActorUserId(queued.message.author.userId) },
+          {
+            platform: "slack",
+            teamId,
+            userId: parseActorUserId(queued.message.author.userId),
+          },
+        );
+  return instructionProvenanceFor(author);
 }
 
 function isResourceEventMessage(message: Message): boolean {
@@ -590,6 +625,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               const attachments = queued.message.attachments;
               return {
                 actor: queuedInstructionActor(queued),
+                provenance: queuedInstructionProvenance(queued, teamId),
                 text: queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
@@ -658,20 +694,28 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return false;
           }
           try {
-            const piMessages = (
+            // Each parked message keeps its own author's instruction
+            // provenance, so a multi-author batch is not collapsed to a single
+            // latest-wins actor.
+            const parkedPairs = (
               await resolveSteeringMessages(parkedMessages)
-            ).map(buildSteeringPiMessage);
-            const projection = await loadProjection({ conversationId });
+            ).map((steering) => ({
+              message: buildSteeringPiMessage(steering),
+              provenance: steering.provenance,
+            }));
+            const projection = await loadProjectionWithProvenance({
+              conversationId,
+            });
             // Dedupe per message: a partial-overlap redelivery (some messages
             // already appended before a schedule failure) must append only
             // the missing ones.
             const appendedKeys = new Set(
-              projection
+              projection.messages
                 .map(parkedInputKey)
                 .filter((key): key is string => key !== undefined),
             );
-            const missing = piMessages.filter((piMessage) => {
-              const key = parkedInputKey(piMessage);
+            const missing = parkedPairs.filter((pair) => {
+              const key = parkedInputKey(pair.message);
               return key === undefined || !appendedKeys.has(key);
             });
             if (missing.length === 0) {
@@ -680,8 +724,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             await commitMessages({
               conversationId,
-              messages: [...projection, ...missing],
-              actor: storedActor,
+              messages: [
+                ...projection.messages,
+                ...missing.map((pair) => pair.message),
+              ],
+              provenance: [
+                ...projection.provenance,
+                ...missing.map((pair) => pair.provenance),
+              ],
               ttlMs: THREAD_STATE_TTL_MS,
             });
             return true;

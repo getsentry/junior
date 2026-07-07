@@ -6,7 +6,10 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { loadProjection } from "@/chat/state/session-log";
+import {
+  loadProjection,
+  loadProjectionWithProvenance,
+} from "@/chat/state/session-log";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,
@@ -1348,6 +1351,78 @@ describe("bot handlers (integration)", () => {
     const serialized = JSON.stringify(await loadProjection({ conversationId }));
     expect(serialized.split("first follow-up")).toHaveLength(2);
     expect(serialized.split("second follow-up")).toHaveLength(2);
+  });
+
+  it("records each parked follow-up author's own instruction provenance", async () => {
+    const conversationId = "slack:C9PARKEDAUTH:1700000000.000";
+    const destination = slackDestination("C9PARKEDAUTH");
+    const activeSessionId = "turn_msg-original";
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: activeSessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      resumeReason: "yield",
+      destination,
+      source: createSlackSourceForTest("C9PARKEDAUTH"),
+      piMessages: turnPiMessages("please keep working"),
+      turnStartMessageIndex: 0,
+    });
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: { run: vi.fn() },
+          scheduleAgentContinue: vi.fn(),
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: conversationId,
+      state: createAwaitingContinuationState({ activeSessionId }),
+    });
+    const fromAlice = createTestMessage({
+      id: "msg-parked-alice",
+      threadId: conversationId,
+      text: "alice question",
+      isMention: true,
+      author: { userId: "U-alice" },
+    });
+    const fromBob = createTestMessage({
+      id: "msg-parked-bob",
+      threadId: conversationId,
+      text: "bob question",
+      isMention: true,
+      author: { userId: "U-bob" },
+    });
+
+    // A single drain carries two mentions from different authors: each must
+    // keep its own author, not be collapsed to one latest-wins actor.
+    await slackRuntime.handleNewMention(thread, fromBob, {
+      destination,
+      messageContext: { skipped: [fromAlice], totalSinceLastHandler: 1 },
+    });
+
+    const projection = await loadProjectionWithProvenance({ conversationId });
+    const entries = projection.messages.map((message, index) => ({
+      text: JSON.stringify(
+        (message as { content?: unknown }).content ?? message,
+      ),
+      provenance: projection.provenance[index],
+    }));
+    const aliceEntry = entries.find((entry) =>
+      entry.text.includes("alice question"),
+    );
+    const bobEntry = entries.find((entry) =>
+      entry.text.includes("bob question"),
+    );
+    expect(aliceEntry?.provenance).toMatchObject({
+      authority: "instruction",
+      actor: { platform: "slack", teamId: "T123", userId: "U-alice" },
+    });
+    expect(bobEntry?.provenance).toMatchObject({
+      authority: "instruction",
+      actor: { platform: "slack", teamId: "T123", userId: "U-bob" },
+    });
   });
 
   it("leaves the parked follow-up unconsumed while a live resume holds the thread lock", async () => {

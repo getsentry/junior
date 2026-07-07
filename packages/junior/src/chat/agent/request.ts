@@ -24,6 +24,7 @@ import type { SlackConversationContext } from "@/chat/slack/conversation-context
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
+import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import type {
@@ -47,6 +48,8 @@ export interface AgentRunInstructionActor {
 
 export interface AgentRunSteeringMessage {
   actor?: AgentRunInstructionActor;
+  /** Provenance of this queued/steered message, carrying its original author. */
+  provenance: PiMessageProvenance;
   omittedImageAttachmentCount?: number;
   text: string;
   timestampMs?: number;

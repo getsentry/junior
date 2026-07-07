@@ -466,6 +466,138 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(summaries[0]).not.toHaveProperty("turnStartMessageIndex");
   });
 
+  it("persists and materializes per-message provenance aligned to piMessages", async () => {
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    const priorContext: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "prior context" }],
+      timestamp: 1,
+    } as PiMessage;
+    const currentQuestion: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "current question" }],
+      timestamp: 2,
+    } as PiMessage;
+    const answer: PiMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "answer" }],
+      timestamp: 3,
+    } as PiMessage;
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-provenance",
+      sessionId: "turn-provenance",
+      sliceId: 1,
+      state: "completed",
+      piMessages: [priorContext, currentQuestion, answer],
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+        userName: "alice",
+      },
+    });
+
+    const record = await getAgentTurnSessionRecord(
+      "conversation-provenance",
+      "turn-provenance",
+    );
+    // The current turn's user input is an instruction attributed to its actor;
+    // prior context and assistant output are unattributed context.
+    expect(record?.piMessageProvenance).toEqual([
+      { authority: "context" },
+      {
+        authority: "instruction",
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+          userName: "alice",
+        },
+      },
+      { authority: "context" },
+    ]);
+    expect(record?.piMessageProvenance).toHaveLength(record!.piMessages.length);
+  });
+
+  it("derives run actors across steering by a second author and reproduces the set on re-materialization", async () => {
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    const alice = {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U_ALICE",
+      userName: "alice",
+    };
+    const bob = {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U_BOB",
+      userName: "bob",
+    };
+    const aliceMessage: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "start the deploy" }],
+      timestamp: 1,
+    } as PiMessage;
+    const bobMessage: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "actually wait, run the tests first" }],
+      timestamp: 2,
+    } as PiMessage;
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-multi-actor",
+      sessionId: "turn-multi-actor",
+      sliceId: 1,
+      state: "running",
+      piMessages: [aliceMessage],
+      actor: alice,
+    });
+    // A second human steers the same run; their message commits as an
+    // instruction attributed to bob, so bob joins the actor set.
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-multi-actor",
+      sessionId: "turn-multi-actor",
+      sliceId: 2,
+      state: "completed",
+      piMessages: [aliceMessage, bobMessage],
+      actor: bob,
+    });
+
+    // getAgentTurnSessionRecord re-materializes from the stored record and the
+    // committed provenance, so this is also the continuation/materialization
+    // path — it must reproduce the same first-seen-ordered set.
+    const record = await getAgentTurnSessionRecord(
+      "conversation-multi-actor",
+      "turn-multi-actor",
+    );
+    expect(record?.actors).toEqual([alice, bob]);
+  });
+
+  it("has an empty run-actors set for a system-actor run with no human instructions", async () => {
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: "conversation-system-actor",
+      sessionId: "turn-system-actor",
+      sliceId: 1,
+      state: "completed",
+      // No actor: nothing is attributed as an instruction actor.
+      piMessages: [userMessage("system dispatch input")],
+    });
+
+    const record = await getAgentTurnSessionRecord(
+      "conversation-system-actor",
+      "turn-system-actor",
+    );
+    expect(record?.actors).toEqual([]);
+  });
+
   it("carries cumulative diagnostics across pause records", async () => {
     const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");

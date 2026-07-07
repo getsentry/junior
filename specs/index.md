@@ -39,6 +39,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/slack-agent-delivery.md`
 - `specs/slack-outbound-contract.md`
 - `specs/identity.md`
+- `specs/multi-actor-runs.md`
 - `specs/credential-injection.md`
 - `specs/oauth-flows.md`
 - `specs/agent-prompt.md`
@@ -97,6 +98,7 @@ For chat/agent/Slack execution and response behavior:
 - `specs/slack-agent-delivery.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
 - `specs/identity.md` owns current actor, system actor, actor, author, creator, credential subject, service principal, and display identity separation across runtime boundaries.
+- `specs/multi-actor-runs.md` owns run-level actor attribution (`run.actor` and `run.actors`), its membership/distinctness/monotonicity semantics, and the attribution-not-authority naming contract; it defers all authority and permission decisions to `specs/identity.md`.
 - `specs/postgres-test-harness.md` owns real Postgres test database lifecycle, migrated template setup, fixture isolation, and rollback semantics.
 
 ## Archived Superseded Specs

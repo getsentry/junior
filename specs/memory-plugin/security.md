@@ -121,6 +121,13 @@ Passive processing tasks should reload bounded completed-run projections
 through the core-provided run helper rather than carrying raw messages in task
 params or queue payloads.
 
+Plugin completed-run projections may include bounded public context transcript
+entries with runtime-owned provenance (authority and author identity). The
+model-visible author and authority labels are classification hints only. The
+deterministic router verifies each memory's cited transcript indices against
+that runtime-owned provenance before storage, so context-authority entries and
+entries with missing provenance cannot authorize a run-actor personal write.
+
 ## Logging And Reporting
 
 Logs, spans, dashboards, and plugin operational reports may include:

@@ -136,6 +136,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/identity.md` (current actor, system actor, author, creator, credential subject, service principal, and display identity contract)
+- `specs/multi-actor-runs.md` (run-level actor attribution — `run.actor` and `run.actors` — membership semantics, and the attribution-not-authority naming contract)
 - `specs/credential-injection.md` (actor-bound credential injection contract)
 - `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/agent-prompt.md` (core prompt ownership, execution-bias, and bloat-control contract)

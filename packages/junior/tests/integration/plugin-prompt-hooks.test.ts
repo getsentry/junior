@@ -232,7 +232,9 @@ describe("plugin prompt hooks", () => {
       },
       durability: {
         drainSteeringMessages: async (inject) => {
-          await inject([{ text: "steer me" }]);
+          await inject([
+            { text: "steer me", provenance: { authority: "instruction" } },
+          ]);
           return [];
         },
       },

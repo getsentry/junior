@@ -31,6 +31,7 @@ Define how Junior carries human, system, delegated, destination, and display ide
 - **Actor:** the current authority for behavior. An actor is either a user actor or a system actor.
 - **User actor:** the human currently asking Junior to act.
 - **System actor:** a named Junior-owned execution authority, such as `scheduler` or a plugin dispatch actor.
+- **Run actor:** the single actor a run executes as (see `multi-actor-runs.md`). "Requester" is retired vocabulary for this concept; the codebase-wide rename is complete (#786).
 - **Author:** the actor metadata persisted with a conversation message for transcript attribution.
 - **Creator:** audit and notification metadata for durable objects such as scheduled tasks. Creator is not automatically the actor for later execution.
 - **Credential subject:** an explicit subject used only to choose a stored user OAuth token. It is not the current actor and does not grant actor semantics.
@@ -156,6 +157,10 @@ User-authored conversation messages must carry exact author identity when they a
 
 Prompt context must preserve who is asking now versus who authored prior messages. A later user in the same Slack thread becomes the current actor for the new turn without changing attribution for earlier messages.
 
+Run-level attribution of the distinct actors that originated instruction-authority input to a run (`run.actors`) is derived from this per-message provenance and specified in `multi-actor-runs.md`. It is attribution only and never an authority source.
+
+The durable Pi session log records per-message provenance (`{ authority: "instruction" | "context", actor?: Actor }`) aligned one-to-one with the committed messages, rather than a single latest-wins requester. User-authored turn input is an `instruction` attributed to its own actor; synthetic or system-originated user-role messages (authorization observations, compaction summaries, plugin dispatch) are unattributed `context`. Actors are platform-neutral identity values (today's `Requester` type) so Slack and local identities are preserved. Legacy entries without provenance decode as unattributed context, and misaligned provenance fails closed rather than being zipped or truncated. `AgentTurnSessionRecord` persists this provenance aligned to `piMessages`.
+
 ### Slack Side Effects
 
 Actor-sensitive Slack side effects, including ephemeral responses and OAuth continuations, must use the current actor id from turn context. They must not fall back to channel id, bot id, last human author, task creator, or display profile fields.
@@ -206,6 +211,7 @@ Use evals only when the contract depends on model interpretation, such as preser
 ## Related Specs
 
 - `./chat-architecture.md`
+- `./multi-actor-runs.md`
 - `./task-execution.md`
 - `./local-agent.md`
 - `./agent-turn-handling.md`

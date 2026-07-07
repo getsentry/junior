@@ -248,6 +248,7 @@ describe("Slack behavior: durable turn steering", () => {
       prompt: string;
       steeringTexts: string[];
     }> = [];
+    const steeringProvenance: AgentRunSteeringMessage["provenance"][] = [];
     const state = getStateAdapter();
     const executeAgentRun: AgentRunner["run"] = async (request) => {
       const prompt = request.input.messageText;
@@ -268,6 +269,9 @@ describe("Slack behavior: durable turn steering", () => {
         steeringMessages.push(...drained);
       }
 
+      steeringProvenance.push(
+        ...steeringMessages.map((message) => message.provenance),
+      );
       const steeringTexts = steeringMessages.map((message) => message.text);
       agentCalls.push({
         context: request.input.conversationContext,
@@ -360,6 +364,19 @@ describe("Slack behavior: durable turn steering", () => {
         context: undefined,
         prompt: "start the incident summary",
         steeringTexts: ["include the rollback owner"],
+      },
+    ]);
+
+    // The steered follow-up keeps its own Slack author as an instruction,
+    // rather than being attributed to the current run's actor.
+    expect(steeringProvenance).toEqual([
+      {
+        authority: "instruction",
+        actor: expect.objectContaining({
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        }),
       },
     ]);
 

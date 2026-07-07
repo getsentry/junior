@@ -190,14 +190,28 @@ interface PluginRunContext {
   completedAtMs: number;
   conversationId: string;
   destination: Destination;
+  /** The single actor the run executes as. */
   actor: Actor;
+  /** All distinct actors annotated on the run's instructions, first-seen order. */
+  actors: Actor[];
   runId: string;
   source: Source;
   transcript: PluginRunTranscriptEntry[];
 }
 
+type PluginRunTranscriptProvenance = {
+  authority: "instruction" | "context";
+  actor?: Actor;
+};
+
 type PluginRunTranscriptEntry =
-  | { type: "message"; role: "user" | "assistant"; text: string }
+  | {
+      type: "message";
+      role: "user" | "assistant";
+      text: string;
+      provenance?: PluginRunTranscriptProvenance;
+      isRunActor?: boolean;
+    }
   | {
       type: "toolResult";
       toolName: string;
@@ -207,9 +221,22 @@ type PluginRunTranscriptEntry =
 ```
 
 The projection may include normalized user-authored text, assistant reply text,
-tool-result text, source, destination, and actor. It must not expose raw Pi
-internals, raw tool arguments, full unbounded transcript history, provider
-credentials, OAuth tokens, Slack tokens, or private binary payloads.
+tool-result text, source, destination, the run actor, and the run actors. It
+must not expose raw Pi internals, raw tool arguments, full unbounded transcript
+history, provider credentials, OAuth tokens, Slack tokens, or private binary
+payloads.
+
+Message entries may carry runtime-owned provenance. `authority` is `instruction`
+for a durable turn instruction and `context` for ambient conversation context.
+`actor` and `isRunActor` are derived from runtime identity
+(platform/team/user ids), never from display names; `isRunActor` marks an entry
+whose actor is the run actor. Runtime context, not the transcript, is the
+authority: the transcript is evidence a task may cite. An entry with no
+`provenance` is unattributed context. For authority-sensitive work, missing or
+`context` provenance must be treated as context-only and cannot stand in for a
+run-actor instruction. Public prior-thread messages may appear as
+`context`-authority entries so a task can cite shared conversation evidence;
+private and local sources contribute no such context entries.
 
 If the session record is unavailable, incomplete, missing source/destination,
 or not completed, `run.load()` throws so the task follows the normal retry

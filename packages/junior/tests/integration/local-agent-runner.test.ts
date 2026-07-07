@@ -302,6 +302,14 @@ describe("local agent runner", () => {
             type: "message",
             role: "user",
             text: "capture this local turn",
+            isRunActor: true,
+            provenance: {
+              authority: "instruction",
+              actor: expect.objectContaining({
+                platform: "local",
+                userId: "local-cli",
+              }),
+            },
           },
           {
             type: "message",
@@ -313,6 +321,12 @@ describe("local agent runner", () => {
           platform: "local",
           userId: "local-cli",
         }),
+        actors: [
+          expect.objectContaining({
+            platform: "local",
+            userId: "local-cli",
+          }),
+        ],
         source: {
           platform: "local",
           type: "priv",

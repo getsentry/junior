@@ -1,4 +1,4 @@
-import type { PluginModel } from "@sentry/junior-plugin-api";
+import { actorSchema, type PluginModel } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type {
   MemorySupersessionDecision,
@@ -30,6 +30,17 @@ const createMemoryRequestSchema = z
       .optional(),
   })
   .strict();
+const transcriptProvenanceSchema = z
+  .object({
+    authority: z.enum(["instruction", "context"]),
+    actor: actorSchema.optional(),
+  })
+  .strict();
+const evidenceMessageIndicesSchema = z
+  .array(z.number().int().nonnegative())
+  .min(1)
+  .max(10)
+  .describe("Indices from <run-transcript> that directly support this memory.");
 const extractSessionRequestSchema = z
   .object({
     existingMemories: z
@@ -51,6 +62,8 @@ const extractSessionRequestSchema = z
               type: z.literal("message"),
               role: z.enum(["user", "assistant"]),
               text: z.string().min(1),
+              provenance: transcriptProvenanceSchema.optional(),
+              isRunActor: z.boolean().optional(),
             })
             .strict(),
           z
@@ -147,6 +160,7 @@ const extractedMemorySchema = z
         "Stored memory text as one self-contained fact. It must not include actor names, actor/user labels, source labels, or first- or second-person wording.",
       ),
     expiresAtMs: expiresAtMsSchema,
+    evidenceMessageIndices: evidenceMessageIndicesSchema,
   })
   .strict();
 const extractedMemoryResultSchema = z
@@ -154,6 +168,7 @@ const extractedMemoryResultSchema = z
     content: z.string().min(1),
     expiresAtMs: expiresAtMsSchema,
     kind: memoryKindSchema,
+    evidenceMessageIndices: evidenceMessageIndicesSchema,
   })
   .strict();
 const extractMemoriesResponseSchema = z
@@ -342,6 +357,20 @@ function reviewPrompt(request: CreateMemoryRequest): string {
   return sections.join("\n");
 }
 
+function transcriptActorLabel(
+  actor: z.output<typeof actorSchema> | undefined,
+): string {
+  if (!actor) {
+    return "none";
+  }
+  if (actor.platform === "system") {
+    return `system:${actor.name}`;
+  }
+  return actor.platform === "slack"
+    ? `slack:${actor.teamId}:${actor.userId}`
+    : `local:${actor.userId}`;
+}
+
 function runTranscriptContext(request: ExtractSessionRequest): string {
   return [
     "<run-transcript>",
@@ -353,8 +382,11 @@ function runTranscriptContext(request: ExtractSessionRequest): string {
           "</tool-result>",
         ].join("\n");
       }
+      const authority = entry.provenance?.authority ?? "context";
+      const isRunActor = entry.isRunActor === true;
+      const actor = transcriptActorLabel(entry.provenance?.actor);
       return [
-        `<message index="${index}" role="${entry.role}">`,
+        `<message index="${index}" role="${entry.role}" authority="${authority}" is_run_actor="${isRunActor ? "true" : "false"}" actor="${escapeXml(actor)}">`,
         escapeXml(entry.text),
         "</message>",
       ].join("\n");
@@ -380,6 +412,11 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "",
     "<rules>",
     "- Return at most five memories.",
+    "- Every returned memory must cite one or more evidenceMessageIndices from <run-transcript>.",
+    "- Cite only indices that directly support the stored fact; do not cite assistant messages as independent evidence.",
+    "- Each transcript message exposes authority (instruction or context), is_run_actor, and an actor id. Use these to classify evidence.",
+    "- For a preference, cite only messages with authority=instruction and is_run_actor=true; a preference must be the run actor's own first-person fact.",
+    "- For a procedure or knowledge memory, cite run-actor instruction messages, public context messages, or successful tool results.",
     "- Use user messages and successful tool results as source evidence for storable facts.",
     "- Use failed tool results only when the failure reveals durable process knowledge, not transient errors.",
     "- Use assistant messages only as context; do not store the assistant's claims unless supported by user messages or tool results.",
@@ -392,6 +429,8 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "- Set kind=procedure for reusable task/process/runbook instructions.",
     "- Set kind=knowledge for shared team, project, channel, runbook, or operational facts.",
     "- Set kind=preference only for clear durable first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
+    "- A single task request or ask-for-help is never a durable preference, even when phrased as an ongoing action for this run (for example 'help me capture takeaways as we go'). Do not convert a one-off ask into a 'Prefers ...' memory.",
+    "- A durable preference requires explicitly stated, generalizable first-person phrasing such as 'I prefer ...', 'I always ...', or 'I never ...' that describes how the actor wants things done in general, not just for the current task.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
     "- User-authored task instructions are procedures, not preferences, unless they explicitly describe the actor's personal preference or habit.",
     "- Procedural statements such as 'for X, do Y', 'when X, do Y', and 'to accomplish X, do Y' belong in procedures.",
@@ -505,6 +544,7 @@ function extractedMemoriesFromResponse(
       content: memory.canonicalFact,
       expiresAtMs: memory.expiresAtMs,
       kind: memory.kind,
+      evidenceMessageIndices: memory.evidenceMessageIndices,
     });
   return response.memories.map(toMemory);
 }

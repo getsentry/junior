@@ -204,6 +204,19 @@ clear first-person source evidence from the user and must still be visible only
 to that actor. Explicit memory-management tool calls suppress passive
 extraction for the same completed session so the tool path owns its effect.
 
+Passive extraction must require structured evidence citations. Every extracted
+memory cites one or more transcript entries, and a deterministic router verifies
+those citations against runtime-owned provenance before storage:
+
+- Personal passive memories require every cited evidence entry to be an
+  instruction from the run actor. A first-person preference whose citations are
+  not all run-actor instructions is dropped, never downgraded to conversation
+  scope.
+- Non-run-actor public messages and successful tool results may support
+  conversation-scoped operational knowledge, procedures, and shared facts.
+- Missing provenance is treated as unattributed context and cannot authorize a
+  personal memory.
+
 ## Automatic Injection Policy
 
 Automatic memory injection is enabled when the memory plugin is enabled.

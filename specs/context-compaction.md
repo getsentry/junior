@@ -62,6 +62,12 @@ That reset advances the current `sessionId`; later entries in the same
 conversation carry the new marker, and reducers ignore events from older
 sessions.
 
+The `projection_reset` carries per-message provenance aligned one-to-one with
+its replacement messages. Retained real user messages preserve their original
+instruction actor from the pre-compaction projection; the synthetic handoff
+summary is unattributed `context`. Reset provenance that does not align with the
+replacement messages fails closed rather than being zipped or truncated.
+
 The replacement history must exclude stale runtime turn context, old capability catalogs, raw image/base64 payloads, and unbounded tool output. Runtime turn context is injected again on the next actual turn by `buildTurnContextPrompt(...)`.
 
 The replacement history must preserve enough session-log evidence to derive required runtime handles, or deliberately omit handles that are no longer valid after compaction. If compaction drops old `loadSkill` results or `mcp_provider_connected` events, the next turn must rediscover/reload those capabilities through normal tools rather than relying on side metadata.

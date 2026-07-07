@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   getSourceKey,
   isPrivateSource,
+  type PluginRunTranscriptEntry,
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -15,11 +16,7 @@ import {
   parseExtractedMemory,
   type ExtractedMemory,
 } from "./agent";
-import {
-  MEMORY_KINDS,
-  memoryRuntimeContextSchema,
-  type MemoryKind,
-} from "./types";
+import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 
 const MEMORY_TOOL_NAMES = new Set([
   "createMemory",
@@ -34,21 +31,98 @@ const extractedMemoryCacheSchema = z.array(
       content: z.string().min(1),
       expiresAtMs: z.number().finite().nullable(),
       kind: z.enum(MEMORY_KINDS),
+      evidenceMessageIndices: z
+        .array(z.number().int().nonnegative())
+        .min(1)
+        .max(10),
     })
     .strict()
     .transform(parseExtractedMemory),
 );
 
-function targetForKind(kind: MemoryKind): "actor" | "conversation" {
-  if (kind === "preference") {
-    return "actor";
-  }
-  return "conversation";
+/** Where a passively extracted memory may be stored, or dropped when unproven. */
+type MemoryRouteTarget = "drop" | "personal" | "conversation";
+
+/** A cited entry is a run-actor durable instruction evidence entry. */
+function isRunActorInstruction(entry: PluginRunTranscriptEntry): boolean {
+  return (
+    entry.type === "message" &&
+    entry.role === "user" &&
+    entry.provenance?.authority === "instruction" &&
+    entry.isRunActor === true
+  );
 }
 
-function memoryIdempotencySuffix(memory: ExtractedMemory): string {
+/** A cited entry is valid public conversation evidence for shared knowledge. */
+function isConversationEvidence(entry: PluginRunTranscriptEntry): boolean {
+  if (entry.type === "toolResult") {
+    return entry.isError === false && Boolean(entry.text?.trim());
+  }
+  return (
+    entry.type === "message" &&
+    entry.role === "user" &&
+    entry.provenance?.authority === "context"
+  );
+}
+
+/** Resolve the deduplicated cited transcript entries, failing on bad indices. */
+function citedEntries(
+  indices: number[],
+  transcript: PluginRunTranscriptEntry[],
+): { valid: boolean; entries: PluginRunTranscriptEntry[] } {
+  const seen = new Set<number>();
+  const entries: PluginRunTranscriptEntry[] = [];
+  for (const index of indices) {
+    if (seen.has(index)) {
+      continue;
+    }
+    seen.add(index);
+    const entry = transcript[index];
+    if (!entry) {
+      return { valid: false, entries: [] };
+    }
+    entries.push(entry);
+  }
+  return { valid: entries.length > 0, entries };
+}
+
+/**
+ * Verify an extracted memory against runtime-owned provenance on its cited
+ * evidence. This is a deterministic authority boundary, not a model decision:
+ * personal preferences require citations that are all run-actor instructions,
+ * conversation knowledge requires run-actor instruction or valid public
+ * conversation evidence, and anything unproven (including missing provenance)
+ * is dropped.
+ */
+function routeExtractedMemory(
+  memory: ExtractedMemory,
+  transcript: PluginRunTranscriptEntry[],
+  hasRunActor: boolean,
+): MemoryRouteTarget {
+  const cited = citedEntries(memory.evidenceMessageIndices, transcript);
+  if (!cited.valid) {
+    return "drop";
+  }
+  if (memory.kind === "preference") {
+    if (!hasRunActor) {
+      return "drop";
+    }
+    // Never downgrade an unproven first-person preference to conversation scope.
+    return cited.entries.every(isRunActorInstruction) ? "personal" : "drop";
+  }
+  return cited.entries.every(
+    (entry) => isRunActorInstruction(entry) || isConversationEvidence(entry),
+  )
+    ? "conversation"
+    : "drop";
+}
+
+function memoryIdempotencySuffix(
+  memory: ExtractedMemory,
+  target: MemoryRouteTarget,
+): string {
   return createHash("sha256")
-    .update(targetForKind(memory.kind))
+    .update(target)
     .update("\0")
     .update(memory.kind)
     .update("\0")
@@ -63,10 +137,11 @@ function passiveInput(
   sessionId: string,
   memory: ExtractedMemory,
   sourceKey: string,
+  target: MemoryRouteTarget,
 ): CreateMemoryInput {
   return {
     content: memory.content,
-    idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory)}`,
+    idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory, target)}`,
     kind: memory.kind,
     ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
   };
@@ -159,12 +234,13 @@ export async function processMemorySession(
   }
 
   for (const memory of memories) {
-    const input = passiveInput(run.runId, memory, sourceKey);
-    if (targetForKind(memory.kind) === "conversation") {
-      await store.createConversationMemory(input);
+    const target = routeExtractedMemory(memory, transcript, Boolean(run.actor));
+    if (target === "drop") {
       continue;
     }
-    if (!run.actor) {
+    const input = passiveInput(run.runId, memory, sourceKey, target);
+    if (target === "conversation") {
+      await store.createConversationMemory(input);
       continue;
     }
     await store.createMemory(input);

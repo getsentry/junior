@@ -19,7 +19,12 @@ import {
   estimateTextTokens,
   getAgentContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
-import { commitMessages } from "@/chat/state/session-log";
+import {
+  commitMessages,
+  contextProvenance,
+  loadProjectionWithProvenance,
+  type PiMessageProvenance,
+} from "@/chat/state/session-log";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
@@ -290,14 +295,32 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
   return Math.max(usageEstimate, structuralEstimate);
 }
 
-/** Build a compacted Pi projection from retained recent asks plus the summary. */
-function buildReplacementHistory(args: {
-  messages: PiMessage[];
-  summary: string;
-}): PiMessage[] {
+/**
+ * Preserve each retained user message's original instruction author by matching
+ * its sanitized text back to the source projection provenance; the synthetic
+ * handoff summary is always unauthored context.
+ */
+function buildReplacementProvenance(args: {
+  retained: PiMessage[];
+  sourceProvenance: PiMessageProvenance[];
+  sourceMessages: PiMessage[];
+}): PiMessageProvenance[] {
+  const provenanceByText = new Map<string, PiMessageProvenance>();
+  args.sourceMessages.forEach((message, index) => {
+    if ((message as { role?: unknown }).role === "user") {
+      provenanceByText.set(
+        sanitizeText(messageText(message)),
+        args.sourceProvenance[index] ?? contextProvenance,
+      );
+    }
+  });
   return [
-    ...selectRetainedUserMessages(args.messages),
-    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${args.summary}`),
+    ...args.retained.map(
+      (message) =>
+        provenanceByText.get(sanitizeText(messageText(message))) ??
+        contextProvenance,
+    ),
+    contextProvenance,
   ];
 }
 
@@ -388,13 +411,26 @@ async function writeCompactedThreadContext(
     triggerTokens?: number;
   },
 ): Promise<CompactContextResult> {
-  const replacement = buildReplacementHistory({
-    messages: trimTrailingAssistantMessages(sourceMessages),
-    summary,
+  const retained = selectRetainedUserMessages(
+    trimTrailingAssistantMessages(sourceMessages),
+  );
+  const replacement = [
+    ...retained,
+    userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${summary}`),
+  ];
+  // Provenance comes from the committed projection so retained user asks keep
+  // their original instruction author across the compaction reset.
+  const sourceProjection = await loadProjectionWithProvenance({
+    conversationId: args.conversationId,
   });
   await commitMessages({
     conversationId: args.conversationId,
     messages: replacement,
+    provenance: buildReplacementProvenance({
+      retained,
+      sourceProvenance: sourceProjection.provenance,
+      sourceMessages: sourceProjection.messages,
+    }),
     ttlMs: THREAD_STATE_TTL_MS,
   });
 
