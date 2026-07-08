@@ -27,6 +27,11 @@ interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
     name: string;
     plugin: string;
   };
+  /** Stable model-facing catalog grouping for deferred tool discovery. */
+  source?: {
+    description: string;
+    id: string;
+  };
   description: string;
   exposure?: ToolExposure;
   inputSchema: TInputSchema;
@@ -65,6 +70,11 @@ export interface AnyToolDefinition {
     id: string;
     name: string;
     plugin: string;
+  };
+  /** Stable model-facing catalog grouping for deferred tool discovery. */
+  source?: {
+    description: string;
+    id: string;
   };
   description: string;
   exposure?: ToolExposure;

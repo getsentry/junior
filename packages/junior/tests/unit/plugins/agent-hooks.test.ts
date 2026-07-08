@@ -445,6 +445,10 @@ describe("agent plugin hooks", () => {
         name: "demoTool",
         plugin: "agent-demo",
       });
+      expect(tools.agentDemo_demoTool?.source).toEqual({
+        id: "agent-demo",
+        description: "Agent demo",
+      });
     } finally {
       setPlugins(previous);
     }
@@ -482,6 +486,10 @@ describe("agent plugin hooks", () => {
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",
         plugin: "agent-demo",
+      });
+      expect(tools.agentDemo_prototypeTool?.source).toEqual({
+        id: "agent-demo",
+        description: "Agent demo",
       });
       const prototypeResult = tools.agentDemo_prototypeTool?.execute?.(
         {},

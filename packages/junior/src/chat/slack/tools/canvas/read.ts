@@ -7,6 +7,21 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
 import { sliceFileContent } from "@/chat/tool-support/text-range-result";
 
+const slackCanvasReadOutputSchema = juniorToolResultSchema
+  .extend({
+    canvas_id: z.string().optional(),
+    title: z.string().optional(),
+    permalink: z.string().optional(),
+    mimetype: z.string().optional(),
+    filetype: z.string().optional(),
+    original_byte_length: z.number().int().nonnegative().optional(),
+    content: z.string().optional(),
+    start_line: z.number().int().positive().optional(),
+    end_line: z.number().int().nonnegative().optional(),
+    total_lines: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
  * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
@@ -37,7 +52,7 @@ export function createSlackCanvasReadTool() {
         .describe("Maximum number of lines to read. Defaults to 1000.")
         .optional(),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: slackCanvasReadOutputSchema,
     execute: async ({ canvas, offset, limit }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { assistantMessages, describeEval } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
@@ -331,6 +331,17 @@ describeEval("Memory Workflows", slackEvals, (it) => {
         subjectType: "user",
       }),
     ]);
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "searchTools",
+          arguments: expect.objectContaining({ source: "memory" }),
+        }),
+        expect.objectContaining({
+          name: "memory_createMemory",
+        }),
+      ]),
+    );
     await expectActorMemorySemantics({
       assistantText: visibleAssistantText(result),
       expectedMeaning: "The actor prefers terse pull request summaries.",

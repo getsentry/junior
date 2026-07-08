@@ -7,6 +7,46 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 20;
 
+const providerSummarySchema = z
+  .object({
+    provider: z.string(),
+    description: z.string(),
+    active: z.boolean(),
+  })
+  .strict();
+
+const exposedToolSummarySchema = z
+  .object({
+    tool_name: z.string(),
+    mcp_tool_name: z.string(),
+    provider: z.string(),
+    title: z.string().optional(),
+    description: z.string(),
+    signature: z.string(),
+    call: z
+      .object({
+        tool_name: z.string(),
+        arguments: z.record(z.string(), z.string()),
+      })
+      .strict(),
+    input_schema: z.record(z.string(), z.unknown()),
+    input_schema_summary: z.string(),
+    output_schema: z.record(z.string(), z.unknown()).optional(),
+    annotations: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const searchMcpToolsOutputSchema = juniorToolResultSchema
+  .extend({
+    query: z.string().nullable(),
+    provider: z.string().nullable(),
+    total_active_tools: z.number().int().nonnegative(),
+    returned_tools: z.number().int().nonnegative(),
+    available_providers: z.array(providerSummarySchema),
+    tools: z.array(exposedToolSummarySchema),
+  })
+  .strict();
+
 interface RankedTool {
   tool: ManagedMcpToolDescriptor;
   score: number;
@@ -214,7 +254,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .optional(),
       })
       .strict(),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: searchMcpToolsOutputSchema,
     execute: async ({ query, provider, max_results }) => {
       if (provider) {
         await mcpToolManager.activateProvider(provider);

@@ -63,6 +63,35 @@ type ZodToolDefinition<
   | StructuredZodToolDefinition<TInputSchema, TOutputSchema>
   | ContentZodToolDefinition<TInputSchema>;
 
+type StructuredZodTool<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<JuniorToolResult>,
+> = Omit<
+  AnyToolDefinition,
+  "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
+> & {
+  inputSchema: JsonSchemaObject;
+  outputSchema: JsonSchemaObject;
+  prepareArguments(args: unknown): z.output<TInputSchema>;
+  execute?: (
+    input: unknown,
+    options: ToolExecuteOptions,
+  ) => Promise<z.output<TOutputSchema>> | z.output<TOutputSchema>;
+};
+
+type ContentZodTool<TInputSchema extends ZodTypeAny> = Omit<
+  AnyToolDefinition,
+  "inputSchema" | "outputSchema" | "prepareArguments" | "execute"
+> & {
+  inputSchema: JsonSchemaObject;
+  outputSchema?: undefined;
+  prepareArguments(args: unknown): z.output<TInputSchema>;
+  execute?: (
+    input: unknown,
+    options: ToolExecuteOptions,
+  ) => Promise<ContentOnlyToolResult> | ContentOnlyToolResult;
+};
+
 function isContentOnlyToolResult(
   value: unknown,
 ): value is ContentOnlyToolResult {
@@ -107,10 +136,10 @@ export function zodTool<
   TOutputSchema extends ZodType<JuniorToolResult>,
 >(
   definition: StructuredZodToolDefinition<TInputSchema, TOutputSchema>,
-): AnyToolDefinition;
+): StructuredZodTool<TInputSchema, TOutputSchema>;
 export function zodTool<TInputSchema extends ZodTypeAny>(
   definition: ContentZodToolDefinition<TInputSchema>,
-): AnyToolDefinition;
+): ContentZodTool<TInputSchema>;
 export function zodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<JuniorToolResult>,

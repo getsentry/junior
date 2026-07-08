@@ -35,6 +35,20 @@ const editReplacementSchema = z.object({
   newText: z.string().describe("Replacement Canvas markdown for this edit."),
 });
 
+const slackCanvasEditOutputSchema = juniorToolResultSchema
+  .extend({
+    canvas_id: z.string().optional(),
+    title: z.string().optional(),
+    permalink: z.string().optional(),
+    diff: z.string().optional(),
+    first_changed_line: z.number().int().positive().optional(),
+    replacements: z.number().int().nonnegative().optional(),
+    normalized_heading_count: z.number().int().nonnegative().optional(),
+    summary: z.string().optional(),
+    deduplicated: z.boolean().optional(),
+  })
+  .strict();
+
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(state: ToolState) {
   return zodTool({
@@ -54,7 +68,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
           "Exact replacements matched against the current Canvas body, not incrementally.",
         ),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: slackCanvasEditOutputSchema,
     execute: async ({ canvas, edits }) => {
       const target = resolveCanvasTarget(canvas);
       if (!target.ok) {

@@ -13,6 +13,27 @@ import { logInfo, logWarn } from "@/chat/logging";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
 
+const imageGenerateOutputSchema = juniorToolResultSchema
+  .extend({
+    model: z.string(),
+    prompt: z.string(),
+    enrichedPrompt: z.string(),
+    image_count: z.number().int().nonnegative(),
+    images: z.array(
+      z
+        .object({
+          filename: z.string(),
+          path: z.string(),
+          attachment_path: z.string(),
+          media_type: z.string().optional(),
+          bytes: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    delivery: z.string(),
+  })
+  .strict();
+
 const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
 
 <personality>
@@ -90,7 +111,7 @@ export function createImageGenerateTool(
     inputSchema: z.object({
       prompt: z.string().min(1).max(4000).describe("Image generation prompt."),
     }),
-    outputSchema: juniorToolResultSchema,
+    outputSchema: imageGenerateOutputSchema,
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
       // Raw fetch does not resolve AI Gateway env auth on its own, so this

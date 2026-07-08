@@ -29,6 +29,16 @@ Co-Authored-By: (agent model name) <email>
 - Prefer integration tests for most product/runtime changes that need real wiring.
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
 - In evals, use the normalized `vitest-evals` session and `toolCalls(result.session)` as the primary assertion surfaces; do not invent local transcript/tool-call schemas.
+- Eval cases should pair semantic `criteria: rubric({ pass, fail })` with deterministic assertions when a concrete boundary matters:
+  ```ts
+  const result = await run({
+    events,
+    criteria: rubric({ pass: ["User-visible behavior happens."] }),
+  });
+  expect(toolCalls(result.session)).toEqual(
+    expect.arrayContaining([expect.objectContaining({ name: "searchTools" })]),
+  );
+  ```
 - For any non-Slack-specific product/runtime/prompt/tool/plugin behavior change, use the local agent as the first manual behavior check. Follow `packages/docs/src/content/docs/contribute/local-agent-validation.md`; from this monorepo, run it with `pnpm cli -- chat ...`, which uses `apps/example` as the canonical local validation app.
 - Run evals through the package scripts only: `pnpm evals` for the full suite or `pnpm --filter @sentry/junior-evals evals ...` for focused runs. Do not use `pnpm exec vitest` directly for evals.
 - Pass eval file paths and `-t` filters directly after `evals`; do not insert `--` before eval args.

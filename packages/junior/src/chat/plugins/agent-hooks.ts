@@ -466,6 +466,10 @@ export function getPluginTools(
         name: localName,
         plugin: pluginName,
       };
+      definition.source = {
+        id: pluginName,
+        description: plugin.manifest.description,
+      };
       definition.exposure = "deferred";
       tools[name] = definition;
     }

@@ -111,6 +111,10 @@ describe("Pi tool adapter integration", () => {
       );
 
       expect(registry.agentDemo_lookupCustomer?.exposure).toBe("deferred");
+      expect(registry.agentDemo_lookupCustomer?.source).toEqual({
+        id: "agent-demo",
+        description: "Agent demo",
+      });
       expect(tools.map((candidate) => candidate.name)).toEqual(
         expect.arrayContaining(["searchTools", "executeTool"]),
       );
@@ -129,10 +133,7 @@ describe("Pi tool adapter integration", () => {
         tools: [
           {
             tool_name: "agentDemo_lookupCustomer",
-            source: {
-              type: "plugin",
-              plugin: "agent-demo",
-            },
+            source: "agent-demo",
             input_schema_summary: "customerId (required)",
           },
         ],
