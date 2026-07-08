@@ -29,7 +29,7 @@ type StructuredToolExecuteResult<
   TOutputSchema extends ZodType<JuniorToolResult>,
 > = z.input<TOutputSchema>;
 
-interface ContentOnlyToolResult {
+export interface ContentOnlyToolResult {
   content: Array<TextContent | ImageContent>;
   details?: never;
 }
