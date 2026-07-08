@@ -8,6 +8,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { Destination, Actor, Source } from "@sentry/junior-plugin-api";
 import { getActiveTraceId, logException } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { PiMessageProvenance } from "@/chat/state/session-log";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
@@ -133,6 +134,8 @@ export async function persistRunningSessionRecord(args: {
   sessionId: string;
   sliceId: number;
   messages: PiMessage[];
+  /** Provenance for trailing newly committed messages, such as steering. */
+  trailingMessageProvenance?: PiMessageProvenance[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   actor?: Actor;
@@ -165,6 +168,9 @@ export async function persistRunningSessionRecord(args: {
       sliceId: args.sliceId,
       state: "running",
       piMessages: args.messages,
+      ...(args.trailingMessageProvenance
+        ? { trailingMessageProvenance: args.trailingMessageProvenance }
+        : {}),
       ...((args.surface ?? latestSessionRecord?.surface)
         ? { surface: args.surface ?? latestSessionRecord?.surface }
         : {}),

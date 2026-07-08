@@ -141,17 +141,31 @@ function userMessage(text: string): PiMessage {
   } as PiMessage;
 }
 
+interface RetainedUserMessage {
+  message: PiMessage;
+  sourceIndex: number;
+}
+
 /** Build retained user messages for a compacted Pi replacement history. */
-export function selectRetainedUserMessages(
+function selectRetainedUserMessageEntries(
   messages: PiMessage[],
   maxTokens = RETAINED_USER_MESSAGE_TOKENS,
-): PiMessage[] {
-  const stripped = stripRuntimeTurnContext(messages);
-  const selected: string[] = [];
+): RetainedUserMessage[] {
+  const selected: RetainedUserMessage[] = [];
   let remaining = maxTokens;
 
-  for (const message of [...stripped].reverse()) {
-    if ((message as { role?: unknown }).role !== "user" || remaining <= 0) {
+  for (
+    let sourceIndex = messages.length - 1;
+    sourceIndex >= 0;
+    sourceIndex -= 1
+  ) {
+    const stripped = stripRuntimeTurnContext([messages[sourceIndex]!]);
+    const message = stripped[0];
+    if (
+      !message ||
+      (message as { role?: unknown }).role !== "user" ||
+      remaining <= 0
+    ) {
       continue;
     }
 
@@ -162,19 +176,29 @@ export function selectRetainedUserMessages(
 
     const tokens = estimateTextTokens(text);
     if (tokens <= remaining) {
-      selected.push(text);
+      selected.push({ message: userMessage(text), sourceIndex });
       remaining -= tokens;
       continue;
     }
 
     const truncated = truncateToTokenBudget(text, remaining);
     if (truncated) {
-      selected.push(truncated);
+      selected.push({ message: userMessage(truncated), sourceIndex });
     }
     break;
   }
 
-  return selected.reverse().map(userMessage);
+  return selected.reverse();
+}
+
+/** Build retained user messages for a compacted Pi replacement history. */
+export function selectRetainedUserMessages(
+  messages: PiMessage[],
+  maxTokens = RETAINED_USER_MESSAGE_TOKENS,
+): PiMessage[] {
+  return selectRetainedUserMessageEntries(messages, maxTokens).map(
+    (entry) => entry.message,
+  );
 }
 
 function renderMessageForSummary(message: PiMessage): string | undefined {
@@ -296,29 +320,17 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
 }
 
 /**
- * Preserve each retained user message's original instruction author by matching
- * its sanitized text back to the source projection provenance; the synthetic
- * handoff summary is always unauthored context.
+ * Preserve each retained user message's original instruction author by using
+ * the retained source projection index; the synthetic handoff summary is
+ * always unauthored context.
  */
 function buildReplacementProvenance(args: {
-  retained: PiMessage[];
+  retained: RetainedUserMessage[];
   sourceProvenance: PiMessageProvenance[];
-  sourceMessages: PiMessage[];
 }): PiMessageProvenance[] {
-  const provenanceByText = new Map<string, PiMessageProvenance>();
-  args.sourceMessages.forEach((message, index) => {
-    if ((message as { role?: unknown }).role === "user") {
-      provenanceByText.set(
-        sanitizeText(messageText(message)),
-        args.sourceProvenance[index] ?? contextProvenance,
-      );
-    }
-  });
   return [
     ...args.retained.map(
-      (message) =>
-        provenanceByText.get(sanitizeText(messageText(message))) ??
-        contextProvenance,
+      (entry) => args.sourceProvenance[entry.sourceIndex] ?? contextProvenance,
     ),
     contextProvenance,
   ];
@@ -411,25 +423,24 @@ async function writeCompactedThreadContext(
     triggerTokens?: number;
   },
 ): Promise<CompactContextResult> {
-  const retained = selectRetainedUserMessages(
-    trimTrailingAssistantMessages(sourceMessages),
+  const sourceProjection = await loadProjectionWithProvenance({
+    conversationId: args.conversationId,
+  });
+  const retained = selectRetainedUserMessageEntries(
+    trimTrailingAssistantMessages(sourceProjection.messages),
   );
   const replacement = [
-    ...retained,
+    ...retained.map((entry) => entry.message),
     userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${summary}`),
   ];
   // Provenance comes from the committed projection so retained user asks keep
   // their original instruction author across the compaction reset.
-  const sourceProjection = await loadProjectionWithProvenance({
-    conversationId: args.conversationId,
-  });
   await commitMessages({
     conversationId: args.conversationId,
     messages: replacement,
     provenance: buildReplacementProvenance({
       retained,
       sourceProvenance: sourceProjection.provenance,
-      sourceMessages: sourceProjection.messages,
     }),
     ttlMs: THREAD_STATE_TTL_MS,
   });

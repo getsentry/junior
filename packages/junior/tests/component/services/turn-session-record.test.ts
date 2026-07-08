@@ -395,6 +395,63 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
+  it("decodes legacy stored requester as the bound actor on rehydration", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { commitMessages } = await import("@/chat/state/session-log");
+    const { getAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+
+    const actor = {
+      platform: "slack" as const,
+      teamId: "T123",
+      userId: "U123",
+      userName: "alice",
+      fullName: "Alice Example",
+      email: "alice@sentry.io",
+    };
+    const message = userMessage("resume the deploy");
+
+    await commitMessages({
+      conversationId: "conversation-legacy-requester",
+      messages: [message],
+      ttlMs: 60_000,
+      provenance: [{ authority: "instruction", actor }],
+    });
+
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(
+      "junior:agent_turn_session:conversation-legacy-requester:turn-legacy-requester",
+      {
+        version: 1,
+        conversationId: "conversation-legacy-requester",
+        sessionId: "turn-legacy-requester",
+        sliceId: 1,
+        state: "awaiting_resume",
+        startedAtMs: 1,
+        lastProgressAtMs: 1,
+        updatedAtMs: 1,
+        cumulativeDurationMs: 0,
+        committedMessageCount: 1,
+        committedMessageProvenance: [{ authority: "instruction", actor }],
+        requester: actor,
+        resumeReason: "auth",
+      },
+      60_000,
+    );
+
+    await expect(
+      getAgentTurnSessionRecord(
+        "conversation-legacy-requester",
+        "turn-legacy-requester",
+      ),
+    ).resolves.toMatchObject({
+      actor,
+      actors: [actor],
+      piMessages: [message],
+    });
+  });
+
   it("persists turn transcript scope and actor in the session log", async () => {
     const {
       getAgentTurnSessionRecord,
@@ -522,8 +579,10 @@ describe("persistAuthPauseSessionRecord", () => {
     expect(record?.piMessageProvenance).toHaveLength(record!.piMessages.length);
   });
 
-  it("derives run actors across steering by a second author and reproduces the set on re-materialization", async () => {
-    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+  it("derives run actors from steered message provenance while preserving the run actor", async () => {
+    const { persistRunningSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+    const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
     const alice = {
@@ -549,23 +608,28 @@ describe("persistAuthPauseSessionRecord", () => {
       timestamp: 2,
     } as PiMessage;
 
-    await upsertAgentTurnSessionRecord({
+    await persistRunningSessionRecord({
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
       sliceId: 1,
-      state: "running",
-      piMessages: [aliceMessage],
+      messages: [aliceMessage],
       actor: alice,
+      logContext: {
+        modelId: "test-model",
+      },
     });
     // A second human steers the same run; their message commits as an
-    // instruction attributed to bob, so bob joins the actor set.
-    await upsertAgentTurnSessionRecord({
+    // instruction attributed to bob, while Alice remains the bound run actor.
+    await persistRunningSessionRecord({
       conversationId: "conversation-multi-actor",
       sessionId: "turn-multi-actor",
       sliceId: 2,
-      state: "completed",
-      piMessages: [aliceMessage, bobMessage],
-      actor: bob,
+      messages: [aliceMessage, bobMessage],
+      actor: alice,
+      trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
+      logContext: {
+        modelId: "test-model",
+      },
     });
 
     // getAgentTurnSessionRecord re-materializes from the stored record and the
@@ -575,6 +639,11 @@ describe("persistAuthPauseSessionRecord", () => {
       "conversation-multi-actor",
       "turn-multi-actor",
     );
+    expect(record?.actor).toEqual(alice);
+    expect(record?.piMessageProvenance).toEqual([
+      { authority: "instruction", actor: alice },
+      { authority: "instruction", actor: bob },
+    ]);
     expect(record?.actors).toEqual([alice, bob]);
   });
 

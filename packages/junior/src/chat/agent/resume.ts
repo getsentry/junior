@@ -9,6 +9,7 @@
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { PiMessageProvenance } from "@/chat/state/session-log";
 import {
   CooperativeTurnYieldError,
   TurnInputCommitLostError,
@@ -132,7 +133,10 @@ export function createResumeState(args: ResumeStateArgs) {
       await args.durability.onInputCommitted?.();
       inputCommitted = true;
     },
-    async persistSafeBoundary(messages: PiMessage[]): Promise<boolean> {
+    async persistSafeBoundary(
+      messages: PiMessage[],
+      trailingMessageProvenance?: PiMessageProvenance[],
+    ): Promise<boolean> {
       if (!canPersistSession) {
         return false;
       }
@@ -141,6 +145,7 @@ export function createResumeState(args: ResumeStateArgs) {
         ...sessionRecordBase(),
         sliceId: currentSliceId,
         messages,
+        ...(trailingMessageProvenance ? { trailingMessageProvenance } : {}),
         ...(turnStartMessageIndex !== undefined
           ? { turnStartMessageIndex }
           : {}),
@@ -154,8 +159,12 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     async requireDurableInputCheckpoint(
       messages: PiMessage[],
+      trailingMessageProvenance?: PiMessageProvenance[],
     ): Promise<boolean> {
-      const persisted = await this.persistSafeBoundary(messages);
+      const persisted = await this.persistSafeBoundary(
+        messages,
+        trailingMessageProvenance,
+      );
       if (!persisted && args.durability.onInputCommitted) {
         throw new TurnInputCommitLostError(
           `Durable turn input could not be checkpointed for conversation=${args.sessionConversationId ?? "unknown"} session=${args.sessionId ?? "unknown"}`,

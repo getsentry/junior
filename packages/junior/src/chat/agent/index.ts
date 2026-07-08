@@ -520,10 +520,10 @@ async function executeAgentRunInPrivacyContext(
           if (piMessages.length === 0) {
             return;
           }
-          await runResume.requireDurableInputCheckpoint([
-            ...agent!.state.messages,
-            ...piMessages,
-          ]);
+          await runResume.requireDurableInputCheckpoint(
+            [...agent!.state.messages, ...piMessages],
+            messages.map((message) => message.provenance),
+          );
           for (const message of piMessages) {
             agent!.steer(message);
           }

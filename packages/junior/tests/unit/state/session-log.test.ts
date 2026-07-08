@@ -8,6 +8,7 @@ import {
   loadMessages,
   loadProjection,
   loadProjectionWithActor,
+  loadProjectionWithProvenance,
   recordAuthorizationCompleted,
   recordAuthorizationRequested,
   recordMcpProviderConnected,
@@ -592,6 +593,12 @@ describe("session log message provenance", () => {
     fullName: "Alice Example",
     email: "alice@sentry.io",
   };
+  const bob = {
+    platform: "slack" as const,
+    teamId: "T123",
+    userId: "U456",
+    userName: "bob",
+  };
 
   it("attaches instruction provenance to the last new user message on commit", async () => {
     const store = memoryStore();
@@ -667,6 +674,49 @@ describe("session log message provenance", () => {
       provenance: [
         { authority: "context" },
         { authority: "instruction", actor: alice },
+      ],
+    });
+  });
+
+  it("lets trailing provenance override the run actor default for steered messages", async () => {
+    const store = memoryStore();
+    const initial: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "start the deploy" }],
+      timestamp: 1,
+    } as PiMessage;
+    const steered: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "actually run tests first" }],
+      timestamp: 2,
+    } as PiMessage;
+
+    await commitMessages({
+      store,
+      conversationId: "conv-prov-steering",
+      messages: [initial],
+      ttlMs: 60_000,
+      newMessageProvenance: { authority: "instruction", actor: alice },
+    });
+    await commitMessages({
+      store,
+      conversationId: "conv-prov-steering",
+      messages: [initial, steered],
+      ttlMs: 60_000,
+      newMessageProvenance: { authority: "instruction", actor: alice },
+      trailingMessageProvenance: [{ authority: "instruction", actor: bob }],
+    });
+
+    await expect(
+      loadProjectionWithProvenance({
+        store,
+        conversationId: "conv-prov-steering",
+      }),
+    ).resolves.toEqual({
+      messages: [initial, steered],
+      provenance: [
+        { authority: "instruction", actor: alice },
+        { authority: "instruction", actor: bob },
       ],
     });
   });

@@ -247,7 +247,8 @@ function parseAgentTurnSessionFields(
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
   const logSessionId =
     typeof parsed.logSessionId === "string" ? parsed.logSessionId : undefined;
-  const actorValue = parsed.actor ?? parsed.requester;
+  const actorValue =
+    parsed.actor !== undefined ? parsed.actor : parsed.requester;
   const actor = actorValue === undefined ? undefined : parseActor(actorValue);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
@@ -735,6 +736,8 @@ export async function upsertAgentTurnSessionRecord(args: {
   state: AgentTurnSessionStatus;
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
+  /** Provenance for trailing newly committed messages, such as steering. */
+  trailingMessageProvenance?: PiMessageProvenance[];
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
@@ -757,6 +760,9 @@ export async function upsertAgentTurnSessionRecord(args: {
     messages: args.piMessages,
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
+      : {}),
+    ...(args.trailingMessageProvenance
+      ? { trailingMessageProvenance: args.trailingMessageProvenance }
       : {}),
     ttlMs,
   });

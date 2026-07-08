@@ -710,6 +710,7 @@ function resolveCommitProvenance(args: {
   existing: SessionProjection;
   nextMessages: PiMessage[];
   explicitProvenance?: PiMessageProvenance[];
+  trailingMessageProvenance?: PiMessageProvenance[];
   newMessageProvenance?: PiMessageProvenance;
 }): PiMessageProvenance[] {
   if (args.explicitProvenance) {
@@ -738,6 +739,23 @@ function resolveCommitProvenance(args: {
         break;
       }
     }
+  }
+  if (args.trailingMessageProvenance) {
+    if (args.trailingMessageProvenance.length > provenance.length) {
+      throw new Error(
+        "trailing commit provenance cannot exceed committed messages",
+      );
+    }
+    const newMessageCount = args.nextMessages.length - matchingPrefix;
+    if (args.trailingMessageProvenance.length > newMessageCount) {
+      throw new Error(
+        "trailing commit provenance must align to newly committed messages",
+      );
+    }
+    const start = provenance.length - args.trailingMessageProvenance.length;
+    args.trailingMessageProvenance.forEach((entry, offset) => {
+      provenance[start + offset] = entry;
+    });
   }
   return provenance;
 }
@@ -1181,6 +1199,8 @@ export async function commitMessages(
     ttlMs: number;
     /** Explicit per-message provenance aligned one-to-one with `messages`. */
     provenance?: PiMessageProvenance[];
+    /** Explicit provenance for the trailing newly committed messages. */
+    trailingMessageProvenance?: PiMessageProvenance[];
     /** Default applied to the last new user message when no explicit array. */
     newMessageProvenance?: PiMessageProvenance;
   },
@@ -1193,6 +1213,9 @@ export async function commitMessages(
     existing: existingProjection,
     nextMessages: args.messages,
     ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+    ...(args.trailingMessageProvenance
+      ? { trailingMessageProvenance: args.trailingMessageProvenance }
+      : {}),
     ...(args.newMessageProvenance
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
