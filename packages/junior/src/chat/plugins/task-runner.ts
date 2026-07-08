@@ -33,6 +33,7 @@ import {
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { ConversationMessage } from "@/chat/state/conversation";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import {
   getAgentTurnSessionRecord,
@@ -233,6 +234,34 @@ function slackContextAuthor(
   };
 }
 
+function slackTimestampMs(value: unknown): number | undefined {
+  const timestamp = parseSlackMessageTs(value);
+  if (!timestamp) {
+    return undefined;
+  }
+  const timestampMs = Number(timestamp) * 1000;
+  return Number.isFinite(timestampMs) ? timestampMs : undefined;
+}
+
+function conversationMessageTimestampMs(
+  message: ConversationMessage,
+): number | undefined {
+  if (message.meta?.slackTs !== undefined) {
+    return slackTimestampMs(message.meta.slackTs);
+  }
+  return Number.isFinite(message.createdAtMs) ? message.createdAtMs : undefined;
+}
+
+function messageExistedAtRunCompletion(
+  message: ConversationMessage,
+  completedAtMs: number,
+): boolean {
+  const messageTimestampMs = conversationMessageTimestampMs(message);
+  return (
+    messageTimestampMs !== undefined && messageTimestampMs <= completedAtMs
+  );
+}
+
 /**
  * Project bounded public-thread context into the run transcript.
  *
@@ -253,6 +282,9 @@ async function loadConversationContextTranscriptEntries(
   const entries: PluginRunTranscriptEntry[] = [];
   for (const message of conversation.messages) {
     if (message.role !== "user") {
+      continue;
+    }
+    if (!messageExistedAtRunCompletion(message, record.updatedAtMs)) {
       continue;
     }
     const text = sanitizeText(message.text);

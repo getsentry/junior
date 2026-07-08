@@ -78,6 +78,7 @@ afterEach(async () => {
   const { disconnectStateAdapter } = await import("@/chat/state/adapter");
   setPlugins([]);
   await disconnectStateAdapter();
+  vi.useRealTimers();
   vi.resetModules();
   process.env = { ...ORIGINAL_ENV };
 });
@@ -460,6 +461,125 @@ describe("plugin background tasks", () => {
         isRunActor: true,
       },
     ]);
+  });
+
+  it("bounds public Slack context transcript entries to the completed run window", async () => {
+    const teamId = "T123";
+    const channelId = "C123";
+    const completionMs = 1_700_000_001_000;
+    const slackConversationId = "slack:C123:1700000000.000200";
+    const slackSessionId = "slack-session-context-window";
+    const alice = {
+      platform: "slack",
+      teamId,
+      userId: "U_ALICE",
+      userName: "alice",
+    } as const;
+    const source = createSlackSource({
+      teamId,
+      channelId,
+      type: "pub",
+      messageTs: "1700000000.950000",
+      threadTs: "1700000000.000200",
+    });
+    const loadedRuns: PluginRunContext[] = [];
+    const queue = new PluginTaskQueueTestAdapter();
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { persistThreadStateById } =
+      await import("@/chat/runtime/thread-state");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-context-window-demo",
+          displayName: "Task Context Window Demo",
+          description: "Task context window demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    vi.useFakeTimers({ now: completionMs });
+    await upsertAgentTurnSessionRecord({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      piMessages: [
+        { role: "user", content: "Summarize the thread context." },
+        { role: "assistant", content: "On it." },
+      ] as PiMessage[],
+      sessionId: slackSessionId,
+      sliceId: 1,
+      source,
+      actor: alice,
+      state: "completed",
+      surface: "slack",
+      turnStartMessageIndex: 0,
+    });
+    expect(
+      await getAgentTurnSessionRecord(slackConversationId, slackSessionId),
+    ).toMatchObject({ updatedAtMs: completionMs });
+
+    vi.setSystemTime(completionMs + 10_000);
+    await persistThreadStateById(slackConversationId, {
+      conversation: coerceThreadConversationState({
+        conversation: {
+          messages: [
+            {
+              id: "m-before-completion",
+              role: "user",
+              text: "Before completion: staging smoke tests passed.",
+              createdAtMs: completionMs - 500,
+              meta: { slackTs: "1700000000.900000" },
+              author: { userId: "U_BOB", userName: "bob" },
+            },
+            {
+              id: "m-after-completion",
+              role: "user",
+              text: "After completion: cite this only in the next run.",
+              createdAtMs: completionMs - 500,
+              meta: { slackTs: "1700000001.100000" },
+              author: { userId: "U_CAROL", userName: "carol" },
+            },
+          ],
+        },
+      }),
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: slackConversationId, sessionId: slackSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    const transcript = loadedRuns[0]!.transcript;
+    expect(transcript).toContainEqual({
+      type: "message",
+      role: "user",
+      text: "Before completion: staging smoke tests passed.",
+      provenance: {
+        authority: "context",
+        actor: { platform: "slack", teamId, userId: "U_BOB", userName: "bob" },
+      },
+      isRunActor: false,
+    });
+    expect(
+      transcript.some(
+        (entry) =>
+          entry.type === "message" &&
+          entry.text === "After completion: cite this only in the next run.",
+      ),
+    ).toBe(false);
   });
 
   it("loads actor-less legacy completed session records without run authority", async () => {

@@ -241,7 +241,9 @@ authority: the transcript is evidence a task may cite. An entry with no
 `context` provenance must be treated as context-only and cannot stand in for a
 run-actor instruction. Public prior-thread messages may appear as
 `context`-authority entries so a task can cite shared conversation evidence;
-private and local sources contribute no such context entries.
+private and local sources contribute no such context entries. Public thread
+context entries are bounded to messages whose runtime timestamp is at or before
+`completedAtMs`; messages without a usable runtime timestamp are excluded.
 
 If the session record is unavailable, incomplete, missing source/destination,
 or not completed, `run.load()` throws so the task follows the normal retry
