@@ -212,8 +212,10 @@ those citations against runtime-owned provenance before storage:
   instruction from the run actor. A first-person preference whose citations are
   not all run-actor instructions is dropped, never downgraded to conversation
   scope.
-- Non-run-actor public messages and successful tool results may support
-  conversation-scoped operational knowledge, procedures, and shared facts.
+- Non-run-actor public messages (whether projected as context authority or as
+  attributed instruction-authority participant input) and successful tool
+  results may support conversation-scoped operational knowledge, procedures,
+  and shared facts.
 - Missing provenance is treated as unattributed context and cannot authorize a
   personal memory.
 

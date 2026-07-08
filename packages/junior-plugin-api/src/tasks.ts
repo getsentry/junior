@@ -61,8 +61,11 @@ export const pluginRunContextSchema = z
      * possibly empty for system runs with no human instructions.
      */
     actors: z.array(actorSchema),
-    /** The single actor this run executes as (credential binding, auth flows). */
-    actor: actorSchema,
+    /**
+     * The single actor this run executes as. Absent only for actor-less legacy
+     * system records, so authority-sensitive plugins must fail closed.
+     */
+    actor: actorSchema.optional(),
     runId: z.string().min(1),
     source: sourceSchema,
     transcript: z.array(pluginRunTranscriptEntrySchema),

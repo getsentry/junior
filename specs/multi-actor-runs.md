@@ -125,11 +125,11 @@ text is untrusted for this purpose.
   and is not persisted separately, so it cannot drift from the provenance it is
   derived from. `AgentTurnSessionRecord.actor` carries the run actor.
 - The plugin run context exposes the same fields to plugin tasks:
-  `pluginRunContextSchema.actor` (the run actor) and `pluginRunContextSchema.actors`
-  (the run actors), populated in `loadPluginRun`. `run.actors` is derived from
-  the full run provenance (the same source as the record), never from the sliced
-  or stripped transcript, so it can exceed the actors visible in the transcript
-  slice.
+  `pluginRunContextSchema.actor` (the run actor, absent only for actor-less
+  legacy system records) and `pluginRunContextSchema.actors` (the run actors),
+  populated in `loadPluginRun`. `run.actors` is derived from the full run
+  provenance (the same source as the record), never from the sliced or stripped
+  transcript, so it can exceed the actors visible in the transcript slice.
 
 ## Failure Model
 

@@ -190,8 +190,8 @@ interface PluginRunContext {
   completedAtMs: number;
   conversationId: string;
   destination: Destination;
-  /** The single actor the run executes as. */
-  actor: Actor;
+  /** The single actor the run executes as; absent only for actor-less legacy system records. */
+  actor?: Actor;
   /** All distinct actors annotated on the run's instructions, first-seen order. */
   actors: Actor[];
   runId: string;
@@ -225,6 +225,11 @@ tool-result text, source, destination, the run actor, and the run actors. It
 must not expose raw Pi internals, raw tool arguments, full unbounded transcript
 history, provider credentials, OAuth tokens, Slack tokens, or private binary
 payloads.
+
+`actor` may be absent for legacy completed records that predate first-class run
+actors. Plugins that need personal scope or credentials must treat an absent run
+actor as unavailable authority. `actors` may still be empty for system runs with
+no human instruction actors.
 
 Message entries may carry runtime-owned provenance. `authority` is `instruction`
 for a durable turn instruction and `context` for ambient conversation context.

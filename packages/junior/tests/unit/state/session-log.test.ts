@@ -877,6 +877,26 @@ describe("session log message provenance", () => {
     ).toEqual([alice, aliceTeamB]);
   });
 
+  it("does not collapse Slack actors whose concatenated team and user ids collide", () => {
+    const first = {
+      platform: "slack" as const,
+      teamId: "T1",
+      userId: "1U2",
+    };
+    const second = {
+      platform: "slack" as const,
+      teamId: "T11",
+      userId: "U2",
+    };
+
+    expect(
+      instructionActors([
+        { authority: "instruction", actor: first },
+        { authority: "instruction", actor: second },
+      ]),
+    ).toEqual([first, second]);
+  });
+
   it("excludes context and unattributable instruction messages", () => {
     // A system-actor / no-human run: nothing carries an instruction actor.
     expect(

@@ -264,11 +264,22 @@ function instructionMessage(
   };
 }
 
-/** A non-run-actor ambient context transcript message. */
-function contextMessage(
+/** An attributed public participant instruction that is not run authority. */
+function nonRunActorInstructionMessage(
   text: string,
-  actor?: Actor,
+  actor: Actor,
 ): PluginRunTranscriptEntry {
+  return {
+    type: "message",
+    role: "user",
+    text,
+    provenance: { authority: "instruction", actor },
+    isRunActor: false,
+  };
+}
+
+/** A non-run-actor ambient context transcript message. */
+function contextMessage(text: string, actor?: Actor): PluginRunTranscriptEntry {
   return {
     type: "message",
     role: "user",
@@ -973,6 +984,59 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
+  it("re-extracts when cached extraction output predates evidence citations", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const state = createMemoryState();
+      await state.set("memory-extraction:stale-cache-task", [
+        {
+          content: "Stale cache content should not be stored.",
+          expiresAtMs: null,
+          kind: "knowledge",
+        },
+      ]);
+      const { calls, model } = extractionModel([
+        {
+          content: "Fresh extraction content is stored.",
+          kind: "knowledge",
+          evidenceMessageIndices: [0],
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          id: "stale-cache-task",
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                transcript: [
+                  instructionMessage("Fresh extraction content is stored."),
+                ],
+              });
+            },
+          },
+          state,
+        }),
+      );
+
+      expect(calls).toHaveLength(1);
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Fresh extraction content is stored.",
+          scope: "conversation",
+          kind: "knowledge",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("keeps passive extraction idempotency distinct by memory kind", async () => {
     const fixture = await createMemoryFixture();
 
@@ -1466,6 +1530,63 @@ describe("memory plugin storage", () => {
             async load() {
               return completedRun({
                 transcript: [contextMessage("Deploy runbooks live in Notion.")],
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          content: "Deploy runbooks live in Notion.",
+          scope: "conversation",
+          subjectType: "conversation",
+          kind: "knowledge",
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("stores conversation knowledge cited to a non-run-actor instruction message", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const runtime = slackContext({ userId: "U_ALICE" });
+      const bob = {
+        platform: "slack" as const,
+        teamId: runtime.source.teamId,
+        userId: "U_BOB",
+        userName: "bob",
+      };
+      const { model } = extractionModel([
+        {
+          kind: "knowledge",
+          content: "Deploy runbooks live in Notion.",
+          evidenceMessageIndices: [0],
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                actor: runtime.actor,
+                conversationId: runtime.conversationId,
+                destination: slackDestination(runtime),
+                source: runtime.source,
+                transcript: [
+                  nonRunActorInstructionMessage(
+                    "Bob said deploy runbooks live in Notion.",
+                    bob,
+                  ),
+                ],
               });
             },
           },

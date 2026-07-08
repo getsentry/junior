@@ -462,6 +462,79 @@ describe("plugin background tasks", () => {
     ]);
   });
 
+  it("loads actor-less legacy completed session records without run authority", async () => {
+    const runId = randomUUID();
+    const runConversationId = `${conversationId}-actorless-${runId}`;
+    const runSessionId = `${sessionId}:actorless:${runId}`;
+    const runSource = createLocalSource(runConversationId);
+    const loadedRuns: PluginRunContext[] = [];
+    const queue = new PluginTaskQueueTestAdapter();
+    const { setPlugins } = await import("@/chat/plugins/agent-hooks");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "task-actorless-demo",
+          displayName: "Task Actorless Demo",
+          description: "Task actorless demo",
+        },
+        tasks: {
+          processSession: {
+            async run(ctx) {
+              loadedRuns.push(await ctx.run.load());
+            },
+          },
+        },
+      }),
+    ]);
+
+    await upsertAgentTurnSessionRecord({
+      conversationId: runConversationId,
+      destination: { ...destination, conversationId: runConversationId },
+      piMessages: [
+        { role: "user", content: "Run a legacy system task." },
+        { role: "assistant", content: "Done." },
+      ] as PiMessage[],
+      sessionId: runSessionId,
+      sliceId: 1,
+      source: runSource,
+      state: "completed",
+      surface: "internal",
+      turnStartMessageIndex: 0,
+    });
+
+    await scheduleSessionCompletedPluginTasks(
+      { conversationId: runConversationId, sessionId: runSessionId },
+      { send: (message) => queue.send(message) },
+    );
+    await processPluginTask(queue.queuedMessages()[0]!);
+
+    expect(loadedRuns).toHaveLength(1);
+    expect(loadedRuns[0]).not.toHaveProperty("actor");
+    expect(loadedRuns[0]).toMatchObject({
+      actors: [],
+      conversationId: runConversationId,
+      runId: runSessionId,
+      transcript: [
+        {
+          type: "message",
+          role: "user",
+          text: "Run a legacy system task.",
+          provenance: { authority: "context" },
+          isRunActor: false,
+        },
+        {
+          type: "message",
+          role: "assistant",
+          text: "Done.",
+        },
+      ],
+    });
+  });
+
   it("adds no context transcript entries for private Slack sources", async () => {
     const teamId = "T123";
     const channelId = "D123";

@@ -58,6 +58,14 @@ function isConversationEvidence(entry: PluginRunTranscriptEntry): boolean {
   if (entry.type === "toolResult") {
     return entry.isError === false && Boolean(entry.text?.trim());
   }
+  if (
+    entry.type === "message" &&
+    entry.role === "user" &&
+    entry.provenance?.authority === "instruction" &&
+    entry.isRunActor === false
+  ) {
+    return Boolean(entry.provenance.actor);
+  }
   return (
     entry.type === "message" &&
     entry.role === "user" &&
@@ -154,7 +162,11 @@ async function getTaskMemories(
   const cacheKey = `memory-extraction:${context.id}`;
   const cached = await context.state.get(cacheKey);
   if (cached !== undefined) {
-    return extractedMemoryCacheSchema.parse(cached);
+    const parsed = extractedMemoryCacheSchema.safeParse(cached);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    await context.state.delete(cacheKey);
   }
   const memories = await extract();
   if (memories.length > 0) {
