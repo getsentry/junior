@@ -222,6 +222,81 @@ describe("createTracedStreamFn", () => {
     expect(span.end).toHaveBeenCalledTimes(1);
   });
 
+  it("serializes gen_ai.output.messages in canonical format for public conversations", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn({
+      base: base as unknown as StreamFn,
+      conversationPrivacy: "public",
+    });
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      undefined,
+    );
+
+    stream.end({
+      ...fakeMessage(),
+      content: [
+        { type: "thinking", thinking: "I should use the search tool." },
+        { type: "thinking", thinking: "", redacted: true },
+        { type: "text", text: "The answer is 42." },
+        {
+          type: "toolCall",
+          id: "call_1",
+          name: "search",
+          arguments: { q: "foo" },
+        },
+      ],
+      stopReason: "toolUse",
+    });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+
+    const outputMessages = JSON.parse(
+      endAttributes["gen_ai.output.messages"] as string,
+    );
+    expect(outputMessages).toHaveLength(1);
+    const msg = outputMessages[0];
+    expect(msg.role).toBe("assistant");
+    expect(msg.finish_reason).toBe("tool_use");
+    expect(msg.parts).toEqual([
+      { type: "reasoning", content: "I should use the search tool." },
+      { type: "reasoning", redacted: true },
+      { type: "text", content: "The answer is 42." },
+      {
+        type: "tool_call",
+        id: "call_1",
+        name: "search",
+        arguments: { q: "foo" },
+      },
+    ]);
+    // must NOT contain raw pi-ai fields
+    expect(msg).not.toHaveProperty("content");
+    expect(msg).not.toHaveProperty("stopReason");
+    expect(msg).not.toHaveProperty("api");
+    expect(msg).not.toHaveProperty("usage");
+
+    // input messages should also be in canonical format
+    const startOpts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      attributes: Record<string, unknown>;
+    };
+    const inputMessages = JSON.parse(
+      startOpts.attributes["gen_ai.input.messages"] as string,
+    );
+    expect(inputMessages[0]).toEqual({
+      role: "user",
+      parts: [{ type: "text", content: "hello" }],
+    });
+  });
+
   it("normalizes Pi toolUse finish reasons for telemetry", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();

@@ -61,6 +61,7 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.provider.name`
 - `gen_ai.operation.name`
 - `gen_ai.request.model`
+- `gen_ai.request.reasoning.level` (when requested)
 - `gen_ai.output.type`
 - `gen_ai.request.stream`
 - `gen_ai.response.finish_reasons` (when available)
@@ -71,8 +72,9 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.output.messages` (when captured)
 - `gen_ai.usage.input_tokens` (when available)
 - `gen_ai.usage.output_tokens` (when available)
-- `gen_ai.usage.cache_read.input_tokens` (when available)
-- `gen_ai.usage.cache_creation.input_tokens` (when available)
+- `gen_ai.usage.total_tokens` (when available)
+- `gen_ai.usage.input_tokens.cached` (when available)
+- `gen_ai.usage.input_tokens.cache_write` (when available)
 - `gen_ai.tool.description` (when available)
 - `gen_ai.tool.name` (for `execute_tool`)
 - `gen_ai.tool.type` (when available)

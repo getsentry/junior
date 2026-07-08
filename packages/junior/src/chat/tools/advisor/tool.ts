@@ -7,6 +7,8 @@ import { THREAD_STATE_TTL_MS } from "chat";
 import type { AdvisorConfig } from "@/chat/config";
 import {
   type ConversationPrivacy,
+  toCanonicalInputMessage,
+  toCanonicalOutputMessage,
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
 } from "@/chat/conversation-privacy";
@@ -244,18 +246,14 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
         "</executor-context>",
       ].join("\n");
       const advisorInputMessage = {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: requestText,
-          },
-        ],
+        role: "user" as const,
+        content: [{ type: "text" as const, text: requestText }],
+        timestamp: Date.now(),
       };
       const advisorInputMessagesAttribute = serializeGenAiAttribute(
         conversationPrivacy !== "public"
           ? [toGenAiMessageMetadata(advisorInputMessage)]
-          : [advisorInputMessage],
+          : [toCanonicalInputMessage(advisorInputMessage)],
       );
 
       return await withSpan(
@@ -314,7 +312,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           const outputMessagesAttribute = serializeGenAiAttribute(
             conversationPrivacy !== "public"
               ? outputMessages.map(toGenAiMessageMetadata)
-              : outputMessages,
+              : outputMessages.map(toCanonicalOutputMessage),
           );
           setSpanAttributes({
             ...(outputMessagesAttribute

@@ -89,7 +89,7 @@ export function getAgentTurnDiagnosticsAttributes(
     "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
     ...(reply.diagnostics.thinkingLevel
       ? {
-          "app.ai.reasoning_effort": reply.diagnostics.thinkingLevel,
+          "gen_ai.request.reasoning.level": reply.diagnostics.thinkingLevel,
         }
       : {}),
     ...(reply.diagnostics.stopReason

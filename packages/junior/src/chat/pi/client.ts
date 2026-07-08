@@ -39,6 +39,8 @@ import { toOptionalTrimmed } from "@/chat/optional-string";
 import {
   getCurrentConversationPrivacy,
   resolveConversationPrivacy,
+  toCanonicalInputMessage,
+  toCanonicalOutputMessage,
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
   toGenAiTextMetadata,
@@ -139,7 +141,7 @@ export async function completeText(params: {
   const requestMessagesAttribute = serializeGenAiAttribute(
     messageAttributeMode === "metadata"
       ? params.messages.map(toGenAiMessageMetadata)
-      : params.messages,
+      : params.messages.map(toCanonicalInputMessage),
   );
   const systemInstructionsAttribute = params.system
     ? serializeGenAiAttribute(
@@ -157,7 +159,7 @@ export async function completeText(params: {
     "server.port": GEN_AI_SERVER_PORT,
     "app.conversation.privacy": effectivePrivacy,
     ...(params.thinkingLevel
-      ? { "app.ai.reasoning_effort": params.thinkingLevel }
+      ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
       : {}),
   };
   const startAttributes = {
@@ -208,12 +210,7 @@ export async function completeText(params: {
                 content: outputText ? [toGenAiTextMetadata(outputText)] : [],
               },
             ]
-          : [
-              {
-                role: "assistant",
-                content: outputText ? [{ type: "text", text: outputText }] : [],
-              },
-            ],
+          : [toCanonicalOutputMessage(message)],
       );
       const usageAttributes = extractGenAiUsageAttributes(message);
       const endAttributes = {
@@ -326,7 +323,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
         ...(params.thinkingLevel
-          ? { "app.ai.reasoning_effort": params.thinkingLevel }
+          ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : {}),
       },
     );

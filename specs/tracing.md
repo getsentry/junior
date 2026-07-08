@@ -58,6 +58,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `gen_ai.conversation.id` on GenAI spans when the conversation/thread identifier is known.
 - `messaging.destination.name` for channel context when available.
 - `gen_ai.request.model` for model-level tracing.
+- `gen_ai.request.reasoning.level` for requested reasoning/thinking level when known.
 - `gen_ai.output.type` for the requested response type when known.
 - `gen_ai.request.stream` on streaming model calls.
 - `server.address` for GenAI client/provider spans when known.
@@ -69,8 +70,8 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - Custom `app.ai.input.*` / `app.ai.output.*` bounded message shape metadata
   (`message_count`, `content_chars`, `roles`, `part_types`) only when scalar
   query pivots are needed beyond the standard `gen_ai.*.messages` attributes.
-- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
-- `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` when available from provider responses.
+- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` / `gen_ai.usage.total_tokens` when available from provider responses.
+- `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.input_tokens.cache_write` when available from provider responses.
 - `gen_ai.tool.description` when available on tool execution spans.
 - `gen_ai.tool.type` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.

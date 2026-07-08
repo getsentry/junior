@@ -71,6 +71,7 @@ import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
+  toCanonicalOutputMessage,
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
@@ -405,7 +406,7 @@ async function executeAgentRunInPrivacyContext(
     });
     setSpanAttributes({
       "gen_ai.request.model": botConfig.modelId,
-      "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
+      "gen_ai.request.reasoning.level": thinkingSelection.thinkingLevel,
       "app.ai.thinking_level_reason": thinkingSelection.reason,
       ...(thinkingSelection.confidence !== undefined
         ? {
@@ -697,7 +698,7 @@ async function executeAgentRunInPrivacyContext(
                     "gen_ai.request.model": botConfig.modelId,
                     ...(thinkingSelection
                       ? {
-                          "app.ai.reasoning_effort":
+                          "gen_ai.request.reasoning.level":
                             thinkingSelection.thinkingLevel,
                         }
                       : {}),
@@ -759,7 +760,7 @@ async function executeAgentRunInPrivacyContext(
             const outputMessagesAttribute = serializeGenAiAttribute(
               conversationPrivacy !== "public"
                 ? outputMessages.map(toGenAiMessageMetadata)
-                : outputMessages,
+                : outputMessages.map(toCanonicalOutputMessage),
             );
             const usageSummary = extractGenAiUsageSummary(
               promptResult,
@@ -825,7 +826,7 @@ async function executeAgentRunInPrivacyContext(
             : {}),
           ...(sessionId ? { "app.ai.turn.session_id": sessionId } : {}),
           ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
-          "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
+          "gen_ai.request.reasoning.level": thinkingSelection.thinkingLevel,
           ...toGenAiMessagesTraceAttributes("app.ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }

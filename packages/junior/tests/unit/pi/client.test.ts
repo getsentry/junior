@@ -104,7 +104,7 @@ describe("completeText", () => {
         "gen_ai.output.type": "text",
         "server.address": "ai-gateway.vercel.sh",
         "server.port": 443,
-        "app.ai.reasoning_effort": "low",
+        "gen_ai.request.reasoning.level": "low",
       }),
     );
     expect(attributes["gen_ai.system_instructions"]).toBeDefined();

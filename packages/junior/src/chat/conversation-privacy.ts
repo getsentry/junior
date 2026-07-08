@@ -1,4 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type {
+  AssistantMessage,
+  ImageContent,
+  Message,
+  TextContent,
+  ThinkingContent,
+  ToolCall,
+} from "@earendil-works/pi-ai";
 import { parseSlackThreadId } from "@/chat/slack/context";
 
 export type ConversationPrivacy = "public" | "private";
@@ -94,10 +102,16 @@ function contentMetadata(content: unknown): unknown {
       return { type: typeof part };
     }
     const record = part as Record<string, unknown>;
-    const type = typeof record.type === "string" ? record.type : "unknown";
+    const type = canonicalContentPartType(
+      typeof record.type === "string" ? record.type : "unknown",
+    );
     return {
       type,
-      ...(typeof record.text === "string" ? { chars: record.text.length } : {}),
+      ...(typeof record.text === "string"
+        ? { chars: record.text.length }
+        : typeof record.thinking === "string" && record.thinking.length > 0
+          ? { chars: record.thinking.length }
+          : {}),
       ...(typeof record.mimeType === "string"
         ? { mimeType: record.mimeType }
         : {}),
@@ -208,10 +222,14 @@ function summarizeContent(content: unknown): {
       continue;
     }
     const record = part as Record<string, unknown>;
-    const type = typeof record.type === "string" ? record.type : "unknown";
+    const type = canonicalContentPartType(
+      typeof record.type === "string" ? record.type : "unknown",
+    );
     partTypes.add(type);
     if (typeof record.text === "string") {
       chars += record.text.length;
+    } else if (typeof record.thinking === "string") {
+      chars += record.thinking.length;
     } else if (typeof record.data === "string") {
       chars += record.data.length;
     } else {
@@ -219,6 +237,84 @@ function summarizeContent(content: unknown): {
     }
   }
   return { chars, partTypes: [...partTypes] };
+}
+
+// ---------------------------------------------------------------------------
+// Canonical gen_ai attribute format mappers
+// ---------------------------------------------------------------------------
+
+function normalizeFinishReason(reason: string): string {
+  return reason === "toolUse" ? "tool_use" : reason;
+}
+
+function canonicalContentPartType(type: string): string {
+  if (type === "thinking") return "reasoning";
+  if (type === "toolCall") return "tool_call";
+  return type;
+}
+
+function toCanonicalPart(
+  part: TextContent | ThinkingContent | ImageContent | ToolCall,
+): Record<string, unknown> {
+  if (part.type === "text") {
+    return { type: "text", content: part.text };
+  }
+  if (part.type === "thinking") {
+    if (part.redacted) {
+      return { type: "reasoning", redacted: true };
+    }
+    return { type: "reasoning", content: part.thinking };
+  }
+  if (part.type === "toolCall") {
+    return {
+      type: "tool_call",
+      id: part.id,
+      name: part.name,
+      arguments: part.arguments,
+    };
+  }
+  // image — omit raw base64 data, keep type and mimeType only
+  return { type: "image", mimeType: (part as ImageContent).mimeType };
+}
+
+/**
+ * Map a pi-ai AssistantMessage to the canonical gen_ai.output.messages shape:
+ * `{ role, parts: [...], finish_reason }` — drops provider noise fields.
+ */
+export function toCanonicalOutputMessage(
+  message: AssistantMessage,
+): Record<string, unknown> {
+  return {
+    role: "assistant",
+    parts: message.content.map(toCanonicalPart),
+    finish_reason: normalizeFinishReason(message.stopReason),
+  };
+}
+
+/**
+ * Map a pi-ai Message (user/assistant/toolResult) to the canonical
+ * gen_ai.input.messages shape: `{ role, parts: [...] }`.
+ */
+export function toCanonicalInputMessage(
+  message: Message,
+): Record<string, unknown> {
+  if (message.role === "user") {
+    const parts =
+      typeof message.content === "string"
+        ? [{ type: "text", content: message.content }]
+        : message.content.map(toCanonicalPart);
+    return { role: "user", parts };
+  }
+  if (message.role === "toolResult") {
+    return {
+      role: "tool",
+      id: message.toolCallId,
+      name: message.toolName,
+      parts: message.content.map(toCanonicalPart),
+    };
+  }
+  // AssistantMessage appearing as a prior turn in input context
+  return toCanonicalOutputMessage(message as AssistantMessage);
 }
 
 /** Summarize a message list without exposing raw message content. */

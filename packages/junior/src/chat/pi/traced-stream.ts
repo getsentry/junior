@@ -20,6 +20,8 @@ import {
 } from "@/chat/pi/client";
 import {
   type ConversationPrivacy,
+  toCanonicalInputMessage,
+  toCanonicalOutputMessage,
   toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
   toGenAiTextMetadata,
@@ -60,7 +62,7 @@ function buildChatStartAttributes(
   const inputMessages = serializeGenAiAttribute(
     mode === "metadata"
       ? context.messages.map(toGenAiMessageMetadata)
-      : context.messages,
+      : context.messages.map(toCanonicalInputMessage),
   );
   if (inputMessages) {
     attributes["gen_ai.input.messages"] = inputMessages;
@@ -92,7 +94,9 @@ function buildChatEndAttributes(
   };
 
   const outputMessages = serializeGenAiAttribute(
-    mode === "metadata" ? [toGenAiMessageMetadata(message)] : [message],
+    mode === "metadata"
+      ? [toGenAiMessageMetadata(message)]
+      : [toCanonicalOutputMessage(message)],
   );
   if (outputMessages) {
     attributes["gen_ai.output.messages"] = outputMessages;

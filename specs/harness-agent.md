@@ -91,14 +91,15 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Every assistant turn must annotate active spans with turn diagnostics after generation completes.
 - Required attributes when available:
   - `gen_ai.request.model`
+  - `gen_ai.request.reasoning.level` (when requested)
   - `gen_ai.provider.name`
   - `gen_ai.operation.name`
   - `gen_ai.input.messages`
   - `gen_ai.output.messages`
   - `gen_ai.usage.input_tokens`
-  - `gen_ai.usage.output_tokens`
-  - `gen_ai.usage.cache_read.input_tokens` (when available)
-  - `gen_ai.usage.cache_creation.input_tokens` (when available)
+  - `gen_ai.usage.output_tokens` / `gen_ai.usage.total_tokens`
+  - `gen_ai.usage.input_tokens.cached` (when available)
+  - `gen_ai.usage.input_tokens.cache_write` (when available)
   - `app.ai.outcome` (`success|execution_failure|provider_error`)
   - `app.ai.assistant_messages`
   - `app.ai.tool_results`

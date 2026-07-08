@@ -174,14 +174,15 @@ Rules:
 ### GenAI
 
 - `gen_ai.request.model`
+- `gen_ai.request.reasoning.level` (when requested)
 - `gen_ai.provider.name` (provider/gateway)
 - `gen_ai.operation.name` (e.g. `chat`, `invoke_agent`, `execute_tool`)
 - `gen_ai.response.finish_reasons` (when available)
 - `gen_ai.system_instructions` (when captured and provided separately)
 - `gen_ai.input.messages` (serialized request messages when captured)
 - `gen_ai.output.messages` (serialized model output messages when captured)
-- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` (when available)
-- `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` (when available)
+- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` / `gen_ai.usage.total_tokens` (when available)
+- `gen_ai.usage.input_tokens.cached` / `gen_ai.usage.input_tokens.cache_write` (when available)
 - `gen_ai.tool.description` (for tool-call spans when available)
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` (for tool-call spans when captured)
 
