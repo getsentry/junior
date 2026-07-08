@@ -112,6 +112,40 @@ export function createPiAgentTools(
     }
     return true;
   };
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value && typeof value === "object" && !Array.isArray(value));
+  const contentEchoesDetails = (
+    content: ReturnType<typeof normalizeToolResult>["content"],
+    details: unknown,
+  ): boolean => {
+    if (content.length !== 1 || content[0]?.type !== "text") {
+      return false;
+    }
+    try {
+      return (
+        JSON.stringify(JSON.parse(content[0].text)) === JSON.stringify(details)
+      );
+    } catch {
+      return false;
+    }
+  };
+  const toolResultTracePayload = (
+    normalized: ReturnType<typeof normalizeToolResult>,
+  ) => {
+    const { content, details } = normalized;
+    if (isRecord(details) && details.rawResult !== undefined) {
+      return details.rawResult;
+    }
+    if (
+      content.length > 0 &&
+      isRecord(details) &&
+      details.content === undefined &&
+      !contentEchoesDetails(content, details)
+    ) {
+      return { ...details, content };
+    }
+    return details;
+  };
   const executeDefinition = async (args: {
     normalizedToolCallId: string | undefined;
     params: Record<string, unknown>;
@@ -154,16 +188,7 @@ export function createPiAgentTools(
     if (isSandbox && pluginAuthOrchestration) {
       await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
     }
-    let resultAttributeValue = normalized.details;
-    if (
-      normalized.details &&
-      typeof normalized.details === "object" &&
-      "rawResult" in normalized.details &&
-      (normalized.details as { rawResult?: unknown }).rawResult !== undefined
-    ) {
-      resultAttributeValue = (normalized.details as { rawResult: unknown })
-        .rawResult;
-    }
+    const resultAttributeValue = toolResultTracePayload(normalized);
     const toolResultAttribute = serializeToolPayload(resultAttributeValue);
     if (toolResultAttribute) {
       setSpanAttributes({

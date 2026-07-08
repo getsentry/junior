@@ -141,6 +141,7 @@ function normalizeGenAiFinishReasons(value: unknown): unknown {
 }
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
+const spanStorage = new AsyncLocalStorage<unknown>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
 const deploymentLogAttributes = getDeploymentTelemetryAttributes();
 type ConsoleTextStyle = Parameters<typeof styleText>[0];
@@ -1664,7 +1665,7 @@ export async function withSpan<T>(
           ...normalizedAttributes,
         },
       },
-      callback,
+      (span) => spanStorage.run(span, callback),
     );
   });
 }
@@ -1694,7 +1695,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 /** Set attributes on the currently active Sentry span. */
 export function setSpanAttributes(attributes: Record<string, unknown>): void {
   const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
-  const span = sentry.getActiveSpan?.();
+  const span = sentry.getActiveSpan?.() ?? spanStorage.getStore();
   if (!span) {
     return;
   }
@@ -1716,7 +1717,7 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
 /** Set the status of the currently active Sentry span. */
 export function setSpanStatus(status: "ok" | "error"): void {
   const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
-  const span = sentry.getActiveSpan?.();
+  const span = sentry.getActiveSpan?.() ?? spanStorage.getStore();
   if (!span) {
     return;
   }
