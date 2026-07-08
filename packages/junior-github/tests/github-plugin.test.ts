@@ -2294,6 +2294,8 @@ Conversation: \`local:test:old-conversation\`
         userId: "U3",
       },
     ]);
+    before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
+      "Co-Authored-By: Model Supplied <model@example.com>";
 
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
@@ -2336,7 +2338,7 @@ Conversation: \`local:test:old-conversation\`
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBeUndefined();
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
   });
 
   it("dedups additional actors by resolved email and drops one matching the bot email", () => {
@@ -2399,58 +2401,87 @@ Conversation: \`local:test:old-conversation\`
       userId: "U1",
     };
     const before = beforeToolContext(runActor, [runActor]);
+    before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
+      "Co-Authored-By: Model Supplied <model@example.com>";
 
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBeUndefined();
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
   });
 
-  it("appends actor and bot trailers as one contiguous block and stays idempotent on rerun", async () => {
-    const { readFileSync, rmSync } = await import("node:fs");
-    const { dir, messagePath, runHook } = await prepareCommitMsgHookFixture(
+  it.each([
+    [
+      "appends actor and bot trailers as one contiguous block and stays idempotent on rerun",
       "initial commit message\n",
-    );
-
-    expect(runHook().status).toBe(0);
-    const afterFirst = readFileSync(messagePath, "utf8");
-    // One blank line after the body, then a single contiguous trailer block:
-    // git and GitHub only credit trailers in the final contiguous paragraph.
-    expect(afterFirst).toBe(
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Co-Authored-By: Carol Steer <carol@example.com>\n" +
         "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
-    );
-
-    expect(runHook().status).toBe(0);
-    expect(readFileSync(messagePath, "utf8")).toBe(afterFirst);
-
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("extends an existing trailer block in place when some trailers are already present", async () => {
-    const { readFileSync, rmSync } = await import("node:fs");
-    const { dir, messagePath, runHook } = await prepareCommitMsgHookFixture(
+    ],
+    [
+      "ignores matching trailer lines outside the final trailer block",
+      "initial commit message\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n" +
+        "body details continue here\n",
+      "initial commit message\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n" +
+        "body details continue here\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+    ],
+    [
+      "inserts missing actor trailers before an existing Junior bot trailer",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+    ],
+    [
+      "extends an existing trailer block in place when some trailers are already present",
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n",
-    );
-
-    expect(runHook().status).toBe(0);
-    expect(readFileSync(messagePath, "utf8")).toBe(
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Co-Authored-By: Carol Steer <carol@example.com>\n" +
         "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
-    );
+    ],
+    [
+      "extends a final trailer block ending with another trailer",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Signed-off-by: Reviewer <reviewer@example.com>\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Signed-off-by: Reviewer <reviewer@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
+        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+    ],
+  ])("%s", async (_name, initialMessage, expectedMessage) => {
+    const { readFileSync, rmSync } = await import("node:fs");
+    const { dir, messagePath, runHook } =
+      await prepareCommitMsgHookFixture(initialMessage);
+
+    expect(runHook().status).toBe(0);
+    expect(readFileSync(messagePath, "utf8")).toBe(expectedMessage);
+    expect(runHook().status).toBe(0);
+    expect(readFileSync(messagePath, "utf8")).toBe(expectedMessage);
 
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("denies git commits when actor identity is an unresolved Slack id", () => {
+  it("does not inject author env when actor identity is unresolved", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2463,25 +2494,14 @@ Conversation: \`local:test:old-conversation\`
 
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
-    expect(before.denial).toContain("resolved actor name and email");
-    expect(before.env).toEqual({});
-  });
-
-  it("denies git commits when actor display identity is synthetic unknown", () => {
-    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
-    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
-
-    const plugin = githubPlugin();
-    const before = beforeToolContext({
-      email: "david@example.com",
-      fullName: "unknown",
-      userId: "U039RR91S",
-      userName: "unknown",
+    expect(before.denial).toBeUndefined();
+    expect(before.env).toMatchObject({
+      GIT_COMMITTER_NAME: "sentry-junior[bot]",
+      GIT_COMMITTER_EMAIL: "bot@example.com",
+      JUNIOR_GIT_COAUTHOR_NAME: "sentry-junior[bot]",
+      JUNIOR_GIT_COAUTHOR_EMAIL: "bot@example.com",
     });
-
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
-
-    expect(before.denial).toContain("resolved actor name and email");
-    expect(before.env).toEqual({});
+    expect(before.env.GIT_AUTHOR_NAME).toBeUndefined();
+    expect(before.env.GIT_AUTHOR_EMAIL).toBeUndefined();
   });
 });

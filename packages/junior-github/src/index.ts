@@ -367,12 +367,6 @@ function additionalActorCoauthorTrailers(args: {
   return trailers;
 }
 
-function isGitCommitCommand(command: string): boolean {
-  return /(?:^|[\s;|&])git(?:\s+(?:-C\s+\S+|-c\s+\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)|--namespace(?:=\S+|\s+\S+)))*\s+commit(?:\s|$)/.test(
-    command,
-  );
-}
-
 function prepareCommitMsgHook(): string {
   return `#!/usr/bin/env bash
 set -eu
@@ -400,24 +394,58 @@ fi
 # Git and GitHub only interpret the final contiguous paragraph as the trailer
 # block, so all missing trailers are collected and appended as one block:
 # actor trailers in order, Junior's agent trailer last.
-known_trailers=""
-missing_trailers=""
-collect_trailer() {
-  known_trailers="\${known_trailers}\${1}"$'\\n'
-  if ! grep -Fqx -- "$1" "$message_file"; then
-    missing_trailers="\${missing_trailers}\${1}"$'\\n'
-  fi
+desired_trailers=""
+add_trailer() {
+  desired_trailers="$desired_trailers$1"$'\\n'
 }
 
 if [ -n "\${JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:-}" ]; then
   while IFS= read -r actor_trailer; do
     if [ -n "$actor_trailer" ]; then
-      collect_trailer "$actor_trailer"
+      add_trailer "$actor_trailer"
     fi
   done <<< "$JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"
 fi
 
-collect_trailer "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
+add_trailer "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
+
+final_trailer_block=$(awk '
+  { lines[NR] = $0 }
+  END {
+    line = NR
+    while (line > 0 && lines[line] == "") {
+      line--
+    }
+    if (line == 0) {
+      exit 0
+    }
+    start = line
+    while (start > 0 && lines[start] != "") {
+      start--
+    }
+    for (i = start + 1; i <= line; i++) {
+      if (lines[i] !~ /^[[:alnum:]-]+: .+/) {
+        exit 0
+      }
+    }
+    for (i = start + 1; i <= line; i++) {
+      print lines[i]
+    }
+  }
+' "$message_file")
+
+missing_trailers=""
+collect_missing_trailer() {
+  if ! printf '%s\\n' "$final_trailer_block" | grep -Fqx -- "$1"; then
+    missing_trailers="\${missing_trailers}\${1}"$'\\n'
+  fi
+}
+
+while IFS= read -r desired_trailer; do
+  if [ -n "$desired_trailer" ]; then
+    collect_missing_trailer "$desired_trailer"
+  fi
+done <<< "$desired_trailers"
 
 if [ -z "$missing_trailers" ]; then
   exit 0
@@ -427,10 +455,18 @@ if [ -n "$(tail -c 1 "$message_file")" ]; then
   printf '\\n' >> "$message_file"
 fi
 
-# When the message already ends with one of our trailers, extend that block in
-# place instead of opening a new paragraph, so the block stays contiguous.
+# When the message already ends with Junior's bot trailer, insert missing
+# actor trailers before it so the bot trailer stays last.
 last_line=$(tail -n 1 "$message_file")
-if [ -n "$last_line" ] && printf '%s' "$known_trailers" | grep -Fqx -- "$last_line"; then
+bot_trailer="Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
+if [ "$last_line" = "$bot_trailer" ]; then
+  tmp_file=$(mktemp)
+  trap 'rm -f "$tmp_file"' EXIT
+  sed '$d' "$message_file" > "$tmp_file"
+  printf '%s' "$missing_trailers" >> "$tmp_file"
+  printf '%s\\n' "$bot_trailer" >> "$tmp_file"
+  cat "$tmp_file" > "$message_file"
+elif [ -n "$final_trailer_block" ]; then
   printf '%s' "$missing_trailers" >> "$message_file"
 else
   printf '\\n%s' "$missing_trailers" >> "$message_file"
@@ -1603,31 +1639,13 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const command =
-          typeof ctx.tool.input === "object" &&
-          ctx.tool.input &&
-          "command" in ctx.tool.input
-            ? String(ctx.tool.input.command ?? "")
-            : "";
         const botName = readEnv(botNameEnv);
         const botEmail = readEnv(botEmailEnv);
-        if ((!botName || !botEmail) && isGitCommitCommand(command)) {
-          ctx.decision.deny(
-            `Junior GitHub plugin is misconfigured: host env vars ${botNameEnv} and ${botEmailEnv} are missing. This is an internal deployment configuration error; do not set them in the sandbox.`,
-          );
-          return;
-        }
         if (!botName || !botEmail) {
           return;
         }
         const authorName = actorName(ctx.actor);
         const authorEmail = actorEmail(ctx.actor);
-        if ((!authorName || !authorEmail) && isGitCommitCommand(command)) {
-          ctx.decision.deny(
-            "Junior GitHub plugin could not determine a resolved actor name and email for commit attribution. This is an internal request-context error; do not set author env vars manually.",
-          );
-          return;
-        }
         if (authorName && authorEmail) {
           ctx.env.set("GIT_AUTHOR_NAME", authorName);
           ctx.env.set("GIT_AUTHOR_EMAIL", authorEmail);
@@ -1644,12 +1662,10 @@ export function githubPlugin(
           botEmail,
           runActor: ctx.actor,
         });
-        if (actorTrailers.length > 0) {
-          ctx.env.set(
-            "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
-            actorTrailers.join("\n"),
-          );
-        }
+        ctx.env.set(
+          "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
+          actorTrailers.join("\n"),
+        );
       },
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx);

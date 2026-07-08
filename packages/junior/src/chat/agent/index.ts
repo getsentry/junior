@@ -302,14 +302,19 @@ async function executeAgentRunInPrivacyContext(
       currentSliceId,
       existingSessionRecord,
     } = await restoreSessionRecord(routing);
-    // Mirror the newMessageProvenance the turn session record commits for a
-    // fresh turn's user message (upsertAgentTurnSessionRecord); a resumed run
-    // continues the same run's committed prefix instead of restarting it.
+    // Mirror the committed provenance prefix the turn session record owns. A
+    // fresh run may already include batched parked input committed before the
+    // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
     const committedInstructionProvenance: PiMessageProvenance[] =
-      resumedFromSessionRecord
-        ? [...(existingSessionRecord?.piMessageProvenance ?? [])]
+      existingSessionRecord?.piMessageProvenance
+        ? [
+            ...existingSessionRecord.piMessageProvenance,
+            ...(resumedFromSessionRecord
+              ? []
+              : [instructionProvenanceFor(actor)]),
+          ]
         : [instructionProvenanceFor(actor)];
     const runActors = (): Actor[] =>
       instructionActors(committedInstructionProvenance);

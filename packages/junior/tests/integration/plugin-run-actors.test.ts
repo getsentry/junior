@@ -112,6 +112,7 @@ vi.mock("@/chat/plugins/agent-hooks", async (importOriginal) => {
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -129,6 +130,12 @@ const STEERING_ACTOR = {
   platform: "local",
   userId: "local-steering-actor",
   fullName: "Steering Actor",
+} as const;
+
+const BATCHED_ACTOR = {
+  platform: "local",
+  userId: "local-batched-actor",
+  fullName: "Batched Actor",
 } as const;
 
 describe("run actors threading", () => {
@@ -171,6 +178,45 @@ describe("run actors threading", () => {
 
     expect(captured.runActor).toEqual(RUN_ACTOR);
     expect(captured.actorsGetter?.()).toEqual([RUN_ACTOR, STEERING_ACTOR]);
+  });
+
+  it("seeds the live actors getter from a fresh run's committed prefix", async () => {
+    const conversationId = "conversation-run-actors-batched";
+    const sessionId = "turn-run-actors-batched";
+
+    await upsertAgentTurnSessionRecord({
+      actor: RUN_ACTOR,
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "running",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "batched ask" }],
+          timestamp: 1,
+        },
+      ],
+      trailingMessageProvenance: [
+        { authority: "instruction", actor: BATCHED_ACTOR },
+      ],
+    });
+
+    await executeAgentRun({
+      input: { messageText: "hello" },
+      routing: {
+        destination: LOCAL_DESTINATION,
+        source: LOCAL_SOURCE,
+        actor: RUN_ACTOR,
+        correlation: {
+          conversationId,
+          turnId: sessionId,
+        },
+      },
+    });
+
+    expect(captured.runActor).toEqual(RUN_ACTOR);
+    expect(captured.actorsGetter?.()).toEqual([BATCHED_ACTOR, RUN_ACTOR]);
   });
 
   it("does not credit an unresolvable steering actor", async () => {
