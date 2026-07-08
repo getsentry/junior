@@ -298,30 +298,19 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("does not treat sendMessage as final reply completion", () => {
+  it("treats the no-reply marker as intentional silent completion", () => {
     const reply = buildTurnResult({
       newMessages: [
-        {
-          role: "toolResult",
-          toolName: "sendMessage",
-          isError: false,
-          content: [{ type: "text", text: "posted in thread" }],
-          details: {
-            ok: true,
-            channel_id: "C123",
-            thread_ts: "1700000000.321",
-          },
-        },
         {
           role: "assistant",
           content: [{ type: "text", text: NO_REPLY_MARKER }],
           stopReason: "stop",
         },
       ],
-      userInput: "attach it here",
+      userInput: "Do whatever makes sense here",
       artifactStatePatch: {},
-      toolCalls: ["sendMessage"],
-      generatedFileCount: 1,
+      toolCalls: [],
+      generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
       thinkingSelection,
@@ -330,10 +319,41 @@ describe("buildTurnResult", () => {
     expect(reply.text).toBe("");
     expect(reply.deliveryMode).toBe("thread");
     expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: true,
+      postThreadText: false,
     });
-    expect(reply.diagnostics.outcome).toBe("execution_failure");
+    expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("keeps no-reply marker silent when side-effect tools also ran", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "sendMessage",
+          isError: false,
+          content: [{ type: "text", text: "posted in thread" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "share this here without extra commentary",
+      artifactStatePatch: {},
+      toolCalls: ["sendMessage"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
   });
 
   it("does not correct attachment claims after sendMessage sends files", () => {

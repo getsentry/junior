@@ -24,6 +24,29 @@ function visibleText(session: EvalSession): string {
 }
 
 describeEval("Slack Message Delivery", slackEvals, (it) => {
+  it("when asked for no visible reply, complete silently", async ({ run }) => {
+    const result = await run({
+      events: [
+        mention(
+          "please record that this has been seen, but do not post a visible reply",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant posts no visible thread reply.",
+          `The no-reply marker ${NO_REPLY_MARKER} is only an internal publication signal.`,
+        ],
+        fail: [
+          "Do not post an acknowledgement such as 'Done', 'Seen', or 'Got it'.",
+          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
+        ],
+      }),
+    });
+
+    expect(visibleThreadReplies(result.session)).toEqual([]);
+    expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
+  });
+
   it("when asked for a top-level channel post, explain the limitation instead", async ({
     run,
   }) => {

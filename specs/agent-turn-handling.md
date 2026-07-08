@@ -130,7 +130,7 @@ Scenarios:
 3. User asks Junior to react:
    - When the user explicitly asks Junior to add a Slack reaction, Junior must use `addReaction` when the runtime provides a valid target and must not treat automatic processing reactions as satisfying the user's request.
 4. Slack side effect satisfies the turn:
-   - When a successful Slack side-effect tool already satisfies the user's request, Junior may suppress a duplicate final thread reply according to the reply-delivery plan when the assistant used the no-reply marker.
+   - Junior may suppress a duplicate final thread reply according to the reply-delivery plan when the assistant used the no-reply marker.
    - `sendMessage` does not by itself satisfy the final assistant reply contract.
 
 ### 8. Progress And Resumed-Turn Behavior
@@ -167,8 +167,9 @@ Scenarios:
    - When Junior completes model/tool execution and final Slack delivery accepts the visible reply, Junior must mark the turn as completed and persist the assistant message as visible conversation state.
 2. Tool or provider failure:
    - When a tool, provider, or runtime failure prevents the requested work from completing, Junior must either recover within the turn, pause through the appropriate runtime mechanism, or provide an explicit user-visible failure response.
-3. Final answer cannot be empty:
-   - When a turn does not produce a successful side effect, pause notice, or non-empty assistant answer, Junior must deliver an explicit fallback response rather than silently completing the turn.
+3. Silent completion:
+   - When the assistant intentionally emits the no-reply marker as its final answer, Junior must complete the turn without posting visible thread text.
+   - When a turn produces no assistant answer and no no-reply marker, Junior must deliver an explicit fallback response rather than silently completing the turn.
 
 ## Failure Model
 
@@ -176,7 +177,7 @@ Scenarios:
 2. Active request failures must produce a visible answer, runtime-owned pause notice, or fallback failure response.
 3. Junior-authored messages must not start recursive turns.
 4. Slack side effects must not be reported as successful unless the tool succeeded in the same turn.
-5. Empty model output is not a successful final answer unless a successful side effect or runtime-owned pause already satisfied the turn.
+5. Exact no-reply marker output is an intentional silent completion. Empty model output without the marker is not a successful final answer.
 6. User-visible failure text is the sanitized fallback response with its correlation/event id. Raw exception messages, stack traces, and internal error strings must not be delivered as reply text. Partial output may be delivered only when it is genuine model-authored text.
 7. Repeated failures for the same inbound message are bounded by the dead-letter contract in `./task-execution.md`; one inbound message produces at most one visible failure reply.
 

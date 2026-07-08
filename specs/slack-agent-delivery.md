@@ -152,8 +152,8 @@ Current rules:
 
 1. Do not create a visible Slack text artifact until the assistant reply is final enough to budget, normalize, and persist.
 2. Deliver visible reply text through finalized thread posts, not through incremental text streaming.
-3. Only mark a text-reply turn successful after the final visible Slack reply has been accepted by Slack. When a successful requested Slack side effect, such as a reaction, fully satisfies the turn and the assistant uses the no-reply marker, that side effect is the visible completion. `sendMessage` is an active-conversation side effect and does not replace final reply delivery.
-4. If the assistant chose a Slack side-effect tool and that successful side effect already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan only when the assistant used the no-reply marker or produced no assistant text. Delivery code must rely on tool results and structured markers for this decision, not regex or keyword matching against user or assistant prose.
+3. Only mark a text-reply turn successful after the final visible Slack reply has been accepted by Slack. When the assistant uses the no-reply marker, the turn completes without visible thread text. `sendMessage` is an active-conversation side effect and does not replace final reply delivery unless the assistant also intentionally completes with no reply.
+4. Junior may suppress the thread text reply according to the reply-delivery plan when the assistant used the no-reply marker. Delivery code must rely on the structured marker, not regex or keyword matching against user or assistant prose.
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
 7. When Junior adds finalized reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
@@ -246,7 +246,7 @@ Required split:
 1. Slack status-update failures are best effort and must not by themselves fail the turn.
 2. Slack thread-post or final delivery failures are turn failures because the visible reply contract was not satisfied.
 3. Junior must not persist assistant conversation state for a turn until final Slack delivery succeeds. This includes the durable session-log/Pi transcript: an undelivered assistant reply must not surface to later turns as delivered conversation history.
-4. If a final reply normalizes to empty, Junior must post an explicit fallback message rather than silently succeeding.
+4. If a final reply normalizes to empty without the exact no-reply marker, Junior must post an explicit fallback message rather than silently succeeding.
 5. If a chunked reply overflows a code fence boundary, fence integrity must still be preserved in the delivered Slack posts.
 
 ## Observability

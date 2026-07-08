@@ -1440,7 +1440,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
 
           // Text replies must be accepted by Slack before completion;
-          // side-effect-only turns may already be visibly complete.
+          // no-reply turns intentionally complete without thread text.
           if (plannedPosts.length > 0) {
             const hasVisibleDelivery = plannedPosts.some(
               hasVisibleSlackDelivery,
@@ -1497,9 +1497,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             finalReplyDelivered = true;
             shouldPersistFailureState = false;
           } else {
-            // Side-effect-only turns (for example reactions or channel posts)
-            // have no thread reply to deliver; the successful tool result is
-            // the visible Slack acceptance boundary.
+            // No-reply turns have no thread reply to deliver; the assistant's
+            // reserved marker is the completion boundary.
             finalReplyDelivered = true;
             shouldPersistFailureState = false;
           }

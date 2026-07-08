@@ -394,7 +394,7 @@ const SLACK_ACTION_RULES = [
   "- sendMessage has no target argument; it always sends into the active Slack conversation/thread. For top-level channel posts, other channels, or named recipients, explain that this runtime can only send into the active conversation.",
   "- sendMessage is not final-reply delivery. After using sendMessage, provide a brief normal final answer unless the user requested no further text.",
   "- Ambient reaction requests target the current inbound message; do not ask for a message reference.",
-  `- Side-effect-only completion for addReaction: call the requested tool first; if it succeeds and fully satisfies the request, final message must be exactly ${NO_REPLY_MARKER}.`,
+  `- When no visible final thread reply is useful, make the final message exactly ${NO_REPLY_MARKER}.`,
 ];
 
 const SAFETY_RULES = [
@@ -451,7 +451,7 @@ function buildOutputSection(platform: PromptPlatform): string {
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
     "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
     "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
-    "- End every turn with a final user-facing markdown response unless the Slack action rules allow a side-effect-only completion.",
+    "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");
 }

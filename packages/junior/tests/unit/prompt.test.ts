@@ -3,6 +3,7 @@ import {
   createLocalSource,
   createSlackSource,
 } from "@sentry/junior-plugin-api";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
 
 describe("prompt builders", () => {
@@ -16,6 +17,24 @@ describe("prompt builders", () => {
     const systemPrompt = buildSystemPrompt({ source });
 
     expect(buildSystemPrompt({ source })).toBe(systemPrompt);
+  });
+
+  it("tells Slack agents to use the no-reply marker for silent completion", () => {
+    const systemPrompt = buildSystemPrompt({
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        type: "priv",
+      }),
+    });
+
+    expect(systemPrompt).toContain(
+      `When no visible final thread reply is useful, make the final message exactly ${NO_REPLY_MARKER}.`,
+    );
+    expect(systemPrompt).not.toContain(
+      "Side-effect-only completion for addReaction",
+    );
+    expect(systemPrompt).not.toContain("side-effect-only completion");
   });
 
   it("returns a byte-stable local system prompt variant", () => {

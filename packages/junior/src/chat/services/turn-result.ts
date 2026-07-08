@@ -243,9 +243,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
-  const markerSideEffectSuccess =
-    exactNoReplyMarker && toolErrorCount === 0 && reactionPerformed;
-  const sideEffectOnlySuccess = markerSideEffectSuccess;
+  const silentCompletionSuccess = exactNoReplyMarker;
   const baseDeliveryPlan: ReplyDeliveryPlan = {
     mode: "thread",
     postThreadText: true,
@@ -276,23 +274,15 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_category": markerCategory,
-      "app.ai.no_reply_marker_accepted":
-        sideEffectOnlySuccess && !isProviderError,
+      "app.ai.no_reply_marker_accepted": !isProviderError,
     };
 
-    if (sideEffectOnlySuccess && !isProviderError) {
+    if (!isProviderError) {
       logInfo(
         "ai_no_reply_marker_accepted",
         markerContext,
         markerAttributes,
         "No-reply marker suppressed visible thread text",
-      );
-    } else if (!isProviderError) {
-      logWarn(
-        "ai_no_reply_marker_rejected",
-        markerContext,
-        markerAttributes,
-        "No-reply marker requires a successful visible side effect",
       );
     }
   } else if (mixedNoReplyMarker) {
@@ -314,12 +304,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     );
   }
 
-  if (
-    !primaryText &&
-    !sideEffectOnlySuccess &&
-    !isProviderError &&
-    !exactNoReplyMarker
-  ) {
+  if (!primaryText && !silentCompletionSuccess && !isProviderError) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -343,7 +328,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
-  } else if (primaryText || sideEffectOnlySuccess) {
+  } else if (primaryText || silentCompletionSuccess) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
@@ -362,7 +347,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     ? "execution_failure"
     : outcome;
   const deliveryPlan =
-    resolvedOutcome === "success" && !resolvedText && reactionPerformed
+    resolvedOutcome === "success" && !resolvedText
       ? {
           ...baseDeliveryPlan,
           postThreadText: false,
