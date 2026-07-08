@@ -306,6 +306,67 @@ function actorEmail(actor?: Actor): string | undefined {
   return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : undefined;
 }
 
+/**
+ * Stable identity key for an actor, matching the distinctness rule
+ * `instructionActors` uses to build `run.actors` (identity ids only, never
+ * display fields) so the run actor is recognized here even under a different
+ * display profile.
+ */
+function actorIdentityKey(actor: Actor): string {
+  if (actor.platform === "system") {
+    return `system ${actor.name}`;
+  }
+  return actor.platform === "slack"
+    ? `slack ${actor.teamId} ${actor.userId}`
+    : `${actor.platform} ${actor.userId}`;
+}
+
+/**
+ * Build `Co-Authored-By` trailers crediting run actors beyond the git author.
+ *
+ * `run.actors` is attribution only (see `multi-actor-runs.md`): a steerer
+ * without a resolvable name and email is silently omitted rather than
+ * denying the commit, and the run actor is excluded because it is already
+ * the git author. Dedupes by resolved email so the same human under two
+ * display profiles, or a steerer matching the author or bot identity, only
+ * ever produces one line.
+ */
+function additionalActorCoauthorTrailers(args: {
+  actors?: Actor[];
+  authorEmail?: string;
+  botEmail: string;
+  runActor?: Actor;
+}): string[] {
+  if (!args.actors || args.actors.length === 0) {
+    return [];
+  }
+  const runActorKey = args.runActor
+    ? actorIdentityKey(args.runActor)
+    : undefined;
+  const seenEmails = new Set<string>([args.botEmail.toLowerCase()]);
+  if (args.authorEmail) {
+    seenEmails.add(args.authorEmail.toLowerCase());
+  }
+  const trailers: string[] = [];
+  for (const candidate of args.actors) {
+    if (runActorKey && actorIdentityKey(candidate) === runActorKey) {
+      continue;
+    }
+    const name = actorName(candidate);
+    const email = actorEmail(candidate);
+    if (!name || !email) {
+      continue;
+    }
+    const emailKey = email.toLowerCase();
+    if (seenEmails.has(emailKey)) {
+      continue;
+    }
+    seenEmails.add(emailKey);
+    trailers.push(`Co-Authored-By: ${name} <${email}>`);
+  }
+  return trailers;
+}
+
 function isGitCommitCommand(command: string): boolean {
   return /(?:^|[\s;|&])git(?:\s+(?:-C\s+\S+|-c\s+\S+|--git-dir(?:=\S+|\s+\S+)|--work-tree(?:=\S+|\s+\S+)|--namespace(?:=\S+|\s+\S+)))*\s+commit(?:\s|$)/.test(
     command,
@@ -336,12 +397,44 @@ if [ -z "\${JUNIOR_GIT_COAUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_COAUTHOR_EMAIL
   exit 1
 fi
 
-trailer="Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
-if grep -Fqx "$trailer" "$message_file"; then
+# Git and GitHub only interpret the final contiguous paragraph as the trailer
+# block, so all missing trailers are collected and appended as one block:
+# actor trailers in order, Junior's agent trailer last.
+known_trailers=""
+missing_trailers=""
+collect_trailer() {
+  known_trailers="\${known_trailers}\${1}"$'\\n'
+  if ! grep -Fqx -- "$1" "$message_file"; then
+    missing_trailers="\${missing_trailers}\${1}"$'\\n'
+  fi
+}
+
+if [ -n "\${JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:-}" ]; then
+  while IFS= read -r actor_trailer; do
+    if [ -n "$actor_trailer" ]; then
+      collect_trailer "$actor_trailer"
+    fi
+  done <<< "$JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"
+fi
+
+collect_trailer "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
+
+if [ -z "$missing_trailers" ]; then
   exit 0
 fi
 
-printf '\\n%s\\n' "$trailer" >> "$message_file"
+if [ -n "$(tail -c 1 "$message_file")" ]; then
+  printf '\\n' >> "$message_file"
+fi
+
+# When the message already ends with one of our trailers, extend that block in
+# place instead of opening a new paragraph, so the block stays contiguous.
+last_line=$(tail -n 1 "$message_file")
+if [ -n "$last_line" ] && printf '%s' "$known_trailers" | grep -Fqx -- "$last_line"; then
+  printf '%s' "$missing_trailers" >> "$message_file"
+else
+  printf '\\n%s' "$missing_trailers" >> "$message_file"
+fi
 `;
 }
 
@@ -1545,6 +1638,18 @@ export function githubPlugin(
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
         ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", botName);
         ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", botEmail);
+        const actorTrailers = additionalActorCoauthorTrailers({
+          actors: ctx.actors,
+          authorEmail,
+          botEmail,
+          runActor: ctx.actor,
+        });
+        if (actorTrailers.length > 0) {
+          ctx.env.set(
+            "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
+            actorTrailers.join("\n"),
+          );
+        }
       },
       grantForEgress(ctx) {
         return githubGrantForEgress(ctx);

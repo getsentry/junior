@@ -66,6 +66,8 @@ interface ToolWiringArgs {
   abortAgent: () => void;
   activeSkills: Skill[];
   currentActor?: Actor;
+  /** Live projection of the run's committed instruction-authority actors so far. */
+  currentActors?: () => Actor[];
   artifactStatePatch: Partial<ThreadArtifactsState>;
   availableSkills: SkillMetadata[];
   configurationValues: Record<string, unknown>;
@@ -124,6 +126,7 @@ export async function wireAgentTools(
   const userTokenStore = createUserTokenStore();
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
+    actors: args.currentActors,
   });
   const sandboxExecutor = createSandboxExecutor({
     sandboxId: args.state.sandbox?.sandboxId,

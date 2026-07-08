@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-07-07
-- Last Edited: 2026-07-07
+- Last Edited: 2026-07-08
 
 ## Purpose
 
@@ -130,6 +130,15 @@ text is untrusted for this purpose.
   populated in `loadPluginRun`. `run.actors` is derived from the full run
   provenance (the same source as the record), never from the sliced or stripped
   transcript, so it can exceed the actors visible in the transcript slice.
+- The agent tool-execution plugin hook (`BeforeToolExecuteHookContext.actors`
+  in `packages/junior-plugin-api`) exposes a live, run-scoped projection: a
+  getter threaded from the run loop's committed instruction provenance so far,
+  materialized once per tool call. It is a lower bound mid-run per the
+  monotonicity contract above. Only this hook exposes `actors`; the sandbox
+  preparation hook writes a static script and does not need it. The GitHub
+  plugin is the first consumer, using it to credit additional run actors as
+  `Co-Authored-By` git commit trailers (see `security-policy.md`) — attribution
+  text only, never a credential or authority input.
 
 ## Failure Model
 

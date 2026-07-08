@@ -1027,6 +1027,9 @@ describe("agent plugin hooks", () => {
           },
           beforeToolExecute(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
+            // No `actors` getter was passed to createPluginHookRunner, so the
+            // hook context falls back to the single run actor.
+            expect(ctx.actors).toEqual([TEST_ACTOR]);
             ctx.env.set("AGENT_PLUGIN", TEST_ACTOR.userId);
             if (
               typeof ctx.tool.input === "object" &&
@@ -1080,6 +1083,47 @@ describe("agent plugin hooks", () => {
         env: { AGENT_PLUGIN: "U123" },
       });
       expect(before.env).toEqual({ AGENT_PLUGIN: "U123" });
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("materializes beforeToolExecute actors from the live actors getter per call", async () => {
+    const seenActorSets: unknown[][] = [];
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          beforeToolExecute(ctx) {
+            seenActorSets.push(ctx.actors ?? []);
+          },
+        },
+      }),
+    ]);
+    const SECOND_ACTOR = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U456",
+    } as const;
+    // Mirrors how the run threads committed instruction provenance: the
+    // getter reads live state, so mid-run growth (steering) is visible to
+    // the next tool call without re-creating the hook runner.
+    let liveActors: unknown[] = [TEST_ACTOR];
+    try {
+      const runner = createPluginHookRunner({
+        actor: TEST_ACTOR,
+        actors: () => liveActors as never,
+      });
+
+      await runner.beforeToolExecute({ name: "bash", input: {} });
+      liveActors = [TEST_ACTOR, SECOND_ACTOR];
+      await runner.beforeToolExecute({ name: "bash", input: {} });
+
+      expect(seenActorSets).toEqual([[TEST_ACTOR], [TEST_ACTOR, SECOND_ACTOR]]);
     } finally {
       setPlugins(previous);
     }

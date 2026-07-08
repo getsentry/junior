@@ -34,10 +34,14 @@ import {
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
+  instructionActors,
+  instructionProvenanceFor,
   loadConnectedMcpProviders,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
+  type PiMessageProvenance,
 } from "@/chat/state/session-log";
+import type { Actor } from "@/chat/actor";
 import {
   GEN_AI_PROVIDER_NAME,
   GEN_AI_SERVER_ADDRESS,
@@ -298,6 +302,17 @@ async function executeAgentRunInPrivacyContext(
       currentSliceId,
       existingSessionRecord,
     } = await restoreSessionRecord(routing);
+    // Mirror the newMessageProvenance the turn session record commits for a
+    // fresh turn's user message (upsertAgentTurnSessionRecord); a resumed run
+    // continues the same run's committed prefix instead of restarting it.
+    // Steering appends to this array as it drains, so `run.actors` stays a
+    // pure, live projection of committed instruction provenance.
+    const committedInstructionProvenance: PiMessageProvenance[] =
+      resumedFromSessionRecord
+        ? [...(existingSessionRecord?.piMessageProvenance ?? [])]
+        : [instructionProvenanceFor(actor)];
+    const runActors = (): Actor[] =>
+      instructionActors(committedInstructionProvenance);
     canRecordMcpProviders = Boolean(
       sessionRecordState.canUseTurnSession &&
       sessionConversationId &&
@@ -438,6 +453,7 @@ async function executeAgentRunInPrivacyContext(
       abortAgent: () => agent?.abort(),
       activeSkills,
       currentActor: actor,
+      currentActors: runActors,
       artifactStatePatch,
       availableSkills,
       configurationValues,
@@ -523,6 +539,9 @@ async function executeAgentRunInPrivacyContext(
           await runResume.requireDurableInputCheckpoint(
             [...agent!.state.messages, ...piMessages],
             messages.map((message) => message.provenance),
+          );
+          committedInstructionProvenance.push(
+            ...messages.map((message) => message.provenance),
           );
           for (const message of piMessages) {
             agent!.steer(message);

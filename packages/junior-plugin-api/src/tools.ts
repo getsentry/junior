@@ -74,6 +74,8 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   decision: PluginDecision;
   env: PluginEnv;
   actor?: Actor;
+  /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
+  actors?: Actor[];
   tool: {
     input: Record<string, unknown>;
     name: string;
