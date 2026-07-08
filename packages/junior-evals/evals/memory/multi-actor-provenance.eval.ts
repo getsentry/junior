@@ -278,6 +278,18 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
     }
+    // Multi-actor runs never store any preference from passive extraction, no
+    // matter whose instruction the citations point at.
+    const activePreferences = rows.filter(
+      (memory) => memory.kind === "preference" && memory.archivedAtMs === null,
+    );
+    expect(activePreferences).toEqual([]);
+    // Anti-laundering: Bob's stated preference content must not resurface as any
+    // stored memory of any kind. This path is prompt-defended only, so this
+    // assertion is its real coverage.
+    for (const memory of rows) {
+      expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
+    }
   }, 120_000);
 
   const sharedKnowledgeThread = {

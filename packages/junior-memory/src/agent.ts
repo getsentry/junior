@@ -4,7 +4,11 @@ import type {
   MemorySupersessionDecision,
   MemorySupersessionInput,
 } from "./store";
-import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
+import {
+  MEMORY_KINDS,
+  memoryRuntimeContextSchema,
+  type MemoryKind,
+} from "./types";
 
 const memoryKindSchema = z.enum(MEMORY_KINDS);
 const memoryRejectReasonSchema = z.enum([
@@ -53,6 +57,7 @@ const extractSessionRequestSchema = z
       )
       .max(10)
       .default([]),
+    actors: z.array(actorSchema),
     runtimeContext: memoryRuntimeContextSchema,
     transcript: z
       .array(
@@ -310,14 +315,29 @@ function existingMemoriesContext(request: ExtractSessionRequest): string {
   ].join("\n");
 }
 
-function memoryKindsContext(): string {
-  return [
-    "<memory-kinds>",
-    "- preference: a durable first-person personal preference, opinion, habit, or workflow owned by the current actor. Stored as actor memory.",
+/**
+ * Passive extraction offers personal preferences only on single-actor runs.
+ * Multi-actor runs restrict extraction to conversation-scoped kinds.
+ */
+function allowedExtractionKinds(actorCount: number): Set<MemoryKind> {
+  return actorCount === 1
+    ? new Set<MemoryKind>(MEMORY_KINDS)
+    : new Set<MemoryKind>(["procedure", "knowledge"]);
+}
+
+function memoryKindsContext(allowedKinds: Set<MemoryKind>): string {
+  const lines = ["<memory-kinds>"];
+  if (allowedKinds.has("preference")) {
+    lines.push(
+      "- preference: a durable first-person personal preference, opinion, habit, or workflow owned by the current actor. Stored as actor memory.",
+    );
+  }
+  lines.push(
     "- procedure: reusable instructions for how a task, lookup, investigation, process, triage flow, or runbook should be done. Store the method, source-of-truth, prerequisite, or decision path when it took effort to discover. Stored as conversation memory.",
     "- knowledge: stable shared project, channel, operational, or runbook fact that is not a personal actor preference. Direct answers to user inquiries qualify only when they are durable beyond this run. Stored as conversation memory.",
     "</memory-kinds>",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 function reviewPrompt(request: CreateMemoryRequest): string {
@@ -396,6 +416,8 @@ function runTranscriptContext(request: ExtractSessionRequest): string {
 }
 
 function sessionExtractionPrompt(request: ExtractSessionRequest): string {
+  const allowedKinds = allowedExtractionKinds(request.actors.length);
+  const allowsPreference = allowedKinds.has("preference");
   return [
     "<memory-extraction-input>",
     "Extract durable memories from this completed agent run using the runtime-owned context below.",
@@ -406,7 +428,7 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "",
     existingMemoriesContext(request),
     "",
-    memoryKindsContext(),
+    memoryKindsContext(allowedKinds),
     "",
     runTranscriptContext(request),
     "",
@@ -415,7 +437,11 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "- Every returned memory must cite one or more evidenceMessageIndices from <run-transcript>.",
     "- Cite only indices that directly support the stored fact; do not cite assistant messages as independent evidence.",
     "- Each transcript message exposes authority (instruction or context), is_run_actor, and an actor id. Use these to classify evidence.",
-    "- For a preference, cite only messages with authority=instruction and is_run_actor=true; a preference must be the run actor's own first-person fact.",
+    ...(allowsPreference
+      ? [
+          "- For a preference, cite only messages with authority=instruction and is_run_actor=true; a preference must be the run actor's own first-person fact.",
+        ]
+      : []),
     "- For a procedure or knowledge memory, cite run-actor instruction messages, public context messages, or successful tool results.",
     "- Use user messages and successful tool results as source evidence for storable facts.",
     "- Use failed tool results only when the failure reveals durable process knowledge, not transient errors.",
@@ -428,9 +454,18 @@ function sessionExtractionPrompt(request: ExtractSessionRequest): string {
     "- A user question asking how, what, where, or whether to do something is not source evidence for the answer. Store the answer only when supported by a user-authored factual statement or a tool result.",
     "- Set kind=procedure for reusable task/process/runbook instructions.",
     "- Set kind=knowledge for shared team, project, channel, runbook, or operational facts.",
-    "- Set kind=preference only for clear durable first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
-    "- A single task request or ask-for-help is never a durable preference, even when phrased as an ongoing action for this run (for example 'help me capture takeaways as we go'). Do not convert a one-off ask into a 'Prefers ...' memory.",
-    "- A durable preference requires explicitly stated, generalizable first-person phrasing such as 'I prefer ...', 'I always ...', or 'I never ...' that describes how the actor wants things done in general, not just for the current task.",
+    ...(allowsPreference
+      ? [
+          "- Set kind=preference only for clear durable first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
+          "- A single task request or ask-for-help is never a durable preference, even when phrased as an ongoing action for this run (for example 'help me capture takeaways as we go'). Do not convert a one-off ask into a 'Prefers ...' memory.",
+          "- A durable preference requires explicitly stated, generalizable first-person phrasing such as 'I prefer ...', 'I always ...', or 'I never ...' that describes how the actor wants things done in general, not just for the current task.",
+        ]
+      : [
+          "- This completed run has multiple run actors. Return only conversation-scoped procedure or knowledge memories.",
+          "- Do not return personal preferences, opinions, habits, identity facts, or workflow preferences from any actor in this run.",
+          "- Do not convert a personal first-person statement into shared knowledge or procedure. Statements like 'I prefer ...', 'I use ...', 'I always ...', or 'I never ...' are not memory evidence in this run.",
+          "- Shared team, channel, repository, or operational norms are eligible only when the source states them as collective practice or durable operational fact, not as one individual's preference.",
+        ]),
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",
     "- User-authored task instructions are procedures, not preferences, unless they explicitly describe the actor's personal preference or habit.",
     "- Procedural statements such as 'for X, do Y', 'when X, do Y', and 'to accomplish X, do Y' belong in procedures.",

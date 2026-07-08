@@ -212,6 +212,11 @@ those citations against runtime-owned provenance before storage:
   instruction from the run actor. A first-person preference whose citations are
   not all run-actor instructions is dropped, never downgraded to conversation
   scope.
+- Runs with more than one run actor never store preference memories from passive
+  extraction. Extraction for a multi-actor run is restricted to procedure and
+  knowledge, and the router drops any preference regardless of its citations.
+  This is defense in depth: multi-actor turns interleave first-person statements
+  from different people, so a personal preference waits for a single-actor run.
 - Non-run-actor public messages (whether projected as context authority or as
   attributed instruction-authority participant input) and successful tool
   results may support conversation-scoped operational knowledge, procedures,

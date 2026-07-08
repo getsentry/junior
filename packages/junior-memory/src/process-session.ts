@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   getSourceKey,
   isPrivateSource,
+  type PluginRunContext,
   type PluginRunTranscriptEntry,
   type PluginTaskContext,
 } from "@sentry/junior-plugin-api";
@@ -97,22 +98,27 @@ function citedEntries(
 /**
  * Verify an extracted memory against runtime-owned provenance on its cited
  * evidence. This is a deterministic authority boundary, not a model decision:
- * personal preferences require citations that are all run-actor instructions,
- * conversation knowledge requires run-actor instruction or valid public
- * conversation evidence, and anything unproven (including missing provenance)
- * is dropped.
+ * personal preferences require a single-actor run whose citations are all
+ * run-actor instructions, conversation knowledge requires run-actor instruction
+ * or valid public conversation evidence, and anything unproven (including
+ * missing provenance) is dropped. Multi-actor runs interleave first-person
+ * statements from different people, so they never store a preference regardless
+ * of citations; a personal preference can wait for a single-actor run.
  */
 function routeExtractedMemory(
   memory: ExtractedMemory,
   transcript: PluginRunTranscriptEntry[],
-  hasRunActor: boolean,
+  run: Pick<PluginRunContext, "actor" | "actors">,
 ): MemoryRouteTarget {
   const cited = citedEntries(memory.evidenceMessageIndices, transcript);
   if (!cited.valid) {
     return "drop";
   }
   if (memory.kind === "preference") {
-    if (!hasRunActor) {
+    // Only a run attributed to exactly one run actor may store a preference; an
+    // empty actor set (system runs) fails closed to "drop".
+    const exactlyOneRunActor = Boolean(run.actor) && run.actors.length === 1;
+    if (!exactlyOneRunActor) {
       return "drop";
     }
     // Never downgrade an unproven first-person preference to conversation scope.
@@ -237,6 +243,7 @@ export async function processMemorySession(
       existingMemories: existingMemories.map((memory) => ({
         content: memory.content,
       })),
+      actors: run.actors,
       transcript,
       runtimeContext,
     });
@@ -246,7 +253,10 @@ export async function processMemorySession(
   }
 
   for (const memory of memories) {
-    const target = routeExtractedMemory(memory, transcript, Boolean(run.actor));
+    // The routing gate stays even though extraction is also actor-gated:
+    // getTaskMemories caches extraction output for 7 days, so a retry can replay
+    // preference proposals cached before this gate existed.
+    const target = routeExtractedMemory(memory, transcript, run);
     if (target === "drop") {
       continue;
     }

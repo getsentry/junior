@@ -371,6 +371,7 @@ function completedRun(
       },
     ],
     actor: runtime.actor,
+    actors: [runtime.actor],
     runId: "local-turn-1",
     source: runtime.source,
     ...overrides,
@@ -533,6 +534,7 @@ describe("memory plugin storage", () => {
             text: "Got it.",
           },
         ],
+        actors: [localContext().actor],
         runtimeContext: localContext(),
       }),
     ).resolves.toEqual([
@@ -597,6 +599,7 @@ describe("memory plugin storage", () => {
             text: "Store several durable facts.",
           },
         ],
+        actors: [localContext().actor],
         runtimeContext: localContext(),
       }),
     ).resolves.toHaveLength(5);
@@ -628,6 +631,7 @@ describe("memory plugin storage", () => {
             text: "Store several durable facts.",
           },
         ],
+        actors: [localContext().actor],
         runtimeContext: localContext(),
       }),
     ).rejects.toThrow("Too big");
@@ -1429,6 +1433,88 @@ describe("memory plugin storage", () => {
           kind: "preference",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("drops a cached passive preference when the completed run has multiple actors", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const state = createMemoryState();
+      const secondActor: Actor = {
+        platform: "local",
+        userId: "local-user-2",
+      };
+      // Seed the extraction cache with a preference proposed before the
+      // multi-actor gate existed. The routing gate must still drop it on replay.
+      await state.set("memory-extraction:multi-actor-task", [
+        {
+          content: "Prefers concise standup notes.",
+          expiresAtMs: null,
+          kind: "preference",
+          evidenceMessageIndices: [0],
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          id: "multi-actor-task",
+          model: throwingExtractionModel,
+          run: {
+            async load() {
+              return completedRun({
+                actors: [localInstructionActor, secondActor],
+                transcript: [
+                  instructionMessage("I prefer concise standup notes."),
+                ],
+              });
+            },
+          },
+          state,
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("drops a passive preference when the completed run has no attributed actors", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const { model } = extractionModel([
+        {
+          kind: "preference",
+          content: "Prefers weekly digests.",
+          evidenceMessageIndices: [0],
+        },
+      ]);
+
+      await processMemorySession(
+        processSessionContext({
+          db: memoryDb(fixture),
+          model,
+          run: {
+            async load() {
+              return completedRun({
+                actors: [],
+                transcript: [instructionMessage("I prefer weekly digests.")],
+              });
+            },
+          },
+        }),
+      );
+
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
