@@ -65,6 +65,11 @@ describe("searchMcpTools", () => {
       { query: "issue title", max_results: 1 },
       {},
     )) as {
+      execution_tool: string;
+      execution_example: {
+        tool_name: string;
+        arguments: Record<string, string>;
+      };
       tools: Array<{
         tool_name: string;
         signature: string;
@@ -79,6 +84,15 @@ describe("searchMcpTools", () => {
       }>;
     };
 
+    expect(result).toMatchObject({
+      execution_tool: "callMcpTool",
+      execution_example: {
+        tool_name: "<returned tool_name>",
+        arguments: {
+          "<argument>": "<value from input_schema>",
+        },
+      },
+    });
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0]).toMatchObject({
       tool_name: "mcp__demo__create_issue",

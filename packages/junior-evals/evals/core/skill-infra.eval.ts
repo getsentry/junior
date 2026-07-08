@@ -1,4 +1,5 @@
-import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
+import { describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 describeEval("Skill Infrastructure", slackEvals, (it) => {
@@ -93,7 +94,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   it("when an MCP-backed skill handles a lookup, return the provider-backed answer", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         plugin_dirs: ["fixtures/plugins"],
       },
@@ -115,5 +116,24 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         ],
       }),
     });
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "loadSkill",
+          arguments: expect.objectContaining({
+            skill_name: "eval-mcp",
+          }),
+        }),
+        expect.objectContaining({
+          name: "callMcpTool",
+          arguments: expect.objectContaining({
+            tool_name: "mcp__eval-mcp__handbook-search",
+            arguments: expect.objectContaining({
+              query: expect.stringMatching(/US holidays/i),
+            }),
+          }),
+        }),
+      ]),
+    );
   });
 });

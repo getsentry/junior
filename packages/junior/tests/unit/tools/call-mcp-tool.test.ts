@@ -39,6 +39,22 @@ describe("callMcpTool", () => {
     );
   });
 
+  it("advertises nested MCP arguments as an object", () => {
+    const manager = {
+      activateProvider: vi.fn(async () => true),
+      getResolvedActiveTools: vi.fn(() => []),
+    };
+    const callMcpTool = createCallMcpToolTool(manager);
+
+    expect(callMcpTool.inputSchema).toMatchObject({
+      properties: {
+        arguments: {
+          type: "object",
+        },
+      },
+    });
+  });
+
   it("preserves native MCP content from the managed tool", async () => {
     const nativeContent = [
       { type: "text" as const, text: "image generated" },

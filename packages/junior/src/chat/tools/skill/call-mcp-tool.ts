@@ -64,7 +64,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           .min(1)
           .describe("Exact MCP tool_name from searchMcpTools."),
         arguments: z
-          .unknown()
+          .record(z.string(), z.unknown())
           .describe(
             'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
           )

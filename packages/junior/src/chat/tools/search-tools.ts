@@ -18,12 +18,21 @@ const searchToolsSourceSchema = z
   })
   .strict();
 
+const toolCallExampleSchema = z
+  .object({
+    tool_name: z.string(),
+    arguments: z.record(z.string(), z.string()),
+  })
+  .strict();
+
 const searchToolsToolSchema = z
   .object({
     tool_name: z.string(),
     description: z.string(),
     exposure: z.enum(["direct", "deferred", "modelOnly", "hidden"]),
     source: z.string().optional(),
+    signature: z.string(),
+    call: toolCallExampleSchema,
     input_schema: z.unknown(),
     input_schema_summary: z.string(),
     call_notes: z.array(z.string()),
@@ -40,6 +49,8 @@ const searchToolsOutputSchema = juniorToolResultSchema
     total_eligible_tools: z.number().int().nonnegative(),
     total_matches: z.number().int().nonnegative(),
     returned_tools: z.number().int().nonnegative(),
+    execution_tool: z.literal("executeTool"),
+    execution_example: toolCallExampleSchema,
     tools: z.array(searchToolsToolSchema),
   })
   .strict();
@@ -136,6 +147,99 @@ function callNotes(definition: AnyToolDefinition): string[] {
   ];
 }
 
+function getSchemaProperties(schema: unknown): Record<string, unknown> {
+  if (!schema || typeof schema !== "object" || !("properties" in schema)) {
+    return {};
+  }
+  const properties = (schema as { properties?: unknown }).properties;
+  return properties &&
+    typeof properties === "object" &&
+    !Array.isArray(properties)
+    ? (properties as Record<string, unknown>)
+    : {};
+}
+
+function getRequiredFields(schema: unknown): Set<string> {
+  if (!schema || typeof schema !== "object" || !("required" in schema)) {
+    return new Set<string>();
+  }
+  const required = (schema as { required?: unknown }).required;
+  return Array.isArray(required)
+    ? new Set(
+        required.filter((value): value is string => typeof value === "string"),
+      )
+    : new Set<string>();
+}
+
+function formatSchemaType(schema: unknown): string {
+  if (!schema || typeof schema !== "object") {
+    return "unknown";
+  }
+
+  const typed = schema as Record<string, unknown>;
+  const type = typed.type;
+  if (typeof type === "string") {
+    if (type === "array") {
+      return `${formatSchemaType(typed.items)}[]`;
+    }
+    return type;
+  }
+  if (Array.isArray(type)) {
+    return type.filter((value) => typeof value === "string").join(" | ");
+  }
+  if (Array.isArray(typed.enum) && typed.enum.length > 0) {
+    return typed.enum.map((value) => JSON.stringify(value)).join(" | ");
+  }
+  return "unknown";
+}
+
+function formatArgumentPlaceholder(name: string, schema: unknown): string {
+  const type = formatSchemaType(schema);
+  if (type === "string") {
+    return `<${name}>`;
+  }
+  if (type === "number" || type === "integer") {
+    return "<number>";
+  }
+  if (type === "boolean") {
+    return "<boolean>";
+  }
+  if (type.endsWith("[]")) {
+    return "<array>";
+  }
+  if (type === "object") {
+    return "<object>";
+  }
+  return `<${type}>`;
+}
+
+function formatToolSignature(name: string, schema: unknown): string {
+  const properties = getSchemaProperties(schema);
+  const required = getRequiredFields(schema);
+  const fields = Object.entries(properties).map(([field, propertySchema]) => {
+    const marker = required.has(field) ? "" : "?";
+    return `${field}${marker}: ${formatSchemaType(propertySchema)}`;
+  });
+  return fields.length > 0 ? `${name}({ ${fields.join(", ")} })` : `${name}()`;
+}
+
+function formatToolCallExample(
+  name: string,
+  schema: unknown,
+): z.output<typeof toolCallExampleSchema> {
+  return {
+    tool_name: name,
+    arguments: Object.fromEntries(
+      Object.entries(getSchemaProperties(schema)).map(
+        ([field, propertySchema]) => [
+          field,
+          formatArgumentPlaceholder(field, propertySchema),
+        ],
+      ),
+    ),
+  };
+}
+
 function sourceSummaries(
   tools: Record<string, AnyToolDefinition>,
 ): SourceSummary[] {
@@ -199,6 +303,8 @@ function toolMetadata(
     ...(includeSource && definition.source
       ? { source: definition.source.id }
       : {}),
+    signature: formatToolSignature(name, definition.inputSchema),
+    call: formatToolCallExample(name, definition.inputSchema),
     input_schema: definition.inputSchema,
     input_schema_summary: summarizeInputSchema(
       definition.inputSchema as Record<string, unknown>,
@@ -282,6 +388,13 @@ export function createSearchToolsTool(
         total_eligible_tools: totalEligibleTools,
         total_matches: allMatches.length,
         returned_tools: renderedTools.length,
+        execution_tool: "executeTool" as const,
+        execution_example: {
+          tool_name: "<returned tool_name>",
+          arguments: {
+            "<argument>": "<value from input_schema>",
+          },
+        },
         tools: renderedTools,
       };
       return {

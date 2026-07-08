@@ -104,13 +104,35 @@ describe("searchTools", () => {
       total_catalog_tools: 3,
       total_matches: 1,
       returned_tools: 1,
+      execution_tool: "executeTool",
+      execution_example: {
+        tool_name: "<returned tool_name>",
+        arguments: {
+          "<argument>": "<value from input_schema>",
+        },
+      },
       tools: [
         {
           tool_name: "agentDemo_lookupCustomer",
           description: "Lookup customer health for account review.",
           exposure: "deferred",
           source: "agent-demo",
+          signature: "agentDemo_lookupCustomer({ customerId: string })",
+          call: {
+            tool_name: "agentDemo_lookupCustomer",
+            arguments: {
+              customerId: "<customerId>",
+            },
+          },
           input_schema_summary: "customerId (required)",
+          input_schema: {
+            properties: {
+              customerId: {
+                type: "string",
+                description: "Customer identifier to inspect.",
+              },
+            },
+          },
           call_notes: [
             "Use for renewal risk triage before drafting an account plan.",
             "Pass the customer identifier exactly as provided by the user.",
@@ -127,6 +149,13 @@ describe("searchTools", () => {
         {
           tool_name: "bash",
           exposure: "direct",
+          signature: "bash({ command: string })",
+          call: {
+            tool_name: "bash",
+            arguments: {
+              command: "<command>",
+            },
+          },
           input_schema_summary: "command (required)",
         },
       ],
