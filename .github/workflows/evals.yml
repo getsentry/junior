@@ -12,8 +12,13 @@ on:
       - synchronize
       - labeled
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gate:
+    name: evals / gate
     runs-on: ubuntu-latest
     outputs:
       evals_changed: ${{ steps.changes.outputs.evals_changed }}
@@ -117,6 +122,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   evals:
+    name: evals / suite
     needs: gate
     if: needs.gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
@@ -156,11 +162,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-evals evals

@@ -17,9 +17,147 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
-  test:
+  changes:
+    name: changes / detect
     runs-on: ubuntu-latest
+    outputs:
+      ci: ${{ steps.filter.outputs.ci }}
+      core: ${{ steps.filter.outputs.core }}
+      dashboard: ${{ steps.filter.outputs.dashboard }}
+      docs: ${{ steps.filter.outputs.docs }}
+      evals: ${{ steps.filter.outputs.evals }}
+      example: ${{ steps.filter.outputs.example }}
+      lint_config: ${{ steps.filter.outputs.lint_config }}
+      plugins: ${{ steps.filter.outputs.plugins }}
+      repo: ${{ steps.filter.outputs.repo }}
+      release: ${{ steps.filter.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ci:
+              - ".github/workflows/**"
+              - ".github/actions/**"
+            core:
+              - "packages/junior/**"
+              - "packages/junior-plugin-api/**"
+              - "packages/junior-scheduler/**"
+              - "packages/junior-testing/**"
+              - "specs/**"
+              - "policies/**"
+            dashboard:
+              - "packages/junior-dashboard/**"
+              - "packages/junior/**"
+              - "packages/junior-plugin-api/**"
+            docs:
+              - "packages/docs/**"
+              - "README.md"
+              - "specs/**"
+              - "policies/**"
+            evals:
+              - "packages/junior-evals/**"
+            example:
+              - "apps/example/**"
+              - "packages/junior/**"
+              - "packages/junior-plugin-api/**"
+            lint_config:
+              - "ast-grep/**"
+              - "sgconfig.yml"
+            plugins:
+              - "packages/junior-agent-browser/**"
+              - "packages/junior-cloudflare/**"
+              - "packages/junior-datadog/**"
+              - "packages/junior-github/**"
+              - "packages/junior-hex/**"
+              - "packages/junior-linear/**"
+              - "packages/junior-maintenance/**"
+              - "packages/junior-memory/**"
+              - "packages/junior-notion/**"
+              - "packages/junior-sentry/**"
+              - "packages/junior-vercel/**"
+            repo:
+              - "package.json"
+              - "pnpm-lock.yaml"
+              - "pnpm-workspace.yaml"
+              - "tsconfig*.json"
+              - "packages/*/package.json"
+              - "apps/*/package.json"
+            release:
+              - ".craft.yml"
+              - ".github/workflows/ci.yml"
+              - ".github/workflows/release.yml"
+              - "CONTRIBUTING.md"
+              - "README.md"
+              - "scripts/bump-release-versions.mjs"
+              - "scripts/check-release-config.mjs"
+              - "packages/*/package.json"
+              - "packages/docs/**"
+
+  release-check:
+    name: check / release config
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.release == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm release:check
+
+  skills-check:
+    name: check / skills
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm skills:check
+
+  lint:
+    name: lint / workspace
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.lint_config == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm lint
+
+  typecheck:
+    name: check / types
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.evals == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm typecheck
+
+  junior-tests:
+    name: test / junior ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: unit
+            path: tests/unit
+          - suite: component
+            path: tests/component
+          - suite: integration
+            path: tests/integration
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      REDIS_URL: redis://localhost:6379
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -43,46 +181,124 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    env:
-      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
-      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm release:check
-      - run: pnpm skills:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test:ci
-      - run: pnpm test:e2e:dashboard
-      - run: pnpm --filter @sentry/junior-example build
-        env:
-          JUNIOR_SKIP_SNAPSHOT: "1"
-      - run: pnpm docs:check
-
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior build
+      - run: pnpm --filter @sentry/junior test:coverage ${{ matrix.path }}
       - name: Upload coverage and test results
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          files: packages/junior/coverage/coverage-final.json,packages/junior-dashboard/coverage/coverage-final.json
+          files: packages/junior/coverage/coverage-final.json
           coverage-format: istanbul
           disable-search: true
-          junit-xml-pattern: packages/**/coverage/results.junit.xml
+          junit-xml-pattern: packages/junior/coverage/results.junit.xml
           fail_ci_if_error: false
           informational-project: true
           informational-patch: true
 
+  plugin-tests:
+    name: test / plugins
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-memory build
+      - run: pnpm --filter @sentry/junior-github build
+      - run: pnpm --filter @sentry/junior-memory test
+      - run: pnpm --filter @sentry/junior-github test
+
+  dashboard-tests:
+    name: test / dashboard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-dashboard build
+      - run: pnpm --filter @sentry/junior-dashboard test:coverage
+      - name: Upload coverage and test results
+        if: ${{ !cancelled() }}
+        uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: packages/junior-dashboard/coverage/coverage-final.json
+          coverage-format: istanbul
+          disable-search: true
+          junit-xml-pattern: packages/junior-dashboard/coverage/results.junit.xml
+          fail_ci_if_error: false
+          informational-project: true
+          informational-patch: true
+
+  dashboard-e2e:
+    name: test / dashboard e2e
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e:dashboard
+
+  build-packages:
+    name: build / packages
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm build
+
+  build-example:
+    name: build / example
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.example == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-example build
+        env:
+          JUNIOR_SKIP_SNAPSHOT: "1"
+
+  docs-check:
+    name: check / docs
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.repo == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm docs:check
+
+  pack-release-artifacts:
+    name: pack / release artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - release-check
+      - skills-check
+      - lint
+      - typecheck
+      - junior-tests
+      - plugin-tests
+      - dashboard-tests
+      - dashboard-e2e
+      - build-packages
+      - build-example
+      - docs-check
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Pack release artifacts
-        if: github.event_name == 'push'
         run: |
           mkdir -p artifacts
           pnpm --filter @sentry/junior pack --pack-destination artifacts
@@ -104,10 +320,56 @@ jobs:
           ls -la artifacts
 
       - name: Upload release artifacts
-        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.sha }}
           path: artifacts/*.tgz
           if-no-files-found: error
           retention-days: 7
+
+  required:
+    name: ci / required
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - release-check
+      - skills-check
+      - lint
+      - typecheck
+      - junior-tests
+      - plugin-tests
+      - dashboard-tests
+      - dashboard-e2e
+      - build-packages
+      - build-example
+      - docs-check
+      - pack-release-artifacts
+    if: always()
+    steps:
+      - name: Check CI jobs
+        # Path-gated jobs may skip on PRs; this single required status treats
+        # skipped jobs as passing while still failing any failed/cancelled job.
+        run: |
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            exit 1
+          fi
+
+          failed=0
+          for result in \
+            "${{ needs.release-check.result }}" \
+            "${{ needs.skills-check.result }}" \
+            "${{ needs.lint.result }}" \
+            "${{ needs.typecheck.result }}" \
+            "${{ needs.junior-tests.result }}" \
+            "${{ needs.plugin-tests.result }}" \
+            "${{ needs.dashboard-tests.result }}" \
+            "${{ needs.dashboard-e2e.result }}" \
+            "${{ needs.build-packages.result }}" \
+            "${{ needs.build-example.result }}" \
+            "${{ needs.docs-check.result }}" \
+            "${{ needs.pack-release-artifacts.result }}"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              failed=1
+            fi
+          done
+          exit "$failed"
