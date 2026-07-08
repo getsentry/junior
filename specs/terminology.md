@@ -45,18 +45,25 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   available to the agent.
 - **Agent input**: the batch of inbound message content, context, and runtime
   metadata selected for a turn.
+- **Steering message**: an inbound user message that interrupts the active turn
+  at the next safe boundary. Steering ends the active turn prematurely — that
+  turn gets no final response — and starts a new turn; steering messages that
+  arrive together may batch into one new turn. Matches Pi's `steer` input
+  path.
+- **Follow-up message**: an inbound user message that does not interrupt; it
+  queues until the previous turn is done and then starts the next turn.
+  Messages that arrive while the conversation is idle start the next turn the
+  same way. Matches Pi's `followUp` input path.
 - **Turn**: one request-to-final-response cycle. A turn begins when a request
   is handed off to the agent (one accepted inbound message, or the batch
   pending when execution starts) and ends when the agent returns the final
-  response for that request or fails terminally. Steering input that arrives
-  during active execution ends the active turn prematurely — that turn gets no
-  final response — and starts a new turn; steering messages that arrive
-  together may batch into one new turn. Messages that arrive after completion
-  start a new turn.
-  Turn boundaries are attribution boundaries, not execution boundaries: the
-  worker, lease, and model loop may continue uninterrupted across a steering
-  handoff. A turn may span multiple execution slices. It is not one model
-  invocation.
+  response for that request or fails terminally. Steering and follow-up are
+  the two ways new user messages enter: steering interrupts the active turn
+  when safe and starts a new one; a follow-up queues until the previous turn
+  is done. Turn boundaries are attribution boundaries, not execution
+  boundaries: the worker, lease, and model loop may continue uninterrupted
+  across a steering handoff. A turn may span multiple execution slices. It is
+  not one model invocation.
 - **Execution slice**: one serverless invocation segment of a turn.
 - **Agent step**: one model, tool, handoff, action, or other internal event
   represented inside durable execution history.

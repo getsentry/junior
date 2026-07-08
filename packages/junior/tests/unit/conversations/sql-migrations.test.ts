@@ -154,6 +154,8 @@ describe("conversation SQL migrations", () => {
 
   it("exports Drizzle table definitions for the SQL schema", () => {
     expect(Object.values(schema).map((table) => getTableName(table))).toEqual([
+      "junior_agent_steps",
+      "junior_conversation_messages",
       "junior_conversations",
       "junior_destinations",
       "junior_identities",

@@ -1,4 +1,6 @@
 export {
+  juniorAgentSteps,
+  juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,

@@ -1,0 +1,321 @@
+import { eq } from "drizzle-orm";
+import { describe, expect, it } from "vitest";
+import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
+import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import { juniorAgentSteps, juniorConversations } from "@/chat/sql/schema";
+import {
+  buildJuniorSqlConversation,
+  createLocalJuniorSqlFixture,
+  type LocalJuniorSqlFixture,
+} from "../fixtures/sql";
+
+const CONVERSATION_ID = "slack:C123:1718123456.000000";
+const CHILD_CONVERSATION_ID = "advisor:child-1";
+
+async function seedConversation(
+  fixture: LocalJuniorSqlFixture,
+  conversationId: string,
+  parentConversationId?: string,
+): Promise<void> {
+  await fixture.sql
+    .db()
+    .insert(juniorConversations)
+    .values(
+      buildJuniorSqlConversation({
+        conversationId,
+        ...(parentConversationId ? { parentConversationId } : {}),
+      }),
+    );
+}
+
+function userMessage(text: string) {
+  return {
+    role: "user" as const,
+    content: [{ type: "text" as const, text }],
+    timestamp: 0,
+  };
+}
+
+describe("conversation transcript SQL stores", () => {
+  it("applies the transcript migration idempotently", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      const applied = await fixture.sql.query<{ id: string }>(
+        "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
+      );
+      expect(applied.map((row) => row.id)).toEqual(
+        migrations.map((migration) => migration.id),
+      );
+      expect(applied.map((row) => row.id)).toContain(
+        "0005_conversation_transcripts",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("assigns sequential seq and fences conflicting appends loudly", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+
+      await store.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("one") },
+          createdAtMs: 1_000,
+        },
+        {
+          entry: { type: "pi_message", message: userMessage("two") },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await store.append(CONVERSATION_ID, [
+        {
+          entry: { type: "mcp_provider_connected", provider: "github" },
+          createdAtMs: 3_000,
+        },
+      ]);
+
+      const history = await store.loadHistory(CONVERSATION_ID);
+      expect(history.map((step) => step.seq)).toEqual([0, 1, 2]);
+      expect(history.map((step) => step.entry.type)).toEqual([
+        "pi_message",
+        "pi_message",
+        "mcp_provider_connected",
+      ]);
+
+      // A writer that lost its lease and reuses seq 0 must fail on the PK.
+      await expect(
+        fixture.sql
+          .db()
+          .insert(juniorAgentSteps)
+          .values({
+            conversationId: CONVERSATION_ID,
+            seq: 0,
+            contextEpoch: 0,
+            type: "pi_message",
+            role: "user",
+            payload: { message: userMessage("clobber") },
+            createdAt: new Date(4_000),
+          }),
+      ).rejects.toThrow(Error);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("returns only the highest epoch from loadCurrentEpoch", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+
+      await store.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("epoch0-a") },
+          createdAtMs: 1_000,
+        },
+        {
+          entry: { type: "pi_message", message: userMessage("epoch0-b") },
+          createdAtMs: 2_000,
+        },
+      ]);
+      await store.startEpoch(CONVERSATION_ID, {
+        reason: "compaction",
+        messages: [
+          { message: userMessage("epoch1-summary"), createdAtMs: 3_000 },
+        ],
+      });
+
+      const current = await store.loadCurrentEpoch(CONVERSATION_ID);
+      expect(current.map((step) => step.contextEpoch)).toEqual([1, 1]);
+      expect(current.map((step) => step.entry.type)).toEqual([
+        "context_epoch_started",
+        "pi_message",
+      ]);
+      expect(current.map((step) => step.seq)).toEqual([2, 3]);
+
+      const history = await store.loadHistory(CONVERSATION_ID);
+      expect(history.map((step) => step.contextEpoch)).toEqual([0, 0, 1, 1]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rolls back a failed startEpoch without leaving a partial epoch", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+      await store.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("epoch0") },
+          createdAtMs: 1_000,
+        },
+      ]);
+
+      // Force a failure inside the startEpoch transaction after its writes.
+      const failing: JuniorSqlDatabase = {
+        db: () => fixture.sql.db(),
+        withLock: (name, callback) => fixture.sql.withLock(name, callback),
+        transaction: (callback) =>
+          fixture.sql.transaction(async () => {
+            await callback();
+            throw new Error("epoch write failed");
+          }),
+      };
+      const failingStore = createSqlAgentStepStore(failing);
+
+      await expect(
+        failingStore.startEpoch(CONVERSATION_ID, {
+          reason: "rollback",
+          messages: [{ message: userMessage("never"), createdAtMs: 2_000 }],
+        }),
+      ).rejects.toThrow("epoch write failed");
+
+      const history = await store.loadHistory(CONVERSATION_ID);
+      expect(history.map((step) => step.contextEpoch)).toEqual([0]);
+      expect(
+        history.some((step) => step.entry.type === "context_epoch_started"),
+      ).toBe(false);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("fails loudly when a stored step has an unknown type", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_agent_steps (
+  conversation_id, seq, context_epoch, type, role, payload, created_at
+) VALUES ($1, $2, $3, $4, NULL, $5::jsonb, $6)
+`,
+        [
+          CONVERSATION_ID,
+          0,
+          0,
+          "bogus_type",
+          "{}",
+          new Date(1_000).toISOString(),
+        ],
+      );
+
+      await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
+        /discriminator/,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("records messages idempotently and updates only replied_at", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationMessageStore(fixture.sql);
+
+      await store.record(CONVERSATION_ID, [
+        { messageId: "m1", role: "user", text: "first", createdAtMs: 1_000 },
+        {
+          messageId: "m2",
+          role: "assistant",
+          text: "reply",
+          createdAtMs: 2_000,
+        },
+      ]);
+      // Source redelivery must not duplicate or mutate the stored fact.
+      await store.record(CONVERSATION_ID, [
+        { messageId: "m1", role: "user", text: "changed", createdAtMs: 9_000 },
+      ]);
+
+      await store.markReplied(CONVERSATION_ID, "m1", 5_000);
+
+      const listed = await store.list(CONVERSATION_ID);
+      expect(listed).toEqual([
+        {
+          conversationId: CONVERSATION_ID,
+          messageId: "m1",
+          role: "user",
+          text: "first",
+          createdAtMs: 1_000,
+          repliedAtMs: 5_000,
+        },
+        {
+          conversationId: CONVERSATION_ID,
+          messageId: "m2",
+          role: "assistant",
+          text: "reply",
+          createdAtMs: 2_000,
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("purges steps and messages for a conversation and its descendants", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      await seedConversation(fixture, CHILD_CONVERSATION_ID, CONVERSATION_ID);
+      const steps = createSqlAgentStepStore(fixture.sql);
+      const messages = createSqlConversationMessageStore(fixture.sql);
+
+      for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
+        await steps.append(conversationId, [
+          {
+            entry: { type: "pi_message", message: userMessage("hi") },
+            createdAtMs: 1_000,
+          },
+        ]);
+        await messages.record(conversationId, [
+          { messageId: "m1", role: "user", text: "hi", createdAtMs: 1_000 },
+        ]);
+      }
+
+      await steps.purgeConversation(CONVERSATION_ID);
+
+      for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
+        expect(await steps.loadHistory(conversationId)).toEqual([]);
+        expect(await messages.list(conversationId)).toEqual([]);
+      }
+
+      const rows = await fixture.sql
+        .db()
+        .select({
+          conversationId: juniorConversations.conversationId,
+          transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.transcriptPurgedAt).toBeInstanceOf(Date);
+    } finally {
+      await fixture.close();
+    }
+  });
+});

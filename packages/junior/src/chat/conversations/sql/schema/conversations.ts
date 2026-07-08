@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import {
+  type AnyPgColumn,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+} from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
@@ -45,6 +52,12 @@ export const juniorConversations = pgTable(
     runId: text("run_id"),
     lastCheckpointAt: timestamptz("last_checkpoint_at"),
     lastEnqueuedAt: timestamptz("last_enqueued_at"),
+    // Subagent (advisor) runs are child conversations; top-level listings filter
+    // parent_conversation_id IS NULL.
+    parentConversationId: text("parent_conversation_id").references(
+      (): AnyPgColumn => juniorConversations.conversationId,
+    ),
+    transcriptPurgedAt: timestamptz("transcript_purged_at"),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(
@@ -71,5 +84,6 @@ export const juniorConversations = pgTable(
       table.originId,
       table.lastActivityAt.desc(),
     ),
+    index("junior_conversations_parent_idx").on(table.parentConversationId),
   ],
 );

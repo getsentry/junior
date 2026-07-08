@@ -312,6 +312,54 @@ ALTER TABLE junior_conversations
 `,
 ] as const;
 
+const conversationTranscriptStatements = [
+  `
+CREATE TABLE IF NOT EXISTS junior_agent_steps (
+  conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id),
+  seq INTEGER NOT NULL,
+  context_epoch INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  role TEXT,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (conversation_id, seq)
+)
+`,
+  `
+CREATE INDEX IF NOT EXISTS junior_agent_steps_epoch_idx
+  ON junior_agent_steps (conversation_id, context_epoch, seq)
+`,
+  `
+CREATE TABLE IF NOT EXISTS junior_conversation_messages (
+  conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id),
+  message_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  author_identity_id TEXT REFERENCES junior_identities (id),
+  text TEXT NOT NULL,
+  meta JSONB,
+  replied_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (conversation_id, message_id)
+)
+`,
+  `
+CREATE INDEX IF NOT EXISTS junior_conversation_messages_activity_idx
+  ON junior_conversation_messages (conversation_id, created_at)
+`,
+  `
+ALTER TABLE junior_conversations
+  ADD COLUMN IF NOT EXISTS parent_conversation_id TEXT REFERENCES junior_conversations (conversation_id)
+`,
+  `
+ALTER TABLE junior_conversations
+  ADD COLUMN IF NOT EXISTS transcript_purged_at TIMESTAMPTZ
+`,
+  `
+CREATE INDEX IF NOT EXISTS junior_conversations_parent_idx
+  ON junior_conversations (parent_conversation_id)
+`,
+] as const;
+
 export const migrations = [
   defineMigration("0001_conversation_core", coreMetadataStatements),
   defineMigration(
@@ -320,6 +368,10 @@ export const migrations = [
   ),
   defineMigration("0003_user_identities", userIdentityStatements),
   defineMigration("0004_actor_cutover", actorCutoverStatements),
+  defineMigration(
+    "0005_conversation_transcripts",
+    conversationTranscriptStatements,
+  ),
 ] as const;
 
 export { schema };

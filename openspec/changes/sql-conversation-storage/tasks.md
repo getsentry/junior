@@ -8,11 +8,11 @@
 
 ## 2. Schema And Stores
 
-- [ ] 2.1 Add Drizzle schema for `junior_conversation_messages` and `junior_agent_steps` under `chat/conversations/sql/schema/`, plus `parent_conversation_id` and `transcript_purged_at` on `junior_conversations`
-- [ ] 2.2 Add expand-only raw-SQL migration `0005_conversation_transcripts` with checksum pinning; verify with the migration runner against the PGlite fixture
-- [ ] 2.3 Implement `AgentStepStore` (append with lease-fenced `seq`, `loadCurrentEpoch`, `loadHistory`, `purgeConversation`) in `chat/conversations/history.ts` + `chat/conversations/sql/`; strict envelope validation via the existing Zod step union, fail-loud on corrupt rows
-- [ ] 2.4 Implement `ConversationMessageStore` (idempotent `record`, `list`, `replied_at` mark) in `chat/conversations/messages.ts` + `chat/conversations/sql/`
-- [ ] 2.5 Integration tests (PGlite): seq fencing PK violation, idempotent message recording, epoch projection reads, atomic `context_epoch_started` + replacement rows, child-conversation step scoping
+- [x] 2.1 Add Drizzle schema for `junior_conversation_messages` and `junior_agent_steps` under `chat/conversations/sql/schema/`, plus `parent_conversation_id` and `transcript_purged_at` on `junior_conversations`
+- [x] 2.2 Add expand-only raw-SQL migration `0005_conversation_transcripts` with checksum pinning; verify with the migration runner against the PGlite fixture
+- [x] 2.3 Implement `AgentStepStore` (append with lease-fenced `seq`, `loadCurrentEpoch`, `loadHistory`, `purgeConversation`) in `chat/conversations/history.ts` + `chat/conversations/sql/`; strict envelope validation via the existing Zod step union, fail-loud on corrupt rows
+- [x] 2.4 Implement `ConversationMessageStore` (idempotent `record`, `list`, `replied_at` mark) in `chat/conversations/messages.ts` + `chat/conversations/sql/`
+- [x] 2.5 Integration tests (PGlite): seq fencing PK violation, idempotent message recording, epoch projection reads, atomic `context_epoch_started` + replacement rows, child-conversation step scoping
 
 ## 3. Runtime Cutover
 

@@ -33,7 +33,8 @@ const piMessageAuthoritySchema = z.union([
   z.literal("context"),
 ]);
 
-const piMessageProvenanceSchema = z
+/** Per-message provenance payload reused by the SQL agent-step envelope. */
+export const piMessageProvenanceSchema = z
   .object({
     authority: piMessageAuthoritySchema,
     actor: actorSchema.optional(),
@@ -662,9 +663,7 @@ function actorIdentityKey(actor: Actor): string {
  * Unattributable instructions (no resolvable actor) never join;
  * distinctness is by identity ids only, never display fields.
  */
-export function instructionActors(
-  provenance: PiMessageProvenance[],
-): Actor[] {
+export function instructionActors(provenance: PiMessageProvenance[]): Actor[] {
   const seen = new Set<string>();
   const actors: Actor[] = [];
   for (const entry of provenance) {
