@@ -22,6 +22,11 @@ import {
  * actor who will own it. Another participant's first-person statements in
  * a shared thread are evidence for conversation-scoped knowledge at most,
  * never for the actor's personal memories.
+ *
+ * Issue #776 tightens this further: a run with more than one run actor never
+ * stores a preference from passive extraction at all — not even the run
+ * actor's own well-cited first-person preference. A personal preference waits
+ * for a single-actor run.
  */
 
 const memoryPluginOverrides = {
@@ -289,6 +294,88 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // assertion is its real coverage.
     for (const memory of rows) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
+    }
+  }, 120_000);
+
+  const actorPreferenceMultiActorThread = {
+    channel_type: "channel",
+    id: "thread-memory-actor-preference-multi-actor",
+    channel_id: "CMEMORYACTORPREF",
+    thread_ts: "1700000000.000005",
+  } satisfies MemoryThread;
+
+  // Issue #776: the case the citation router alone cannot cover. Alice's own
+  // durable first-person preference cites only her own run-actor instruction —
+  // exactly the shape a single-actor run stores as personal memory — but Bob's
+  // batched ask makes this a multi-actor run, so no preference may be stored.
+  it("when the actor states their own durable preference in a multi-actor turn, store no preference memory at all", async ({
+    run,
+  }) => {
+    await clearMemories();
+    // Bob's pending mention is batched into Alice's turn, so both are run
+    // actors on the completed run.
+    await run({
+      overrides: memoryPluginOverrides,
+      events: [
+        batch(
+          mention(
+            "<@U_APP> can you list the open questions from this thread when you get a chance?",
+            {
+              thread: actorPreferenceMultiActorThread,
+              author: BOB,
+            },
+          ),
+          threadMessage(
+            "<@U_APP> I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
+            {
+              thread: actorPreferenceMultiActorThread,
+              is_mention: true,
+              author: ALICE,
+            },
+          ),
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant recaps the asks in the thread, covering the open-questions request.",
+          "If the assistant acknowledges the numbered-list preference, it treats it as guidance for the current recap.",
+        ],
+        fail: [
+          "Do not tell the actor that the numbered-list preference was saved or stored as a remembered preference.",
+        ],
+      }),
+    });
+
+    const rows = await readMemories(actorPreferenceMultiActorThread);
+    // The multi-actor gate: no active preference row may exist, even though
+    // the preference is the run actor's own and its citations would pass the
+    // single-actor router.
+    const activePreferences = rows.filter(
+      (memory) => memory.kind === "preference" && memory.archivedAtMs === null,
+    );
+    expect(
+      activePreferences.map((memory) => ({
+        content: memory.content,
+        kind: memory.kind,
+        scope: memory.scope,
+        scopeKey: memory.scopeKey,
+      })),
+    ).toEqual([]);
+    // Preferences are the only route into personal scope for passive
+    // extraction, so the actor's personal scope must stay empty too.
+    expect(
+      personalMemoriesOwnedBy(rows, ALICE.user_id).map((memory) => ({
+        content: memory.content,
+        kind: memory.kind,
+        scope: memory.scope,
+        scopeKey: memory.scopeKey,
+      })),
+    ).toEqual([]);
+    // Anti-laundering: the preference must not resurface as knowledge or
+    // procedure. This path is prompt-defended only, so this assertion is its
+    // real coverage.
+    for (const memory of rows) {
+      expect(memory.content.toLowerCase()).not.toMatch(/numbered/);
     }
   }, 120_000);
 

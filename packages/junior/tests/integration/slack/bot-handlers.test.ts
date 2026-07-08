@@ -7,6 +7,7 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import {
+  instructionActors,
   loadProjection,
   loadProjectionWithProvenance,
 } from "@/chat/state/session-log";
@@ -1425,6 +1426,95 @@ describe("bot handlers (integration)", () => {
     });
   });
 
+  it("carries a batched mention's own author provenance into a fresh turn", async () => {
+    const conversationId = "slack:C9BATCHFRESH:1700000000.000";
+    const destination = slackDestination("C9BATCHFRESH");
+    let capturedInput:
+      | {
+          piMessages?: unknown[];
+        }
+      | undefined;
+    let capturedActorUserId: string | undefined;
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              capturedInput = request.input;
+              const runActor = request.routing.actor;
+              capturedActorUserId =
+                runActor && "userId" in runActor ? runActor.userId : undefined;
+              await request.durability?.onInputCommitted?.();
+              return completedAgentRun({
+                text: "Recapped.",
+                diagnostics: {
+                  assistantMessageCount: 1,
+                  modelId: "test-model",
+                  outcome: "success" as const,
+                  toolCalls: [],
+                  toolErrorCount: 0,
+                  toolResultCount: 0,
+                  usedPrimaryText: true,
+                },
+              });
+            },
+          },
+        },
+      },
+    });
+    const thread = createTestThread({ id: conversationId });
+    // Bob's mention was still pending when Alice's arrived, so the mailbox
+    // drains both into Alice's fresh turn: Alice is the live run actor and
+    // Bob's ask rides along as batched parked input.
+    const fromBob = createTestMessage({
+      id: "msg-batch-bob",
+      threadId: conversationId,
+      text: "bob question",
+      isMention: true,
+      author: { userId: "U-bob" },
+    });
+    const fromAlice = createTestMessage({
+      id: "msg-batch-alice",
+      threadId: conversationId,
+      text: "alice recap request",
+      isMention: true,
+      author: { userId: "U-alice" },
+    });
+
+    await slackRuntime.handleNewMention(thread, fromAlice, {
+      destination,
+      messageContext: { skipped: [fromBob], totalSinceLastHandler: 1 },
+    });
+
+    expect(capturedActorUserId).toBe("U-alice");
+    // The drain commits Bob's batched mention to the session log before the run
+    // with his own instruction provenance, so he joins the run's actors instead
+    // of being dropped as anonymous context under Alice's turn.
+    const projection = await loadProjectionWithProvenance({ conversationId });
+    const bobEntry = projection.messages
+      .map((message, index) => ({
+        text: JSON.stringify(
+          (message as { content?: unknown }).content ?? message,
+        ),
+        provenance: projection.provenance[index],
+      }))
+      .find((entry) => entry.text.includes("bob question"));
+    expect(bobEntry?.provenance).toMatchObject({
+      authority: "instruction",
+      actor: { platform: "slack", teamId: "T123", userId: "U-bob" },
+    });
+    expect(
+      instructionActors(projection.provenance).map((actor) =>
+        "userId" in actor ? actor.userId : undefined,
+      ),
+    ).toContain("U-bob");
+    // The same committed message rides in the run's transcript, so the fresh
+    // prompt checkpoint matches it as an already-committed prefix.
+    expect(JSON.stringify(capturedInput?.piMessages ?? [])).toContain(
+      "bob question",
+    );
+  });
+
   it("leaves the parked follow-up unconsumed while a live resume holds the thread lock", async () => {
     const conversationId = "slack:C9PARKEDLOCK:1700000000.000";
     const destination = slackDestination("C9PARKEDLOCK");
@@ -1484,6 +1574,61 @@ describe("bot handlers (integration)", () => {
     expect(
       JSON.stringify(await loadProjection({ conversationId })),
     ).not.toContain("also check the logs");
+  });
+
+  it("defers a batched fresh turn while a live resume holds the thread lock", async () => {
+    const conversationId = "slack:C9BATCHLOCK:1700000000.000";
+    const destination = slackDestination("C9BATCHLOCK");
+    const run = vi.fn();
+    const ack = vi.fn();
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: { run },
+        },
+      },
+    });
+    const thread = createTestThread({ id: conversationId });
+    const fromBob = createTestMessage({
+      id: "msg-batchlock-bob",
+      threadId: conversationId,
+      text: "bob pending ask",
+      isMention: true,
+      author: { userId: "U-bob" },
+    });
+    const fromAlice = createTestMessage({
+      id: "msg-batchlock-alice",
+      threadId: conversationId,
+      text: "alice live ask",
+      isMention: true,
+      author: { userId: "U-alice" },
+    });
+
+    // Simulate a live resume: it holds the thread resume lock, so the batch
+    // drain cannot commit provenance and the turn must defer, not run or fail.
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const lock = await acquireActiveLock(stateAdapter, conversationId);
+    expect(lock).not.toBeNull();
+    try {
+      await expect(
+        slackRuntime.handleNewMention(thread, fromAlice, {
+          destination,
+          ack,
+          messageContext: { skipped: [fromBob], totalSinceLastHandler: 1 },
+        }),
+      ).rejects.toThrow("Turn input is deferred until the active resume ends");
+    } finally {
+      await stateAdapter.releaseLock(lock!);
+    }
+
+    // Nothing ran, nothing was consumed, nothing was committed: the batch
+    // stays pending in the mailbox for the next drain.
+    expect(run).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    expect(
+      JSON.stringify(await loadProjection({ conversationId })),
+    ).not.toContain("bob pending ask");
   });
 
   it("suppresses the visible failure reply when the mailbox will retry the delivery", async () => {

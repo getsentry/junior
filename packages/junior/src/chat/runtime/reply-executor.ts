@@ -650,17 +650,74 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           );
         };
         /**
-         * Durably append this turn's user input to the session log at the
-         * parked safe boundary so the resumed `continue()` sees it. The
-         * awaiting record pins the log session and materializes the projection
-         * tail, so the append needs no record mutation. Must complete before
-         * `ack` consumes the mailbox record.
+         * Commit drained parked/batched input pairs to the conversation
+         * session log, deduping by `parkedInputKey` so a redelivery never
+         * double-appends. This is the Membership-Rule commit point
+         * (specs/multi-actor-runs.md): each drained message is written with its
+         * own author's instruction provenance while that author is still known,
+         * rather than collapsing to a single latest-wins actor.
          *
          * The read-compute-append races a concurrently-resumed slice, which
          * runs under the thread resume lock; take the same lock so the two
-         * writers never interleave. Returns false when the lock is busy (a
-         * live resume owns the session log): the caller must leave the
-         * mailbox message pending for the next drain instead of consuming it.
+         * writers never interleave. Returns false when the lock is busy (a live
+         * resume owns the session log): the caller must leave the mailbox
+         * message pending for the next drain instead of consuming it.
+         */
+        const drainParkedInputToSessionLog = async (
+          pairs: Array<{ message: PiMessage; provenance: PiMessageProvenance }>,
+        ): Promise<boolean> => {
+          if (!conversationId || pairs.length === 0) {
+            return true;
+          }
+          const stateAdapter = getStateAdapter();
+          await stateAdapter.connect();
+          const lock = await acquireActiveLock(stateAdapter, conversationId);
+          if (!lock) {
+            return false;
+          }
+          try {
+            const projection = await loadProjectionWithProvenance({
+              conversationId,
+            });
+            // Dedupe per message: a partial-overlap redelivery (some messages
+            // already appended before a schedule failure) must append only
+            // the missing ones.
+            const appendedKeys = new Set(
+              projection.messages
+                .map(parkedInputKey)
+                .filter((key): key is string => key !== undefined),
+            );
+            const missing = pairs.filter((pair) => {
+              const key = parkedInputKey(pair.message);
+              return key === undefined || !appendedKeys.has(key);
+            });
+            if (missing.length === 0) {
+              // A prior delivery already appended this input durably.
+              return true;
+            }
+            await commitMessages({
+              conversationId,
+              messages: [
+                ...projection.messages,
+                ...missing.map((pair) => pair.message),
+              ],
+              provenance: [
+                ...projection.provenance,
+                ...missing.map((pair) => pair.provenance),
+              ],
+              ttlMs: THREAD_STATE_TTL_MS,
+            });
+            return true;
+          } finally {
+            await stateAdapter.releaseLock(lock);
+          }
+        };
+        /**
+         * Durably append this turn's parked user input to the session log at
+         * the parked safe boundary so the resumed `continue()` sees it. The
+         * awaiting record pins the log session and materializes the projection
+         * tail, so the append needs no record mutation. Must complete before
+         * `ack` consumes the mailbox record.
          */
         const appendParkedTurnInput = async (
           parkedSessionId: string,
@@ -687,57 +744,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (parkedMessages.length === 0) {
             return true;
           }
-          const stateAdapter = getStateAdapter();
-          await stateAdapter.connect();
-          const lock = await acquireActiveLock(stateAdapter, conversationId);
-          if (!lock) {
-            return false;
-          }
-          try {
-            // Each parked message keeps its own author's instruction
-            // provenance, so a multi-author batch is not collapsed to a single
-            // latest-wins actor.
-            const parkedPairs = (
-              await resolveSteeringMessages(parkedMessages)
-            ).map((steering) => ({
-              message: buildSteeringPiMessage(steering),
-              provenance: steering.provenance,
-            }));
-            const projection = await loadProjectionWithProvenance({
-              conversationId,
-            });
-            // Dedupe per message: a partial-overlap redelivery (some messages
-            // already appended before a schedule failure) must append only
-            // the missing ones.
-            const appendedKeys = new Set(
-              projection.messages
-                .map(parkedInputKey)
-                .filter((key): key is string => key !== undefined),
-            );
-            const missing = parkedPairs.filter((pair) => {
-              const key = parkedInputKey(pair.message);
-              return key === undefined || !appendedKeys.has(key);
-            });
-            if (missing.length === 0) {
-              // A prior delivery already appended this input durably.
-              return true;
-            }
-            await commitMessages({
-              conversationId,
-              messages: [
-                ...projection.messages,
-                ...missing.map((pair) => pair.message),
-              ],
-              provenance: [
-                ...projection.provenance,
-                ...missing.map((pair) => pair.provenance),
-              ],
-              ttlMs: THREAD_STATE_TTL_MS,
-            });
-            return true;
-          } finally {
-            await stateAdapter.releaseLock(lock);
-          }
+          const parkedPairs = (
+            await resolveSteeringMessages(parkedMessages)
+          ).map((steering) => ({
+            message: buildSteeringPiMessage(steering),
+            provenance: steering.provenance,
+          }));
+          return drainParkedInputToSessionLog(parkedPairs);
         };
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
@@ -1063,18 +1076,52 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
           const hasDurablePromptHistory = Boolean(piMessages?.length);
-          const queuedInstructionPiMessages = (
+          // Batched parked input: each explicit-mention message another actor
+          // sent before this turn started, drained into it, kept with its own
+          // author's provenance so every contributor joins the run's actors.
+          const batchedInstructions = (
             await resolveSteeringMessages(
               (options.queuedMessages ?? []).filter(
                 (queued) => queued.explicitMention,
               ),
             )
-          ).map(buildSteeringPiMessage);
-          if (queuedInstructionPiMessages.length > 0) {
-            piMessages = [
-              ...(piMessages ?? []),
-              ...queuedInstructionPiMessages,
-            ];
+          ).map((steering) => ({
+            message: buildSteeringPiMessage(steering),
+            provenance: steering.provenance,
+          }));
+          // Commit the batch to the session log before the run starts — the
+          // Membership-Rule commit point (specs/multi-actor-runs.md) — so its
+          // authors' instruction provenance is durable while they are known.
+          // The fresh prompt checkpoint then matches these merged messages as
+          // an already-committed prefix and reuses that provenance instead of
+          // collapsing them to the live actor.
+          if (!(await drainParkedInputToSessionLog(batchedInstructions))) {
+            // A live resume owns the session-log read-modify-write. Defer the
+            // turn (as appendParkedTurnInput does) so the worker releases the
+            // lease and the next drain commits provenance before running;
+            // never run with the batch uncommitted.
+            shouldPersistFailureState = false;
+            throw new TurnInputDeferredError();
+          }
+          if (batchedInstructions.length > 0) {
+            // Merge the committed batch into the transcript the model sees. A
+            // redelivery reloads the batch from the durable log, so skip any
+            // message already present by `parkedInputKey` — never merge (and
+            // later re-commit) the same batched message twice.
+            const presentKeys = new Set(
+              (piMessages ?? [])
+                .map(parkedInputKey)
+                .filter((key): key is string => key !== undefined),
+            );
+            const newlyBatched = batchedInstructions
+              .map((entry) => entry.message)
+              .filter((batchedMessage) => {
+                const key = parkedInputKey(batchedMessage);
+                return key === undefined || !presentKeys.has(key);
+              });
+            if (newlyBatched.length > 0) {
+              piMessages = [...(piMessages ?? []), ...newlyBatched];
+            }
           }
 
           status.start();
@@ -1591,6 +1638,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           if (error instanceof CooperativeTurnYieldError) {
+            shouldPersistFailureState = false;
+            throw error;
+          }
+          if (error instanceof TurnInputDeferredError) {
             shouldPersistFailureState = false;
             throw error;
           }
