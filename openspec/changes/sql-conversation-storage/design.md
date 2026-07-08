@@ -53,7 +53,7 @@ Retention today is refresh-on-append whole-key expiry, unrelated to conversation
 1. **Schema + stores**: expand-only migration `0005_conversation_transcripts` (`junior_conversation_messages`, `junior_agent_steps`, `junior_conversations.parent_conversation_id` + `transcript_purged_at`); `AgentStepStore`/`ConversationMessageStore` implementations in `chat/conversations/sql/`; PGlite integration tests.
 2. **Cutover + backfill**: runtime consumers move to the new ports; `junior upgrade` bulk-imports Redis logs; lazy import handles stragglers; turn-session cursors flip from counts to `seq`.
 3. **Retention**: policy constants, purge job, `/api/internal/retention` cron, erasure primitive.
-4. **Cleanup**: remove thread-state transcript mirrors, Redis session-log/advisor stores, conversation-details title/context keys (SQL becomes title authority), and — after the Redis TTL horizon — the lazy-import path.
+4. **Dead-code deletion (follow-up PR, deliberately deferred for safety)**: remove thread-state transcript mirrors, Redis session-log/advisor stores, conversation-details title/context keys (SQL becomes title authority), and — after the Redis TTL horizon — the lazy-import path. Keeping the legacy modules intact (unused) in the cutover PR preserves a clean rollback: reverting the cutover restores Redis-backed behavior while its keys are still live, and the lazy import re-converges conversations touched during a rollback window once rolled forward again.
 
 Rollback: schema is expand-only, so a code rollback ignores the new tables; Redis keys continue expiring on their own schedule. Read cutover happens with the code deploy, so rolling back the code rolls back the reads.
 

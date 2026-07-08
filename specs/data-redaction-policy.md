@@ -131,6 +131,22 @@ the runtime can derive it. Child GenAI spans may inherit that trace context and
 must still apply the same capture policy even when they do not repeat the
 attribute.
 
+## Retention Interaction
+
+Redaction hides content that still exists; retention deletes content that has
+aged out. They are distinct and must present distinctly.
+
+- Content retention is visibility-tiered and owned by `./conversation-storage.md`:
+  conversation content is retained 90 days for persisted-`public` conversations
+  and 14 days otherwise (fail-closed), measured from `last_activity_at`.
+- When content is purged, reporting must present it as expired under retention,
+  not as redacted for privacy. Purged is a different reason than the
+  non-public redaction reason.
+- Purge scrubs the private raw-payload metadata that redaction otherwise only
+  masks at read time: for non-public conversations it nulls the generated
+  `title`, the private `channel_name`, and legacy actor JSON, leaving only safe
+  metadata on the surviving conversation row.
+
 ## Verification
 
 - Private dashboard conversation APIs return no raw message text, thinking text,
@@ -150,6 +166,7 @@ attribute.
 
 ## Related Specs
 
+- `./conversation-storage.md`
 - `./dashboard.md`
 - `./security-policy.md`
 - `./tracing.md`

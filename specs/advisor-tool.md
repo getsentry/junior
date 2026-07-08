@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-06
-- Last Edited: 2026-05-31
+- Last Edited: 2026-07-08
 
 ## Purpose
 
@@ -12,7 +12,8 @@ Define Junior's provider-agnostic `advisor` tool: a stronger Pi Agent exposed as
 The core contract is intentionally small:
 
 - The executor calls `advisor({ question, context })`.
-- The advisor gets its own conversation-scoped Pi message history.
+- The advisor runs as a child conversation of the parent, with its own Pi message
+  history stored as that child conversation's agent steps.
 - The executor passes the current evidence explicitly; the parent transcript is not forked or implicitly forwarded.
 - The advisor can use tools from the normal tool layer that are annotated read-only, but not recursive, write, or user-visible tools.
 - The advisor returns guidance; it does not own implementation.
@@ -51,23 +52,32 @@ The tool description is the executor-facing trigger policy. It must say the advi
 
 1. Validate that `question` and `context` are non-empty strings after trimming.
 2. Build one advisor request message with `<advisor-task>` and `<executor-context>` sections.
-3. Load advisor messages from `junior:<conversationId>:advisor_session`.
+3. Resolve the advisor child conversation for the parent (a deterministic child conversation id derived from the parent `conversationId`) and load its Pi messages from that child conversation's agent steps.
 4. Create a Pi `Agent` with the advisor model, thinking level, system prompt, and advisor-allowed tools.
 5. Expose only read-only tool definitions to the advisor. A tool is advisor-readable only when `readOnlyHint: true` and `destructiveHint` is not `true`. Do not expose recursive, write, user-visible, or unconstrained external-action tools.
 6. Assign the loaded messages to `advisorAgent.state.messages`.
 7. Run `advisorAgent.prompt(requestMessage)`.
-8. On success, save `advisorAgent.state.messages` back to the advisor session key.
+8. On success, append the new advisor steps under the child conversation's own `conversation_id`.
 9. Return the advisor's text exactly as produced in the tool result.
 
-If `conversationId` is unavailable, return `missing_conversation_id`; do not create an orphan advisor session.
+If `conversationId` is unavailable, return `missing_conversation_id`; do not create an orphan advisor conversation.
 
 ## Advisor State
 
-Advisor state is scoped to the parent conversation id and must survive process restarts and later request lifecycles.
+Advisor state is a child conversation of the parent and must survive process restarts and later request lifecycles (`./conversation-storage.md`).
 
-- Store key: `junior:<conversationId>:advisor_session`
-- Stored value: the advisor agent's own `PiMessage[]`
-- TTL: same as Junior's one-week thread-state TTL
+- The advisor history is a child conversation whose `parent_conversation_id`
+  points at the parent, with a deterministic child id derived from the parent
+  `conversationId` so repeated calls in the same parent conversation append to
+  the same history.
+- The advisor's Pi messages are stored as that child conversation's agent steps
+  under its own `conversation_id`.
+- The parent's `subagent_started` step carries the child by `childConversationId`.
+  The polymorphic `transcriptRef {type, key}` reference and the ad-hoc
+  `junior:<conversationId>:advisor_session` Redis key are removed.
+- The child conversation is excluded from top-level conversation listings
+  (`parent_conversation_id IS NULL` filter) and has no independent retention
+  clock: it purges with its root conversation on the root's visibility window.
 
 The main Pi transcript stores only the bounded tool result object from normal Pi tool execution, not the advisor's private history.
 
@@ -126,3 +136,4 @@ Coverage must prove:
 - `./testing.md`
 - `./agent-execution.md`
 - `./agent-session-resumability.md`
+- `./conversation-storage.md`

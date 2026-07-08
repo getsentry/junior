@@ -45,11 +45,18 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   available to the agent.
 - **Agent input**: the batch of inbound message content, context, and runtime
   metadata selected for a turn.
-- **Turn**: one response-producing cycle for a conversation. A turn begins when
-  accepted inbound input starts execution and ends at finalized delivery or
-  terminal failure. A turn may absorb additional inbound messages that arrive
-  before finalization, and may span multiple execution slices. It is not one
-  model invocation.
+- **Turn**: one request-to-final-response cycle. A turn begins when a request
+  is handed off to the agent (one accepted inbound message, or the batch
+  pending when execution starts) and ends when the agent returns the final
+  response for that request or fails terminally. Steering input that arrives
+  during active execution ends the active turn prematurely — that turn gets no
+  final response — and starts a new turn; steering messages that arrive
+  together may batch into one new turn. Messages that arrive after completion
+  start a new turn.
+  Turn boundaries are attribution boundaries, not execution boundaries: the
+  worker, lease, and model loop may continue uninterrupted across a steering
+  handoff. A turn may span multiple execution slices. It is not one model
+  invocation.
 - **Execution slice**: one serverless invocation segment of a turn.
 - **Agent step**: one model, tool, handoff, action, or other internal event
   represented inside durable execution history.
@@ -79,8 +86,9 @@ motivated the ban.
 Rules:
 
 - Use `turn` only with the canonical definition. One model invocation is not a
-  turn; it is part of a turn. One inbound message is not a turn; a turn may
-  absorb several.
+  turn; it is part of a turn. A steering message does not extend the active
+  turn; it ends that turn prematurely and starts a new one. Steering messages
+  that arrive together may batch into a single new turn.
 - New interfaces and read models use `turnId` where they need a stable
   identifier for one turn.
 - Specs written before this flip may still say `agent run` in contract prose.

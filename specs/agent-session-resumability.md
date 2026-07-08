@@ -3,13 +3,17 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-07-02
+- Last Edited: 2026-07-08
 
 ## Purpose
 
-Define the durable agent session log and how one response-producing agent run is
-split into resumable execution slices so serverless time limits do not cause
-message loss, duplicate side effects, or unrecoverable partial state.
+Define the durable agent step history and how one turn (one response-producing
+agent run) is split into resumable execution slices so serverless time limits do
+not cause message loss, duplicate side effects, or unrecoverable partial state.
+The durable authority for that history is the `junior_agent_steps` SQL table
+(`./conversation-storage.md`); this spec owns how it is projected into Pi state
+and resumed across slices. Canonical vocabulary (turn, slice, step, context
+epoch) is defined in `./terminology.md`.
 
 ## Scope
 
@@ -40,9 +44,12 @@ This spec owns how agent session state is persisted and resumed across execution
 ### Identity Model
 
 - `conversation_id`: Stable, predictable thread identity (for example, one Slack thread). This is the durable history key.
-- `session_id`: Conversation-local session marker for the reduced session-log
-  projection. It starts at `session_0`, advances when `projection_reset`
-  creates a replacement projection, and is not the durable history key.
+- `context_epoch`: Conversation-local integer generation of the model-visible
+  context for the reduced projection. It starts at 0, advances when a
+  `context_epoch_started` marker begins a replacement context (compaction or
+  rollback), and is not the durable history key. Historical name: this marker was
+  `session_id`, starting at `session_0` and advanced by a `projection_reset`
+  entry.
 - `agent_run_id`: Optional internal identity for one response-producing agent
   run inside the conversation. Queue-driven continuation does not need this
   value to decide where to resume; the reduced conversation session log is the
@@ -63,18 +70,17 @@ events. Each pause event identifies one safe resume boundary inside that log.
 - Task execution state is the ingress coordination layer. It owns durable
   conversation mailboxes, queue wake-up nudges, conversation leases, and
   heartbeat repair as specified in `./task-execution.md`.
-- Junior agent session state is separate application state. It owns the
+- Junior agent step history is separate application state. It owns the
   append-only model execution history and the minimal runtime transition facts
   needed to resume that history.
-- Junior may reuse the same Redis connection as the mailbox and lease stores,
-  but the session log keyspace must remain Junior-owned and separate from
-  mailbox indexes.
-- The durable session log key is `junior:agent-session-log:<conversation_id>`
-  (prefixed by `JUNIOR_STATE_KEY_PREFIX` when configured). It stores an
-  append-only chronological model-execution log with one deterministic
-  projection into Pi messages. Projection events carry the current `session_id`;
-  after a reset, reducers use the newest session and ignore events that belong
-  to older sessions.
+- The durable authority is the `junior_agent_steps` SQL table
+  (`./conversation-storage.md`), one row per step ordered by `(conversation_id,
+seq)`. It replaces the former Redis list
+  `junior:agent-session-log:<conversation_id>`. This spec refers to that table's
+  step rows as the session log. It stores an append-only model-execution history
+  with one deterministic projection into Pi messages. `pi_message` steps carry a
+  `context_epoch`; the reducer uses the highest epoch and ignores steps in older
+  epochs.
 - Session status, latest slice id, pause state, resume validity, and Pi message
   projection are derived by reducing the session log. Durable cursor/status
   records are transitional read models, not canonical state.
@@ -82,18 +88,24 @@ events. Each pause event identifies one safe resume boundary inside that log.
   provider connections used so far, is recovered from the session log. Do not
   persist a parallel list of loaded skills, active providers, or tool/session
   state in side metadata.
-- Durable thread state is the canonical home for mutable run-local runtime state that can change mid-slice:
+- Durable thread state is the canonical home for mutable run-local runtime state
+  that can change mid-slice, and is now runtime scratch only:
   - artifact state (for example active canvas/list context)
   - sandbox identity and dependency-profile hash
-  - conversation/thread state and user/assistant message history
+  - processing state
+    Thread state no longer mirrors transcripts: the visible-message and Pi-message
+    copies move to SQL (`junior_conversation_messages` and `junior_agent_steps`)
+    per `./conversation-storage.md`.
 - Durable thread state may point at an active paused session for callback
   routing. It must not point fresh runs at a separate "last session" history;
   the predictable `conversation_id` already identifies the model history.
 - Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the session log.
 - Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful run completion.
 - File-like tool outputs that can be reused across model steps must be represented by explicit handles, such as sandbox paths, before the tool reports success. Process memory may cache file bytes during one slice, but it is not the source of truth across tool, delivery, resume, or later-turn boundaries.
-- Thread state, channel state, agent-run read models, and Pi session messages
-  share Junior's one-week Redis retention window.
+- Thread-state runtime scratch and channel state share Junior's one-week Redis
+  retention window. Durable step and message content lives in SQL, where its
+  retention follows conversation visibility (`./conversation-storage.md`), not a
+  Redis TTL.
 
 ### Ingress Queue Contract
 
@@ -136,16 +148,17 @@ The session log has one clear projection into Pi messages:
 2. Host-authored entries are allowed only when they have an explicit, deterministic projection into valid Pi messages or are explicitly filtered before assigning `agent.state.messages`.
 3. Projection must preserve chronological order and safe continuation boundaries.
 4. Projection must not invent loaded skills, provider activation, tool results, or assistant/user messages that were not represented in the durable log.
-5. Storage writes are append-only. If recovery must roll the active Pi projection back to a prior safe boundary, the writer appends an explicit projection-reset event instead of trimming or rewriting the stored list.
+5. Storage writes are append-only. If recovery must roll the active Pi projection back to a prior safe boundary, the writer opens a new context epoch — it appends a `context_epoch_started` marker step plus the replacement `pi_message` rows in one transaction — instead of trimming or rewriting stored rows.
 
-Session-log writers are serialized by conversation ownership at their call
+Step-history writers are serialized by conversation ownership at their call
 sites: conversation-record writes are fenced in the store (an expired lease
 surfaces as `ConversationMutationFencedError` via `extendLock`), and
-session-log read-compute-append sequences run under the conversation lease or
-the thread resume lock (including the parked-input append, which takes the
-resume lock). The session-log store itself does not implement a general
-in-store compare-and-swap; a writer that no longer holds its lease or lock
-must not append entries or reset the projection.
+read-compute-append sequences run under the conversation lease or the thread
+resume lock (including the parked-input append, which takes the resume lock).
+`seq` is assigned transactionally under the lease, and the
+`(conversation_id, seq)` primary key is the fencing tripwire: a writer that no
+longer holds its lease fails loudly on a PK violation rather than appending
+steps or opening a new epoch.
 
 The schema must be a strongly typed discriminated union with runtime validation
 at the storage boundary. The TypeScript type and the runtime parser must come
@@ -153,20 +166,22 @@ from the same Zod schema (or the repo-standard equivalent if that changes).
 Invalid stored entries are corrupt state and should fail loudly; the reducer
 should not paper over unknown event shapes with guessed behavior.
 
-Each event has this envelope:
+Each step row has this envelope:
 
-- `schemaVersion`: current session-log schema version.
-- `eventId`: stable id for this append.
-- `conversationId`: the predictable conversation id that owns the log.
-- `sessionId`: the current conversation-local session marker for events that
-  participate in the reduced Pi/runtime projection. This bounds replay after
-  compaction and must not be used as the conversation key.
-- `createdAtMs`: wall-clock creation time.
+- `schemaVersion`: schema version of the row payload (per row; a `pi_message`
+  payload also carries its own Pi message schema version).
+- `conversationId`: the conversation id that owns the history; part of the
+  `junior_agent_steps` primary key `(conversation_id, seq)`.
+- `seq`: per-conversation append order.
+- `context_epoch`: the integer context generation this step belongs to. This
+  bounds replay after compaction/rollback and is not the conversation key.
+- `createdAt`: creation time; preserved from message-internal timestamps on
+  replay so Pi history is byte-stable.
 - `type`: discriminant.
 
-Future run-scoped read models may expose a stable `runId`, but the current
-session-log storage boundary still uses `sessionId` as the resumability marker
-and stores run status in the turn-session read model.
+Future turn-scoped read models may expose a stable `turnId`; the step-history
+storage boundary orders by `seq`, tracks generations by `context_epoch`, and
+turn status stays in the turn-session read model.
 
 ### Session Log Events
 
@@ -183,8 +198,11 @@ happened:
   fact is needed for timeout accounting or diagnostics.
 - `pi_message`: records user, assistant, tool-call, tool-result, and
   host-authored Pi messages.
-- `projection_reset`: advances the current Pi projection to an earlier safe
-  boundary without rewriting the append-only log.
+- `context_epoch_started`: opens the next context epoch, carrying `reason`
+  (`compaction` | `rollback`). It does not embed a transcript array; the
+  replacement context is written as ordinary `pi_message` rows in the new epoch
+  in the same transaction. (Historical name: `projection_reset`, which embedded
+  the replacement `messages`.)
 - `mcp_provider_connected`: records that a configured MCP provider was
   successfully connected and its tool catalog listed for this session.
 - `authorization_requested`: records that the runtime sent or reused a private
@@ -195,9 +213,10 @@ happened:
   operator-facing activity views can show in-flight work before Pi emits the
   final tool result.
 - `subagent_started`: records that a child agent execution became visible from
-  the parent run. The current child transcript reference is an
-  `advisor_session`; widening child transcript references requires a spec
-  update before changing the runtime schema.
+  the parent run. It carries `childConversationId`; the child's history is its
+  own conversation (`parent_conversation_id` set) with its own steps
+  (`./conversation-storage.md`, `./advisor-tool.md`). The polymorphic
+  `transcriptRef {type, key}` and the `advisor_session` Redis key are removed.
 - `subagent_ended`: records the terminal child agent outcome for a previously
   recorded `subagent_started` event.
 - `timeout_paused`: records a safe timeout or cooperative-yield boundary when a
@@ -220,9 +239,10 @@ happened:
 Pi-projected events:
 
 - `pi_message` contributes its `message` directly to the Pi projection when it
-  belongs to the current `sessionId`.
-- `projection_reset` replaces the current Pi projection with the supplied
-  `messages` array and starts the next `sessionId`.
+  belongs to the highest `context_epoch`.
+- `context_epoch_started` opens a new epoch; the reducer projects the
+  `pi_message` rows of the highest epoch in `seq` order and ignores rows from
+  older epochs. The marker itself carries no messages.
 
 Junior-only events are filtered out before assigning `agent.state.messages` and
 are reduced only for runtime state:
@@ -341,16 +361,18 @@ model-visible history, not as a second durable transcript.
 
 Junior follows the same rule:
 
-- The canonical log stays append-only.
-- Compaction appends one `projection_reset` event whose `messages` are the new
-  Pi projection.
-- That reset advances the conversation-local session. Future log entries are
-  written with the new session, so stale entries from earlier sessions are
-  filtered out of both Pi history and derived provider/auth state.
-- The replacement projection should contain retained real user messages and one
+- The step history stays append-only.
+- Compaction opens a new context epoch: in one transaction it appends a
+  `context_epoch_started {reason: "compaction"}` marker and writes the new
+  context as ordinary `pi_message` rows in that epoch. It does not embed a
+  replacement `messages` array in the marker.
+- The new epoch is the current context. Future steps are written in the new
+  epoch, so steps in earlier epochs are filtered out of both Pi history and
+  derived provider/auth state.
+- The replacement context should contain retained real user messages and one
   synthetic user-role handoff summary.
-- The reducer ignores older Pi messages before the latest reset for the active
-  Pi projection, while still allowing the raw log to be inspected for audit and
+- The reducer ignores `pi_message` rows in older epochs for the active Pi
+  projection, while still allowing older epochs to be inspected for audit and
   debugging.
 - Compaction must not persist parallel `loadedSkillNames`, active-provider
   lists, prompt caches, or summary logs. If a compacted projection omits old
@@ -430,11 +452,11 @@ Forbidden boundary:
 Each reduced session projection must include:
 
 - `conversation_id`
-- `session_id`
+- `context_epoch`
 - `slice_id`
-- `latest_event_id`
+- `latest_seq`
 - `latest_pause_event_id` when awaiting resume
-- `pi_messages`: Canonical message list to replay into Pi, materialized from the agent session log.
+- `pi_messages`: Canonical message list to replay into Pi, materialized from the highest-epoch `pi_message` step rows.
 - `lifecycle`: one of `running|awaiting_resume|delivered|abandoned|error`.
 - `updated_at_ms`
 
@@ -457,10 +479,11 @@ Durable session metadata must not store:
 - per-slice deadline metadata
 - message cursors or record versions that can be derived from log order
 
-Primary writes append to the session log. Normal writes append new Pi-message
-entries. Rollback to an earlier safe boundary appends a projection-reset entry;
-prior log entries remain available for audit/debugging but are no longer part of
-the current Pi projection.
+Primary writes append step rows. Normal writes append new `pi_message` steps in
+the current epoch. Rollback to an earlier safe boundary opens a new context
+epoch (a `context_epoch_started` marker plus the trimmed `pi_message` rows in one
+transaction); steps in prior epochs remain available for audit/debugging but are
+no longer part of the current Pi projection.
 
 `inflight_partial` is not part of the session log schema.
 
@@ -514,7 +537,7 @@ If the previous slice timed out after producing uncommitted partial assistant te
 ### In-Process Provider Retry Contract
 
 - Transient provider failures reported as terminal assistant messages with `stopReason=error` may be retried inside the same running slice before final Slack delivery.
-- Provider retry must not replay the original user prompt. It must remove only the trailing assistant error message(s), verify the remaining Pi history ends at a continuable boundary (`user` or `toolResult`), append a `projection_reset` event for that safe boundary, then call `continue()`.
+- Provider retry must not replay the original user prompt. It must remove only the trailing assistant error message(s), verify the remaining Pi history ends at a continuable boundary (`user` or `toolResult`), write a rollback epoch for that safe boundary (a `context_epoch_started {reason: "rollback"}` marker plus the trimmed `pi_message` rows in one transaction), then call `continue()`.
 - Provider retry is bounded and uses short exponential backoff. If the retry limit is reached, if the error is not classified as transient, or if no safe boundary remains after trimming, the normal provider-failure reply path owns user-visible recovery.
 - Provider retry does not create an awaiting pause. If a retried slice reaches a
   cooperative yield boundary later, the conversation mailbox worker owns
@@ -596,7 +619,8 @@ Required attributes when available:
 - `gen_ai.request.model`
 - `app.ai.turn_timeout_ms`
 - `app.ai.conversation_id`
-- `app.ai.session_id`
+- `app.ai.context_epoch` (existing `app.ai.session_id` telemetry may remain for
+  compatibility)
 - `app.conversation.id`
 - `messaging.message.id`
 
@@ -619,6 +643,8 @@ Required attributes when available:
 
 ## Related Specs
 
+- [Conversation Storage Spec](./conversation-storage.md)
+- [Terminology Spec](./terminology.md)
 - [Harness Agent Spec](./harness-agent.md)
 - [Task Execution Spec](./task-execution.md)
 - [Agent Execution Spec](./agent-execution.md)

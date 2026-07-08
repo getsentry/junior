@@ -57,16 +57,19 @@ remains the source of truth, and compaction changes only the model-visible
 projection. Pi coding-agent appends a compaction entry that names the first kept
 entry; rebuilding context emits the summary plus the retained tail. Codex builds
 replacement model history from selected user messages plus a summary item. Junior
-uses `projection_reset` for the same role inside the conversation session log.
-That reset advances the current `sessionId`; later entries in the same
-conversation carry the new marker, and reducers ignore events from older
-sessions.
+opens a new context epoch for the same role inside the durable step history
+(`./conversation-storage.md`): in one transaction it appends a
+`context_epoch_started {reason: "compaction"}` marker and writes the replacement
+context as ordinary `pi_message` step rows in the new epoch. Later steps in the
+same conversation carry the new epoch, and reducers ignore steps from older
+epochs. (Historical shape: a `projection_reset` entry embedding the replacement
+`messages` array and advancing a `sessionId` marker.)
 
-The `projection_reset` carries per-message provenance aligned one-to-one with
-its replacement messages. Retained real user messages preserve their original
-instruction actor from the pre-compaction projection; the synthetic handoff
-summary is unattributed `context`. Reset provenance that does not align with the
-replacement messages fails closed rather than being zipped or truncated.
+Each replacement `pi_message` row carries its own provenance. Retained real user
+messages preserve their original instruction actor from the pre-compaction
+projection; the synthetic handoff summary is unattributed `context`. A
+replacement row without valid provenance fails closed rather than being zipped
+or truncated.
 
 The replacement history must exclude stale runtime turn context, old capability catalogs, raw image/base64 payloads, and unbounded tool output. Runtime turn context is injected again on the next actual turn by `buildTurnContextPrompt(...)`.
 

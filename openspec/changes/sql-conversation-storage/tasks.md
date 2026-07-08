@@ -2,9 +2,9 @@
 
 ## 1. Contract Docs (Phase 0)
 
-- [ ] 1.1 Rewrite `specs/conversation-storage.md`: transcripts in scope (remove the Non-Goals excluding them), define `junior_conversation_messages` / `junior_agent_steps` shapes, retention tiers, purge contract, and declare identity/destination FKs authoritative over the legacy `destination_json` / `actor_json` copies
-- [ ] 1.2 Update `specs/agent-session-resumability.md`: SQL step rows replace the Redis session-log authority, context-epoch vocabulary replaces `sessionId`/`projection_reset`, safe-boundary and resume contracts restated against `seq`/epoch
-- [ ] 1.3 Update `specs/data-redaction-policy.md` (retention tiers reference, expired-vs-redacted distinction) and `specs/advisor-tool.md` (child-conversation transcripts replace `transcriptRef`)
+- [x] 1.1 Rewrite `specs/conversation-storage.md`: transcripts in scope (remove the Non-Goals excluding them), define `junior_conversation_messages` / `junior_agent_steps` shapes, retention tiers, purge contract, and declare identity/destination FKs authoritative over the legacy `destination_json` / `actor_json` copies
+- [x] 1.2 Update `specs/agent-session-resumability.md`: SQL step rows replace the Redis session-log authority, context-epoch vocabulary replaces `sessionId`/`projection_reset`, safe-boundary and resume contracts restated against `seq`/epoch
+- [x] 1.3 Update `specs/data-redaction-policy.md` (retention tiers reference, expired-vs-redacted distinction) and `specs/advisor-tool.md` (child-conversation transcripts replace `transcriptRef`)
 
 ## 2. Schema And Stores
 
@@ -39,8 +39,14 @@
 - [ ] 5.4 Expose `purgeConversation(conversationId)` as the erasure primitive
 - [ ] 5.5 Tests: tier resolution, visibility-flip window change, child-rides-root, bounded batching, expired-vs-redacted reporting distinction
 
-## 6. Hard Cutover Cleanup (Same PR)
+## 6. Verification
 
-- [ ] 6.1 Remove `conversation.messages` / `conversation.piMessages` from thread-state; shrink thread-state to runtime scratch with one Junior-owned TTL constant and one writer
-- [ ] 6.2 Remove the Redis session-log store, advisor session store, and conversation-details title/context keys (SQL title/context becomes the authority); the Redis→SQL import path (bulk + lazy) is the only legacy-aware code that remains
-- [ ] 6.3 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across cutover and cleanup slices
+- [ ] 6.1 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across the cutover slices
+
+## 7. Dead-Code Deletion (Deferred To Follow-Up PR)
+
+The cutover in group 3 stops all reads/writes to the legacy stores; deleting the
+then-dead modules ships separately:
+
+- Remove `conversation.messages` / `conversation.piMessages` from thread-state; shrink thread-state to runtime scratch with one Junior-owned TTL constant and one writer
+- Remove the Redis session-log store, advisor session store, and conversation-details title/context keys (SQL title/context becomes the authority); the Redis→SQL import path (bulk + lazy) is the only legacy-aware code that remains

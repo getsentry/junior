@@ -67,7 +67,12 @@ The durable execution model uses the canonical terms from
 ([`terminology.md`](./terminology.md)). This spec predates that flip and keeps
 "agent run" in its contract prose; read the two as the same concept. A turn is
 never a single model/tool action, and "turn session" keys remain the historical
-name for a turn's session read model.
+name for a turn's session read model. One nuance: where this spec says a run
+"may consume multiple inbound messages at safe boundaries", that describes the
+execution machinery — the worker, lease, and model loop continue across a
+steering handoff. Turn attribution rolls over instead: steering input ends the
+active turn prematurely (it gets no final response) and starts a new turn;
+steering messages that arrive together may batch into one new turn.
 
 This spec follows the domain naming policy in
 [`policies/interface-design.md`](../policies/interface-design.md). Its core
