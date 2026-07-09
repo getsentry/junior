@@ -123,7 +123,6 @@ export interface NewAgentStep {
 export interface PiMessageStep {
   message: PiMessage;
   createdAtMs: number;
-  schemaVersion?: number;
   provenance?: PiMessageProvenance;
 }
 

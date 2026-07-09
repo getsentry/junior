@@ -5,7 +5,8 @@ import type {
   ConversationMessageStore,
   NewConversationMessage,
 } from "../messages";
-import { juniorConversationMessages, juniorConversations } from "./schema";
+import { ensureConversationRow } from "./conversation-row";
+import { juniorConversationMessages } from "./schema";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
 
@@ -33,7 +34,11 @@ class SqlConversationMessageStore implements ConversationMessageStore {
       return;
     }
     await this.executor.transaction(async () => {
-      await this.ensureConversation(conversationId, messages[0]!.createdAtMs);
+      await ensureConversationRow(
+        this.executor,
+        conversationId,
+        messages[0]!.createdAtMs,
+      );
       await this.executor
         .db()
         .insert(juniorConversationMessages)
@@ -66,42 +71,6 @@ class SqlConversationMessageStore implements ConversationMessageStore {
           },
         });
     });
-  }
-
-  /**
-   * Establish the conversation metadata row on first contact, matching the
-   * step store's lazy-upsert: the visible transcript can be recorded before
-   * activity recording has created the row, and this table FKs to it.
-   *
-   * First contact creates the row; every later content write advances the
-   * activity clock so retention mirrors append-refresh semantics (each content
-   * append refreshes the retention window). The timestamp is content-intrinsic
-   * (the first message's `createdAtMs`), and `greatest(...)` guarantees a
-   * backfilled or imported historical row — which carries an old timestamp —
-   * can never regress `last_activity_at`.
-   */
-  private async ensureConversation(
-    conversationId: string,
-    atMs: number,
-  ): Promise<void> {
-    const at = new Date(atMs);
-    await this.executor
-      .db()
-      .insert(juniorConversations)
-      .values({
-        conversationId,
-        createdAt: at,
-        lastActivityAt: at,
-        updatedAt: at,
-        executionStatus: "idle",
-      })
-      .onConflictDoUpdate({
-        target: juniorConversations.conversationId,
-        set: {
-          lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
-          updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
-        },
-      });
   }
 
   async markReplied(

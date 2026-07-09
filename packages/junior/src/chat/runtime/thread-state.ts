@@ -87,6 +87,19 @@ export async function persistThreadState(
   thread: Thread,
   patch: ThreadStatePatch,
 ): Promise<void> {
+  // The visible transcript is durable in SQL, keyed by the conversation id —
+  // which is the thread's own id here (its thread-state key), the same way
+  // persistThreadStateById treats its thread id. Sync it at this Chat-SDK
+  // persist boundary so scratch and transcript stay symmetric with the
+  // id-based boundary and never diverge.
+  if (patch.conversation) {
+    await persistConversationMessages({
+      conversation: patch.conversation,
+      conversationId:
+        toOptionalString(thread.id) ??
+        toOptionalString((thread as { runId?: unknown }).runId),
+    });
+  }
   const payload = buildThreadStatePayload(patch);
   if (Object.keys(payload).length === 0) {
     return;

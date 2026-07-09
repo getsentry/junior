@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  CONTENT_RETENTION_MS,
   purgeConversation,
-  retentionWindowFor,
   runRetentionPurge,
 } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -144,17 +142,6 @@ async function setVisibility(
     .set({ visibility })
     .where(eq(juniorDestinations.id, destinationId));
 }
-
-describe("retention window resolution", () => {
-  it("gives only persisted public the public window and fails closed otherwise", () => {
-    expect(retentionWindowFor("public")).toBe(CONTENT_RETENTION_MS.public);
-    expect(retentionWindowFor("private")).toBe(CONTENT_RETENTION_MS.private);
-    expect(retentionWindowFor("direct")).toBe(CONTENT_RETENTION_MS.private);
-    expect(retentionWindowFor("unknown")).toBe(CONTENT_RETENTION_MS.private);
-    expect(retentionWindowFor(null)).toBe(CONTENT_RETENTION_MS.private);
-    expect(retentionWindowFor(undefined)).toBe(CONTENT_RETENTION_MS.private);
-  });
-});
 
 describe("retention purge job", () => {
   let fixture: LocalJuniorSqlFixture;

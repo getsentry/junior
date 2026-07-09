@@ -175,7 +175,6 @@ export async function importConversationFromLegacy(
   const fallbackCreatedAtMs =
     deps.conversationRecord?.createdAtMs ??
     earliestIntrinsicMs(entries, visible) ??
-    deps.conversationRecord?.lastActivityAtMs ??
     0;
 
   const converted = convertLegacySessionLog({

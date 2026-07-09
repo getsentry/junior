@@ -9,7 +9,6 @@
  */
 import type {
   ConversationMessage as StoredConversationMessage,
-  ConversationMessageStore,
   NewConversationMessage,
 } from "@/chat/conversations/messages";
 import { getConversationMessageStore } from "@/chat/db";
@@ -20,12 +19,6 @@ import type {
   ConversationMessageMeta,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-
-function resolveStore(
-  store: ConversationMessageStore | undefined,
-): ConversationMessageStore {
-  return store ?? getConversationMessageStore();
-}
 
 /**
  * Project the in-memory message onto the store insert shape. This is the single
@@ -92,7 +85,6 @@ function fromStoredMessage(
 export async function hydrateConversationMessages(args: {
   conversation: ThreadConversationState;
   conversationId: string | undefined;
-  messageStore?: ConversationMessageStore;
 }): Promise<void> {
   if (!args.conversationId) {
     args.conversation.messages = [];
@@ -108,7 +100,7 @@ export async function hydrateConversationMessages(args: {
   const { ensureLegacyConversationImport } =
     await import("@/chat/conversations/legacy-import");
   await ensureLegacyConversationImport({ conversationId: args.conversationId });
-  const store = resolveStore(args.messageStore);
+  const store = getConversationMessageStore();
   const rows = await store.list(args.conversationId);
   const coveredIds = new Set(
     args.conversation.compactions.flatMap(
@@ -130,13 +122,12 @@ export async function hydrateConversationMessages(args: {
 export async function persistConversationMessages(args: {
   conversation: ThreadConversationState;
   conversationId: string | undefined;
-  messageStore?: ConversationMessageStore;
   repliedAtMs?: number;
 }): Promise<void> {
   if (!args.conversationId || args.conversation.messages.length === 0) {
     return;
   }
-  const store = resolveStore(args.messageStore);
+  const store = getConversationMessageStore();
   await store.record(
     args.conversationId,
     args.conversation.messages.map(toStoredConversationMessage),

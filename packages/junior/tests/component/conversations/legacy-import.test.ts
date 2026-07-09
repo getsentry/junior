@@ -546,6 +546,13 @@ describe("legacy conversation import", () => {
       { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
     ];
 
+    // Route the process singletons at the fixture executor so the default-store
+    // hydrate path resolves to this database.
+    const db = await import("@/chat/db");
+    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
+    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
+    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
@@ -567,7 +574,6 @@ describe("legacy conversation import", () => {
       await hydrateConversationMessages({
         conversation,
         conversationId: CONVERSATION_ID,
-        messageStore,
       });
 
       const hydratedUser = conversation.messages.find(

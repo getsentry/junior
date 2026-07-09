@@ -43,7 +43,6 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import { persistThreadState } from "@/chat/runtime/thread-state";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
@@ -876,10 +875,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               replied: true,
             },
           });
-          await persistConversationMessages({
-            conversation: preparedState.conversation,
-            conversationId,
-          });
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });
@@ -1350,10 +1345,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: turnId,
                 updateConversationStats,
               });
-              await persistConversationMessages({
-                conversation: preparedState.conversation,
-                conversationId,
-              });
               await persistThreadState(thread, {
                 conversation: preparedState.conversation,
               });
@@ -1365,10 +1356,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: turnId,
-            });
-            await persistConversationMessages({
-              conversation: preparedState.conversation,
-              conversationId,
             });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
@@ -1528,15 +1515,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             latestArtifacts = completedState.artifacts;
           }
           try {
-            // SQL transcript persistence is post-delivery bookkeeping: the user
-            // already saw the reply, so failures are retried, logged, and never
-            // fail the delivered turn.
-            await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation: completedState.conversation,
-                conversationId,
-              }),
-            );
+            // Post-delivery bookkeeping: the user already saw the reply, so
+            // every write below is retried, logged, and never fails the
+            // delivered turn. The SQL transcript rides through
+            // persistThreadStateWithRetry (its patch carries `conversation`),
+            // so it is persisted with the same retry as the thread state.
+            //
             // Commit the terminal completed session record first: it is the
             // delivered marker that keeps stranded-running recovery from
             // regenerating an already-delivered reply if the thread-state
@@ -1715,10 +1699,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sessionId: turnId,
               updateConversationStats,
             });
-            await persistConversationMessages({
-              conversation: preparedState.conversation,
-              conversationId,
-            });
             await persistThreadState(thread, {
               artifacts: latestArtifacts,
               conversation: preparedState.conversation,
@@ -1778,10 +1758,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             }
-            await persistConversationMessages({
-              conversation: preparedState.conversation,
-              conversationId,
-            });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });

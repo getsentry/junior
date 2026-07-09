@@ -39,7 +39,6 @@ import {
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
 
@@ -152,11 +151,6 @@ export function createSlackRuntime(
         text,
       });
       updateConversationStats(conversation);
-      await persistConversationMessages({
-        conversation,
-        conversationId:
-          getThreadId(thread, message) ?? getRunId(thread, message),
-      });
       await persistThreadState(thread, {
         conversation,
       });
@@ -177,11 +171,6 @@ export function createSlackRuntime(
       clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;
       updateConversationStats(conversation);
-      await persistConversationMessages({
-        conversation,
-        conversationId:
-          getThreadId(thread, message) ?? getRunId(thread, message),
-      });
       await persistThreadState(thread, {
         conversation,
       });
@@ -204,11 +193,6 @@ export function createSlackRuntime(
       clearSkippedTurnIfActive(preparedState.conversation, message.id);
       preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
       updateConversationStats(preparedState.conversation);
-      await persistConversationMessages({
-        conversation: preparedState.conversation,
-        conversationId:
-          getThreadId(thread, message) ?? getRunId(thread, message),
-      });
       await persistThreadState(thread, {
         conversation: preparedState.conversation,
       });

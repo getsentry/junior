@@ -9,7 +9,6 @@
  */
 import { logException, logInfo } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/chat/sql/db";
-import type { JuniorDestinationVisibility } from "./sql/schema/destinations";
 import {
   purgeConversationTree,
   resolveRootVisibility,
@@ -25,20 +24,7 @@ export const CONTENT_RETENTION_MS = {
 } as const;
 
 /** Maximum root conversation trees purged per bounded batch run. */
-export const RETENTION_BATCH_LIMIT = 200;
-
-/**
- * Resolve the retention window for a conversation's visibility. Only persisted
- * `public` earns the public window; every other value — `private`, `direct`,
- * `unknown`, or a missing destination — fails closed to the private window.
- */
-export function retentionWindowFor(
-  visibility: JuniorDestinationVisibility | null | undefined,
-): number {
-  return visibility === "public"
-    ? CONTENT_RETENTION_MS.public
-    : CONTENT_RETENTION_MS.private;
-}
+const RETENTION_BATCH_LIMIT = 200;
 
 /** Aggregate outcome of one bounded retention purge batch. */
 export interface RetentionPurgeResult {

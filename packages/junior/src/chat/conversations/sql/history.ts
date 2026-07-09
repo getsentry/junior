@@ -9,7 +9,8 @@ import {
   type PiMessageStep,
   type StoredAgentStep,
 } from "../history";
-import { juniorAgentSteps, juniorConversations } from "./schema";
+import { ensureConversationRow } from "./conversation-row";
+import { juniorAgentSteps } from "./schema";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;
@@ -57,9 +58,6 @@ function piMessageStep(step: PiMessageStep): NewAgentStep {
     entry: {
       type: "pi_message",
       message: step.message,
-      ...(step.schemaVersion !== undefined
-        ? { schemaVersion: step.schemaVersion }
-        : {}),
       ...(step.provenance ? { provenance: step.provenance } : {}),
     },
     createdAtMs: step.createdAtMs,
@@ -74,7 +72,11 @@ class SqlAgentStepStore implements AgentStepStore {
       return;
     }
     await this.executor.transaction(async () => {
-      await this.ensureConversation(conversationId, steps[0]!.createdAtMs);
+      await ensureConversationRow(
+        this.executor,
+        conversationId,
+        steps[0]!.createdAtMs,
+      );
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
@@ -90,7 +92,7 @@ class SqlAgentStepStore implements AgentStepStore {
     opts: { reason: EpochReason; messages: PiMessageStep[] },
   ): Promise<void> {
     await this.executor.transaction(async () => {
-      await this.ensureConversation(conversationId, Date.now());
+      await ensureConversationRow(this.executor, conversationId, Date.now());
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
@@ -103,43 +105,6 @@ class SqlAgentStepStore implements AgentStepStore {
       );
       await this.executor.db().insert(juniorAgentSteps).values(rows);
     });
-  }
-
-  /**
-   * Establish the conversation metadata row on first contact, matching the
-   * metadata store's lazy-upsert semantics: local and dispatch surfaces write
-   * steps before activity recording has created the row, and the steps table
-   * FKs to it.
-   *
-   * First contact creates the row; every later content write (step append)
-   * advances the activity clock so retention mirrors append-refresh semantics
-   * (each content append refreshes the retention window). The timestamp is
-   * content-intrinsic (the first step's `createdAtMs`), and `greatest(...)`
-   * guarantees a backfilled or imported historical step — which carries an old
-   * timestamp — can never regress `last_activity_at`.
-   */
-  private async ensureConversation(
-    conversationId: string,
-    atMs: number,
-  ): Promise<void> {
-    const at = new Date(atMs);
-    await this.executor
-      .db()
-      .insert(juniorConversations)
-      .values({
-        conversationId,
-        createdAt: at,
-        lastActivityAt: at,
-        updatedAt: at,
-        executionStatus: "idle",
-      })
-      .onConflictDoUpdate({
-        target: juniorConversations.conversationId,
-        set: {
-          lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
-          updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
-        },
-      });
   }
 
   async loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]> {

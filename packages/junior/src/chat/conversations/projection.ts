@@ -10,9 +10,7 @@
  * reducer only walks one epoch and never replays superseded generations.
  */
 import { isDeepStrictEqual } from "node:util";
-import type { Actor } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { StoredSlackActor } from "@/chat/actor";
 import {
   contextProvenance,
   type AuthorizationKind,
@@ -99,9 +97,7 @@ export function projectSteps(
 }
 
 /** Distinct MCP providers durably connected in the given steps, sorted. */
-export function connectedMcpProvidersFromSteps(
-  steps: StoredAgentStep[],
-): string[] {
+function connectedMcpProvidersFromSteps(steps: StoredAgentStep[]): string[] {
   const providers = new Set<string>();
   for (const step of steps) {
     if (step.entry.type === "mcp_provider_connected") {
@@ -125,18 +121,6 @@ function countMatchingPrefix(left: PiMessage[], right: PiMessage[]): number {
   return limit;
 }
 
-function latestInstructionActor(
-  provenance: PiMessageProvenance[],
-): Actor | undefined {
-  for (let index = provenance.length - 1; index >= 0; index -= 1) {
-    const entry = provenance[index]!;
-    if (entry.authority === "instruction" && entry.actor) {
-      return entry.actor;
-    }
-  }
-  return undefined;
-}
-
 /**
  * Resolve the aligned provenance to persist for `nextMessages`.
  *
@@ -148,6 +132,7 @@ function latestInstructionActor(
 function resolveCommitProvenance(args: {
   existing: SessionProjection;
   nextMessages: PiMessage[];
+  matchingPrefix: number;
   explicitProvenance?: PiMessageProvenance[];
   trailingMessageProvenance?: PiMessageProvenance[];
   newMessageProvenance?: PiMessageProvenance;
@@ -158,10 +143,7 @@ function resolveCommitProvenance(args: {
     }
     return args.explicitProvenance;
   }
-  const matchingPrefix = countMatchingPrefix(
-    args.existing.messages,
-    args.nextMessages,
-  );
+  const matchingPrefix = args.matchingPrefix;
   const provenance = args.nextMessages.map((_, index) =>
     index < matchingPrefix
       ? (args.existing.provenance[index] ?? contextProvenance)
@@ -244,31 +226,6 @@ export async function loadProjectionWithProvenance(
 }
 
 /**
- * Load the projection with the latest instruction actor as a stored Slack
- * actor, for callers that still key on a single latest actor.
- */
-export async function loadProjectionWithActor(
-  args: ScopedStore,
-): Promise<{ messages: PiMessage[]; actor?: StoredSlackActor }> {
-  const projection = await loadProjectionWithProvenance(args);
-  const actor = latestInstructionActor(projection.provenance);
-  if (actor?.platform === "slack") {
-    return {
-      messages: projection.messages,
-      actor: {
-        platform: "slack",
-        slackUserId: actor.userId,
-        teamId: actor.teamId,
-        ...(actor.userName ? { slackUserName: actor.userName } : {}),
-        ...(actor.fullName ? { fullName: actor.fullName } : {}),
-        ...(actor.email ? { email: actor.email } : {}),
-      },
-    };
-  }
-  return { messages: projection.messages };
-}
-
-/**
  * Load a turn's committed Pi projection from the durable step store.
  *
  * The record stays pinned to the epoch containing its committed boundary, so a
@@ -345,9 +302,11 @@ export async function commitMessages(args: {
   const existing = projectSteps(
     await stepStore.loadCurrentEpoch(args.conversationId),
   );
+  const matchingPrefix = countMatchingPrefix(existing.messages, args.messages);
   const nextProvenance = resolveCommitProvenance({
     existing,
     nextMessages: args.messages,
+    matchingPrefix,
     ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
@@ -356,7 +315,6 @@ export async function commitMessages(args: {
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  const matchingPrefix = countMatchingPrefix(existing.messages, args.messages);
   if (matchingPrefix === existing.messages.length) {
     const newMessages = args.messages.slice(matchingPrefix);
     await stepStore.append(

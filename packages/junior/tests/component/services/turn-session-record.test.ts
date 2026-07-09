@@ -456,7 +456,7 @@ describe("persistAuthPauseSessionRecord", () => {
       listAgentTurnSessionSummariesForConversation,
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
-    const { loadProjectionWithActor } =
+    const { loadProjectionWithProvenance } =
       await import("@/chat/conversations/projection");
 
     const previousQuestion: PiMessage = {
@@ -504,16 +504,18 @@ describe("persistAuthPauseSessionRecord", () => {
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
-    await expect(
-      loadProjectionWithActor({
-        conversationId: "conversation-turn-scope",
-      }),
-    ).resolves.toMatchObject({
-      actor: {
-        slackUserId: "U123",
-        slackUserName: "alice",
-      },
-      messages: [previousQuestion, currentQuestion],
+    const projection = await loadProjectionWithProvenance({
+      conversationId: "conversation-turn-scope",
+    });
+    expect(projection.messages).toEqual([previousQuestion, currentQuestion]);
+    const instructionActor = projection.provenance
+      .filter((entry) => entry.authority === "instruction" && entry.actor)
+      .at(-1)?.actor;
+    expect(instructionActor).toMatchObject({
+      platform: "slack",
+      teamId: "T123",
+      userId: "U123",
+      userName: "alice",
     });
     const summaries = await listAgentTurnSessionSummariesForConversation(
       "conversation-turn-scope",
