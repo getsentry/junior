@@ -741,17 +741,17 @@ export async function GET(
           logWarn(
             "oauth_callback_resume_busy",
             {
-              ...(stored.resumeConversationId
-                ? { conversationId: stored.resumeConversationId }
-                : {}),
-              ...(stored.userId ? { actorId: stored.userId } : {}),
-              ...(stored.channelId ? { channelId: stored.channelId } : {}),
+              ...(stored.resumeConversationId && {
+                conversationId: stored.resumeConversationId,
+              }),
+              ...(stored.userId && { actorId: stored.userId }),
+              ...(stored.channelId && { channelId: stored.channelId }),
             },
             {
               "app.credential.provider": stored.provider,
-              ...(stored.resumeSessionId
-                ? { "app.ai.session_id": stored.resumeSessionId }
-                : {}),
+              ...(stored.resumeSessionId && {
+                "app.ai.session_id": stored.resumeSessionId,
+              }),
             },
             "OAuth callback resume was busy; user must send another message to continue",
           );
