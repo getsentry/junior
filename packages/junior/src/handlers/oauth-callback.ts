@@ -740,12 +740,15 @@ export async function GET(
         if (error instanceof ResumeTurnBusyError) {
           logWarn(
             "oauth_callback_resume_busy",
-            {},
+            {
+              ...(stored.resumeConversationId
+                ? { conversationId: stored.resumeConversationId }
+                : {}),
+              ...(stored.userId ? { actorId: stored.userId } : {}),
+              ...(stored.channelId ? { channelId: stored.channelId } : {}),
+            },
             {
               "app.credential.provider": stored.provider,
-              ...(stored.resumeConversationId
-                ? { "app.ai.conversation_id": stored.resumeConversationId }
-                : {}),
               ...(stored.resumeSessionId
                 ? { "app.ai.session_id": stored.resumeSessionId }
                 : {}),
