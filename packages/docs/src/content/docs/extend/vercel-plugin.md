@@ -45,7 +45,7 @@ Set a Vercel token in your Junior deployment environment:
 JUNIOR_VERCEL_TOKEN=...
 ```
 
-Use a Vercel service account or token with the smallest project/team access that covers the deployments users need to inspect. Vercel API permissions are still evolving, so the plugin's read-only boundary comes from the command allowlist plus least-privilege account setup.
+Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the projects and teams users need to inspect.
 
 ## Optional channel defaults
 
@@ -60,7 +60,7 @@ These defaults are optional fallbacks. If a user names a different project, team
 
 ## Auth model
 
-- The plugin uses a deployment-level Vercel token, not per-user OAuth.
+- The plugin uses a single Vercel access token configured at deploy time, not per-user OAuth.
 - Junior keeps the real `JUNIOR_VERCEL_TOKEN` value host-side.
 - Matching Vercel API requests from the CLI receive a host-managed `Authorization` header.
 - The sandbox receives only a non-secret placeholder `VERCEL_TOKEN` so the Vercel CLI can perform its normal auth checks before making requests.
@@ -87,7 +87,7 @@ Confirm Junior can query Vercel successfully:
 
 - `JUNIOR_VERCEL_TOKEN` missing: add it to the Junior deployment environment and redeploy.
 - `401 Unauthorized`: the token is invalid, expired, revoked, or not being injected for Vercel API requests.
-- `403 Forbidden` or `permission denied`: the token or service account cannot read the requested project, deployment, or logs.
+- `403 Forbidden` or `permission denied`: the token lacks permission to read the requested project, deployment, or logs.
 - Project not found: confirm the project name, `vercel.project`, and `vercel.team` defaults.
 - Empty logs: confirm the environment, deployment, branch, and time window before widening the search.
 - Long-running live logs: live streaming is only for explicit user requests and should be stopped once enough evidence is captured.
