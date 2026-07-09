@@ -347,6 +347,61 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
+  it("hydrate triggers the lazy import for a Redis-only straggler and preserves replied + author", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    // Route the process singletons at the fixture executor so the production
+    // default-store hydrate path (no injected messageStore) resolves to this
+    // database — the same seam the lazy import uses internally.
+    const db = await import("@/chat/db");
+    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
+    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
+    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+
+    // Seed ONLY legacy Redis thread-state (a user message with a delivery mark
+    // and an author) and no SQL rows: the promotion-window straggler shape.
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
+      conversation: {
+        schemaVersion: 1,
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            text: "legacy hello",
+            createdAtMs: 100,
+            author: { userId: "U123", userName: "alice", fullName: "Alice" },
+            meta: { replied: true },
+          },
+        ],
+      },
+    });
+
+    try {
+      const conversation = coerceThreadConversationState({});
+      // Production default-store path: no messageStore injected, so hydrate must
+      // run the lazy import (resolving the spied singletons) before reading SQL.
+      await hydrateConversationMessages({
+        conversation,
+        conversationId: CONVERSATION_ID,
+      });
+
+      const hydratedUser = conversation.messages.find(
+        (message) => message.id === "m1",
+      );
+      expect(hydratedUser?.text).toBe("legacy hello");
+      expect(hydratedUser?.author?.userId).toBe("U123");
+      expect(hydratedUser?.author?.userName).toBe("alice");
+      expect(hydratedUser?.meta?.replied).toBe(true);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("bulk-imports legacy Redis history through the upgrade migration", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const stateAdapter = getStateAdapter();

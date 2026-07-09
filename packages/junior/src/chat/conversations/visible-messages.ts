@@ -80,6 +80,14 @@ function fromStoredMessage(
 /**
  * Replace the in-memory working set with the durable transcript from SQL,
  * excluding messages already folded into a thread-state compaction summary.
+ *
+ * Hydrate is a first-read boundary, so it must trigger the once-only Redis→SQL
+ * lazy import before reading SQL: consumers that hydrate before any step
+ * projection read (turn-dedupe, delivered-message redelivery guards,
+ * channel-context assembly) would otherwise make correctness decisions on an
+ * empty transcript for promotion-window stragglers whose history is still only
+ * in legacy Redis. The import is idempotent (skips when SQL step rows exist)
+ * and no-ops cheaply when there is nothing legacy to read.
  */
 export async function hydrateConversationMessages(args: {
   conversation: ThreadConversationState;
@@ -90,6 +98,16 @@ export async function hydrateConversationMessages(args: {
     args.conversation.messages = [];
     return;
   }
+  // Lazy Redis→SQL import for promotion-window stragglers, run before the SQL
+  // read so hydrate never observes an empty transcript for a conversation whose
+  // history is still only in legacy Redis. The dynamic import is deliberate:
+  // legacy-import.ts statically imports `toStoredConversationMessage` from this
+  // module, so a static import back would create a cycle; a function-level
+  // dynamic import keeps this seam trivially deletable when the legacy-import
+  // module is removed wholesale after the legacy Redis TTL horizon.
+  const { ensureLegacyConversationImport } =
+    await import("@/chat/conversations/legacy-import");
+  await ensureLegacyConversationImport({ conversationId: args.conversationId });
   const store = resolveStore(args.messageStore);
   const rows = await store.list(args.conversationId);
   const coveredIds = new Set(
