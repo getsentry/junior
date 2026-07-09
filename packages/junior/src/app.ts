@@ -43,6 +43,7 @@ import { GET as healthGET } from "@/handlers/health";
 import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { POST as githubWebhookPOST } from "@/handlers/github-webhook";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
+import { GET as retentionGET } from "@/handlers/retention";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { handleSandboxEgressRoute } from "@/handlers/sandbox-egress-route";
@@ -679,6 +680,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/internal/heartbeat", (c) => {
     return heartbeatGET(c.req.raw, waitUntil);
+  });
+
+  app.get("/api/internal/retention", (c) => {
+    return retentionGET(c.req.raw);
   });
 
   app.post("/api/webhooks/slack", (c) => {

@@ -1,5 +1,9 @@
 export const JUNIOR_HEARTBEAT_ROUTE = "/api/internal/heartbeat";
 export const JUNIOR_HEARTBEAT_CRON_SCHEDULE = "* * * * *";
+export const JUNIOR_RETENTION_ROUTE = "/api/internal/retention";
+// Retention is a dedicated daily bounded-batch cron, kept off the heartbeat
+// repair loop; a purge failure must not touch execution or recovery paths.
+export const JUNIOR_RETENTION_CRON_SCHEDULE = "0 4 * * *";
 export const JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE =
   "/api/internal/agent/continue";
 export const JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE = "/api/internal/plugin/tasks";

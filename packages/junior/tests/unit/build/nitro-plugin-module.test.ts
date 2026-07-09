@@ -10,6 +10,8 @@ import {
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_RETENTION_CRON_SCHEDULE,
+  JUNIOR_RETENTION_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -96,6 +98,10 @@ describe("juniorNitro plugin modules", () => {
           path: JUNIOR_HEARTBEAT_ROUTE,
           schedule: JUNIOR_HEARTBEAT_CRON_SCHEDULE,
         },
+        {
+          path: JUNIOR_RETENTION_ROUTE,
+          schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
+        },
       ],
     });
     expect(vercel.functions).toEqual({
@@ -180,6 +186,10 @@ describe("juniorNitro plugin modules", () => {
       {
         path: JUNIOR_HEARTBEAT_ROUTE,
         schedule: "*/5 * * * *",
+      },
+      {
+        path: JUNIOR_RETENTION_ROUTE,
+        schedule: JUNIOR_RETENTION_CRON_SCHEDULE,
       },
     ]);
     expect(vercel.functions).toEqual({

@@ -33,11 +33,11 @@
 
 ## 5. Retention
 
-- [ ] 5.1 Retention policy module: `CONTENT_RETENTION_MS` constants, `retentionWindowFor(visibility)` fail-closed, root-resolution through `parent_conversation_id`
-- [ ] 5.2 Purge job: bounded batch over expired roots by `last_activity_at`, wholesale delete of messages/steps/descendants, `transcript_purged_at` stamp, private metadata scrubbing (title, channel name, actor JSON)
-- [ ] 5.3 Wire `/api/internal/retention` daily cron through `juniorNitro()` Vercel Build Output config (same pattern as the heartbeat cron)
-- [ ] 5.4 Expose `purgeConversation(conversationId)` as the erasure primitive
-- [ ] 5.5 Tests: tier resolution, visibility-flip window change, child-rides-root, bounded batching, expired-vs-redacted reporting distinction
+- [x] 5.1 Retention policy module: `CONTENT_RETENTION_MS` constants, `retentionWindowFor(visibility)` fail-closed, root-resolution through `parent_conversation_id`
+- [x] 5.2 Purge job: bounded batch over expired roots by `last_activity_at`, wholesale delete of messages/steps/descendants, `transcript_purged_at` stamp, private metadata scrubbing (title, channel name, actor JSON)
+- [x] 5.3 Wire `/api/internal/retention` daily cron through `juniorNitro()` Vercel Build Output config (same pattern as the heartbeat cron)
+- [x] 5.4 Expose `purgeConversation(conversationId)` as the erasure primitive
+- [x] 5.5 Tests: tier resolution, visibility-flip window change, child-rides-root, bounded batching, expired-vs-redacted reporting distinction
 
 ## 6. Verification
 
