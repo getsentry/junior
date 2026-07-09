@@ -42,7 +42,7 @@
 ## 6. Verification
 
 - [x] 6.1 Add eval transcript assertion helpers in `junior-evals` (SQL-store-backed readers over the normalized session, e.g. `agentSteps(result.session)` / `conversationMessages(result.session)`), plus at least one eval case asserting a turn persists its `pi_message` steps in `junior_agent_steps` (right conversation, current epoch) and its visible messages in `junior_conversation_messages`; extend the advisor eval to assert the child conversation exists and holds the advisor steps
-- [ ] 6.2 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across the cutover slices
+- [x] 6.2 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across the cutover slices
 
 ## 7. Dead-Code Deletion (Deferred To Follow-Up PR)
 
