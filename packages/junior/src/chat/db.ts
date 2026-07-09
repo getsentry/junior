@@ -29,7 +29,11 @@ function createDb(args: {
   });
 }
 
-function getSqlExecutor(): JuniorSqlExecutor {
+/**
+ * Return the process SQL executor. Exposed for the one-time legacy import
+ * writer, which needs explicit-`seq`/epoch inserts the step-store port omits.
+ */
+export function getSqlExecutor(): JuniorSqlExecutor {
   const { sql } = getChatConfig();
   if (
     current?.databaseUrl !== sql.databaseUrl ||

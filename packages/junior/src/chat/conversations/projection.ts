@@ -25,6 +25,7 @@ import type {
   StoredAgentStep,
 } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
+import { ensureLegacyConversationImport } from "@/chat/conversations/legacy-import";
 
 type PiMessageStepEntry = Extract<AgentStepEntry, { type: "pi_message" }>;
 type AuthorizationCompletedEntry = Extract<
@@ -207,8 +208,27 @@ function store(args: { stepStore?: AgentStepStore }): AgentStepStore {
   return args.stepStore ?? getAgentStepStore();
 }
 
+/**
+ * Bridge a straggler's legacy Redis history into SQL before an execution read.
+ *
+ * Runtime turn/resume reads omit `stepStore` and run under the conversation
+ * lease the worker already holds, so this is the once-only lazy-import seam.
+ * Injected-store callers (tests, advisor child reads, compaction) never trigger
+ * it. Removed with the rest of the one-time import after the Redis TTL horizon.
+ */
+async function importLegacyIfNeeded(args: {
+  conversationId: string;
+  stepStore?: AgentStepStore;
+}): Promise<void> {
+  if (args.stepStore) {
+    return;
+  }
+  await ensureLegacyConversationImport({ conversationId: args.conversationId });
+}
+
 /** Load the current-epoch Pi projection for a conversation. */
 export async function loadProjection(args: ScopedStore): Promise<PiMessage[]> {
+  await importLegacyIfNeeded(args);
   const steps = await store(args).loadCurrentEpoch(args.conversationId);
   return projectSteps(steps).messages;
 }
@@ -217,6 +237,7 @@ export async function loadProjection(args: ScopedStore): Promise<PiMessage[]> {
 export async function loadProjectionWithProvenance(
   args: ScopedStore,
 ): Promise<SessionProjection> {
+  await importLegacyIfNeeded(args);
   const steps = await store(args).loadCurrentEpoch(args.conversationId);
   const { messages, provenance } = projectSteps(steps);
   return { messages, provenance };
@@ -265,6 +286,7 @@ export async function loadTurnProjection(args: {
   includeTail: boolean;
   stepStore?: AgentStepStore;
 }): Promise<StepProjection | undefined> {
+  await importLegacyIfNeeded(args);
   const stepStore = store(args);
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.

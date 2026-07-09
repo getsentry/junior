@@ -67,7 +67,9 @@ function isDefaultContextProvenance(provenance: PiMessageProvenance): boolean {
  * decodes to an authored instruction when the identity is intact; anything
  * missing or malformed fails closed to unauthored context.
  */
-function legacyActorProvenance(actor: StoredSlackActor): PiMessageProvenance {
+export function legacyActorProvenance(
+  actor: StoredSlackActor,
+): PiMessageProvenance {
   if (actor.teamId && actor.slackUserId && actor.platform) {
     return instructionProvenance({
       platform: "slack",
@@ -865,6 +867,21 @@ async function loadEntries(
 ): Promise<SessionLogEntry[]> {
   const store = args.store ?? (await defaultStore());
   return (await store.read(args)).map(decode);
+}
+
+/**
+ * Read the raw decoded legacy session-log entries for one conversation.
+ *
+ * The single read source for the one-time Redis→SQL history import; it returns
+ * every entry in list order (no projection collapsing) so the importer can
+ * translate `sessionId` markers into context epochs.
+ */
+export async function readSessionLogEntries(
+  args: Scope & {
+    store?: SessionLogStore;
+  },
+): Promise<SessionLogEntry[]> {
+  return loadEntries(args);
 }
 
 /** Load chronological host-only runtime activity entries for reporting. */

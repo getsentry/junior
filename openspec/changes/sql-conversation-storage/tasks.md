@@ -26,10 +26,10 @@
 
 ## 4. Backfill
 
-- [ ] 4.1 Bulk import in `junior upgrade`: bounded newest-first scan of Redis session logs; translate sessions→epochs, explode `projection_reset` into marker + rows, convert advisor keys to child conversations, normalize v1 shapes; idempotent per conversation
-- [ ] 4.2 Timestamp fallback (message-internal → conversation timestamps) with tests asserting no fabricated import-time values
-- [ ] 4.3 Lazy per-conversation import under the conversation lease for logs the old deployment touched after the bulk snapshot; test the no-SQL-rows + Redis-log-present path
-- [ ] 4.4 Backfill visible messages from `thread-state` conversation state where present (best effort, idempotent)
+- [x] 4.1 Bulk import in `junior upgrade`: bounded newest-first scan of Redis session logs; translate sessions→epochs, explode `projection_reset` into marker + rows, convert advisor keys to child conversations, normalize v1 shapes; idempotent per conversation
+- [x] 4.2 Timestamp fallback (message-internal → conversation timestamps) with tests asserting no fabricated import-time values
+- [x] 4.3 Lazy per-conversation import under the conversation lease for logs the old deployment touched after the bulk snapshot; test the no-SQL-rows + Redis-log-present path
+- [x] 4.4 Backfill visible messages from `thread-state` conversation state where present (best effort, idempotent)
 
 ## 5. Retention
 
