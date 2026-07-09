@@ -110,6 +110,13 @@ class SqlAgentStepStore implements AgentStepStore {
    * metadata store's lazy-upsert semantics: local and dispatch surfaces write
    * steps before activity recording has created the row, and the steps table
    * FKs to it.
+   *
+   * First contact creates the row; every later content write (step append)
+   * advances the activity clock so retention mirrors append-refresh semantics
+   * (each content append refreshes the retention window). The timestamp is
+   * content-intrinsic (the first step's `createdAtMs`), and `greatest(...)`
+   * guarantees a backfilled or imported historical step — which carries an old
+   * timestamp — can never regress `last_activity_at`.
    */
   private async ensureConversation(
     conversationId: string,
@@ -126,7 +133,13 @@ class SqlAgentStepStore implements AgentStepStore {
         updatedAt: at,
         executionStatus: "idle",
       })
-      .onConflictDoNothing({ target: juniorConversations.conversationId });
+      .onConflictDoUpdate({
+        target: juniorConversations.conversationId,
+        set: {
+          lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
+          updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
+        },
+      });
   }
 
   async loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]> {

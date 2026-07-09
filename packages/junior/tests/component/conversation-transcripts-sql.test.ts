@@ -276,6 +276,62 @@ INSERT INTO junior_agent_steps (
     }
   });
 
+  it("advances last_activity_at on content writes without regressing on backdated content", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    async function lastActivityMs(): Promise<number> {
+      const rows = await fixture.sql
+        .db()
+        .select({ lastActivityAt: juniorConversations.lastActivityAt })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      return rows[0]!.lastActivityAt.getTime();
+    }
+
+    try {
+      await migrateSchema(fixture.sql);
+      // Seed an old activity clock; content writes must refresh the window.
+      await seedConversation(fixture, CONVERSATION_ID);
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ lastActivityAt: new Date(1_000) })
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      const messages = createSqlConversationMessageStore(fixture.sql);
+      const steps = createSqlAgentStepStore(fixture.sql);
+
+      // A newer message advances the clock (append-refresh semantics).
+      await messages.record(CONVERSATION_ID, [
+        { messageId: "m1", role: "user", text: "newer", createdAtMs: 5_000 },
+      ]);
+      expect(await lastActivityMs()).toBe(5_000);
+
+      // A backdated message must not regress the clock.
+      await messages.record(CONVERSATION_ID, [
+        { messageId: "m0", role: "user", text: "older", createdAtMs: 2_000 },
+      ]);
+      expect(await lastActivityMs()).toBe(5_000);
+
+      // Step appends advance the clock too, and also never regress it.
+      await steps.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("newest") },
+          createdAtMs: 8_000,
+        },
+      ]);
+      expect(await lastActivityMs()).toBe(8_000);
+      await steps.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("backdated") },
+          createdAtMs: 3_000,
+        },
+      ]);
+      expect(await lastActivityMs()).toBe(8_000);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("purges steps and messages for a conversation and its descendants", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
