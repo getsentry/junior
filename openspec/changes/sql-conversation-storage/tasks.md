@@ -21,8 +21,8 @@
 - [x] 3.3 Convert the advisor tool to child conversations: create child conversation rows, write steps under the child id, replace `transcriptRef` with `childConversationId`; update reporting's subagent transcript reader
 - [x] 3.4 Move visible-message writes/reads (ingress recording, reply policy, channel-context assembly) to `ConversationMessageStore`; `replied` marks become `replied_at` updates
 - [x] 3.5 Flip turn-session record cursors from `committedMessageCount` counts to `seq` references at the same cutover
-- [ ] 3.6 Update reporting/dashboard transcript builders to read steps/messages from SQL, excluding child conversations from top-level listings; keep redaction behavior byte-compatible
-- [ ] 3.7 Integration tests: cooperative yield → resume from SQL epoch, compaction rebuild, follow-up injection, subagent transcript render; eval only if agent-visible continuity behavior changes
+- [x] 3.6 Update reporting/dashboard transcript builders to read steps/messages from SQL, excluding child conversations from top-level listings; keep redaction behavior byte-compatible
+- [x] 3.7 Integration tests: cooperative yield → resume from SQL epoch, compaction rebuild, follow-up injection, subagent transcript render; eval only if agent-visible continuity behavior changes
 
 ## 4. Backfill
 

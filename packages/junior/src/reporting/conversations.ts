@@ -40,17 +40,13 @@ import {
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import {
-  loadActivityEntries,
-  type SessionActivityEntry,
-} from "@/chat/state/session-log";
-import {
   toStoredSlackActor,
   type Actor,
   type StoredSlackActor,
 } from "@/chat/actor";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getAgentStepStore, getConversationStore } from "@/chat/db";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadProjection, projectSteps } from "@/chat/conversations/projection";
 import type {
   AgentStepEntry,
   AgentStepStore,
@@ -194,6 +190,14 @@ export interface ConversationRunReport extends ConversationSummaryReport {
   transcriptMessageCount?: number;
   transcriptRedacted?: boolean;
   transcriptRedactionReason?: "non_public_conversation";
+  /**
+   * True when retention purged this conversation's content. Expiry under
+   * retention is distinct from privacy redaction: the content aged out and was
+   * deleted, so no metadata is derived from it (see data-redaction-policy.md).
+   */
+  transcriptExpired?: boolean;
+  /** When the content was purged (ISO 8601); present only with `transcriptExpired`. */
+  transcriptExpiredAt?: string;
   transcript: TranscriptMessage[];
 }
 
@@ -264,6 +268,10 @@ export interface ConversationSubagentTranscriptReport {
   transcriptMessageCount?: number;
   transcriptRedacted?: boolean;
   transcriptRedactionReason?: "non_public_conversation";
+  /** True when retention purged the parent conversation's content. */
+  transcriptExpired?: boolean;
+  /** When the content was purged (ISO 8601); present only with `transcriptExpired`. */
+  transcriptExpiredAt?: string;
   unavailableReason?:
     | "missing_transcript_range"
     | "missing_transcript_ref"
@@ -1240,75 +1248,52 @@ function activityPayloadFields(
     : { redacted: true, ...redactedPayloadFields("input", args) };
 }
 
-function subagentActivity(
-  entry: Extract<SessionActivityEntry, { type: "subagent_started" }>,
-  options: {
-    canExposeTranscript: boolean;
-    end?: Extract<SessionActivityEntry, { type: "subagent_ended" }>;
-    parentStatus?: ConversationActivityStatus;
-  },
-): ConversationSubagentActivityReport {
-  const end = options.end;
-  return {
-    type: "subagent",
-    id: entry.subagentInvocationId,
-    subagentKind: entry.subagentKind,
-    ...(entry.parentToolCallId
-      ? { parentToolCallId: entry.parentToolCallId }
-      : {}),
-    createdAt: new Date(entry.createdAtMs).toISOString(),
-    ...(end
-      ? {
-          endedAt: new Date(end.createdAtMs).toISOString(),
-          outcome: end.outcome,
-          status: end.outcome,
-          ...(options.canExposeTranscript &&
-          end.transcriptStartMessageIndex !== undefined &&
-          end.transcriptEndMessageIndex !== undefined
-            ? { transcriptAvailable: true }
-            : {}),
-        }
-      : { status: options.parentStatus ?? "running" }),
-  };
-}
-
-function buildConversationActivity(args: {
+/**
+ * Build the current-run activity timeline from durable agent steps.
+ *
+ * Tool executions, subagent starts/ends, and their nesting are derived from the
+ * conversation's `junior_agent_steps` rows instead of the legacy Redis session
+ * log; tool statuses come from the aligned `pi_message` tool results. Redaction
+ * stays byte-compatible with the prior session-log path.
+ */
+function buildConversationActivityFromSteps(args: {
   canExposePayload: boolean;
-  entries: SessionActivityEntry[];
+  steps: StoredAgentStep[];
   messages: PiMessage[];
 }): ConversationActivityReport[] {
   const toolStatuses = toolResultStatuses(args.messages);
-  const subagentEnds = new Map<
-    string,
-    Extract<SessionActivityEntry, { type: "subagent_ended" }>
-  >();
+  const subagentEnds = new Map<string, SubagentEndedStep>();
   const subagentsByToolCallId = new Map<
     string,
     ConversationSubagentActivityReport[]
   >();
   const orphanSubagents: ConversationSubagentActivityReport[] = [];
 
-  for (const entry of args.entries) {
-    if (entry.type === "subagent_ended") {
-      subagentEnds.set(entry.subagentInvocationId, entry);
+  for (const step of args.steps) {
+    if (step.entry.type === "subagent_ended") {
+      subagentEnds.set(
+        step.entry.subagentInvocationId,
+        step as SubagentEndedStep,
+      );
     }
   }
 
-  for (const entry of args.entries) {
-    if (entry.type !== "subagent_started") {
+  for (const step of args.steps) {
+    if (step.entry.type !== "subagent_started") {
       continue;
     }
-    const parentStatus = entry.parentToolCallId
-      ? toolStatuses.get(entry.parentToolCallId)
+    const start = step as SubagentStartedStep;
+    const parentStatus = start.entry.parentToolCallId
+      ? toolStatuses.get(start.entry.parentToolCallId)
       : undefined;
-    const activity = subagentActivity(entry, {
-      canExposeTranscript: args.canExposePayload,
-      end: subagentEnds.get(entry.subagentInvocationId),
-      parentStatus,
-    });
-    if (entry.parentToolCallId) {
-      subagentsByToolCallId.set(entry.parentToolCallId, [
-        ...(subagentsByToolCallId.get(entry.parentToolCallId) ?? []),
+    const activity = subagentActivityFromSteps(
+      start,
+      subagentEnds.get(start.entry.subagentInvocationId),
+      { canExposeTranscript: args.canExposePayload, parentStatus },
+    );
+    if (start.entry.parentToolCallId) {
+      subagentsByToolCallId.set(start.entry.parentToolCallId, [
+        ...(subagentsByToolCallId.get(start.entry.parentToolCallId) ?? []),
         activity,
       ]);
       continue;
@@ -1317,19 +1302,19 @@ function buildConversationActivity(args: {
   }
 
   const rows: ConversationActivityReport[] = [];
-  for (const entry of args.entries) {
-    if (entry.type !== "tool_execution_started") {
+  for (const step of args.steps) {
+    if (step.entry.type !== "tool_execution_started") {
       continue;
     }
     rows.push({
       type: "tool_execution",
-      id: entry.toolCallId,
-      toolCallId: entry.toolCallId,
-      toolName: entry.toolName,
-      createdAt: new Date(entry.createdAtMs).toISOString(),
-      status: toolStatuses.get(entry.toolCallId) ?? "running",
-      subagents: subagentsByToolCallId.get(entry.toolCallId) ?? [],
-      ...activityPayloadFields(entry.args, args.canExposePayload),
+      id: step.entry.toolCallId,
+      toolCallId: step.entry.toolCallId,
+      toolName: step.entry.toolName,
+      createdAt: new Date(step.createdAtMs).toISOString(),
+      status: toolStatuses.get(step.entry.toolCallId) ?? "running",
+      subagents: subagentsByToolCallId.get(step.entry.toolCallId) ?? [],
+      ...activityPayloadFields(step.entry.args, args.canExposePayload),
     });
   }
 
@@ -1441,6 +1426,8 @@ function subagentTranscriptReport(
     transcriptMessageCount?: number;
     transcriptRedacted?: boolean;
     transcriptRedactionReason?: "non_public_conversation";
+    transcriptExpired?: boolean;
+    transcriptExpiredAt?: string;
     unavailableReason?: ConversationSubagentTranscriptReport["unavailableReason"];
   } = {},
 ): ConversationSubagentTranscriptReport {
@@ -1471,6 +1458,12 @@ function subagentTranscriptReport(
       : {}),
     ...(options.transcriptRedactionReason
       ? { transcriptRedactionReason: options.transcriptRedactionReason }
+      : {}),
+    ...(options.transcriptExpired
+      ? { transcriptExpired: options.transcriptExpired }
+      : {}),
+    ...(options.transcriptExpiredAt
+      ? { transcriptExpiredAt: options.transcriptExpiredAt }
       : {}),
     ...(options.unavailableReason
       ? { unavailableReason: options.unavailableReason }
@@ -1636,6 +1629,61 @@ export async function listRecentConversationSummaries(
   });
 }
 
+/** Build the current run's activity timeline from the current context epoch. */
+async function currentRunActivity(args: {
+  conversationId: string;
+  stepStore: AgentStepStore;
+  canExposePayload: boolean;
+}): Promise<ConversationActivityReport[]> {
+  const steps = await args.stepStore.loadCurrentEpoch(args.conversationId);
+  return buildConversationActivityFromSteps({
+    canExposePayload: args.canExposePayload,
+    steps,
+    messages: projectSteps(steps).messages,
+  });
+}
+
+/**
+ * Present a run whose content retention purged as expired, not privacy-redacted.
+ *
+ * The transcript is empty and no per-message metadata is derived (the rows were
+ * deleted); only the summary's safe metadata survives, with `transcriptExpired`
+ * marking the distinct retention reason (`specs/data-redaction-policy.md`).
+ */
+function expiredRunReport(args: {
+  conversation?: StoredConversation;
+  details?: ConversationDetailsRecord;
+  nowMs: number;
+  summary: AgentTurnSessionSummary;
+  transcriptExpiredAt: string;
+}): ConversationRunReport {
+  const report: ConversationRunReport = {
+    ...sessionReportFromSummary(
+      args.summary,
+      args.nowMs,
+      args.details,
+      args.conversation?.visibility,
+    ),
+    activity: [],
+    transcriptAvailable: false,
+    transcriptExpired: true,
+    transcriptExpiredAt: args.transcriptExpiredAt,
+    transcriptMetadata: [],
+    transcript: [],
+  };
+  return args.conversation
+    ? {
+        ...report,
+        ...applyConversationIndexMetadata({
+          conversation: args.conversation,
+          details: args.details,
+          nowMs: args.nowMs,
+          report,
+        }),
+      }
+    : report;
+}
+
 /** Read one conversation transcript for reporting consumers. */
 export async function readConversationReport(
   conversationId: string,
@@ -1655,15 +1703,44 @@ export async function readConversationReport(
       left.sessionId.localeCompare(right.sessionId),
   );
 
+  const stepStore = options.stepStore ?? getAgentStepStore();
+  const transcriptPurgedAtMs = conversation?.transcriptPurgedAtMs;
+  const transcriptExpiredAt =
+    transcriptPurgedAtMs !== undefined
+      ? new Date(transcriptPurgedAtMs).toISOString()
+      : undefined;
+
+  // The activity timeline is the current run's, derived from the current
+  // context epoch's durable steps; older epochs stay audit-only. Purged
+  // conversations have no steps to read.
+  const conversationActivity =
+    conversation && transcriptPurgedAtMs === undefined
+      ? await currentRunActivity({
+          conversationId,
+          stepStore,
+          canExposePayload: canExposeConversationPayload({
+            conversationId,
+            visibility: conversation.visibility,
+          }),
+        })
+      : [];
+
   const runs = await Promise.all(
-    summaries.map(async (summary): Promise<ConversationRunReport> => {
-      const [sessionRecord, activityEntries] = await Promise.all([
-        getAgentTurnSessionRecord(summary.conversationId, summary.sessionId),
-        loadActivityEntries({
-          conversationId: summary.conversationId,
-          sessionId: summary.sessionId,
-        }),
-      ]);
+    summaries.map(async (summary, index): Promise<ConversationRunReport> => {
+      if (transcriptExpiredAt !== undefined) {
+        return expiredRunReport({
+          conversation,
+          details,
+          nowMs,
+          summary,
+          transcriptExpiredAt,
+        });
+      }
+      const isNewestRun = index === summaries.length - 1;
+      const sessionRecord = await getAgentTurnSessionRecord(
+        summary.conversationId,
+        summary.sessionId,
+      );
       const scopedMessages = sessionRecord?.piMessages
         ? turnScopedMessages(
             sessionRecord.piMessages,
@@ -1677,11 +1754,10 @@ export async function readConversationReport(
       const normalizedTranscript = scopedMessages.messages.map(
         normalizeTranscriptMessage,
       );
-      const activity = buildConversationActivity({
-        canExposePayload: canExposeTranscript,
-        entries: activityEntries,
-        messages: scopedMessages.messages,
-      });
+      // Activity steps are conversation-scoped with no per-turn boundary in
+      // this slice, so the current run carries the timeline and earlier runs
+      // show none until a `junior_agent_turns` read model exists.
+      const activity = isNewestRun ? conversationActivity : [];
       const transcriptMessageCount =
         countConversationMessages(normalizedTranscript);
       const transcript = canExposeTranscript
@@ -1747,6 +1823,13 @@ export async function readConversationReport(
             ...sessionReportFromConversation(conversation, nowMs, details),
             activity: [],
             transcriptAvailable: false,
+            ...(transcriptExpiredAt !== undefined
+              ? {
+                  transcriptExpired: true,
+                  transcriptExpiredAt,
+                  transcriptMetadata: [],
+                }
+              : {}),
             transcript: [],
           },
         ];
@@ -1781,6 +1864,10 @@ type SubagentEndedStep = StoredAgentStep & {
 function subagentActivityFromSteps(
   start: SubagentStartedStep,
   end: SubagentEndedStep | undefined,
+  options: {
+    canExposeTranscript?: boolean;
+    parentStatus?: ConversationActivityStatus;
+  } = {},
 ): ConversationSubagentActivityReport {
   return {
     type: "subagent",
@@ -1795,8 +1882,11 @@ function subagentActivityFromSteps(
           endedAt: new Date(end.createdAtMs).toISOString(),
           outcome: end.entry.outcome,
           status: end.entry.outcome,
+          // Every subagent is a child conversation whose transcript loads on
+          // demand; expose the affordance only when the parent is public.
+          ...(options.canExposeTranscript ? { transcriptAvailable: true } : {}),
         }
-      : { status: "running" }),
+      : { status: options.parentStatus ?? "running" }),
   };
 }
 
@@ -1821,6 +1911,24 @@ export async function readConversationSubagentTranscriptReport(
     store.get({ conversationId }),
     stepStore.loadHistory(conversationId),
   ]);
+
+  // Retention purge deletes the parent tree's steps wholesale; present the
+  // subagent as expired rather than "not found" (data-redaction-policy.md).
+  if (conversation?.transcriptPurgedAtMs !== undefined) {
+    return {
+      type: "subagent",
+      createdAt: new Date(0).toISOString(),
+      id: subagentId,
+      status: "completed",
+      subagentKind: "unknown",
+      transcript: [],
+      transcriptAvailable: false,
+      transcriptExpired: true,
+      transcriptExpiredAt: new Date(
+        conversation.transcriptPurgedAtMs,
+      ).toISOString(),
+    };
+  }
 
   const start = parentSteps.find(
     (step): step is SubagentStartedStep =>

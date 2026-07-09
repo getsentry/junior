@@ -114,9 +114,10 @@ export interface JuniorReporting {
   /**
    * Read one conversation transcript for reporting consumers.
    *
-   * The current implementation joins turn-session records with expiring session
-   * logs, but the API should stay compatible with a future Sentry trace-history
-   * source. Avoid adding fields that require Redis-only transcript internals.
+   * Transcript messages and activity steps come from SQL (`junior_agent_steps`
+   * / `junior_conversation_messages`); the API should stay compatible with a
+   * future Sentry trace-history source, so avoid fields that require store
+   * internals.
    */
   getConversation(conversationId: string): Promise<ConversationReport>;
   /** Load a child-agent transcript only when an operator opens that subagent. */
