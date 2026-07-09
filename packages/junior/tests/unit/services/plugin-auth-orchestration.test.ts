@@ -122,7 +122,7 @@ describe("createPluginAuthOrchestration", () => {
         userMessage: "check Sentry",
       }),
     );
-    expect(unlinkProvider).toHaveBeenCalledWith("U123", "sentry", tokens);
+    expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
   it("starts oauth when exit code is 0 (pipe-masked failure)", async () => {
@@ -185,7 +185,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(startOAuthFlow).not.toHaveBeenCalled();
   });
 
-  it("unlinks the stored token only after oauth restart is launched", async () => {
+  it("starts oauth before throwing pause error without unlinking stored token", async () => {
     const order: string[] = [];
     const tokens = tokenStore();
     const abortAgent = vi.fn();
@@ -193,9 +193,6 @@ describe("createPluginAuthOrchestration", () => {
     startOAuthFlow.mockImplementation(async () => {
       order.push("oauth");
       return { ok: true, delivery: { channelId: "D123" } };
-    });
-    unlinkProvider.mockImplementation(async () => {
-      order.push("unlink");
     });
 
     const orchestration = createPluginAuthOrchestration({
@@ -209,8 +206,12 @@ describe("createPluginAuthOrchestration", () => {
       orchestration.maybeHandleAuthSignal({ auth_required: sentryAuthSignal }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
 
-    expect(order).toEqual(["oauth", "unlink"]);
-    expect(unlinkProvider).toHaveBeenCalledWith("U123", "sentry", tokens);
+    // OAuth starts but the stored token is NOT deleted: a 401 from the upstream
+    // may be caused by scope/org mismatch rather than an invalid credential.
+    // The new OAuth flow overwrites the token on completion; proactive deletion
+    // destroys a working connection and causes the re-auth loop.
+    expect(order).toEqual(["oauth"]);
+    expect(unlinkProvider).not.toHaveBeenCalled();
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -282,7 +283,7 @@ describe("createPluginAuthOrchestration", () => {
         userMessage: "push the branch",
       }),
     );
-    expect(unlinkProvider).toHaveBeenCalledWith("U123", "github", tokens);
+    expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
   it("sends a fresh link when the pending auth belongs to a previous session", async () => {
