@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/chat/sql/db";
 import {
   agentStepEntrySchema,
@@ -9,11 +9,7 @@ import {
   type PiMessageStep,
   type StoredAgentStep,
 } from "../history";
-import {
-  juniorAgentSteps,
-  juniorConversationMessages,
-  juniorConversations,
-} from "./schema";
+import { juniorAgentSteps, juniorConversations } from "./schema";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;
@@ -162,25 +158,6 @@ class SqlAgentStepStore implements AgentStepStore {
     return rows.map(stepFromRow);
   }
 
-  async purgeConversation(conversationId: string): Promise<void> {
-    await this.executor.transaction(async () => {
-      const ids = await this.descendantIds(conversationId);
-      await this.executor
-        .db()
-        .delete(juniorAgentSteps)
-        .where(inArray(juniorAgentSteps.conversationId, ids));
-      await this.executor
-        .db()
-        .delete(juniorConversationMessages)
-        .where(inArray(juniorConversationMessages.conversationId, ids));
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ transcriptPurgedAt: new Date() })
-        .where(inArray(juniorConversations.conversationId, ids));
-    });
-  }
-
   /** Read the next `seq` and current highest epoch for one conversation. */
   private async readCursor(
     conversationId: string,
@@ -200,27 +177,6 @@ class SqlAgentStepStore implements AgentStepStore {
         maxEpoch === null || maxEpoch === undefined ? null : Number(maxEpoch),
       nextSeq: maxSeq === null || maxSeq === undefined ? 0 : Number(maxSeq) + 1,
     };
-  }
-
-  /** Collect this conversation and every descendant via parent_conversation_id. */
-  private async descendantIds(conversationId: string): Promise<string[]> {
-    const all = new Set<string>([conversationId]);
-    let frontier = [conversationId];
-    while (frontier.length > 0) {
-      const children = await this.executor
-        .db()
-        .select({ id: juniorConversations.conversationId })
-        .from(juniorConversations)
-        .where(inArray(juniorConversations.parentConversationId, frontier));
-      frontier = [];
-      for (const child of children) {
-        if (!all.has(child.id)) {
-          all.add(child.id);
-          frontier.push(child.id);
-        }
-      }
-    }
-    return [...all];
   }
 }
 

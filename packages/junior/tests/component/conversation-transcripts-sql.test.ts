@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/chat/sql/db";
@@ -297,7 +298,9 @@ INSERT INTO junior_agent_steps (
         ]);
       }
 
-      await steps.purgeConversation(CONVERSATION_ID);
+      await purgeConversation(fixture.sql, CONVERSATION_ID, {
+        nowMs: 5_000,
+      });
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
         expect(await steps.loadHistory(conversationId)).toEqual([]);

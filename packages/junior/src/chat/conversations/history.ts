@@ -143,9 +143,4 @@ export interface AgentStepStore {
   loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]>;
   /** All steps across all epochs in `seq` order, for audit and reporting. */
   loadHistory(conversationId: string): Promise<StoredAgentStep[]>;
-  /**
-   * Delete steps and messages for the conversation and all descendant
-   * conversations, and stamp `transcript_purged_at` on each affected row.
-   */
-  purgeConversation(conversationId: string): Promise<void>;
 }

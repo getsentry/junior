@@ -1626,7 +1626,9 @@ describe("dashboard reporting", () => {
   it("presents purged conversation content as expired under retention", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getSqlExecutor } = await import("@/chat/db");
+    const { purgeConversation } =
+      await import("@/chat/conversations/retention");
     const { createJuniorReporting } = await import("@/reporting");
 
     const conversationId = "slack:C1:purged";
@@ -1651,7 +1653,9 @@ describe("dashboard reporting", () => {
     });
 
     // Retention deletes content wholesale and stamps transcript_purged_at.
-    await getAgentStepStore().purgeConversation(conversationId);
+    await purgeConversation(getSqlExecutor(), conversationId, {
+      nowMs: Date.now(),
+    });
 
     const report =
       await createJuniorReporting().getConversation(conversationId);

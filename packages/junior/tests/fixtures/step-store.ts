@@ -69,8 +69,5 @@ export function createMemoryAgentStepStore(): AgentStepStore {
         (left, right) => left.seq - right.seq,
       );
     },
-    async purgeConversation(conversationId): Promise<void> {
-      byConversation.delete(conversationId);
-    },
   };
 }
