@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
 const PLUGIN_SCHEMA_LOCK_NAME = "junior_plugin_schema";
 const MIGRATION_FILENAME_RE = /^[0-9]{4}_[a-z0-9_]+\.sql$/;

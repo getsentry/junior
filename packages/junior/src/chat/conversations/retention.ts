@@ -8,7 +8,7 @@
  * pass. Storage write paths own no TTLs.
  */
 import { logException, logInfo } from "@/chat/logging";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   purgeConversationTree,
   resolveRootVisibility,

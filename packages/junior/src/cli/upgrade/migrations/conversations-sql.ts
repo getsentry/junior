@@ -5,7 +5,7 @@ import {
 } from "@/chat/conversations/sql/backfill";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createStateConversationStore } from "@/chat/conversations/state";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import { createJuniorSqlExecutor } from "@/db/executor";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const CONVERSATION_BACKFILL_LIMIT = 10_000;

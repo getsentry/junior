@@ -5,8 +5,8 @@ import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import type { AgentStepStore } from "@/chat/conversations/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import type { ConversationMessageStore } from "@/chat/conversations/messages";
-import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
+import { createJuniorSqlExecutor } from "@/db/executor";
 
 let current:
   | {

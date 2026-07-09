@@ -6,7 +6,7 @@ import {
   migrateSchema,
   type Migration,
 } from "@/chat/conversations/sql/migrations";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
 class FakeSqlExecutor implements JuniorSqlMigrationExecutor {
   readonly locks: string[] = [];
@@ -150,6 +150,32 @@ describe("conversation SQL migrations", () => {
     expect(ddl).not.toContain("inbound_messages");
     expect(ddl).not.toContain("lease_");
     expect(ddl).not.toMatch(/\btranscript\b/i);
+  });
+
+  it("pins the recorded checksums of migrations 0001-0005", () => {
+    // These migrations are recorded (id + statement-text checksum) in
+    // junior_schema_migrations on provisioned databases. Their statement text
+    // must stay byte-identical through any refactor, so pin the checksums the
+    // runner computes. drizzle-kit generates DDL from 0006 onward; it must
+    // never rewrite these.
+    const pinned: Record<string, string> = {
+      "0001_conversation_core":
+        "78fe050d8bec8ba18e2e3192497b3d8ad6b45fbb66ad4859377fb2202ed57651",
+      "0002_slack_destination_visibility_backfill":
+        "fb590a09fa51db471a748e3d7abb4137f521ee8df97f6e9ef5563121be98c394",
+      "0003_user_identities":
+        "67d9c9c26cbd76213614eb6d7a7cc7e2501fc20e92321eb5176a08ce39cd2efb",
+      "0004_actor_cutover":
+        "d41b8bfa66b8a88d69e84af38950025ba4c9be56341565cbe1411f0ca50c1dc2",
+      "0005_conversation_transcripts":
+        "add299d1b254e023f89b5993c417dd2248dc009e874efdeaf31ec0732e0d4fb4",
+    };
+
+    const actual = Object.fromEntries(
+      migrations.map((migration) => [migration.id, migration.checksum]),
+    );
+
+    expect(actual).toEqual(pinned);
   });
 
   it("exports Drizzle table definitions for the SQL schema", () => {

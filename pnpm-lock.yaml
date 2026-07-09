@@ -266,6 +266,9 @@ importers:
       dependency-cruiser:
         specifier: ^17.4.0
         version: 17.4.0
+      drizzle-kit:
+        specifier: 'catalog:'
+        version: 0.31.10
       msw:
         specifier: ^2.14.6
         version: 2.14.6(@types/node@25.9.1)(typescript@6.0.3)

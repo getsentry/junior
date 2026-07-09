@@ -4,8 +4,8 @@ import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
-import { juniorAgentSteps, juniorConversations } from "@/chat/sql/schema";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorAgentSteps, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,

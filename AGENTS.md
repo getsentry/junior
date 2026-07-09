@@ -14,12 +14,13 @@ Co-Authored-By: (agent model name) <email>
 
 ## File-Scoped Commands
 
-| Task                  | Command                                                                        |
-| --------------------- | ------------------------------------------------------------------------------ |
-| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
-| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
-| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
-| Eval case filter      | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
+| Task                  | Command                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                   |
+| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                   |
+| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                       |
+| Eval case filter      | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"`        |
+| Generate SQL schema   | `pnpm --filter @sentry/junior db:generate` (drizzle-kit; no-diff = schema/DDL parity) |
 
 ## Key Conventions
 

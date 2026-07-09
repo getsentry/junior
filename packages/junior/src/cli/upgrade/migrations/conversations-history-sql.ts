@@ -7,8 +7,8 @@ import { createStateConversationStore } from "@/chat/conversations/state";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import type { SessionLogStore } from "@/chat/state/session-log";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
-import type { JuniorSqlExecutor } from "@/chat/sql/db";
+import { createJuniorSqlExecutor } from "@/db/executor";
+import type { JuniorSqlExecutor } from "@/db/db";
 import type { MigrationContext, MigrationResult } from "../types";
 
 const HISTORY_BACKFILL_LIMIT = 10_000;

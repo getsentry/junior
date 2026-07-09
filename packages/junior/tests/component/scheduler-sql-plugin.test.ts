@@ -29,7 +29,7 @@ vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
-vi.mock("@/chat/sql/executor", () => ({
+vi.mock("@/db/executor", () => ({
   createJuniorSqlExecutor: vi.fn(() => {
     if (!NEON.sql) {
       throw new Error("Missing test SQL executor");

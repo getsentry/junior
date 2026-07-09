@@ -8,7 +8,7 @@ import { createTools } from "@/chat/tools";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { juniorConversations } from "@/chat/sql/schema";
+import { juniorConversations } from "@/db/schema";
 import type { AgentStepStore } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {

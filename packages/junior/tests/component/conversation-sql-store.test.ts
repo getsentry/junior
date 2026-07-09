@@ -12,13 +12,13 @@ import {
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorUsers,
-} from "@/chat/sql/schema";
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import {
   listRecentConversationSummaries,

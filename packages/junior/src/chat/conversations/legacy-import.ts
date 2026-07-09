@@ -24,7 +24,7 @@ import {
   createStateAdvisorSessionStore,
   type AdvisorSessionStore,
 } from "@/chat/tools/advisor/session-store";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   getAgentStepStore,
   getConversationMessageStore,

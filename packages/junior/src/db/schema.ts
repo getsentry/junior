@@ -16,7 +16,7 @@ export {
   juniorUsers,
 };
 
-export const schema = {
+export const juniorSqlSchema = {
   juniorAgentSteps,
   juniorConversationMessages,
   juniorConversations,

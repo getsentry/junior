@@ -5,7 +5,7 @@ import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginState } from "@/chat/plugins/state";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getChatConfig } from "@/chat/config";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import { createJuniorSqlExecutor } from "@/db/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
 

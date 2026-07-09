@@ -1,8 +1,8 @@
 import { type PoolClient, type QueryResultRow } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
-import { createPostgresJuniorSqlExecutor } from "@/chat/sql/postgres";
-import { juniorSqlSchema } from "@/chat/sql/schema";
+import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
+import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
+import { juniorSqlSchema } from "@/db/schema";
 
 class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   private savepointId = 0;

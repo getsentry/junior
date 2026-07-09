@@ -4,7 +4,7 @@ import {
   migrations as declaredMigrations,
   migrateSchema,
 } from "@/chat/conversations/sql/migrations";
-import { schema } from "@/chat/conversations/sql/schema";
+import { juniorSqlSchema as schema } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";

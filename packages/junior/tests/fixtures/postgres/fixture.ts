@@ -5,7 +5,7 @@ import {
   createPostgresTransactionFixture,
   type PostgresHarnessConfig,
 } from "@sentry/junior-testing/postgres";
-import type { JuniorSqlExecutor } from "@/chat/sql/db";
+import type { JuniorSqlExecutor } from "@/db/db";
 import {
   createClientJuniorSqlExecutor,
   createPooledJuniorSqlExecutor,

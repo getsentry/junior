@@ -7,7 +7,7 @@ import {
   readPluginMigrations,
   type PluginMigration,
 } from "@/chat/plugins/db";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
 class FakeSqlExecutor implements JuniorSqlMigrationExecutor {
   readonly locks: string[] = [];

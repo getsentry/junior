@@ -11,7 +11,7 @@
  * child-id formula rather than importing it.
  */
 import { eq, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   contextProvenance,
@@ -20,7 +20,7 @@ import {
   type SessionLogEntry,
 } from "@/chat/state/session-log";
 import { agentStepEntrySchema, type AgentStepEntry } from "../history";
-import { juniorAgentSteps, juniorConversations } from "./schema";
+import { juniorAgentSteps, juniorConversations } from "@/db/schema";
 
 const INITIAL_SESSION_ID = "session_0";
 

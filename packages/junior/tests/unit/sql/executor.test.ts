@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { JuniorSqlExecutor } from "@/chat/sql/db";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import type { JuniorSqlExecutor } from "@/db/db";
+import { createJuniorSqlExecutor } from "@/db/executor";
 const EXECUTORS = vi.hoisted(() => ({
   neon: executor("neon"),
   postgres: executor("postgres"),
@@ -19,11 +19,11 @@ function executor(name: string): JuniorSqlExecutor {
   };
 }
 
-vi.mock("@/chat/sql/neon", () => ({
+vi.mock("@/db/neon", () => ({
   createNeonJuniorSqlExecutor: vi.fn(() => EXECUTORS.neon),
 }));
 
-vi.mock("@/chat/sql/postgres", () => ({
+vi.mock("@/db/postgres", () => ({
   createPostgresJuniorSqlExecutor: vi.fn(() => EXECUTORS.postgres),
 }));
 

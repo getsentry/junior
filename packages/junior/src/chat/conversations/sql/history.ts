@@ -1,5 +1,5 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   agentStepEntrySchema,
   type AgentStepEntry,
@@ -10,7 +10,7 @@ import {
   type StoredAgentStep,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorAgentSteps } from "./schema";
+import { juniorAgentSteps } from "@/db/schema";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;

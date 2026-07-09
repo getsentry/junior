@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
-import { juniorConversations } from "./schema";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorConversations } from "@/db/schema";
 
 /**
  * Establish the conversation metadata row on first contact for content writes

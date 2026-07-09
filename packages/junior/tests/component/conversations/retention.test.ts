@@ -11,9 +11,9 @@ import {
   juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
-} from "@/chat/conversations/sql/schema";
-import type { JuniorDestinationVisibility } from "@/chat/conversations/sql/schema/destinations";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+} from "@/db/schema";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,

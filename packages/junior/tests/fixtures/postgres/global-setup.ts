@@ -7,8 +7,8 @@ import {
 } from "@sentry/junior-testing/postgres";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
-import { createPostgresJuniorSqlExecutor } from "@/chat/sql/postgres";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
+import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 
 declare module "vitest" {
   export interface ProvidedContext {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
-import { juniorIdentities, juniorUsers } from "@/chat/sql/schema";
+import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorIdentities, juniorUsers } from "@/db/schema";
 import {
   normalizeIdentityEmail,
   type IdentityUpsert,

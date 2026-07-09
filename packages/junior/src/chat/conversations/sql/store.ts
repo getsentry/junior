@@ -7,10 +7,7 @@ import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
 import { migrateSchema } from "./migrations";
-import type {
-  JuniorSqlDatabase,
-  JuniorSqlMigrationExecutor,
-} from "@/chat/sql/db";
+import type { JuniorSqlDatabase, JuniorSqlMigrationExecutor } from "@/db/db";
 import type {
   Conversation,
   ConversationExecution,
@@ -22,11 +19,11 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
-} from "./schema";
+} from "@/db/schema";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
-} from "./schema/destinations";
+} from "@/db/schema/destinations";
 
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;

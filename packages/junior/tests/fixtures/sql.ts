@@ -1,6 +1,6 @@
-import type { juniorConversations } from "@/chat/conversations/sql/schema";
-import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
-import { juniorSqlSchema } from "@/chat/sql/schema";
+import type { juniorConversations } from "@/db/schema";
+import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
+import { juniorSqlSchema } from "@/db/schema";
 import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,

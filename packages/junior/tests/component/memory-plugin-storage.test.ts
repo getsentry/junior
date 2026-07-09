@@ -28,7 +28,7 @@ vi.hoisted(() => {
   process.env.DATABASE_URL = "postgres://configured.example.test/neon";
 });
 
-vi.mock("@/chat/sql/executor", () => ({
+vi.mock("@/db/executor", () => ({
   createJuniorSqlExecutor: vi.fn(() => {
     if (!NEON.sql) {
       throw new Error("Missing test SQL executor");

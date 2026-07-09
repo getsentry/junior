@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783631415804,
+      "tag": "0000_overconfident_exodus",
+      "breakpoints": true
+    }
+  ]
+}

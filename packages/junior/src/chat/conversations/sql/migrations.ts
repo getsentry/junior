@@ -5,9 +5,11 @@
  * `junior upgrade`; request handlers must not apply them.
  */
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { schema } from "./schema";
-import type { JuniorSqlMigrationExecutor } from "@/chat/sql/db";
+import type { JuniorSqlMigrationExecutor } from "@/db/db";
+import { juniorSqlSchema as schema } from "@/db/schema";
 
 const MIGRATION_LOCK_NAME = "junior_conversation_schema";
 
@@ -44,6 +46,35 @@ function defineMigration(id: string, statements: readonly string[]): Migration {
     checksum: checksumStatements(statements),
     statements,
   };
+}
+
+/** Absolute path to a drizzle-kit-generated `.sql` file in the `drizzle/` out dir. */
+function kitMigrationPath(fileName: string): string {
+  return fileURLToPath(
+    new URL(`../../../../drizzle/${fileName}`, import.meta.url),
+  );
+}
+
+/**
+ * Register a drizzle-kit-generated `.sql` file as a checksum-pinned migration.
+ *
+ * Migrations 0006 onward are authored by editing the Drizzle schema and running
+ * `pnpm --filter @sentry/junior db:generate`; each generated file becomes one
+ * line here. Statements are split on drizzle-kit's `--> statement-breakpoint`
+ * markers and applied by the custom `junior upgrade` runner (never
+ * `drizzle-kit migrate`). Migrations 0001–0005 predate kit and stay inline so
+ * their recorded checksums remain byte-stable.
+ */
+export function defineMigrationFromFile(
+  id: string,
+  fileName: string,
+): Migration {
+  const contents = readFileSync(kitMigrationPath(fileName), "utf8");
+  const statements = contents
+    .split(/-->\s*statement-breakpoint/)
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+  return defineMigration(id, statements);
 }
 
 const createMigrationTable = `

@@ -1,12 +1,12 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   ConversationMessage,
   ConversationMessageStore,
   NewConversationMessage,
 } from "../messages";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorConversationMessages } from "./schema";
+import { juniorConversationMessages } from "@/db/schema";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
 

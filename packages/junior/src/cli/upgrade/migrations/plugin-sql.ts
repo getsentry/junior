@@ -1,7 +1,7 @@
 import { getChatConfig } from "@/chat/config";
 import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { createJuniorSqlExecutor } from "@/chat/sql/executor";
+import { createJuniorSqlExecutor } from "@/db/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
 import type { MigrationContext, MigrationResult } from "../types";
 

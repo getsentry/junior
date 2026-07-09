@@ -1,12 +1,12 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/chat/sql/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentSteps,
   juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
-} from "./schema";
-import type { JuniorDestinationVisibility } from "./schema/destinations";
+} from "@/db/schema";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {

@@ -1,12 +1,12 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import type { JuniorDatabase } from "@/chat/sql/db";
+import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorUsers,
-} from "@/chat/sql/schema";
+} from "@/db/schema";
 import type {
   ConversationStatsItem,
   ConversationSummaryReport,

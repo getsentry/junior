@@ -1,5 +1,5 @@
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { juniorConversations, juniorIdentities } from "@/chat/sql/schema";
+import { juniorConversations, juniorIdentities } from "@/db/schema";
 import type { LocalJuniorSqlFixture } from "../../../fixtures/sql";
 
 /** Seed representative verified and untrusted people rows for people API tests. */
