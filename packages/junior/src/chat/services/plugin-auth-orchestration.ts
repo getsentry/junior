@@ -277,9 +277,10 @@ export function createPluginAuthOrchestration(
       // scope/org/permission mismatch unrelated to the stored credential.
       // OAuth completion overwrites the stored token via userTokenStore.set(),
       // so proactive deletion is unnecessary and destroys a working connection.
-      await startAuthorizationPause(authorization.provider, {
-        ...(authorization.scope ? { scope: authorization.scope } : {}),
-      });
+      await startAuthorizationPause(
+        authorization.provider,
+        authorization.scope ? { scope: authorization.scope } : undefined,
+      );
     },
     getPendingPause: () => pendingPause,
   };
