@@ -28,6 +28,8 @@ syncInjectedDepsAfterScripts:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"
+  - "@earendil-works/pi-agent-core"
+  - "@earendil-works/pi-ai"
   - sentry
 allowBuilds:
   "@ast-grep/cli": true
