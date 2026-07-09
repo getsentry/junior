@@ -207,6 +207,73 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
+  it("retries fully after a mid-import message-store failure (gate not tripped)", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    const entries = staticSessionLogStore([
+      {
+        schemaVersion: 2,
+        type: "pi_message",
+        sessionId: "session_0",
+        message: userMessage("first", 10),
+      },
+    ] as SessionLogEntry[]);
+    const visible: ThreadConversationMessage[] = [
+      { id: "m1", role: "user", text: "hi there", createdAtMs: 100 },
+      { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
+    ];
+
+    // First attempt: message write throws before any step row is committed.
+    const failingRecord = vi
+      .spyOn(messageStore, "record")
+      .mockRejectedValueOnce(new Error("record failed"));
+
+    try {
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, {
+          executor: fixture.sql,
+          stepStore,
+          messageStore,
+          conversationRecord: conversationRecord(),
+          sessionLogStore: entries,
+          loadVisibleMessages: async () => visible,
+        }),
+      ).rejects.toThrow("record failed");
+
+      // Because the message write is the *first* write and steps are the commit
+      // point, the failed attempt left no step rows, so the idempotence gate is
+      // not tripped on retry.
+      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(0);
+      expect(await messageStore.list(CONVERSATION_ID)).toHaveLength(0);
+
+      failingRecord.mockRestore();
+
+      // Second attempt with a working store imports BOTH messages and steps.
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, {
+          executor: fixture.sql,
+          stepStore,
+          messageStore,
+          conversationRecord: conversationRecord(),
+          sessionLogStore: entries,
+          loadVisibleMessages: async () => visible,
+        }),
+      ).resolves.toEqual({ imported: true });
+
+      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      const messages = await messageStore.list(CONVERSATION_ID);
+      expect(messages.map((message) => message.messageId)).toEqual([
+        "m1",
+        "m2",
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("never fabricates import-time timestamps for timestamp-less rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);

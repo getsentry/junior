@@ -200,19 +200,17 @@ export async function importConversationFromLegacy(
     };
   }
 
-  if (converted.steps.length > 0) {
-    await writeLegacyImport(deps.executor, {
-      conversationId,
-      fallbackCreatedAtMs,
-      steps: converted.steps,
-      ...(child ? { child } : {}),
-    });
-  }
-
-  // Visible messages are best-effort and idempotent via the store's natural
-  // key; `meta.replied` becomes the durable `replied_at` delivery mark. Rows go
-  // through the shared `toStoredConversationMessage` projection so imported
-  // messages carry `meta.author` exactly like runtime-recorded rows.
+  // Ordering invariant: visible messages are written BEFORE the step rows,
+  // because the step rows are this import's commit point — the idempotence gate
+  // above keys off `loadCurrentEpoch(...).length > 0`. If steps landed first and
+  // the message write then failed, every later retry would trip the gate and the
+  // visible transcript would be lost forever. Recording messages first is safe on
+  // retry: `record()` is idempotent via the store's natural key (`ON CONFLICT`
+  // meta-merge) and `markReplied` is idempotent, so a mid-message failure simply
+  // re-runs the whole sequence until the step write commits. Rows go through the
+  // shared `toStoredConversationMessage` projection so imported messages carry
+  // `meta.author` exactly like runtime-recorded rows; `meta.replied` becomes the
+  // durable `replied_at` delivery mark.
   if (visible.length > 0) {
     await deps.messageStore.record(
       conversationId,
@@ -227,6 +225,17 @@ export async function importConversationFromLegacy(
         );
       }
     }
+  }
+
+  // Commit point: writing the step rows is what makes this import idempotent, so
+  // it must run last, only after every preceding write has succeeded.
+  if (converted.steps.length > 0) {
+    await writeLegacyImport(deps.executor, {
+      conversationId,
+      fallbackCreatedAtMs,
+      steps: converted.steps,
+      ...(child ? { child } : {}),
+    });
   }
 
   return { imported: true };
