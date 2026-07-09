@@ -309,6 +309,12 @@ export interface EvalResult {
     text: string;
     thread_ts?: string;
   }>;
+  /**
+   * Runtime conversation ids that took a turn in this scenario. These are the
+   * exact ids the durable SQL stores key on, so eval-layer assertions can read
+   * history/messages back through the store ports for the same conversation.
+   */
+  conversationIds: string[];
   logRecords: EmittedLogRecord[];
   authorizationCompletions: AuthorizationCompletion[];
   posts: EvalAssistantPost[];
@@ -2285,6 +2291,7 @@ function collectResults(
   return {
     canvases,
     channelPosts,
+    conversationIds: [...threadRecordsById.keys()],
     logRecords,
     authorizationCompletions: observations.authorizationCompletions,
     reactions,

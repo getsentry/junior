@@ -15,6 +15,10 @@ import {
   type ToolCallRecord,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
+import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
+import type { AgentStepEntry } from "@/chat/conversations/history";
+import type { ConversationMessage } from "@/chat/conversations/messages";
+import { advisorChildConversationId } from "@/chat/tools/advisor/tool";
 import {
   slackEventThread,
   slackMentionEvent,
@@ -236,6 +240,7 @@ function toHarnessRun(result: EvalResult): HarnessRun {
       metadata: toJsonRecord({
         slack_metadata: slackMetadata(result),
         log_records: result.logRecords.map(toLogMetadata),
+        [CONVERSATION_IDS_METADATA_KEY]: result.conversationIds,
       }),
     },
     usage: {
@@ -831,3 +836,93 @@ export function threadStart(opts?: {
     user_id: opts?.user_id ?? `U-${seq}`,
   };
 }
+
+// ── Durable-storage assertion helpers ──────────────────────
+//
+// These read back through the same SQL store ports the runtime writes to, using
+// the database the eval harness booted. They let a case prove conversation
+// content durably landed in the right store without inventing a parallel schema
+// or reaching for raw SQL/Drizzle in eval code.
+
+const CONVERSATION_IDS_METADATA_KEY = "conversation_ids";
+
+/** One durable execution step, flattened for ordering/presence assertions. */
+export interface AgentStepView {
+  seq: number;
+  contextEpoch: number;
+  type: AgentStepEntry["type"];
+  /** Message role for `pi_message` steps; absent for host-only step types. */
+  role?: string;
+  /** The strictly validated step payload, for deeper assertions when needed. */
+  entry: AgentStepEntry;
+}
+
+function conversationIdsFromSession(session: NormalizedSession): string[] {
+  const raw = session.metadata?.[CONVERSATION_IDS_METADATA_KEY];
+  if (!Array.isArray(raw) || raw.some((id) => typeof id !== "string")) {
+    throw new Error(
+      "Session metadata is missing conversation_ids; run through slackEvals so the harness records the run's conversation ids.",
+    );
+  }
+  return raw as string[];
+}
+
+/**
+ * The single conversation id for the run. Throws when a scenario produced zero
+ * or multiple conversations so the author passes an explicit id to the readers.
+ */
+export function conversationId(session: NormalizedSession): string {
+  const ids = conversationIdsFromSession(session);
+  if (ids.length !== 1) {
+    throw new Error(
+      `Expected exactly one conversation for this run but found ${ids.length} (${ids.join(", ")}). Pass an explicit conversationId to agentSteps/conversationMessages.`,
+    );
+  }
+  return ids[0]!;
+}
+
+function toStepRole(entry: AgentStepEntry): string | undefined {
+  if (entry.type === "pi_message") {
+    const role = (entry.message as { role?: unknown }).role;
+    return typeof role === "string" ? role : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The run's durable execution step rows, in `seq` order across every epoch,
+ * read via `AgentStepStore.loadHistory`. Defaults to the run's sole
+ * conversation; pass a conversation id to inspect a child (e.g. an advisor
+ * child conversation).
+ */
+export async function agentSteps(
+  session: NormalizedSession,
+  conversationIdOverride?: string,
+): Promise<AgentStepView[]> {
+  const id = conversationIdOverride ?? conversationId(session);
+  const steps = await getAgentStepStore().loadHistory(id);
+  return steps.map((step) => ({
+    seq: step.seq,
+    contextEpoch: step.contextEpoch,
+    type: step.entry.type,
+    ...(toStepRole(step.entry) !== undefined
+      ? { role: toStepRole(step.entry) }
+      : {}),
+    entry: step.entry,
+  }));
+}
+
+/**
+ * The run's visible conversation message rows in `created_at` order, read via
+ * `ConversationMessageStore.list`. Defaults to the run's sole conversation.
+ */
+export async function conversationMessages(
+  session: NormalizedSession,
+  conversationIdOverride?: string,
+): Promise<ConversationMessage[]> {
+  const id = conversationIdOverride ?? conversationId(session);
+  return await getConversationMessageStore().list(id);
+}
+
+/** Deterministic advisor child conversation id derived from a parent id. */
+export { advisorChildConversationId };
