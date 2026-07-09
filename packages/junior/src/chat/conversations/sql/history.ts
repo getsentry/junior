@@ -71,11 +71,14 @@ class SqlAgentStepStore implements AgentStepStore {
     if (steps.length === 0) {
       return;
     }
+    const newestCreatedAtMs = Math.max(
+      ...steps.map((step) => step.createdAtMs),
+    );
     await this.executor.transaction(async () => {
       await ensureConversationRow(
         this.executor,
         conversationId,
-        steps[0]!.createdAtMs,
+        newestCreatedAtMs,
       );
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;

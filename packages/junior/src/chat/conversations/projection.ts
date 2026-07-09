@@ -267,6 +267,7 @@ export async function loadTurnProjection(args: {
 export async function loadConnectedMcpProviders(
   args: ScopedStore,
 ): Promise<string[]> {
+  await importLegacyIfNeeded(args);
   const steps = await store(args).loadCurrentEpoch(args.conversationId);
   return connectedMcpProvidersFromSteps(steps);
 }

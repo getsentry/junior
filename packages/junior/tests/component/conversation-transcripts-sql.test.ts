@@ -312,6 +312,21 @@ INSERT INTO junior_agent_steps (
       ]);
       expect(await lastActivityMs()).toBe(5_000);
 
+      // A full working-set persist (oldest-first, as hydrate/persist cycles
+      // write) advances the clock to the NEWEST message in the batch, not the
+      // first.
+      await messages.record(CONVERSATION_ID, [
+        { messageId: "m0", role: "user", text: "older", createdAtMs: 2_000 },
+        { messageId: "m1", role: "user", text: "newer", createdAtMs: 5_000 },
+        {
+          messageId: "m2",
+          role: "assistant",
+          text: "newest",
+          createdAtMs: 6_500,
+        },
+      ]);
+      expect(await lastActivityMs()).toBe(6_500);
+
       // Step appends advance the clock too, and also never regress it.
       await steps.append(CONVERSATION_ID, [
         {

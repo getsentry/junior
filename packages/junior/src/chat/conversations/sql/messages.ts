@@ -33,11 +33,17 @@ class SqlConversationMessageStore implements ConversationMessageStore {
     if (messages.length === 0) {
       return;
     }
+    // The newest message in the batch drives the retention clock: callers
+    // persist the full working set oldest-first, so the first entry would pin
+    // the clock to history and greatest() would never advance it.
+    const newestCreatedAtMs = Math.max(
+      ...messages.map((message) => message.createdAtMs),
+    );
     await this.executor.transaction(async () => {
       await ensureConversationRow(
         this.executor,
         conversationId,
-        messages[0]!.createdAtMs,
+        newestCreatedAtMs,
       );
       await this.executor
         .db()

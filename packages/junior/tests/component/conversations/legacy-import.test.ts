@@ -347,6 +347,47 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
+  it("loadConnectedMcpProviders triggers the lazy import for a straggler", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    const db = await import("@/chat/db");
+    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
+    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
+    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+
+    // A Redis-only straggler whose durable MCP connection fact has not been
+    // imported yet: the provider read must not miss it.
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
+      {
+        schemaVersion: 2,
+        type: "pi_message",
+        sessionId: "session_0",
+        message: userMessage("straggler", 70),
+      },
+      {
+        schemaVersion: 2,
+        type: "mcp_provider_connected",
+        sessionId: "session_0",
+        provider: "linear",
+      },
+    ]);
+
+    try {
+      const { loadConnectedMcpProviders } =
+        await import("@/chat/conversations/projection");
+      await expect(
+        loadConnectedMcpProviders({ conversationId: CONVERSATION_ID }),
+      ).resolves.toEqual(["linear"]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("hydrate triggers the lazy import for a Redis-only straggler and preserves replied + author", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
