@@ -26,14 +26,11 @@ const mocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@earendil-works/pi-ai", () => ({
+vi.mock("@/chat/pi/sdk", () => ({
   completeSimple: mocks.completeSimple,
   getEnvApiKey: mocks.getEnvApiKey,
   getModels: mocks.getModels,
   registerApiProvider: mocks.registerApiProvider,
-}));
-
-vi.mock("@earendil-works/pi-ai/anthropic", () => ({
   streamAnthropic: mocks.streamAnthropic,
   streamSimpleAnthropic: mocks.streamSimpleAnthropic,
 }));
