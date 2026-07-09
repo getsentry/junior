@@ -5,7 +5,7 @@ import {
   type Context,
   type Model,
   streamSimple,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import * as Sentry from "@/chat/sentry";
 import {
   extractGenAiUsageAttributes,

@@ -3,7 +3,7 @@ import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@earendil-works/pi-ai/compat";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
 import type { WebSearchToolDeps } from "@/chat/tools/types";

@@ -1,4 +1,4 @@
-import { getModel } from "@earendil-works/pi-ai";
+import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
@@ -190,7 +190,7 @@ const DEFAULT_FAST_MODEL_ID = getModel(
 ).id;
 const DEFAULT_ADVISOR_MODEL_ID = getModel(
   "vercel-ai-gateway",
-  "openai/gpt-5.5",
+  "openai/gpt-5.6-sol",
 ).id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 
