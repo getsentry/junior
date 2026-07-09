@@ -1528,6 +1528,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             latestArtifacts = completedState.artifacts;
           }
           try {
+            // SQL transcript persistence is post-delivery bookkeeping: the user
+            // already saw the reply, so failures are retried, logged, and never
+            // fail the delivered turn.
+            await persistWithRetry(() =>
+              persistConversationMessages({
+                conversation: completedState.conversation,
+                conversationId,
+              }),
+            );
             // Commit the terminal completed session record first: it is the
             // delivered marker that keeps stranded-running recovery from
             // regenerating an already-delivered reply if the thread-state
@@ -1601,10 +1610,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           preparedState.conversation = completedState.conversation;
-          await persistConversationMessages({
-            conversation: preparedState.conversation,
-            conversationId,
-          });
           persistedAtLeastOnce = true;
           if (shouldEmitDevAgentTrace()) {
             logInfo(

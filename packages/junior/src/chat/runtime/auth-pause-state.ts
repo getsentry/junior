@@ -12,10 +12,7 @@ import {
   coerceThreadConversationState,
   type ThreadConversationState,
 } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 
 /** Mark an auth-paused turn complete after private authorization link delivery. */
 export function completeAuthPauseTurn(args: {
@@ -52,10 +49,6 @@ export async function persistAuthPauseTurnState(args: {
   completeAuthPauseTurn({
     conversation,
     sessionId: args.sessionId,
-  });
-  await persistConversationMessages({
-    conversation,
-    conversationId: args.threadStateId,
   });
   await persistThreadStateById(args.threadStateId, { conversation });
 }

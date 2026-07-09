@@ -1,10 +1,7 @@
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import {
   formatProviderLabel,
   parseOAuthStatePayload,
@@ -112,10 +109,6 @@ async function persistCompletedOAuthReplyState(args: {
     userMessageId: userMessage?.id,
   });
 
-  await persistConversationMessages({
-    conversation: statePatch.conversation,
-    conversationId: args.conversationId,
-  });
   await persistThreadStateById(args.conversationId, {
     ...statePatch,
   });

@@ -16,10 +16,7 @@ import {
   resumeSlackTurn,
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
@@ -118,10 +115,6 @@ async function persistCompletedReplyState(args: {
     userMessageId: userMessage?.id,
   });
 
-  await persistConversationMessages({
-    conversation: statePatch.conversation,
-    conversationId: args.sessionRecord.conversationId,
-  });
   await persistThreadStateById(args.sessionRecord.conversationId, {
     ...statePatch,
   });

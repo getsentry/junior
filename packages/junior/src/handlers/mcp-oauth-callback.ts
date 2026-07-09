@@ -7,10 +7,7 @@
  * the paused request.
  */
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import {
   deleteMcpAuthSession,
   type McpAuthSessionState,
@@ -128,10 +125,6 @@ async function persistCompletedReplyState(
     userMessageId: userMessage?.id,
   });
 
-  await persistConversationMessages({
-    conversation: statePatch.conversation,
-    conversationId: threadId,
-  });
   await persistThreadStateById(threadId, {
     ...statePatch,
   });

@@ -42,10 +42,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  hydrateConversationMessages,
-  persistConversationMessages,
-} from "@/chat/conversations/visible-messages";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import {
   commitMessages,
   loadProjection,
@@ -208,10 +205,6 @@ export async function runLocalAgentTurn(
     nextTurnId: turnId,
     updateConversationStats,
   });
-  await persistConversationMessages({
-    conversation,
-    conversationId: input.conversationId,
-  });
   await persistThreadStateById(input.conversationId, { conversation });
 
   let reply: AgentRunResult | undefined;
@@ -341,10 +334,6 @@ export async function runLocalAgentTurn(
     throw error;
   }
 
-  await persistConversationMessages({
-    conversation: completedState.conversation,
-    conversationId: input.conversationId,
-  });
   await persistDeliveredLocalTurnState(input.conversationId, {
     artifacts: completedState.artifacts ?? artifacts,
     conversation: completedState.conversation,
