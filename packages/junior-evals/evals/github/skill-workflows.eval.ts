@@ -31,17 +31,17 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
   const defaultRepoThread = {
     id: "thread-default-repo",
     channel_id: "CDEFAULTREPO",
-    thread_ts: "17000000.default-repo",
+    thread_ts: "17000000.1401",
   };
   const targetClassificationContextThread = {
     id: "thread-target-classification-context",
     channel_id: "CTARGETCLASSIFICATIONCONTEXT",
-    thread_ts: "17000000.target-classification-context",
+    thread_ts: "17000000.1402",
   };
   const targetClassificationExplicitThread = {
     id: "thread-target-classification-explicit",
     channel_id: "CTARGETCLASSIFICATIONEXPLICIT",
-    thread_ts: "17000000.target-classification-explicit",
+    thread_ts: "17000000.1403",
   };
 
   it("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({

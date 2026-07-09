@@ -196,7 +196,7 @@ import { mention, rubric, slackEvals } from "../../src/helpers";
 describeEval("Routing", slackEvals, (it) => {
   it("when explicitly mentioned, post one direct reply", async ({ run }) => {
     await run({
-      events: [mention("<@U_APP> summarize this")],
+      events: [mention("Summarize this")],
       criteria: rubric({
         pass: ["The assistant posts exactly one reply to the mention."],
       }),

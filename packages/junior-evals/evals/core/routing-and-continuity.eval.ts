@@ -28,7 +28,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
+      events: [threadMessage("What is 2+2?", { is_mention: true })],
       criteria: rubric({
         pass: [
           "The assistant posts exactly one reply.",
@@ -65,7 +65,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   const actorIdentityThread = {
     id: "thread-actor-identity",
     channel_id: "CACTORIDENTITY",
-    thread_ts: "17000000.actor-identity",
+    thread_ts: "17000000.1301",
   };
 
   it("when another participant is already named, answer as the requested actor", async ({
@@ -76,18 +76,18 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         mention("The billing rollout is paused until the retry queue drains.", {
           thread: actorIdentityThread,
           author: {
-            user_id: "U_ALICE",
+            user_id: "UALICE",
             user_name: "alice",
             full_name: "Alice Example",
           },
         }),
         threadMessage(
-          "<@U_APP> can you draft the one-sentence status update for this?",
+          "Can you draft the one-sentence status update for this?",
           {
             thread: actorIdentityThread,
             is_mention: true,
             author: {
-              user_id: "U_DAVID",
+              user_id: "UDAVID",
               user_name: "dcramer",
               full_name: "David Cramer",
             },
@@ -111,7 +111,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   const currentInstructionAuthorThread = {
     id: "thread-current-instruction-author",
     channel_id: "CCURRENTINSTRUCTIONAUTHOR",
-    thread_ts: "17000000.current-instruction-author",
+    thread_ts: "17000000.1302",
   };
 
   it("when a different participant gives a first-person follow-up, treat it as their request", async ({
@@ -124,19 +124,19 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
           {
             thread: currentInstructionAuthorThread,
             author: {
-              user_id: "U_ALICE",
+              user_id: "UALICE",
               user_name: "alice",
               full_name: "Alice Example",
             },
           },
         ),
         threadMessage(
-          "<@U_APP> For the rollout summary, my preferred wording is casual and direct. What wording preference did I just give you?",
+          "For the rollout summary, my preferred wording is casual and direct. What wording preference did I just give you?",
           {
             thread: currentInstructionAuthorThread,
             is_mention: true,
             author: {
-              user_id: "U_RYAN",
+              user_id: "URYAN",
               user_name: "ryan",
               full_name: "Ryan Example",
             },
@@ -193,7 +193,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   const continuityThread = {
     id: "thread-continuity",
     channel_id: "CCONTINUITY",
-    thread_ts: "17000000.continuity",
+    thread_ts: "17000000.1303",
   };
 
   it("when a follow-up asks about the prior turn, recall the earlier budget context", async ({

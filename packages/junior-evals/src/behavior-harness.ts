@@ -27,6 +27,7 @@ import { getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { parseOAuthStatePayload } from "@/chat/oauth-flow";
 import type { EmittedLogRecord } from "@/chat/logging";
 import {
   type ThreadMessageKind,
@@ -36,7 +37,8 @@ import {
   deleteMcpAuthSessionsForUserProvider,
   deleteMcpServerSessionId,
   deleteMcpStoredOAuthCredentials,
-  getLatestMcpAuthSessionForUserProvider,
+  getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
 } from "@/chat/mcp/auth-store";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -89,6 +91,7 @@ import {
 } from "@junior-tests/msw/handlers/eval-oauth";
 import {
   EVAL_MCP_AUTH_CODE,
+  EVAL_MCP_AUTHORIZATION_ENDPOINT,
   EVAL_MCP_AUTH_PROVIDER,
 } from "@junior-tests/msw/handlers/eval-mcp-auth";
 import { runMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp-oauth-callback-harness";
@@ -97,11 +100,16 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
+import {
+  TEST_BOT_USER_ID,
+  TEST_USER_ID,
+} from "@junior-tests/fixtures/slack/factories/ids";
 import { createSlackDestination } from "@/chat/destination";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
+import { parseSlackMrkdwnLinkUrl } from "./slack-link";
 
 const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
 
@@ -302,6 +310,7 @@ export interface EvalResult {
     thread_ts?: string;
   }>;
   logRecords: EmittedLogRecord[];
+  authorizationCompletions: AuthorizationCompletion[];
   posts: EvalAssistantPost[];
   reactions: Array<{
     channel: string;
@@ -310,6 +319,14 @@ export interface EvalResult {
   }>;
   slackAdapter: FakeSlackAdapter;
   toolInvocations: EvalToolInvocation[];
+}
+
+export interface AuthorizationCompletion {
+  credentialStored: true;
+  delivery: "direct_message" | "ephemeral";
+  kind: "mcp" | "plugin";
+  provider: string;
+  userId: string;
 }
 
 export interface EvalAttachedFile {
@@ -361,6 +378,7 @@ interface QueueDelivery {
 }
 
 interface RuntimeObservations {
+  authorizationCompletions: AuthorizationCompletion[];
   toolInvocations: EvalToolInvocation[];
 }
 
@@ -1304,22 +1322,16 @@ function getDefaultAuthCode(
   );
 }
 
-function extractSlackLinkUrl(text: string): URL | undefined {
-  const match = text.match(/<([^|>]+)\|/);
-  if (!match?.[1]) {
-    return undefined;
-  }
-  try {
-    return new URL(match[1]);
-  } catch {
-    return undefined;
-  }
-}
-
 function findLatestOAuthStateFromSlackCalls(args: {
   authorizeEndpoint: string;
   consumedStates: Set<string>;
-}): string | undefined {
+}):
+  | {
+      delivery: "direct_message" | "ephemeral";
+      recipientUserId: string;
+      state: string;
+    }
+  | undefined {
   const expectedUrl = new URL(args.authorizeEndpoint);
   const calls = readCapturedSlackApiCalls();
 
@@ -1335,7 +1347,7 @@ function findLatestOAuthStateFromSlackCalls(args: {
     if (!text) {
       continue;
     }
-    const authLink = extractSlackLinkUrl(text);
+    const authLink = parseSlackMrkdwnLinkUrl(text);
     if (!authLink) {
       continue;
     }
@@ -1347,41 +1359,102 @@ function findLatestOAuthStateFromSlackCalls(args: {
     }
     const state = authLink.searchParams.get("state")?.trim();
     if (state && !args.consumedStates.has(state)) {
-      return state;
+      if (call.method === "chat.postEphemeral") {
+        const recipientUserId = toFirstString(call.params.user);
+        if (!recipientUserId) {
+          throw new Error("OAuth ephemeral delivery did not include a user");
+        }
+        return { delivery: "ephemeral", recipientUserId, state };
+      }
+      const channel = toFirstString(call.params.channel);
+      if (!channel?.startsWith("D")) {
+        throw new Error(
+          "OAuth authorization link was posted through chat.postMessage outside a direct message",
+        );
+      }
+      const openCall = calls
+        .slice(0, index)
+        .reverse()
+        .find((candidate) => candidate.method === "conversations.open");
+      const recipientUserId = openCall
+        ? toFirstString(openCall.params.users)
+        : undefined;
+      if (!recipientUserId) {
+        throw new Error(
+          "OAuth direct-message delivery was not preceded by conversations.open for a user",
+        );
+      }
+      return { delivery: "direct_message", recipientUserId, state };
     }
   }
   return undefined;
 }
 
 async function autoCompleteMcpOauth(args: {
+  agentRunner: AgentRunner;
+  completions: AuthorizationCompletion[];
   provider: string;
-  actorUserId: string;
-  consumedSessions: Set<string>;
+  consumedStates: Set<string>;
 }): Promise<boolean> {
   const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
-  const authSession = await getLatestMcpAuthSessionForUserProvider(
-    args.actorUserId,
-    provider,
-  );
-  if (!authSession || args.consumedSessions.has(authSession.authSessionId)) {
+  if (provider !== EVAL_MCP_AUTH_PROVIDER) {
+    throw new Error(
+      `No MCP OAuth authorization endpoint configured for eval provider "${provider}"`,
+    );
+  }
+  const delivered = findLatestOAuthStateFromSlackCalls({
+    authorizeEndpoint: EVAL_MCP_AUTHORIZATION_ENDPOINT,
+    consumedStates: args.consumedStates,
+  });
+  if (!delivered) {
     return false;
+  }
+  const authSession = await getMcpAuthSession(delivered.state);
+  if (!authSession || authSession.provider !== provider) {
+    throw new Error(
+      `Delivered MCP OAuth state did not resolve to provider "${provider}"`,
+    );
+  }
+  if (delivered.recipientUserId !== authSession.userId) {
+    throw new Error(
+      `MCP OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${authSession.userId}`,
+    );
   }
 
   const response = await runMcpOauthCallbackRoute({
     provider,
-    state: authSession.authSessionId,
+    state: delivered.state,
     code: getDefaultAuthCode("mcp-oauth", provider),
+    agentRunner: args.agentRunner,
   });
   if (response.status !== 200) {
     throw new Error(
       `MCP OAuth callback returned ${response.status}: ${await response.text()}`,
     );
   }
-  args.consumedSessions.add(authSession.authSessionId);
+  const credentials = await getMcpStoredOAuthCredentials(
+    authSession.userId,
+    provider,
+  );
+  if (!credentials?.tokens?.access_token) {
+    throw new Error(
+      `MCP OAuth callback completed without stored credentials for provider "${provider}"`,
+    );
+  }
+  args.completions.push({
+    credentialStored: true,
+    delivery: delivered.delivery,
+    kind: "mcp",
+    provider,
+    userId: authSession.userId,
+  });
+  args.consumedStates.add(delivered.state);
   return true;
 }
 
 async function autoCompleteOauth(args: {
+  agentRunner: AgentRunner;
+  completions: AuthorizationCompletion[];
   provider: string;
   consumedStates: Set<string>;
 }): Promise<boolean> {
@@ -1391,24 +1464,54 @@ async function autoCompleteOauth(args: {
     throw new Error(`Unknown OAuth provider "${provider}" in eval harness`);
   }
 
-  const state = findLatestOAuthStateFromSlackCalls({
+  const delivered = findLatestOAuthStateFromSlackCalls({
     authorizeEndpoint: providerConfig.authorizeEndpoint,
     consumedStates: args.consumedStates,
   });
-  if (!state) {
+  if (!delivered) {
     return false;
+  }
+  const storedState = parseOAuthStatePayload(
+    await getStateAdapter().get(`oauth-state:${delivered.state}`),
+  );
+  if (!storedState || storedState.provider !== provider) {
+    throw new Error(
+      `Delivered OAuth state did not resolve to provider "${provider}"`,
+    );
+  }
+  if (delivered.recipientUserId !== storedState.userId) {
+    throw new Error(
+      `OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${storedState.userId}`,
+    );
   }
   const response = await runOauthCallbackRoute({
     provider,
-    state,
+    state: delivered.state,
     code: getDefaultAuthCode("oauth", provider),
+    agentRunner: args.agentRunner,
   });
   if (response.status !== 200) {
     throw new Error(
       `OAuth callback returned ${response.status}: ${await response.text()}`,
     );
   }
-  args.consumedStates.add(state);
+  const credentials = await createUserTokenStore().get(
+    storedState.userId,
+    provider,
+  );
+  if (!credentials?.accessToken) {
+    throw new Error(
+      `OAuth callback completed without stored credentials for provider "${provider}"`,
+    );
+  }
+  args.completions.push({
+    credentialStored: true,
+    delivery: delivered.delivery,
+    kind: "plugin",
+    provider,
+    userId: storedState.userId,
+  });
+  args.consumedStates.add(delivered.state);
   return true;
 }
 
@@ -1457,14 +1560,14 @@ async function setupHarnessEnvironment(
     const authActorUsers = new Set(
       flattenEvalEvents(scenario.events).flatMap((event) =>
         "message" in event
-          ? [event.message.author?.user_id?.trim() || "U-test"]
+          ? [event.message.author?.user_id?.trim() || TEST_USER_ID]
           : "user_id" in event && event.user_id
             ? [event.user_id]
             : [],
       ),
     );
     if (authActorUsers.size === 0) {
-      authActorUsers.add("U-test");
+      authActorUsers.add(TEST_USER_ID);
     }
 
     configureCredentialProviderEnv(credentialProviders);
@@ -1759,6 +1862,7 @@ async function processEvents(args: {
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
   findEvalThread: (threadId: string) => TestThread | undefined;
+  observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
 }): Promise<void> {
   const {
@@ -1774,20 +1878,21 @@ async function processEvents(args: {
   } = args;
 
   const consumedOauthStates = new Set<string>();
-  const consumedMcpAuthSessions = new Set<string>();
+  const consumedMcpOauthStates = new Set<string>();
 
   const maybeAutoCompleteAuth = async (): Promise<void> => {
     for (const provider of env.autoCompleteMcpOauthProviders) {
-      for (const actorUserId of env.authActorUsers) {
-        await autoCompleteMcpOauth({
-          provider,
-          actorUserId,
-          consumedSessions: consumedMcpAuthSessions,
-        });
-      }
+      await autoCompleteMcpOauth({
+        agentRunner,
+        completions: args.observations.authorizationCompletions,
+        provider,
+        consumedStates: consumedMcpOauthStates,
+      });
     }
     for (const provider of env.autoCompleteOauthProviders) {
       await autoCompleteOauth({
+        agentRunner,
+        completions: args.observations.authorizationCompletions,
         provider,
         consumedStates: consumedOauthStates,
       });
@@ -1958,7 +2063,7 @@ async function processEvents(args: {
     const task: ScheduledTask = {
       id: taskId,
       createdAtMs: nowMs - 60_000,
-      createdBy: { slackUserId: "U-test", userName: "testuser" },
+      createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       destination: createEvalDestination(
         thread,
       ) as ScheduledTask["destination"],
@@ -2126,6 +2231,7 @@ function collectResults(
     canvases,
     channelPosts,
     logRecords,
+    authorizationCompletions: observations.authorizationCompletions,
     reactions,
     posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
     slackAdapter,
@@ -2160,12 +2266,11 @@ export async function runEvalScenario(
           (!usesMemoryPlugin || plugin.manifest.name !== "memory"),
       ),
     ]);
-    // Eval fixtures mention the bot as <@U_APP>; single-workspace mode lets
-    // worker-claimed mailbox turns run under runWithSlackInstallation.
-    const slackAdapter = new FakeSlackAdapter({ botUserId: "U_APP" });
+    const slackAdapter = new FakeSlackAdapter({ botUserId: TEST_BOT_USER_ID });
     const threadRecordsById = new Map<string, EvalThreadRecord>();
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {
+      authorizationCompletions: [],
       toolInvocations: [],
     };
     const channelStateById = new Map<
@@ -2230,6 +2335,7 @@ export async function runEvalScenario(
       slackRuntime,
       getThreadRecord,
       findEvalThread: (threadId) => threadRecordsById.get(threadId)?.thread,
+      observations,
       readyQueueDeliveries,
     });
 

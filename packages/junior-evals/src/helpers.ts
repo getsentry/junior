@@ -16,6 +16,16 @@ import {
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import {
+  slackEventThread,
+  slackMentionEvent,
+  slackSubscribedMessageEvent,
+  type SlackEventThreadFixture,
+  type SlackEventUser,
+} from "@junior-tests/fixtures/slack/factories/events";
+import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
+import { parseSlackChannelId, parseSlackUserId } from "@/chat/slack/ids";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
+import {
   type EvalEvent,
   type EvalOverrides,
   type EvalResult,
@@ -53,6 +63,16 @@ function slackMetadata(result: EvalResult): Record<string, JsonValue> {
     suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
     assistant_status_pending: hasAssistantStatusPending(result),
   };
+}
+
+function authorizationArtifacts(result: EvalResult): JsonValue {
+  return result.authorizationCompletions.map((completion) => ({
+    credential_stored: completion.credentialStored,
+    delivery: completion.delivery,
+    kind: completion.kind,
+    provider: completion.provider,
+    user_id: completion.userId,
+  }));
 }
 
 function toToolCallRecord(
@@ -198,6 +218,9 @@ function toHarnessRun(result: EvalResult): HarnessRun {
   const messages = toSessionMessages(result, toolCalls);
 
   return {
+    artifacts: {
+      authorization_completions: authorizationArtifacts(result),
+    },
     session: {
       messages,
       metadata: toJsonRecord({
@@ -509,6 +532,48 @@ export const slackEvals = {
   judgeThreshold: 0.75,
 } satisfies DescribeEvalOptions<SlackEvalInput>;
 
+export interface AuthorizationCompletionView {
+  credentialStored: boolean;
+  delivery: "direct_message" | "ephemeral";
+  kind: "mcp" | "plugin";
+  provider: string;
+  userId: string;
+}
+
+/** Return completed provider authorizations verified through the credential store. */
+export function authorizationCompletions(
+  result: HarnessRun,
+): AuthorizationCompletionView[] {
+  const completions = result.artifacts?.authorization_completions;
+  if (!Array.isArray(completions)) {
+    return [];
+  }
+  return completions.flatMap((completion) => {
+    if (
+      !completion ||
+      typeof completion !== "object" ||
+      Array.isArray(completion)
+    ) {
+      return [];
+    }
+    const provider = completion.provider;
+    const userId = completion.user_id;
+    const delivery = completion.delivery;
+    const kind = completion.kind;
+    const credentialStored = completion.credential_stored;
+    if (
+      typeof provider !== "string" ||
+      typeof userId !== "string" ||
+      (delivery !== "ephemeral" && delivery !== "direct_message") ||
+      (kind !== "mcp" && kind !== "plugin") ||
+      typeof credentialStored !== "boolean"
+    ) {
+      return [];
+    }
+    return [{ credentialStored, delivery, kind, provider, userId }];
+  });
+}
+
 // ── Event builders ─────────────────────────────────────────
 
 let _seq = 0;
@@ -520,21 +585,50 @@ function messageTs(seq: string) {
   return `17000001.${seq}`;
 }
 
-const DEFAULT_AUTHOR = {
-  user_id: "U-test",
+const DEFAULT_AUTHOR: SlackEventUser = {
+  user_id: TEST_USER_ID,
   user_name: "testuser",
   full_name: "Test User",
   is_me: false,
   is_bot: false,
 };
 
-type AuthorOverrides = Partial<typeof DEFAULT_AUTHOR>;
+type AuthorOverrides = Partial<SlackEventUser>;
 
-interface ThreadOverrides {
+interface ThreadOverrides extends Partial<SlackEventThreadFixture> {
   channel_type?: "channel" | "group" | "im" | "mpim";
-  id?: string;
-  channel_id?: string;
-  thread_ts?: string;
+}
+
+function evalAuthor(overrides?: AuthorOverrides): SlackEventUser {
+  const author = { ...DEFAULT_AUTHOR, ...overrides };
+  if (!parseSlackUserId(author.user_id)) {
+    throw new Error(`Invalid eval Slack user id: ${author.user_id}`);
+  }
+  return author;
+}
+
+function evalThread(
+  seq: string,
+  overrides?: ThreadOverrides,
+): SlackEventThreadFixture & Pick<ThreadOverrides, "channel_type"> {
+  const thread = slackEventThread({
+    id: `thread-${seq}`,
+    channel_id: `C${seq}`,
+    thread_ts: `17000000.${seq}`,
+    ...overrides,
+  });
+  if (!parseSlackChannelId(thread.channel_id)) {
+    throw new Error(`Invalid eval Slack channel id: ${thread.channel_id}`);
+  }
+  if (!parseSlackMessageTs(thread.thread_ts)) {
+    throw new Error(`Invalid eval Slack thread timestamp: ${thread.thread_ts}`);
+  }
+  return {
+    ...thread,
+    ...(overrides?.channel_type
+      ? { channel_type: overrides.channel_type }
+      : {}),
+  };
 }
 
 /** Builds a first-turn mention event for a harnessed Slack eval. */
@@ -543,19 +637,20 @@ export function mention(
   opts?: { author?: AuthorOverrides; thread?: ThreadOverrides },
 ) {
   const seq = nextId();
-  return {
-    type: "new_mention" as const,
-    thread: {
-      id: `thread-${seq}`,
-      channel_id: `C${seq}`,
-      thread_ts: `17000000.${seq}`,
-      ...opts?.thread,
-    },
+  const thread = evalThread(seq, opts?.thread);
+  const event = slackMentionEvent({
+    thread,
     message: {
       id: messageTs(seq),
       text,
-      is_mention: true,
-      author: { ...DEFAULT_AUTHOR, ...opts?.author },
+      author: evalAuthor(opts?.author),
+    },
+  });
+  return {
+    ...event,
+    thread: {
+      ...event.thread,
+      ...(thread.channel_type ? { channel_type: thread.channel_type } : {}),
     },
   };
 }
@@ -570,19 +665,21 @@ export function threadMessage(
   },
 ) {
   const seq = nextId();
-  return {
-    type: "subscribed_message" as const,
-    thread: {
-      id: `thread-${seq}`,
-      channel_id: `C${seq}`,
-      thread_ts: `17000000.${seq}`,
-      ...opts?.thread,
-    },
+  const thread = evalThread(seq, opts?.thread);
+  const event = slackSubscribedMessageEvent({
+    thread,
     message: {
       id: messageTs(seq),
       text,
       is_mention: opts?.is_mention ?? false,
-      author: { ...DEFAULT_AUTHOR, ...opts?.author },
+      author: evalAuthor(opts?.author),
+    },
+  });
+  return {
+    ...event,
+    thread: {
+      ...event.thread,
+      ...(thread.channel_type ? { channel_type: thread.channel_type } : {}),
     },
   };
 }

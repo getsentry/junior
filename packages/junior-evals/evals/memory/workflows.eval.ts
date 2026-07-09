@@ -9,13 +9,14 @@ import {
   juniorMemoryMemories,
 } from "../../../junior-memory/src/db/schema";
 import { createMemoryAgent } from "../../../junior-memory/src/agent";
+import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 const memoryPluginOverrides = {
   plugin_packages: ["@sentry/junior-memory"],
 };
 const memoryTeamId = "TEVAL";
-const actorUserId = "U-test";
+const actorUserId = TEST_USER_ID;
 const memoryJudgeModelId = resolveGatewayModel("openai/gpt-5.4").id;
 
 interface MemoryThread {

@@ -72,6 +72,16 @@ export function chatGetPermalinkOk(input: { permalink?: string } = {}): {
   });
 }
 
+/** Builds the successful Slack response used when opening a DM conversation. */
+export function conversationsOpenOk(input: { channelId?: string } = {}): {
+  ok: true;
+  channel: { id: string };
+} {
+  return slackOk({
+    channel: { id: input.channelId ?? "D0TEST" },
+  });
+}
+
 export function reactionsAddOk(): { ok: true } {
   return slackOk();
 }

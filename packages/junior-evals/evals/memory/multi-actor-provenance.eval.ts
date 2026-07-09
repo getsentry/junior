@@ -35,19 +35,19 @@ const memoryPluginOverrides = {
 const memoryTeamId = "TEVAL";
 
 const ALICE = {
-  user_id: "U_ALICE",
+  user_id: "UALICE",
   user_name: "alice",
   full_name: "Alice Example",
 };
 
 const BOB = {
-  user_id: "U_BOB",
+  user_id: "UBOB",
   user_name: "bob",
   full_name: "Bob Example",
 };
 
 const CAROL = {
-  user_id: "U_CAROL",
+  user_id: "UCAROL",
   user_name: "carol",
   full_name: "Carol Example",
 };
@@ -128,7 +128,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
             author: BOB,
           },
         ),
-        threadMessage("<@U_APP> what are the takeaways so far?", {
+        threadMessage("What are the takeaways so far?", {
           thread: bystanderPreferenceThread,
           is_mention: true,
           author: ALICE,
@@ -189,7 +189,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
             author: BOB,
           },
         ),
-        threadMessage("<@U_APP> thanks, can you tighten the draft a bit?", {
+        threadMessage("Thanks, can you tighten the draft a bit?", {
           thread: conflictingPreferencesThread,
           is_mention: true,
           author: ALICE,
@@ -248,14 +248,14 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       events: [
         batch(
           mention(
-            "<@U_APP> when you write up the recap, I prefer short bullet summaries over prose.",
+            "When you write up the recap, I prefer short bullet summaries over prose.",
             {
               thread: batchedMentionThread,
               author: BOB,
             },
           ),
           threadMessage(
-            "<@U_APP> can you recap what has been asked in this thread so far?",
+            "Can you recap what has been asked in this thread so far?",
             {
               thread: batchedMentionThread,
               is_mention: true,
@@ -319,14 +319,14 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
       events: [
         batch(
           mention(
-            "<@U_APP> can you list the open questions from this thread when you get a chance?",
+            "Can you list the open questions from this thread when you get a chance?",
             {
               thread: actorPreferenceMultiActorThread,
               author: BOB,
             },
           ),
           threadMessage(
-            "<@U_APP> I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
+            "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
             {
               thread: actorPreferenceMultiActorThread,
               is_mention: true,
@@ -409,7 +409,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
             author: BOB,
           },
         ),
-        threadMessage("<@U_APP> when should we schedule it?", {
+        threadMessage("When should we schedule it?", {
           thread: sharedKnowledgeThread,
           is_mention: true,
           author: ALICE,

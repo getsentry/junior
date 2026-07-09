@@ -48,11 +48,13 @@ function makeDiagnostics() {
 }
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
+type CapabilitiesFactoryModule = typeof import("@/chat/capabilities/factory");
 type OAuthCallbackHarnessModule =
   typeof import("../fixtures/oauth-callback-harness");
 type TurnSessionStoreModule = typeof import("@/chat/state/turn-session");
 
 let stateAdapterModule: StateAdapterModule;
+let capabilitiesFactoryModule: CapabilitiesFactoryModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
@@ -75,6 +77,7 @@ describe("oauth callback slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
     vi.resetModules();
     stateAdapterModule = await import("@/chat/state/adapter");
+    capabilitiesFactoryModule = await import("@/chat/capabilities/factory");
     oauthCallbackHarnessModule =
       await import("../fixtures/oauth-callback-harness");
     turnSessionStoreModule = await import("@/chat/state/turn-session");
@@ -105,6 +108,13 @@ describe("oauth callback slack integration", () => {
     });
 
     expect(response.status).toBe(200);
+    await expect(
+      capabilitiesFactoryModule
+        .createUserTokenStore()
+        .get("U123", "eval-oauth"),
+    ).resolves.toEqual(
+      expect.objectContaining({ accessToken: "eval-oauth-access-token" }),
+    );
     expect(getCapturedSlackApiCalls("views.publish")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({

@@ -6,7 +6,7 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
   const followUpThread = {
     id: "thread-sentry-follow-up",
     channel_id: "CSENTRYFOLLOWUP",
-    thread_ts: "17000000.sentry-follow-up",
+    thread_ts: "17000000.1501",
   };
 
   it("when a Sentry request follows a generic first turn, use the Sentry skill and CLI", async ({

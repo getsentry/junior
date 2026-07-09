@@ -1,7 +1,12 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import type { HarnessRun } from "vitest-evals/harness";
 import { expect } from "vitest";
-import { rubric, slackEvals, threadMessage } from "../../src/helpers";
+import {
+  authorizationCompletions,
+  rubric,
+  slackEvals,
+  threadMessage,
+} from "../../src/helpers";
 
 type EvalRun = HarnessRun;
 
@@ -37,6 +42,20 @@ function expectEvalOauthIdentityCheck(result: EvalRun): void {
   );
 }
 
+function matchingToolCalls(
+  result: EvalRun,
+  name: string,
+  argumentsMatch: Record<string, unknown>,
+) {
+  return toolCalls(result.session).filter(
+    (call) =>
+      call.name === name &&
+      Object.entries(argumentsMatch).every(
+        ([key, value]) => call.arguments?.[key] === value,
+      ),
+  );
+}
+
 function expectFinalThreadReply(
   result: EvalRun,
   thread: { channel_id: string; thread_ts: string },
@@ -55,10 +74,10 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   const mcpAuthResumeThread = {
     id: "thread-auth-resume",
     channel_id: "CAUTHRESUME",
-    thread_ts: "17000000.auth-resume",
+    thread_ts: "17000000.1001",
   };
 
-  it("when MCP auth pauses a turn, resume in the same thread with prior context intact", async ({
+  it("when MCP auth pauses a turn, resume and reuse the stored credential on the next turn", async ({
     run,
   }) => {
     const result = await run({
@@ -67,32 +86,45 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         plugin_dirs: ["fixtures/plugins"],
       },
       events: [
+        threadMessage("Remember: the budget deadline is Friday.", {
+          thread: mcpAuthResumeThread,
+          is_mention: false,
+        }),
         threadMessage(
-          "Remember this for later: the budget deadline is Friday.",
-          {
-            thread: mcpAuthResumeThread,
-            is_mention: false,
-          },
+          "/eval-auth Connect, then tell me the budget deadline I mentioned.",
+          { thread: mcpAuthResumeThread, is_mention: true },
         ),
         threadMessage(
-          "<@U_APP> /eval-auth Use the demo MCP connection, then tell me what budget deadline I mentioned earlier.",
+          "/eval-auth Use the connection again and confirm the lookup works.",
           { thread: mcpAuthResumeThread, is_mention: true },
         ),
       ],
       criteria: rubric({
         pass: [
-          "The same Slack thread later gets a resumed answer after authorization completes.",
-          "Because the eval harness auto-completes MCP authorization off-transcript, treat a later same-thread resumed answer as evidence that authorization completed.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
+          "The later request also completes successfully using the demo MCP connection.",
         ],
         fail: [
-          "Do not post the authorization URL in the public thread.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",
         ],
       }),
     });
+    expect(authorizationCompletions(result)).toEqual([
+      {
+        credentialStored: true,
+        delivery: "ephemeral",
+        kind: "mcp",
+        provider: "eval-auth",
+        userId: "U0TEST",
+      },
+    ]);
+    expect(
+      matchingToolCalls(result, "callMcpTool", {
+        tool_name: "mcp__eval-auth__budget-echo",
+      }),
+    ).toHaveLength(2);
     expectNoPublicOAuthUrl(result);
     expectFinalThreadReply(result, mcpAuthResumeThread, /\bFriday\b/i);
   });
@@ -100,10 +132,10 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
   const oauthResumeThread = {
     id: "thread-oauth-resume",
     channel_id: "COAUTHRESUME",
-    thread_ts: "17000000.oauth-resume",
+    thread_ts: "17000000.1002",
   };
 
-  it("when generic OAuth pauses a turn, resume in the same thread with prior context intact", async ({
+  it("when generic OAuth pauses a turn, resume and reuse the stored credential on the next turn", async ({
     run,
   }) => {
     const result = await run({
@@ -112,25 +144,25 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         plugin_dirs: ["fixtures/plugins"],
       },
       events: [
+        threadMessage("Remember: the budget deadline is Friday.", {
+          thread: oauthResumeThread,
+          is_mention: false,
+        }),
         threadMessage(
-          "Remember this for later: the budget deadline is Friday.",
-          {
-            thread: oauthResumeThread,
-            is_mention: false,
-          },
+          "/eval-oauth Connect, then tell me the budget deadline I mentioned.",
+          { thread: oauthResumeThread, is_mention: true },
         ),
         threadMessage(
-          "<@U_APP> /eval-oauth Connect the demo account, then tell me what budget deadline I mentioned earlier.",
+          "/eval-oauth Check again and tell me which eval identity is active.",
           { thread: oauthResumeThread, is_mention: true },
         ),
       ],
       criteria: rubric({
         pass: [
-          "The same Slack thread gets a resumed answer after authorization completes.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
+          "The later request identifies the connected account as eval-oauth-user.",
         ],
         fail: [
-          "Do not post the authorization URL in the public thread.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",
@@ -138,14 +170,29 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       }),
     });
     expectNoPublicOAuthUrl(result);
+    expect(authorizationCompletions(result)).toEqual([
+      {
+        credentialStored: true,
+        delivery: "ephemeral",
+        kind: "plugin",
+        provider: "eval-oauth",
+        userId: "U0TEST",
+      },
+    ]);
     expectEvalOauthIdentityCheck(result);
+    expect(
+      matchingToolCalls(result, "bash", {
+        command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
+      }).length,
+    ).toBeGreaterThanOrEqual(3);
     expectFinalThreadReply(result, oauthResumeThread, /\bFriday\b/i);
+    expectFinalThreadReply(result, oauthResumeThread, /eval-oauth-user/i);
   });
 
   const oauthReconnectThread = {
     id: "thread-oauth-reconnect",
     channel_id: "COAUTHRECONNECT",
-    thread_ts: "17000000.oauth-reconnect",
+    thread_ts: "17000000.1003",
   };
 
   it("when the user explicitly asks to reconnect, confirm reconnection without auto-resuming another task", async ({
@@ -158,7 +205,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       },
       events: [
         threadMessage(
-          "<@U_APP> Disconnect my eval-oauth account and reconnect it so we can test the auth flow.",
+          "Disconnect my eval-oauth account and reconnect it so we can test the auth flow.",
           { thread: oauthReconnectThread, is_mention: true },
         ),
       ],
@@ -174,6 +221,15 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       }),
     });
     expectNoPublicOAuthUrl(result);
+    expect(authorizationCompletions(result)).toEqual([
+      {
+        credentialStored: true,
+        delivery: "ephemeral",
+        kind: "plugin",
+        provider: "eval-oauth",
+        userId: "U0TEST",
+      },
+    ]);
     expectEvalOauthIdentityCheck(result);
     expectFinalThreadReply(
       result,

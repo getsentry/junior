@@ -22,7 +22,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   const candidateBriefThread = {
     id: "thread-candidate-brief-repeat",
     channel_id: "CCANDIDATEBRIEF",
-    thread_ts: "17000000.candidate-brief",
+    thread_ts: "17000000.1101",
   };
 
   it("when the candidate brief command runs twice in one thread, keep the replies ordered", async ({

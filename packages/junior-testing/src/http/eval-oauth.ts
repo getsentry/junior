@@ -1,5 +1,6 @@
 const EVAL_OAUTH_HOST = "example.com";
 const EVAL_OAUTH_PATH_PREFIX = "/junior-eval-oauth";
+const EVAL_OAUTH_ACCESS_TOKEN = "eval-oauth-access-token";
 
 /** Intercept eval OAuth fixture HTTP traffic for test scenarios. */
 export async function interceptTestEvalOauthHttp(input: {
@@ -19,7 +20,7 @@ export async function interceptTestEvalOauthHttp(input: {
     input.request.method === "GET"
   ) {
     const authorization = input.request.headers.get("authorization") ?? "";
-    if (!authorization.startsWith("Bearer ")) {
+    if (authorization !== `Bearer ${EVAL_OAUTH_ACCESS_TOKEN}`) {
       return new Response("missing authorization\n", {
         status: 401,
         headers: { "content-type": "text/plain; charset=utf-8" },

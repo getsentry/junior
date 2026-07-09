@@ -221,7 +221,7 @@ describe("behavior harness", () => {
           thread,
           message: {
             id: "m-queue-2",
-            text: "<@U_APP> second",
+            text: "Second",
             is_mention: true,
             author: {
               user_id: "UQUEUE",
