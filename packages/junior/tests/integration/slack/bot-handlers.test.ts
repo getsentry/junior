@@ -6,11 +6,11 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
+import { instructionActors } from "@/chat/state/session-log";
 import {
-  instructionActors,
   loadProjection,
   loadProjectionWithProvenance,
-} from "@/chat/state/session-log";
+} from "@/chat/conversations/projection";
 import {
   getAgentTurnSessionRecord,
   upsertAgentTurnSessionRecord,

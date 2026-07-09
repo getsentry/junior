@@ -6,6 +6,7 @@
  * contributions, bootstrap turn context, resume-safe history trimming, and
  * the redacted telemetry view of the input messages.
  */
+import { isDeepStrictEqual } from "node:util";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   buildPluginSystemPromptContributions,
@@ -331,11 +332,13 @@ function withoutTrailingUncheckpointedUserPrompt(
   return messages.slice(0, -1);
 }
 
+// Deep equality, not serialized-string equality: durable history round-trips
+// through jsonb, which does not preserve object key order.
 function userPromptContentMatches(
   storedContent: unknown,
   currentContent: UserContentPart[],
 ): boolean {
-  return JSON.stringify(storedContent) === JSON.stringify(currentContent);
+  return isDeepStrictEqual(storedContent, currentContent);
 }
 
 /** Assemble prompt history, instructions, and telemetry input for one slice. */

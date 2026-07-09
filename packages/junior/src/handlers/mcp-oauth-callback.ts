@@ -6,7 +6,6 @@
  * must not resume newer thread work after another user message has superseded
  * the paused request.
  */
-import { THREAD_STATE_TTL_MS } from "chat";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deleteMcpAuthSession,
@@ -48,7 +47,7 @@ import {
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
-import { recordAuthorizationCompleted } from "@/chat/state/session-log";
+import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -342,7 +341,6 @@ async function resumeAuthorizedMcpTurn(args: {
           provider,
           sessionId: lockedSessionId,
         }),
-        ttlMs: THREAD_STATE_TTL_MS,
       });
 
       const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);

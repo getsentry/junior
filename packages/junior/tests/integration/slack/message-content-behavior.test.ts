@@ -7,7 +7,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { commitMessages } from "@/chat/state/session-log";
+import { commitMessages } from "@/chat/conversations/projection";
 import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
@@ -352,7 +352,6 @@ describe("Slack behavior: message content", () => {
     await commitMessages({
       conversationId: thread.id,
       messages: priorMessages,
-      ttlMs: 60_000,
     });
     const conversation = coerceThreadConversationState({});
     await persistThreadState(thread, { conversation });
@@ -464,7 +463,6 @@ describe("Slack behavior: message content", () => {
     await commitMessages({
       conversationId: thread.id,
       messages: priorMessages,
-      ttlMs: 60_000,
     });
     await upsertAgentTurnSessionRecord({
       conversationId: thread.id,

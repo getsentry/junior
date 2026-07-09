@@ -10,7 +10,6 @@
  * signal emitted by the egress proxy — never inferred from bash command text,
  * stdout patterns, or exit codes.
  */
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -22,7 +21,7 @@ import {
   type AuthorizationFlowMode,
 } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-import { recordAuthorizationRequested } from "@/chat/state/session-log";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { parseSandboxEgressAuthRequiredSignal } from "@/chat/sandbox/egress/schemas";
 
@@ -215,7 +214,6 @@ export function createPluginAuthOrchestration(
         delivery: reusingPendingLink
           ? "private_link_reused"
           : "private_link_sent",
-        ttlMs: THREAD_STATE_TTL_MS,
       });
     }
     pendingPause = new PluginAuthorizationPauseError(

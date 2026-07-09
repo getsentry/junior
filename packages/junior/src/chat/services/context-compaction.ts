@@ -2,11 +2,10 @@
  * Context compaction.
  *
  * This module bounds visible Pi history for long conversations. It strips
- * runtime-only turn context before summarizing, commits a session-log projection
- * reset, and keeps recent user intent. Compaction must not preserve runtime
- * bootstrap context as durable conversation history.
+ * runtime-only turn context before summarizing, opens a new compaction context
+ * epoch in the durable step store, and keeps recent user intent. Compaction
+ * must not preserve runtime bootstrap context as durable conversation history.
  */
-import { THREAD_STATE_TTL_MS } from "chat";
 import {
   estimateContextTokens,
   estimateTokens,
@@ -20,11 +19,12 @@ import {
   getAgentContextCompactionTriggerTokens,
 } from "@/chat/services/context-budget";
 import {
-  commitMessages,
   contextProvenance,
-  loadProjectionWithProvenance,
   type PiMessageProvenance,
 } from "@/chat/state/session-log";
+import { loadProjectionWithProvenance } from "@/chat/conversations/projection";
+import type { AgentStepStore } from "@/chat/conversations/history";
+import { getAgentStepStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
@@ -45,6 +45,7 @@ const OMITTED_OLDER_CONTEXT_NOTICE = "[older context omitted]";
 export interface ContextCompactorDeps {
   completeText: typeof completeText;
   autoCompactionTriggerTokens?: number;
+  stepStore?: AgentStepStore;
 }
 
 export interface ContextCompactor {
@@ -139,6 +140,12 @@ function userMessage(text: string): PiMessage {
     content: [{ type: "text", text }],
     timestamp: Date.now(),
   } as PiMessage;
+}
+
+/** Preserve the message's own timestamp on epoch rows so replay is byte-stable. */
+function piMessageTimestamp(message: PiMessage): number {
+  const timestamp = (message as { timestamp?: unknown }).timestamp;
+  return typeof timestamp === "number" ? timestamp : Date.now();
 }
 
 interface RetainedUserMessage {
@@ -404,15 +411,21 @@ async function maybeCompactWithDeps(
     return { compacted: false, reason: "summary_failed" };
   }
 
-  return await writeCompactedThreadContext(args, source.messages, summary, {
-    estimatedTokens: source.estimatedTokens,
-    triggerTokens,
-  });
+  return await writeCompactedThreadContext(
+    args,
+    source.messages,
+    summary,
+    {
+      estimatedTokens: source.estimatedTokens,
+      triggerTokens,
+    },
+    deps,
+  );
 }
 
 /**
- * Commit the compacted projection reset so later turns read only the active
- * session history, not the pre-compaction runtime transcript.
+ * Open the compaction context epoch so later turns read only the replacement
+ * history, not the pre-compaction runtime transcript.
  */
 async function writeCompactedThreadContext(
   args: CompactContextArgs,
@@ -422,9 +435,12 @@ async function writeCompactedThreadContext(
     estimatedTokens: number;
     triggerTokens?: number;
   },
+  deps: ContextCompactorDeps,
 ): Promise<CompactContextResult> {
+  const stepStore = deps.stepStore ?? getAgentStepStore();
   const sourceProjection = await loadProjectionWithProvenance({
     conversationId: args.conversationId,
+    stepStore,
   });
   const retained = selectRetainedUserMessageEntries(
     trimTrailingAssistantMessages(sourceProjection.messages),
@@ -434,15 +450,18 @@ async function writeCompactedThreadContext(
     userMessage(`${COMPACTION_SUMMARY_PREFIX}\n${summary}`),
   ];
   // Provenance comes from the committed projection so retained user asks keep
-  // their original instruction author across the compaction reset.
-  await commitMessages({
-    conversationId: args.conversationId,
-    messages: replacement,
-    provenance: buildReplacementProvenance({
-      retained,
-      sourceProvenance: sourceProjection.provenance,
-    }),
-    ttlMs: THREAD_STATE_TTL_MS,
+  // their original instruction author across the compaction epoch.
+  const replacementProvenance = buildReplacementProvenance({
+    retained,
+    sourceProvenance: sourceProjection.provenance,
+  });
+  await stepStore.startEpoch(args.conversationId, {
+    reason: "compaction",
+    messages: replacement.map((message, index) => ({
+      message,
+      createdAtMs: piMessageTimestamp(message),
+      provenance: replacementProvenance[index]!,
+    })),
   });
 
   updateConversationStats(args.conversation);

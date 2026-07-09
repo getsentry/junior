@@ -19,7 +19,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import { THREAD_STATE_TTL_MS } from "chat";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -42,7 +41,10 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { commitMessages, loadProjection } from "@/chat/state/session-log";
+import {
+  commitMessages,
+  loadProjection,
+} from "@/chat/conversations/projection";
 
 const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
 
@@ -319,7 +321,6 @@ export async function runLocalAgentTurn(
       await commitMessages({
         conversationId: input.conversationId,
         messages: piMessagesBeforeRun ?? [],
-        ttlMs: THREAD_STATE_TTL_MS,
       });
     }
     markTurnFailed({

@@ -1,6 +1,8 @@
 import { getChatConfig, type SqlDriver } from "@/chat/config";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
+import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import type { AgentStepStore } from "@/chat/conversations/history";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 
@@ -10,6 +12,7 @@ let current:
       db: JuniorSqlExecutor;
       driver: SqlDriver;
       store: ConversationStore;
+      stepStore: AgentStepStore;
     }
   | undefined;
 
@@ -43,6 +46,7 @@ function getSqlExecutor(): JuniorSqlExecutor {
       driver: sql.driver,
       db,
       store: createSqlStore(db),
+      stepStore: createSqlAgentStepStore(db),
     };
   }
   return current.db;
@@ -57,6 +61,12 @@ export function getDb(): JuniorDatabase {
 export function getConversationStore(): ConversationStore {
   getSqlExecutor();
   return current!.store;
+}
+
+/** Return the SQL-backed durable agent step store. */
+export function getAgentStepStore(): AgentStepStore {
+  getSqlExecutor();
+  return current!.stepStore;
 }
 
 /** Close the process SQL database when it has been opened. */

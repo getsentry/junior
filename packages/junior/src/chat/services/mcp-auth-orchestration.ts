@@ -6,7 +6,6 @@
  * record pending auth, and abort the agent so the OAuth callback can resume the
  * same session.
  */
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
@@ -25,7 +24,7 @@ import {
 } from "@/chat/services/auth-pause";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-import { recordAuthorizationRequested } from "@/chat/state/session-log";
+import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
 export class McpAuthorizationPauseError extends AuthorizationPauseError {
@@ -209,7 +208,6 @@ export function createMcpAuthOrchestration(
       delivery: reusingPendingLink
         ? "private_link_reused"
         : "private_link_sent",
-      ttlMs: THREAD_STATE_TTL_MS,
     });
     pendingPause = new McpAuthorizationPauseError(
       provider,

@@ -19,7 +19,10 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { commitMessages, loadProjection } from "@/chat/state/session-log";
+import {
+  commitMessages,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -449,7 +452,6 @@ describe("local agent runner", () => {
     await commitMessages({
       conversationId: conversationId!,
       messages: [projectedMessage],
-      ttlMs: 60_000,
     });
 
     const contexts: FlatAgentRunRequest[] = [];
@@ -630,7 +632,6 @@ describe("local agent runner", () => {
     await commitMessages({
       conversationId: conversationId!,
       messages: [projectedMessage],
-      ttlMs: 60_000,
     });
 
     const newerMessages = [
@@ -694,7 +695,6 @@ describe("local agent runner", () => {
       await commitMessages({
         conversationId: conversationId!,
         messages: [assistantMessage],
-        ttlMs: 60_000,
       });
       return completedAgentRun(successReply("not delivered"));
     });

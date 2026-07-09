@@ -6,7 +6,6 @@
  * queued messages, compaction, status updates, and Slack posting meet; agent
  * internals stay behind the runner seam.
  */
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -122,13 +121,15 @@ import {
   setConversationTitle,
 } from "@/chat/state/conversation-details";
 import {
-  commitMessages,
   contextProvenance,
   instructionProvenanceFor,
-  loadProjection,
-  loadProjectionWithProvenance,
   type PiMessageProvenance,
 } from "@/chat/state/session-log";
+import {
+  commitMessages,
+  loadProjection,
+  loadProjectionWithProvenance,
+} from "@/chat/conversations/projection";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
@@ -705,7 +706,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 ...projection.provenance,
                 ...missing.map((pair) => pair.provenance),
               ],
-              ttlMs: THREAD_STATE_TTL_MS,
             });
             return true;
           } finally {

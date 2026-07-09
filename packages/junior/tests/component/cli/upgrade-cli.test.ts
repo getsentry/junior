@@ -10,9 +10,8 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import { resolveUpgradePluginSet } from "@/cli/upgrade";
 import { migrateConversationsToSql } from "@/cli/upgrade/migrations/conversations-sql";
 import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
@@ -224,16 +223,9 @@ export const plugins = {
   it("seeds active awaiting continuations into conversation work", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    await upsertAgentTurnSessionRecord({
+    await recordAgentTurnSessionSummary({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "finish this" }],
-          timestamp: 1_000,
-        } as PiMessage,
-      ],
       resumeReason: "timeout",
       sessionId: "turn-timeout",
       sliceId: 2,

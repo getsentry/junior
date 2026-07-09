@@ -1,4 +1,3 @@
-import { THREAD_STATE_TTL_MS } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -52,7 +51,7 @@ import {
   getAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
-import { recordAuthorizationCompleted } from "@/chat/state/session-log";
+import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
 import {
   applyPendingAuthUpdate,
   clearPendingAuth,
@@ -368,7 +367,6 @@ async function resumeOAuthSessionRecordTurn(
           provider: stored.provider,
           sessionId: lockedSessionId,
         }),
-        ttlMs: THREAD_STATE_TTL_MS,
       });
 
       const lockedMessageTs = getTurnUserSlackMessageTs(lockedUserMessage);

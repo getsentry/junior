@@ -78,6 +78,7 @@ class SqlAgentStepStore implements AgentStepStore {
       return;
     }
     await this.executor.transaction(async () => {
+      await this.ensureConversation(conversationId, steps[0]!.createdAtMs);
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
@@ -93,6 +94,7 @@ class SqlAgentStepStore implements AgentStepStore {
     opts: { reason: EpochReason; messages: PiMessageStep[] },
   ): Promise<void> {
     await this.executor.transaction(async () => {
+      await this.ensureConversation(conversationId, Date.now());
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
@@ -105,6 +107,30 @@ class SqlAgentStepStore implements AgentStepStore {
       );
       await this.executor.db().insert(juniorAgentSteps).values(rows);
     });
+  }
+
+  /**
+   * Establish the conversation metadata row on first contact, matching the
+   * metadata store's lazy-upsert semantics: local and dispatch surfaces write
+   * steps before activity recording has created the row, and the steps table
+   * FKs to it.
+   */
+  private async ensureConversation(
+    conversationId: string,
+    atMs: number,
+  ): Promise<void> {
+    const at = new Date(atMs);
+    await this.executor
+      .db()
+      .insert(juniorConversations)
+      .values({
+        conversationId,
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle",
+      })
+      .onConflictDoNothing({ target: juniorConversations.conversationId });
   }
 
   async loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]> {

@@ -9,7 +9,7 @@
  * stay outside this module.
  */
 import { Agent } from "@earendil-works/pi-agent-core";
-import { THREAD_STATE_TTL_MS, type FileUpload } from "chat";
+import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
@@ -34,11 +34,13 @@ import {
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  instructionActors,
-  instructionProvenanceFor,
   loadConnectedMcpProviders,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
+} from "@/chat/conversations/projection";
+import {
+  instructionActors,
+  instructionProvenanceFor,
   type PiMessageProvenance,
 } from "@/chat/state/session-log";
 import type { Actor } from "@/chat/actor";
@@ -231,7 +233,6 @@ async function executeAgentRunInPrivacyContext(
     await recordMcpProviderConnected({
       conversationId: sessionConversationId,
       provider,
-      ttlMs: THREAD_STATE_TTL_MS,
     });
     connectedMcpProviders.add(provider);
   };
@@ -355,11 +356,9 @@ async function executeAgentRunInPrivacyContext(
       try {
         await recordToolExecutionStarted({
           conversationId: sessionConversationId,
-          sessionId,
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           args: event.args,
-          ttlMs: THREAD_STATE_TTL_MS,
         });
       } catch (error) {
         // Host-only activity events are best-effort reporting writes; a

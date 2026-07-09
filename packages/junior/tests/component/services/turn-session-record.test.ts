@@ -151,7 +151,7 @@ describe("persistAuthPauseSessionRecord", () => {
         startedAtMs: 1,
         lastProgressAtMs: 2,
         updatedAtMs: 3,
-        committedMessageCount: 0,
+        committedSeq: -1,
         cumulativeDurationMs: 0,
         requester: {
           platform: "slack",
@@ -294,7 +294,7 @@ describe("persistAuthPauseSessionRecord", () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { recordAuthorizationCompleted } =
-      await import("@/chat/state/session-log");
+      await import("@/chat/conversations/projection");
 
     const userMessage: PiMessage = {
       role: "user",
@@ -317,7 +317,6 @@ describe("persistAuthPauseSessionRecord", () => {
       provider: "sentry",
       actorId: "U123",
       authorizationId: "auth-1",
-      ttlMs: 60_000,
     });
 
     await expect(
@@ -397,7 +396,7 @@ describe("persistAuthPauseSessionRecord", () => {
 
   it("decodes legacy stored requester as the bound actor on rehydration", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { commitMessages } = await import("@/chat/state/session-log");
+    const { commitMessages } = await import("@/chat/conversations/projection");
     const { getAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -414,7 +413,6 @@ describe("persistAuthPauseSessionRecord", () => {
     await commitMessages({
       conversationId: "conversation-legacy-requester",
       messages: [message],
-      ttlMs: 60_000,
       provenance: [{ authority: "instruction", actor }],
     });
 
@@ -432,8 +430,7 @@ describe("persistAuthPauseSessionRecord", () => {
         lastProgressAtMs: 1,
         updatedAtMs: 1,
         cumulativeDurationMs: 0,
-        committedMessageCount: 1,
-        committedMessageProvenance: [{ authority: "instruction", actor }],
+        committedSeq: 0,
         requester: actor,
         resumeReason: "auth",
       },
@@ -459,7 +456,7 @@ describe("persistAuthPauseSessionRecord", () => {
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
     const { loadProjectionWithActor } =
-      await import("@/chat/state/session-log");
+      await import("@/chat/conversations/projection");
 
     const previousQuestion: PiMessage = {
       role: "user",
@@ -1237,7 +1234,7 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord,
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
-    const { loadProjection } = await import("@/chat/state/session-log");
+    const { loadProjection } = await import("@/chat/conversations/projection");
     const oldRequest: PiMessage = {
       role: "user",
       content: [{ type: "text", text: "old request" }],

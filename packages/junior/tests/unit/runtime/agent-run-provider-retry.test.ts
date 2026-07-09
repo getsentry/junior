@@ -60,9 +60,9 @@ async function advanceUntilContinueCall(maxMs: number): Promise<void> {
   throw new Error("Expected provider retry continuation to start");
 }
 
-vi.mock("@/chat/state/session-log", async (importOriginal) => {
+vi.mock("@/chat/conversations/projection", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/chat/state/session-log")>();
+    await importOriginal<typeof import("@/chat/conversations/projection")>();
   return {
     ...actual,
     recordToolExecutionStarted: async (
@@ -70,7 +70,7 @@ vi.mock("@/chat/state/session-log", async (importOriginal) => {
     ) => {
       sessionLogState.toolExecutionAppendCalls += 1;
       if (sessionLogState.failToolExecutionAppend) {
-        throw new Error("redis blip during host-only append");
+        throw new Error("store blip during host-only append");
       }
       return actual.recordToolExecutionStarted(...args);
     },

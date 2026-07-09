@@ -65,8 +65,14 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   across a steering handoff. A turn may span multiple execution slices. It is
   not one model invocation.
 - **Execution slice**: one serverless invocation segment of a turn.
-- **Agent step**: one model, tool, handoff, action, or other internal event
-  represented inside durable execution history.
+- **Agent step**: one durable event inside execution history — one Pi message
+  or one host runtime fact. Tool call requests are not standalone steps: they
+  are content parts of the assistant-message step that emitted them, and one
+  assistant step may request several tool calls. Each tool result is its own
+  step. A call and its result are therefore never one step: the assistant step
+  is recorded when the model emits it, result steps when execution finishes,
+  and recovery may find the call without its results. Safe resume boundaries
+  require the result steps to be durably recorded.
 - **Context epoch**: one generation of the model-visible context for a
   conversation. The epoch advances when compaction or rollback rebuilds the
   context. Steps in older epochs remain audit history and no longer contribute
