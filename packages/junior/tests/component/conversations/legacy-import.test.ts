@@ -8,6 +8,8 @@ import {
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { advisorChildConversationId } from "@/chat/tools/advisor/tool";
 import { migrateConversationHistoryToSql } from "@/cli/upgrade/migrations/conversations-history-sql";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
@@ -330,6 +332,129 @@ describe("legacy conversation import", () => {
         missing: 0,
         scanned: 1,
       });
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("reads legacy visible messages from a real thread-state payload", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    // Persisted pre-cutover shape: the visible transcript nested under
+    // `conversation.messages`, which the live thread-state contract no longer
+    // reads. No loadVisibleMessages injection — exercise the real parser.
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
+      conversation: {
+        schemaVersion: 1,
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            text: "legacy hello",
+            createdAtMs: 100,
+            meta: { replied: true, slackTs: "100.1" },
+          },
+          {
+            id: "m2",
+            role: "assistant",
+            text: "legacy reply",
+            createdAtMs: 110,
+          },
+          { id: "bad", role: "user", text: 42, createdAtMs: 120 },
+        ],
+      },
+    });
+
+    try {
+      await importConversationFromLegacy(CONVERSATION_ID, {
+        executor: fixture.sql,
+        stepStore,
+        messageStore,
+        conversationRecord: conversationRecord(),
+        sessionLogStore: staticSessionLogStore([
+          {
+            schemaVersion: 2,
+            type: "pi_message",
+            sessionId: "session_0",
+            message: userMessage("first", 10),
+          } as SessionLogEntry,
+        ]),
+        advisorSessionStore: staticAdvisorStore([]),
+      });
+
+      const imported = await messageStore.list(CONVERSATION_ID);
+      expect(
+        imported.map((message) => ({
+          messageId: message.messageId,
+          text: message.text,
+          replied: message.repliedAtMs !== undefined,
+        })),
+      ).toEqual([
+        { messageId: "m1", text: "legacy hello", replied: true },
+        { messageId: "m2", text: "legacy reply", replied: false },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("preserves message author identity through import and hydration", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    // The resume/continuation paths key off the persisted user message's
+    // author userId, so the import must fold `author` into `meta.author` just
+    // like runtime-recorded rows do.
+    const visible: ThreadConversationMessage[] = [
+      {
+        id: "m1",
+        role: "user",
+        text: "hi there",
+        createdAtMs: 100,
+        author: { userId: "U123", userName: "alice", fullName: "Alice" },
+        meta: { replied: true },
+      },
+      { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
+    ];
+
+    try {
+      await importConversationFromLegacy(CONVERSATION_ID, {
+        executor: fixture.sql,
+        stepStore,
+        messageStore,
+        conversationRecord: conversationRecord(),
+        sessionLogStore: staticSessionLogStore([
+          {
+            schemaVersion: 2,
+            type: "pi_message",
+            sessionId: "session_0",
+            message: userMessage("first", 10),
+          } as SessionLogEntry,
+        ]),
+        loadVisibleMessages: async () => visible,
+      });
+
+      const conversation = coerceThreadConversationState({});
+      await hydrateConversationMessages({
+        conversation,
+        conversationId: CONVERSATION_ID,
+        messageStore,
+      });
+
+      const hydratedUser = conversation.messages.find(
+        (message) => message.id === "m1",
+      );
+      expect(hydratedUser?.author?.userId).toBe("U123");
+      expect(hydratedUser?.author?.userName).toBe("alice");
+      // `replied === true` rides the `replied_at` column, not `meta`.
+      expect(hydratedUser?.meta?.replied).toBe(true);
     } finally {
       await fixture.close();
     }

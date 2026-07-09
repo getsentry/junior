@@ -4,6 +4,7 @@ import { createChannelConfigurationService } from "@/chat/configuration/service"
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { buildConversationStatePatch } from "@/chat/state/conversation";
 import type { ThreadConversationState } from "@/chat/state/conversation";
+import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 import {
   buildArtifactStatePatch,
   type ThreadArtifactsState,
@@ -124,6 +125,16 @@ export async function persistThreadStateById(
   threadId: string,
   patch: ThreadStatePatch,
 ): Promise<void> {
+  // The visible transcript is durable in SQL, keyed by the conversation id
+  // (which is the thread id here); keep it in sync at this id-based persist
+  // boundary so scratch and transcript never diverge.
+  if (patch.conversation) {
+    await persistConversationMessages({
+      conversation: patch.conversation,
+      conversationId: threadId,
+    });
+  }
+
   const payload = buildThreadStatePayload(patch);
   if (Object.keys(payload).length === 0) {
     return;

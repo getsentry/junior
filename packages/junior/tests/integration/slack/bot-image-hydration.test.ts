@@ -6,6 +6,11 @@ import {
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const listThreadRepliesMock = vi.fn();
@@ -129,6 +134,22 @@ describe("bot image hydration", () => {
           },
         },
       },
+    });
+
+    // The prior visible message lives in SQL now; thread-state only carries the
+    // backfill/vision scratch that keeps this run from re-backfilling.
+    const seededConversation = coerceThreadConversationState({});
+    seededConversation.messages.push({
+      id: "1700000000.100",
+      role: "user",
+      text: "candidate profile image posted earlier",
+      createdAtMs: 1700000000100,
+      meta: { slackTs: "1700000000.100" },
+      author: { userId: "U-user", userName: "user" },
+    });
+    await persistConversationMessages({
+      conversation: seededConversation,
+      conversationId: "slack:C0IMAGE:1700000000.000",
     });
 
     await slackRuntime.handleNewMention(
@@ -261,7 +282,12 @@ describe("bot image hydration", () => {
     expect(
       persistedState.conversation.vision.backfillCompletedAtMs,
     ).toBeUndefined();
-    const persistedMessage = persistedState.conversation.messages.find(
+    const conversation = coerceThreadConversationState(thread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+    const persistedMessage = conversation.messages.find(
       (entry) => entry.meta?.slackTs === "1700000001.200",
     );
     expect(persistedMessage).toMatchObject({
@@ -416,10 +442,14 @@ describe("bot image hydration", () => {
         };
       };
     };
+    const conversation = coerceThreadConversationState(secondThread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: secondThread.id,
+    });
     expect(
-      persistedState.conversation.messages.find(
-        (message) => message.id === "1700000002.100",
-      )?.meta,
+      conversation.messages.find((message) => message.id === "1700000002.100")
+        ?.meta,
     ).toEqual(
       expect.objectContaining({
         imagesHydrated: true,
@@ -575,10 +605,14 @@ describe("bot image hydration", () => {
         };
       };
     };
+    const conversation = coerceThreadConversationState(thread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
     expect(
-      persistedState.conversation.messages.find(
-        (message) => message.id === "1700000002.100",
-      )?.meta,
+      conversation.messages.find((message) => message.id === "1700000002.100")
+        ?.meta,
     ).toEqual(
       expect.objectContaining({
         imagesHydrated: true,

@@ -10,6 +10,34 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import {
+  coerceThreadConversationState,
+  type ConversationMessage,
+} from "@/chat/state/conversation";
+/**
+ * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
+ * authority the resume handlers now read from. Takes the connected adapter so it
+ * uses the same (dynamically imported) instance the test seeded through.
+ */
+async function seedVisibleTranscriptFromThreadState(
+  adapter: { get<T>(key: string): Promise<T | null | undefined> },
+  conversationId: string,
+): Promise<void> {
+  const raw = await adapter.get<{
+    conversation?: { messages?: ConversationMessage[] };
+  }>(`thread-state:${conversationId}`);
+  const messages = raw?.conversation?.messages ?? [];
+  if (messages.length === 0) {
+    return;
+  }
+  const conversation = coerceThreadConversationState({});
+  conversation.messages.push(...messages);
+  await persistConversationMessages({ conversation, conversationId });
+}
 
 const executeAgentRunMock = vi.fn();
 const testAgentRunner = { run: executeAgentRunMock };
@@ -175,6 +203,10 @@ describe("oauth callback slack integration", () => {
           ],
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      "slack:C123:1700000000.001",
+    );
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
@@ -347,6 +379,10 @@ describe("oauth callback slack integration", () => {
           listColumnMap: {},
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
@@ -417,13 +453,15 @@ describe("oauth callback slack integration", () => {
     const persistedState = await stateAdapterModule
       .getStateAdapter()
       .get<Record<string, unknown>>(`thread-state:${conversationId}`);
-    const conversation =
-      (persistedState?.conversation as {
-        messages?: Array<{ role?: string; text?: string }>;
+    const processing = (
+      persistedState?.conversation as {
         processing?: { activeTurnId?: string };
-      }) ?? {};
-    expect(conversation.processing?.activeTurnId).toBeUndefined();
-    expect(conversation.messages?.at(-1)).toMatchObject({
+      }
+    )?.processing;
+    expect(processing?.activeTurnId).toBeUndefined();
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({ conversation, conversationId });
+    expect(conversation.messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "Here are your Sentry issues.",
     });
@@ -527,6 +565,10 @@ describe("oauth callback slack integration", () => {
           },
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
@@ -664,6 +706,10 @@ describe("oauth callback slack integration", () => {
     await stateAdapterModule
       .getStateAdapter()
       .set(`thread-state:${conversationId}`, freshState);
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
 
     const adapter = stateAdapterModule.getStateAdapter();
     const originalGet = adapter.get.bind(adapter);
@@ -819,6 +865,10 @@ describe("oauth callback slack integration", () => {
           },
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
 
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",

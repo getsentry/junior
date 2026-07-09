@@ -166,9 +166,12 @@ conversation key and `message_id` is the source-scoped message identity (Slack
 - Recording the same source message twice is idempotent — exactly one row per
   `(conversation_id, message_id)`.
 - `role`, `text`, `author_identity_id`, and `created_at` are immutable after
-  insert. The only mutable delivery mark is `replied_at`; no other stored field
-  of a message may be updated in place. This gives reply policy a durable,
-  queryable home and removes the hidden `meta.replied` mutation.
+  insert. Mutable bookkeeping is limited to two surfaces: the `replied_at`
+  delivery mark, and wholesale refresh of the bounded `meta` JSON when the same
+  message is idempotently re-recorded (late vision hydration, routing/skip
+  marks). `meta` stays bounded source/processing facts and is never an
+  authorization input. This gives reply policy a durable, queryable home and
+  removes the hidden `meta.replied` mutation.
 - Reply policy, channel-context assembly, and reporting read visible messages
   through `ConversationMessageStore`; no transcript data is read from
   `thread-state`.

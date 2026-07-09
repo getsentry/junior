@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import type { ConversationMessage } from "@/chat/state/conversation";
 
 const ORIGINAL_ENV = { ...process.env };
 const conversationId = "local:test:plugin-tasks";
@@ -63,6 +64,24 @@ async function recordCompletedSession(args: {
     state: "completed",
     surface: "internal",
   });
+}
+
+/**
+ * Seed the durable visible transcript through the SQL-backed message store, the
+ * authority the task runner now hydrates its public-Slack context from. The
+ * legacy `conversation.messages` thread-state field is no longer persisted.
+ */
+async function seedVisibleMessages(
+  conversationId: string,
+  messages: ConversationMessage[],
+): Promise<void> {
+  const { coerceThreadConversationState } =
+    await import("@/chat/state/conversation");
+  const { persistConversationMessages } =
+    await import("@/chat/conversations/visible-messages");
+  const conversation = coerceThreadConversationState({});
+  conversation.messages.push(...messages);
+  await persistConversationMessages({ conversation, conversationId });
 }
 
 beforeEach(async () => {
@@ -368,10 +387,6 @@ describe("plugin background tasks", () => {
       await import("@/chat/plugins/task-runner");
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { persistThreadStateById } =
-      await import("@/chat/runtime/thread-state");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -389,28 +404,22 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
-    await persistThreadStateById(slackConversationId, {
-      conversation: coerceThreadConversationState({
-        conversation: {
-          messages: [
-            {
-              id: "m-bob",
-              role: "user",
-              text: "Bob's prior note: incident runbooks live in Notion.",
-              createdAtMs: 1,
-              author: { userId: "U_BOB", userName: "bob" },
-            },
-            {
-              id: "m-alice",
-              role: "user",
-              text: "Deploy the release now.",
-              createdAtMs: 2,
-              author: { userId: "U_ALICE", userName: "alice" },
-            },
-          ],
-        },
-      }),
-    });
+    await seedVisibleMessages(slackConversationId, [
+      {
+        id: "m-bob",
+        role: "user",
+        text: "Bob's prior note: incident runbooks live in Notion.",
+        createdAtMs: 1,
+        author: { userId: "U_BOB", userName: "bob" },
+      },
+      {
+        id: "m-alice",
+        role: "user",
+        text: "Deploy the release now.",
+        createdAtMs: 2,
+        author: { userId: "U_ALICE", userName: "alice" },
+      },
+    ]);
 
     await upsertAgentTurnSessionRecord({
       conversationId: slackConversationId,
@@ -489,10 +498,6 @@ describe("plugin background tasks", () => {
       await import("@/chat/plugins/task-runner");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { persistThreadStateById } =
-      await import("@/chat/runtime/thread-state");
-    const { coerceThreadConversationState } =
-      await import("@/chat/state/conversation");
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -531,30 +536,24 @@ describe("plugin background tasks", () => {
     ).toMatchObject({ updatedAtMs: completionMs });
 
     vi.setSystemTime(completionMs + 10_000);
-    await persistThreadStateById(slackConversationId, {
-      conversation: coerceThreadConversationState({
-        conversation: {
-          messages: [
-            {
-              id: "m-before-completion",
-              role: "user",
-              text: "Before completion: staging smoke tests passed.",
-              createdAtMs: completionMs - 500,
-              meta: { slackTs: "1700000000.900000" },
-              author: { userId: "U_BOB", userName: "bob" },
-            },
-            {
-              id: "m-after-completion",
-              role: "user",
-              text: "After completion: cite this only in the next run.",
-              createdAtMs: completionMs - 500,
-              meta: { slackTs: "1700000001.100000" },
-              author: { userId: "U_CAROL", userName: "carol" },
-            },
-          ],
-        },
-      }),
-    });
+    await seedVisibleMessages(slackConversationId, [
+      {
+        id: "m-before-completion",
+        role: "user",
+        text: "Before completion: staging smoke tests passed.",
+        createdAtMs: completionMs - 500,
+        meta: { slackTs: "1700000000.900000" },
+        author: { userId: "U_BOB", userName: "bob" },
+      },
+      {
+        id: "m-after-completion",
+        role: "user",
+        text: "After completion: cite this only in the next run.",
+        createdAtMs: completionMs - 500,
+        meta: { slackTs: "1700000001.100000" },
+        author: { userId: "U_CAROL", userName: "carol" },
+      },
+    ]);
 
     await scheduleSessionCompletedPluginTasks(
       { conversationId: slackConversationId, sessionId: slackSessionId },

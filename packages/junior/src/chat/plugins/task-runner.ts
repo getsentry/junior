@@ -32,6 +32,7 @@ import {
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
@@ -279,6 +280,10 @@ async function loadConversationContextTranscriptEntries(
   }
   const state = await getPersistedThreadState(record.conversationId);
   const conversation = coerceThreadConversationState(state);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: record.conversationId,
+  });
   const entries: PluginRunTranscriptEntry[] = [];
   for (const message of conversation.messages) {
     if (message.role !== "user") {

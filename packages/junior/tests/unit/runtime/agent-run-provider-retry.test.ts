@@ -237,6 +237,66 @@ vi.mock("@earendil-works/pi-agent-core", () => {
   return { Agent: MockAgent };
 });
 
+// Hermetic storage: this is a unit test, so the runtime's SQL singletons are
+// replaced with in-memory stores; opening a real database here is a layering
+// violation (specs/testing.md).
+const memoryDb = vi.hoisted(() => ({
+  stepStore: undefined as unknown,
+  messageStore: undefined as unknown,
+  conversationStore: undefined as unknown,
+  reset() {
+    this.stepStore = undefined;
+    this.messageStore = undefined;
+    this.conversationStore = undefined;
+  },
+}));
+
+vi.mock("@/chat/db", async () => {
+  const { createMemoryAgentStepStore } =
+    await import("../../fixtures/step-store");
+  const { createMemoryConversationMessageStore } =
+    await import("../../fixtures/message-store");
+  const { createStateConversationStore } =
+    await import("@/chat/conversations/state");
+  const refuseSql = () => {
+    throw new Error("unit test must not open a SQL database");
+  };
+  // The state-backed store fails closed to private visibility; echo explicitly
+  // recorded visibility from `recordActivity` the way the SQL store persists a
+  // source-confirmed signal, so redaction behaves as recorded.
+  function createHermeticConversationStore() {
+    const base = createStateConversationStore();
+    const recordedVisibility = new Map<string, string>();
+    return {
+      ...base,
+      recordActivity: async (
+        args: Parameters<(typeof base)["recordActivity"]>[0],
+      ) => {
+        if (args.visibility) {
+          recordedVisibility.set(args.conversationId, args.visibility);
+        }
+        return base.recordActivity(args);
+      },
+      get: async (args: Parameters<(typeof base)["get"]>[0]) => {
+        const record = await base.get(args);
+        const visibility = recordedVisibility.get(args.conversationId);
+        return record && visibility ? { ...record, visibility } : record;
+      },
+    };
+  }
+  return {
+    getAgentStepStore: () =>
+      (memoryDb.stepStore ??= createMemoryAgentStepStore()),
+    getConversationMessageStore: () =>
+      (memoryDb.messageStore ??= createMemoryConversationMessageStore()),
+    getConversationStore: () =>
+      (memoryDb.conversationStore ??= createHermeticConversationStore()),
+    getDb: refuseSql,
+    getSqlExecutor: refuseSql,
+    closeDb: async () => {},
+  };
+});
+
 vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();
   const memoryConfig = original.readChatConfig({
@@ -369,7 +429,7 @@ describe("executeAgentRun provider retry", () => {
     sessionLogState.toolExecutionAppendCalls = 0;
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
-    await getConversationStore().listByActivity({ limit: 1 });
+    memoryDb.reset();
     vi.useFakeTimers();
   });
 

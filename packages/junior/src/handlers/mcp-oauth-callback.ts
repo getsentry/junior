@@ -8,6 +8,10 @@
  */
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import {
   deleteMcpAuthSession,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
@@ -47,7 +51,10 @@ import {
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
-import { recordAuthorizationCompleted } from "@/chat/conversations/projection";
+import {
+  loadProjection,
+  recordAuthorizationCompleted,
+} from "@/chat/conversations/projection";
 import { markTurnFailed } from "@/chat/runtime/turn";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -110,6 +117,7 @@ async function persistCompletedReplyState(
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({ conversation, conversationId: threadId });
   const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(conversation, sessionId);
   const statePatch = buildDeliveredTurnStatePatch({
@@ -120,6 +128,10 @@ async function persistCompletedReplyState(
     userMessageId: userMessage?.id,
   });
 
+  await persistConversationMessages({
+    conversation: statePatch.conversation,
+    conversationId: threadId,
+  });
   await persistThreadStateById(threadId, {
     ...statePatch,
   });
@@ -161,6 +173,7 @@ async function persistFailedReplyState(
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({ conversation, conversationId: threadId });
   clearPendingAuth(conversation, sessionId);
 
   markTurnFailed({
@@ -204,6 +217,7 @@ async function resumeAuthorizedMcpTurn(args: {
   const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({ conversation, conversationId: threadId });
   const pendingAuth = getConversationPendingAuth({
     conversation,
     kind: "mcp",
@@ -242,6 +256,10 @@ async function resumeAuthorizedMcpTurn(args: {
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
+      await hydrateConversationMessages({
+        conversation: lockedConversation,
+        conversationId: threadId,
+      });
       const lockedArtifacts = coerceThreadArtifactsState(lockedState);
       const lockedPendingAuth = getConversationPendingAuth({
         conversation: lockedConversation,
@@ -350,7 +368,9 @@ async function resumeAuthorizedMcpTurn(args: {
         replyContext: {
           input: {
             conversationContext: lockedConversationContext,
-            piMessages: lockedConversation.piMessages,
+            // Pi history is SQL-authoritative: the resumed run reads its
+            // session record first and falls back to the step projection.
+            piMessages: await loadProjection({ conversationId: threadId }),
             ...getTurnUserReplyAttachmentContext(lockedUserMessage),
           },
           routing: {

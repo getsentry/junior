@@ -1,5 +1,4 @@
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import type { PiMessage } from "@/chat/pi/messages";
 import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
 
 type ConversationRole = "assistant" | "system" | "user";
@@ -79,95 +78,10 @@ export interface ThreadConversationState {
   backfill: ConversationBackfillState;
   compactions: ConversationCompaction[];
   messages: ConversationMessage[];
-  piMessages: PiMessage[];
   processing: ConversationProcessingState;
   schemaVersion: 1;
   stats: ConversationStats;
   vision: ConversationVisionState;
-}
-
-function coerceRole(value: unknown): ConversationRole {
-  return value === "assistant" || value === "system" || value === "user"
-    ? value
-    : "user";
-}
-
-function coerceAuthor(value: unknown): ConversationAuthor | undefined {
-  if (!isRecord(value)) return undefined;
-  const author: ConversationAuthor = {
-    fullName: toOptionalString(value.fullName),
-    userId: toOptionalString(value.userId),
-    userName: toOptionalString(value.userName),
-  };
-
-  if (typeof value.isBot === "boolean") {
-    author.isBot = value.isBot;
-  }
-
-  if (
-    !author.fullName &&
-    !author.userId &&
-    !author.userName &&
-    author.isBot === undefined
-  ) {
-    return undefined;
-  }
-  return author;
-}
-
-function coerceMessageMeta(
-  value: unknown,
-): ConversationMessageMeta | undefined {
-  if (!isRecord(value)) return undefined;
-  const meta: ConversationMessageMeta = {};
-  const attachmentCount = toOptionalNumber(value.attachmentCount);
-  if (typeof attachmentCount === "number" && attachmentCount > 0) {
-    meta.attachmentCount = attachmentCount;
-  }
-  if (typeof value.explicitMention === "boolean") {
-    meta.explicitMention = value.explicitMention;
-  }
-  const imageAttachmentCount = toOptionalNumber(value.imageAttachmentCount);
-  if (typeof imageAttachmentCount === "number" && imageAttachmentCount > 0) {
-    meta.imageAttachmentCount = imageAttachmentCount;
-  }
-  if (typeof value.replied === "boolean") {
-    meta.replied = value.replied;
-  }
-  if (
-    typeof value.skippedReason === "string" &&
-    value.skippedReason.trim().length > 0
-  ) {
-    meta.skippedReason = value.skippedReason;
-  }
-  if (typeof value.slackTs === "string" && value.slackTs.trim().length > 0) {
-    meta.slackTs = value.slackTs;
-  }
-  if (Array.isArray(value.imageFileIds)) {
-    const imageFileIds = value.imageFileIds.filter(
-      (entry): entry is string =>
-        typeof entry === "string" && entry.trim().length > 0,
-    );
-    if (imageFileIds.length > 0) {
-      meta.imageFileIds = imageFileIds;
-    }
-  }
-  if (typeof value.imagesHydrated === "boolean") {
-    meta.imagesHydrated = value.imagesHydrated;
-  }
-  if (
-    meta.attachmentCount === undefined &&
-    meta.explicitMention === undefined &&
-    meta.imageAttachmentCount === undefined &&
-    meta.replied === undefined &&
-    meta.skippedReason === undefined &&
-    meta.slackTs === undefined &&
-    meta.imageFileIds === undefined &&
-    meta.imagesHydrated === undefined
-  ) {
-    return undefined;
-  }
-  return meta;
 }
 
 function defaultConversationState(): ThreadConversationState {
@@ -175,7 +89,6 @@ function defaultConversationState(): ThreadConversationState {
   return {
     schemaVersion: 1,
     messages: [],
-    piMessages: [],
     compactions: [],
     backfill: {},
     processing: {},
@@ -238,25 +151,11 @@ export function coerceThreadConversationState(
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
   const base = defaultConversationState();
 
-  const rawMessages = Array.isArray(rawConversation.messages)
-    ? rawConversation.messages
-    : [];
+  // The visible transcript lives in the ConversationMessageStore and Pi
+  // history lives in the AgentStepStore (both SQL). Legacy `messages` /
+  // `piMessages` mirrors left in old thread-state payloads are ignored on
+  // read; consumers hydrate from SQL instead.
   const messages: ConversationMessage[] = [];
-  for (const item of rawMessages) {
-    if (!isRecord(item)) continue;
-    const id = toOptionalString(item.id);
-    const text = toOptionalString(item.text);
-    const createdAtMs = toOptionalNumber(item.createdAtMs);
-    if (!id || !text || !createdAtMs) continue;
-    messages.push({
-      id,
-      role: coerceRole(item.role),
-      text,
-      createdAtMs,
-      author: coerceAuthor(item.author),
-      meta: coerceMessageMeta(item.meta),
-    });
-  }
 
   const rawCompactions = Array.isArray(rawConversation.compactions)
     ? rawConversation.compactions
@@ -337,9 +236,6 @@ export function coerceThreadConversationState(
   return {
     schemaVersion: 1,
     messages,
-    piMessages: Array.isArray(rawConversation.piMessages)
-      ? (rawConversation.piMessages as PiMessage[])
-      : [],
     compactions,
     backfill,
     processing,
@@ -351,15 +247,21 @@ export function coerceThreadConversationState(
   };
 }
 
-/** Wrap a conversation state into the storage envelope for persistence. */
+/**
+ * Wrap a conversation state into the storage envelope for persistence. The
+ * visible transcript (`messages`) is not written to `thread-state`; it lives
+ * in SQL (`ConversationMessageStore`), and Pi history lives in the SQL
+ * `AgentStepStore`. Only runtime scratch is persisted here.
+ */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: ThreadConversationState;
+  conversation: Omit<ThreadConversationState, "messages">;
 } {
+  const { messages: _messages, ...scratch } = conversation;
   return {
     conversation: {
-      ...conversation,
+      ...scratch,
       schemaVersion: 1,
       stats: {
         ...conversation.stats,

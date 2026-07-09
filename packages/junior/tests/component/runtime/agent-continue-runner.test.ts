@@ -81,7 +81,6 @@ describe("agent continuation runner callbacks", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.5",
@@ -184,7 +183,6 @@ describe("agent continuation runner callbacks", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.7",
@@ -271,7 +269,6 @@ describe("agent continuation runner callbacks", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.6",

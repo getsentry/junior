@@ -9,6 +9,8 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 const emptyThreadReplies = async () => [];
@@ -908,15 +910,13 @@ describe("Slack behavior: subscribed messages", () => {
     expect(classifierCalled).toBe(false);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
-    const state = (await thread.state) ?? {};
-    const conversation = (state.conversation ?? {}) as {
-      messages?: Array<{
-        id: string;
-        text: string;
-        meta?: { replied?: boolean; skippedReason?: string };
-      }>;
-      processing?: { lastCompletedAtMs?: number };
-    };
+    const conversation = coerceThreadConversationState(
+      (await thread.state) ?? {},
+    );
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

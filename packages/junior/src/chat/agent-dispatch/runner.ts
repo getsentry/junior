@@ -22,6 +22,11 @@ import {
   type ThreadConversationState,
 } from "@/chat/state/conversation";
 import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import { loadProjection } from "@/chat/conversations/projection";
+import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState,
 } from "@/chat/state/artifacts";
@@ -263,6 +268,7 @@ export async function runAgentDispatchSlice(
 
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persisted);
+    await hydrateConversationMessages({ conversation, conversationId });
     const deliveredMessage = conversation.messages.find(
       (message) =>
         message.id === getAssistantMessageId(dispatch) &&
@@ -296,6 +302,7 @@ export async function runAgentDispatchSlice(
       dispatch,
       nowMs,
     });
+    await persistConversationMessages({ conversation, conversationId });
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
@@ -304,7 +311,9 @@ export async function runAgentDispatchSlice(
       input: {
         messageText: dispatch.input,
         conversationContext,
-        piMessages: conversation.piMessages,
+        // Pi history for redelivered dispatch slices comes from the SQL
+        // step-store projection, not a thread-state mirror.
+        piMessages: await loadProjection({ conversationId }),
       },
       routing: {
         credentialContext: {
@@ -440,6 +449,7 @@ export async function runAgentDispatchSlice(
       },
     });
     updateConversationStats(conversation);
+    await persistConversationMessages({ conversation, conversationId });
     const nextArtifacts = reply.artifactStatePatch
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
       : artifacts;

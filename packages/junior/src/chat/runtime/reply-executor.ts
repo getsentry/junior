@@ -43,6 +43,7 @@ import {
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import { persistThreadState } from "@/chat/runtime/thread-state";
+import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
@@ -343,17 +344,15 @@ interface LoadedPiMessagesForTurn {
 
 /**
  * Resolve the Pi history for this Slack turn from the most precise durable
- * boundary available: active turn record first, then compactable projection,
- * then caller fallback.
+ * boundary available: active turn record first, then compactable projection.
+ * Both are SQL-backed; there is no thread-state fallback.
  */
 async function loadPiMessagesForTurn(args: {
   conversationId?: string;
   activeTurnId?: string;
-  fallback: PiMessage[];
 }): Promise<LoadedPiMessagesForTurn> {
-  const fallback = args.fallback.length > 0 ? [...args.fallback] : undefined;
   if (!args.conversationId) {
-    return { piMessages: fallback };
+    return {};
   }
 
   if (args.activeTurnId) {
@@ -380,7 +379,7 @@ async function loadPiMessagesForTurn(args: {
     };
   }
 
-  return { piMessages: fallback };
+  return {};
 }
 
 export interface ReplyExecutorServices {
@@ -877,6 +876,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               replied: true,
             },
           });
+          await persistConversationMessages({
+            conversation: preparedState.conversation,
+            conversationId,
+          });
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
           });
@@ -1046,7 +1049,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const loadedPiMessages = await loadPiMessagesForTurn({
             conversationId,
             activeTurnId,
-            fallback: preparedState.conversation.piMessages,
           });
           let piMessages = loadedPiMessages.piMessages;
           if (
@@ -1348,6 +1350,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: turnId,
                 updateConversationStats,
               });
+              await persistConversationMessages({
+                conversation: preparedState.conversation,
+                conversationId,
+              });
               await persistThreadState(thread, {
                 conversation: preparedState.conversation,
               });
@@ -1359,6 +1365,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: turnId,
+            });
+            await persistConversationMessages({
+              conversation: preparedState.conversation,
+              conversationId,
             });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
@@ -1591,6 +1601,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
           preparedState.conversation = completedState.conversation;
+          await persistConversationMessages({
+            conversation: preparedState.conversation,
+            conversationId,
+          });
           persistedAtLeastOnce = true;
           if (shouldEmitDevAgentTrace()) {
             logInfo(
@@ -1696,6 +1710,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sessionId: turnId,
               updateConversationStats,
             });
+            await persistConversationMessages({
+              conversation: preparedState.conversation,
+              conversationId,
+            });
             await persistThreadState(thread, {
               artifacts: latestArtifacts,
               conversation: preparedState.conversation,
@@ -1755,6 +1773,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             }
+            await persistConversationMessages({
+              conversation: preparedState.conversation,
+              conversationId,
+            });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });

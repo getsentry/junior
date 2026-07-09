@@ -11,8 +11,8 @@
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
-import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
+import { toStoredConversationMessage } from "@/chat/conversations/visible-messages";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -31,10 +31,7 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import type { AgentStepStore } from "./history";
-import type {
-  ConversationMessageStore,
-  NewConversationMessage,
-} from "./messages";
+import type { ConversationMessageStore } from "./messages";
 import type { Conversation } from "./store";
 import {
   convertAdvisorMessages,
@@ -68,7 +65,58 @@ async function loadThreadStateMessages(
   if (!raw) {
     return [];
   }
-  return coerceThreadConversationState(raw).messages;
+  return parseLegacyVisibleMessages(raw);
+}
+
+const LEGACY_MESSAGE_ROLES = new Set(["user", "assistant", "system"]);
+
+/**
+ * Parse the legacy persisted visible-message list. The live thread-state
+ * contract no longer reads or writes `conversation.messages`
+ * (`coerceThreadConversationState` ignores it), so only pre-cutover Redis
+ * payloads carry it; this parser exists solely for the one-time import.
+ */
+function parseLegacyVisibleMessages(
+  raw: Record<string, unknown>,
+): ThreadConversationMessage[] {
+  const conversation = raw.conversation;
+  if (!conversation || typeof conversation !== "object") {
+    return [];
+  }
+  const list = (conversation as { messages?: unknown }).messages;
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const messages: ThreadConversationMessage[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const candidate = item as Record<string, unknown>;
+    if (
+      typeof candidate.id !== "string" ||
+      typeof candidate.text !== "string" ||
+      typeof candidate.role !== "string" ||
+      !LEGACY_MESSAGE_ROLES.has(candidate.role) ||
+      typeof candidate.createdAtMs !== "number" ||
+      !Number.isFinite(candidate.createdAtMs)
+    ) {
+      continue;
+    }
+    messages.push({
+      id: candidate.id,
+      role: candidate.role as ThreadConversationMessage["role"],
+      text: candidate.text,
+      createdAtMs: candidate.createdAtMs,
+      ...(candidate.author && typeof candidate.author === "object"
+        ? { author: candidate.author as ThreadConversationMessage["author"] }
+        : {}),
+      ...(candidate.meta && typeof candidate.meta === "object"
+        ? { meta: candidate.meta as ThreadConversationMessage["meta"] }
+        : {}),
+    });
+  }
+  return messages;
 }
 
 /** Earliest intrinsic timestamp across log + messages, used when no record exists. */
@@ -96,18 +144,6 @@ function earliestIntrinsicMs(
     candidates.push(message.createdAtMs);
   }
   return candidates.length > 0 ? Math.min(...candidates) : undefined;
-}
-
-function toNewMessage(
-  message: ThreadConversationMessage,
-): NewConversationMessage {
-  return {
-    messageId: message.id,
-    role: message.role,
-    text: message.text,
-    createdAtMs: message.createdAtMs,
-    ...(message.meta ? { meta: { ...message.meta } } : {}),
-  };
 }
 
 /**
@@ -174,9 +210,14 @@ export async function importConversationFromLegacy(
   }
 
   // Visible messages are best-effort and idempotent via the store's natural
-  // key; `meta.replied` becomes the durable `replied_at` delivery mark.
+  // key; `meta.replied` becomes the durable `replied_at` delivery mark. Rows go
+  // through the shared `toStoredConversationMessage` projection so imported
+  // messages carry `meta.author` exactly like runtime-recorded rows.
   if (visible.length > 0) {
-    await deps.messageStore.record(conversationId, visible.map(toNewMessage));
+    await deps.messageStore.record(
+      conversationId,
+      visible.map(toStoredConversationMessage),
+    );
     for (const message of visible) {
       if (message.meta?.replied) {
         await deps.messageStore.markReplied(

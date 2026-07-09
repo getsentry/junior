@@ -31,6 +31,10 @@ import {
   isVisionEnabled,
 } from "@/chat/slack/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import type {
@@ -185,6 +189,8 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       : undefined;
     const artifacts = coerceThreadArtifactsState(existingState);
     const conversation = coerceThreadConversationState(existingState);
+    const conversationId = args.context.threadId ?? args.context.runId;
+    await hydrateConversationMessages({ conversation, conversationId });
     const channelConfiguration = getChannelConfigurationService(args.thread);
     const configuration = await channelConfiguration.resolveValues();
 
@@ -235,6 +241,11 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
         threadTs: getThreadTs(args.context.threadId),
       });
     }
+
+    // Record the visible transcript after vision hydration (so the current
+    // turn's messages capture their image-context meta) but before compaction
+    // trims the working set, so every live message reaches SQL at least once.
+    await persistConversationMessages({ conversation, conversationId });
 
     await deps.compactConversationIfNeeded(conversation, {
       threadId: args.context.threadId,

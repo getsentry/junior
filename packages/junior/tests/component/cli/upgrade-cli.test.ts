@@ -55,7 +55,6 @@ async function persistActiveTurn(
       backfill: {},
       compactions: [],
       messages: [],
-      piMessages: [],
       processing: {
         activeTurnId,
       },

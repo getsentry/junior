@@ -11,11 +11,12 @@ import {
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
-import {
-  getPersistedThreadState,
-  persistThreadStateById,
-} from "@/chat/runtime/thread-state";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -232,28 +233,31 @@ describe("agent dispatch runner", () => {
         }),
       }),
     ]);
-    await expect(
-      getPersistedThreadState(dispatchConversationId),
-    ).resolves.toMatchObject({
-      conversation: {
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            id: `dispatch:${created.record.id}:user`,
-            author: expect.objectContaining({
-              userName: "system:scheduler",
-              isBot: true,
-            }),
-          }),
-          expect.objectContaining({
-            id: `dispatch:${created.record.id}:assistant`,
-            meta: expect.objectContaining({
-              slackTs: "1700000000.000001",
-              replied: true,
-            }),
-          }),
-        ]),
-      },
+    const deliveredConversation = coerceThreadConversationState(
+      await getPersistedThreadState(dispatchConversationId),
+    );
+    await hydrateConversationMessages({
+      conversation: deliveredConversation,
+      conversationId: dispatchConversationId,
     });
+    expect(deliveredConversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `dispatch:${created.record.id}:user`,
+          author: expect.objectContaining({
+            userName: "system:scheduler",
+            isBot: true,
+          }),
+        }),
+        expect.objectContaining({
+          id: `dispatch:${created.record.id}:assistant`,
+          meta: expect.objectContaining({
+            slackTs: "1700000000.000001",
+            replied: true,
+          }),
+        }),
+      ]),
+    );
     expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
       conversationId: dispatchConversationId,
       sessionId: `dispatch:${created.record.id}`,
@@ -276,21 +280,17 @@ describe("agent dispatch runner", () => {
   });
 
   it("starts dispatches without inherited destination conversation memory", async () => {
-    const destinationConversation = coerceThreadConversationState({
-      conversation: {
-        messages: [
-          {
-            id: "channel-message-1",
-            role: "user",
-            text: "Previous scheduled run failed with stale context.",
-            createdAtMs: Date.parse("2026-05-25T12:00:00.000Z"),
-            author: { userName: "alice" },
-          },
-        ],
-      },
+    const destinationConversation = coerceThreadConversationState({});
+    destinationConversation.messages.push({
+      id: "channel-message-1",
+      role: "user",
+      text: "Previous scheduled run failed with stale context.",
+      createdAtMs: Date.parse("2026-05-25T12:00:00.000Z"),
+      author: { userName: "alice" },
     });
-    await persistThreadStateById("slack:T123:C123", {
+    await persistConversationMessages({
       conversation: destinationConversation,
+      conversationId: "slack:T123:C123",
     });
     queueSlackApiResponse("chat.postMessage", {
       body: chatPostMessageOk({
@@ -325,27 +325,33 @@ describe("agent dispatch runner", () => {
       { agentRunner: { run: executeAgentRun } },
     );
 
-    const persistedDestination =
-      await getPersistedThreadState("slack:T123:C123");
-    expect(
-      coerceThreadConversationState(persistedDestination).messages.map(
-        (message) => message.id,
-      ),
-    ).toEqual(["channel-message-1"]);
-    await expect(
-      getPersistedThreadState(dispatchConversationId),
-    ).resolves.toMatchObject({
-      conversation: {
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            id: `dispatch:${created.record.id}:user`,
-          }),
-          expect.objectContaining({
-            id: `dispatch:${created.record.id}:assistant`,
-          }),
-        ]),
-      },
+    const persistedDestination = coerceThreadConversationState(
+      await getPersistedThreadState("slack:T123:C123"),
+    );
+    await hydrateConversationMessages({
+      conversation: persistedDestination,
+      conversationId: "slack:T123:C123",
     });
+    expect(persistedDestination.messages.map((message) => message.id)).toEqual([
+      "channel-message-1",
+    ]);
+    const dispatchConversation = coerceThreadConversationState(
+      await getPersistedThreadState(dispatchConversationId),
+    );
+    await hydrateConversationMessages({
+      conversation: dispatchConversation,
+      conversationId: dispatchConversationId,
+    });
+    expect(dispatchConversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `dispatch:${created.record.id}:user`,
+        }),
+        expect.objectContaining({
+          id: `dispatch:${created.record.id}:assistant`,
+        }),
+      ]),
+    );
   });
 
   it("does not persist visible filler text for side-effect-only dispatches", async () => {
@@ -391,18 +397,21 @@ describe("agent dispatch runner", () => {
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "completed",
     });
-    await expect(
-      getPersistedThreadState(dispatchConversationId),
-    ).resolves.toMatchObject({
-      conversation: {
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            id: `dispatch:${created.record.id}:assistant`,
-            text: "[empty response]",
-          }),
-        ]),
-      },
+    const sideEffectConversation = coerceThreadConversationState(
+      await getPersistedThreadState(dispatchConversationId),
+    );
+    await hydrateConversationMessages({
+      conversation: sideEffectConversation,
+      conversationId: dispatchConversationId,
     });
+    expect(sideEffectConversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `dispatch:${created.record.id}:assistant`,
+          text: "[empty response]",
+        }),
+      ]),
+    );
   });
 
   it("persists agent continuation state before scheduling the next slice", async () => {

@@ -8,6 +8,8 @@ import {
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { AgentRunRequest } from "@/chat/agent/request";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createTools } from "@/chat/tools";
@@ -209,7 +211,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.1",
@@ -326,12 +327,15 @@ describe("agent continuation Slack integration", () => {
 
     const persisted =
       await threadStateModule.getPersistedThreadState(conversationId);
-    const conversation = (persisted.conversation ?? {}) as {
-      messages?: Array<{ role?: string; text?: string }>;
-      processing?: { activeTurnId?: string };
-    };
-    expect(conversation.processing?.activeTurnId).toBeUndefined();
-    expect(conversation.messages?.at(-1)).toMatchObject({
+    const processing = (
+      (persisted.conversation ?? {}) as {
+        processing?: { activeTurnId?: string };
+      }
+    ).processing;
+    expect(processing?.activeTurnId).toBeUndefined();
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({ conversation, conversationId });
+    expect(conversation.messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "Final resumed answer",
     });
@@ -373,7 +377,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.8",
@@ -469,7 +472,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.2",
@@ -559,7 +561,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.7",
@@ -725,7 +726,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.10",
@@ -828,7 +828,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.11",
@@ -925,7 +924,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.6",
@@ -1034,7 +1032,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.8",
@@ -1150,7 +1147,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.9",
@@ -1279,7 +1275,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "msg.3",
@@ -1339,12 +1334,15 @@ describe("agent continuation Slack integration", () => {
 
     const persisted =
       await threadStateModule.getPersistedThreadState(conversationId);
-    const conversation = (persisted.conversation ?? {}) as {
-      messages?: Array<{ role?: string; text?: string }>;
-      processing?: { activeTurnId?: string };
-    };
-    expect(conversation.processing?.activeTurnId).toBeUndefined();
-    expect(conversation.messages?.at(-1)).toMatchObject({
+    const processing = (
+      (persisted.conversation ?? {}) as {
+        processing?: { activeTurnId?: string };
+      }
+    ).processing;
+    expect(processing?.activeTurnId).toBeUndefined();
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({ conversation, conversationId });
+    expect(conversation.messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "Final resumed answer.",
     });

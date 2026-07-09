@@ -25,7 +25,6 @@ function makeConversation(
         createdAtMs: 1700000000000,
       },
     ],
-    piMessages: [],
     processing: {},
     schemaVersion: 1,
     stats: {

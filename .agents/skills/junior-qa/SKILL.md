@@ -85,10 +85,51 @@ Pick the smallest local CLI run that demonstrates the changed behavior:
 Automated tests, typechecks, linters, and evals are separate validation. They do
 not replace local QA evidence from running the client or agent.
 
+## OAuth Flow QA (MCP and Plugin)
+
+Junior has two OAuth pause/resume flows, both resumed by HTTP callbacks into a
+Slack thread:
+
+- Plugin (non-MCP) OAuth: sandbox egress `auth_required` signal resumes via
+  `/api/oauth/callback/<provider>`. In `apps/example` the `sentry` plugin is
+  the OAuth-manifest provider (`SENTRY_CLIENT_ID`/`SENTRY_CLIENT_SECRET`).
+- MCP OAuth: a remote MCP server 401 challenge resumes via
+  `/api/oauth/callback/mcp/<provider>`. In `apps/example` the `linear`,
+  `notion`, and `hex` plugins use remote MCP URLs.
+
+The local CLI cannot exercise the pause or the resume: the local runner sets
+`authorizationFlowMode: "disabled"`, so an auth challenge ends the turn with a
+terminal authorization failure instead of a private link plus `pendingAuth`.
+Local chat only proves that terminal surface, for example:
+
+```sh
+pnpm cli -- chat -p "Use the linear skill to list Linear teams."
+```
+
+Expect a reply reporting that authorization failed, with no OAuth link.
+
+Use the integration tests as the deterministic check for resume behavior:
+
+```sh
+pnpm --filter @sentry/junior exec vitest run tests/integration/oauth-callback-slack.test.ts
+pnpm --filter @sentry/junior exec vitest run tests/integration/mcp-oauth-callback-slack.test.ts tests/integration/mcp-auth-runtime-slack.test.ts
+```
+
+For SQL conversation storage changes, verify the resumed turn rebuilds context
+from SQL, not `thread-state` mirrors: conversation context must hydrate from
+`junior_conversation_messages` (`hydrateConversationMessages`) and pi history
+from `junior_agent_steps` (`loadProjection`). In those tests, transcripts
+seeded only into `thread-state` must also be persisted to SQL
+(`persistConversationMessages`) before the callback runs, and the resumed
+agent-run input `conversationContext` must contain the SQL-seeded messages.
+
 ## Failure Handling
 
 If local chat fails because credentials are missing or expired, refresh the
 environment when appropriate with `pnpm dev:env`, then rerun the same command.
+If local chat fails with a `junior_conversation_messages` or
+`junior_agent_steps` query error, the local Postgres schema predates the SQL
+conversation storage cutover; run `pnpm cli -- upgrade`, then rerun.
 If Redis errors appear during ordinary local QA, check whether
 `JUNIOR_STATE_ADAPTER=redis` was set; local chat normally defaults to memory
 state.

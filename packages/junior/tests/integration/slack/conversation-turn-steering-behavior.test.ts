@@ -18,6 +18,7 @@ import type { AgentRunSteeringMessage } from "@/chat/agent/request";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import {
@@ -426,6 +427,7 @@ describe("Slack behavior: durable turn steering", () => {
     expect(work?.needsRun).toBe(false);
     const persistedState = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persistedState);
+    await hydrateConversationMessages({ conversation, conversationId });
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -636,6 +638,7 @@ describe("Slack behavior: durable turn steering", () => {
     ]);
     const persistedState = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persistedState);
+    await hydrateConversationMessages({ conversation, conversationId });
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

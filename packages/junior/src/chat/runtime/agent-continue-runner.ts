@@ -17,6 +17,11 @@ import {
 } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import { loadProjection } from "@/chat/conversations/projection";
+import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   listAgentTurnSessionSummariesForConversation,
@@ -96,6 +101,10 @@ async function persistCompletedReplyState(args: {
     args.sessionRecord.conversationId,
   );
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: args.sessionRecord.conversationId,
+  });
   const artifacts = coerceThreadArtifactsState(currentState);
   const userMessage = getTurnUserMessage(
     conversation,
@@ -109,6 +118,10 @@ async function persistCompletedReplyState(args: {
     userMessageId: userMessage?.id,
   });
 
+  await persistConversationMessages({
+    conversation: statePatch.conversation,
+    conversationId: args.sessionRecord.conversationId,
+  });
   await persistThreadStateById(args.sessionRecord.conversationId, {
     ...statePatch,
   });
@@ -148,6 +161,10 @@ async function persistFailedReplyState(
     sessionRecord.conversationId,
   );
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: sessionRecord.conversationId,
+  });
   clearPendingAuth(conversation, sessionRecord.sessionId);
 
   markTurnFailed({
@@ -311,6 +328,10 @@ export async function continueSlackAgentRun(
           payload.conversationId,
         );
         const conversation = coerceThreadConversationState(currentState);
+        await hydrateConversationMessages({
+          conversation,
+          conversationId: payload.conversationId,
+        });
         const artifacts = coerceThreadArtifactsState(currentState);
         const userMessage = getTurnUserMessage(conversation, payload.sessionId);
         if (!userMessage?.author?.userId) {
@@ -379,7 +400,11 @@ export async function continueSlackAgentRun(
           replyContext: {
             input: {
               conversationContext,
-              piMessages: conversation.piMessages,
+              // Pi history is SQL-authoritative: the resumed run reads its
+              // session record first and falls back to the step projection.
+              piMessages: await loadProjection({
+                conversationId: payload.conversationId,
+              }),
               ...getTurnUserReplyAttachmentContext(userMessage),
             },
             routing: {
@@ -486,6 +511,10 @@ async function failStrandedSessionWithFallback(args: {
   });
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: args.conversationId,
+  });
   markTurnFailed({
     conversation,
     nowMs: Date.now(),

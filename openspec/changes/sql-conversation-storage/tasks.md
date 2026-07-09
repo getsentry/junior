@@ -19,7 +19,7 @@
 - [x] 3.1 Retarget the session-log reducer/projection code to `StoredAgentStep[]` (epoch-based), preserving the Pi projection and host-only-event filtering behavior
 - [x] 3.2 Move `chat/state/session-log.ts` consumers (reply-executor, agent-continue-runner, turn-preparation, context-compaction, local runner, agent-dispatch runner, plugin task-runner) to `AgentStepStore`; compaction and provider-retry rollback write epochs, not `projection_reset` payloads
 - [x] 3.3 Convert the advisor tool to child conversations: create child conversation rows, write steps under the child id, replace `transcriptRef` with `childConversationId`; update reporting's subagent transcript reader
-- [ ] 3.4 Move visible-message writes/reads (ingress recording, reply policy, channel-context assembly) to `ConversationMessageStore`; `replied` marks become `replied_at` updates
+- [x] 3.4 Move visible-message writes/reads (ingress recording, reply policy, channel-context assembly) to `ConversationMessageStore`; `replied` marks become `replied_at` updates
 - [x] 3.5 Flip turn-session record cursors from `committedMessageCount` counts to `seq` references at the same cutover
 - [ ] 3.6 Update reporting/dashboard transcript builders to read steps/messages from SQL, excluding child conversations from top-level listings; keep redaction behavior byte-compatible
 - [ ] 3.7 Integration tests: cooperative yield → resume from SQL epoch, compaction rebuild, follow-up injection, subagent transcript render; eval only if agent-visible continuity behavior changes

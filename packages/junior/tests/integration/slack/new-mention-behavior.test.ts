@@ -11,6 +11,8 @@ import {
   createTestThread,
 } from "../../fixtures/slack-harness";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 
 interface FakeReplyCall {
@@ -128,6 +130,10 @@ describe("Slack behavior: new mention", () => {
       isMention: true,
       threadId: thread.id,
     });
+    // The transcript is ordered by created_at; the queued message genuinely
+    // arrived before the triggering mention.
+    (queued.metadata as { dateSent: Date }).dateSent = new Date(1700001234000);
+    (latest.metadata as { dateSent: Date }).dateSent = new Date(1700001235000);
 
     await slackRuntime.handleNewMention(thread, latest, {
       destination: createTestDestination(thread),
@@ -143,14 +149,14 @@ describe("Slack behavior: new mention", () => {
     expect(JSON.stringify(fakeReplyCalls[0]?.piMessages)).toContain(
       "first queued request",
     );
-    const state = thread.getState() as {
-      conversation?: {
-        messages?: Array<{ id: string; text: string }>;
-      };
-    };
+    const conversation = coerceThreadConversationState(thread.getState());
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
     expect(
-      state.conversation?.messages
-        ?.filter(
+      conversation.messages
+        .filter(
           (message) => message.id === "m-queued" || message.id === "m-latest",
         )
         .map((message) => ({ id: message.id, text: message.text })),

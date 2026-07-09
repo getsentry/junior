@@ -18,6 +18,14 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import {
+  coerceThreadConversationState,
+  type ConversationMessage,
+} from "@/chat/state/conversation";
 
 const {
   agentProbe,
@@ -305,6 +313,21 @@ async function mirrorThreadStateToAdapter(thread: TestThread): Promise<void> {
   await stateAdapterModule
     .getStateAdapter()
     .set(`thread-state:${thread.id}`, thread.getState());
+  // The prior visible transcript is the durable SQL authority now; seed any
+  // pre-existing messages so resume reads them the way the runtime would.
+  const seeded = (
+    thread.getState() as {
+      conversation?: { messages?: ConversationMessage[] };
+    }
+  )?.conversation?.messages;
+  if (seeded?.length) {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages.push(...seeded);
+    await persistConversationMessages({
+      conversation,
+      conversationId: thread.id,
+    });
+  }
 }
 
 function expectProcessingReactionLifecycles(args: {
@@ -580,21 +603,28 @@ describe("mcp auth runtime slack integration", () => {
           activeTurnId: undefined,
           pendingAuth: undefined,
         },
-        messages: expect.arrayContaining([
-          expect.objectContaining({
-            id: "user-1",
-            role: "user",
-            meta: expect.objectContaining({
-              replied: true,
-            }),
-          }),
-          expect.objectContaining({
-            role: "assistant",
-            text: assistantReplyWithContext,
-          }),
-        ]),
       },
     });
+    const resumedConversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation: resumedConversation,
+      conversationId: threadId,
+    });
+    expect(resumedConversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "user-1",
+          role: "user",
+          meta: expect.objectContaining({
+            replied: true,
+          }),
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          text: assistantReplyWithContext,
+        }),
+      ]),
+    );
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({

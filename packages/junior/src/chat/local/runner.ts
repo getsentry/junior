@@ -8,6 +8,7 @@
  */
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
   createLocalSource,
   localDestinationSchema,
@@ -41,6 +42,10 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
 import {
   commitMessages,
   loadProjection,
@@ -113,28 +118,17 @@ function nextUserMessageSequence(
   );
 }
 
-function preparedLocalPiMessages(
-  messages: ReturnType<typeof coerceThreadConversationState>["piMessages"],
-) {
-  return stripRuntimeTurnContext(trimTrailingAssistantMessages(messages));
-}
-
-/** Load the newest local Pi state, falling back from stale projection data. */
+/** Load the durable local Pi history from the SQL step-store projection. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
-  fallback: ReturnType<typeof coerceThreadConversationState>["piMessages"];
-}) {
+}): Promise<PiMessage[] | undefined> {
   const projection = await loadProjection({
     conversationId: args.conversationId,
   });
-  if (args.fallback.length >= projection.length && args.fallback.length > 0) {
-    return preparedLocalPiMessages(args.fallback);
+  if (projection.length === 0) {
+    return undefined;
   }
-  if (projection.length > 0) {
-    return preparedLocalPiMessages(projection);
-  }
-
-  return undefined;
+  return stripRuntimeTurnContext(trimTrailingAssistantMessages(projection));
 }
 
 /** Persist the post-delivery completion state, retrying transient state writes. */
@@ -179,6 +173,10 @@ export async function runLocalAgentTurn(
   const now = deps.now ?? (() => Date.now());
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
+  await hydrateConversationMessages({
+    conversation,
+    conversationId: input.conversationId,
+  });
   let artifacts = coerceThreadArtifactsState(persisted);
   let { sandboxId, sandboxDependencyProfileHash } =
     getPersistedSandboxState(persisted);
@@ -210,6 +208,10 @@ export async function runLocalAgentTurn(
     nextTurnId: turnId,
     updateConversationStats,
   });
+  await persistConversationMessages({
+    conversation,
+    conversationId: input.conversationId,
+  });
   await persistThreadStateById(input.conversationId, { conversation });
 
   let reply: AgentRunResult | undefined;
@@ -226,7 +228,6 @@ export async function runLocalAgentTurn(
   try {
     const piMessages = await loadLocalPiMessages({
       conversationId: input.conversationId,
-      fallback: conversation.piMessages,
     });
     piMessagesBeforeRun = piMessages;
     const outcome = await deps.agentRunner.run({
@@ -340,14 +341,13 @@ export async function runLocalAgentTurn(
     throw error;
   }
 
+  await persistConversationMessages({
+    conversation: completedState.conversation,
+    conversationId: input.conversationId,
+  });
   await persistDeliveredLocalTurnState(input.conversationId, {
     artifacts: completedState.artifacts ?? artifacts,
-    conversation: reply.piMessages
-      ? {
-          ...completedState.conversation,
-          piMessages: reply.piMessages,
-        }
-      : completedState.conversation,
+    conversation: completedState.conversation,
     sandboxId: reply.sandboxId ?? sandboxId,
     sandboxDependencyProfileHash:
       reply.sandboxDependencyProfileHash ?? sandboxDependencyProfileHash,

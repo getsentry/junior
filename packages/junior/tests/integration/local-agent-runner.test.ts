@@ -17,13 +17,13 @@ import { persistCompletedSessionRecord } from "@/chat/services/turn-session-reco
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
-  persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
   commitMessages,
   loadProjection,
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
@@ -145,6 +145,10 @@ describe("local agent runner", () => {
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: conversationId!,
+    });
     expect(conversation.messages.map((message) => message.role)).toEqual([
       "user",
       "assistant",
@@ -383,6 +387,10 @@ describe("local agent runner", () => {
 
     const state = await getPersistedThreadState(conversationId!);
     const conversation = coerceThreadConversationState(state);
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: conversationId!,
+    });
     expect(conversation.messages.map((message) => message.text)).toEqual([
       "first question",
       "reply to first question",
@@ -515,9 +523,6 @@ describe("local agent runner", () => {
     expect(await loadProjection({ conversationId: conversationId! })).toEqual(
       generatedMessages,
     );
-    const state = await getPersistedThreadState(conversationId!);
-    const conversation = coerceThreadConversationState(state);
-    expect(conversation.piMessages).toEqual(generatedMessages);
 
     const contexts: FlatAgentRunRequest[] = [];
     await runLocalAgentTurn(
@@ -618,35 +623,31 @@ describe("local agent runner", () => {
     expect(taskRuns).toBe(1);
   });
 
-  it("uses conversation Pi history when the session projection is stale", async () => {
+  it("uses the SQL step projection as the Pi history authority", async () => {
     const conversationId = normalizeLocalConversationId({
-      alias: "pi-history-stale-projection",
+      alias: "pi-history-projection-authority",
       cwd: "/tmp/local-agent-runner-seven",
     });
     expect(conversationId).toBeDefined();
 
-    const projectedMessage = {
-      role: "user",
-      content: [{ type: "text", text: "stale projected history" }],
-    } as PiMessage;
-    await commitMessages({
-      conversationId: conversationId!,
-      messages: [projectedMessage],
-    });
-
-    const newerMessages = [
+    const projectedMessages = [
       {
         role: "user",
-        content: [{ type: "text", text: "newer conversation history" }],
+        content: [{ type: "text", text: "projected question" }],
       },
       {
         role: "assistant",
-        content: [{ type: "text", text: "newer assistant output" }],
+        content: [{ type: "text", text: "projected answer" }],
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "projected follow-up" }],
       },
     ] as PiMessage[];
-    const conversation = coerceThreadConversationState({});
-    conversation.piMessages = newerMessages;
-    await persistThreadStateById(conversationId!, { conversation });
+    await commitMessages({
+      conversationId: conversationId!,
+      messages: projectedMessages,
+    });
 
     const contexts: FlatAgentRunRequest[] = [];
     await runLocalAgentTurn(
@@ -661,13 +662,13 @@ describe("local agent runner", () => {
             const context = flattenAgentRunRequestForTest(request);
 
             contexts.push(context);
-            return completedAgentRun(successReply("uses newer fallback"));
+            return completedAgentRun(successReply("uses projection"));
           },
         },
       },
     );
 
-    expect(contexts[0]?.piMessages).toEqual([newerMessages[0]]);
+    expect(contexts[0]?.piMessages).toEqual(projectedMessages);
   });
 
   it("rolls back generated Pi output when local delivery fails", async () => {

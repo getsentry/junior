@@ -18,7 +18,7 @@ The system SHALL store the visible conversation transcript in `junior_conversati
 
 ### Requirement: Source facts are immutable; delivery marks are explicitly updatable
 
-Message rows SHALL treat `role`, `text`, `author_identity_id`, and `created_at` as immutable after insert. Mutable delivery bookkeeping SHALL be limited to explicitly declared columns (`replied_at`); no other field of a stored message may be updated in place.
+Message rows SHALL treat `role`, `text`, `author_identity_id`, and `created_at` as immutable after insert. Mutable bookkeeping SHALL be limited to the `replied_at` delivery mark and wholesale refresh of the bounded `meta` JSON when the same message is idempotently re-recorded (late vision hydration, routing/skip marks); no other field of a stored message may be updated in place.
 
 #### Scenario: Reply mark set without content mutation
 

@@ -1070,7 +1070,6 @@ describe("Slack conversation work execution", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "1712345.0001",

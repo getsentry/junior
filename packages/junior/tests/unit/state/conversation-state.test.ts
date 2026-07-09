@@ -17,7 +17,7 @@ describe("conversation state", () => {
     expect(conversation.vision.byFileId).toEqual({});
   });
 
-  it("coerces message image file ids and vision summaries", () => {
+  it("ignores any legacy transcript left in the persisted payload", () => {
     const conversation = coerceThreadConversationState({
       conversation: {
         messages: [
@@ -26,10 +26,7 @@ describe("conversation state", () => {
             role: "user",
             text: "candidate info",
             createdAtMs: 1700000000100,
-            meta: {
-              imageFileIds: ["F123", "", 10],
-              slackTs: "1700000000.100",
-            },
+            meta: { slackTs: "1700000000.100" },
           },
         ],
         vision: {
@@ -47,8 +44,9 @@ describe("conversation state", () => {
       },
     });
 
-    expect(conversation.messages[0]?.meta?.imageFileIds).toEqual(["F123"]);
-    expect(conversation.messages[0]?.meta?.slackTs).toBe("1700000000.100");
+    // The visible transcript lives in SQL now; a legacy transcript mirror in a
+    // persisted payload is dropped on read.
+    expect(conversation.messages).toEqual([]);
     expect(conversation.vision.byFileId).toEqual({
       F123: {
         summary: "Candidate name appears as Jane Doe.",
@@ -85,29 +83,21 @@ describe("conversation state", () => {
     );
   });
 
-  it("keeps durable Pi message history in conversation state", () => {
+  it("omits the visible transcript mirror from the persisted patch", () => {
     const conversation = coerceThreadConversationState({
-      conversation: {
-        messages: [],
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "prior request" }],
-            timestamp: 1,
-          },
-        ],
-      },
+      conversation: { messages: [] },
     });
-
-    expect(conversation.piMessages).toEqual([
-      {
-        role: "user",
-        content: [{ type: "text", text: "prior request" }],
-        timestamp: 1,
-      },
-    ]);
-    expect(
-      buildConversationStatePatch(conversation).conversation.piMessages,
-    ).toHaveLength(1);
+    conversation.messages.push({
+      id: "m1",
+      role: "user",
+      text: "hello",
+      createdAtMs: 1,
+    });
+    const patch = buildConversationStatePatch(conversation);
+    expect(patch.conversation).not.toHaveProperty("messages");
+    // Pi history lives in the SQL AgentStepStore; thread-state carries no mirror.
+    expect(patch.conversation).not.toHaveProperty("piMessages");
+    // The count stat is still derived from the working set for reporting.
+    expect(patch.conversation.stats.totalMessageCount).toBe(1);
   });
 });

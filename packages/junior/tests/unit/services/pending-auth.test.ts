@@ -36,7 +36,6 @@ function conversationWithMessages(
   return {
     schemaVersion: 1,
     messages,
-    piMessages: [],
     compactions: [],
     backfill: {},
     processing: {},

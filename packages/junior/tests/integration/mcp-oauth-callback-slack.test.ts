@@ -18,6 +18,31 @@ import {
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
+import {
+  coerceThreadConversationState,
+  type ConversationMessage,
+} from "@/chat/state/conversation";
+
+/** Mirror a just-seeded thread-state transcript into SQL (durable authority). */
+async function seedVisibleTranscriptFromThreadState(
+  adapter: { get<T>(key: string): Promise<T | null | undefined> },
+  conversationId: string,
+): Promise<void> {
+  const raw = await adapter.get<{
+    conversation?: { messages?: ConversationMessage[] };
+  }>(`thread-state:${conversationId}`);
+  const messages = raw?.conversation?.messages ?? [];
+  if (messages.length === 0) {
+    return;
+  }
+  const conversation = coerceThreadConversationState({});
+  conversation.messages.push(...messages);
+  await persistConversationMessages({ conversation, conversationId });
+}
 
 const executeAgentRunMock = vi.fn();
 const testAgentRunner = { run: executeAgentRunMock };
@@ -251,6 +276,10 @@ describe("mcp oauth callback slack integration", () => {
         lastCanvasId: "F123",
       },
     });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      threadId,
+    );
     await stateAdapterModule.getStateAdapter().set("channel-state:C123", {
       configuration: {
         schemaVersion: 1,
@@ -413,6 +442,10 @@ describe("mcp oauth callback slack integration", () => {
       .get<Record<string, unknown>>(`thread-state:${threadId}`);
     const conversation =
       conversationStateModule.coerceThreadConversationState(persistedState);
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: threadId,
+    });
     const artifacts =
       artifactStateModule.coerceThreadArtifactsState(persistedState);
 
@@ -493,6 +526,10 @@ describe("mcp oauth callback slack integration", () => {
         },
       },
     });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      threadId,
+    );
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
       actor: {
@@ -636,6 +673,10 @@ describe("mcp oauth callback slack integration", () => {
     await stateAdapterModule
       .getStateAdapter()
       .set(`thread-state:${threadId}`, freshState);
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      threadId,
+    );
 
     const adapter = stateAdapterModule.getStateAdapter();
     const originalGet = adapter.get.bind(adapter);
@@ -753,6 +794,10 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      "slack:C123:1700000000.004",
+    );
 
     const authProvider = await createPendingAuthSession({
       conversationId: "conversation-4",
@@ -819,6 +864,10 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      "slack:C123:1700000000.006",
+    );
 
     const authProvider = await createPendingAuthSession({
       conversationId: "conversation-missing-record",
@@ -871,6 +920,10 @@ describe("mcp oauth callback slack integration", () => {
           },
         },
       });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      "slack:C123:1700000000.007",
+    );
     await createAwaitingMcpTurnRecord({
       conversationId: "conversation-mismatched-actor",
       actor: {

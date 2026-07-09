@@ -231,7 +231,6 @@ describe("agent continuation scheduling", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "1712345.0004",

@@ -14,6 +14,8 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 vi.mock("@/chat/services/turn-thinking-level", async () => {
   const actual = await vi.importActual<
@@ -272,12 +274,11 @@ describe("plugin auth runtime slack integration", () => {
         },
       },
     });
-    const conversation = persistedState.conversation as {
-      messages: Array<{
-        id?: string;
-        meta?: { replied?: boolean; skippedReason?: string };
-      }>;
-    };
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: threadId,
+    });
     expect(
       conversation.messages.find((message) => message.id === "bot-plugin-auth"),
     ).toMatchObject({
