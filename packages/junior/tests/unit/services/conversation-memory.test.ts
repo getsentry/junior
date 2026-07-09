@@ -138,7 +138,7 @@ describe("buildConversationContext", () => {
     expect(context).not.toContain("<thread-transcript>");
   });
 
-  it("does not render raw Slack ids as author display names", () => {
+  it("uses Slack user ID as author label when userName and fullName match the ID or are absent", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = [
       {
@@ -157,9 +157,39 @@ describe("buildConversationContext", () => {
 
     const context = buildConversationContext(conversation);
 
-    expect(context).toContain('author="user"');
+    // userId is preserved as the author label so distinct users remain distinguishable
+    expect(context).toContain('author="U039RR91S"');
     expect(context).toContain('actor_id="U039RR91S"');
-    expect(context).toContain("[user] user: hello");
+    expect(context).toContain("[user] U039RR91S: hello");
     expect(context).not.toContain("@U039RR91S");
+  });
+
+  it("keeps distinct author labels for two users with no display names", () => {
+    const conversation = coerceThreadConversationState({});
+    conversation.messages = [
+      {
+        id: "msg-1",
+        role: "user",
+        text: "first message",
+        createdAtMs: 1000,
+        author: { isBot: false, userId: "UALICE" },
+      },
+      {
+        id: "msg-2",
+        role: "user",
+        text: "second message",
+        createdAtMs: 2000,
+        author: { isBot: false, userId: "UBOB" },
+      },
+    ];
+
+    const context = buildConversationContext(conversation);
+
+    expect(context).toContain('actor_id="UALICE"');
+    expect(context).toContain('actor_id="UBOB"');
+    // authors must be distinct, not both "user"
+    expect(context).toContain('author="UALICE"');
+    expect(context).toContain('author="UBOB"');
+    expect(context).not.toContain('author="user"');
   });
 });

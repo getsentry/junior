@@ -98,6 +98,7 @@ function conversationAuthorDisplayName(message: ConversationMessage): string {
   return (
     fullName ??
     userName ??
+    author?.userId ??
     (message.role === "assistant" ? botConfig.userName : message.role)
   );
 }
