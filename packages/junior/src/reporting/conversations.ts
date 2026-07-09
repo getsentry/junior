@@ -6,14 +6,13 @@
  * transcript payloads can leave this module.
  */
 import { isRecord } from "@/chat/coerce";
-import { unwrapAdvisorRequest } from "@/chat/advisor-request";
 import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import { piContentMessageSchema, type PiMessage } from "@/chat/pi/messages";
+import type { PiMessage } from "@/chat/pi/messages";
 import { buildSystemPrompt } from "@/chat/prompt";
 import type {
   PluginConversationStatus,
@@ -25,7 +24,6 @@ import {
   buildSentryConversationUrl,
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
-import { z } from "zod";
 import {
   formatSlackConversationRedactedLabel,
   resolveSlackConversationContextFromThreadId,
@@ -45,14 +43,19 @@ import {
   loadActivityEntries,
   type SessionActivityEntry,
 } from "@/chat/state/session-log";
-import { getStateAdapter } from "@/chat/state/adapter";
 import {
   toStoredSlackActor,
   type Actor,
   type StoredSlackActor,
 } from "@/chat/actor";
 import type { AgentTurnUsage } from "@/chat/usage";
-import { getConversationStore } from "@/chat/db";
+import { getAgentStepStore, getConversationStore } from "@/chat/db";
+import { loadProjection } from "@/chat/conversations/projection";
+import type {
+  AgentStepEntry,
+  AgentStepStore,
+  StoredAgentStep,
+} from "@/chat/conversations/history";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -88,6 +91,7 @@ function privateConversationLabel(
 
 interface ConversationReaderOptions {
   conversationStore?: ConversationStore;
+  stepStore?: AgentStepStore;
 }
 
 function conversationStore(
@@ -1008,16 +1012,10 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
 /** Normalize Pi content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
-  options: { unwrapAdvisorTask?: boolean; unwrapCurrentTask?: boolean } = {},
+  options: { unwrapCurrentTask?: boolean } = {},
 ): TranscriptPart {
-  const displayText = (text: string) => {
-    if (options.unwrapCurrentTask) {
-      const instruction = unwrapCurrentInstruction(text);
-      if (instruction !== undefined) return instruction;
-    }
-    if (options.unwrapAdvisorTask) return unwrapAdvisorRequest(text) ?? text;
-    return text;
-  };
+  const displayText = (text: string) =>
+    options.unwrapCurrentTask ? (unwrapCurrentInstruction(text) ?? text) : text;
 
   if (typeof part === "string") {
     return textPart(displayText(part));
@@ -1091,10 +1089,7 @@ function normalizeToolResultMessage(
   };
 }
 
-function normalizeTranscriptMessage(
-  message: PiMessage,
-  options: { unwrapAdvisorTask?: boolean } = {},
-): TranscriptMessage {
+function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
   const record = message as unknown as Record<string, unknown>;
   const content = record.content;
   const role = transcriptRole(record.role);
@@ -1109,13 +1104,11 @@ function normalizeTranscriptMessage(
         : Array.isArray(content)
           ? content.map((part) =>
               normalizeTranscriptPart(part, {
-                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             )
           : [
               normalizeTranscriptPart(content, {
-                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             ],
@@ -1485,62 +1478,6 @@ function subagentTranscriptReport(
   };
 }
 
-function subagentConversationFields(
-  ref: Extract<
-    SessionActivityEntry,
-    { type: "subagent_started" }
-  >["transcriptRef"],
-): Pick<
-  ConversationSubagentTranscriptReport,
-  "subagentConversationId" | "subagentSentryConversationUrl"
-> {
-  if (ref.type !== "advisor_session") {
-    return {};
-  }
-  const subagentConversationId = ref.key;
-  const subagentSentryConversationUrl = buildSentryConversationUrl(
-    subagentConversationId,
-  );
-  return {
-    subagentConversationId,
-    ...(subagentSentryConversationUrl ? { subagentSentryConversationUrl } : {}),
-  };
-}
-
-async function readTranscriptRefMessages(
-  ref: Extract<
-    SessionActivityEntry,
-    { type: "subagent_started" }
-  >["transcriptRef"],
-): Promise<PiMessage[]> {
-  if (ref.type !== "advisor_session") {
-    return [];
-  }
-
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
-  const value = await stateAdapter.get<unknown>(ref.key);
-  const parsed = z.array(piContentMessageSchema).safeParse(value);
-  return parsed.success ? parsed.data : [];
-}
-
-function transcriptSliceBounds(
-  end: Extract<SessionActivityEntry, { type: "subagent_ended" }> | undefined,
-): { end: number; start: number } | undefined {
-  if (
-    end?.transcriptStartMessageIndex === undefined ||
-    end.transcriptEndMessageIndex === undefined ||
-    end.transcriptEndMessageIndex < end.transcriptStartMessageIndex
-  ) {
-    return undefined;
-  }
-
-  return {
-    end: end.transcriptEndMessageIndex,
-    start: end.transcriptStartMessageIndex,
-  };
-}
-
 async function summariesByConversation(
   conversations: StoredConversation[],
 ): Promise<Map<string, AgentTurnSessionSummary[]>> {
@@ -1737,8 +1674,8 @@ export async function readConversationReport(
         summary,
         conversation?.visibility,
       );
-      const normalizedTranscript = scopedMessages.messages.map((message) =>
-        normalizeTranscriptMessage(message),
+      const normalizedTranscript = scopedMessages.messages.map(
+        normalizeTranscriptMessage,
       );
       const activity = buildConversationActivity({
         canExposePayload: canExposeTranscript,
@@ -1834,51 +1771,62 @@ export async function readConversationReport(
   };
 }
 
-/** Read one child-agent transcript through its parent conversation run. */
+type SubagentStartedStep = StoredAgentStep & {
+  entry: Extract<AgentStepEntry, { type: "subagent_started" }>;
+};
+type SubagentEndedStep = StoredAgentStep & {
+  entry: Extract<AgentStepEntry, { type: "subagent_ended" }>;
+};
+
+function subagentActivityFromSteps(
+  start: SubagentStartedStep,
+  end: SubagentEndedStep | undefined,
+): ConversationSubagentActivityReport {
+  return {
+    type: "subagent",
+    id: start.entry.subagentInvocationId,
+    subagentKind: start.entry.subagentKind,
+    ...(start.entry.parentToolCallId
+      ? { parentToolCallId: start.entry.parentToolCallId }
+      : {}),
+    createdAt: new Date(start.createdAtMs).toISOString(),
+    ...(end
+      ? {
+          endedAt: new Date(end.createdAtMs).toISOString(),
+          outcome: end.entry.outcome,
+          status: end.entry.outcome,
+        }
+      : { status: "running" }),
+  };
+}
+
+/**
+ * Read one child-agent transcript through its parent conversation.
+ *
+ * The parent records `subagent_started`/`subagent_ended` as durable steps that
+ * name the child by `childConversationId`; the transcript is the child
+ * conversation's own projected Pi messages. `runId` is retained for the route
+ * signature but no longer scopes the lookup — subagent steps live on the parent
+ * conversation regardless of the run that produced them.
+ */
 export async function readConversationSubagentTranscriptReport(
   conversationId: string,
-  runId: string,
+  _runId: string,
   subagentId: string,
   options: ConversationReaderOptions = {},
 ): Promise<ConversationSubagentTranscriptReport> {
   const store = conversationStore(options);
-  const [summaries, conversation] = await Promise.all([
-    listAgentTurnSessionSummariesForConversation(conversationId),
+  const stepStore = options.stepStore ?? getAgentStepStore();
+  const [conversation, parentSteps] = await Promise.all([
     store.get({ conversationId }),
+    stepStore.loadHistory(conversationId),
   ]);
-  const summary = summaries.find((candidate) => candidate.sessionId === runId);
-  if (!summary) {
-    return {
-      type: "subagent",
-      createdAt: new Date(0).toISOString(),
-      id: subagentId,
-      status: "error",
-      subagentKind: "unknown",
-      transcript: [],
-      transcriptAvailable: false,
-      unavailableReason: "not_found",
-    };
-  }
 
-  const entries = await loadActivityEntries({
-    conversationId,
-    sessionId: runId,
-  });
-  const start = entries.find(
-    (
-      entry,
-    ): entry is Extract<SessionActivityEntry, { type: "subagent_started" }> =>
-      entry.type === "subagent_started" &&
-      entry.subagentInvocationId === subagentId,
+  const start = parentSteps.find(
+    (step): step is SubagentStartedStep =>
+      step.entry.type === "subagent_started" &&
+      step.entry.subagentInvocationId === subagentId,
   );
-  const end = entries.find(
-    (
-      entry,
-    ): entry is Extract<SessionActivityEntry, { type: "subagent_ended" }> =>
-      entry.type === "subagent_ended" &&
-      entry.subagentInvocationId === subagentId,
-  );
-
   if (!start) {
     return {
       type: "subagent",
@@ -1891,13 +1839,25 @@ export async function readConversationSubagentTranscriptReport(
       unavailableReason: "not_found",
     };
   }
-
-  const canExposeTranscript = canExposeConversationTranscript(
-    summary,
-    conversation?.visibility,
+  const end = parentSteps.find(
+    (step): step is SubagentEndedStep =>
+      step.entry.type === "subagent_ended" &&
+      step.entry.subagentInvocationId === subagentId,
   );
-  const activity = subagentActivity(start, { canExposeTranscript, end });
-  const conversationFields = subagentConversationFields(start.transcriptRef);
+
+  const childConversationId = start.entry.childConversationId;
+  const activity = subagentActivityFromSteps(start, end);
+  const subagentSentryConversationUrl =
+    buildSentryConversationUrl(childConversationId);
+  const conversationFields = {
+    subagentConversationId: childConversationId,
+    ...(subagentSentryConversationUrl ? { subagentSentryConversationUrl } : {}),
+  };
+
+  const canExposeTranscript = canExposeConversationPayload({
+    conversationId,
+    visibility: conversation?.visibility,
+  });
   if (!canExposeTranscript) {
     return subagentTranscriptReport(activity, {
       ...conversationFields,
@@ -1906,28 +1866,27 @@ export async function readConversationSubagentTranscriptReport(
     });
   }
 
-  const bounds = transcriptSliceBounds(end);
-  if (!bounds) {
-    return subagentTranscriptReport(activity, {
-      ...conversationFields,
-      unavailableReason: "missing_transcript_range",
+  let childMessages: PiMessage[];
+  try {
+    childMessages = await loadProjection({
+      conversationId: childConversationId,
+      stepStore,
     });
+  } catch {
+    childMessages = [];
   }
-
-  const messages = await readTranscriptRefMessages(start.transcriptRef);
-  if (messages.length === 0) {
+  if (childMessages.length === 0) {
     return subagentTranscriptReport(activity, {
       ...conversationFields,
       unavailableReason: "missing_transcript_ref",
     });
   }
 
-  const transcript = messages.slice(0, bounds.end).map((message) =>
+  const transcript = childMessages.map((message) =>
     normalizeTranscriptMessage(message, {
       unwrapAdvisorTask: activity.subagentKind === "advisor",
     }),
   );
-
   return subagentTranscriptReport(activity, {
     ...conversationFields,
     transcript,

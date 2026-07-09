@@ -262,7 +262,6 @@ export async function wireAgentTools(
       config: botConfig.advisor,
       conversationId: args.sessionConversationId,
       conversationPrivacy: args.conversationPrivacy,
-      parentSessionId: args.sessionId,
       logContext: args.spanContext,
       getTools: () => advisorTools,
       streamFn: createTracedStreamFn({

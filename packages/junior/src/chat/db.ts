@@ -3,6 +3,8 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import type { AgentStepStore } from "@/chat/conversations/history";
+import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import type { ConversationMessageStore } from "@/chat/conversations/messages";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/chat/sql/db";
 import { createJuniorSqlExecutor } from "@/chat/sql/executor";
 
@@ -13,6 +15,7 @@ let current:
       driver: SqlDriver;
       store: ConversationStore;
       stepStore: AgentStepStore;
+      messageStore: ConversationMessageStore;
     }
   | undefined;
 
@@ -47,6 +50,7 @@ function getSqlExecutor(): JuniorSqlExecutor {
       db,
       store: createSqlStore(db),
       stepStore: createSqlAgentStepStore(db),
+      messageStore: createSqlConversationMessageStore(db),
     };
   }
   return current.db;
@@ -67,6 +71,12 @@ export function getConversationStore(): ConversationStore {
 export function getAgentStepStore(): AgentStepStore {
   getSqlExecutor();
   return current!.stepStore;
+}
+
+/** Return the SQL-backed visible conversation message store. */
+export function getConversationMessageStore(): ConversationMessageStore {
+  getSqlExecutor();
+  return current!.messageStore;
 }
 
 /** Close the process SQL database when it has been opened. */

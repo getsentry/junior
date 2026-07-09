@@ -1,18 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import type { AgentTool, StreamFn } from "@earendil-works/pi-agent-core";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
-import type { PiMessage } from "@/chat/pi/messages";
 import { createTools } from "@/chat/tools";
-import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
+import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { juniorConversations } from "@/chat/sql/schema";
+import type { AgentStepStore } from "@/chat/conversations/history";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
+  advisorChildConversationId,
   createAdvisorToolDefinitions,
   createAdvisorTool,
   type AdvisorToolResult,
   type AdvisorToolRuntimeContext,
 } from "@/chat/tools/advisor/tool";
 import { tool } from "@/chat/tools/definition";
+import {
+  createLocalJuniorSqlFixture,
+  type LocalJuniorSqlFixture,
+} from "../../fixtures/sql";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -21,6 +31,7 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:advisor",
 } as const;
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+const PARENT_CONVERSATION_ID = "slack:C123:1710000.0001";
 
 const config: AdvisorConfig = {
   modelId: "openai/gpt-5.5",
@@ -48,36 +59,43 @@ function responseFor(message: ReturnType<typeof assistantMessage>) {
   } as unknown as StreamResponse;
 }
 
-function createMemoryAdvisorSessionStore(): AdvisorSessionStore & {
-  getMessages: (conversationId: string) => PiMessage[] | undefined;
-} {
-  const sessions = new Map<string, PiMessage[]>();
+const fixtures: LocalJuniorSqlFixture[] = [];
 
+async function sqlStores(): Promise<{
+  stepStore: AgentStepStore;
+  conversationStore: ConversationStore;
+  fixture: LocalJuniorSqlFixture;
+}> {
+  const fixture = await createLocalJuniorSqlFixture();
+  fixtures.push(fixture);
+  await migrateSchema(fixture.sql);
   return {
-    load: async (conversationId) =>
-      structuredClone(sessions.get(conversationId) ?? []),
-    save: async (conversationId, messages) => {
-      sessions.set(conversationId, structuredClone(messages));
-    },
-    getMessages: (conversationId) => {
-      const messages = sessions.get(conversationId);
-      return messages ? structuredClone(messages) : undefined;
-    },
+    fixture,
+    stepStore: createSqlAgentStepStore(fixture.sql),
+    conversationStore: createSqlStore(fixture.sql),
   };
 }
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map((fixture) => fixture.close()));
+});
 
 function runtimeContext(args: {
   advisorTools?: AgentTool[];
   config?: AdvisorConfig;
   conversationId?: string;
-  store?: AdvisorSessionStore;
+  stepStore?: AgentStepStore;
+  conversationStore?: ConversationStore;
   streamFn: StreamFn;
 }): AdvisorToolRuntimeContext {
   return {
     config: args.config ?? config,
-    conversationId: args.conversationId ?? "slack:C123:1710000.0001",
+    conversationId: args.conversationId ?? PARENT_CONVERSATION_ID,
     getTools: () => args.advisorTools ?? [],
-    store: args.store ?? createMemoryAdvisorSessionStore(),
+    ...(args.stepStore ? { stepStore: args.stepStore } : {}),
+    ...(args.conversationStore
+      ? { conversationStore: args.conversationStore }
+      : {}),
     streamFn: args.streamFn,
   };
 }
@@ -93,7 +111,8 @@ async function executeAdvisor(
 }
 
 describe("advisor tool", () => {
-  it("is exposed only when advisor runtime context is enabled", () => {
+  it("is exposed only when advisor runtime context is enabled", async () => {
+    const { stepStore, conversationStore } = await sqlStores();
     const baseContext = {
       destination: LOCAL_DESTINATION,
       egress: {
@@ -112,6 +131,8 @@ describe("advisor tool", () => {
       {
         ...baseContext,
         advisor: runtimeContext({
+          stepStore,
+          conversationStore,
           streamFn: async () => responseFor(assistantMessage("memo")),
         }),
       },
@@ -120,6 +141,7 @@ describe("advisor tool", () => {
   });
 
   it("sends the executor-curated context and advisor tools to the advisor", async () => {
+    const { stepStore, conversationStore } = await sqlStores();
     const contexts: unknown[] = [];
     const inspectEvidence = {
       name: "inspectEvidence",
@@ -133,6 +155,8 @@ describe("advisor tool", () => {
     } as AgentTool;
     const advisor = createAdvisorTool(
       runtimeContext({
+        stepStore,
+        conversationStore,
         advisorTools: [inspectEvidence],
         streamFn: async (_model, context) => {
           contexts.push(context);
@@ -218,12 +242,16 @@ describe("advisor tool", () => {
     ]);
   });
 
-  it("continues the advisor session across calls in a parent conversation", async () => {
+  it("persists advisor history as a child conversation with parent subagent steps", async () => {
+    const { fixture, stepStore, conversationStore } = await sqlStores();
+    const childConversationId = advisorChildConversationId(
+      PARENT_CONVERSATION_ID,
+    );
     const contexts: Array<{ messages?: unknown[] }> = [];
-    const store = createMemoryAdvisorSessionStore();
     const advisor = createAdvisorTool(
       runtimeContext({
-        store,
+        stepStore,
+        conversationStore,
         streamFn: async (_model, context) => {
           contexts.push(context);
           return responseFor(
@@ -237,25 +265,73 @@ describe("advisor tool", () => {
       question: "Initial review",
       context: "First evidence packet.",
     });
+
+    // The child conversation row is linked to its parent.
+    const childRows = await fixture.sql
+      .db()
+      .select({
+        conversationId: juniorConversations.conversationId,
+        parentConversationId: juniorConversations.parentConversationId,
+      })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, childConversationId));
+    expect(childRows).toEqual([
+      {
+        conversationId: childConversationId,
+        parentConversationId: PARENT_CONVERSATION_ID,
+      },
+    ]);
+
+    // The parent records subagent lifecycle steps; the child stores Pi history.
+    const parentTypes = (
+      await stepStore.loadHistory(PARENT_CONVERSATION_ID)
+    ).map((step) => step.entry.type);
+    expect(parentTypes).toEqual(["subagent_started", "subagent_ended"]);
+    const childCountAfterFirst = (
+      await stepStore.loadHistory(childConversationId)
+    ).filter((step) => step.entry.type === "pi_message").length;
+    expect(childCountAfterFirst).toBeGreaterThan(0);
+
+    // A second call continues the same child history and appends to it.
     await executeAdvisor(advisor, {
       question: "Follow up",
       context: "Second evidence packet only.",
     });
-
-    expect(contexts).toHaveLength(2);
-    expect(JSON.stringify(contexts[1].messages)).toContain(
+    expect(JSON.stringify(contexts[1]?.messages)).toContain(
       "Second evidence packet only",
     );
-    expect(JSON.stringify(contexts[1].messages)).toContain("Memo 1");
-    expect(
-      store.getMessages("slack:C123:1710000.0001")?.length,
-    ).toBeGreaterThan(0);
+    expect(JSON.stringify(contexts[1]?.messages)).toContain("Memo 1");
+
+    const childRowsAfter = await fixture.sql
+      .db()
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, childConversationId));
+    expect(childRowsAfter).toHaveLength(1);
+
+    const childCountAfterSecond = (
+      await stepStore.loadHistory(childConversationId)
+    ).filter((step) => step.entry.type === "pi_message").length;
+    expect(childCountAfterSecond).toBeGreaterThan(childCountAfterFirst);
+
+    const parentTypesAfter = (
+      await stepStore.loadHistory(PARENT_CONVERSATION_ID)
+    ).map((step) => step.entry.type);
+    expect(parentTypesAfter).toEqual([
+      "subagent_started",
+      "subagent_ended",
+      "subagent_started",
+      "subagent_ended",
+    ]);
   });
 
   it("returns invalid_context without running advisor inference", async () => {
+    const { stepStore, conversationStore } = await sqlStores();
     let runs = 0;
     const advisor = createAdvisorTool(
       runtimeContext({
+        stepStore,
+        conversationStore,
         streamFn: async () => {
           runs += 1;
           return responseFor(assistantMessage("unused"));

@@ -51,10 +51,8 @@ vi.mock("@/chat/pi/client", () => ({
 describe("createAdvisorTool", () => {
   it("records privacy-safe advisor invoke-agent attributes", async () => {
     const { createAdvisorTool } = await import("@/chat/tools/advisor/tool");
-    const store = {
-      load: vi.fn(async () => []),
-      save: vi.fn(async () => undefined),
-    };
+    const { createMemoryAgentStepStore } =
+      await import("../../fixtures/step-store");
     const advisor = createAdvisorTool({
       config: {
         modelId: "openai/gpt-5.4",
@@ -63,7 +61,10 @@ describe("createAdvisorTool", () => {
       conversationId: "slack:D1:123",
       conversationPrivacy: "private",
       getTools: () => [],
-      store,
+      stepStore: createMemoryAgentStepStore(),
+      conversationStore: {
+        ensureChildConversation: async () => undefined,
+      } as unknown as import("@/chat/conversations/store").ConversationStore,
     });
 
     const result = await advisor.execute!(

@@ -53,6 +53,7 @@ function fixedConversationStore(
     async getDestinationVisibility() {
       return undefined;
     },
+    async ensureChildConversation() {},
     async recordActivity() {},
     async recordExecution() {},
     async listByActivity(args = {}) {

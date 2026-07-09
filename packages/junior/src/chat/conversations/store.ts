@@ -63,6 +63,19 @@ export interface ConversationStore {
     /** Source-confirmed visibility from the current event's signal only. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
+  /**
+   * Establish a subagent child conversation row linked to its parent.
+   *
+   * Advisor and future subagent histories live under their own child
+   * `conversation_id` with `parent_conversation_id` set; the child carries no
+   * destination and is excluded from top-level listings. Idempotent: it links a
+   * bare row a step append may have created first without clobbering it.
+   */
+  ensureChildConversation(args: {
+    conversationId: string;
+    parentConversationId: string;
+    nowMs?: number;
+  }): Promise<void>;
   /** Store task-execution metadata for long-term conversation history. */
   recordExecution(args: {
     channelName?: string;

@@ -18,7 +18,7 @@
 
 - [x] 3.1 Retarget the session-log reducer/projection code to `StoredAgentStep[]` (epoch-based), preserving the Pi projection and host-only-event filtering behavior
 - [x] 3.2 Move `chat/state/session-log.ts` consumers (reply-executor, agent-continue-runner, turn-preparation, context-compaction, local runner, agent-dispatch runner, plugin task-runner) to `AgentStepStore`; compaction and provider-retry rollback write epochs, not `projection_reset` payloads
-- [ ] 3.3 Convert the advisor tool to child conversations: create child conversation rows, write steps under the child id, replace `transcriptRef` with `childConversationId`; update reporting's subagent transcript reader
+- [x] 3.3 Convert the advisor tool to child conversations: create child conversation rows, write steps under the child id, replace `transcriptRef` with `childConversationId`; update reporting's subagent transcript reader
 - [ ] 3.4 Move visible-message writes/reads (ingress recording, reply policy, channel-context assembly) to `ConversationMessageStore`; `replied` marks become `replied_at` updates
 - [x] 3.5 Flip turn-session record cursors from `committedMessageCount` counts to `seq` references at the same cutover
 - [ ] 3.6 Update reporting/dashboard transcript builders to read steps/messages from SQL, excluding child conversations from top-level listings; keep redaction behavior byte-compatible
@@ -41,7 +41,8 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across the cutover slices
+- [ ] 6.1 Add eval transcript assertion helpers in `junior-evals` (SQL-store-backed readers over the normalized session, e.g. `agentSteps(result.session)` / `conversationMessages(result.session)`), plus at least one eval case asserting a turn persists its `pi_message` steps in `junior_agent_steps` (right conversation, current epoch) and its visible messages in `junior_conversation_messages`; extend the advisor eval to assert the child conversation exists and holds the advisor steps
+- [ ] 6.2 Run `pnpm typecheck`, full test suite, and local-agent validation (`pnpm cli -- chat ...`) across the cutover slices
 
 ## 7. Dead-Code Deletion (Deferred To Follow-Up PR)
 

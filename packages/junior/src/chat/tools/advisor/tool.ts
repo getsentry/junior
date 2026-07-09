@@ -3,7 +3,6 @@ import {
   type AgentTool,
   type StreamFn,
 } from "@earendil-works/pi-agent-core";
-import { THREAD_STATE_TTL_MS } from "chat";
 import type { AdvisorConfig } from "@/chat/config";
 import {
   type ConversationPrivacy,
@@ -14,6 +13,7 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   extractGenAiUsageAttributes,
+  logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
   setSpanStatus,
@@ -29,16 +29,14 @@ import {
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { extractAssistantText, isAssistantMessage } from "@/chat/pi/transcript";
+import { getAgentStepStore, getConversationStore } from "@/chat/db";
+import type { AgentStepStore } from "@/chat/conversations/history";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
-  createStateAdvisorSessionStore,
-  getAdvisorSessionKey,
-  type AdvisorSessionStore,
-} from "@/chat/tools/advisor/session-store";
+  commitMessages,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import { renderAdvisorRequest } from "@/chat/advisor-request";
-import {
-  recordSubagentEnded,
-  recordSubagentStarted,
-} from "@/chat/state/session-log";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
@@ -64,9 +62,21 @@ export interface AdvisorToolRuntimeContext {
   conversationPrivacy?: ConversationPrivacy;
   getTools: () => AgentTool[];
   logContext?: LogContext;
-  parentSessionId?: string;
-  store?: AdvisorSessionStore;
+  /** Durable step store; the child advisor history and parent subagent steps. */
+  stepStore?: AgentStepStore;
+  /** Metadata store used to link the advisor child conversation to its parent. */
+  conversationStore?: ConversationStore;
   streamFn?: StreamFn;
+}
+
+/**
+ * Deterministic advisor child conversation id derived from the parent so
+ * repeated advisor calls in one parent conversation append to the same history.
+ */
+export function advisorChildConversationId(
+  parentConversationId: string,
+): string {
+  return `advisor:${parentConversationId}`;
 }
 
 const ADVISOR_TOOL_DESCRIPTION =
@@ -137,9 +147,13 @@ export function createAdvisorToolDefinitions(
   );
 }
 
-/** Create the advisor tool backed by conversation-scoped message history. */
+/** Create the advisor tool backed by a child-conversation message history. */
 export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
-  const store = context.store ?? createStateAdvisorSessionStore();
+  // Resolve stores lazily so building the toolset never requires SQL config;
+  // turns that never invoke the advisor must not depend on it.
+  const stepStore = () => context.stepStore ?? getAgentStepStore();
+  const conversationStore = () =>
+    context.conversationStore ?? getConversationStore();
   const spanContext = context.logContext ?? {};
 
   return zodTool({
@@ -185,51 +199,62 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
       }
 
       const conversationId = context.conversationId;
-      const advisorSessionKey = getAdvisorSessionKey(conversationId);
+      const childConversationId = advisorChildConversationId(conversationId);
       const subagentInvocationId =
         typeof toolCallId === "string" && toolCallId.length > 0
           ? toolCallId
           : `advisor:${Date.now()}`;
+      // Host-only activity appends are best-effort: a failed step append must
+      // never abort the advisor turn (`./agent-session-resumability.md`).
       const endSubagent = async (
         outcome: "success" | "error" | "aborted",
         errorCode?: AdvisorErrorCode,
-        transcriptRange?: {
-          endMessageIndex: number;
-          startMessageIndex: number;
-        },
-      ) =>
-        recordSubagentEnded({
-          conversationId,
-          sessionId: context.parentSessionId,
-          subagentInvocationId,
-          outcome,
-          ...(errorCode ? { errorCode } : {}),
-          ...(transcriptRange
-            ? {
-                transcriptEndMessageIndex: transcriptRange.endMessageIndex,
-                transcriptStartMessageIndex: transcriptRange.startMessageIndex,
-              }
-            : {}),
-          ttlMs: THREAD_STATE_TTL_MS,
-        });
-      await recordSubagentStarted({
-        conversationId,
-        sessionId: context.parentSessionId,
-        parentConversationId: conversationId,
-        parentSessionId: context.parentSessionId,
-        ...(typeof toolCallId === "string" && toolCallId.length > 0
-          ? { parentToolCallId: toolCallId }
-          : {}),
-        subagentInvocationId,
-        subagentKind: "advisor",
-        transcriptRef: {
-          type: "advisor_session",
+      ): Promise<void> => {
+        try {
+          await stepStore().append(conversationId, [
+            {
+              entry: {
+                type: "subagent_ended",
+                subagentInvocationId,
+                outcome,
+                ...(errorCode ? { errorCode } : {}),
+              },
+              createdAtMs: Date.now(),
+            },
+          ]);
+        } catch (error) {
+          logWarn("advisor_subagent_ended_append_failed", spanContext, {
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          });
+        }
+      };
+      try {
+        await conversationStore().ensureChildConversation({
+          conversationId: childConversationId,
           parentConversationId: conversationId,
-          key: advisorSessionKey,
-        },
-        historyMode: "shared",
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
+        });
+        await stepStore().append(conversationId, [
+          {
+            entry: {
+              type: "subagent_started",
+              subagentInvocationId,
+              subagentKind: "advisor",
+              ...(typeof toolCallId === "string" && toolCallId.length > 0
+                ? { parentToolCallId: toolCallId }
+                : {}),
+              childConversationId,
+              historyMode: "shared",
+            },
+            createdAtMs: Date.now(),
+          },
+        ]);
+      } catch (error) {
+        logWarn("advisor_subagent_started_append_failed", spanContext, {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        });
+      }
       const conversationPrivacy = context.conversationPrivacy ?? "private";
       const requestText = renderAdvisorRequest(advisorQuestion, advisorContext);
       const advisorInputMessage = {
@@ -256,7 +281,10 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
 
           let advisorMessages: PiMessage[];
           try {
-            advisorMessages = await store.load(conversationId);
+            advisorMessages = await loadProjection({
+              conversationId: childConversationId,
+              stepStore: stepStore(),
+            });
           } catch {
             setSpanStatus("error");
             await endSubagent("error", "session_unavailable");
@@ -275,7 +303,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               thinkingLevel: context.config.thinkingLevel,
               tools: context.getTools(),
             },
-            sessionId: advisorSessionKey,
+            sessionId: childConversationId,
             streamFn: context.streamFn,
           });
           advisorAgent.state.messages = advisorMessages;
@@ -327,7 +355,11 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
 
           const memo = extractAssistantText(assistant);
           try {
-            await store.save(conversationId, advisorAgent.state.messages);
+            await commitMessages({
+              conversationId: childConversationId,
+              stepStore: stepStore(),
+              messages: advisorAgent.state.messages,
+            });
           } catch {
             setSpanStatus("error");
             await endSubagent("error", "session_unavailable");
@@ -336,10 +368,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               "Advisor guidance is unavailable because advisor history could not be saved. Retry the advisor call or continue without assuming advisor history.",
             );
           }
-          await endSubagent("success", undefined, {
-            endMessageIndex: advisorAgent.state.messages.length,
-            startMessageIndex: beforeMessageCount,
-          });
+          await endSubagent("success");
           setSpanStatus("ok");
           return success(memo);
         },

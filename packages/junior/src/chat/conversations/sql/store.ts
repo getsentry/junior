@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
@@ -506,6 +506,46 @@ export class SqlStore implements ConversationStore {
     });
   }
 
+  async ensureChildConversation(args: {
+    conversationId: string;
+    parentConversationId: string;
+    nowMs?: number;
+  }): Promise<void> {
+    const at = dateFromMs(args.nowMs ?? now());
+    // The child FKs to its parent, so establish a bare parent row first for the
+    // rare case a step append has not created it yet (a no-op once it exists).
+    await this.executor
+      .db()
+      .insert(juniorConversations)
+      .values({
+        conversationId: args.parentConversationId,
+        schemaVersion: 1,
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle",
+      })
+      .onConflictDoNothing({ target: juniorConversations.conversationId });
+    await this.executor
+      .db()
+      .insert(juniorConversations)
+      .values({
+        conversationId: args.conversationId,
+        schemaVersion: 1,
+        parentConversationId: args.parentConversationId,
+        createdAt: at,
+        lastActivityAt: at,
+        updatedAt: at,
+        executionStatus: "idle",
+      })
+      .onConflictDoUpdate({
+        target: juniorConversations.conversationId,
+        set: {
+          parentConversationId: sql`coalesce(${juniorConversations.parentConversationId}, excluded.parent_conversation_id)`,
+        },
+      });
+  }
+
   /** Copy one conversation record into SQL during backfill. */
   async backfillConversation(sourceConversation: Conversation): Promise<void> {
     // Backfilled records are not live source signals: never let them confirm
@@ -578,6 +618,9 @@ export class SqlStore implements ConversationStore {
         juniorIdentities,
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
+      // Subagent (advisor) child conversations are excluded from top-level
+      // listings; they purge with their root on the root's visibility window.
+      .where(isNull(juniorConversations.parentConversationId))
       .orderBy(
         desc(juniorConversations.lastActivityAt),
         asc(juniorConversations.conversationId),

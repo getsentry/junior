@@ -379,54 +379,60 @@ describe("executeAgentRun provider retry", () => {
     delete process.env.JUNIOR_STATE_ADAPTER;
   });
 
-  it("continues from the last safe boundary after a transient provider stream error", async () => {
-    const replyPromise = executeAgentRun({
-      input: { messageText: "help me" },
-      routing: {
-        destination: TEST_DESTINATION,
-        source: TEST_SOURCE,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        correlation: {
-          conversationId: "conversation-1",
-          turnId: "turn-1",
-          channelId: "C123",
-          threadTs: "1712345.0001",
+  // Rollback-epoch writes go through the real SQL harness; allow for
+  // full-suite worker contention.
+  it(
+    "continues from the last safe boundary after a transient provider stream error",
+    { timeout: 15_000 },
+    async () => {
+      const replyPromise = executeAgentRun({
+        input: { messageText: "help me" },
+        routing: {
+          destination: TEST_DESTINATION,
+          source: TEST_SOURCE,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          correlation: {
+            conversationId: "conversation-1",
+            turnId: "turn-1",
+            channelId: "C123",
+            threadTs: "1712345.0001",
+          },
         },
-      },
-    });
+      });
 
-    await waitForPromptCall(1);
-    await advanceUntilContinueCall(5_000);
-    const reply = finalReply(await replyPromise);
+      await waitForPromptCall(1);
+      await advanceUntilContinueCall(5_000);
+      const reply = finalReply(await replyPromise);
 
-    expect(reply.text).toBe("Recovered.");
-    expect(reply.diagnostics.outcome).toBe("success");
-    expect(reply.diagnostics.toolResultCount).toBe(1);
-    expect(reply.diagnostics.usage).toMatchObject({
-      inputTokens: 12,
-      outputTokens: 3,
-    });
-    expect(counters.promptCalls).toBe(1);
-    expect(counters.continueCalls).toBe(1);
+      expect(reply.text).toBe("Recovered.");
+      expect(reply.diagnostics.outcome).toBe("success");
+      expect(reply.diagnostics.toolResultCount).toBe(1);
+      expect(reply.diagnostics.usage).toMatchObject({
+        inputTokens: 12,
+        outputTokens: 3,
+      });
+      expect(counters.promptCalls).toBe(1);
+      expect(counters.continueCalls).toBe(1);
 
-    expect(reply.piMessages?.map((message) => message.role)).toEqual([
-      "user",
-      "toolResult",
-      "assistant",
-    ]);
-    // Generation completing is not delivery: the record stays running at the
-    // last safe boundary (no trailing assistant text) until the destination
-    // boundary commits completion after acceptance.
-    const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
-      "conversation-1",
-      "turn-1",
-    );
-    expect(sessionRecord?.state).toBe("running");
-    expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
-      "user",
-      "toolResult",
-    ]);
-  });
+      expect(reply.piMessages?.map((message) => message.role)).toEqual([
+        "user",
+        "toolResult",
+        "assistant",
+      ]);
+      // Generation completing is not delivery: the record stays running at the
+      // last safe boundary (no trailing assistant text) until the destination
+      // boundary commits completion after acceptance.
+      const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
+        "conversation-1",
+        "turn-1",
+      );
+      expect(sessionRecord?.state).toBe("running");
+      expect(sessionRecord?.piMessages.map((message) => message.role)).toEqual([
+        "user",
+        "toolResult",
+      ]);
+    },
+  );
 
   it("persists and queues steering messages at the next Pi boundary", async () => {
     agentMode.value = "steering";
