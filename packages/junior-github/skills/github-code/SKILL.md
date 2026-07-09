@@ -66,6 +66,8 @@ Rules:
 - After a failed fix attempt or strong correction, stop patching symptoms — re-read the evidence and restate the root cause before editing again.
 - If the task is investigation-only, answer from evidence without editing.
 
+**Advisor planning checkpoint:** For a non-trivial implementation — especially architecture or API changes, security-sensitive behavior, concurrency, migrations, broad cross-file edits, or work following failed attempts — call the advisor after gathering enough evidence and before editing. Provide the requirements, relevant code and output, constraints, proposed plan, alternatives considered, risks, and intended validation path. Resolve or explicitly account for material concerns before implementing.
+
 ### 3. Edit safely
 
 - Smallest coherent change that satisfies the request.
@@ -79,8 +81,6 @@ Rules:
 
 For multi-step or risky work, keep a compact checklist of intent, touched files, verification state, next step, and blockers.
 
-For non-obvious architecture, security-sensitive, concurrency, or repeated-failure work, pause after investigation with evidence, risks, and a proposed plan before pushing ahead.
-
 ### 4. Verify before packaging
 
 Before committing and creating a PR for code, config, or docs-as-code changes:
@@ -88,6 +88,8 @@ Before committing and creating a PR for code, config, or docs-as-code changes:
 - Run the chosen validation path. Separate pre-existing failures from regressions.
 - For docs or instruction-only changes, do a content consistency review instead of claiming automated validation.
 - If no credible check exists, say so explicitly.
+
+**Advisor review checkpoint:** For a non-trivial implementation, call the advisor after inspecting the final diff and running the initial validation path, but before committing, opening or updating a PR, or reporting completion. Provide the diff, relevant surrounding code, requirements, validation results, known limitations, and any remaining risks. Ask specifically for correctness issues, regressions, missed cases, and testing gaps. Investigate material findings, revise as needed, and rerun affected checks before packaging.
 
 ### 5. Commit
 
