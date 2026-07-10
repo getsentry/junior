@@ -98,6 +98,7 @@ export type TranscriptViewSubagentPart = {
   inputSizeBytes?: never;
   inputSizeChars?: never;
   inputType?: never;
+  modelId?: string;
   name?: never;
   outcome?: "success" | "error" | "aborted";
   output?: never;
@@ -106,6 +107,7 @@ export type TranscriptViewSubagentPart = {
   outputSizeChars?: never;
   outputType?: never;
   parentToolCallId?: string;
+  reasoningLevel?: string;
   redacted?: boolean;
   status: TranscriptActivityStatus;
   subagentKind: string;

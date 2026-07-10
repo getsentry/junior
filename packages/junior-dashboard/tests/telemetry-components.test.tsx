@@ -212,8 +212,10 @@ describe("dashboard telemetry components", () => {
       conversationId: "parent-conversation",
       part: {
         id: "advisor-call",
+        modelId: "openai/gpt-5.6-sol",
         outcome: "success",
         parentToolCallId: "advisor-call",
+        reasoningLevel: "high",
         status: "success",
         subagentKind: "advisor",
         transcriptAvailable: true,
@@ -245,8 +247,10 @@ describe("dashboard telemetry components", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         endedAt: "2026-01-01T00:00:01.000Z",
         id: "advisor-call",
+        modelId: "openai/gpt-5.6-sol",
         outcome: "success",
         parentToolCallId: "advisor-call",
+        reasoningLevel: "high",
         status: "success",
         subagentConversationId: "junior:parent-conversation:advisor_session",
         subagentKind: "advisor",
@@ -266,7 +270,12 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">advisor<");
     expect(html).not.toContain("advisor subagent");
     expect(html).toContain("Conversation ID");
-    expect(html).toContain("junior:parent-conversation:advisor_session");
+    expect(html).toContain("junior:");
+    expect(html).toContain("parent-conversation:");
+    expect(html).toContain("advisor_session");
+    expect(html).toContain("gpt-5.6-sol");
+    expect(html).toContain("(high)");
+    expect(html).toContain("high");
     expect(html).toContain("View in Sentry");
     expect(html).toContain('aria-label="Copy as Markdown"');
     expect(html).toContain("disabled");
@@ -428,6 +437,8 @@ describe("dashboard telemetry components", () => {
       id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
+      modelId: "openai/gpt-5.5",
+      reasoningLevel: "high",
       sentryTraceUrl: "https://sentry.example/trace/abc",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
@@ -443,6 +454,7 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("View in Sentry");
     expect(html).toContain("https://sentry.example/trace/abc");
+    expect(html).toContain("(high)");
   });
 
   it("removes residual grid row gap from collapsed system prompts", () => {
@@ -675,6 +687,43 @@ describe("dashboard telemetry components", () => {
 
     expect(html).not.toContain("turn");
     expect(html).not.toContain("tool call");
+  });
+
+  it("shows the latest main execution profile in the conversation header", () => {
+    const session = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      id: "turn-1",
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      displayTitle: "Conversation",
+    } satisfies ConversationSummary;
+    const detail = {
+      conversationId: "conversation-1",
+      displayTitle: session.displayTitle,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      runs: [
+        {
+          ...session,
+          modelId: "openai/gpt-5.5",
+          reasoningLevel: "high",
+          transcript: [],
+          transcriptAvailable: true,
+        },
+      ],
+    } satisfies ConversationDetailFeed;
+    client.setQueryData(["conversation", "conversation-1"], detail);
+
+    const html = renderConversationPage(dashboardData([session]));
+    const header = html.slice(0, html.indexOf('aria-label="Transcript view"'));
+
+    expect(header).toContain("gpt-5.5");
+    expect(header).toContain("(high)");
+    expect(header).not.toContain(">Model<");
+    expect(header).not.toContain(">Reasoning<");
   });
 
   it("renders execution activity inside the transcript", () => {

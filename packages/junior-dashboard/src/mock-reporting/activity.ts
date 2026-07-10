@@ -10,8 +10,10 @@ export type MockSubagentActivityOptions = {
   createdAt?: string;
   endedAt?: string;
   id?: string;
+  modelId?: string;
   outcome?: "success" | "error" | "aborted";
   parentToolCallId?: string;
+  reasoningLevel?: string;
   status?: ConversationActivityStatus;
   subagentKind?: string;
   transcriptAvailable?: boolean;
@@ -25,12 +27,16 @@ export function mockSubagentActivity(
     type: "subagent",
     createdAt: options.createdAt ?? mockIso(),
     id: options.id ?? "mock-subagent",
+    ...(options.modelId !== undefined ? { modelId: options.modelId } : {}),
     status: options.status ?? "running",
     subagentKind: options.subagentKind ?? "advisor",
     ...(options.endedAt !== undefined ? { endedAt: options.endedAt } : {}),
     ...(options.outcome !== undefined ? { outcome: options.outcome } : {}),
     ...(options.parentToolCallId !== undefined
       ? { parentToolCallId: options.parentToolCallId }
+      : {}),
+    ...(options.reasoningLevel !== undefined
+      ? { reasoningLevel: options.reasoningLevel }
       : {}),
     ...(options.transcriptAvailable !== undefined
       ? { transcriptAvailable: options.transcriptAvailable }

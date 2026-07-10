@@ -139,7 +139,9 @@ export async function persistRunningSessionRecord(args: {
   trailingMessageProvenance?: PiMessageProvenance[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  modelId?: string;
   actor?: Actor;
+  reasoningLevel?: string;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<boolean> {
@@ -178,6 +180,8 @@ export async function persistRunningSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
+      ...(args.modelId ? { modelId: args.modelId } : {}),
+      ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
       ...((args.actor ?? latestSessionRecord?.actor)
         ? { actor: args.actor ?? latestSessionRecord?.actor }
         : {}),

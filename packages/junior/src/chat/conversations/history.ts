@@ -87,7 +87,9 @@ const subagentStartedEntrySchema = z.object({
   type: z.literal("subagent_started"),
   subagentInvocationId: z.string().min(1),
   subagentKind: z.string().min(1),
+  modelId: z.string().min(1).optional(),
   parentToolCallId: z.string().min(1).optional(),
+  reasoningLevel: z.string().min(1).optional(),
   childConversationId: z.string().min(1),
   historyMode: z.literal("shared"),
 });

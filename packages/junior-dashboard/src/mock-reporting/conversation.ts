@@ -24,6 +24,8 @@ export type MockRunOptions = {
   id?: string;
   lastProgressAt?: string;
   lastSeenAt?: string;
+  modelId?: string;
+  reasoningLevel?: string;
   actorIdentity?: ActorIdentity;
   sentryTraceUrl?: string;
   startedAt?: string;
@@ -66,6 +68,10 @@ export function mockRun(options: MockRunOptions = {}): ConversationRunReport {
       : {}),
     ...(options.actorIdentity !== undefined
       ? { actorIdentity: options.actorIdentity }
+      : {}),
+    ...(options.modelId !== undefined ? { modelId: options.modelId } : {}),
+    ...(options.reasoningLevel !== undefined
+      ? { reasoningLevel: options.reasoningLevel }
       : {}),
     ...(options.sentryTraceUrl !== undefined
       ? { sentryTraceUrl: options.sentryTraceUrl }

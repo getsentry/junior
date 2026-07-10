@@ -42,6 +42,7 @@ import type {
   ConversationSource,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
 
 export type {
   PluginConversationStatus,
@@ -170,6 +171,8 @@ export interface TranscriptMessage {
 
 export interface ConversationRunReport extends ConversationSummaryReport {
   activity?: ConversationActivityReport[];
+  modelId?: string;
+  reasoningLevel?: string;
   transcriptAvailable: boolean;
   transcriptMetadata?: TranscriptMessage[];
   transcriptMessageCount?: number;
@@ -205,8 +208,10 @@ export interface ConversationSubagentActivityReport {
   createdAt: string;
   endedAt?: string;
   id: string;
+  modelId?: string;
   outcome?: "success" | "error" | "aborted";
   parentToolCallId?: string;
+  reasoningLevel?: string;
   status: ConversationActivityStatus;
   subagentKind: string;
   transcriptAvailable?: boolean;
@@ -242,8 +247,10 @@ export interface ConversationSubagentTranscriptReport {
   createdAt: string;
   endedAt?: string;
   id: string;
+  modelId?: string;
   outcome?: "success" | "error" | "aborted";
   parentToolCallId?: string;
+  reasoningLevel?: string;
   status: ConversationActivityStatus;
   subagentConversationId?: string;
   subagentKind: string;
@@ -1165,6 +1172,7 @@ function subagentTranscriptReport(
       : {}),
     createdAt: activity.createdAt,
     id: activity.id,
+    ...(activity.modelId ? { modelId: activity.modelId } : {}),
     status: activity.status,
     ...(options.subagentSentryConversationUrl
       ? { subagentSentryConversationUrl: options.subagentSentryConversationUrl }
@@ -1176,6 +1184,9 @@ function subagentTranscriptReport(
     ...(activity.outcome ? { outcome: activity.outcome } : {}),
     ...(activity.parentToolCallId
       ? { parentToolCallId: activity.parentToolCallId }
+      : {}),
+    ...(activity.reasoningLevel
+      ? { reasoningLevel: activity.reasoningLevel }
       : {}),
     ...(options.transcriptMessageCount !== undefined
       ? { transcriptMessageCount: options.transcriptMessageCount }
@@ -1352,6 +1363,14 @@ export async function readConversationReport(
   const store = conversationStore(options);
   const nowMs = Date.now();
   const conversation = await store.get({ conversationId });
+  const turnSummaries = conversation
+    ? await listAgentTurnSessionSummariesForConversation(conversationId)
+    : [];
+  const currentTurnSummary = conversation
+    ? (turnSummaries.find(
+        (summary) => summary.sessionId === conversation.execution.runId,
+      ) ?? turnSummaries[0])
+    : undefined;
 
   const stepStore = getAgentStepStore();
   const messageStore = options.messageStore ?? getConversationMessageStore();
@@ -1389,6 +1408,12 @@ export async function readConversationReport(
     ? [
         {
           ...sessionReportFromConversation(conversation, nowMs),
+          ...(currentTurnSummary?.modelId
+            ? { modelId: currentTurnSummary.modelId }
+            : {}),
+          ...(currentTurnSummary?.reasoningLevel
+            ? { reasoningLevel: currentTurnSummary.reasoningLevel }
+            : {}),
           ...(traceId ? { traceId } : {}),
           ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
           activity: currentContent.activity,
@@ -1460,8 +1485,12 @@ function subagentActivityFromSteps(
     type: "subagent",
     id: start.entry.subagentInvocationId,
     subagentKind: start.entry.subagentKind,
+    ...(start.entry.modelId ? { modelId: start.entry.modelId } : {}),
     ...(start.entry.parentToolCallId
       ? { parentToolCallId: start.entry.parentToolCallId }
+      : {}),
+    ...(start.entry.reasoningLevel
+      ? { reasoningLevel: start.entry.reasoningLevel }
       : {}),
     createdAt: new Date(start.createdAtMs).toISOString(),
     ...(end

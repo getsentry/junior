@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import { Button } from "./Button";
 import { CopyMarkdownButton } from "./CopyMarkdownButton";
+import { ExecutionSignature } from "./ExecutionSignature";
 import { Transcript } from "./Transcript";
 import { TranscriptLoading } from "./TranscriptLoading";
 import { transcriptEmptyClass } from "./transcriptStyles";
@@ -76,29 +77,32 @@ export function SubagentTranscriptDrawer(props: {
         onClick={props.onClose}
         type="button"
       />
-      <aside className="absolute right-0 top-0 grid h-full w-[min(760px,94vw)] grid-rows-[auto_minmax(0,1fr)] border-l border-white/12 bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)]">
-        <header className="border-b border-white/10 bg-[#0b0b0b] px-4 py-3 md:px-5">
-          <div className="flex min-w-0 items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <Bot
-                  aria-hidden="true"
-                  className="shrink-0 text-cyan-300"
-                  size={16}
-                  strokeWidth={2.25}
-                />
-                <h2 className="m-0 min-w-0 break-words text-lg font-bold leading-tight tracking-normal text-white">
-                  {label}
-                </h2>
-              </div>
-              <DrawerConversationIdentity report={visible} />
-              {meta.length > 0 ? (
-                <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-[#888]">
-                  {meta.join(" · ")}
-                </div>
-              ) : null}
+      <aside className="absolute right-0 top-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:w-[min(760px,94vw)] md:border-l md:border-white/12">
+        <header className="relative border-b border-white/10 bg-[#0b0b0b] px-4 py-3 md:px-5">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2 pr-24">
+              <Bot
+                aria-hidden="true"
+                className="shrink-0 text-cyan-300"
+                size={16}
+                strokeWidth={2.25}
+              />
+              <h2 className="m-0 min-w-0 break-words text-lg font-bold leading-tight tracking-normal text-white">
+                {label}
+              </h2>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
+            <DrawerConversationIdentity report={visible} />
+            <ExecutionSignature
+              className="mt-1 block"
+              modelId={visible.modelId}
+              reasoningLevel={visible.reasoningLevel}
+            />
+            {meta.length > 0 ? (
+              <div className="mt-1 break-words font-mono text-[0.78rem] leading-snug text-[#888]">
+                {meta.join(" · ")}
+              </div>
+            ) : null}
+            <div className="absolute right-4 top-3 flex items-center gap-1.5 md:right-5">
               <CopyMarkdownButton
                 key={`${props.target.part.id}:${report?.endedAt ?? "loading"}`}
                 getMarkdown={
@@ -149,18 +153,31 @@ function DrawerConversationIdentity(props: {
   }
 
   return (
-    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[0.78rem] leading-snug">
+    <div className="mt-2 grid min-w-0 gap-1.5 text-[0.78rem] leading-snug">
       {props.report.subagentConversationId ? (
-        <span className="inline-flex min-w-0 items-baseline gap-1.5">
-          <span className="shrink-0 text-[#777]">Conversation ID</span>
-          <code className="min-w-0 break-all font-mono text-[#d6d6d6]">
-            {props.report.subagentConversationId}
+        <span className="grid min-w-0 grid-cols-1 items-baseline gap-2 sm:grid-cols-[auto_minmax(0,1fr)]">
+          <span className="hidden shrink-0 text-[#777] sm:inline">
+            Conversation ID
+          </span>
+          <code className="min-w-0 font-mono text-[0.72rem] text-[#d6d6d6] sm:text-[0.78rem]">
+            {props.report.subagentConversationId
+              .split(":")
+              .map((segment, index, segments) => (
+                <span key={`${index}-${segment}`}>
+                  {segment}
+                  {index < segments.length - 1 ? (
+                    <>
+                      :<wbr />
+                    </>
+                  ) : null}
+                </span>
+              ))}
           </code>
         </span>
       ) : null}
       {props.report.subagentSentryConversationUrl ? (
         <a
-          className="inline-flex shrink-0 items-center gap-1 font-semibold text-white no-underline hover:underline"
+          className="inline-flex w-fit items-center gap-1 font-semibold text-white no-underline hover:underline"
           href={props.report.subagentSentryConversationUrl}
           rel="noreferrer"
           target="_blank"

@@ -177,6 +177,8 @@ const subagentStartedEntrySchema = z.object({
   parentSessionId: z.string().min(1).optional(),
   transcriptRef: transcriptRefSchema,
   historyMode: z.literal("shared"),
+  modelId: z.string().min(1).optional(),
+  reasoningLevel: z.string().min(1).optional(),
   createdAtMs: z.number().int().nonnegative(),
 });
 
@@ -497,9 +499,11 @@ function toolExecutionStartedEntry(args: {
 function subagentStartedEntry(args: {
   createdAtMs: number;
   historyMode: "shared";
+  modelId?: string;
   parentConversationId: string;
   parentSessionId?: string;
   parentToolCallId?: string;
+  reasoningLevel?: string;
   sessionId: string;
   subagentInvocationId: string;
   subagentKind: string;
@@ -511,11 +515,13 @@ function subagentStartedEntry(args: {
     sessionId: args.sessionId,
     subagentInvocationId: args.subagentInvocationId,
     subagentKind: args.subagentKind,
+    ...(args.modelId ? { modelId: args.modelId } : {}),
     ...(args.parentToolCallId
       ? { parentToolCallId: args.parentToolCallId }
       : {}),
     parentConversationId: args.parentConversationId,
     ...(args.parentSessionId ? { parentSessionId: args.parentSessionId } : {}),
+    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     transcriptRef: args.transcriptRef,
     historyMode: args.historyMode,
     createdAtMs: args.createdAtMs,
@@ -1134,9 +1140,11 @@ export async function recordSubagentStarted(
   args: Scope & {
     createdAtMs?: number;
     historyMode: "shared";
+    modelId?: string;
     parentConversationId: string;
     parentSessionId?: string;
     parentToolCallId?: string;
+    reasoningLevel?: string;
     sessionId?: string;
     store?: SessionLogStore;
     subagentInvocationId: string;
@@ -1154,9 +1162,11 @@ export async function recordSubagentStarted(
       subagentStartedEntry({
         createdAtMs: args.createdAtMs ?? Date.now(),
         historyMode: args.historyMode,
+        modelId: args.modelId,
         parentConversationId: args.parentConversationId,
         parentSessionId: args.parentSessionId,
         parentToolCallId: args.parentToolCallId,
+        reasoningLevel: args.reasoningLevel,
         sessionId,
         subagentInvocationId: args.subagentInvocationId,
         subagentKind: args.subagentKind,

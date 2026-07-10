@@ -74,11 +74,15 @@ function subagentPart(activity: SubagentActivity): TranscriptViewSubagentPart {
   return {
     type: "subagent",
     id: activity.id,
+    ...(activity.modelId ? { modelId: activity.modelId } : {}),
     subagentKind: activity.subagentKind,
     status: activity.status,
     ...(activity.outcome ? { outcome: activity.outcome } : {}),
     ...(activity.parentToolCallId
       ? { parentToolCallId: activity.parentToolCallId }
+      : {}),
+    ...(activity.reasoningLevel
+      ? { reasoningLevel: activity.reasoningLevel }
       : {}),
     ...(activity.endedAt ? { endedAt: activity.endedAt } : {}),
     ...(activity.transcriptAvailable !== undefined

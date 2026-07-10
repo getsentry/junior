@@ -31,6 +31,7 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { StatusBadge } from "./StatusBadge";
+import { ExecutionSignature } from "./ExecutionSignature";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
 import {
   TranscriptHeadingMeta,
@@ -610,6 +611,12 @@ function turnMeta(turn: ConversationTurn): MetricListItem[] {
       ? {
           content: <ToolCallsMetric summary={toolSummary} />,
           key: "tools",
+        }
+      : undefined,
+    turn.reasoningLevel
+      ? {
+          content: <ExecutionSignature reasoningLevel={turn.reasoningLevel} />,
+          key: "reasoning",
         }
       : undefined,
     turn.sentryTraceUrl

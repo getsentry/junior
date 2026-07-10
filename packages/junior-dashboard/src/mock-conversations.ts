@@ -679,6 +679,8 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
         lastProgressAt: iso(nowMs, -10 * 60_000),
         lastSeenAt: iso(nowMs, -10 * 60_000),
         cumulativeDurationMs: 60_000,
+        modelId: "openai/gpt-5.5",
+        reasoningLevel: "high",
         surface: "internal",
         transcriptAvailable: true,
         transcript: [],
@@ -751,6 +753,8 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
         lastSeenAt: iso(nowMs, -5 * 60_000),
         completedAt: iso(nowMs, -5 * 60_000),
         cumulativeDurationMs: 180_000,
+        modelId: "openai/gpt-5.5",
+        reasoningLevel: "high",
         surface: "internal",
         transcriptAvailable: true,
         transcriptMessageCount: 7,
@@ -930,7 +934,9 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             subagents: [
               mockSubagentActivity({
                 id: advisorPlanToolId,
+                modelId: "openai/gpt-5.6-sol",
                 parentToolCallId: advisorPlanToolId,
+                reasoningLevel: "high",
                 subagentKind: "advisor",
                 createdAt: iso(nowMs, -8 * 60_000 + 6_000),
                 endedAt: iso(nowMs, -8 * 60_000 + 35_000),
@@ -973,7 +979,9 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
             subagents: [
               mockSubagentActivity({
                 id: advisorReviewToolId,
+                modelId: "openai/gpt-5.6-sol",
                 parentToolCallId: advisorReviewToolId,
+                reasoningLevel: "high",
                 subagentKind: "advisor",
                 createdAt: iso(nowMs, -6 * 60_000 + 25_000),
                 endedAt: iso(nowMs, -5 * 60_000 + 20_000),
@@ -1059,8 +1067,10 @@ function dashboardQaAdvisorTranscript(
     createdAt,
     endedAt,
     id: subagentId,
+    modelId: "openai/gpt-5.6-sol",
     outcome: "success",
     parentToolCallId: subagentId,
+    reasoningLevel: "high",
     status: "success",
     subagentConversationId: DASHBOARD_QA_ADVISOR_CONVERSATION_ID,
     subagentKind: "advisor",

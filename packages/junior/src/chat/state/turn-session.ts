@@ -64,6 +64,8 @@ export interface AgentTurnSessionRecord {
   errorMessage?: string;
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
+  modelId?: string;
+  reasoningLevel?: string;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
   piMessageProvenance: PiMessageProvenance[];
@@ -157,6 +159,8 @@ const agentTurnSessionSummarySchema = z
     source: sourceSchema.optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     loadedSkillNames: z.array(z.string()).optional(),
+    modelId: z.string().min(1).optional(),
+    reasoningLevel: z.string().min(1).optional(),
     actor: actorSchema.optional(),
     resumeReason: agentTurnResumeReasonSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
@@ -303,6 +307,8 @@ function materializeAgentTurnSessionRecord(
     ...(stored.loadedSkillNames
       ? { loadedSkillNames: stored.loadedSkillNames }
       : {}),
+    ...(stored.modelId ? { modelId: stored.modelId } : {}),
+    ...(stored.reasoningLevel ? { reasoningLevel: stored.reasoningLevel } : {}),
     ...(stored.actor ? { actor: stored.actor } : {}),
     ...(stored.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: stored.resumedFromSliceId }
@@ -373,7 +379,9 @@ function buildStoredRecord(args: {
   committedSeq: number;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
+  modelId?: string;
   previousVersion?: number;
+  reasoningLevel?: string;
   actor?: Actor;
   sessionId: string;
   sliceId: number;
@@ -409,6 +417,8 @@ function buildStoredRecord(args: {
     ...(args.loadedSkillNames
       ? { loadedSkillNames: args.loadedSkillNames }
       : {}),
+    ...(args.modelId ? { modelId: args.modelId } : {}),
+    ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
     ...(args.resumedFromSliceId !== undefined
@@ -508,6 +518,10 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
+      ...(args.existing.modelId ? { modelId: args.existing.modelId } : {}),
+      ...(args.existing.reasoningLevel
+        ? { reasoningLevel: args.existing.reasoningLevel }
+        : {}),
       ...(args.existing.actor ? { actor: args.existing.actor } : {}),
       ...(args.existing.resumeReason
         ? { resumeReason: args.existing.resumeReason }
@@ -536,6 +550,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
+  modelId?: string;
   conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
@@ -546,6 +561,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   trailingMessageProvenance?: PiMessageProvenance[];
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
+  reasoningLevel?: string;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -624,6 +640,15 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
+      ...((existingRecord?.modelId ?? args.modelId)
+        ? { modelId: existingRecord?.modelId ?? args.modelId }
+        : {}),
+      ...((existingRecord?.reasoningLevel ?? args.reasoningLevel)
+        ? {
+            reasoningLevel:
+              existingRecord?.reasoningLevel ?? args.reasoningLevel,
+          }
+        : {}),
       ...((args.actor ?? existingRecord?.actor)
         ? { actor: args.actor ?? existingRecord?.actor }
         : {}),
@@ -658,9 +683,11 @@ export async function recordAgentTurnSessionSummary(args: {
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
+  modelId?: string;
   conversationStore?: ConversationStore;
   actor?: Actor;
   resumeReason?: AgentTurnResumeReason;
+  reasoningLevel?: string;
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -706,6 +733,12 @@ export async function recordAgentTurnSessionSummary(args: {
       : existing?.loadedSkillNames
         ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),
+    ...((existing?.modelId ?? args.modelId)
+      ? { modelId: existing?.modelId ?? args.modelId }
+      : {}),
+    ...((existing?.reasoningLevel ?? args.reasoningLevel)
+      ? { reasoningLevel: existing?.reasoningLevel ?? args.reasoningLevel }
+      : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...((args.surface ?? existing?.surface)
       ? { surface: args.surface ?? existing?.surface }

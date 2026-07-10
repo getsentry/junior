@@ -43,6 +43,8 @@ interface ResumeStateArgs {
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
   logContext: SessionRecordLogContext;
+  modelId: string;
+  getReasoningLevel: () => string | undefined;
   recordActiveMcpProviders: () => Promise<void>;
   actor?: Actor;
   runSource: Source;
@@ -92,6 +94,10 @@ export function createResumeState(args: ResumeStateArgs) {
     sessionId: args.sessionId!,
     loadedSkillNames: args.getLoadedSkillNames(),
     logContext: args.logContext,
+    modelId: args.modelId,
+    ...(args.getReasoningLevel()
+      ? { reasoningLevel: args.getReasoningLevel() }
+      : {}),
     actor: args.actor,
     ...(args.surface ? { surface: args.surface } : {}),
   });

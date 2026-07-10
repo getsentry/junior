@@ -236,11 +236,13 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               type: "subagent_started",
               subagentInvocationId,
               subagentKind: "advisor",
+              modelId: context.config.modelId,
               ...(typeof toolCallId === "string" && toolCallId.length > 0
                 ? { parentToolCallId: toolCallId }
                 : {}),
               childConversationId,
               historyMode: "shared",
+              reasoningLevel: context.config.thinkingLevel,
             },
             createdAtMs: Date.now(),
           },

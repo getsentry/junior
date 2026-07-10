@@ -5,6 +5,7 @@ import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Button } from "../components/Button";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
+import { ExecutionSignature } from "../components/ExecutionSignature";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -78,6 +79,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
                 detail={detail.data}
               />
             </div>
+            <ConversationExecutionSignature detail={detail.data} />
           </div>
           <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.8rem] leading-snug text-[#b8b8b8] md:items-end md:text-right">
             <div className="break-words">
@@ -126,6 +128,22 @@ export function ConversationPage(props: { data?: DashboardData }) {
         target={subagentTarget}
       />
     </div>
+  );
+}
+
+function ConversationExecutionSignature(props: {
+  detail: ConversationDetailFeed | undefined;
+}) {
+  const runs = props.detail?.runs;
+  const latestRun = runs?.[runs.length - 1];
+  if (!latestRun?.modelId) return null;
+
+  return (
+    <ExecutionSignature
+      className="mt-1.5 block"
+      modelId={latestRun.modelId}
+      reasoningLevel={latestRun.reasoningLevel}
+    />
   );
 }
 
