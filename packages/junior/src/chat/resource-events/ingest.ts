@@ -44,6 +44,7 @@ export async function ingestResourceEvent(
   });
   let enqueued = 0;
   const errors: unknown[] = [];
+  const waitDeadlineMs = Date.now() + 10_000;
   for (const subscription of subscriptions) {
     try {
       const delivered = await deliverResourceEventSubscription({
@@ -54,6 +55,7 @@ export async function ingestResourceEvent(
         nowMs,
         state: options.state,
         subscription,
+        waitDeadlineMs,
         deliver: async (current) => {
           const result = await enqueueResourceEventNotification({
             event,

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { StateAdapter } from "chat";
+import type { Lock, StateAdapter } from "chat";
 import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -8,6 +8,9 @@ import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;
+const SUBSCRIPTION_LOCK_WAIT_MS = 10_000;
+const SUBSCRIPTION_LOCK_RETRY_MS = 25;
+const SUBSCRIPTION_LOCK_HEARTBEAT_MS = 3_000;
 
 const subscriptionStatusSchema = z.enum(["active", "cancelled", "completed"]);
 
@@ -67,6 +70,87 @@ function conversationIndexKey(conversationId: string): string {
 
 function indexLockKey(key: string): string {
   return `${key}:lock`;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    (timer as { unref?: () => void }).unref?.();
+  });
+}
+
+async function acquireSubscriptionLock(
+  state: StateAdapter,
+  subscriptionId: string,
+  waitDeadlineMs = Date.now() + SUBSCRIPTION_LOCK_WAIT_MS,
+): Promise<Lock> {
+  while (true) {
+    const lock = await state.acquireLock(
+      subscriptionLockKey(subscriptionId),
+      SUBSCRIPTION_LOCK_TTL_MS,
+    );
+    if (lock) {
+      return lock;
+    }
+    if (Date.now() >= waitDeadlineMs) {
+      throw new Error(
+        `Could not acquire resource event subscription lock for ${subscriptionId}`,
+      );
+    }
+    await sleep(SUBSCRIPTION_LOCK_RETRY_MS);
+  }
+}
+
+/** Run one subscription lifecycle transition while keeping its lease alive. */
+async function withSubscriptionLock<T>(
+  state: StateAdapter,
+  subscriptionId: string,
+  callback: () => Promise<T>,
+  waitDeadlineMs?: number,
+): Promise<T> {
+  const lock = await acquireSubscriptionLock(
+    state,
+    subscriptionId,
+    waitDeadlineMs,
+  );
+  let heartbeatError: Error | undefined;
+  let heartbeat: Promise<void> | undefined;
+  const timer = setInterval(() => {
+    if (heartbeat) {
+      return;
+    }
+    heartbeat = state
+      .extendLock(lock, SUBSCRIPTION_LOCK_TTL_MS)
+      .then((extended) => {
+        if (!extended) {
+          heartbeatError = new Error(
+            `Resource event subscription lock was lost for ${subscriptionId}`,
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        heartbeatError =
+          error instanceof Error
+            ? error
+            : new Error(`Failed to extend subscription lock: ${String(error)}`);
+      })
+      .finally(() => {
+        heartbeat = undefined;
+      });
+  }, SUBSCRIPTION_LOCK_HEARTBEAT_MS);
+  timer.unref?.();
+  let result: T;
+  try {
+    result = await callback();
+  } finally {
+    clearInterval(timer);
+    await heartbeat;
+    await state.releaseLock(lock);
+  }
+  if (heartbeatError) {
+    throw heartbeatError;
+  }
+  return result;
 }
 
 function ttlUntil(expiresAtMs: number, nowMs: number): number {
@@ -289,14 +373,7 @@ export async function cancelResourceEventSubscription(input: {
 }): Promise<ResourceEventSubscription | undefined> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
-  const lock = await state.acquireLock(
-    subscriptionLockKey(input.id),
-    SUBSCRIPTION_LOCK_TTL_MS,
-  );
-  if (!lock) {
-    throw new Error(`Could not acquire subscription lock for ${input.id}`);
-  }
-  try {
+  return await withSubscriptionLock(state, input.id, async () => {
     const current = parseSubscription(
       await state.get(subscriptionKey(input.id)),
     );
@@ -327,9 +404,7 @@ export async function cancelResourceEventSubscription(input: {
       nowMs,
     );
     return next;
-  } finally {
-    await state.releaseLock(lock);
-  }
+  });
 }
 
 /** Find active subscriptions interested in a normalized provider event. */
@@ -374,71 +449,66 @@ export async function deliverResourceEventSubscription(input: {
   state?: StateAdapter;
   subscription: ResourceEventSubscription;
   terminal?: boolean;
+  waitDeadlineMs?: number;
 }): Promise<boolean> {
   const state = input.state ?? getStateAdapter();
   await state.connect();
-  const lock = await state.acquireLock(
-    subscriptionLockKey(input.subscription.id),
-    SUBSCRIPTION_LOCK_TTL_MS,
-  );
-  if (!lock) {
-    throw new Error(
-      `Resource event subscription delivery lock busy: ${input.subscription.id}`,
-    );
-  }
-  try {
-    const nowMs = input.nowMs ?? Date.now();
-    const current = parseSubscription(
-      await state.get(subscriptionKey(input.subscription.id)),
-    );
-    if (
-      !current ||
-      !matchesEvent(current, {
-        eventType: input.eventType,
-        nowMs,
-        provider: input.provider,
-        resourceRef: input.resourceRef,
-      })
-    ) {
-      return false;
-    }
-    const delivered = await input.deliver(current);
-    if (input.terminal) {
-      const latest = parseSubscription(
-        await state.get(subscriptionKey(current.id)),
+  return await withSubscriptionLock(
+    state,
+    input.subscription.id,
+    async () => {
+      const nowMs = input.nowMs ?? Date.now();
+      const current = parseSubscription(
+        await state.get(subscriptionKey(input.subscription.id)),
       );
       if (
-        !latest ||
-        latest.status !== current.status ||
-        latest.updatedAtMs !== current.updatedAtMs
+        !current ||
+        !matchesEvent(current, {
+          eventType: input.eventType,
+          nowMs,
+          provider: input.provider,
+          resourceRef: input.resourceRef,
+        })
       ) {
-        return delivered;
+        return false;
       }
-      const next: ResourceEventSubscription = {
-        ...current,
-        status: "completed",
-        updatedAtMs: nowMs,
-      };
-      await state.set(
-        subscriptionKey(current.id),
-        next,
-        JUNIOR_THREAD_STATE_TTL_MS,
-      );
-      await removeFromIndex(
-        state,
-        resourceIndexKey(current.provider, current.resourceRef),
-        current.id,
-        nowMs,
-      );
-      await removeFromIndex(
-        state,
-        conversationIndexKey(current.conversationId),
-        current.id,
-        nowMs,
-      );
-    }
-    return delivered;
-  } finally {
-    await state.releaseLock(lock);
-  }
+      const delivered = await input.deliver(current);
+      if (input.terminal) {
+        const latest = parseSubscription(
+          await state.get(subscriptionKey(current.id)),
+        );
+        if (
+          !latest ||
+          latest.status !== current.status ||
+          latest.updatedAtMs !== current.updatedAtMs
+        ) {
+          return delivered;
+        }
+        const next: ResourceEventSubscription = {
+          ...current,
+          status: "completed",
+          updatedAtMs: nowMs,
+        };
+        await state.set(
+          subscriptionKey(current.id),
+          next,
+          JUNIOR_THREAD_STATE_TTL_MS,
+        );
+        await removeFromIndex(
+          state,
+          resourceIndexKey(current.provider, current.resourceRef),
+          current.id,
+          nowMs,
+        );
+        await removeFromIndex(
+          state,
+          conversationIndexKey(current.conversationId),
+          current.id,
+          nowMs,
+        );
+      }
+      return delivered;
+    },
+    input.waitDeadlineMs,
+  );
 }

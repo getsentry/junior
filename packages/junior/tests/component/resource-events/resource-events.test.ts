@@ -252,11 +252,12 @@ describe("resource event subscriptions", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  it("continues delivering later subscriptions when one delivery lock is busy", async () => {
+  it("waits for a contended delivery lock before delivering all matches", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const baseState = getStateAdapter();
     await baseState.connect();
-    let busySubscriptionId: string | undefined;
+    let contendedSubscriptionId: string | undefined;
+    let contendedAttempts = 0;
     const state = {
       connect: async () => {
         await baseState.connect();
@@ -268,10 +269,17 @@ describe("resource event subscriptions", () => {
       set: async (key: string, value: unknown, ttlMs?: number) =>
         await baseState.set(key, value, ttlMs),
       delete: async (key: string) => await baseState.delete(key),
-      acquireLock: async (key: string, ttlMs?: number) =>
-        busySubscriptionId && key.endsWith(`:${busySubscriptionId}`)
-          ? undefined
-          : await baseState.acquireLock(key, ttlMs ?? 10_000),
+      acquireLock: async (key: string, ttlMs?: number) => {
+        if (
+          contendedSubscriptionId &&
+          key.endsWith(`:${contendedSubscriptionId}`) &&
+          contendedAttempts < 2
+        ) {
+          contendedAttempts += 1;
+          return null;
+        }
+        return await baseState.acquireLock(key, ttlMs ?? 10_000);
+      },
       extendLock: async (
         lock: Parameters<StateAdapter["extendLock"]>[0],
         ttlMs: number,
@@ -284,7 +292,7 @@ describe("resource event subscriptions", () => {
         }
       },
     } as StateAdapter;
-    const busySubscription = await createGithubPrSubscription({
+    const contendedSubscription = await createGithubPrSubscription({
       events: ["checks.failed"],
       state,
     });
@@ -306,7 +314,7 @@ describe("resource event subscriptions", () => {
       },
       { nowMs: 1_000, state },
     );
-    busySubscriptionId = busySubscription.id;
+    contendedSubscriptionId = contendedSubscription.id;
 
     await expect(
       ingestResourceEvent(
@@ -320,15 +328,52 @@ describe("resource event subscriptions", () => {
         },
         { nowMs: 1_500, queue, state },
       ),
-    ).rejects.toThrow(
-      "Failed to deliver one or more resource event subscriptions",
-    );
+    ).resolves.toEqual({ enqueued: 2 });
+    expect(contendedAttempts).toBe(2);
 
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({
-        conversationId: "slack:C456:1712345.0002",
-      }),
-    ]);
+    expect(queue.sentRecords()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conversationId: CONVERSATION_ID }),
+        expect.objectContaining({
+          conversationId: "slack:C456:1712345.0002",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps the subscription lock leased during a long delivery", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const state = getStateAdapter();
+    await state.connect();
+    const subscription = await createGithubPrSubscription({
+      events: ["checks.failed"],
+      state,
+    });
+    let finishDelivery: (() => void) | undefined;
+    const delivery = deliverResourceEventSubscription({
+      eventType: "checks.failed",
+      nowMs: 1_500,
+      provider: "github",
+      resourceRef: "github:pull_request:getsentry/junior#691",
+      state,
+      subscription,
+      deliver: async () =>
+        await new Promise<boolean>((resolve) => {
+          finishDelivery = () => resolve(true);
+        }),
+    });
+
+    await vi.advanceTimersByTimeAsync(12_000);
+
+    await expect(
+      state.acquireLock(
+        `junior:resource_event_subscription:lock:${subscription.id}`,
+        10_000,
+      ),
+    ).resolves.toBeNull();
+
+    finishDelivery?.();
+    await expect(delivery).resolves.toBe(true);
   });
 
   it("does not complete a subscription refreshed during terminal delivery", async () => {
