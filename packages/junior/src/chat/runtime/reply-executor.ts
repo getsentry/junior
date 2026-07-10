@@ -42,7 +42,10 @@ import {
   getRunId,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
-import { persistThreadState } from "@/chat/runtime/thread-state";
+import {
+  persistThreadRuntimeState,
+  persistThreadState,
+} from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
@@ -129,16 +132,17 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
+import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 
 /**
- * Persist post-delivery thread state with a short retry so a transient state
- * write does not lose the delivered outcome of an already-accepted reply.
+ * Persist post-delivery Redis scratch with a short retry after durable SQL
+ * completion has succeeded.
  */
-async function persistThreadStateWithRetry(
+async function persistThreadRuntimeStateWithRetry(
   thread: Thread,
   patch: Parameters<typeof persistThreadState>[1],
 ): Promise<void> {
-  await persistWithRetry(() => persistThreadState(thread, patch));
+  await persistWithRetry(() => persistThreadRuntimeState(thread, patch));
 }
 
 function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
@@ -1467,16 +1471,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             latestArtifacts = completedState.artifacts;
           }
           try {
-            // Post-delivery bookkeeping: the user already saw the reply, so
-            // every write below is retried, logged, and never fails the
-            // delivered turn. The SQL transcript rides through
-            // persistThreadStateWithRetry (its patch carries `conversation`),
-            // so it is persisted with the same retry as the thread state.
-            //
-            // Commit the terminal completed session record first: it is the
-            // delivered marker that keeps stranded-running recovery from
-            // regenerating an already-delivered reply if the thread-state
-            // write below fails.
+            // Commit the durable delivery record first so recovery cannot
+            // regenerate an accepted reply. Persist the SQL-visible transcript
+            // next, then update Redis runtime scratch independently.
             if (conversationId && reply.piMessages?.length) {
               await completeDeliveredTurn({
                 channelName,
@@ -1517,9 +1514,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 traceId: getActiveTraceId(),
               });
             }
-            await persistThreadStateWithRetry(thread, {
-              ...completedState,
-            });
+            await persistWithRetry(() =>
+              persistConversationMessages({
+                conversation: completedState.conversation,
+                conversationId,
+              }),
+            );
+            await persistThreadRuntimeStateWithRetry(thread, completedState);
             if (
               completedState.artifacts &&
               (assistantTitleArtifacts.assistantTitle !== undefined ||
@@ -1530,7 +1531,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 completedState.artifacts.assistantTitleSourceMessageId !==
                   assistantTitleArtifacts.assistantTitleSourceMessageId)
             ) {
-              await persistThreadStateWithRetry(thread, {
+              await persistThreadRuntimeStateWithRetry(thread, {
                 artifacts: latestArtifacts,
               });
             }

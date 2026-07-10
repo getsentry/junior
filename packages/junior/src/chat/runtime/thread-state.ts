@@ -100,6 +100,15 @@ export async function persistThreadState(
         toOptionalString((thread as { runId?: unknown }).runId),
     });
   }
+
+  await persistThreadRuntimeState(thread, patch);
+}
+
+/** Persist only the Redis-backed runtime scratch in a thread-state patch. */
+export async function persistThreadRuntimeState(
+  thread: Thread,
+  patch: ThreadStatePatch,
+): Promise<void> {
   const payload = buildThreadStatePayload(patch);
   if (Object.keys(payload).length === 0) {
     return;

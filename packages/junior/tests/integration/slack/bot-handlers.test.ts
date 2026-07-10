@@ -716,6 +716,7 @@ describe("bot handlers (integration)", () => {
     const originalPost = thread.post.bind(thread);
     const originalSetState = thread.setState.bind(thread);
     let replyPosted = false;
+    let postDeliveryStateAttempted = false;
     thread.post = (async (message: unknown) => {
       const sent = await originalPost(
         message as Parameters<typeof originalPost>[0],
@@ -728,6 +729,7 @@ describe("bot handlers (integration)", () => {
       options?: Parameters<typeof originalSetState>[1],
     ) => {
       if (replyPosted) {
+        postDeliveryStateAttempted = true;
         throw new Error("state store unavailable");
       }
       return originalSetState(next, options);
@@ -749,6 +751,7 @@ describe("bot handlers (integration)", () => {
     ).resolves.toBeUndefined();
 
     expect(postIncludes(thread, finalText)).toBe(true);
+    expect(postDeliveryStateAttempted).toBe(true);
     expect(
       postIncludes(
         thread,
