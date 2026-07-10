@@ -5,12 +5,14 @@
  * bounded newest-first) and the lazy first-read straggler path. It converts the
  * legacy session log into `junior_agent_steps`, imports the advisor session blob
  * as a child conversation, and copies the `thread-state` visible messages into
- * `junior_conversation_messages`. Import is idempotent per conversation (skip
- * when step rows already exist) and never fabricates import-time timestamps.
+ * `junior_conversation_messages`. Import is idempotent per conversation: step
+ * rows seal normal imports, while message-only imports verify their complete
+ * SQL projection before skipping. It never fabricates import-time timestamps.
  *
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
+import { isDeepStrictEqual } from "node:util";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-messages";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -213,6 +215,30 @@ export async function importConversationFromLegacy(
     fallbackCreatedAtMs,
   });
 
+  if (converted.steps.length === 0 && visible.length > 0) {
+    const existingMessages = new Map(
+      (await deps.messageStore.list(conversationId)).map((message) => [
+        message.messageId,
+        message,
+      ]),
+    );
+    const fullyImported = visible.every((message) => {
+      const existingMessage = existingMessages.get(message.id);
+      const projected = toStoredConversationMessage(message);
+      return (
+        existingMessage !== undefined &&
+        Object.entries(projected.meta ?? {}).every(([key, value]) =>
+          isDeepStrictEqual(existingMessage.meta?.[key], value),
+        ) &&
+        (message.meta?.replied !== true ||
+          existingMessage.repliedAtMs !== undefined)
+      );
+    });
+    if (fullyImported) {
+      return { imported: false };
+    }
+  }
+
   let child:
     | {
         conversationId: string;
@@ -230,8 +256,8 @@ export async function importConversationFromLegacy(
   }
 
   // Ordering invariant: visible messages are written BEFORE the step rows,
-  // because the step rows are this import's commit point — the idempotence gate
-  // above keys off `loadCurrentEpoch(...).length > 0`. If steps landed first and
+  // because the step rows are the normal import commit point. Message-only
+  // imports use the explicit completeness check above. If steps landed first and
   // the message write then failed, every later retry would trip the gate and the
   // visible transcript would be lost forever. Recording messages first is safe on
   // retry: `record()` is idempotent via the store's natural key (`ON CONFLICT`

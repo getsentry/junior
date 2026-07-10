@@ -4,7 +4,6 @@ import type {
   ConversationStore,
 } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { AgentTurnSessionSummary } from "@/chat/state/turn-session";
 
 vi.mock("@/chat/prompt", () => ({
   buildSystemPrompt: vi.fn(() => "[system prompt]"),
@@ -13,13 +12,6 @@ vi.mock("@/chat/prompt", () => ({
   JUNIOR_WORLD: null,
 }));
 
-const SYSTEM_MESSAGE = {
-  role: "system",
-  parts: [{ type: "text", text: "[system prompt]" }],
-};
-
-const AGENT_TURN_SESSION_INDEX_KEY = "junior:agent_turn_session:index";
-const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
 
@@ -81,20 +73,6 @@ function indexedConversation(
       updatedAtMs: input.lastActivityAtMs,
       ...input.execution,
     },
-  };
-}
-
-async function createStateReportingReader() {
-  const { createStateConversationStore } =
-    await import("@/chat/conversations/state");
-  const { getStateAdapter } = await import("@/chat/state/adapter");
-  const { readConversationReport, readConversationStatsReport } =
-    await import("@/reporting/conversations");
-  const conversationStore = createStateConversationStore(getStateAdapter());
-  return {
-    conversationStore,
-    readConversationReport,
-    readConversationStatsReport,
   };
 }
 
@@ -413,35 +391,47 @@ describe("dashboard reporting", () => {
     expect(details).not.toHaveProperty("startedAtMs");
   });
 
-  it("uses conversation details title when conversation turns are absent", async () => {
-    const { initConversationContext, setConversationTitle } =
-      await import("@/chat/state/conversation-details");
+  it("uses SQL title and visible messages when agent steps are absent", async () => {
+    const { getConversationMessageStore, getConversationStore } =
+      await import("@/chat/db");
     const { createJuniorReporting } = await import("@/reporting");
 
     await confirmPublicSlackConversation("slack:C1:details-only");
-    await initConversationContext("slack:C1:details-only", {
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C1:details-only",
       channelName: "proj-alpha",
-      originSurface: "slack",
-      startedAtMs: Date.now(),
+      source: "slack",
+      title: "SQL Title",
     });
-    await setConversationTitle("slack:C1:details-only", {
-      displayTitle: "Details Only Title",
-    });
+    await getConversationMessageStore().record("slack:C1:details-only", [
+      {
+        messageId: "visible-only",
+        role: "user",
+        text: "Visible SQL message",
+        createdAtMs: 1_000,
+      },
+    ]);
 
     const report = await createJuniorReporting().getConversation(
       "slack:C1:details-only",
     );
 
-    // The persisted-public destination record surfaces as an index-only run;
-    // the details title may only appear because the conversation is public.
     expect(report).toMatchObject({
       conversationId: "slack:C1:details-only",
-      displayTitle: "Details Only Title",
+      displayTitle: "SQL Title",
     });
-    expect(report.runs.length).toBeGreaterThan(0);
-    expect(report.runs.every((run) => run.transcriptAvailable === false)).toBe(
-      true,
-    );
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({
+      transcriptAvailable: true,
+      transcriptMessageCount: 1,
+      transcript: [
+        {
+          role: "user",
+          timestamp: 1_000,
+          parts: [{ type: "text", text: "Visible SQL message" }],
+        },
+      ],
+    });
   });
 
   it("reports conversation-index detail when turn summaries are absent", async () => {
@@ -600,24 +590,17 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports conversation feed from origin details when summaries omit metadata", async () => {
+  it("reports conversation feed from SQL metadata", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const { initConversationContext } =
-      await import("@/chat/state/conversation-details");
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
 
-    await initConversationContext("slack:C1:100", {
-      channelName: "proj-alpha",
-      originActor: { fullName: "Origin Actor" },
-      originSurface: "slack",
-      startedAtMs: Date.parse("2026-06-04T10:00:00.000Z"),
-    });
     await recordAgentTurnSessionSummary({
       conversationId: "slack:C1:100",
       cumulativeDurationMs: 1_000,
+      channelName: "proj-alpha",
       destination: { platform: "slack", teamId: "T1", channelId: "C1" },
       destinationVisibility: "public",
       actor: slackActor("Later Actor"),
@@ -633,7 +616,7 @@ describe("dashboard reporting", () => {
       feed.conversations.map((conversation) => conversation.actorIdentity),
     ).toEqual([
       expect.objectContaining({
-        fullName: "Origin Actor",
+        fullName: "Later Actor",
       }),
     ]);
     expect(feed.conversations).toEqual([
@@ -766,7 +749,7 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("reports only the current turn transcript from session history", async () => {
+  it("reports the complete SQL conversation transcript", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
@@ -838,9 +821,19 @@ describe("dashboard reporting", () => {
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
-      transcriptMessageCount: 2,
+      transcriptMessageCount: 4,
     });
     expect(report.runs[0]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "previous question" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 2,
+        parts: [{ type: "text", text: "previous answer" }],
+      },
       {
         role: "user",
         timestamp: 3,
@@ -1234,7 +1227,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("keeps the initial prompt when steering adds another user message", async () => {
+  it("keeps the complete SQL transcript when steering adds a message", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
@@ -1286,9 +1279,19 @@ describe("dashboard reporting", () => {
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
-      transcriptMessageCount: 4,
+      transcriptMessageCount: 6,
     });
     expect(report.runs[0]!.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "previous question" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 2,
+        parts: [{ type: "text", text: "previous answer" }],
+      },
       {
         role: "user",
         timestamp: 3,
@@ -1312,93 +1315,52 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports a conversation after newer turns evict it from the global index", async () => {
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { THREAD_STATE_TTL_MS } = await import("chat");
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { conversationStore, readConversationReport } =
-      await createStateReportingReader();
-    // The state-backed store cannot persist destination visibility; present
-    // the conversation as public for this read.
-    const publicConversationStore: ConversationStore = {
-      ...conversationStore,
-      get: async (args) => {
-        const conversation = await conversationStore.get(args);
-        return conversation
-          ? { ...conversation, visibility: "public" as const }
-          : conversation;
-      },
-    };
-
-    await upsertAgentTurnSessionRecord({
-      conversationStore,
+  it("reports a conversation directly from SQL without a turn index", async () => {
+    const { getAgentStepStore, getConversationStore } =
+      await import("@/chat/db");
+    const { readConversationReport } =
+      await import("@/reporting/conversations");
+    await getConversationStore().recordActivity({
       conversationId: "slack:C1:999",
       destination: {
         platform: "slack",
         teamId: "T123",
         channelId: "C1",
       },
-      source: {
-        platform: "slack",
-        type: "pub",
-        teamId: "T123",
-        channelId: "C1",
-        threadTs: "999",
-      },
-      sessionId: "target-turn",
-      sliceId: 1,
-      state: "completed",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "target question" }],
-          timestamp: 1,
+      source: "slack",
+      visibility: "public",
+    });
+    await getAgentStepStore().append("slack:C1:999", [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "target question" }],
+            timestamp: 1,
+          } as PiMessage,
         },
-      ] as PiMessage[],
-    });
+        createdAtMs: 1,
+      },
+    ]);
 
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    for (let index = 0; index < 5_005; index += 1) {
-      const nowMs = Date.now();
-      const summary: AgentTurnSessionSummary = {
-        conversationId: `slack:C2:${index}`,
-        cumulativeDurationMs: 0,
-        lastProgressAtMs: nowMs,
-        sessionId: `newer-turn-${index}`,
-        sliceId: 1,
-        startedAtMs: nowMs,
-        state: "completed",
-        updatedAtMs: nowMs,
-        version: 0,
-      };
-      await stateAdapter.appendToList(AGENT_TURN_SESSION_INDEX_KEY, summary, {
-        maxLength: AGENT_TURN_SESSION_INDEX_MAX_LENGTH,
-        ttlMs: THREAD_STATE_TTL_MS,
-      });
-    }
-
-    const report = await readConversationReport("slack:C1:999", {
-      conversationStore: publicConversationStore,
-    });
+    const report = await readConversationReport("slack:C1:999");
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
-      id: "target-turn",
+      id: "slack:C1:999",
       transcriptAvailable: true,
     });
     expect(report.runs[0]!.transcript).toEqual([
-      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 1,
         parts: [{ type: "text", text: "target question" }],
       },
     ]);
-  }, 20_000);
+  });
 
-  it("keeps earlier turn transcripts pinned to their committed log prefix", async () => {
+  it("reports multiple turns as one complete SQL transcript", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { createJuniorReporting } = await import("@/reporting");
@@ -1478,10 +1440,9 @@ describe("dashboard reporting", () => {
     const report =
       await createJuniorReporting().getConversation("slack:C1:333");
 
-    expect(report.runs).toHaveLength(2);
-    expect(report.runs[0]).toMatchObject({ id: "turn-one" });
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({ id: "slack:C1:333" });
     expect(report.runs[0]!.transcript).toEqual([
-      SYSTEM_MESSAGE,
       {
         role: "user",
         timestamp: 1,
@@ -1492,9 +1453,6 @@ describe("dashboard reporting", () => {
         timestamp: 2,
         parts: [{ type: "text", text: "first answer" }],
       },
-    ]);
-    expect(report.runs[1]).toMatchObject({ id: "turn-two" });
-    expect(report.runs[1]!.transcript).toEqual([
       {
         role: "user",
         timestamp: 3,
@@ -1567,12 +1525,11 @@ describe("dashboard reporting", () => {
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       channelNameRedacted: true,
-      id: "turn-private",
+      id: "slack:D1:222",
       actorIdentity: {
         email: "david@sentry.io",
         slackUserId: "U1",
       },
-      traceId: "0123456789abcdef0123456789abcdef",
       transcriptAvailable: false,
       transcriptMessageCount: 2,
       transcriptRedacted: true,
@@ -1614,7 +1571,7 @@ describe("dashboard reporting", () => {
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       channelNameRedacted: true,
-      id: "turn-private-expired",
+      id: "slack:D1:333",
       transcriptAvailable: false,
       transcriptMetadata: [],
       transcriptRedacted: true,
@@ -1662,7 +1619,7 @@ describe("dashboard reporting", () => {
 
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]).toMatchObject({
-      id: "turn-purged",
+      id: "slack:C1:purged",
       transcriptAvailable: false,
       transcriptExpired: true,
       transcriptMetadata: [],

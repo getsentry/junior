@@ -66,9 +66,37 @@ export async function selectExpiredRoots(
     args.nowMs - args.privateWindowMs,
   ).toISOString();
   const cutoff = sql`case when ${juniorDestinations.visibility} = 'public' then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
-  const hasSteps = sql`exists (select 1 from ${juniorAgentSteps} where ${juniorAgentSteps.conversationId} = ${juniorConversations.conversationId})`;
-  const hasMessages = sql`exists (select 1 from ${juniorConversationMessages} where ${juniorConversationMessages.conversationId} = ${juniorConversations.conversationId})`;
-  const scrubPending = sql`${juniorDestinations.visibility} is distinct from 'public' and (${juniorConversations.title} is not null or ${juniorConversations.channelName} is not null or ${juniorConversations.actor} is not null)`;
+  const hasTreeWork = sql`exists (
+    with recursive conversation_tree(conversation_id) as (
+      select ${juniorConversations.conversationId}
+      union all
+      select child.conversation_id
+      from junior_conversations child
+      join conversation_tree parent on child.parent_conversation_id = parent.conversation_id
+    )
+    select 1
+    from conversation_tree tree
+    where exists (
+      select 1 from junior_agent_steps steps
+      where steps.conversation_id = tree.conversation_id
+    )
+      or exists (
+        select 1 from junior_conversation_messages messages
+        where messages.conversation_id = tree.conversation_id
+      )
+      or (
+        ${juniorDestinations.visibility} is distinct from 'public'
+        and exists (
+          select 1 from junior_conversations metadata
+          where metadata.conversation_id = tree.conversation_id
+            and (
+              metadata.title is not null
+              or metadata.channel_name is not null
+              or metadata.actor_json is not null
+            )
+        )
+      )
+  )`;
   const rows = await executor
     .db()
     .select({
@@ -84,7 +112,7 @@ export async function selectExpiredRoots(
       and(
         isNull(juniorConversations.parentConversationId),
         sql`${juniorConversations.lastActivityAt} < ${cutoff}`,
-        sql`(${hasSteps} or ${hasMessages} or (${scrubPending}))`,
+        hasTreeWork,
       ),
     )
     .orderBy(

@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getConversationDetailsForIds } from "@/chat/state/conversation-details";
-import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
 import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
   readConversationFeed,
   readConversationReport,
 } from "@/reporting/conversations";
+import { createMemoryAgentStepStore } from "../fixtures/step-store";
 
 vi.mock("@/chat/sentry", () => ({
   getActiveSpan: () => undefined,
@@ -20,23 +20,6 @@ vi.mock("@/chat/sentry", () => ({
     }),
   }),
   spanToJSON: () => ({}),
-}));
-
-vi.mock("@/chat/prompt", () => ({
-  buildSystemPrompt: vi.fn(() => "[system prompt]"),
-  buildTurnContextPrompt: vi.fn(() => null),
-  JUNIOR_PERSONALITY: "",
-  JUNIOR_WORLD: null,
-}));
-
-vi.mock("@/chat/state/conversation-details", () => ({
-  getConversationDetails: vi.fn(async () => undefined),
-  getConversationDetailsForIds: vi.fn(async () => new Map()),
-}));
-
-vi.mock("@/chat/state/turn-session", () => ({
-  getAgentTurnSessionRecord: vi.fn(async () => undefined),
-  listAgentTurnSessionSummariesForConversation: vi.fn(async () => []),
 }));
 
 const ORIGINAL_SENTRY_ORG_SLUG = process.env.SENTRY_ORG_SLUG;
@@ -88,8 +71,6 @@ function indexedConversation(
 }
 
 afterEach(() => {
-  vi.mocked(getConversationDetailsForIds).mockResolvedValue(new Map());
-  vi.mocked(listAgentTurnSessionSummariesForConversation).mockResolvedValue([]);
   if (ORIGINAL_SENTRY_ORG_SLUG === undefined) {
     delete process.env.SENTRY_ORG_SLUG;
   } else {
@@ -98,6 +79,66 @@ afterEach(() => {
 });
 
 describe("conversation reporting", () => {
+  it("reports the SQL projection when transient turn metadata is absent", async () => {
+    const conversationId = "slack:C1:123";
+    const conversationStore = fixedConversationStore([
+      indexedConversation({
+        conversationId,
+        createdAtMs: 1_000,
+        lastActivityAtMs: 2_000,
+        visibility: "public",
+      }),
+    ]);
+    const stepStore = createMemoryAgentStepStore();
+    await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "durable question" }],
+            timestamp: 1_000,
+          },
+        },
+        createdAtMs: 1_000,
+      },
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "durable answer" }],
+            timestamp: 2_000,
+          } as unknown as PiMessage,
+        },
+        createdAtMs: 2_000,
+      },
+    ]);
+
+    const report = await readConversationReport(conversationId, {
+      conversationStore,
+      stepStore,
+    });
+
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]).toMatchObject({
+      transcriptAvailable: true,
+      transcriptMessageCount: 2,
+      transcript: [
+        {
+          role: "user",
+          timestamp: 1_000,
+          parts: [{ type: "text", text: "durable question" }],
+        },
+        {
+          role: "assistant",
+          timestamp: 2_000,
+          parts: [{ type: "text", text: "durable answer" }],
+        },
+      ],
+    });
+  });
+
   it("returns Sentry conversation URLs only on detail reports", async () => {
     process.env.SENTRY_ORG_SLUG = "acme";
     const conversationStore = fixedConversationStore([

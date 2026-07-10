@@ -238,6 +238,36 @@ describe("retention purge job", () => {
     expect(await stepCount(fixture.sql, "child")).toBe(0);
   });
 
+  it("purges an expired root whose remaining content exists only on a child", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "empty-root",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ actor: null })
+      .where(eq(juniorConversations.conversationId, "empty-root"));
+    await seedConversation(fixture.sql, {
+      conversationId: "remaining-child",
+      parentConversationId: "empty-root",
+      lastActivityAtMs: BASE_MS,
+    });
+
+    const result = await runRetentionPurge(fixture.sql, {
+      nowMs: BASE_MS + 91 * DAY_MS,
+    });
+
+    expect(result.purged).toBe(1);
+    expect(await stepCount(fixture.sql, "remaining-child")).toBe(0);
+    expect(await messageCount(fixture.sql, "remaining-child")).toBe(0);
+  });
+
   it("purges up to the batch limit and leaves the remainder for the next run", async () => {
     const dest = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {

@@ -1,24 +1,15 @@
-/**
- * Conversation reporting joins the activity index with turn-session summaries.
- *
- * The conversation record is the queryable activity source; turn-session
- * records add run/transcript detail, and privacy rules decide whether raw
- * transcript payloads can leave this module.
- */
+/** Conversation reporting rendered from durable SQL conversation data. */
 import { isRecord } from "@/chat/coerce";
 import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
-  type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
-import { buildSystemPrompt } from "@/chat/prompt";
 import type {
   PluginConversationStatus,
   PluginConversations,
   PluginConversationSummary,
-  Source,
 } from "@sentry/junior-plugin-api";
 import {
   buildSentryConversationUrl,
@@ -29,24 +20,17 @@ import {
   resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
+import type { StoredSlackActor } from "@/chat/actor";
 import {
-  getConversationDetails,
-  getConversationDetailsForIds,
-  type ConversationDetailsRecord,
-} from "@/chat/state/conversation-details";
-import {
-  getAgentTurnSessionRecord,
-  listAgentTurnSessionSummariesForConversation,
-  type AgentTurnSessionSummary,
-} from "@/chat/state/turn-session";
-import {
-  toStoredSlackActor,
-  type Actor,
-  type StoredSlackActor,
-} from "@/chat/actor";
-import type { AgentTurnUsage } from "@/chat/usage";
-import { getAgentStepStore, getConversationStore } from "@/chat/db";
+  getAgentStepStore,
+  getConversationMessageStore,
+  getConversationStore,
+} from "@/chat/db";
 import { loadProjection, projectSteps } from "@/chat/conversations/projection";
+import type {
+  ConversationMessage,
+  ConversationMessageStore,
+} from "@/chat/conversations/messages";
 import type {
   AgentStepEntry,
   AgentStepStore,
@@ -86,6 +70,7 @@ function privateConversationLabel(
 }
 
 interface ConversationReaderOptions {
+  messageStore?: ConversationMessageStore;
   conversationStore?: ConversationStore;
   stepStore?: AgentStepStore;
 }
@@ -314,26 +299,6 @@ export interface ConversationStatsReport {
   windowStart: string;
 }
 
-function statusFromCheckpoint(
-  summary: AgentTurnSessionSummary,
-  nowMs = Date.now(),
-): ConversationSummaryReport["status"] {
-  const state = summary.state;
-  if (
-    state === "running" &&
-    nowMs - summary.lastProgressAtMs > HUNG_TURN_PROGRESS_MS
-  ) {
-    return "hung";
-  }
-  if (state === "running" || state === "awaiting_resume") {
-    return "active";
-  }
-  if (state === "abandoned") {
-    return "superseded";
-  }
-  return state;
-}
-
 function surfaceFromConversationId(
   conversationId: string,
 ): ConversationSurface {
@@ -341,12 +306,6 @@ function surfaceFromConversationId(
   if (conversationId.startsWith("scheduler:")) return "scheduler";
   if (conversationId.startsWith("api:")) return "api";
   return "internal";
-}
-
-function surfaceFromSummary(
-  summary: AgentTurnSessionSummary,
-): ConversationSurface {
-  return summary.surface ?? surfaceFromConversationId(summary.conversationId);
 }
 
 function surfaceFromSource(
@@ -376,100 +335,6 @@ function actorIdentityReport(
   return Object.keys(identity).length > 0 ? identity : undefined;
 }
 
-function sessionActorIdentityReport(
-  actor: Actor | undefined,
-): ActorIdentity | undefined {
-  return actor?.platform === "slack"
-    ? actorIdentityReport(toStoredSlackActor(actor))
-    : undefined;
-}
-
-function usageReport(
-  usage: AgentTurnUsage | undefined,
-): ConversationUsage | undefined {
-  if (!usage) return undefined;
-  const report: ConversationUsage = {
-    ...(usage.inputTokens !== undefined
-      ? { inputTokens: usage.inputTokens }
-      : {}),
-    ...(usage.outputTokens !== undefined
-      ? { outputTokens: usage.outputTokens }
-      : {}),
-    ...(usage.cachedInputTokens !== undefined
-      ? { cachedInputTokens: usage.cachedInputTokens }
-      : {}),
-    ...(usage.cacheCreationTokens !== undefined
-      ? { cacheCreationTokens: usage.cacheCreationTokens }
-      : {}),
-    ...(usage.totalTokens !== undefined
-      ? { totalTokens: usage.totalTokens }
-      : {}),
-  };
-  return Object.keys(report).length > 0 ? report : undefined;
-}
-
-/** Build one run row while preserving privacy redaction over stored labels. */
-function sessionReportFromSummary(
-  summary: AgentTurnSessionSummary,
-  nowMs = Date.now(),
-  details?: ConversationDetailsRecord,
-  visibility?: ConversationPrivacy,
-): ConversationSummaryReport {
-  const slackThread = parseSlackThreadId(summary.conversationId);
-  const privacy = resolveConversationPrivacy({
-    conversationId: summary.conversationId,
-    visibility,
-  });
-  const effectiveChannelName = details?.channelName ?? summary.channelName;
-  const slackConversation = resolveSlackConversationContextFromThreadId({
-    threadId: summary.conversationId,
-    channelName: effectiveChannelName,
-  });
-  const privateLabel =
-    privacy !== "public"
-      ? privateConversationLabel(slackConversation)
-      : undefined;
-  const channelName = privateLabel ?? effectiveChannelName;
-  const effectiveSurface =
-    details?.originSurface ?? surfaceFromSummary(summary);
-  const displayTitle =
-    privateLabel ??
-    details?.displayTitle ??
-    slackStatsLocationLabel({
-      channel: slackThread?.channelId,
-      channelName: effectiveChannelName,
-    }) ??
-    surfaceFallbackLabel(effectiveSurface);
-  const actorIdentity =
-    actorIdentityReport(details?.originActor) ??
-    sessionActorIdentityReport(summary.actor);
-  const sentryTraceUrl = summary.traceId
-    ? buildSentryTraceUrl(summary.traceId)
-    : undefined;
-  const cumulativeUsage = usageReport(summary.cumulativeUsage);
-  return {
-    conversationId: summary.conversationId,
-    displayTitle,
-    id: summary.sessionId,
-    status: statusFromCheckpoint(summary, nowMs),
-    startedAt: new Date(summary.startedAtMs).toISOString(),
-    lastProgressAt: new Date(summary.lastProgressAtMs).toISOString(),
-    lastSeenAt: new Date(summary.updatedAtMs).toISOString(),
-    ...(summary.state === "completed"
-      ? { completedAt: new Date(summary.updatedAtMs).toISOString() }
-      : {}),
-    cumulativeDurationMs: summary.cumulativeDurationMs,
-    ...(cumulativeUsage ? { cumulativeUsage } : {}),
-    surface: effectiveSurface,
-    ...(actorIdentity ? { actorIdentity } : {}),
-    ...(slackThread ? { channel: slackThread.channelId } : {}),
-    ...(channelName ? { channelName } : {}),
-    ...(privateLabel ? { channelNameRedacted: true } : {}),
-    ...(summary.traceId ? { traceId: summary.traceId } : {}),
-    ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
-  };
-}
-
 function statusFromConversation(
   conversation: StoredConversation,
   fallback: ConversationReportStatus | undefined,
@@ -497,12 +362,10 @@ function statusFromConversation(
 
 function titleFromConversation(args: {
   conversation: StoredConversation;
-  details?: ConversationDetailsRecord;
   surface: ConversationSurface;
 }): string {
   const slackThread = parseSlackThreadId(args.conversation.conversationId);
-  const effectiveChannelName =
-    args.details?.channelName ?? args.conversation.channelName;
+  const effectiveChannelName = args.conversation.channelName;
   const slackConversation = resolveSlackConversationContextFromThreadId({
     threadId: args.conversation.conversationId,
     channelName: effectiveChannelName,
@@ -516,7 +379,6 @@ function titleFromConversation(args: {
       : undefined;
   return (
     privateLabel ??
-    args.details?.displayTitle ??
     args.conversation.title ??
     slackStatsLocationLabel({
       channel: slackThread?.channelId,
@@ -528,9 +390,8 @@ function titleFromConversation(args: {
 
 function channelNameFromConversation(
   conversation: StoredConversation,
-  details?: ConversationDetailsRecord,
 ): string | undefined {
-  const effectiveChannelName = details?.channelName ?? conversation.channelName;
+  const effectiveChannelName = conversation.channelName;
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return undefined;
@@ -552,9 +413,8 @@ function channelNameFromConversation(
 
 function channelNameRedactedFromConversation(
   conversation: StoredConversation,
-  details?: ConversationDetailsRecord,
 ): boolean {
-  const effectiveChannelName = details?.channelName ?? conversation.channelName;
+  const effectiveChannelName = conversation.channelName;
   const slackThread = parseSlackThreadId(conversation.conversationId);
   if (!effectiveChannelName && !slackThread) {
     return false;
@@ -567,82 +427,23 @@ function channelNameRedactedFromConversation(
   );
 }
 
-function applyConversationIndexMetadata(args: {
-  conversation: StoredConversation;
-  details?: ConversationDetailsRecord;
-  nowMs: number;
-  report: ConversationSummaryReport;
-}): ConversationSummaryReport {
-  const surface =
-    args.details?.originSurface ??
-    (args.conversation.source
-      ? surfaceFromSource(
-          args.conversation.source,
-          args.conversation.conversationId,
-        )
-      : args.report.surface);
-  const slackThread = parseSlackThreadId(args.conversation.conversationId);
-  const effectiveChannelName =
-    channelNameFromConversation(args.conversation, args.details) ??
-    args.report.channelName;
-  const channelNameRedacted = channelNameRedactedFromConversation(
-    args.conversation,
-    args.details,
-  );
-  const actorIdentity =
-    actorIdentityReport(args.details?.originActor) ??
-    args.report.actorIdentity ??
-    actorIdentityReport(args.conversation.actor);
-  const status = statusFromConversation(
-    args.conversation,
-    args.report.status,
-    args.nowMs,
-  );
-  const lastSeenAtMs = Math.max(
-    reportTime(args.report.lastSeenAt) ?? 0,
-    args.conversation.lastActivityAtMs,
-  );
-  const { channelNameRedacted: _oldChannelNameRedacted, ...report } =
-    args.report;
-  return {
-    ...report,
-    displayTitle: titleFromConversation({
-      conversation: args.conversation,
-      details: args.details,
-      surface,
-    }),
-    status,
-    lastSeenAt: new Date(lastSeenAtMs).toISOString(),
-    surface,
-    ...(actorIdentity ? { actorIdentity } : {}),
-    ...(slackThread ? { channel: slackThread.channelId } : {}),
-    ...(effectiveChannelName ? { channelName: effectiveChannelName } : {}),
-    ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
-  };
-}
-
 function sessionReportFromConversation(
   conversation: StoredConversation,
   nowMs: number,
-  details?: ConversationDetailsRecord,
 ): ConversationSummaryReport {
-  const surface =
-    details?.originSurface ??
-    surfaceFromSource(conversation.source, conversation.conversationId);
-  const actorIdentity = actorIdentityReport(
-    details?.originActor ?? conversation.actor,
+  const surface = surfaceFromSource(
+    conversation.source,
+    conversation.conversationId,
   );
+  const actorIdentity = actorIdentityReport(conversation.actor);
   const slackThread = parseSlackThreadId(conversation.conversationId);
-  const channelName = channelNameFromConversation(conversation, details);
-  const channelNameRedacted = channelNameRedactedFromConversation(
-    conversation,
-    details,
-  );
+  const channelName = channelNameFromConversation(conversation);
+  const channelNameRedacted = channelNameRedactedFromConversation(conversation);
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: 0,
-    displayTitle: titleFromConversation({ conversation, details, surface }),
-    id: conversation.execution.runId ?? conversation.conversationId,
+    displayTitle: titleFromConversation({ conversation, surface }),
+    id: conversation.conversationId,
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),
@@ -790,34 +591,6 @@ function surfaceFallbackLabel(surface: ConversationSurface): string {
   if (surface === "api") return "API";
   if (surface === "internal") return "Internal";
   return "Conversation";
-}
-
-function displayTitleFromDetails(
-  conversationId: string,
-  details: ConversationDetailsRecord | undefined,
-  visibility?: ConversationPrivacy,
-): string | undefined {
-  if (!details) return undefined;
-  const slackThread = parseSlackThreadId(conversationId);
-  const slackConversation = resolveSlackConversationContextFromThreadId({
-    threadId: conversationId,
-    channelName: details.channelName,
-  });
-  const privateLabel =
-    resolveConversationPrivacy({ conversationId, visibility }) !== "public"
-      ? privateConversationLabel(slackConversation)
-      : undefined;
-  return (
-    privateLabel ??
-    details.displayTitle ??
-    slackStatsLocationLabel({
-      channel: slackThread?.channelId,
-      channelName: details.channelName,
-    }) ??
-    (details.originSurface
-      ? surfaceFallbackLabel(details.originSurface)
-      : undefined)
-  );
 }
 
 function locationLabel(run: ConversationSummaryReport): string {
@@ -992,16 +765,6 @@ function buildConversationStatsReport(args: {
       args.nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS,
     ).toISOString(),
   };
-}
-
-function canExposeConversationTranscript(
-  summary: AgentTurnSessionSummary,
-  visibility: ConversationPrivacy | undefined,
-): boolean {
-  return canExposeConversationPayload({
-    conversationId: summary.conversationId,
-    visibility,
-  });
 }
 
 function textPart(text: string): TranscriptPart {
@@ -1347,53 +1110,6 @@ function countConversationMessages(transcript: TranscriptMessage[]): number {
   return transcript.filter(isConversationMessage).length;
 }
 
-function systemPromptMessage(source: Source): TranscriptMessage {
-  return {
-    role: "system",
-    parts: [
-      {
-        type: "text",
-        text: buildSystemPrompt({ source }),
-      },
-    ],
-  };
-}
-
-interface ScopedTurnMessages {
-  messages: PiMessage[];
-  startsAtRunBoundary: boolean;
-}
-
-function turnScopedMessages(
-  messages: PiMessage[],
-  turnStartMessageIndex?: number,
-): ScopedTurnMessages {
-  if (
-    turnStartMessageIndex !== undefined &&
-    turnStartMessageIndex >= 0 &&
-    turnStartMessageIndex < messages.length
-  ) {
-    return {
-      messages: messages.slice(turnStartMessageIndex),
-      startsAtRunBoundary: turnStartMessageIndex === 0,
-    };
-  }
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const record = messages[index] as unknown as Record<string, unknown>;
-    if (record.role === "user") {
-      return {
-        messages: messages.slice(index),
-        startsAtRunBoundary: index === 0,
-      };
-    }
-  }
-  return {
-    messages,
-    startsAtRunBoundary: messages.length > 0,
-  };
-}
-
 function traceIdFromTranscript(
   transcript: TranscriptMessage[],
 ): string | undefined {
@@ -1471,50 +1187,15 @@ function subagentTranscriptReport(
   };
 }
 
-async function summariesByConversation(
-  conversations: StoredConversation[],
-): Promise<Map<string, AgentTurnSessionSummary[]>> {
-  const entries = await Promise.all(
-    conversations.map(async (conversation) => {
-      const summaries = await listAgentTurnSessionSummariesForConversation(
-        conversation.conversationId,
-      );
-      return [conversation.conversationId, summaries] as const;
-    }),
-  );
-  return new Map(entries);
-}
-
 async function reportsFromConversations(args: {
   conversations: StoredConversation[];
-  detailsByConversationId: Map<string, ConversationDetailsRecord>;
   nowMs: number;
 }): Promise<Map<string, ConversationSummaryReport[]>> {
-  const summaries = await summariesByConversation(args.conversations);
   const reports = new Map<string, ConversationSummaryReport[]>();
   for (const conversation of args.conversations) {
-    const details = args.detailsByConversationId.get(
-      conversation.conversationId,
-    );
-    const conversationSummaries =
-      summaries.get(conversation.conversationId) ?? [];
-    const conversationReports =
-      conversationSummaries.length > 0
-        ? conversationSummaries.map((summary) =>
-            applyConversationIndexMetadata({
-              conversation,
-              details,
-              nowMs: args.nowMs,
-              report: sessionReportFromSummary(
-                summary,
-                args.nowMs,
-                details,
-                conversation.visibility,
-              ),
-            }),
-          )
-        : [sessionReportFromConversation(conversation, args.nowMs, details)];
-    reports.set(conversation.conversationId, conversationReports);
+    reports.set(conversation.conversationId, [
+      sessionReportFromConversation(conversation, args.nowMs),
+    ]);
   }
   return reports;
 }
@@ -1528,12 +1209,8 @@ export async function readConversationFeed(
   const conversations = await store.listByActivity({
     limit: CONVERSATION_FEED_LIMIT,
   });
-  const detailsByConversationId = await getConversationDetailsForIds(
-    conversations.map((conversation) => conversation.conversationId),
-  );
   const reportsByConversation = await reportsFromConversations({
     conversations,
-    detailsByConversationId,
     nowMs,
   });
   return {
@@ -1542,11 +1219,7 @@ export async function readConversationFeed(
     conversations: conversations.map((conversation) =>
       newestRun(
         reportsByConversation.get(conversation.conversationId) ?? [
-          sessionReportFromConversation(
-            conversation,
-            nowMs,
-            detailsByConversationId.get(conversation.conversationId),
-          ),
+          sessionReportFromConversation(conversation, nowMs),
         ],
       ),
     ),
@@ -1590,33 +1263,26 @@ export async function listRecentConversationSummaries(
   const conversations = await store.listByActivity({
     limit,
   });
-  const detailsByConversationId = await getConversationDetailsForIds(
-    conversations.map((conversation) => conversation.conversationId),
-  );
   const reportsByConversation = await reportsFromConversations({
     conversations,
-    detailsByConversationId,
     nowMs,
   });
   return conversations.map((conversation) => {
-    const details = detailsByConversationId.get(conversation.conversationId);
     const surface = surfaceFromSource(
       conversation.source,
       conversation.conversationId,
     );
-    const channelName = channelNameFromConversation(conversation, details);
-    const channelNameRedacted = channelNameRedactedFromConversation(
-      conversation,
-      details,
-    );
+    const channelName = channelNameFromConversation(conversation);
+    const channelNameRedacted =
+      channelNameRedactedFromConversation(conversation);
     const report = newestRun(
       reportsByConversation.get(conversation.conversationId) ?? [
-        sessionReportFromConversation(conversation, nowMs, details),
+        sessionReportFromConversation(conversation, nowMs),
       ],
     );
     return {
       conversationId: conversation.conversationId,
-      displayTitle: titleFromConversation({ conversation, details, surface }),
+      displayTitle: titleFromConversation({ conversation, surface }),
       lastActivityAt: new Date(conversation.lastActivityAtMs).toISOString(),
       lastUpdatedAt: new Date(
         conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
@@ -1629,59 +1295,42 @@ export async function listRecentConversationSummaries(
   });
 }
 
-/** Build the current run's activity timeline from the current context epoch. */
-async function currentRunActivity(args: {
+/** Build the current run's reportable content from the current context epoch. */
+async function currentRunContent(args: {
   conversationId: string;
+  messageStore: ConversationMessageStore;
   stepStore: AgentStepStore;
   canExposePayload: boolean;
-}): Promise<ConversationActivityReport[]> {
+}): Promise<{
+  activity: ConversationActivityReport[];
+  transcript: TranscriptMessage[];
+}> {
   const steps = await args.stepStore.loadCurrentEpoch(args.conversationId);
-  return buildConversationActivityFromSteps({
-    canExposePayload: args.canExposePayload,
-    steps,
-    messages: projectSteps(steps).messages,
-  });
+  const messages = projectSteps(steps).messages;
+  const transcript =
+    messages.length > 0
+      ? messages.map(normalizeTranscriptMessage)
+      : (await args.messageStore.list(args.conversationId)).map(
+          visibleMessageTranscript,
+        );
+  return {
+    activity: buildConversationActivityFromSteps({
+      canExposePayload: args.canExposePayload,
+      steps,
+      messages,
+    }),
+    transcript,
+  };
 }
 
-/**
- * Present a run whose content retention purged as expired, not privacy-redacted.
- *
- * The transcript is empty and no per-message metadata is derived (the rows were
- * deleted); only the summary's safe metadata survives, with `transcriptExpired`
- * marking the distinct retention reason (`specs/data-redaction-policy.md`).
- */
-function expiredRunReport(args: {
-  conversation?: StoredConversation;
-  details?: ConversationDetailsRecord;
-  nowMs: number;
-  summary: AgentTurnSessionSummary;
-  transcriptExpiredAt: string;
-}): ConversationRunReport {
-  const report: ConversationRunReport = {
-    ...sessionReportFromSummary(
-      args.summary,
-      args.nowMs,
-      args.details,
-      args.conversation?.visibility,
-    ),
-    activity: [],
-    transcriptAvailable: false,
-    transcriptExpired: true,
-    transcriptExpiredAt: args.transcriptExpiredAt,
-    transcriptMetadata: [],
-    transcript: [],
+function visibleMessageTranscript(
+  message: ConversationMessage,
+): TranscriptMessage {
+  return {
+    role: message.role,
+    timestamp: message.createdAtMs,
+    parts: [{ type: "text", text: message.text }],
   };
-  return args.conversation
-    ? {
-        ...report,
-        ...applyConversationIndexMetadata({
-          conversation: args.conversation,
-          details: args.details,
-          nowMs: args.nowMs,
-          report,
-        }),
-      }
-    : report;
 }
 
 /** Read one conversation transcript for reporting consumers. */
@@ -1691,19 +1340,10 @@ export async function readConversationReport(
 ): Promise<ConversationReport> {
   const store = conversationStore(options);
   const nowMs = Date.now();
-  const [rawSummaries, details, conversation] = await Promise.all([
-    listAgentTurnSessionSummariesForConversation(conversationId),
-    getConversationDetails(conversationId),
-    store.get({ conversationId }),
-  ]);
-  const summaries = rawSummaries.sort(
-    (left, right) =>
-      left.startedAtMs - right.startedAtMs ||
-      left.updatedAtMs - right.updatedAtMs ||
-      left.sessionId.localeCompare(right.sessionId),
-  );
+  const conversation = await store.get({ conversationId });
 
   const stepStore = options.stepStore ?? getAgentStepStore();
+  const messageStore = options.messageStore ?? getConversationMessageStore();
   const transcriptPurgedAtMs = conversation?.transcriptPurgedAtMs;
   const transcriptExpiredAt =
     transcriptPurgedAtMs !== undefined
@@ -1713,135 +1353,71 @@ export async function readConversationReport(
   // The activity timeline is the current run's, derived from the current
   // context epoch's durable steps; older epochs stay audit-only. Purged
   // conversations have no steps to read.
-  const conversationActivity =
+  const canExposeSqlContent =
+    conversation !== undefined &&
+    canExposeConversationPayload({
+      conversationId,
+      visibility: conversation.visibility,
+    });
+  const currentContent =
     conversation && transcriptPurgedAtMs === undefined
-      ? await currentRunActivity({
+      ? await currentRunContent({
           conversationId,
+          messageStore,
           stepStore,
-          canExposePayload: canExposeConversationPayload({
-            conversationId,
-            visibility: conversation.visibility,
-          }),
+          canExposePayload: canExposeSqlContent,
         })
-      : [];
+      : { activity: [], transcript: [] };
 
-  const runs = await Promise.all(
-    summaries.map(async (summary, index): Promise<ConversationRunReport> => {
-      if (transcriptExpiredAt !== undefined) {
-        return expiredRunReport({
-          conversation,
-          details,
-          nowMs,
-          summary,
-          transcriptExpiredAt,
-        });
-      }
-      const isNewestRun = index === summaries.length - 1;
-      const sessionRecord = await getAgentTurnSessionRecord(
-        summary.conversationId,
-        summary.sessionId,
-      );
-      const scopedMessages = sessionRecord?.piMessages
-        ? turnScopedMessages(
-            sessionRecord.piMessages,
-            sessionRecord.turnStartMessageIndex,
-          )
-        : { messages: [], startsAtRunBoundary: false };
-      const canExposeTranscript = canExposeConversationTranscript(
-        summary,
-        conversation?.visibility,
-      );
-      const normalizedTranscript = scopedMessages.messages.map(
-        normalizeTranscriptMessage,
-      );
-      // Activity steps are conversation-scoped with no per-turn boundary in
-      // this slice, so the current run carries the timeline and earlier runs
-      // show none until a `junior_agent_turns` read model exists.
-      const activity = isNewestRun ? conversationActivity : [];
-      const transcriptMessageCount =
-        countConversationMessages(normalizedTranscript);
-      const transcript = canExposeTranscript
-        ? [
-            ...(scopedMessages.startsAtRunBoundary &&
-            normalizedTranscript.length > 0 &&
-            sessionRecord?.source
-              ? [systemPromptMessage(sessionRecord.source)]
-              : []),
-            ...normalizedTranscript,
-          ]
-        : [];
-      const transcriptMetadata = canExposeTranscript
-        ? undefined
-        : normalizedTranscript.map(redactTranscriptMessage);
-      const traceId =
-        summary.traceId ??
-        sessionRecord?.traceId ??
-        (canExposeTranscript ? traceIdFromTranscript(transcript) : undefined);
-      const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
-      const report: ConversationRunReport = {
-        ...sessionReportFromSummary(
-          summary,
-          nowMs,
-          details,
-          conversation?.visibility,
-        ),
-        ...(traceId ? { traceId } : {}),
-        ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
-        activity,
-        transcriptAvailable: Boolean(sessionRecord) && canExposeTranscript,
-        ...(sessionRecord && transcriptMessageCount > 0
-          ? { transcriptMessageCount }
-          : {}),
-        ...(!canExposeTranscript
-          ? {
-              transcriptMetadata,
-              transcriptRedacted: true,
-              transcriptRedactionReason: "non_public_conversation" as const,
-            }
-          : {}),
-        transcript,
-      };
-      return conversation
-        ? {
-            ...report,
-            ...applyConversationIndexMetadata({
-              conversation,
-              details,
-              nowMs,
-              report,
-            }),
-          }
-        : report;
-    }),
-  );
-
-  const effectiveRuns =
-    runs.length > 0 || !conversation
-      ? runs
-      : [
-          {
-            ...sessionReportFromConversation(conversation, nowMs, details),
-            activity: [],
-            transcriptAvailable: false,
-            ...(transcriptExpiredAt !== undefined
-              ? {
-                  transcriptExpired: true,
-                  transcriptExpiredAt,
-                  transcriptMetadata: [],
-                }
-              : {}),
-            transcript: [],
-          },
-        ];
+  const currentTranscript = currentContent.transcript;
+  const traceId = canExposeSqlContent
+    ? traceIdFromTranscript(currentTranscript)
+    : undefined;
+  const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
+  const effectiveRuns: ConversationRunReport[] = conversation
+    ? [
+        {
+          ...sessionReportFromConversation(conversation, nowMs),
+          ...(traceId ? { traceId } : {}),
+          ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
+          activity: currentContent.activity,
+          transcriptAvailable:
+            transcriptExpiredAt === undefined &&
+            canExposeSqlContent &&
+            currentTranscript.length > 0,
+          ...(currentTranscript.length > 0
+            ? {
+                transcriptMessageCount:
+                  countConversationMessages(currentTranscript),
+              }
+            : {}),
+          ...(!canExposeSqlContent && transcriptExpiredAt === undefined
+            ? {
+                transcriptMetadata: currentTranscript.map(
+                  redactTranscriptMessage,
+                ),
+                transcriptRedacted: true,
+                transcriptRedactionReason: "non_public_conversation" as const,
+              }
+            : {}),
+          ...(transcriptExpiredAt !== undefined
+            ? {
+                transcriptExpired: true,
+                transcriptExpiredAt,
+                transcriptMetadata: [],
+              }
+            : {}),
+          transcript:
+            transcriptExpiredAt === undefined && canExposeSqlContent
+              ? currentTranscript
+              : [],
+        },
+      ]
+    : [];
 
   const firstRun = effectiveRuns[0];
   const displayTitle =
     firstRun?.displayTitle ??
-    displayTitleFromDetails(
-      conversationId,
-      details,
-      conversation?.visibility,
-    ) ??
     surfaceFallbackLabel(firstRun?.surface ?? "slack");
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 

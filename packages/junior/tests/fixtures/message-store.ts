@@ -55,7 +55,7 @@ export function createMemoryConversationMessageStore(): ConversationMessageStore
       repliedAtMs: number,
     ): Promise<void> {
       const existing = conversationRows(conversationId).get(messageId);
-      if (existing) {
+      if (existing && existing.repliedAtMs === undefined) {
         existing.repliedAtMs = repliedAtMs;
       }
     },

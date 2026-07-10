@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   ConversationMessage,
@@ -87,11 +87,14 @@ class SqlConversationMessageStore implements ConversationMessageStore {
     await this.executor
       .db()
       .update(juniorConversationMessages)
-      .set({ repliedAt: new Date(repliedAtMs) })
+      .set({
+        repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, ${new Date(repliedAtMs)})`,
+      })
       .where(
         and(
           eq(juniorConversationMessages.conversationId, conversationId),
           eq(juniorConversationMessages.messageId, messageId),
+          isNull(juniorConversationMessages.repliedAt),
         ),
       );
   }

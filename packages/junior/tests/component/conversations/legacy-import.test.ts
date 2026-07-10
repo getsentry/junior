@@ -276,6 +276,60 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
+  it("seals a completed message-only import without step rows", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+    const loadVisibleMessages = vi.fn(async () => [
+      {
+        id: "message-only",
+        role: "user" as const,
+        text: "legacy visible message",
+        createdAtMs: 100,
+        author: { fullName: "Legacy User" },
+        meta: { replied: true },
+      },
+    ]);
+    const deps = {
+      executor: fixture.sql,
+      stepStore,
+      messageStore,
+      conversationRecord: conversationRecord(),
+      sessionLogStore: staticSessionLogStore([]),
+      loadVisibleMessages,
+    };
+
+    try {
+      await messageStore.record(CONVERSATION_ID, [
+        {
+          messageId: "message-only",
+          role: "user",
+          text: "legacy visible message",
+          createdAtMs: 100,
+        },
+      ]);
+      await messageStore.markReplied(CONVERSATION_ID, "message-only", 100);
+
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, deps),
+      ).resolves.toEqual({ imported: true });
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, deps),
+      ).resolves.toEqual({ imported: false });
+      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+      expect(await messageStore.list(CONVERSATION_ID)).toMatchObject([
+        {
+          messageId: "message-only",
+          meta: { author: { fullName: "Legacy User" } },
+          repliedAtMs: 100,
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("never fabricates import-time timestamps for timestamp-less rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);

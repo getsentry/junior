@@ -252,6 +252,7 @@ INSERT INTO junior_agent_steps (
       ]);
 
       await store.markReplied(CONVERSATION_ID, "m1", 5_000);
+      await store.markReplied(CONVERSATION_ID, "m1", 9_000);
 
       const listed = await store.list(CONVERSATION_ID);
       expect(listed).toEqual([
