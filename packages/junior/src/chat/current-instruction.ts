@@ -1,19 +1,10 @@
-import { escapeXml } from "@/chat/xml";
+import { escapeXml, unescapeXml } from "@/chat/xml";
 
 const CURRENT_INSTRUCTION_TAG = "current-instruction";
 const CURRENT_INSTRUCTION_OPEN_PREFIX = `<${CURRENT_INSTRUCTION_TAG}`;
 const CURRENT_INSTRUCTION_OPEN_BARE = `<${CURRENT_INSTRUCTION_TAG}>`;
 const CURRENT_INSTRUCTION_OPEN_ATTR_PREFIX = `<${CURRENT_INSTRUCTION_TAG} `;
 const CURRENT_INSTRUCTION_CLOSE = `\n</${CURRENT_INSTRUCTION_TAG}>`;
-
-function unescapeXml(value: string): string {
-  return value
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&amp;", "&");
-}
 
 function isCurrentInstructionOpeningTag(value: string): boolean {
   return (

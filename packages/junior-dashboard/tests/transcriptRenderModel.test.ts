@@ -392,6 +392,12 @@ describe("transcript render model", () => {
           status: "completed",
         },
         kind: "tool",
+        result: {
+          type: "tool_result",
+          id: "advisor-call",
+          name: "advisor",
+        },
+        resultTimestamp: Date.parse("2026-01-01T00:00:03.000Z"),
         timestamp: Date.parse("2026-01-01T00:00:01.000Z"),
       },
       {
@@ -406,16 +412,147 @@ describe("transcript render model", () => {
         },
         timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
       },
+    ]);
+  });
+
+  it("leaves ambiguous name-only tool results unpaired", () => {
+    const messages = [
+      {
+        role: "assistant",
+        timestamp: 1_000,
+        parts: [{ type: "tool_call", name: "search" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 1_100,
+        parts: [{ type: "tool_call", name: "search" }],
+      },
+      {
+        role: "toolResult",
+        timestamp: 2_000,
+        parts: [{ type: "tool_result", name: "search" }],
+      },
+    ] as TranscriptMessage[];
+
+    expect(groupTranscriptMessages(messages)).toEqual([
+      {
+        call: { type: "tool_call", name: "search" },
+        kind: "tool",
+        timestamp: 1_000,
+      },
+      {
+        call: { type: "tool_call", name: "search" },
+        kind: "tool",
+        timestamp: 1_100,
+      },
       {
         kind: "tool",
-        result: {
-          type: "tool_result",
-          id: "advisor-call",
-          name: "advisor",
-        },
-        resultTimestamp: Date.parse("2026-01-01T00:00:03.000Z"),
+        result: { type: "tool_result", name: "search" },
+        resultTimestamp: 2_000,
       },
     ]);
+  });
+
+  it("does not pair name-only results across message boundaries", () => {
+    const messages = [
+      {
+        role: "assistant",
+        timestamp: 1_000,
+        parts: [{ type: "tool_call", name: "search" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 1_500,
+        parts: [{ type: "text", text: "Continuing after the search." }],
+      },
+      {
+        role: "toolResult",
+        timestamp: 2_000,
+        parts: [{ type: "tool_result", name: "search" }],
+      },
+    ] as TranscriptMessage[];
+
+    expect(groupTranscriptMessages(messages)).toEqual([
+      {
+        call: { type: "tool_call", name: "search" },
+        kind: "tool",
+        timestamp: 1_000,
+      },
+      {
+        kind: "message",
+        message: {
+          role: "assistant",
+          timestamp: 1_500,
+          parts: [{ type: "text", text: "Continuing after the search." }],
+        },
+      },
+      {
+        kind: "tool",
+        result: { type: "tool_result", name: "search" },
+        resultTimestamp: 2_000,
+      },
+    ]);
+  });
+
+  it("pairs one name-only call across thinking activity", () => {
+    const messages = [
+      {
+        role: "assistant",
+        timestamp: 1_000,
+        parts: [{ type: "tool_call", name: "search" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 1_500,
+        parts: [{ type: "thinking", output: "Waiting for search." }],
+      },
+      {
+        role: "toolResult",
+        timestamp: 2_000,
+        parts: [{ type: "tool_result", name: "search" }],
+      },
+    ] as TranscriptMessage[];
+
+    expect(groupTranscriptMessages(messages)).toEqual([
+      {
+        call: { type: "tool_call", name: "search" },
+        kind: "tool",
+        result: { type: "tool_result", name: "search" },
+        resultTimestamp: 2_000,
+        timestamp: 1_000,
+      },
+      {
+        kind: "thinking",
+        part: { type: "thinking", output: "Waiting for search." },
+        timestamp: 1_500,
+      },
+    ]);
+  });
+
+  it("treats mixed ID metadata as ambiguous for name-only results", () => {
+    const messages = [
+      {
+        role: "assistant",
+        timestamp: 1_000,
+        parts: [{ type: "tool_call", name: "search" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 1_100,
+        parts: [{ type: "tool_call", id: "call-2", name: "search" }],
+      },
+      {
+        role: "toolResult",
+        timestamp: 2_000,
+        parts: [{ type: "tool_result", name: "search" }],
+      },
+    ] as TranscriptMessage[];
+
+    expect(groupTranscriptMessages(messages).at(-1)).toEqual({
+      kind: "tool",
+      result: { type: "tool_result", name: "search" },
+      resultTimestamp: 2_000,
+    });
   });
 
   it("matches derived activity rows in transcript search", () => {

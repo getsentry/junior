@@ -1,13 +1,60 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConversationMarkdown } from "../src/client/markdownExport";
+import {
+  buildConversationMarkdown,
+  buildSubagentMarkdown,
+} from "../src/client/markdownExport";
+import { subagentTranscriptTurn } from "../src/client/subagentTranscript";
 import type {
   Conversation,
   ConversationDetailFeed,
+  ConversationSubagentTranscript,
   ConversationTurn,
 } from "../src/client/types";
 
 describe("dashboard markdown export", () => {
+  it("serializes child-agent transcripts with shared formatting", () => {
+    const report = {
+      type: "subagent",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      endedAt: "2026-01-01T00:00:02.000Z",
+      id: "advisor-call",
+      outcome: "success",
+      status: "success",
+      subagentConversationId: "junior:conversation-1:advisor_session",
+      subagentKind: "advisor",
+      subagentSentryConversationUrl:
+        "https://sentry.example/explore/conversations/advisor",
+      transcript: [
+        {
+          role: "user",
+          timestamp: Date.parse("2026-01-01T00:00:00.000Z"),
+          parts: [{ type: "text", text: "Review the implementation." }],
+        },
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
+          parts: [{ type: "text", text: "The implementation is sound." }],
+        },
+      ],
+      transcriptAvailable: true,
+    } satisfies ConversationSubagentTranscript;
+    const turn = subagentTranscriptTurn("conversation-1", report);
+
+    const markdown = buildSubagentMarkdown(report, turn);
+
+    expect(markdown).toContain("# advisor");
+    expect(markdown).toContain("- Subagent ID: `advisor-call`");
+    expect(markdown).toContain(
+      "- Conversation ID: junior:conversation-1:advisor_session",
+    );
+    expect(markdown).toContain("- Duration: 2.0s");
+    expect(markdown).toContain("### User");
+    expect(markdown).toContain("Review the implementation.");
+    expect(markdown).toContain("### advisor");
+    expect(markdown).toContain("The implementation is sound.");
+  });
+
   it("serializes visible conversation transcripts as Markdown", () => {
     const startedAt = "2026-01-01T00:00:00.000Z";
     const detail = {

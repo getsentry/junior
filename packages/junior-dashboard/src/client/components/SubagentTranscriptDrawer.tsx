@@ -3,13 +3,19 @@ import { Bot, ExternalLink, X } from "lucide-react";
 
 import { useConversationSubagentTranscriptData } from "../api";
 import { formatMessageTimestamp, formatMs } from "../format";
+import { buildSubagentMarkdown } from "../markdownExport";
 import { cn } from "../styles";
+import {
+  subagentDurationMs,
+  subagentTranscriptTurn,
+} from "../subagentTranscript";
 import type {
   ConversationSubagentTranscript,
   ConversationTurn,
   TranscriptViewSubagentPart,
 } from "../types";
 import { Button } from "./Button";
+import { CopyMarkdownButton } from "./CopyMarkdownButton";
 import { Transcript } from "./Transcript";
 import { TranscriptLoading } from "./TranscriptLoading";
 import { transcriptEmptyClass } from "./transcriptStyles";
@@ -53,6 +59,9 @@ export function SubagentTranscriptDrawer(props: {
   const visible = report ?? subagentFallback(props.target);
   const label = visible.subagentKind;
   const duration = subagentDuration(visible);
+  const transcriptTurn = report
+    ? subagentTranscriptTurn(props.target.conversationId, report)
+    : undefined;
   const meta = [
     statusLabel(visible),
     duration,
@@ -89,14 +98,24 @@ export function SubagentTranscriptDrawer(props: {
                 </div>
               ) : null}
             </div>
-            <Button
-              aria-label="Close subagent transcript"
-              onClick={props.onClose}
-              size="icon"
-              title="Close"
-            >
-              <X aria-hidden="true" size={15} strokeWidth={2.25} />
-            </Button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <CopyMarkdownButton
+                key={`${props.target.part.id}:${report?.endedAt ?? "loading"}`}
+                getMarkdown={
+                  report?.transcriptAvailable && transcriptTurn
+                    ? () => buildSubagentMarkdown(report, transcriptTurn)
+                    : undefined
+                }
+              />
+              <Button
+                aria-label="Close subagent transcript"
+                onClick={props.onClose}
+                size="icon"
+                title="Close"
+              >
+                <X aria-hidden="true" size={15} strokeWidth={2.25} />
+              </Button>
+            </div>
           </div>
         </header>
         <div className="min-h-0 overflow-auto px-4 py-4 md:px-5">
@@ -106,8 +125,8 @@ export function SubagentTranscriptDrawer(props: {
             <DrawerEmptyState tone="error">
               Transcript failed to load.
             </DrawerEmptyState>
-          ) : report?.transcriptAvailable ? (
-            <Transcript turns={[subagentTurn(props.target, report)]} />
+          ) : report?.transcriptAvailable && transcriptTurn ? (
+            <Transcript turns={[transcriptTurn]} />
           ) : (
             <DrawerEmptyState>
               {subagentUnavailableLabel(report)}
@@ -171,55 +190,6 @@ function subagentFallback(
       ? { parentToolCallId: target.part.parentToolCallId }
       : {}),
   };
-}
-
-function subagentTurn(
-  target: SubagentTranscriptTarget,
-  report: ConversationSubagentTranscript,
-): ConversationTurn {
-  const status =
-    report.status === "running"
-      ? "active"
-      : report.status === "error" || report.status === "aborted"
-        ? "failed"
-        : "completed";
-
-  return {
-    conversationId: target.conversationId,
-    assistantLabel: report.subagentKind,
-    cumulativeDurationMs: subagentDurationMs(report) ?? 0,
-    displayTitle: report.subagentKind,
-    id: report.id,
-    lastProgressAt: report.endedAt ?? report.createdAt,
-    lastSeenAt: report.endedAt ?? report.createdAt,
-    startedAt: report.createdAt,
-    status,
-    surface: "internal",
-    transcript: report.transcript,
-    transcriptAvailable: report.transcriptAvailable,
-    ...(report.endedAt ? { completedAt: report.endedAt } : {}),
-    ...(report.transcriptMessageCount !== undefined
-      ? { transcriptMessageCount: report.transcriptMessageCount }
-      : {}),
-    ...(report.transcriptRedacted
-      ? { transcriptRedacted: report.transcriptRedacted }
-      : {}),
-    ...(report.transcriptRedactionReason
-      ? { transcriptRedactionReason: report.transcriptRedactionReason }
-      : {}),
-  };
-}
-
-function subagentDurationMs(
-  report: Pick<ConversationSubagentTranscript, "createdAt" | "endedAt">,
-): number | undefined {
-  if (!report.endedAt) return undefined;
-  const startedAt = Date.parse(report.createdAt);
-  const endedAt = Date.parse(report.endedAt);
-  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) {
-    return undefined;
-  }
-  return endedAt >= startedAt ? endedAt - startedAt : undefined;
 }
 
 function subagentDuration(

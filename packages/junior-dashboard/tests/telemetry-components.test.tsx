@@ -268,6 +268,8 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Conversation ID");
     expect(html).toContain("junior:parent-conversation:advisor_session");
     expect(html).toContain("View in Sentry");
+    expect(html).toContain('aria-label="Copy as Markdown"');
+    expect(html).toContain("disabled");
     expect(html).toContain(
       "https://sentry.example/explore/conversations/advisor",
     );

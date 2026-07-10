@@ -6,6 +6,7 @@
  * transcript payloads can leave this module.
  */
 import { isRecord } from "@/chat/coerce";
+import { unwrapAdvisorRequest } from "@/chat/advisor-request";
 import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
@@ -1007,10 +1008,16 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
 /** Normalize Pi content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
-  options: { unwrapCurrentTask?: boolean } = {},
+  options: { unwrapAdvisorTask?: boolean; unwrapCurrentTask?: boolean } = {},
 ): TranscriptPart {
-  const displayText = (text: string) =>
-    options.unwrapCurrentTask ? (unwrapCurrentInstruction(text) ?? text) : text;
+  const displayText = (text: string) => {
+    if (options.unwrapCurrentTask) {
+      const instruction = unwrapCurrentInstruction(text);
+      if (instruction !== undefined) return instruction;
+    }
+    if (options.unwrapAdvisorTask) return unwrapAdvisorRequest(text) ?? text;
+    return text;
+  };
 
   if (typeof part === "string") {
     return textPart(displayText(part));
@@ -1084,7 +1091,10 @@ function normalizeToolResultMessage(
   };
 }
 
-function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
+function normalizeTranscriptMessage(
+  message: PiMessage,
+  options: { unwrapAdvisorTask?: boolean } = {},
+): TranscriptMessage {
   const record = message as unknown as Record<string, unknown>;
   const content = record.content;
   const role = transcriptRole(record.role);
@@ -1099,11 +1109,13 @@ function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
         : Array.isArray(content)
           ? content.map((part) =>
               normalizeTranscriptPart(part, {
+                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             )
           : [
               normalizeTranscriptPart(content, {
+                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             ],
@@ -1725,8 +1737,8 @@ export async function readConversationReport(
         summary,
         conversation?.visibility,
       );
-      const normalizedTranscript = scopedMessages.messages.map(
-        normalizeTranscriptMessage,
+      const normalizedTranscript = scopedMessages.messages.map((message) =>
+        normalizeTranscriptMessage(message),
       );
       const activity = buildConversationActivity({
         canExposePayload: canExposeTranscript,
@@ -1910,9 +1922,11 @@ export async function readConversationSubagentTranscriptReport(
     });
   }
 
-  const transcript = messages
-    .slice(0, bounds.end)
-    .map(normalizeTranscriptMessage);
+  const transcript = messages.slice(0, bounds.end).map((message) =>
+    normalizeTranscriptMessage(message, {
+      unwrapAdvisorTask: activity.subagentKind === "advisor",
+    }),
+  );
 
   return subagentTranscriptReport(activity, {
     ...conversationFields,

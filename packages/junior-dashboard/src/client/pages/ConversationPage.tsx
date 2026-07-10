@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
 import { Button } from "../components/Button";
+import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -55,6 +55,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
     (item) => item.id === conversationId,
   );
   const conversation = conversationFromDetail(detail.data) ?? feedConversation;
+  const conversationDetail = detail.data;
   const visualStatus = conversation
     ? visualStatusForConversation(conversation)
     : undefined;
@@ -99,8 +100,16 @@ export function ConversationPage(props: { data?: DashboardData }) {
           <Transcript
             actions={
               <CopyMarkdownButton
-                conversation={conversation}
-                detail={detail.data}
+                key={`${conversationDetail?.conversationId ?? "loading"}:${conversationDetail?.generatedAt ?? ""}`}
+                getMarkdown={
+                  conversationDetail
+                    ? () =>
+                        buildConversationMarkdown(
+                          conversationDetail,
+                          conversation,
+                        )
+                    : undefined
+                }
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
@@ -126,50 +135,6 @@ function conversationIsLive(
 ): boolean {
   if (detail) return detail.runs.some((turn) => turn.status === "active");
   return visualStatus === "active";
-}
-
-function CopyMarkdownButton(props: {
-  conversation: Conversation | undefined;
-  detail: ConversationDetailFeed | undefined;
-}) {
-  const [status, setStatus] = useState<"copied" | "failed" | "idle">("idle");
-  const disabled = !props.detail;
-  const label =
-    status === "copied"
-      ? "Copied"
-      : status === "failed"
-        ? "Copy failed"
-        : "Copy as Markdown";
-  const Icon = status === "copied" ? Check : Copy;
-
-  useEffect(() => {
-    setStatus("idle");
-  }, [props.detail?.conversationId, props.detail?.generatedAt]);
-
-  async function copyMarkdown() {
-    if (!props.detail) return;
-
-    try {
-      await navigator.clipboard.writeText(
-        buildConversationMarkdown(props.detail, props.conversation),
-      );
-      setStatus("copied");
-    } catch {
-      setStatus("failed");
-    }
-  }
-
-  return (
-    <Button
-      aria-label={label}
-      disabled={disabled}
-      onClick={() => void copyMarkdown()}
-      size="icon"
-      title={label}
-    >
-      <Icon aria-hidden="true" size={15} strokeWidth={2} />
-    </Button>
-  );
 }
 
 function ConversationIdentity(props: {

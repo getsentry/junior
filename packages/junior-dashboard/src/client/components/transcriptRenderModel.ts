@@ -130,19 +130,35 @@ export function groupTranscriptParts(
   return grouped;
 }
 
+/** Pair exact IDs across event rows and unique name-only calls before a message boundary. */
 function findToolEntry(
   entries: RenderedTranscriptEntry[],
   result: TranscriptViewPart,
 ): RenderedToolCallEntry | undefined {
+  const nameCandidates: RenderedToolCallEntry[] = [];
+
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
-    if (entry.kind !== "tool") return undefined;
+    if (entry.kind !== "tool") {
+      if (!result.id && entry.kind === "message") break;
+      continue;
+    }
     if (!isRenderedToolCallEntry(entry) || entry.result) continue;
-    if (sameToolInvocation(entry.call, result)) {
-      return entry;
+
+    if (result.id) {
+      if (sameToolInvocation(entry.call, result)) return entry;
+      continue;
+    }
+
+    if (entry.call.name && entry.call.name === result.name) {
+      nameCandidates.push(entry);
     }
   }
-  return undefined;
+
+  const [candidate] = nameCandidates;
+  return nameCandidates.length === 1 && !candidate?.call.id
+    ? candidate
+    : undefined;
 }
 
 /** Flatten message-local tool parts into turn-level events for scan-friendly rendering. */

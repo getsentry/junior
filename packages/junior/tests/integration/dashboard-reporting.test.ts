@@ -4,6 +4,7 @@ import type {
   ConversationStore,
 } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
+import { renderAdvisorRequest } from "@/chat/advisor-request";
 import type { AgentTurnSessionSummary } from "@/chat/state/turn-session";
 
 vi.mock("@/chat/prompt", () => ({
@@ -989,7 +990,15 @@ describe("dashboard reporting", () => {
     const advisorMessages = [
       {
         role: "user",
-        content: [{ type: "text", text: "first advisor question" }],
+        content: [
+          {
+            type: "text",
+            text: renderAdvisorRequest(
+              "first advisor question",
+              "first <evidence> packet",
+            ),
+          },
+        ],
         timestamp: 10,
       },
       {
@@ -1116,6 +1125,13 @@ describe("dashboard reporting", () => {
     ).toBe(true);
     expect(JSON.stringify(first.transcript)).toContain(
       "first advisor question",
+    );
+    expect(JSON.stringify(first.transcript)).toContain(
+      "first <evidence> packet",
+    );
+    expect(JSON.stringify(first.transcript)).not.toContain("<advisor-task>");
+    expect(JSON.stringify(first.transcript)).not.toContain(
+      "<executor-context>",
     );
     expect(JSON.stringify(first.transcript)).not.toContain(
       "second advisor question",

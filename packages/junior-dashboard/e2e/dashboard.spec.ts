@@ -195,3 +195,39 @@ test("hydrates the built dashboard client in a real browser", async ({
   ).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
+
+test("inspects and copies an advisor transcript", async ({ context, page }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: baseURL,
+  });
+  await page.goto(
+    `${baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+  ).toBeVisible();
+  const subagentRow = page
+    .getByRole("button", { name: "Open advisor transcript" })
+    .first();
+  await expect(subagentRow).toHaveCSS("cursor", "pointer");
+  await subagentRow.click();
+
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByRole("heading", { name: "advisor" })).toBeVisible();
+  await expect(drawer.getByText("Conversation ID")).toBeVisible();
+  const copy = drawer.getByRole("button", { name: "Copy as Markdown" });
+  await expect(copy).toBeEnabled();
+  await copy.click();
+  await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
+  const markdown = await page.evaluate(() => navigator.clipboard.readText());
+  expect(markdown).toContain("# advisor");
+  expect(markdown).toContain("Review the dashboard plan before editing.");
+  expect(markdown).toContain(
+    "Actor identity email is a reasonable profile key",
+  );
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
+});

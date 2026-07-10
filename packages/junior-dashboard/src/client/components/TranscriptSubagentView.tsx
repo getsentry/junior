@@ -65,7 +65,7 @@ export function TranscriptSubagentView(props: {
   return (
     <button
       aria-label={`Open ${props.part.subagentKind} transcript`}
-      className="block w-full min-w-0 text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
+      className="block w-full min-w-0 cursor-pointer text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
       onClick={() => props.onOpenTranscript?.(props.part)}
       type="button"
     >

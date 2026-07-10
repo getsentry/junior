@@ -34,6 +34,7 @@ import {
   getAdvisorSessionKey,
   type AdvisorSessionStore,
 } from "@/chat/tools/advisor/session-store";
+import { renderAdvisorRequest } from "@/chat/advisor-request";
 import {
   recordSubagentEnded,
   recordSubagentStarted,
@@ -42,7 +43,6 @@ import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { z } from "zod";
-import { escapeXml } from "@/chat/xml";
 
 export type AdvisorErrorCode =
   | "invalid_context"
@@ -231,15 +231,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
         ttlMs: THREAD_STATE_TTL_MS,
       });
       const conversationPrivacy = context.conversationPrivacy ?? "private";
-      const requestText = [
-        "<advisor-task>",
-        escapeXml(advisorQuestion),
-        "</advisor-task>",
-        "",
-        "<executor-context>",
-        escapeXml(advisorContext),
-        "</executor-context>",
-      ].join("\n");
+      const requestText = renderAdvisorRequest(advisorQuestion, advisorContext);
       const advisorInputMessage = {
         role: "user" as const,
         content: [{ type: "text" as const, text: requestText }],

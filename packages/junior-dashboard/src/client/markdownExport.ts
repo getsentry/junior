@@ -16,6 +16,7 @@ import { turnTranscriptMessages } from "./transcriptActivity";
 import type {
   Conversation,
   ConversationDetailFeed,
+  ConversationSubagentTranscript,
   ConversationTurn,
   TranscriptViewMessage,
   TranscriptViewPart,
@@ -52,6 +53,27 @@ export function buildConversationMarkdown(
     appendTurnTranscript(lines, turn);
   });
 
+  return finishMarkdown(lines);
+}
+
+/** Build Markdown for one child-agent transcript using the shared formatter. */
+export function buildSubagentMarkdown(
+  report: ConversationSubagentTranscript,
+  turn: ConversationTurn,
+): string {
+  const lines: string[] = [`# ${headingText(report.subagentKind)}`, ""];
+  addMetaLine(lines, "Subagent ID", inlineCode(report.id));
+  addMetaLine(lines, "Conversation ID", report.subagentConversationId);
+  addMetaLine(lines, "Created", report.createdAt);
+  addMetaLine(lines, "Status", report.outcome ?? report.status);
+  addMetaLine(lines, "Duration", formatMs(turn.cumulativeDurationMs));
+  addMetaLine(
+    lines,
+    "Sentry conversation",
+    report.subagentSentryConversationUrl,
+  );
+  lines.push("", "## Transcript");
+  appendTurnTranscript(lines, turn);
   return finishMarkdown(lines);
 }
 
@@ -265,7 +287,7 @@ function messageRoleLabel(
   turn: ConversationTurn,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return "Junior";
+  if (kind === "assistant") return turn.assistantLabel ?? "Junior";
   if (kind === "user") return actorLabel(turn.actorIdentity) ?? "User";
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
