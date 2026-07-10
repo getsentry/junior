@@ -1327,8 +1327,9 @@ function findLatestOAuthStateFromSlackCalls(args: {
   consumedStates: Set<string>;
 }):
   | {
+      channelId?: string;
       delivery: "direct_message" | "ephemeral";
-      recipientUserId: string;
+      recipientUserId?: string;
       state: string;
     }
   | undefined {
@@ -1379,12 +1380,12 @@ function findLatestOAuthStateFromSlackCalls(args: {
       const recipientUserId = openCall
         ? toFirstString(openCall.params.users)
         : undefined;
-      if (!recipientUserId) {
-        throw new Error(
-          "OAuth direct-message delivery was not preceded by conversations.open for a user",
-        );
-      }
-      return { delivery: "direct_message", recipientUserId, state };
+      return {
+        channelId: channel,
+        delivery: "direct_message",
+        ...(recipientUserId ? { recipientUserId } : {}),
+        state,
+      };
     }
   }
   return undefined;
@@ -1415,7 +1416,10 @@ async function autoCompleteMcpOauth(args: {
       `Delivered MCP OAuth state did not resolve to provider "${provider}"`,
     );
   }
-  if (delivered.recipientUserId !== authSession.userId) {
+  if (
+    delivered.recipientUserId !== authSession.userId &&
+    delivered.channelId !== authSession.channelId
+  ) {
     throw new Error(
       `MCP OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${authSession.userId}`,
     );
@@ -1479,7 +1483,10 @@ async function autoCompleteOauth(args: {
       `Delivered OAuth state did not resolve to provider "${provider}"`,
     );
   }
-  if (delivered.recipientUserId !== storedState.userId) {
+  if (
+    delivered.recipientUserId !== storedState.userId &&
+    delivered.channelId !== storedState.channelId
+  ) {
     throw new Error(
       `OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${storedState.userId}`,
     );
