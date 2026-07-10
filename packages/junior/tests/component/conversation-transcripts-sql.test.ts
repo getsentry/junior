@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { getAgentStepStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import {
@@ -46,43 +47,33 @@ function userMessage(text: string) {
 
 describe("conversation transcript SQL stores", () => {
   it("persists visible-context compaction snapshots in agent history", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+    const steps = getAgentStepStore();
+    const conversation = coerceThreadConversationState({});
+    conversation.compactions = [
+      {
+        id: "compaction-1",
+        summary: "Earlier visible context",
+        coveredMessageIds: ["m1", "m2"],
+        createdAtMs: 2_000,
+      },
+    ];
 
-    try {
-      await migrateSchema(fixture.sql);
-      const steps = createSqlAgentStepStore(fixture.sql);
-      const conversation = coerceThreadConversationState({});
-      conversation.compactions = [
-        {
-          id: "compaction-1",
-          summary: "Earlier visible context",
-          coveredMessageIds: ["m1", "m2"],
-          createdAtMs: 2_000,
-        },
-      ];
+    await persistConversationCompactions({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
+    await persistConversationCompactions({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
 
-      await persistConversationCompactions({
-        conversation,
-        conversationId: CONVERSATION_ID,
-        stepStore: steps,
-      });
-      await persistConversationCompactions({
-        conversation,
-        conversationId: CONVERSATION_ID,
-        stepStore: steps,
-      });
-
-      const rehydrated = coerceThreadConversationState({});
-      await hydrateConversationCompactions({
-        conversation: rehydrated,
-        conversationId: CONVERSATION_ID,
-        stepStore: steps,
-      });
-      expect(rehydrated.compactions).toEqual(conversation.compactions);
-      expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
-    } finally {
-      await fixture.close();
-    }
+    const rehydrated = coerceThreadConversationState({});
+    await hydrateConversationCompactions({
+      conversation: rehydrated,
+      conversationId: CONVERSATION_ID,
+    });
+    expect(rehydrated.compactions).toEqual(conversation.compactions);
+    expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
   });
 
   it("applies the transcript migration idempotently", async () => {

@@ -363,8 +363,9 @@ drizzle-kit is the DDL **generator** only: edit the schema under
 each generated file (0006 onward) as a checksum-pinned migration via
 `defineMigrationFromFile` in `chat/conversations/sql/migrations.ts`. Migrations
 0001–0005 predate kit and stay inline so their recorded checksums remain
-byte-stable; the kit baseline (`drizzle/meta/`) exists only to diff future edits
-and its `0000` baseline SQL is never registered. The custom `junior upgrade`
+byte-stable. Core and plugin packages both keep generated artifacts under
+`migrations/`; the core kit baseline (`migrations/meta/`) exists only to diff
+future edits and its `0000` baseline SQL is never registered. The custom `junior upgrade`
 runner remains the sole applier — with checksum pinning, an advisory lock, and
 the expand-only contract below — and no runtime path may call `drizzle-kit
 migrate` or `migrate()`.

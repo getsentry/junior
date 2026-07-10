@@ -3,6 +3,7 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import { renderAdvisorRequest } from "@/chat/advisor-request";
 import type { PiMessage } from "@/chat/pi/messages";
 
 vi.mock("@/chat/prompt", () => ({

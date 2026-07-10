@@ -19,7 +19,6 @@ import {
 } from "@/chat/state/session-log";
 import type {
   AgentStepEntry,
-  AgentStepStore,
   StoredAgentStep,
 } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
@@ -181,46 +180,36 @@ function resolveCommitProvenance(args: {
   return provenance;
 }
 
-interface ScopedStore {
+interface ScopedConversation {
   conversationId: string;
-  stepStore?: AgentStepStore;
-}
-
-function store(args: { stepStore?: AgentStepStore }): AgentStepStore {
-  return args.stepStore ?? getAgentStepStore();
 }
 
 /**
  * Bridge a straggler's legacy Redis history into SQL before an execution read.
  *
- * Runtime turn/resume reads omit `stepStore` and run under the conversation
- * lease the worker already holds, so this is the once-only lazy-import seam.
- * Injected-store callers (tests, advisor child reads, compaction) never trigger
- * it. Removed with the rest of the one-time import after the Redis TTL horizon.
+ * Runtime reads run under the conversation lease the worker already holds, so
+ * this is the once-only lazy-import seam. Removed with the rest of the one-time
+ * import after the Redis TTL horizon.
  */
-async function importLegacyIfNeeded(args: {
-  conversationId: string;
-  stepStore?: AgentStepStore;
-}): Promise<void> {
-  if (args.stepStore) {
-    return;
-  }
+async function importLegacyIfNeeded(args: ScopedConversation): Promise<void> {
   await ensureLegacyConversationImport({ conversationId: args.conversationId });
 }
 
 /** Load the current-epoch Pi projection for a conversation. */
-export async function loadProjection(args: ScopedStore): Promise<PiMessage[]> {
+export async function loadProjection(
+  args: ScopedConversation,
+): Promise<PiMessage[]> {
   await importLegacyIfNeeded(args);
-  const steps = await store(args).loadCurrentEpoch(args.conversationId);
+  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
   return projectSteps(steps).messages;
 }
 
 /** Load the current-epoch Pi projection with aligned per-message provenance. */
 export async function loadProjectionWithProvenance(
-  args: ScopedStore,
+  args: ScopedConversation,
 ): Promise<SessionProjection> {
   await importLegacyIfNeeded(args);
-  const steps = await store(args).loadCurrentEpoch(args.conversationId);
+  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
   const { messages, provenance } = projectSteps(steps);
   return { messages, provenance };
 }
@@ -241,10 +230,9 @@ export async function loadTurnProjection(args: {
   conversationId: string;
   committedSeq: number;
   includeTail: boolean;
-  stepStore?: AgentStepStore;
 }): Promise<StepProjection | undefined> {
   await importLegacyIfNeeded(args);
-  const stepStore = store(args);
+  const stepStore = getAgentStepStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
@@ -265,10 +253,10 @@ export async function loadTurnProjection(args: {
 
 /** Load MCP providers durably connected in this conversation's current epoch. */
 export async function loadConnectedMcpProviders(
-  args: ScopedStore,
+  args: ScopedConversation,
 ): Promise<string[]> {
   await importLegacyIfNeeded(args);
-  const steps = await store(args).loadCurrentEpoch(args.conversationId);
+  const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
   return connectedMcpProvidersFromSteps(steps);
 }
 
@@ -286,7 +274,6 @@ function messageTimestamp(message: PiMessage): number {
  */
 export async function commitMessages(args: {
   conversationId: string;
-  stepStore?: AgentStepStore;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
   provenance?: PiMessageProvenance[];
@@ -299,7 +286,7 @@ export async function commitMessages(args: {
   messageSeqs: number[];
   provenance: PiMessageProvenance[];
 }> {
-  const stepStore = store(args);
+  const stepStore = getAgentStepStore();
   const existing = projectSteps(
     await stepStore.loadCurrentEpoch(args.conversationId),
   );
@@ -352,10 +339,9 @@ export async function commitMessages(args: {
 /** Record a successful MCP provider connection without duplicating the fact. */
 export async function recordMcpProviderConnected(args: {
   conversationId: string;
-  stepStore?: AgentStepStore;
   provider: string;
 }): Promise<void> {
-  const stepStore = store(args);
+  const stepStore = getAgentStepStore();
   const steps = await stepStore.loadCurrentEpoch(args.conversationId);
   if (connectedMcpProvidersFromSteps(steps).includes(args.provider)) {
     return;
@@ -371,14 +357,13 @@ export async function recordMcpProviderConnected(args: {
 /** Record that an OAuth/MCP authorization link was delivered or reused. */
 export async function recordAuthorizationRequested(args: {
   conversationId: string;
-  stepStore?: AgentStepStore;
   kind: AuthorizationKind;
   provider: string;
   actorId: string;
   authorizationId: string;
   delivery: "private_link_sent" | "private_link_reused";
 }): Promise<void> {
-  const stepStore = store(args);
+  const stepStore = getAgentStepStore();
   const steps = await stepStore.loadCurrentEpoch(args.conversationId);
   if (
     steps.some(
@@ -407,13 +392,12 @@ export async function recordAuthorizationRequested(args: {
 /** Record completed authorization as a chronological host observation for Pi. */
 export async function recordAuthorizationCompleted(args: {
   conversationId: string;
-  stepStore?: AgentStepStore;
   kind: AuthorizationKind;
   provider: string;
   actorId: string;
   authorizationId: string;
 }): Promise<void> {
-  const stepStore = store(args);
+  const stepStore = getAgentStepStore();
   const steps = await stepStore.loadCurrentEpoch(args.conversationId);
   if (
     steps.some(
@@ -441,13 +425,12 @@ export async function recordAuthorizationCompleted(args: {
 /** Record a host-observed parent tool start without adding it to Pi replay. */
 export async function recordToolExecutionStarted(args: {
   conversationId: string;
-  stepStore?: AgentStepStore;
   args?: unknown;
   createdAtMs?: number;
   toolCallId: string;
   toolName: string;
 }): Promise<void> {
-  await store(args).append(args.conversationId, [
+  await getAgentStepStore().append(args.conversationId, [
     {
       entry: {
         type: "tool_execution_started",

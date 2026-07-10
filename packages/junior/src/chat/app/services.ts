@@ -61,9 +61,6 @@ export function createJuniorRuntimeServices(
     completeText: overrides.contextCompactor?.completeText ?? completeText,
     autoCompactionTriggerTokens:
       overrides.contextCompactor?.autoCompactionTriggerTokens,
-    ...(overrides.contextCompactor?.stepStore
-      ? { stepStore: overrides.contextCompactor.stepStore }
-      : {}),
   });
   const visionContext = createVisionContextService({
     completeText: overrides.visionContext?.completeText ?? completeText,

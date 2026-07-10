@@ -47,7 +47,8 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "migrations"
   ],
   "scripts": {
     "prepare": "pnpm run build",

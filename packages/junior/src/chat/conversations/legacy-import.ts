@@ -12,6 +12,7 @@
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
+// TODO(2026-07-24): Remove this module and the lazy legacy-history import hook.
 import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -38,7 +39,7 @@ import {
   getConversationMessageStore,
   getSqlExecutor,
 } from "@/chat/db";
-import type { AgentStepStore } from "./history";
+import { createSqlAgentStepStore } from "./sql/history";
 import type { ConversationMessageStore } from "./messages";
 import type { Conversation } from "./store";
 import {
@@ -77,10 +78,9 @@ const legacyThreadStateSnapshotSchema = z.object({
     .optional(),
 });
 
-/** Injectable seams; production defaults resolve the process singletons. */
+/** Legacy source seams used by the one-time migration. */
 export interface LegacyImportDeps {
   executor: JuniorSqlDatabase;
-  stepStore: AgentStepStore;
   messageStore: ConversationMessageStore;
   sessionLogStore?: SessionLogStore;
   advisorSessionStore?: AdvisorSessionStore;
@@ -156,7 +156,8 @@ export async function importConversationFromLegacy(
   conversationId: string,
   deps: LegacyImportDeps,
 ): Promise<{ imported: boolean }> {
-  const existing = await deps.stepStore.loadCurrentEpoch(conversationId);
+  const stepStore = createSqlAgentStepStore(deps.executor);
+  const existing = await stepStore.loadCurrentEpoch(conversationId);
   if (existing.length > 0) {
     return { imported: false };
   }
@@ -317,7 +318,6 @@ export async function ensureLegacyConversationImport(args: {
   }
   await importConversationFromLegacy(args.conversationId, {
     executor,
-    stepStore,
     messageStore: getConversationMessageStore(),
     sessionLogStore: { read: async () => entries, append: async () => {} },
     loadVisibleMessages: async () => visible,

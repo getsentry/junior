@@ -30,7 +30,6 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import { extractAssistantText, isAssistantMessage } from "@/chat/pi/transcript";
 import { getAgentStepStore, getConversationStore } from "@/chat/db";
-import type { AgentStepStore } from "@/chat/conversations/history";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   commitMessages,
@@ -62,8 +61,6 @@ export interface AdvisorToolRuntimeContext {
   conversationPrivacy?: ConversationPrivacy;
   getTools: () => AgentTool[];
   logContext?: LogContext;
-  /** Durable step store; the child advisor history and parent subagent steps. */
-  stepStore?: AgentStepStore;
   /** Metadata store used to link the advisor child conversation to its parent. */
   conversationStore?: ConversationStore;
   streamFn?: StreamFn;
@@ -151,7 +148,6 @@ export function createAdvisorToolDefinitions(
 export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
   // Resolve stores lazily so building the toolset never requires SQL config;
   // turns that never invoke the advisor must not depend on it.
-  const stepStore = () => context.stepStore ?? getAgentStepStore();
   const conversationStore = () =>
     context.conversationStore ?? getConversationStore();
   const spanContext = context.logContext ?? {};
@@ -211,7 +207,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
         errorCode?: AdvisorErrorCode,
       ): Promise<void> => {
         try {
-          await stepStore().append(conversationId, [
+          await getAgentStepStore().append(conversationId, [
             {
               entry: {
                 type: "subagent_ended",
@@ -234,7 +230,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           conversationId: childConversationId,
           parentConversationId: conversationId,
         });
-        await stepStore().append(conversationId, [
+        await getAgentStepStore().append(conversationId, [
           {
             entry: {
               type: "subagent_started",
@@ -283,7 +279,6 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           try {
             advisorMessages = await loadProjection({
               conversationId: childConversationId,
-              stepStore: stepStore(),
             });
           } catch {
             setSpanStatus("error");
@@ -357,7 +352,6 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           try {
             await commitMessages({
               conversationId: childConversationId,
-              stepStore: stepStore(),
               messages: advisorAgent.state.messages,
             });
           } catch {

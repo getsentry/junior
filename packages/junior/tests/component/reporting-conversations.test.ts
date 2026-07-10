@@ -8,7 +8,7 @@ import {
   readConversationFeed,
   readConversationReport,
 } from "@/reporting/conversations";
-import { createMemoryAgentStepStore } from "../fixtures/step-store";
+import { getAgentStepStore } from "@/chat/db";
 
 vi.mock("@/chat/sentry", () => ({
   getActiveSpan: () => undefined,
@@ -89,7 +89,7 @@ describe("conversation reporting", () => {
         visibility: "public",
       }),
     ]);
-    const stepStore = createMemoryAgentStepStore();
+    const stepStore = getAgentStepStore();
     await stepStore.append(conversationId, [
       {
         entry: {
@@ -117,7 +117,6 @@ describe("conversation reporting", () => {
 
     const report = await readConversationReport(conversationId, {
       conversationStore,
-      stepStore,
     });
 
     expect(report.runs).toHaveLength(1);

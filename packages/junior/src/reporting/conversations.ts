@@ -4,6 +4,7 @@ import {
   canExposeConversationPayload,
   resolveConversationPrivacy,
 } from "@/chat/conversation-privacy";
+import { unwrapAdvisorRequest } from "@/chat/advisor-request";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
 import type {
@@ -72,7 +73,6 @@ function privateConversationLabel(
 interface ConversationReaderOptions {
   messageStore?: ConversationMessageStore;
   conversationStore?: ConversationStore;
-  stepStore?: AgentStepStore;
 }
 
 function conversationStore(
@@ -783,10 +783,16 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
 /** Normalize Pi content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
-  options: { unwrapCurrentTask?: boolean } = {},
+  options: { unwrapAdvisorTask?: boolean; unwrapCurrentTask?: boolean } = {},
 ): TranscriptPart {
-  const displayText = (text: string) =>
-    options.unwrapCurrentTask ? (unwrapCurrentInstruction(text) ?? text) : text;
+  const displayText = (text: string) => {
+    if (options.unwrapCurrentTask) {
+      const instruction = unwrapCurrentInstruction(text);
+      if (instruction !== undefined) return instruction;
+    }
+    if (options.unwrapAdvisorTask) return unwrapAdvisorRequest(text) ?? text;
+    return text;
+  };
 
   if (typeof part === "string") {
     return textPart(displayText(part));
@@ -860,7 +866,10 @@ function normalizeToolResultMessage(
   };
 }
 
-function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
+function normalizeTranscriptMessage(
+  message: PiMessage,
+  options: { unwrapAdvisorTask?: boolean } = {},
+): TranscriptMessage {
   const record = message as unknown as Record<string, unknown>;
   const content = record.content;
   const role = transcriptRole(record.role);
@@ -875,11 +884,13 @@ function normalizeTranscriptMessage(message: PiMessage): TranscriptMessage {
         : Array.isArray(content)
           ? content.map((part) =>
               normalizeTranscriptPart(part, {
+                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             )
           : [
               normalizeTranscriptPart(content, {
+                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             ],
@@ -1309,7 +1320,7 @@ async function currentRunContent(args: {
   const messages = projectSteps(steps).messages;
   const transcript =
     messages.length > 0
-      ? messages.map(normalizeTranscriptMessage)
+      ? messages.map((message) => normalizeTranscriptMessage(message))
       : (await args.messageStore.list(args.conversationId)).map(
           visibleMessageTranscript,
         );
@@ -1342,7 +1353,7 @@ export async function readConversationReport(
   const nowMs = Date.now();
   const conversation = await store.get({ conversationId });
 
-  const stepStore = options.stepStore ?? getAgentStepStore();
+  const stepStore = getAgentStepStore();
   const messageStore = options.messageStore ?? getConversationMessageStore();
   const transcriptPurgedAtMs = conversation?.transcriptPurgedAtMs;
   const transcriptExpiredAt =
@@ -1482,7 +1493,7 @@ export async function readConversationSubagentTranscriptReport(
   options: ConversationReaderOptions = {},
 ): Promise<ConversationSubagentTranscriptReport> {
   const store = conversationStore(options);
-  const stepStore = options.stepStore ?? getAgentStepStore();
+  const stepStore = getAgentStepStore();
   const [conversation, parentSteps] = await Promise.all([
     store.get({ conversationId }),
     stepStore.loadHistory(conversationId),
@@ -1552,7 +1563,6 @@ export async function readConversationSubagentTranscriptReport(
 
   const childMessages: PiMessage[] = await loadProjection({
     conversationId: childConversationId,
-    stepStore,
   });
   if (childMessages.length === 0) {
     return subagentTranscriptReport(activity, {

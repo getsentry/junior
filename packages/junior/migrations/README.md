@@ -1,4 +1,4 @@
-# drizzle-kit output for `@sentry/junior`
+# SQL migrations for `@sentry/junior`
 
 drizzle-kit is the DDL **generator** for the shared Junior SQL schema
 (`src/db/schema.ts`). It is **not** the applier: `junior upgrade` applies

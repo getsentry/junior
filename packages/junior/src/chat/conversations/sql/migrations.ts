@@ -48,10 +48,10 @@ function defineMigration(id: string, statements: readonly string[]): Migration {
   };
 }
 
-/** Absolute path to a drizzle-kit-generated `.sql` file in the `drizzle/` out dir. */
+/** Absolute path to a drizzle-kit-generated `.sql` file in the `migrations/` out dir. */
 function kitMigrationPath(fileName: string): string {
   return fileURLToPath(
-    new URL(`../../../../drizzle/${fileName}`, import.meta.url),
+    new URL(`../../../../migrations/${fileName}`, import.meta.url),
   );
 }
 

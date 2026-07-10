@@ -23,7 +23,6 @@ import {
   type PiMessageProvenance,
 } from "@/chat/state/session-log";
 import { loadProjectionWithProvenance } from "@/chat/conversations/projection";
-import type { AgentStepStore } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
@@ -45,7 +44,6 @@ const OMITTED_OLDER_CONTEXT_NOTICE = "[older context omitted]";
 export interface ContextCompactorDeps {
   completeText: typeof completeText;
   autoCompactionTriggerTokens?: number;
-  stepStore?: AgentStepStore;
 }
 
 export interface ContextCompactor {
@@ -411,16 +409,10 @@ async function maybeCompactWithDeps(
     return { compacted: false, reason: "summary_failed" };
   }
 
-  return await writeCompactedThreadContext(
-    args,
-    source.messages,
-    summary,
-    {
-      estimatedTokens: source.estimatedTokens,
-      triggerTokens,
-    },
-    deps,
-  );
+  return await writeCompactedThreadContext(args, source.messages, summary, {
+    estimatedTokens: source.estimatedTokens,
+    triggerTokens,
+  });
 }
 
 /**
@@ -435,12 +427,10 @@ async function writeCompactedThreadContext(
     estimatedTokens: number;
     triggerTokens?: number;
   },
-  deps: ContextCompactorDeps,
 ): Promise<CompactContextResult> {
-  const stepStore = deps.stepStore ?? getAgentStepStore();
+  const stepStore = getAgentStepStore();
   const sourceProjection = await loadProjectionWithProvenance({
     conversationId: args.conversationId,
-    stepStore,
   });
   const retained = selectRetainedUserMessageEntries(
     trimTrailingAssistantMessages(sourceProjection.messages),

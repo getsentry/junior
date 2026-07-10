@@ -1,6 +1,5 @@
 import { getChatConfig } from "@/chat/config";
 import { importConversationFromLegacy } from "@/chat/conversations/legacy-import";
-import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createStateConversationStore } from "@/chat/conversations/state";
@@ -45,7 +44,6 @@ export async function migrateConversationHistoryToSql(
   const limit = Math.max(1, options.batchSize ?? HISTORY_BACKFILL_LIMIT);
   try {
     await migrateSchema(executor);
-    const stepStore = createSqlAgentStepStore(executor);
     const messageStore = createSqlConversationMessageStore(executor);
     const conversations = await source.listByActivity({ limit });
     let migrated = 0;
@@ -55,7 +53,6 @@ export async function migrateConversationHistoryToSql(
         conversation.conversationId,
         {
           executor,
-          stepStore,
           messageStore,
           conversationRecord: conversation,
           ...(options.sessionLogStore

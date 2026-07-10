@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { getAgentStepStore } from "@/chat/db";
-import type { AgentStepStore, StoredAgentStep } from "./history";
+import type { StoredAgentStep } from "./history";
 import type {
   ConversationCompaction,
   ThreadConversationState,
@@ -20,11 +20,8 @@ function latestSnapshot(steps: StoredAgentStep[]): ConversationCompaction[] {
 export async function hydrateConversationCompactions(args: {
   conversation: ThreadConversationState;
   conversationId: string;
-  stepStore?: AgentStepStore;
 }): Promise<void> {
-  const steps = await (args.stepStore ?? getAgentStepStore()).loadHistory(
-    args.conversationId,
-  );
+  const steps = await getAgentStepStore().loadHistory(args.conversationId);
   args.conversation.compactions = latestSnapshot(steps);
 }
 
@@ -32,9 +29,8 @@ export async function hydrateConversationCompactions(args: {
 export async function persistConversationCompactions(args: {
   conversation: ThreadConversationState;
   conversationId: string;
-  stepStore?: AgentStepStore;
 }): Promise<void> {
-  const stepStore = args.stepStore ?? getAgentStepStore();
+  const stepStore = getAgentStepStore();
   const existing = latestSnapshot(
     await stepStore.loadHistory(args.conversationId),
   );

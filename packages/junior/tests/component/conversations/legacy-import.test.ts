@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
+import {
+  closeDb,
+  getAgentStepStore,
+  getConversationMessageStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { requestConversationWork } from "@/chat/task-execution/store";
 import {
@@ -32,6 +38,16 @@ const ORIGINAL_ENV = vi.hoisted(() => ({
   DATABASE_URL: process.env.DATABASE_URL,
   JUNIOR_STATE_ADAPTER: process.env.JUNIOR_STATE_ADAPTER,
 }));
+
+async function processSqlStores() {
+  const executor = getSqlExecutor();
+  await migrateSchema(executor);
+  return {
+    executor,
+    stepStore: getAgentStepStore(),
+    messageStore: getConversationMessageStore(),
+  };
+}
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -84,12 +100,12 @@ function staticAdvisorStore(messages: PiMessage[]): AdvisorSessionStore {
 
 describe("legacy conversation import", () => {
   beforeEach(async () => {
-    process.env.DATABASE_URL = "postgres://configured.example.test/neon";
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
+    await closeDb();
     await disconnectStateAdapter();
     restoreEnv("DATABASE_URL", ORIGINAL_ENV.DATABASE_URL);
     restoreEnv("JUNIOR_STATE_ADAPTER", ORIGINAL_ENV.JUNIOR_STATE_ADAPTER);
@@ -146,7 +162,6 @@ describe("legacy conversation import", () => {
 
     const deps = {
       executor: fixture.sql,
-      stepStore,
       messageStore,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore(entries),
@@ -263,7 +278,6 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          stepStore,
           messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
@@ -284,7 +298,6 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          stepStore,
           messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
@@ -320,7 +333,6 @@ describe("legacy conversation import", () => {
     ]);
     const deps = {
       executor: fixture.sql,
-      stepStore,
       messageStore,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore([]),
@@ -379,7 +391,6 @@ describe("legacy conversation import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        stepStore,
         messageStore,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
@@ -404,17 +415,7 @@ describe("legacy conversation import", () => {
   }, 20_000);
 
   it("lazily imports a straggler with a Redis log but no SQL rows, once", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
-
-    // Route the process singletons at the fixture executor so the lazy path
-    // (which resolves them internally) writes to this database.
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    const { executor, stepStore } = await processSqlStores();
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -433,37 +434,25 @@ describe("legacy conversation import", () => {
       },
     });
 
-    try {
-      await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-      const history = await stepStore.loadHistory(CONVERSATION_ID);
-      expect(history).toHaveLength(1);
-      expect(history[0]!.entry.type).toBe("pi_message");
-      expect(history[0]!.createdAtMs).toBe(70);
-      const [conversation] = await fixture.sql
-        .db()
-        .select({ lastActivityAt: juniorConversations.lastActivityAt })
-        .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-      expect(conversation?.lastActivityAt.getTime()).toBe(900);
+    await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
+    const history = await stepStore.loadHistory(CONVERSATION_ID);
+    expect(history).toHaveLength(1);
+    expect(history[0]!.entry.type).toBe("pi_message");
+    expect(history[0]!.createdAtMs).toBe(70);
+    const [conversation] = await executor
+      .db()
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+    expect(conversation?.lastActivityAt.getTime()).toBe(900);
 
-      // Second read is idempotent: no duplicate rows.
-      await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
-    } finally {
-      await fixture.close();
-    }
+    // Second read is idempotent: no duplicate rows.
+    await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
+    expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
   }, 20_000);
 
   it("loadConnectedMcpProviders triggers the lazy import for a straggler", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
-
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    await processSqlStores();
 
     // A Redis-only straggler whose durable MCP connection fact has not been
     // imported yet: the provider read must not miss it.
@@ -484,30 +473,15 @@ describe("legacy conversation import", () => {
       },
     ]);
 
-    try {
-      const { loadConnectedMcpProviders } =
-        await import("@/chat/conversations/projection");
-      await expect(
-        loadConnectedMcpProviders({ conversationId: CONVERSATION_ID }),
-      ).resolves.toEqual(["linear"]);
-    } finally {
-      await fixture.close();
-    }
+    const { loadConnectedMcpProviders } =
+      await import("@/chat/conversations/projection");
+    await expect(
+      loadConnectedMcpProviders({ conversationId: CONVERSATION_ID }),
+    ).resolves.toEqual(["linear"]);
   }, 20_000);
 
   it("hydrate triggers the lazy import for a Redis-only straggler and preserves replied + author", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
-
-    // Route the process singletons at the fixture executor so the production
-    // default-store hydrate path (no injected messageStore) resolves to this
-    // database — the same seam the lazy import uses internally.
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    await processSqlStores();
 
     // Seed ONLY legacy Redis thread-state (a user message with a delivery mark
     // and an author) and no SQL rows: the promotion-window straggler shape.
@@ -537,41 +511,28 @@ describe("legacy conversation import", () => {
       },
     });
 
-    try {
-      const conversation = coerceThreadConversationState({});
-      // Production default-store path: no messageStore injected, so hydrate must
-      // run the lazy import (resolving the spied singletons) before reading SQL.
-      await hydrateConversationMessages({
-        conversation,
-        conversationId: CONVERSATION_ID,
-      });
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
 
-      const hydratedUser = conversation.messages.find(
-        (message) => message.id === "m1",
-      );
-      expect(hydratedUser?.text).toBe("legacy hello");
-      expect(hydratedUser?.author?.userId).toBe("U123");
-      expect(hydratedUser?.author?.userName).toBe("alice");
-      expect(hydratedUser?.meta?.replied).toBe(true);
-      expect(conversation.compactions).toEqual([
-        expect.objectContaining({ id: "legacy-compaction" }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
+    const hydratedUser = conversation.messages.find(
+      (message) => message.id === "m1",
+    );
+    expect(hydratedUser?.text).toBe("legacy hello");
+    expect(hydratedUser?.author?.userId).toBe("U123");
+    expect(hydratedUser?.author?.userName).toBe("alice");
+    expect(hydratedUser?.meta?.replied).toBe(true);
+    expect(conversation.compactions).toEqual([
+      expect.objectContaining({ id: "legacy-compaction" }),
+    ]);
   }, 20_000);
 
   it("does not resurrect purged SQL history from legacy Redis", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    const { executor, stepStore } = await processSqlStores();
 
-    await fixture.sql
+    await executor
       .db()
       .insert(juniorConversations)
       .values({
@@ -593,17 +554,13 @@ describe("legacy conversation import", () => {
       },
     ]);
 
-    try {
-      const conversation = coerceThreadConversationState({});
-      await hydrateConversationMessages({
-        conversation,
-        conversationId: CONVERSATION_ID,
-      });
-      expect(conversation.messages).toEqual([]);
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
-    } finally {
-      await fixture.close();
-    }
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
+    expect(conversation.messages).toEqual([]);
+    expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
   }, 20_000);
 
   it("rejects a legacy import when the SQL transcript was already purged", async () => {
@@ -627,7 +584,6 @@ describe("legacy conversation import", () => {
     try {
       const result = await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        stepStore,
         messageStore,
         sessionLogStore: staticSessionLogStore([
           {
@@ -656,27 +612,16 @@ describe("legacy conversation import", () => {
   }, 20_000);
 
   it("surfaces legacy Redis read failures during lazy import", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    await processSqlStores();
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     vi.spyOn(stateAdapter, "getList").mockRejectedValueOnce(
       new Error("legacy Redis unavailable"),
     );
 
-    try {
-      await expect(
-        ensureLegacyConversationImport({ conversationId: CONVERSATION_ID }),
-      ).rejects.toThrow("legacy Redis unavailable");
-    } finally {
-      await fixture.close();
-    }
+    await expect(
+      ensureLegacyConversationImport({ conversationId: CONVERSATION_ID }),
+    ).rejects.toThrow("legacy Redis unavailable");
   }, 20_000);
 
   it("bulk-imports legacy Redis history through the upgrade migration", async () => {
@@ -739,7 +684,6 @@ describe("legacy conversation import", () => {
   it("reads legacy visible messages from a real thread-state payload", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     // Persisted pre-cutover shape: the visible transcript nested under
@@ -771,7 +715,6 @@ describe("legacy conversation import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        stepStore,
         messageStore,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
@@ -804,7 +747,6 @@ describe("legacy conversation import", () => {
   it("rejects malformed legacy visible messages", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -818,7 +760,6 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          stepStore,
           messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: staticSessionLogStore([]),
@@ -832,10 +773,7 @@ describe("legacy conversation import", () => {
   }, 20_000);
 
   it("preserves message author identity through import and hydration", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
+    const { executor, messageStore } = await processSqlStores();
 
     // The resume/continuation paths key off the persisted user message's
     // author userId, so the import must fold `author` into `meta.author` just
@@ -852,45 +790,33 @@ describe("legacy conversation import", () => {
       { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
     ];
 
-    // Route the process singletons at the fixture executor so the default-store
-    // hydrate path resolves to this database.
-    const db = await import("@/chat/db");
-    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
-    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
-    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    await importConversationFromLegacy(CONVERSATION_ID, {
+      executor,
+      messageStore,
+      conversationRecord: conversationRecord(),
+      sessionLogStore: staticSessionLogStore([
+        {
+          schemaVersion: 2,
+          type: "pi_message",
+          sessionId: "session_0",
+          message: userMessage("first", 10),
+        } as SessionLogEntry,
+      ]),
+      loadVisibleMessages: async () => visible,
+    });
 
-    try {
-      await importConversationFromLegacy(CONVERSATION_ID, {
-        executor: fixture.sql,
-        stepStore,
-        messageStore,
-        conversationRecord: conversationRecord(),
-        sessionLogStore: staticSessionLogStore([
-          {
-            schemaVersion: 2,
-            type: "pi_message",
-            sessionId: "session_0",
-            message: userMessage("first", 10),
-          } as SessionLogEntry,
-        ]),
-        loadVisibleMessages: async () => visible,
-      });
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
 
-      const conversation = coerceThreadConversationState({});
-      await hydrateConversationMessages({
-        conversation,
-        conversationId: CONVERSATION_ID,
-      });
-
-      const hydratedUser = conversation.messages.find(
-        (message) => message.id === "m1",
-      );
-      expect(hydratedUser?.author?.userId).toBe("U123");
-      expect(hydratedUser?.author?.userName).toBe("alice");
-      // `replied === true` rides the `replied_at` column, not `meta`.
-      expect(hydratedUser?.meta?.replied).toBe(true);
-    } finally {
-      await fixture.close();
-    }
+    const hydratedUser = conversation.messages.find(
+      (message) => message.id === "m1",
+    );
+    expect(hydratedUser?.author?.userId).toBe("U123");
+    expect(hydratedUser?.author?.userName).toBe("alice");
+    // `replied === true` rides the `replied_at` column, not `meta`.
+    expect(hydratedUser?.meta?.replied).toBe(true);
   }, 20_000);
 });
