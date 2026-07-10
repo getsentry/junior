@@ -362,9 +362,11 @@ export async function persistAuthPauseSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  modelId?: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
+  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -409,6 +411,15 @@ export async function persistAuthPauseSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
+      ...((args.modelId ?? latestSessionRecord?.modelId)
+        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
+        : {}),
+      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
+        ? {
+            reasoningLevel:
+              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          }
+        : {}),
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
       errorMessage: args.errorMessage,
@@ -449,9 +460,11 @@ export async function persistTimeoutSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  modelId?: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
+  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   const nextSliceId = args.currentSliceId + 1;
@@ -504,6 +517,15 @@ export async function persistTimeoutSessionRecord(args: {
         ...(args.loadedSkillNames
           ? { loadedSkillNames: args.loadedSkillNames }
           : {}),
+        ...((args.modelId ?? latestSessionRecord?.modelId)
+          ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
+          : {}),
+        ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
+          ? {
+              reasoningLevel:
+                args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+            }
+          : {}),
         resumeReason: "timeout",
         resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,
         errorMessage: `Agent continuation exceeded slice limit (${AGENT_CONTINUE_MAX_SLICES})`,
@@ -537,6 +559,15 @@ export async function persistTimeoutSessionRecord(args: {
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.modelId ?? latestSessionRecord?.modelId)
+        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
+        : {}),
+      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
+        ? {
+            reasoningLevel:
+              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          }
         : {}),
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,
@@ -577,9 +608,11 @@ export async function persistYieldSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  modelId?: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
+  reasoningLevel?: string;
   surface?: AgentTurnSurface;
 }): Promise<AgentTurnSessionRecord | undefined> {
   try {
@@ -622,6 +655,15 @@ export async function persistYieldSessionRecord(args: {
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...((args.modelId ?? latestSessionRecord?.modelId)
+        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
+        : {}),
+      ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
+        ? {
+            reasoningLevel:
+              args.reasoningLevel ?? latestSessionRecord?.reasoningLevel,
+          }
         : {}),
       resumeReason: "yield",
       resumedFromSliceId: latestSessionRecord?.resumedFromSliceId,

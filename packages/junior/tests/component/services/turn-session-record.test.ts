@@ -754,6 +754,8 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId: "turn-auth-empty",
       currentSliceId: 1,
       messages: [],
+      modelId: "openai/gpt-5.5",
+      reasoningLevel: "high",
       errorMessage: "auth pause",
       logContext: {
         modelId: "test-model",
@@ -765,6 +767,8 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId: "turn-auth-empty",
       state: "awaiting_resume",
       piMessages: [],
+      modelId: "openai/gpt-5.5",
+      reasoningLevel: "high",
       resumeReason: "auth",
     });
     await expect(
