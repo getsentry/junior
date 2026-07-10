@@ -858,28 +858,20 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("uses turn-session status for plugin conversation summaries", async () => {
+  it("uses SQL execution status for plugin conversation summaries", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
       await store.migrate();
-      await store.recordActivity({
+      await store.recordExecution({
         conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
         destination: inboundMessage("summary-target").destination,
-        nowMs: 1_000,
-      });
-      await upsertAgentTurnSessionRecord({
-        conversationStore: store,
-        conversationId: CONVERSATION_ID,
-        destination: inboundMessage("summary-target").destination,
-        lastProgressAtMs: 1_200,
-        piMessages: [],
-        sessionId: "turn-failed",
-        sliceId: 1,
-        state: "failed",
-        surface: "slack",
+        execution: { status: "failed", updatedAtMs: 1_200 },
+        lastActivityAtMs: 1_200,
+        updatedAtMs: 1_200,
       });
 
       await expect(
@@ -899,7 +891,7 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("keeps active turn-session status over idle SQL execution", async () => {
+  it("reports active SQL execution status", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -907,21 +899,13 @@ INSERT INTO junior_conversations (
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
       await store.migrate();
-      await store.recordActivity({
+      await store.recordExecution({
         conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
         destination: inboundMessage("active-target").destination,
-        nowMs: 1_000,
-      });
-      await upsertAgentTurnSessionRecord({
-        conversationStore: store,
-        conversationId: CONVERSATION_ID,
-        destination: inboundMessage("active-target").destination,
-        lastProgressAtMs: 1_500,
-        piMessages: [],
-        sessionId: "turn-active",
-        sliceId: 1,
-        state: "running",
-        surface: "slack",
+        execution: { status: "running", updatedAtMs: 1_500 },
+        lastActivityAtMs: 1_500,
+        updatedAtMs: 1_500,
       });
 
       await expect(
@@ -942,7 +926,7 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("keeps completed turn-session status over running SQL execution", async () => {
+  it("maps idle SQL execution status to completed", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -956,24 +940,12 @@ INSERT INTO junior_conversations (
         destination: inboundMessage("completed-target").destination,
         execution: {
           runId: "run-completed",
-          status: "running",
+          status: "idle",
           updatedAtMs: 2_000,
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
       });
-      await upsertAgentTurnSessionRecord({
-        conversationStore: store,
-        conversationId: CONVERSATION_ID,
-        destination: inboundMessage("completed-target").destination,
-        lastProgressAtMs: 1_500,
-        piMessages: [],
-        sessionId: "turn-completed",
-        sliceId: 1,
-        state: "completed",
-        surface: "slack",
-      });
-
       await expect(
         listRecentConversationSummaries({
           limit: 1,
@@ -992,7 +964,7 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("keeps hung turn-session progress over fresh SQL check-ins", async () => {
+  it("keeps fresh SQL progress over stale turn-session state", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -1030,9 +1002,9 @@ INSERT INTO junior_conversations (
         conversations: [
           {
             conversationId: CONVERSATION_ID,
-            lastProgressAt: new Date(1_000).toISOString(),
+            lastProgressAt: new Date(600_000).toISOString(),
             lastSeenAt: new Date(600_000).toISOString(),
-            status: "hung",
+            status: "active",
           },
         ],
       });

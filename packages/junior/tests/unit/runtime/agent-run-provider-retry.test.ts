@@ -589,19 +589,19 @@ describe("executeAgentRun provider retry", () => {
       "slack:C123:1712345.0001",
     );
     const transcript = report.runs[0]?.transcript ?? [];
-    expect(JSON.stringify(transcript)).not.toContain("previous question");
-    expect(transcript).toHaveLength(3);
-    expect(transcript[0]).toMatchObject({
+    expect(JSON.stringify(transcript)).toContain("previous question");
+    expect(transcript).toHaveLength(5);
+    expect(transcript[2]).toMatchObject({
       role: "user",
       timestamp: expect.any(Number),
       parts: expect.arrayContaining([{ type: "text", text: "help me" }]),
     });
-    expect(transcript[1]).toEqual({
+    expect(transcript[3]).toEqual({
       role: "user",
       timestamp: 2_000,
       parts: [{ type: "text", text: "actually do the other thing" }],
     });
-    expect(transcript[2]).toEqual({
+    expect(transcript[4]).toEqual({
       role: "assistant",
       parts: [{ type: "text", text: "Steered." }],
     });
