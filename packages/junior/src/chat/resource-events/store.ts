@@ -113,6 +113,7 @@ async function withSubscriptionLock<T>(
     subscriptionId,
     waitDeadlineMs,
   );
+  let lockLostError: Error | undefined;
   let heartbeatError: Error | undefined;
   let heartbeat: Promise<void> | undefined;
   const timer = setInterval(() => {
@@ -122,8 +123,10 @@ async function withSubscriptionLock<T>(
     heartbeat = state
       .extendLock(lock, SUBSCRIPTION_LOCK_TTL_MS)
       .then((extended) => {
-        if (!extended) {
-          heartbeatError = new Error(
+        if (extended) {
+          heartbeatError = undefined;
+        } else {
+          lockLostError = new Error(
             `Resource event subscription lock was lost for ${subscriptionId}`,
           );
         }
@@ -147,8 +150,9 @@ async function withSubscriptionLock<T>(
     await heartbeat;
     await state.releaseLock(lock);
   }
-  if (heartbeatError) {
-    throw heartbeatError;
+  const lockError = lockLostError ?? heartbeatError;
+  if (lockError) {
+    throw lockError;
   }
   return result;
 }

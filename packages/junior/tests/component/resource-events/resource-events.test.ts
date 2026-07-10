@@ -376,6 +376,52 @@ describe("resource event subscriptions", () => {
     await expect(delivery).resolves.toBe(true);
   });
 
+  it("recovers after a transient subscription lock heartbeat failure", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    const baseState = getStateAdapter();
+    await baseState.connect();
+    let extendAttempts = 0;
+    const state = new Proxy(baseState, {
+      get(target, property, receiver) {
+        if (property === "extendLock") {
+          return async (
+            lock: Parameters<StateAdapter["extendLock"]>[0],
+            ttlMs: number,
+          ) => {
+            extendAttempts += 1;
+            if (extendAttempts === 1) {
+              throw new Error("transient state backend failure");
+            }
+            return await target.extendLock(lock, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+    const subscription = await createGithubPrSubscription({
+      events: ["checks.failed"],
+      state,
+    });
+    const delivery = deliverResourceEventSubscription({
+      eventType: "checks.failed",
+      nowMs: 1_500,
+      provider: "github",
+      resourceRef: "github:pull_request:getsentry/junior#691",
+      state,
+      subscription,
+      deliver: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 7_000));
+        return true;
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(7_000);
+
+    await expect(delivery).resolves.toBe(true);
+    expect(extendAttempts).toBe(2);
+  });
+
   it("does not complete a subscription refreshed during terminal delivery", async () => {
     const subscription = await createGithubPrSubscription({
       events: ["state.merged"],
