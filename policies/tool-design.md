@@ -47,6 +47,10 @@ contradictory or unsafe requests.
   provider schema such as an MCP `outputSchema` as the Junior Zod helper's
   structured result schema unless the Junior wrapper itself owns that result
   contract.
+- Structured tools may declare `privateTraceResult` when part of their validated
+  result is safe to retain in private traces. The projector must select only
+  static, public, or otherwise non-conversation data. Omission keeps the default
+  metadata-only behavior; returning `undefined` records no private result.
 - Keep reusable tool infrastructure in a `tool-support` module or another
   non-`tools` module owned by that package. In the host runtime this is
   `packages/junior/src/chat/tool-support`; plugin packages should follow the

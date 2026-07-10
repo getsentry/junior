@@ -39,6 +39,7 @@ type StructuredZodToolDefinition<
   TOutputSchema extends ZodType<JuniorToolResult>,
 > = ZodToolDefinitionBase<TInputSchema> & {
   outputSchema: TOutputSchema;
+  privateTraceResult?(result: z.output<TOutputSchema>): unknown;
   execute?: (
     input: z.output<TInputSchema>,
     options: ToolExecuteOptions,

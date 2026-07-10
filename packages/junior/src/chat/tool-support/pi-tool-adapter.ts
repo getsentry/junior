@@ -24,6 +24,7 @@ import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
+import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
   prepareCatalogToolCall,
   resolveCatalogToolCall,
@@ -73,9 +74,12 @@ export function createPiAgentTools(
   visibleTools[EXECUTE_TOOL_NAME] = createExecuteToolTool();
   const shouldTrace = shouldEmitDevAgentTrace();
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
-  const serializeToolPayload = (payload: unknown) =>
+  const serializeToolPayload = (
+    payload: unknown,
+    options: { exposePrivate?: boolean } = {},
+  ) =>
     serializeGenAiAttribute(
-      effectiveConversationPrivacy === "private"
+      effectiveConversationPrivacy === "private" && !options.exposePrivate
         ? toGenAiPayloadMetadata(payload)
         : payload,
     );
@@ -164,10 +168,43 @@ export function createPiAgentTools(
       resultAttributeValue = (normalized.details as { rawResult: unknown })
         .rawResult;
     }
-    const toolResultAttribute = serializeToolPayload(resultAttributeValue);
+    let projectedPrivateResult: unknown;
+    let hasProjectedPrivateResult = false;
+    if (
+      effectiveConversationPrivacy === "private" &&
+      toolDef.privateTraceResult
+    ) {
+      try {
+        projectedPrivateResult =
+          toolDef.privateTraceResult(resultAttributeValue);
+        hasProjectedPrivateResult = projectedPrivateResult !== undefined;
+      } catch (error) {
+        logWarn(
+          "tool_private_trace_projection_failed",
+          spanContext,
+          {
+            "error.type": error instanceof Error ? error.name : typeof error,
+            "gen_ai.tool.name": toolName,
+          },
+          "Tool private trace projection failed",
+        );
+      }
+    }
+    const toolResultAttribute =
+      effectiveConversationPrivacy === "private" &&
+      toolDef.privateTraceResult &&
+      !hasProjectedPrivateResult
+        ? undefined
+        : serializeToolPayload(
+            hasProjectedPrivateResult
+              ? projectedPrivateResult
+              : resultAttributeValue,
+            { exposePrivate: hasProjectedPrivateResult },
+          );
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
+        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
         ...toGenAiPayloadTraceAttributes(
           "app.ai.tool.call.result",
           resultAttributeValue,
@@ -226,10 +263,19 @@ export function createPiAgentTools(
 
           try {
             if (toolName === EXECUTE_TOOL_NAME) {
-              const catalogCall = prepareCatalogToolCall(
-                resolveCatalogToolCall(parsed, plannedTools.catalogTools),
+              const resolvedCatalogCall = resolveCatalogToolCall(
+                parsed,
+                plannedTools.catalogTools,
               );
-              executionToolName = catalogCall.toolName;
+              executionToolName = resolvedCatalogCall.toolName;
+              executionParams = resolvedCatalogCall.arguments;
+              setSpanAttributes({
+                "app.ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
+                "gen_ai.tool.description":
+                  resolvedCatalogCall.definition.description,
+                "gen_ai.tool.name": resolvedCatalogCall.toolName,
+              });
+              const catalogCall = prepareCatalogToolCall(resolvedCatalogCall);
               executionParams = catalogCall.arguments;
               await reportStatus(executionToolName, executionParams);
               return await executeDefinition({

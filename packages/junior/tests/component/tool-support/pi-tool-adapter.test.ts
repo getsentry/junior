@@ -5,12 +5,20 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { tool } from "@/chat/tools/definition";
 import type { Skill } from "@/chat/skills";
+import { Type } from "@sinclair/typebox";
 
-const { handleToolExecutionError } = vi.hoisted(() => ({
+const { handleToolExecutionError, setSpanAttributes } = vi.hoisted(() => ({
   handleToolExecutionError: vi.fn((error: unknown) => {
     throw error;
   }),
+  setSpanAttributes: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  setSpanAttributes,
 }));
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
@@ -29,6 +37,7 @@ const githubSkill: Skill = {
 describe("Pi tool adapter", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
+    setSpanAttributes.mockClear();
   });
 
   it("emits assistant status only for reportProgress", async () => {
@@ -85,6 +94,204 @@ describe("Pi tool adapter", () => {
     expect(onStatus).toHaveBeenCalledTimes(1);
     expect(onStatus).toHaveBeenCalledWith({
       text: "Reviewing catalog execution",
+    });
+  });
+
+  it("reports the resolved catalog tool name for executeTool", async () => {
+    const tools = createPiAgentTools(
+      {
+        catalogDemo: tool({
+          description: "Catalog demo",
+          exposure: "deferred",
+          inputSchema: Type.Object({}),
+          execute: async () => ({ ok: true }),
+        }),
+      },
+      new SkillSandbox([], []),
+      {},
+    );
+    const executeTool = tools.find(
+      (candidate) => candidate.name === "executeTool",
+    );
+
+    await executeTool!.execute("tool-catalog", {
+      tool_name: "catalogDemo",
+      arguments: {},
+    });
+
+    expect(setSpanAttributes).toHaveBeenCalledWith({
+      "app.ai.tool.dispatcher.name": "executeTool",
+      "gen_ai.tool.description": "Catalog demo",
+      "gen_ai.tool.name": "catalogDemo",
+    });
+  });
+
+  it("traces projected searchTools catalog data without its private query", async () => {
+    const tools = createPiAgentTools(
+      {
+        catalogDemo: tool({
+          description: "Catalog demo",
+          exposure: "deferred",
+          inputSchema: Type.Object({ account: Type.String() }),
+          execute: async () => ({ ok: true }),
+        }),
+      },
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+    );
+    const searchTools = tools.find(
+      (candidate) => candidate.name === "searchTools",
+    );
+
+    await searchTools!.execute("tool-search", {
+      query: "account",
+    });
+
+    const resultAttributes = setSpanAttributes.mock.calls
+      .map(([attributes]) => attributes as Record<string, unknown>)
+      .find((attributes) => "gen_ai.tool.call.result" in attributes);
+    const tracedResult = JSON.parse(
+      resultAttributes?.["gen_ai.tool.call.result"] as string,
+    );
+
+    expect(tracedResult.tools).toEqual([
+      expect.objectContaining({ tool_name: "catalogDemo" }),
+    ]);
+    expect(tracedResult).not.toHaveProperty("query");
+    expect(tracedResult).not.toHaveProperty("data");
+  });
+
+  it("suppresses private result capture when projection returns undefined", async () => {
+    const tools = createPiAgentTools(
+      {
+        safeDemo: {
+          description: "Safe demo",
+          inputSchema: Type.Object({}),
+          privateTraceResult: () => undefined,
+          execute: async () => ({ ok: true, secret: "private" }),
+        },
+      },
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+    );
+
+    await tools
+      .find((candidate) => candidate.name === "safeDemo")!
+      .execute("tool-safe", {});
+
+    expect(
+      setSpanAttributes.mock.calls.some(
+        ([attributes]) => "gen_ai.tool.call.result" in attributes,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps tool execution successful when private projection throws", async () => {
+    const tools = createPiAgentTools(
+      {
+        safeDemo: {
+          description: "Safe demo",
+          inputSchema: Type.Object({}),
+          privateTraceResult() {
+            throw new TypeError("projection failed");
+          },
+          execute: async () => ({ ok: true, secret: "private" }),
+        },
+      },
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "private",
+    );
+
+    await expect(
+      tools
+        .find((candidate) => candidate.name === "safeDemo")!
+        .execute("tool-safe", {}),
+    ).resolves.toMatchObject({ details: { ok: true } });
+    expect(
+      setSpanAttributes.mock.calls.some(
+        ([attributes]) => "gen_ai.tool.call.result" in attributes,
+      ),
+    ).toBe(false);
+  });
+
+  it("records the full public result without invoking its private projector", async () => {
+    const privateTraceResult = vi.fn(() => ({ visible: "projected" }));
+    const tools = createPiAgentTools(
+      {
+        safeDemo: {
+          description: "Safe demo",
+          inputSchema: Type.Object({}),
+          privateTraceResult,
+          execute: async () => ({ ok: true, secret: "public result" }),
+        },
+      },
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await tools
+      .find((candidate) => candidate.name === "safeDemo")!
+      .execute("tool-safe", {});
+
+    const resultAttributes = setSpanAttributes.mock.calls
+      .map(([attributes]) => attributes as Record<string, unknown>)
+      .find((attributes) => "gen_ai.tool.call.result" in attributes);
+    expect(privateTraceResult).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(resultAttributes?.["gen_ai.tool.call.result"] as string),
+    ).toMatchObject({ secret: "public result" });
+  });
+
+  it("reports resolved tool identity when catalog preparation fails", async () => {
+    const tools = createPiAgentTools(
+      {
+        catalogDemo: tool({
+          description: "Catalog demo",
+          exposure: "deferred",
+          inputSchema: Type.Object({}),
+          prepareArguments() {
+            throw new Error("preparation failed");
+          },
+          execute: async () => ({ ok: true }),
+        }),
+      },
+      new SkillSandbox([], []),
+      {},
+    );
+
+    await expect(
+      tools
+        .find((candidate) => candidate.name === "executeTool")!
+        .execute("tool-catalog", { tool_name: "catalogDemo", arguments: {} }),
+    ).rejects.toThrow("preparation failed");
+    expect(setSpanAttributes).toHaveBeenCalledWith({
+      "app.ai.tool.dispatcher.name": "executeTool",
+      "gen_ai.tool.description": "Catalog demo",
+      "gen_ai.tool.name": "catalogDemo",
     });
   });
 

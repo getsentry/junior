@@ -141,6 +141,17 @@ describe("searchTools", () => {
       ],
     });
 
+    const privateTraceResult = searchTools.privateTraceResult?.(result);
+    expect(privateTraceResult).toEqual({
+      tools: [
+        {
+          tool_name: "agentDemo_lookupCustomer",
+          description: "Lookup customer health for account review.",
+          input_schema: result.tools[0]?.input_schema,
+        },
+      ],
+    });
+
     const directResult = await searchTools.execute!({ query: "shell" }, {});
     expect(directResult).toMatchObject({
       returned_tools: 1,

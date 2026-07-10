@@ -194,9 +194,14 @@ Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 ```ts title="index.ts"
 import {
   defineJuniorPlugin,
-  definePluginTool,
+  pluginToolResultSchema,
+  zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+
+const pingResultSchema = pluginToolResultSchema.extend({
+  latency_ms: z.number(),
+});
 
 export function myProviderPlugin() {
   return defineJuniorPlugin({
@@ -207,12 +212,22 @@ export function myProviderPlugin() {
     hooks: {
       tools(ctx) {
         return {
-          ping: definePluginTool({
+          ping: zodTool({
             description: "Check my-provider connectivity.",
             inputSchema: z.object({}),
+            outputSchema: pingResultSchema,
+            privateTraceResult: (result) => ({
+              ok: result.ok,
+              status: result.status,
+              latency_ms: result.latency_ms,
+            }),
             execute: async () => {
               ctx.log.info("Running my-provider ping");
-              return { ok: true };
+              return {
+                ok: true,
+                status: "success",
+                latency_ms: 12,
+              };
             },
           }),
         };
@@ -221,6 +236,10 @@ export function myProviderPlugin() {
   });
 }
 ```
+
+Use `privateTraceResult` only for fields that are safe to retain when the
+conversation is private. Without it, Junior records bounded result metadata
+instead of the raw structured result.
 
 `heartbeat(ctx)` is for plugins that need server-side background work.
 Use `ctx.state` for plugin-namespaced durable state. Use

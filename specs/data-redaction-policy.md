@@ -118,6 +118,14 @@ Tool execution spans in private conversations must not set raw
 `gen_ai.tool.call.arguments` or raw `gen_ai.tool.call.result`. They may set
 bounded `app.ai.tool.*` metadata such as type, size, and top-level keys.
 
+Tools may explicitly project a result that is safe to retain in private traces.
+The projection must contain only static, public, or otherwise non-conversation
+data selected by the tool owner. The runtime marks projected results before the
+final Sentry payload filter preserves them. Tool arguments, user-authored search
+queries and provider selectors, provider execution responses, credentials, and
+unprojected result fields remain subject to normal private-conversation
+redaction. Static MCP provider and tool catalog metadata may be projected.
+
 Enclosing workflow/agent spans should include `app.conversation.privacy` when
 the runtime can derive it. Child GenAI spans may inherit that trace context and
 must still apply the same capture policy even when they do not repeat the
@@ -130,8 +138,10 @@ attribute.
 - Public dashboard conversation APIs may return raw transcript content while the
   session-log entry is still present.
 - Private GenAI capture tests prove raw message content is not exposed.
-- Tool execution tests prove private tool arguments, results, and MCP error
-  payloads are not exposed through reporting or telemetry capture paths.
+- Tool execution tests prove private tool arguments, raw or unprojected results,
+  and MCP error payloads are not exposed through reporting or telemetry capture
+  paths, while only explicitly projected result fields survive the final
+  payload filter.
 - Unknown conversation ids are treated as private.
 - Conversations Slack reports as private (`channel_type: group` or
   `is_private: true`) are classified private regardless of a `C` id prefix.

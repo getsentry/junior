@@ -39,6 +39,31 @@ describe("zodTool", () => {
     expect(execute).toHaveBeenCalledWith({ count: 3 }, {});
   });
 
+  it("preserves a typed private trace result projector", async () => {
+    const resultSchema = juniorToolResultSchema.extend({
+      visible: z.string(),
+      secret: z.string(),
+    });
+    const tool = zodTool({
+      description: "Return projected details.",
+      inputSchema: z.object({}),
+      outputSchema: resultSchema,
+      privateTraceResult: (result) => ({ visible: result.visible }),
+      execute: async () => ({
+        ok: true,
+        status: "success" as const,
+        visible: "catalog metadata",
+        secret: "private value",
+      }),
+    });
+
+    const result = await tool.execute?.(tool.prepareArguments!({}), {});
+
+    expect(tool.privateTraceResult?.(result)).toEqual({
+      visible: "catalog metadata",
+    });
+  });
+
   it("converts input parse failures into ToolInputError", () => {
     const tool = zodTool({
       description: "Count things.",

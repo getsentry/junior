@@ -1,4 +1,5 @@
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { consumePrivateTraceResultMarker } from "@/chat/tool-support/private-trace-result";
 import type * as Sentry from "@/chat/sentry";
 
 type AttributeMap = Record<string, unknown>;
@@ -47,10 +48,21 @@ function scrubPayloadAttributes(attributes: AttributeMap | undefined): void {
     return;
   }
 
+  const preserveProjectedToolResult =
+    consumePrivateTraceResultMarker(attributes);
+  let redacted = false;
   for (const key of PAYLOAD_ATTRIBUTE_KEYS) {
+    if (key === "gen_ai.tool.call.result" && preserveProjectedToolResult) {
+      continue;
+    }
+    if (key in attributes) {
+      redacted = true;
+    }
     delete attributes[key];
   }
-  attributes["app.conversation.payload_redacted"] = true;
+  if (redacted) {
+    attributes["app.conversation.payload_redacted"] = true;
+  }
 }
 
 function scrubContainer(container: AttributeContainer | undefined): void {

@@ -349,6 +349,13 @@ export function createSearchToolsTool(
       })
       .strict(),
     outputSchema: searchToolsOutputSchema,
+    privateTraceResult: (result) => ({
+      tools: result.tools.map(({ tool_name, description, input_schema }) => ({
+        tool_name,
+        description,
+        input_schema,
+      })),
+    }),
     execute: async ({ query, source, max_results }) => {
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;
       const requestedSource = source ?? null;

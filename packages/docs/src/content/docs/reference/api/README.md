@@ -69,3 +69,4 @@ title: "@sentry/junior"
 - [initSentry](/reference/api/functions/initsentry/)
 - [juniorNitro](/reference/api/functions/juniornitro/)
 - [juniorVercelConfig](/reference/api/functions/juniorvercelconfig/)
+- [zodTool](/reference/api/functions/zodtool/)

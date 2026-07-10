@@ -36,6 +36,7 @@ interface BaseToolDefinition<TInput, TInputSchema extends ToolInputSchema> {
   exposure?: ToolExposure;
   inputSchema: TInputSchema;
   outputSchema?: ToolInputSchema;
+  privateTraceResult?(result: unknown): unknown;
   annotations?: ToolAnnotations;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
@@ -80,6 +81,7 @@ export interface AnyToolDefinition {
   exposure?: ToolExposure;
   inputSchema: ToolInputSchema;
   outputSchema?: ToolInputSchema;
+  privateTraceResult?(result: unknown): unknown;
   annotations?: ToolAnnotations;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`

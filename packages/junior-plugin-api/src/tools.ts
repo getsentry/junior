@@ -134,6 +134,11 @@ export interface PluginToolDefinition<TInput = unknown, TOutput = unknown> {
   executionMode?: unknown;
   inputSchema: unknown;
   outputSchema?: unknown;
+  /**
+   * Select result fields that are safe to retain in private traces.
+   * Returning `undefined` suppresses private result capture.
+   */
+  privateTraceResult?(result: TOutput): unknown;
   prepareArguments?: (args: unknown) => unknown;
   /**
    * @deprecated Put tool-selection and usage guidance directly in `description`
@@ -191,14 +196,12 @@ function parsePluginToolInput<TInputSchema extends ZodTypeAny>(
   return result.data;
 }
 
-/**
- * Define a plugin tool with Zod input parsing and the structured result contract.
- */
-export function definePluginTool<
+function createZodTool<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodType<PluginToolResult>,
 >(
   definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
+  helperName: "definePluginTool" | "zodTool",
 ): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
   const { inputSchema, outputSchema, prepareArguments, execute, ...tool } =
     definition;
@@ -208,7 +211,7 @@ export function definePluginTool<
     modelInputSchema = z.toJSONSchema(inputSchema);
   } catch (error) {
     throw new TypeError(
-      "definePluginTool() inputSchema must be representable as JSON Schema.",
+      `${helperName}() inputSchema must be representable as JSON Schema.`,
       { cause: error },
     );
   }
@@ -216,7 +219,7 @@ export function definePluginTool<
     modelOutputSchema = z.toJSONSchema(outputSchema);
   } catch (error) {
     throw new TypeError(
-      "definePluginTool() outputSchema must be representable as JSON Schema.",
+      `${helperName}() outputSchema must be representable as JSON Schema.`,
       { cause: error },
     );
   }
@@ -242,6 +245,26 @@ export function definePluginTool<
         }
       : {}),
   };
+}
+
+/** Define a plugin tool with Zod input parsing and validated structured results. */
+export function zodTool<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<PluginToolResult>,
+>(
+  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
+): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+  return createZodTool(definition, "zodTool");
+}
+
+/** Define a plugin tool with Zod input parsing and the structured result contract. */
+export function definePluginTool<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodType<PluginToolResult>,
+>(
+  definition: ZodPluginToolDefinition<TInputSchema, TOutputSchema>,
+): PluginToolDefinition<z.output<TInputSchema>, z.output<TOutputSchema>> {
+  return createZodTool(definition, "definePluginTool");
 }
 
 export interface SlackToolRegistrationHookContext {

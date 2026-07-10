@@ -65,11 +65,22 @@ describe("searchMcpTools", () => {
       { query: "issue title", max_results: 1 },
       {},
     )) as {
+      ok: boolean;
+      status: "success" | "error";
+      query: string | null;
+      provider: string | null;
+      total_active_tools: number;
+      returned_tools: number;
       execution_tool: string;
       execution_example: {
         tool_name: string;
         arguments: Record<string, string>;
       };
+      available_providers: Array<{
+        provider: string;
+        description: string;
+        active: boolean;
+      }>;
       tools: Array<{
         tool_name: string;
         signature: string;
@@ -92,6 +103,17 @@ describe("searchMcpTools", () => {
           "<argument>": "<value from input_schema>",
         },
       },
+    });
+    const privateTraceResult = searchMcpTools.privateTraceResult?.(result);
+    expect(privateTraceResult).toEqual({
+      ok: result.ok,
+      status: result.status,
+      total_active_tools: result.total_active_tools,
+      returned_tools: result.returned_tools,
+      execution_tool: result.execution_tool,
+      execution_example: result.execution_example,
+      available_providers: result.available_providers,
+      tools: result.tools,
     });
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0]).toMatchObject({

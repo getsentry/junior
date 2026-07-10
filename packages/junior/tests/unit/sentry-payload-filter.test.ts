@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
+import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
   scrubPrivateSentryLog,
   scrubPrivateSentrySpan,
@@ -80,6 +81,78 @@ describe("Sentry private payload filtering", () => {
 
     expect(log.attributes?.["gen_ai.tool.call.arguments"]).toBeUndefined();
     expect(log.attributes?.["app.conversation.payload_redacted"]).toBe(true);
+  });
+
+  it("preserves explicitly projected private tool results", () => {
+    const projectedResult = JSON.stringify({ tools: ["safeTool"] });
+    const span = {
+      attributes: {
+        "gen_ai.tool.call.arguments": JSON.stringify({
+          query: "private search",
+        }),
+        "gen_ai.tool.call.result": projectedResult,
+        ...privateTraceResultAttributes(),
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "execute_tool searchTools",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+
+    runWithConversationPrivacy("private", () => scrubPrivateSentrySpan(span));
+
+    expect(span.attributes?.["gen_ai.tool.call.arguments"]).toBeUndefined();
+    expect(span.attributes?.["gen_ai.tool.call.result"]).toBe(projectedResult);
+    expect(span.attributes?.["app.conversation.payload_redacted"]).toBe(true);
+    expect(span.attributes).not.toHaveProperty(
+      "app.ai.tool.call.result.exposure",
+    );
+  });
+
+  it("redacts private results with a forged projection marker", () => {
+    const span = {
+      attributes: {
+        "gen_ai.tool.call.result": JSON.stringify({ secret: "private" }),
+        "app.ai.tool.call.result.exposure": "projected",
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "execute_tool unsafeTool",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+
+    runWithConversationPrivacy("private", () => scrubPrivateSentrySpan(span));
+
+    expect(span.attributes?.["gen_ai.tool.call.result"]).toBeUndefined();
+    expect(span.attributes).not.toHaveProperty(
+      "app.ai.tool.call.result.exposure",
+    );
+  });
+
+  it("redacts unmarked private tool results", () => {
+    const span = {
+      attributes: {
+        "gen_ai.tool.call.result": JSON.stringify({ secret: "private" }),
+      },
+      end_timestamp: 2,
+      is_segment: false,
+      name: "execute_tool unsafeTool",
+      span_id: "span",
+      start_timestamp: 1,
+      status: "ok",
+      trace_id: "trace",
+    } as SentrySpan;
+
+    runWithConversationPrivacy("private", () => scrubPrivateSentrySpan(span));
+
+    expect(span.attributes?.["gen_ai.tool.call.result"]).toBeUndefined();
+    expect(span.attributes?.["app.conversation.payload_redacted"]).toBe(true);
   });
 
   it("uses the current conversation privacy for transaction child spans", () => {

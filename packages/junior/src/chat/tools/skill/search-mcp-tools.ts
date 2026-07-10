@@ -259,6 +259,16 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       })
       .strict(),
     outputSchema: searchMcpToolsOutputSchema,
+    privateTraceResult: (result) => ({
+      ok: result.ok,
+      status: result.status,
+      total_active_tools: result.total_active_tools,
+      returned_tools: result.returned_tools,
+      execution_tool: result.execution_tool,
+      execution_example: result.execution_example,
+      available_providers: result.available_providers,
+      tools: result.tools,
+    }),
     execute: async ({ query, provider, max_results }) => {
       if (provider) {
         await mcpToolManager.activateProvider(provider);

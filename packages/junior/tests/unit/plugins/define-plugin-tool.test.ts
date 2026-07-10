@@ -3,6 +3,7 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolResultSchema,
+  zodTool,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -78,6 +79,26 @@ describe("definePluginTool", () => {
     expect(() => tool.prepareArguments?.({ rawName: " " })).toThrow(
       "Invalid tool arguments: name:",
     );
+  });
+
+  it("exposes zodTool with typed private trace projection", async () => {
+    const tool = zodTool({
+      description: "Project plugin result.",
+      inputSchema: z.object({}),
+      outputSchema: countResultSchema,
+      privateTraceResult: (result) => ({ count: result.count }),
+      execute: async () => ({
+        ok: true as const,
+        status: "success" as const,
+        count: 3,
+        data: { count: 3 },
+      }),
+    });
+
+    const input = tool.prepareArguments?.({});
+    const result = await tool.execute?.(input as Record<string, never>, {});
+
+    expect(tool.privateTraceResult?.(result!)).toEqual({ count: 3 });
   });
 
   it("rejects parser schemas that cannot be represented as JSON Schema", () => {

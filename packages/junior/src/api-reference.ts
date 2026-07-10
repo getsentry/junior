@@ -21,6 +21,7 @@ export {
   definePluginTool,
   pluginRunContextSchema,
   pluginRunTranscriptEntrySchema,
+  zodTool,
 } from "@sentry/junior-plugin-api";
 export { createJuniorReporting } from "./reporting";
 export type {
