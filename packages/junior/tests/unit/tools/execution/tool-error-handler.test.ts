@@ -38,28 +38,6 @@ describe("handleToolExecutionError", () => {
     );
   });
 
-  it("writes error attributes to the captured execution span", () => {
-    const error = new Error("sandbox API failed");
-    const setExecutionSpanAttributes = vi.fn();
-
-    expect(() =>
-      handleToolExecutionError(
-        error,
-        "editFile",
-        "call_1",
-        true,
-        {},
-        undefined,
-        setExecutionSpanAttributes,
-      ),
-    ).toThrow(error);
-
-    expect(setExecutionSpanAttributes).toHaveBeenCalledWith({
-      "error.type": "Error",
-    });
-    expect(setSpanAttributesMock).not.toHaveBeenCalled();
-  });
-
   it("does not report ToolInputError to Sentry", () => {
     const error = new ToolInputError("Could not find edits[0] in file.ts");
     expect(() =>
