@@ -14,6 +14,7 @@
   "dependencies": {
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
+    "@sentry/junior-amplitude": "workspace:*",
     "@sentry/junior-dashboard": "workspace:*",
     "@sentry/junior-datadog": "workspace:*",
     "@sentry/junior-github": "workspace:*",

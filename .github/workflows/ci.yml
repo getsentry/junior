@@ -88,6 +88,7 @@ jobs:
           pnpm --filter @sentry/junior pack --pack-destination artifacts
           pnpm --filter @sentry/junior-plugin-api pack --pack-destination artifacts
           pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-amplitude pack --pack-destination artifacts
           pnpm --filter @sentry/junior-cloudflare pack --pack-destination artifacts
           pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts

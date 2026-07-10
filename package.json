@@ -21,7 +21,7 @@
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
-    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-cloudflare packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
+    "package:lint": "for pkg in packages/junior packages/junior-plugin-api packages/junior-scheduler packages/junior-memory packages/junior-dashboard packages/junior-github packages/junior-agent-browser packages/junior-amplitude packages/junior-cloudflare packages/junior-datadog packages/junior-hex packages/junior-linear packages/junior-maintenance packages/junior-notion packages/junior-sentry packages/junior-vercel; do pnpm exec publint \"$pkg\" || exit $?; done",
     "release:check": "node scripts/check-release-config.mjs",
     "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior-memory build && pnpm --filter @sentry/junior-github build && pnpm --filter @sentry/junior-dashboard build && pnpm --filter @sentry/junior test && pnpm --filter @sentry/junior-memory test && pnpm --filter @sentry/junior-github test && pnpm --filter @sentry/junior-dashboard test",

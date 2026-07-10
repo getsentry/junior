@@ -12,6 +12,9 @@ targets:
     id: "@sentry/junior-agent-browser"
     includeNames: /^sentry-junior-agent-browser-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-amplitude"
+    includeNames: /^sentry-junior-amplitude-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-cloudflare"
     includeNames: /^sentry-junior-cloudflare-\d.*\.tgz$/
   - name: npm

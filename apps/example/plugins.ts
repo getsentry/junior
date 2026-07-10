@@ -9,6 +9,7 @@ process.env.GITHUB_APP_BOT_EMAIL ||=
 
 export const plugins = defineJuniorPlugins([
   "@sentry/junior-agent-browser",
+  "@sentry/junior-amplitude",
   "@sentry/junior-datadog",
   githubPlugin({
     botNameEnv: "GITHUB_APP_BOT_NAME",

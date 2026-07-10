@@ -415,7 +415,7 @@ Install only the plugins you plan to enable. If you are creating `plugins.ts`
 for an existing app, include the default maintenance and memory packages too:
 
 ```bash
-pnpm add @sentry/junior-maintenance @sentry/junior-memory @sentry/junior-agent-browser @sentry/junior-cloudflare @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
+pnpm add @sentry/junior-maintenance @sentry/junior-memory @sentry/junior-agent-browser @sentry/junior-amplitude @sentry/junior-cloudflare @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-scheduler @sentry/junior-sentry @sentry/junior-vercel
 ```
 
 Add them to the plugin set in `plugins.ts`:
@@ -430,6 +430,7 @@ export const plugins = defineJuniorPlugins([
   createMemoryPlugin(),
   "@sentry/junior-maintenance",
   "@sentry/junior-agent-browser",
+  "@sentry/junior-amplitude",
   "@sentry/junior-cloudflare",
   "@sentry/junior-datadog",
   githubPlugin({
