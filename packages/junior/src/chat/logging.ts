@@ -1555,30 +1555,14 @@ function normalizeSpanAttributes(
 }
 
 function setAttributesOnSpan(
-  span: unknown,
+  span: Sentry.Span,
   attributes: Record<string, unknown>,
 ): void {
-  const setAttribute = (
-    span as { setAttribute?: (key: string, value: SpanAttributeValue) => void }
-  ).setAttribute;
-  if (typeof setAttribute !== "function") {
-    return;
-  }
-
   for (const [key, value] of Object.entries(
     normalizeSpanAttributes(attributes),
   )) {
-    setAttribute.call(span, key, value);
+    span.setAttribute(key, value);
   }
-}
-
-function setStatusOnSpan(span: unknown, status: "ok" | "error"): void {
-  const setStatus = (span as { setStatus?: (value: string) => void }).setStatus;
-  if (typeof setStatus !== "function") {
-    return;
-  }
-
-  setStatus.call(span, status === "ok" ? "ok" : "internal_error");
 }
 
 /** Capture an error to Sentry and emit an error log record. */
@@ -1722,8 +1706,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 
 /** Set attributes on the currently active Sentry span. */
 export function setSpanAttributes(attributes: Record<string, unknown>): void {
-  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
-  const span = sentry.getActiveSpan?.();
+  const span = Sentry.getActiveSpan();
   if (!span) {
     return;
   }
@@ -1732,12 +1715,13 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
 
 /** Set the status of the currently active Sentry span. */
 export function setSpanStatus(status: "ok" | "error"): void {
-  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
-  const span = sentry.getActiveSpan?.();
+  const span = Sentry.getActiveSpan();
   if (!span) {
     return;
   }
-  setStatusOnSpan(span, status);
+  span.setStatus(
+    status === "ok" ? { code: 1 } : { code: 2, message: "internal_error" },
+  );
 }
 
 /** Capture an exception within an isolated Sentry scope. */
