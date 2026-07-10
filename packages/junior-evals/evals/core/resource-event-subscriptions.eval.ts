@@ -54,6 +54,37 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
+  it("when a subscribed event is informational and outside the intent scope, stay silent", async ({
+    run,
+  }) => {
+    const result = await run({
+      events: [
+        resourceEventNotification({
+          eventKey: "github-delivery-checks-queued",
+          eventType: "checks.queued",
+          intent:
+            "Let the original Slack thread know when Junior's pull request lands.",
+          label: "GitHub PR getsentry/junior#702",
+          resourceRef: "github:pull_request:getsentry/junior#702",
+          trustedSummary:
+            "GitHub PR getsentry/junior#702 checks are queued and running.",
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant does not post any visible thread reply.",
+          "The assistant treats the event as a routine status update outside the watched intent scope.",
+        ],
+        fail: [
+          "Do not narrate the CI check status back to the thread.",
+          "Do not explain what the queued checks mean.",
+          "Do not post any visible message to the thread for a routine status update.",
+        ],
+      }),
+    });
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
+  });
+
   it("when a subscribed PR is merged, report completion without extra work", async ({
     run,
   }) => {
