@@ -9,12 +9,14 @@ const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
   agentMode: {
     value: "providerRetry" as
       | "providerRetry"
+      | "pendingProviderCall"
       | "cooperativeYield"
       | "steering"
       | "steeringSteerThrows"
       | "toolActivity",
   },
   counters: {
+    abortCalls: 0,
     continueCalls: 0,
     promptCalls: 0,
   },
@@ -86,6 +88,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       tools: unknown[];
     };
     private prepareNextTurn?: () => Promise<unknown> | unknown;
+    private finishPendingRun?: () => void;
     private steeringMessages: unknown[] = [];
     private subscribers: Array<(event: unknown) => unknown> = [];
 
@@ -123,7 +126,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     }
 
     abort() {
-      return undefined;
+      counters.abortCalls += 1;
+      this.finishPendingRun?.();
     }
 
     private recordRunFailure(error: unknown) {
@@ -142,6 +146,12 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     async prompt(message: unknown) {
       counters.promptCalls += 1;
       this.state.messages.push(message);
+      if (agentMode.value === "pendingProviderCall") {
+        await new Promise<void>((resolve) => {
+          this.finishPendingRun = resolve;
+        });
+        return {};
+      }
       if (agentMode.value === "toolActivity") {
         // Pi surfaces subscriber rejections as run failures; a host-only
         // activity append that rejects must not reach this path.
@@ -363,6 +373,7 @@ const TEST_SOURCE = createSlackSource({
 describe("executeAgentRun provider retry", () => {
   beforeEach(async () => {
     agentMode.value = "providerRetry";
+    counters.abortCalls = 0;
     counters.continueCalls = 0;
     counters.promptCalls = 0;
     sessionLogState.failToolExecutionAppend = false;
@@ -426,6 +437,70 @@ describe("executeAgentRun provider retry", () => {
       "toolResult",
     ]);
   }, 20_000);
+
+  it("stops provider retry backoff when the host request is cancelled", async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const controller = new AbortController();
+    const replyPromise = executeAgentRun({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId: "conversation-cancelled-backoff",
+          turnId: "turn-cancelled-backoff",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
+      },
+      policy: { signal: controller.signal },
+    });
+
+    for (let attempt = 0; attempt < 2_000; attempt += 1) {
+      if (setTimeoutSpy.mock.calls.some((call) => call[1] === 2_000)) {
+        break;
+      }
+      await realSleep(5);
+    }
+    expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 2_000)).toBe(
+      true,
+    );
+    controller.abort(new Error("eval test cancelled"));
+
+    const reply = finalReply(await replyPromise);
+    expect(reply.diagnostics.errorMessage).toBe("eval test cancelled");
+    expect(counters.continueCalls).toBe(0);
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("aborts an active provider call when the host request is cancelled", async () => {
+    agentMode.value = "pendingProviderCall";
+    const controller = new AbortController();
+    const replyPromise = executeAgentRun({
+      input: { messageText: "help me" },
+      routing: {
+        destination: TEST_DESTINATION,
+        source: TEST_SOURCE,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: {
+          conversationId: "conversation-cancelled-provider",
+          turnId: "turn-cancelled-provider",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
+      },
+      policy: { signal: controller.signal },
+    });
+
+    await waitForPromptCall(1);
+    controller.abort(new Error("eval test cancelled"));
+
+    const reply = finalReply(await replyPromise);
+    expect(reply.diagnostics.errorMessage).toBe("eval test cancelled");
+    expect(counters.abortCalls).toBe(1);
+    expect(counters.continueCalls).toBe(0);
+  });
 
   it("persists and queues steering messages at the next Pi boundary", async () => {
     agentMode.value = "steering";

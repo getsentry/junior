@@ -33,6 +33,7 @@ import {
   type SandboxFileSystem,
   type SandboxInstance,
 } from "@/chat/sandbox/workspace";
+import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
@@ -131,12 +132,6 @@ function truncateOutput(
     value: `${output.slice(0, maxLength)}\n\n[output truncated: ${truncatedLength} characters removed]`,
     truncated: true,
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function parseKeepAliveMs(): number {

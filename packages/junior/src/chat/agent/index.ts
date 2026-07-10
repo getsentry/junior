@@ -99,12 +99,9 @@ import {
 } from "@/chat/agent/prompt";
 import { wireAgentTools } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
+import { sleep } from "@/chat/sleep";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** Bound post-abort waiting so timeout recovery can persist before the host kills the slice. */
 function waitForAbortSettlement(
@@ -165,9 +162,12 @@ async function executeAgentRunInPrivacyContext(
 ): Promise<AgentRunOutcome> {
   const { input, routing } = request;
   const policy = request.policy ?? {};
+  const signal = policy.signal;
   const state = request.state ?? {};
   const observers = request.observers ?? {};
   const durability = request.durability ?? {};
+
+  signal?.throwIfAborted();
 
   if (!routing.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
@@ -690,6 +690,7 @@ async function executeAgentRunInPrivacyContext(
             run: Promise<unknown>,
           ): Promise<unknown> => {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let removeAbortListener: (() => void) | undefined;
             const timeoutPromise = new Promise<never>((_, reject) => {
               const rejectWithTimeout = () => {
                 runResume.markTimedOut();
@@ -707,9 +708,30 @@ async function executeAgentRunInPrivacyContext(
               }
               timeoutId = setTimeout(rejectWithTimeout, remainingTimeoutMs);
             });
+            const abortPromise = signal
+              ? new Promise<never>((_, reject) => {
+                  const rejectWithAbort = () => {
+                    agent!.abort();
+                    reject(signal.reason);
+                  };
+                  if (signal.aborted) {
+                    rejectWithAbort();
+                    return;
+                  }
+                  signal.addEventListener("abort", rejectWithAbort, {
+                    once: true,
+                  });
+                  removeAbortListener = () =>
+                    signal.removeEventListener("abort", rejectWithAbort);
+                })
+              : undefined;
 
             try {
-              return await Promise.race([run, timeoutPromise]);
+              return await Promise.race(
+                abortPromise
+                  ? [run, timeoutPromise, abortPromise]
+                  : [run, timeoutPromise],
+              );
             } catch (error) {
               if (runResume.timedOut) {
                 logWarn(
@@ -763,6 +785,7 @@ async function executeAgentRunInPrivacyContext(
               if (timeoutId) {
                 clearTimeout(timeoutId);
               }
+              removeAbortListener?.();
             }
           };
 
@@ -772,6 +795,7 @@ async function executeAgentRunInPrivacyContext(
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
             promptResult = await runAgentStep(run);
+            signal?.throwIfAborted();
             if (runResume.cooperativeYieldError) {
               throw runResume.cooperativeYieldError;
             }
@@ -830,7 +854,8 @@ async function executeAgentRunInPrivacyContext(
               {},
               "Retrying transient provider failure",
             );
-            await sleep(providerRetry.delayMs);
+            await sleep(providerRetry.delayMs, signal);
+            signal?.throwIfAborted();
             run = agent!.continue();
           }
         },

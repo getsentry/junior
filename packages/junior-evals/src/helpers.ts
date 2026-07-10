@@ -456,7 +456,7 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 /** Replays Slack events through the real runtime and returns normalized artifacts. */
 export const slackHarness: Harness<SlackEvalInput> = {
   name: "slack",
-  run: async (input) => {
+  run: async (input, { signal }) => {
     const logRecords: EmittedLogRecord[] = [];
     const unregisterLogSink = registerLogRecordSink((record) => {
       logRecords.push(record);
@@ -468,7 +468,7 @@ export const slackHarness: Harness<SlackEvalInput> = {
           events: input.events,
           overrides: input.overrides,
         },
-        { logRecords },
+        { logRecords, signal },
       );
       const result =
         typeof input.taskTimeout === "number" && input.taskTimeout > 0

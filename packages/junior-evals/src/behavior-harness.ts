@@ -300,6 +300,7 @@ export interface EvalScenario {
 
 interface EvalScenarioRunOptions {
   logRecords?: EmittedLogRecord[];
+  signal?: AbortSignal;
 }
 
 export interface EvalResult {
@@ -1686,6 +1687,7 @@ function buildRuntimeServices(
   threadRecordsById: Map<string, EvalThreadRecord>,
   observations: RuntimeObservations,
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
+  signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -1823,6 +1825,7 @@ function buildRuntimeServices(
               ...request,
               policy: {
                 ...request.policy,
+                signal,
                 turnDeadlineAtMs: Math.min(
                   request.policy?.turnDeadlineAtMs ?? Number.POSITIVE_INFINITY,
                   Date.now() + replyTimeoutMs,
@@ -2377,6 +2380,7 @@ export async function runEvalScenario(
       threadRecordsById,
       observations,
       conversationWorkQueue,
+      options.signal,
     );
     const evalAgentRunner = services.replyExecutor?.agentRunner;
     if (!evalAgentRunner) {

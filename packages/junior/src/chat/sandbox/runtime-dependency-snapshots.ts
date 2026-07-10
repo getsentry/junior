@@ -14,6 +14,7 @@ import type {
 } from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getSandboxResources } from "@/chat/sandbox/resources";
+import { sleep } from "@/chat/sleep";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
@@ -73,12 +74,6 @@ interface BuildLockResult {
   snapshotId: string;
   source: "wait_cache" | "callback_cache" | "built";
   waitedForLock: boolean;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function profileCacheKey(profileHash: string): string {

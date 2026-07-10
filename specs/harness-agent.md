@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-06-08
+- Last Edited: 2026-07-10
 
 ## Purpose
 
@@ -45,6 +45,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ### Timeout behavior
 
 - `executeAgentRun(...)` aborts the Pi agent on timeout and waits for the in-flight prompt/continue call to settle before inspecting Pi messages.
+- When the owning host request is cancelled, `executeAgentRun(...)` aborts the active Pi call and any pending provider retry backoff.
 - When resumability context is available (`conversation_id` + `session_id`) and a safe-boundary session record can be persisted, timeout throws `RetryableTurnError("agent_continue")` with session record metadata instead of returning a normal reply payload.
 - When no resumable session record can be persisted, timeout falls back to the standard provider-error reply path.
 - The harness does not decide whether timed-out work should be auto-resumed after user-visible output has started. Higher-level runtime code applies the visibility rules from [Agent Session Resumability Spec](./agent-session-resumability.md).

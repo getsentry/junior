@@ -12,6 +12,7 @@ import {
   type SlackChannelId,
 } from "@/chat/slack/ids";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
+import { sleep } from "@/chat/sleep";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
 // so this module owns direct Web API calls for artifact actions.
@@ -358,10 +359,6 @@ function mapSlackError(error: unknown): SlackActionError {
   }
 
   return new SlackActionError(message, "internal_error", baseOptions);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Retry pauses are bounded so a hostile or huge Retry-After header cannot eat

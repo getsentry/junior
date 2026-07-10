@@ -101,6 +101,8 @@ export interface AgentRunRouting {
 export interface AgentRunPolicy {
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
   turnDeadlineAtMs?: number;
+  /** Cancels provider work when the owning host request is abandoned. */
+  signal?: AbortSignal;
   authorizationFlowMode?: AuthorizationFlowMode;
   configuration?: Record<string, unknown>;
   channelConfiguration?: ChannelConfigurationService;

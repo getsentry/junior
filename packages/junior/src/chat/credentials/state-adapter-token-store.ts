@@ -4,6 +4,7 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
+import { sleep } from "@/chat/sleep";
 import { acquireActiveLock } from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
@@ -18,10 +19,6 @@ function tokenKey(userId: string, provider: string): string {
 
 function refreshLockKey(userId: string, provider: string): string {
   return `${tokenKey(userId, provider)}:refresh`;
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class StateAdapterTokenStore implements UserTokenStore {

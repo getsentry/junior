@@ -1,11 +1,13 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const {
+  executeAgentRunMock,
   handleSubscribedMessageMock,
   observedRuntimeIds,
   originalStateAdapterEnv,
   noopAsync,
   handleNewMentionMock,
+  runtimeState,
 } = vi.hoisted(() => {
   const originalStateAdapterEnv = process.env.JUNIOR_STATE_ADAPTER;
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -17,9 +19,15 @@ const {
   };
 
   return {
+    executeAgentRunMock: vi.fn(async () => ({})),
     observedRuntimeIds,
     originalStateAdapterEnv,
     noopAsync: vi.fn(async () => {}),
+    runtimeState: {
+      agentRunner: undefined as
+        | { run: (request: unknown) => Promise<unknown> }
+        | undefined,
+    },
     handleNewMentionMock: vi.fn(
       async (
         thread: { id: string; post: (value: unknown) => Promise<void> },
@@ -51,13 +59,28 @@ const {
   };
 });
 
+vi.mock("@/chat/agent", () => ({
+  executeAgentRun: executeAgentRunMock,
+}));
+
 vi.mock("@/chat/app/factory", () => ({
-  createSlackRuntime: vi.fn(() => ({
-    handleNewMention: handleNewMentionMock,
-    handleSubscribedMessage: handleSubscribedMessageMock,
-    handleAssistantThreadStarted: noopAsync,
-    handleAssistantContextChanged: noopAsync,
-  })),
+  createSlackRuntime: vi.fn(
+    (options: {
+      services?: {
+        replyExecutor?: {
+          agentRunner?: { run: (request: unknown) => Promise<unknown> };
+        };
+      };
+    }) => {
+      runtimeState.agentRunner = options.services?.replyExecutor?.agentRunner;
+      return {
+        handleNewMention: handleNewMentionMock,
+        handleSubscribedMessage: handleSubscribedMessageMock,
+        handleAssistantThreadStarted: noopAsync,
+        handleAssistantContextChanged: noopAsync,
+      };
+    },
+  ),
 }));
 
 import {
@@ -79,9 +102,24 @@ describe("behavior harness", () => {
     observedRuntimeIds.juniorBaseUrl = undefined;
     observedRuntimeIds.threadId = undefined;
     observedRuntimeIds.messageThreadId = undefined;
+    runtimeState.agentRunner = undefined;
+    executeAgentRunMock.mockClear();
     handleNewMentionMock.mockClear();
     handleSubscribedMessageMock.mockClear();
     noopAsync.mockClear();
+  });
+
+  it("forwards the host signal into the eval agent policy", async () => {
+    const controller = new AbortController();
+
+    await runEvalScenario({ events: [] }, { signal: controller.signal });
+    await runtimeState.agentRunner?.run({ policy: {} });
+
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        policy: expect.objectContaining({ signal: controller.signal }),
+      }),
+    );
   });
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {

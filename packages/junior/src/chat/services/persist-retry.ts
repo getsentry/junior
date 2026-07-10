@@ -5,11 +5,9 @@
  * state-write failure, so both the Slack reply executor and the dispatch
  * runner retry these persists with the same short linear backoff.
  */
-const PERSIST_ATTEMPTS = 3;
+import { sleep } from "@/chat/sleep";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const PERSIST_ATTEMPTS = 3;
 
 /** Retry a delivered-state persist briefly before surfacing the failure. */
 export async function persistWithRetry(

@@ -71,6 +71,7 @@ import {
 } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
+import { sleep } from "@/chat/sleep";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -83,10 +84,6 @@ export interface AgentContinueRunnerOptions {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Persist a delivered continuation reply as the terminal thread state. */

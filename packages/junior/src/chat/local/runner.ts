@@ -47,6 +47,7 @@ import {
   commitMessages,
   loadProjection,
 } from "@/chat/conversations/projection";
+import { sleep } from "@/chat/sleep";
 
 const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
 
@@ -100,10 +101,6 @@ function localReply(reply: AgentRunResult): LocalAgentReply {
   return {
     text: reply.text,
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function nextUserMessageSequence(
