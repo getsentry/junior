@@ -637,7 +637,6 @@ describe("agent continuation Slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
-        piMessages: [],
         messages: [
           {
             id: "resource-event-msg.12",
