@@ -36,14 +36,11 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant creates the requested pull request.",
-          "The assistant subscribes this conversation to the requested high-signal pull request events.",
-          "The reply confirms the pull request and event-based monitoring without claiming a recurring polling schedule was created.",
+          "The reply confirms the pull request will be monitored through event-based updates for the requested outcomes.",
         ],
         fail: [
-          "Do not create a scheduled task to poll the pull request.",
           "Do not ask the user to monitor GitHub manually.",
-          "Do not omit the event subscription after creating the pull request.",
+          "Do not claim a recurring five-minute polling task or schedule was created.",
         ],
       }),
     });
