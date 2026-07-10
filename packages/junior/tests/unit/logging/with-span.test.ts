@@ -43,9 +43,9 @@ describe("withSpan", () => {
       "execute_tool demo",
       "gen_ai.execute_tool",
       {},
-      async (span) => {
+      async (setSpanAttributes) => {
         await Promise.resolve();
-        span.setAttributes({ "gen_ai.tool.call.result": '{"ok":true}' });
+        setSpanAttributes({ "gen_ai.tool.call.result": '{"ok":true}' });
       },
     );
 

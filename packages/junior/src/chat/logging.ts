@@ -1515,9 +1515,7 @@ export function setSentryScopeContext(
 type SpanAttributePrimitive = string | number | boolean;
 type SpanAttributeValue = SpanAttributePrimitive | string[];
 
-export interface SpanHandle {
-  setAttributes(attributes: Record<string, unknown>): void;
-}
+export type SetSpanAttributes = (attributes: Record<string, unknown>) => void;
 
 function toSpanAttributeValue(value: unknown): SpanAttributeValue | undefined {
   if (
@@ -1581,12 +1579,6 @@ function setStatusOnSpan(span: unknown, status: "ok" | "error"): void {
   }
 
   setStatus.call(span, status === "ok" ? "ok" : "internal_error");
-}
-
-function spanHandle(span: unknown): SpanHandle {
-  return {
-    setAttributes: (attributes) => setAttributesOnSpan(span, attributes),
-  };
 }
 
 /** Capture an error to Sentry and emit an error log record. */
@@ -1682,7 +1674,7 @@ export async function withSpan<T>(
   name: string,
   op: string,
   context: LogContext,
-  callback: (span: SpanHandle) => Promise<T>,
+  callback: (setSpanAttributes: SetSpanAttributes) => Promise<T>,
   attributes: Record<string, unknown> = {},
 ): Promise<T> {
   const normalizedAttributes = normalizeSpanAttributes(attributes);
@@ -1701,7 +1693,7 @@ export async function withSpan<T>(
           ...normalizedAttributes,
         },
       },
-      (span) => callback(spanHandle(span)),
+      (span) => callback((attributes) => setAttributesOnSpan(span, attributes)),
     );
   });
 }

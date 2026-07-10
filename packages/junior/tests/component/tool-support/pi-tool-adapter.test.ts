@@ -23,13 +23,8 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
     _name: string,
     _op: string,
     _context: unknown,
-    callback: (span: {
-      setAttributes: typeof setSpanAttributes;
-    }) => Promise<unknown>,
-  ) =>
-    callback({
-      setAttributes: setSpanAttributes,
-    }),
+    callback: (setAttributes: typeof setSpanAttributes) => Promise<unknown>,
+  ) => callback(setSpanAttributes),
 }));
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({

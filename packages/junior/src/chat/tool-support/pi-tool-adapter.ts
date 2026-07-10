@@ -9,7 +9,7 @@ import {
   logWarn,
   withSpan,
   type LogContext,
-  type SpanHandle,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -132,12 +132,18 @@ export function createPiAgentTools(
     normalizedToolCallId: string | undefined;
     params: Record<string, unknown>;
     signal: AbortSignal | undefined;
+    setSpanAttributes: SetSpanAttributes;
     toolDef: AnyToolDefinition;
     toolName: string;
-    span: SpanHandle;
   }) => {
-    const { normalizedToolCallId, params, signal, span, toolDef, toolName } =
-      args;
+    const {
+      normalizedToolCallId,
+      params,
+      signal,
+      setSpanAttributes,
+      toolDef,
+      toolName,
+    } = args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
@@ -211,7 +217,7 @@ export function createPiAgentTools(
             { exposePrivate: hasProjectedPrivateResult },
           );
     if (toolResultAttribute) {
-      span.setAttributes({
+      setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
         ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
         ...toGenAiPayloadTraceAttributes(
@@ -265,7 +271,7 @@ export function createPiAgentTools(
         `execute_tool ${toolName}`,
         "gen_ai.execute_tool",
         spanContext,
-        async (span) => {
+        async (setSpanAttributes) => {
           const parsed = params as Record<string, unknown>;
           let executionToolName = toolName;
           let executionParams = parsed;
@@ -278,7 +284,7 @@ export function createPiAgentTools(
               );
               executionToolName = resolvedCatalogCall.toolName;
               executionParams = resolvedCatalogCall.arguments;
-              span.setAttributes({
+              setSpanAttributes({
                 "app.ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
                 "gen_ai.tool.description":
                   resolvedCatalogCall.definition.description,
@@ -291,7 +297,7 @@ export function createPiAgentTools(
                 normalizedToolCallId,
                 params: catalogCall.arguments,
                 signal,
-                span,
+                setSpanAttributes,
                 toolDef: catalogCall.definition,
                 toolName: catalogCall.toolName,
               });
@@ -302,7 +308,7 @@ export function createPiAgentTools(
               normalizedToolCallId,
               params: parsed,
               signal,
-              span,
+              setSpanAttributes,
               toolDef,
               toolName,
             });
@@ -326,7 +332,7 @@ export function createPiAgentTools(
               shouldTrace,
               spanContext,
               effectiveConversationPrivacy,
-              span,
+              setSpanAttributes,
             );
           }
         },

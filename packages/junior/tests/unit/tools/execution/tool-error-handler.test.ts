@@ -40,7 +40,7 @@ describe("handleToolExecutionError", () => {
 
   it("writes error attributes to the captured execution span", () => {
     const error = new Error("sandbox API failed");
-    const span = { setAttributes: vi.fn() };
+    const setExecutionSpanAttributes = vi.fn();
 
     expect(() =>
       handleToolExecutionError(
@@ -50,11 +50,13 @@ describe("handleToolExecutionError", () => {
         true,
         {},
         undefined,
-        span,
+        setExecutionSpanAttributes,
       ),
     ).toThrow(error);
 
-    expect(span.setAttributes).toHaveBeenCalledWith({ "error.type": "Error" });
+    expect(setExecutionSpanAttributes).toHaveBeenCalledWith({
+      "error.type": "Error",
+    });
     expect(setSpanAttributesMock).not.toHaveBeenCalled();
   });
 

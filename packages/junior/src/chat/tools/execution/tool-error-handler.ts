@@ -4,7 +4,7 @@ import {
   logWarn,
   setSpanAttributes,
   type LogContext,
-  type SpanHandle,
+  type SetSpanAttributes,
 } from "@/chat/logging";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -56,7 +56,7 @@ export function handleToolExecutionError(
   shouldTrace: boolean,
   traceContext: LogContext,
   conversationPrivacy?: ConversationPrivacy,
-  span?: SpanHandle,
+  setExecutionSpanAttributes?: SetSpanAttributes,
 ): never {
   const errorType = getToolErrorType(error);
   const errorMessage = getMcpAwareTelemetryMessage(error, conversationPrivacy);
@@ -66,8 +66,8 @@ export function handleToolExecutionError(
       ? { "app.credential.provider": error.provider }
       : {}),
   };
-  if (span) {
-    span.setAttributes(errorAttributes);
+  if (setExecutionSpanAttributes) {
+    setExecutionSpanAttributes(errorAttributes);
   } else {
     setSpanAttributes(errorAttributes);
   }
