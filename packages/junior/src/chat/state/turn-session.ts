@@ -643,10 +643,10 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...((existingRecord?.modelId ?? args.modelId)
         ? { modelId: existingRecord?.modelId ?? args.modelId }
         : {}),
-      ...((existingRecord?.reasoningLevel ?? args.reasoningLevel)
+      ...((args.reasoningLevel ?? existingRecord?.reasoningLevel)
         ? {
             reasoningLevel:
-              existingRecord?.reasoningLevel ?? args.reasoningLevel,
+              args.reasoningLevel ?? existingRecord?.reasoningLevel,
           }
         : {}),
       ...((args.actor ?? existingRecord?.actor)
@@ -736,8 +736,8 @@ export async function recordAgentTurnSessionSummary(args: {
     ...((existing?.modelId ?? args.modelId)
       ? { modelId: existing?.modelId ?? args.modelId }
       : {}),
-    ...((existing?.reasoningLevel ?? args.reasoningLevel)
-      ? { reasoningLevel: existing?.reasoningLevel ?? args.reasoningLevel }
+    ...((args.reasoningLevel ?? existing?.reasoningLevel)
+      ? { reasoningLevel: args.reasoningLevel ?? existing?.reasoningLevel }
       : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...((args.surface ?? existing?.surface)
