@@ -16,6 +16,7 @@ import type {
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { getActiveSpan } from "@/chat/sentry";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
@@ -1706,7 +1707,7 @@ export function getTracePropagationHeaders(): TracePropagationHeaders {
 
 /** Set attributes on the currently active Sentry span. */
 export function setSpanAttributes(attributes: Record<string, unknown>): void {
-  const span = Sentry.getActiveSpan();
+  const span = getActiveSpan();
   if (!span) {
     return;
   }
@@ -1715,7 +1716,7 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
 
 /** Set the status of the currently active Sentry span. */
 export function setSpanStatus(status: "ok" | "error"): void {
-  const span = Sentry.getActiveSpan();
+  const span = getActiveSpan();
   if (!span) {
     return;
   }

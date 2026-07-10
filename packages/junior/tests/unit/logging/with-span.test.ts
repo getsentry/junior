@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const { activeSpan, getTraceData, startSpan } = vi.hoisted(() => ({
   activeSpan: {
     setAttribute: vi.fn(),
+    setStatus: vi.fn(),
   },
   getTraceData: vi.fn(),
   startSpan: vi.fn(
@@ -84,6 +85,17 @@ describe("withSpan", () => {
       "gen_ai.response.finish_reasons",
       ["tool_use"],
     );
+  });
+
+  it("sets status on the active Sentry span", async () => {
+    const { setSpanStatus } = await import("@/chat/logging");
+
+    setSpanStatus("error");
+
+    expect(activeSpan.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: "internal_error",
+    });
   });
 
   it("extracts Sentry trace propagation headers", async () => {
