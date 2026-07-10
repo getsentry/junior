@@ -137,6 +137,7 @@ Committing and pushing code uses more than one GitHub surface:
 - The smart-HTTP classifier does not distinguish Junior-managed branches or independently detect force updates or ref deletion. Use GitHub branch protection and limit the App installation to repositories where Junior may push.
 - REST Git database and ref writes are denied by the current write allowlist. Use Git smart HTTP (`git push`) for branch updates instead.
 - Opening the PR after the branch exists is separate: `github_createPullRequest` needs pull-request write permission, but it should not create or push commits itself.
+- Release create and release-asset upload (`uploads.github.com`) are allowlisted under the same `Contents: write` permission, scoped to the target repository. This backs the image-attachment technique used by the `github-issues` and `github-code` skills. Release edit/delete and asset delete/overwrite are not enabled; the workflow is append-only by policy.
 
 Fork creation is not part of the default PR path and is denied by the current write allowlist. Do not grant `Administration: write` for routine PR creation; push a branch explicitly and create the PR with `github_createPullRequest` instead.
 

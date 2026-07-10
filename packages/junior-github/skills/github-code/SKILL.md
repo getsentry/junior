@@ -12,6 +12,7 @@ Use `gh` and `git` for repository checkout, source investigation, code changes, 
 | Need                                | Load                                                                                   |
 | ----------------------------------- | -------------------------------------------------------------------------------------- |
 | Command syntax, permissions, config | [references/api-surface.md](references/api-surface.md)                                 |
+| Embedding an image in a PR/comment  | [references/image-attachments.md](references/image-attachments.md)                     |
 | Failed commands, permission errors  | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Core rules
@@ -162,6 +163,8 @@ Before finishing, reconcile any plan or checklist stated earlier — mark items 
 **PR inspection** — read-only `gh pr` and `gh api` commands. Query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{n}/comments` and `.../reviews`).
 
 **PR mutation** — push before create. Use only the allowlisted REST endpoints in the API reference. Merge, close-with-delete, REST ref mutation, and admin operations are unsupported. Git smart HTTP does not independently prevent force updates or ref deletion; rely on GitHub rulesets and do not request destructive pushes.
+
+**Embedding an image in a PR body/comment** — see [references/image-attachments.md](references/image-attachments.md) for the GitHub Release asset technique.
 
 **Workflow dispatch** — `gh workflow run` is supported for workflows that declare `workflow_dispatch`. Workflow reruns, cancellations, and other Actions mutations remain unsupported.
 

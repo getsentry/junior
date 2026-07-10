@@ -14,6 +14,7 @@ Use only for GitHub issues. For pull requests, branches, pushes, or PR creation 
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Any operation                        | [references/api-surface.md](references/api-surface.md)                                                                                                                                                                                                                                                 |
 | `issue create`, `issue body rewrite` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific guide ([issue-bug.md](references/issue-bug.md), [issue-feature.md](references/issue-feature.md), [issue-task.md](references/issue-task.md)), and [references/research-rules.md](references/research-rules.md) |
+| Embedding an image from the thread   | [references/image-attachments.md](references/image-attachments.md)                                                                                                                                                                                                                                     |
 | On failure                           | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                                                                                                                                 |
 
 ## Workflow
@@ -64,7 +65,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 - The runtime adds the verified `Requested by` block. Do not add or rewrite requester attribution in model-authored body text.
 - If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
-- Attach screenshots from the thread as image links when present.
+- Attach screenshots from the thread as image links when present, using [references/image-attachments.md](references/image-attachments.md) to embed them so they render inline for anyone with repo access.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
 ### 4. Verify draft

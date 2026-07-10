@@ -82,6 +82,7 @@ type GitHubGrantName =
   | "installation-pr-branch-write"
   | "installation-pull-requests-write"
   | "installation-read"
+  | "installation-releases-write"
   | "user-read"
   | "user-write";
 type GitHubGrantReason =
@@ -97,6 +98,7 @@ type GitHubGrantReason =
   | "github.pull-create"
   | "github.pull-review-write"
   | "github.pull-requests-write"
+  | "github.releases-write"
   | "github.user-read"
   | "github.workflows-write";
 type GitHubGrant = PluginGrant & {
@@ -189,6 +191,11 @@ const PULL_REQUESTS_WRITE_REQUIREMENTS = [
 const PULL_REVIEW_WRITE_REQUIREMENTS = [
   ...PULL_REQUESTS_WRITE_REQUIREMENTS,
   "requesting GitHub user permission to review the pull request",
+];
+// GitHub Apps expose release create/read/update and asset upload/delete under
+// the same "Contents" permission used for repository file contents.
+const RELEASES_WRITE_REQUIREMENTS = [
+  "GitHub App Contents: write on the target repository",
 ];
 
 class GitHubUserRefreshRejectedError extends Error {
@@ -770,7 +777,11 @@ function createCredentialLease(
       ...(input.account ? { account: input.account } : {}),
       ...(input.authorization ? { authorization: input.authorization } : {}),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
-      headerTransforms: ["api.github.com", "github.com"].map((domain) => ({
+      headerTransforms: [
+        "api.github.com",
+        "github.com",
+        "uploads.github.com",
+      ].map((domain) => ({
         domain,
         headers: {
           Authorization: authorizationFor(domain, input.token),
@@ -855,7 +866,10 @@ function githubRepositoryFromUrl(
   upstreamUrl: URL,
 ): GitHubRepository | undefined {
   const segments = upstreamUrl.pathname.split("/").filter(Boolean);
-  if (isGitHubApiUrl(upstreamUrl) && segments[0]?.toLowerCase() === "repos") {
+  if (
+    (isGitHubApiUrl(upstreamUrl) || isGitHubUploadsUrl(upstreamUrl)) &&
+    segments[0]?.toLowerCase() === "repos"
+  ) {
     const owner = segments[1]
       ? decodeGitHubPathSegment(segments[1])
       : undefined;
@@ -1211,6 +1225,44 @@ function isGitHubApiUrl(upstreamUrl: URL): boolean {
   return upstreamUrl.hostname.toLowerCase() === "api.github.com";
 }
 
+// GitHub's release-asset upload endpoint (the `upload_url` returned by the
+// create-release response) lives on a dedicated host, not api.github.com.
+function isGitHubUploadsUrl(upstreamUrl: URL): boolean {
+  return upstreamUrl.hostname.toLowerCase() === "uploads.github.com";
+}
+
+// Release ids in GitHub's REST API are always numeric.
+function isGitHubReleaseCreateRequest(
+  method: string,
+  upstreamUrl: URL,
+): boolean {
+  return (
+    method === "POST" &&
+    isGitHubApiUrl(upstreamUrl) &&
+    /^\/repos\/[^/]+\/[^/]+\/releases$/.test(upstreamUrl.pathname)
+  );
+}
+
+// Intentionally does not allow asset delete, release edit, or release
+// delete: the image-attachment workflow this backs is append-only (unique
+// filenames, never `--clobber`), so those stay denied by the default
+// fallthrough. `gh release create TAG --latest=false` (no files argument)
+// followed by a separate `gh release upload` is the supported sequence;
+// passing files directly to `gh release create` additionally PATCHes the
+// release to publish it, which remains denied.
+function isGitHubReleaseAssetUploadRequest(
+  method: string,
+  upstreamUrl: URL,
+): boolean {
+  return (
+    method === "POST" &&
+    isGitHubUploadsUrl(upstreamUrl) &&
+    /^\/repos\/[^/]+\/[^/]+\/releases\/[0-9]+\/assets$/.test(
+      upstreamUrl.pathname,
+    )
+  );
+}
+
 function githubUserReadReason(
   method: string,
   upstreamUrl: URL,
@@ -1381,8 +1433,14 @@ function githubApiWriteReason(
   upstreamUrl: URL,
 ): GitHubGrantReason | undefined {
   const pathname = upstreamUrl.pathname.toLowerCase();
+  if (isGitHubReleaseAssetUploadRequest(method, upstreamUrl)) {
+    return "github.releases-write";
+  }
   if (!isGitHubApiUrl(upstreamUrl)) {
     return undefined;
+  }
+  if (isGitHubReleaseCreateRequest(method, upstreamUrl)) {
+    return "github.releases-write";
   }
   if (
     method === "POST" &&
@@ -1601,6 +1659,9 @@ function grantRequirements(reason: GitHubGrantReason): string[] | undefined {
   if (reason === "github.pull-review-write") {
     return PULL_REVIEW_WRITE_REQUIREMENTS;
   }
+  if (reason === "github.releases-write") {
+    return RELEASES_WRITE_REQUIREMENTS;
+  }
   if (
     reason === "github.pull-create" ||
     reason === "github.pull-requests-write"
@@ -1670,6 +1731,14 @@ function installationGrantForWrite(
   }
   if (reason === "github.pull-review-write") {
     return grantForAccess("write", reason, "user-write", leaseScope);
+  }
+  if (reason === "github.releases-write") {
+    return grantForAccess(
+      "write",
+      reason,
+      "installation-releases-write",
+      leaseScope,
+    );
   }
   return undefined;
 }
@@ -1821,7 +1890,7 @@ export function githubPlugin(
         "GitHub issue, pull request, and repository workflows via GitHub App",
       ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
-      domains: ["api.github.com", "github.com"],
+      domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},

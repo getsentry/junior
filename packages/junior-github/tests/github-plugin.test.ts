@@ -1567,6 +1567,91 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("github.contents-write is not enabled");
   });
 
+  it("grants scoped release create and asset upload writes for the image-attachment workflow", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/releases",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-releases-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.releases-write",
+      requirements: expect.arrayContaining([
+        "GitHub App Contents: write on the target repository",
+      ]),
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://uploads.github.com/repos/getsentry/junior/releases/123/assets?name=screenshot-a1b2c3d4.png",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-releases-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.releases-write",
+    });
+  });
+
+  it("denies release-shaped requests on other hosts, non-numeric ids, and release/asset mutation", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://evil.example.com/repos/getsentry/junior/releases/123/assets?name=x.png",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://uploads.github.com/repos/getsentry/junior/releases/not-a-number/assets?name=x.png",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        url: "https://api.github.com/repos/getsentry/junior/releases/123",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/releases/123",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+    await expect(
+      grantForEgress({
+        method: "DELETE",
+        url: "https://api.github.com/repos/getsentry/junior/releases/assets/456",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/releases/generate-notes",
+      }),
+    ).rejects.toThrow("not an explicitly allowed Junior operation");
+  });
+
+  it("scopes release writes to the repository named in the request URL, not an unrelated repository", async () => {
+    const createGrant = await grantForEgress({
+      method: "POST",
+      url: "https://api.github.com/repos/getsentry/junior/releases",
+    });
+    const uploadGrant = await grantForEgress({
+      method: "POST",
+      url: "https://uploads.github.com/repos/getsentry/other-repo/releases/123/assets?name=x.png",
+    });
+    expect(createGrant).toMatchObject({
+      leaseScope: "repository:getsentry/junior",
+    });
+    expect(uploadGrant).toMatchObject({
+      leaseScope: "repository:getsentry/other-repo",
+    });
+    expect(createGrant?.leaseScope).not.toEqual(uploadGrant?.leaseScope);
+  });
+
   it("separates pull request lifecycle writes from human review identity", async () => {
     await expect(
       grantForEgress({
@@ -1764,6 +1849,10 @@ Conversation: \`local:test:old-conversation\`
           {
             domain: "github.com",
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer installation-token" },
+          },
         ],
       },
     });
@@ -1914,6 +2003,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer user-token" },
+          },
         ],
       },
     });
@@ -2009,6 +2102,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer delegated-token" },
+          },
         ],
       },
     });
@@ -2096,6 +2193,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer fresh-token" },
+          },
         ],
       },
     });
@@ -2170,6 +2271,10 @@ Conversation: \`local:test:old-conversation\`
               headers: {
                 Authorization: expect.stringMatching(/^Basic /),
               },
+            },
+            {
+              domain: "uploads.github.com",
+              headers: { Authorization: "Bearer fresh-token" },
             },
           ],
         },
