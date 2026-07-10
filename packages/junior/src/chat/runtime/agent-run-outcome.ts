@@ -1,4 +1,5 @@
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 /**
  * How an agent run ended. `completed` carries the terminal result (success or
@@ -10,8 +11,16 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
  */
 export type AgentRunOutcome =
   | { status: "completed"; result: AgentRunResult }
-  | { status: "suspended"; resumeVersion: number }
-  | { status: "awaiting_auth"; providerDisplayName: string };
+  | {
+      status: "suspended";
+      resumeVersion: number;
+      usage?: AgentTurnUsage;
+    }
+  | {
+      status: "awaiting_auth";
+      providerDisplayName: string;
+      usage?: AgentTurnUsage;
+    };
 
 /** Wrap a terminal result (successful or failed per its diagnostics) as an outcome. */
 export function completedAgentRun(result: AgentRunResult): AgentRunOutcome {

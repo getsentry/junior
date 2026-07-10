@@ -17,7 +17,15 @@ describe("extractGenAiUsageSummary", () => {
         output: 45,
         cacheRead: 900,
         cacheWrite: 60,
+        reasoning: 12,
         totalTokens: 1125,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0.0003,
+          cacheWrite: 0.0004,
+          total: 0.0037,
+        },
       },
     };
 
@@ -26,7 +34,15 @@ describe("extractGenAiUsageSummary", () => {
       outputTokens: 45,
       cachedInputTokens: 900,
       cacheCreationTokens: 60,
+      reasoningTokens: 12,
       totalTokens: 1125,
+      cost: {
+        input: 0.001,
+        output: 0.002,
+        cacheRead: 0.0003,
+        cacheWrite: 0.0004,
+        total: 0.0037,
+      },
     });
   });
 
@@ -107,6 +123,14 @@ describe("extractGenAiUsageSummary", () => {
         outputTokens: 2,
         cachedInputTokens: 4,
         cacheCreationTokens: 1,
+        reasoningTokens: 1,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0.0003,
+          cacheWrite: 0.0004,
+          total: 0.0037,
+        },
       }),
     ).toEqual({
       "gen_ai.usage.input_tokens": 15,
@@ -114,6 +138,12 @@ describe("extractGenAiUsageSummary", () => {
       "gen_ai.usage.total_tokens": 17,
       "gen_ai.usage.input_tokens.cached": 4,
       "gen_ai.usage.input_tokens.cache_write": 1,
+      "app.ai.reasoning_tokens": 1,
+      "app.ai.cost.input_usd": 0.001,
+      "app.ai.cost.output_usd": 0.002,
+      "app.ai.cost.cache_read_usd": 0.0003,
+      "app.ai.cost.cache_write_usd": 0.0004,
+      "app.ai.cost.total_usd": 0.0037,
     });
   });
 });

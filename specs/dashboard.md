@@ -260,6 +260,8 @@ Reporting data may include:
 - conversation and agent-run summaries when provided by an in-process,
   read-only Junior reporting interface
 - aggregate conversation stats from a dedicated reporting endpoint
+- Pi-reported token usage, reasoning tokens, and estimated USD model cost on
+  run summaries and aggregates when turn-session metadata is available
 - plugin operational summaries made of bounded string metrics and record sets
 - expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
@@ -309,10 +311,13 @@ conversation-detail and stats reports. `truncated` means the report reached the
 sample cap and should be treated as bounded, even when the backing index cannot
 prove an additional record exists. A stats-reporting failure must not make the
 core dashboard health, conversation feed, or plugin inventory unavailable.
-Stats reports are conversation-index aggregates. They count conversations,
-latest status, actor, and location from durable conversation records.
-Duration and token totals stay on feed/detail run reports until the SQL model
-has a durable run-summary table.
+Stats reports are bounded by the durable conversation index and enrich those
+conversations with expiring turn-session summaries when available. They count
+conversations and fall back to durable status, actor, and location metadata.
+Duration, token, reasoning-token, and estimated USD cost totals are included
+when turn-session summaries are available and may be omitted after those
+summaries expire. Estimated cost comes from Pi model pricing metadata and is not
+a provider billing record.
 
 People list and profile APIs must read durable actor identities from the
 SQL conversation index with Drizzle. They must not use `JuniorReporting`,

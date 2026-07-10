@@ -1,4 +1,5 @@
 import {
+  formatCostTotal,
   formatDurationTotal,
   formatUsageTotal,
   slackLocationLabel,
@@ -13,12 +14,17 @@ export function ConversationRowStats(props: {
   const tokens = formatUsageTotal(
     props.conversation.runs.map((turn) => turn.cumulativeUsage),
   );
+  const cost = formatCostTotal(
+    props.conversation.runs.map((turn) => turn.cumulativeUsage),
+  );
   const runtime = formatDurationTotal(
     props.conversation.runs.map((turn) => turn.cumulativeDurationMs),
   );
-  const primaryStats = [tokens, runtime ? `${runtime} runtime` : ""].filter(
-    Boolean,
-  );
+  const primaryStats = [
+    tokens,
+    cost,
+    runtime ? `${runtime} runtime` : "",
+  ].filter(Boolean);
   const secondaryStats = [
     props.timeLabel,
     slackLocationLabel(props.conversation, { includeId: false }),

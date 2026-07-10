@@ -11,6 +11,7 @@ import {
   conversationSourceOptions,
   filterConversationList,
   formatConversationDuration,
+  formatCostTotal,
   formatDurationTotal,
   formatDurationTick,
   formatTurnDuration,
@@ -19,6 +20,7 @@ import {
   actorLabel,
   slackLocationLabel,
   summarizeMessages,
+  summarizeCost,
   summarizeToolCalls,
   summarizeUsage,
   turnMessageCount,
@@ -47,6 +49,28 @@ describe("dashboard token formatting", () => {
         },
       ]),
     ).toBe("205 tokens");
+  });
+
+  it("sums and formats estimated conversation cost", () => {
+    const usages = [
+      { cost: { input: 0.001, output: 0.002, total: 0.003 } },
+      {
+        cost: {
+          input: 0.004,
+          output: 0.005,
+          cacheRead: 0.0001,
+          total: 0.0091,
+        },
+      },
+    ];
+
+    expect(summarizeCost(usages)).toEqual({
+      input: 0.005,
+      output: 0.007,
+      cacheRead: 0.0001,
+      total: 0.0121,
+    });
+    expect(formatCostTotal(usages)).toBe("$0.0121");
   });
 
   it("sums turn runtime", () => {
@@ -142,13 +166,19 @@ describe("dashboard token formatting", () => {
     });
     expect(
       summarizeUsage([
-        { cachedInputTokens: 2, inputTokens: 3, outputTokens: 5 },
+        {
+          cachedInputTokens: 2,
+          inputTokens: 3,
+          outputTokens: 5,
+          reasoningTokens: 4,
+        },
         { totalTokens: 7 },
       ]),
     ).toMatchObject({
       cachedInputTokens: 2,
       inputTokens: 3,
       outputTokens: 5,
+      reasoningTokens: 4,
       providerTotalTokens: 7,
       totalTokens: 17,
     });

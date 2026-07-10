@@ -23,6 +23,7 @@ import {
   formatMs,
   recentConversationRange,
   slackLocationLabel,
+  summarizeCost,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -39,6 +40,7 @@ import { MetricValue } from "./Metric";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import {
+  CostMetric,
   DurationMetric,
   MessagesMetric,
   TokenMetric,
@@ -367,6 +369,11 @@ function chartTooltipRows(
       (turn) => turn.cumulativeUsage,
     ),
   );
+  const costSummary = summarizeCost(
+    (detail?.runs ?? point.conversation?.runs ?? []).map(
+      (turn) => turn.cumulativeUsage,
+    ),
+  );
   const messageSummary = detail ? summarizeMessages(detail.runs) : undefined;
   const toolSummary = detail ? summarizeToolCalls(detail.runs) : undefined;
   const rows: Array<[string, ReactNode] | null> = [
@@ -381,6 +388,9 @@ function chartTooltipRows(
     ],
     tokenSummary
       ? ["tokens", <TokenMetric align="right" summary={tokenSummary} />]
+      : null,
+    costSummary
+      ? ["cost", <CostMetric align="right" summary={costSummary} />]
       : null,
     [
       "messages",

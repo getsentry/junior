@@ -548,6 +548,13 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_scheduler",
       cumulativeDurationMs: 2_000,
+      cumulativeUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 5,
+        totalTokens: 120,
+        cost: { input: 0.001, output: 0.002, total: 0.003 },
+      },
       actor: slackActor("Scheduler"),
       sessionId: "dispatch:scheduler",
       sliceId: 1,
@@ -557,7 +564,13 @@ describe("dashboard reporting", () => {
     await recordAgentTurnSessionSummary({
       conversationId: "agent-dispatch:dispatch_api",
       cumulativeDurationMs: 1_000,
-      actor: slackActor("API"),
+      cumulativeUsage: {
+        inputTokens: 50,
+        outputTokens: 10,
+        totalTokens: 60,
+        cost: { input: 0.0005, output: 0.001, total: 0.0015 },
+      },
+      actor: slackActor("API", "U2"),
       sessionId: "dispatch:api",
       sliceId: 1,
       state: "completed",
@@ -566,10 +579,137 @@ describe("dashboard reporting", () => {
 
     const stats = await createJuniorReporting().getConversationStats();
 
-    expect(stats.locations.map((item) => item.label)).toEqual([
-      "API",
-      "Scheduler",
-    ]);
+    expect(stats).toMatchObject({ costUsd: 0.0045, tokens: 180 });
+    expect(stats.actors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ costUsd: 0.0015, label: "API", tokens: 60 }),
+        expect.objectContaining({
+          costUsd: 0.003,
+          label: "Scheduler",
+          tokens: 120,
+        }),
+      ]),
+    );
+    expect(stats.locations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ costUsd: 0.0015, label: "API", tokens: 60 }),
+        expect.objectContaining({
+          costUsd: 0.003,
+          label: "Scheduler",
+          tokens: 120,
+        }),
+      ]),
+    );
+  });
+
+  it("sums independent run usage within one conversation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const { createJuniorReporting } = await import("@/reporting");
+
+    await recordAgentTurnSessionSummary({
+      conversationId: "agent-dispatch:multi-run",
+      cumulativeDurationMs: 2_000,
+      cumulativeUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cost: { input: 0.001, output: 0.002, total: 0.003 },
+      },
+      actor: slackActor("API"),
+      sessionId: "dispatch:first",
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId: "agent-dispatch:multi-run",
+      cumulativeDurationMs: 1_000,
+      cumulativeUsage: {
+        inputTokens: 50,
+        outputTokens: 10,
+        cost: { input: 0.0005, output: 0.001, total: 0.0015 },
+      },
+      actor: slackActor("API"),
+      sessionId: "dispatch:second",
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
+    });
+
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats).toMatchObject({
+      conversations: 1,
+      costUsd: 0.0045,
+      durationMs: 3_000,
+      runs: 2,
+      tokens: 180,
+    });
+  });
+
+  it("uses the complete conversation index when the global index is partial", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
+    const {
+      listAgentTurnSessionSummariesForConversation,
+      recordAgentTurnSessionSummary,
+    } = await import("@/chat/state/turn-session");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { createJuniorReporting } = await import("@/reporting");
+    const conversationId = "agent-dispatch:partial-global-index";
+
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      cumulativeDurationMs: 2_000,
+      cumulativeUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cost: { total: 0.003 },
+      },
+      sessionId: "dispatch:first",
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      cumulativeDurationMs: 1_000,
+      cumulativeUsage: {
+        inputTokens: 50,
+        outputTokens: 10,
+        cost: { total: 0.0015 },
+      },
+      sessionId: "dispatch:second",
+      sliceId: 1,
+      state: "completed",
+      surface: "api",
+    });
+
+    const summaries =
+      await listAgentTurnSessionSummariesForConversation(conversationId);
+    const newestSummary = summaries.find(
+      (summary) => summary.sessionId === "dispatch:second",
+    );
+    expect(newestSummary).toBeDefined();
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.delete("junior:agent_turn_session:index");
+    await stateAdapter.appendToList(
+      "junior:agent_turn_session:index",
+      newestSummary,
+      { maxLength: 5_000, ttlMs: 60_000 },
+    );
+
+    const stats = await createJuniorReporting().getConversationStats();
+
+    expect(stats).toMatchObject({
+      conversations: 1,
+      costUsd: 0.0045,
+      durationMs: 3_000,
+      runs: 2,
+      tokens: 180,
+    });
   });
 
   it("reports failed conversation stats from SQL conversation records", async () => {

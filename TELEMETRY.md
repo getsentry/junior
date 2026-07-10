@@ -139,8 +139,11 @@ Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons`, `app.ai.outcome`,
 `app.ai.reasoning_effort`, `gen_ai.usage.input_tokens`,
-`gen_ai.usage.output_tokens`, `gen_ai.usage.cache_read.input_tokens`,
-`gen_ai.usage.cache_creation.input_tokens`
+`gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
+`gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
+`app.ai.cost.input_usd`, `app.ai.cost.output_usd`,
+`app.ai.cost.cache_read_usd`, `app.ai.cost.cache_write_usd`,
+`app.ai.cost.total_usd`
 
 ### Tools, MCP, And Sandbox
 

@@ -14,6 +14,7 @@ import {
   formatMs,
   formatTurnDuration,
   actorLabel,
+  summarizeCost,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -40,6 +41,7 @@ import {
 } from "./TranscriptHeadingRow";
 import { MetricList, type MetricListItem } from "./Metric";
 import {
+  CostMetric,
   DurationMetric,
   MessagesMetric,
   TokenMetric,
@@ -580,6 +582,7 @@ function turnMessageSummary(turn: ConversationTurn) {
 function turnMeta(turn: ConversationTurn): MetricListItem[] {
   const duration = formatTurnDuration(turn);
   const tokenSummary = summarizeUsage([turn.cumulativeUsage]);
+  const costSummary = summarizeCost([turn.cumulativeUsage]);
   const toolSummary = summarizeToolCalls([turn]);
   const messageSummary = turnMessageSummary(turn);
   const items: Array<MetricListItem | undefined> = [
@@ -599,6 +602,12 @@ function turnMeta(turn: ConversationTurn): MetricListItem[] {
       ? {
           content: <TokenMetric summary={tokenSummary} />,
           key: "tokens",
+        }
+      : undefined,
+    costSummary
+      ? {
+          content: <CostMetric summary={costSummary} />,
+          key: "cost",
         }
       : undefined,
     messageSummary

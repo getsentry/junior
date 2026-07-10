@@ -1,3 +1,4 @@
+import { listAgentTurnSessionSummariesForConversations } from "@/chat/state/turn-session";
 import { conversationStore, type ConversationReaderOptions } from "./context";
 import {
   newestRun,
@@ -5,7 +6,10 @@ import {
   slackStatsLocationLabel,
   surfaceFallbackLabel,
 } from "./shared";
-import { sessionReportFromConversation } from "./summaries";
+import {
+  sessionReportFromConversation,
+  sessionReportFromTurnSummary,
+} from "./summaries";
 import type {
   ActorIdentity,
   ConversationStatsItem,
@@ -42,10 +46,39 @@ function usageTokenTotal(
 }
 
 type RunContribution = {
+  costUsd?: number;
   durationMs: number;
   tokens?: number;
   run: ConversationSummaryReport;
 };
+
+function usageCostTotal(
+  usage: ConversationUsage | undefined,
+): number | undefined {
+  if (!usage?.cost) return undefined;
+  if (
+    typeof usage.cost.total === "number" &&
+    Number.isFinite(usage.cost.total)
+  ) {
+    return Math.max(0, usage.cost.total);
+  }
+  return [
+    usage.cost.input,
+    usage.cost.output,
+    usage.cost.cacheRead,
+    usage.cost.cacheWrite,
+  ].reduce<number | undefined>((sum, value) => {
+    const amount =
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, value)
+        : undefined;
+    return amount === undefined ? sum : (sum ?? 0) + amount;
+  }, undefined);
+}
+
+function addUsd(left: number | undefined, right: number): number {
+  return Math.round(((left ?? 0) + right) * 1e12) / 1e12;
+}
 
 function runDurationSnapshot(
   run: ConversationSummaryReport,
@@ -59,24 +92,19 @@ function runDurationSnapshot(
 function runContributions(
   runs: ConversationSummaryReport[],
 ): RunContribution[] {
-  let previousDuration = 0;
-  let previousTokens = 0;
   return runs.map((run) => {
     const duration = runDurationSnapshot(run);
     const tokens = usageTokenTotal(run.cumulativeUsage);
+    const costUsd = usageCostTotal(run.cumulativeUsage);
     const contribution: RunContribution = {
-      durationMs:
-        duration === undefined ? 0 : Math.max(0, duration - previousDuration),
+      durationMs: duration ?? 0,
       run,
     };
     if (tokens !== undefined) {
-      contribution.tokens = Math.max(0, tokens - previousTokens);
+      contribution.tokens = tokens;
     }
-    if (duration !== undefined) {
-      previousDuration = Math.max(previousDuration, duration);
-    }
-    if (tokens !== undefined) {
-      previousTokens = Math.max(previousTokens, tokens);
+    if (costUsd !== undefined) {
+      contribution.costUsd = costUsd;
     }
     return contribution;
   });
@@ -101,6 +129,18 @@ function contributionTokenTotal(
 ): number | undefined {
   return contributions.reduce(
     (sum, contribution) => addTokenTotal(sum, contribution.tokens),
+    undefined as number | undefined,
+  );
+}
+
+function contributionCostTotal(
+  contributions: RunContribution[],
+): number | undefined {
+  return contributions.reduce(
+    (sum, contribution) =>
+      contribution.costUsd === undefined
+        ? sum
+        : addUsd(sum, contribution.costUsd),
     undefined as number | undefined,
   );
 }
@@ -134,6 +174,15 @@ function addItemTokens(
 ): void {
   if (tokens !== undefined) {
     item.tokens = (item.tokens ?? 0) + tokens;
+  }
+}
+
+function addItemCost(
+  item: ConversationStatsItem,
+  costUsd: number | undefined,
+): void {
+  if (costUsd !== undefined) {
+    item.costUsd = addUsd(item.costUsd, costUsd);
   }
 }
 
@@ -206,6 +255,7 @@ function buildConversationStatsReport(args: {
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
   let durationMs = 0;
+  let costUsd: number | undefined;
   let tokens: number | undefined;
   let active = 0;
   let failed = 0;
@@ -214,8 +264,13 @@ function buildConversationStatsReport(args: {
   for (const runs of conversations) {
     const contributions = runContributions(runs);
     const conversationSignals = statusSignals(runs);
+    const conversationCostUsd = contributionCostTotal(contributions);
     const conversationTokens = contributionTokenTotal(contributions);
     durationMs += contributionDurationTotal(contributions);
+    costUsd =
+      conversationCostUsd === undefined
+        ? costUsd
+        : addUsd(costUsd, conversationCostUsd);
     tokens = addTokenTotal(tokens, conversationTokens);
     active += conversationSignals.active ? 1 : 0;
     failed += conversationSignals.failed ? 1 : 0;
@@ -239,6 +294,7 @@ function buildConversationStatsReport(args: {
       item.failed += signals.failed ? 1 : 0;
       item.hung += signals.hung ? 1 : 0;
       addItemTokens(item, contributionTokenTotal(actorContributions));
+      addItemCost(item, contributionCostTotal(actorContributions));
       actors.set(actor, item);
     }
 
@@ -251,6 +307,7 @@ function buildConversationStatsReport(args: {
     locationItem.failed += conversationSignals.failed ? 1 : 0;
     locationItem.hung += conversationSignals.hung ? 1 : 0;
     addItemTokens(locationItem, conversationTokens);
+    addItemCost(locationItem, conversationCostUsd);
     locations.set(location, locationItem);
   }
 
@@ -266,6 +323,7 @@ function buildConversationStatsReport(args: {
     sampleLimit: args.sampleLimit,
     sampleSize: args.sampleSize,
     source: "conversation_index",
+    ...(costUsd !== undefined ? { costUsd } : {}),
     ...(tokens !== undefined ? { tokens } : {}),
     truncated: args.truncated,
     runs: conversations.reduce((sum, runs) => sum + runs.length, 0),
@@ -287,9 +345,19 @@ export async function readConversationStatsReport(
   });
   const truncated = conversations.length > CONVERSATION_STATS_LIMIT;
   const sampledConversations = conversations.slice(0, CONVERSATION_STATS_LIMIT);
-  const summaries = sampledConversations.map((conversation) =>
-    sessionReportFromConversation(conversation, nowMs),
-  );
+  const summariesByConversation =
+    await listAgentTurnSessionSummariesForConversations(
+      sampledConversations.map((conversation) => conversation.conversationId),
+    );
+  const summaries = sampledConversations.flatMap((conversation) => {
+    const turnSummaries =
+      summariesByConversation.get(conversation.conversationId) ?? [];
+    return turnSummaries.length > 0
+      ? turnSummaries.map((summary) =>
+          sessionReportFromTurnSummary(conversation, summary, nowMs),
+        )
+      : [sessionReportFromConversation(conversation, nowMs)];
+  });
   return buildConversationStatsReport({
     generatedAt,
     nowMs,

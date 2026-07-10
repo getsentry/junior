@@ -580,6 +580,8 @@ describe("persistAuthPauseSessionRecord", () => {
       cumulativeUsage: {
         inputTokens: 10,
         outputTokens: 3,
+        reasoningTokens: 1,
+        cost: { input: 0.001, output: 0.002, total: 0.003 },
       },
     });
 
@@ -591,6 +593,13 @@ describe("persistAuthPauseSessionRecord", () => {
       currentUsage: {
         outputTokens: 7,
         cachedInputTokens: 2,
+        reasoningTokens: 4,
+        cost: {
+          input: 0.004,
+          output: 0.005,
+          cacheRead: 0.0001,
+          total: 0.0091,
+        },
       },
       messages: [],
       errorMessage: "timed out again",
@@ -609,6 +618,13 @@ describe("persistAuthPauseSessionRecord", () => {
         inputTokens: 10,
         outputTokens: 10,
         cachedInputTokens: 2,
+        reasoningTokens: 5,
+        cost: {
+          input: 0.005,
+          output: 0.007,
+          cacheRead: 0.0001,
+          total: 0.0121,
+        },
       },
     });
   });

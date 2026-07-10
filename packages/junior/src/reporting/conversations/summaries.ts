@@ -5,6 +5,7 @@ import {
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { StoredSlackActor } from "@/chat/actor";
+import type { AgentTurnSessionSummary } from "@/chat/state/turn-session";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
@@ -199,6 +200,51 @@ export function sessionReportFromConversation(
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
+  };
+}
+
+function statusFromTurnSummary(
+  summary: AgentTurnSessionSummary,
+  nowMs: number,
+): ConversationReportStatus {
+  if (
+    summary.state === "running" &&
+    nowMs - summary.lastProgressAtMs > HUNG_TURN_PROGRESS_MS
+  ) {
+    return "hung";
+  }
+  if (summary.state === "running" || summary.state === "awaiting_resume") {
+    return "active";
+  }
+  if (summary.state === "abandoned") {
+    return "superseded";
+  }
+  return summary.state;
+}
+
+/** Enrich a durable conversation projection with one complete turn summary. */
+export function sessionReportFromTurnSummary(
+  conversation: StoredConversation,
+  summary: AgentTurnSessionSummary,
+  nowMs: number,
+): ConversationSummaryReport {
+  const base = sessionReportFromConversation(conversation, nowMs);
+  return {
+    ...base,
+    cumulativeDurationMs: summary.cumulativeDurationMs,
+    ...(summary.cumulativeUsage
+      ? { cumulativeUsage: summary.cumulativeUsage }
+      : {}),
+    id: summary.sessionId,
+    lastProgressAt: new Date(summary.lastProgressAtMs).toISOString(),
+    lastSeenAt: new Date(summary.updatedAtMs).toISOString(),
+    startedAt: new Date(summary.startedAtMs).toISOString(),
+    status: statusFromTurnSummary(summary, nowMs),
+    surface: summary.surface ?? base.surface,
+    ...(summary.state === "completed"
+      ? { completedAt: new Date(summary.updatedAtMs).toISOString() }
+      : {}),
+    ...(summary.traceId ? { traceId: summary.traceId } : {}),
   };
 }
 

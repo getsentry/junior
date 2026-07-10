@@ -26,6 +26,7 @@ export type {
   PluginConversationSummary,
   ConversationActivityReport,
   ConversationActivityStatus,
+  ConversationCost,
   ConversationFeed,
   ConversationReport,
   ConversationReportStatus,

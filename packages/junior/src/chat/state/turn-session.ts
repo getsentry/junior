@@ -28,7 +28,7 @@ import {
   commitMessages,
   loadTurnProjection,
 } from "@/chat/conversations/projection";
-import type { AgentTurnUsage } from "@/chat/usage";
+import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
@@ -40,6 +40,7 @@ import type {
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
+const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
 const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
 
 export type AgentTurnSessionStatus =
@@ -138,16 +139,6 @@ const agentTurnResumeReasonSchema = z.enum([
 
 const nonNegativeNumberSchema = z.number().finite().nonnegative();
 const seqCursorSchema = z.number().int().min(-1);
-const agentTurnUsageSchema = z
-  .object({
-    inputTokens: nonNegativeNumberSchema.optional(),
-    outputTokens: nonNegativeNumberSchema.optional(),
-    cachedInputTokens: nonNegativeNumberSchema.optional(),
-    cacheCreationTokens: nonNegativeNumberSchema.optional(),
-    totalTokens: nonNegativeNumberSchema.optional(),
-  })
-  .strict() satisfies z.ZodType<AgentTurnUsage>;
-
 const agentTurnSessionSummarySchema = z
   .object({
     channelName: z.string().min(1).optional(),
@@ -800,6 +791,51 @@ export async function listAgentTurnSessionSummariesForConversation(
   return (
     await readAgentTurnSessionSummariesFromIndex(AGENT_TURN_SESSION_INDEX_KEY)
   ).filter((summary) => summary.conversationId === conversationId);
+}
+
+/** Read complete per-conversation summary indexes with bounded backend load. */
+export async function listAgentTurnSessionSummariesForConversations(
+  conversationIds: string[],
+): Promise<Map<string, AgentTurnSessionSummary[]>> {
+  const ids = [...new Set(conversationIds)];
+  const globalSummaries = await readAgentTurnSessionSummariesFromIndex(
+    AGENT_TURN_SESSION_INDEX_KEY,
+  );
+  const globalByConversation = new Map<string, AgentTurnSessionSummary[]>();
+  for (const summary of globalSummaries) {
+    globalByConversation.set(summary.conversationId, [
+      ...(globalByConversation.get(summary.conversationId) ?? []),
+      summary,
+    ]);
+  }
+
+  const summariesByConversation = new Map<string, AgentTurnSessionSummary[]>();
+  let nextIndex = 0;
+  const readNext = async (): Promise<void> => {
+    while (nextIndex < ids.length) {
+      const conversationId = ids[nextIndex];
+      nextIndex += 1;
+      if (!conversationId) continue;
+      const summaries = await readAgentTurnSessionSummariesFromIndex(
+        agentTurnSessionConversationIndexKey(conversationId),
+      );
+      summariesByConversation.set(
+        conversationId,
+        summaries.length > 0
+          ? summaries
+          : (globalByConversation.get(conversationId) ?? []),
+      );
+    }
+  };
+  await Promise.all(
+    Array.from(
+      {
+        length: Math.min(AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY, ids.length),
+      },
+      readNext,
+    ),
+  );
+  return summariesByConversation;
 }
 
 /** Mark an unfinished turn session record as abandoned when a newer turn wins. */

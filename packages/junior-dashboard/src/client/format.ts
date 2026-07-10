@@ -449,7 +449,16 @@ export type TokenUsageSummary = {
   inputTokens?: number;
   outputTokens?: number;
   providerTotalTokens?: number;
+  reasoningTokens?: number;
   totalTokens: number;
+};
+
+export type CostUsageSummary = {
+  cacheRead?: number;
+  cacheWrite?: number;
+  input?: number;
+  output?: number;
+  total: number;
 };
 
 function addOptionalCount(
@@ -487,6 +496,10 @@ export function summarizeUsage(
         summary.cacheCreationTokens,
         getFiniteTokenCount(usage.cacheCreationTokens),
       );
+      summary.reasoningTokens = addOptionalCount(
+        summary.reasoningTokens,
+        getFiniteTokenCount(usage.reasoningTokens),
+      );
       continue;
     }
 
@@ -511,6 +524,72 @@ export function formatTokenSummary(
 /** Format the aggregate token count across conversation turns. */
 export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
   return formatTokenSummary(summarizeUsage(usages));
+}
+
+function getFiniteCost(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function addCost(left: number, right: number): number {
+  return Math.round((left + right) * 1e12) / 1e12;
+}
+
+/** Summarize estimated Pi model cost in USD across conversation turns. */
+export function summarizeCost(
+  usages: Array<TurnUsage | undefined>,
+): CostUsageSummary | undefined {
+  const summary: CostUsageSummary = { total: 0 };
+  let hasCost = false;
+
+  for (const usage of usages) {
+    if (!usage?.cost) continue;
+    const cost = usage.cost;
+    const total = getFiniteCost(cost.total);
+    const components = {
+      input: getFiniteCost(cost.input),
+      output: getFiniteCost(cost.output),
+      cacheRead: getFiniteCost(cost.cacheRead),
+      cacheWrite: getFiniteCost(cost.cacheWrite),
+    };
+    const componentTotal = Object.values(components).reduce<number>(
+      (sum, value) => sum + (value ?? 0),
+      0,
+    );
+    summary.total = addCost(summary.total, total ?? componentTotal);
+    summary.input = addOptionalCount(summary.input, components.input);
+    summary.output = addOptionalCount(summary.output, components.output);
+    summary.cacheRead = addOptionalCount(
+      summary.cacheRead,
+      components.cacheRead,
+    );
+    summary.cacheWrite = addOptionalCount(
+      summary.cacheWrite,
+      components.cacheWrite,
+    );
+    hasCost = hasCost || total !== undefined || componentTotal > 0;
+  }
+
+  return hasCost ? summary : undefined;
+}
+
+/** Format estimated model cost in USD with useful sub-cent precision. */
+export function formatCostSummary(
+  summary: CostUsageSummary | undefined,
+): string {
+  if (!summary) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(summary.total);
+}
+
+/** Format aggregate estimated model cost across conversation turns. */
+export function formatCostTotal(usages: Array<TurnUsage | undefined>): string {
+  return formatCostSummary(summarizeCost(usages));
 }
 
 /** Keep turn duration displays aligned on elapsed transcript time. */

@@ -190,6 +190,7 @@ describe("dashboard mock conversation routes", () => {
     expect(conversationStats.status).toBe(200);
     const statsBody = (await conversationStats.json()) as {
       conversations: number;
+      costUsd?: number;
       durationMs: number;
       sampleSize: number;
       truncated: boolean;
@@ -207,7 +208,8 @@ describe("dashboard mock conversation routes", () => {
       (sum, conversation) => sum + conversation.cumulativeDurationMs,
       0,
     );
-    expect(statsBody.durationMs).toBeLessThan(rawDurationMs);
+    expect(statsBody.durationMs).toBe(rawDurationMs);
+    expect(statsBody.costUsd).toBeGreaterThan(0);
 
     const activeConversation = await app.fetch(
       new Request(

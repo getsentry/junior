@@ -125,6 +125,14 @@ export async function readConversationReport(
     ? [
         {
           ...sessionReportFromConversation(conversation, nowMs),
+          ...(currentTurnSummary
+            ? {
+                cumulativeDurationMs: currentTurnSummary.cumulativeDurationMs,
+                ...(currentTurnSummary.cumulativeUsage
+                  ? { cumulativeUsage: currentTurnSummary.cumulativeUsage }
+                  : {}),
+              }
+            : {}),
           ...(currentTurnSummary?.modelId
             ? { modelId: currentTurnSummary.modelId }
             : {}),

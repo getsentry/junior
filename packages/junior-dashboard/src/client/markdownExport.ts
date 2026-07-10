@@ -1,5 +1,6 @@
 import {
   conversationDisplayTitle,
+  formatCostTotal,
   formatMs,
   formatUsageTotal,
   actorLabel,
@@ -39,7 +40,12 @@ export function buildConversationMarkdown(
   addMetaLine(
     lines,
     "Usage",
-    formatUsageTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
+    [
+      formatUsageTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
+      formatCostTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
+    ]
+      .filter(Boolean)
+      .join(" · "),
   );
   addMetaLine(lines, "Sentry conversation", detail.sentryConversationUrl);
 

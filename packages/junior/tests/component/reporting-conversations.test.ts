@@ -158,4 +158,60 @@ describe("conversation reporting", () => {
       "https://acme.sentry.io/explore/conversations/slack%3AC1%3A123/?project=4501",
     );
   });
+
+  it("exposes persisted token, reasoning, and cost usage", async () => {
+    const { recordAgentTurnSessionSummary } =
+      await import("@/chat/state/turn-session");
+    const conversationStore = fixedConversationStore([
+      indexedConversation({
+        conversationId: "slack:C1:456",
+        createdAtMs: 1_000,
+        execution: {
+          runId: "turn-1",
+          status: "idle",
+          updatedAtMs: 2_000,
+        },
+        lastActivityAtMs: 2_000,
+      }),
+    ]);
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:456",
+      conversationStore,
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 5,
+        totalTokens: 120,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          total: 0.003,
+        },
+      },
+      sessionId: "turn-1",
+      sliceId: 1,
+      startedAtMs: 1_000,
+      state: "completed",
+    });
+
+    const detail = await readConversationReport("slack:C1:456", {
+      conversationStore,
+    });
+
+    expect(detail.runs[0]).toMatchObject({
+      cumulativeDurationMs: 1_500,
+      cumulativeUsage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        reasoningTokens: 5,
+        totalTokens: 120,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          total: 0.003,
+        },
+      },
+    });
+  });
 });

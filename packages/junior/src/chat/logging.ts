@@ -17,7 +17,7 @@ import type {
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import * as Sentry from "@/chat/sentry";
-import type { AgentTurnUsage } from "@/chat/usage";
+import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
 
 type Primitive = string | number | boolean;
@@ -1900,6 +1900,16 @@ function toFiniteTokenCount(value: unknown): number | undefined {
   return rounded >= 0 ? rounded : undefined;
 }
 
+function toFiniteCost(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function addCost(left: number | undefined, right: number): number {
+  return Math.round(((left ?? 0) + right) * 1e12) / 1e12;
+}
+
 function sumTokenCounts(
   ...values: Array<number | undefined>
 ): number | undefined {
@@ -1923,8 +1933,17 @@ const PI_USAGE_FIELDS: ReadonlyArray<[string, keyof AgentTurnUsage]> = [
   ["output", "outputTokens"],
   ["cacheRead", "cachedInputTokens"],
   ["cacheWrite", "cacheCreationTokens"],
+  ["reasoning", "reasoningTokens"],
   ["totalTokens", "totalTokens"],
 ];
+
+const PI_COST_FIELDS = [
+  "input",
+  "output",
+  "cacheRead",
+  "cacheWrite",
+  "total",
+] as const satisfies ReadonlyArray<keyof AgentTurnCost>;
 
 function readPiUsage(source: unknown): AgentTurnUsage {
   const record = asRecord(source);
@@ -1941,6 +1960,19 @@ function readPiUsage(source: unknown): AgentTurnUsage {
       summary[ourKey] = value;
     }
   }
+  const piCost = asRecord(usage.cost);
+  if (piCost) {
+    const cost: AgentTurnCost = {};
+    for (const field of PI_COST_FIELDS) {
+      const value = toFiniteCost(piCost[field]);
+      if (value !== undefined) {
+        cost[field] = value;
+      }
+    }
+    if (Object.keys(cost).length > 0) {
+      summary.cost = cost;
+    }
+  }
   return summary;
 }
 
@@ -1955,18 +1987,34 @@ export function extractGenAiUsageSummary(
   ...sources: unknown[]
 ): AgentTurnUsage {
   const summary: AgentTurnUsage = {};
+  const cost: AgentTurnCost = {};
   for (const source of sources) {
     const single = readPiUsage(source);
-    for (const field of Object.keys(single) as (keyof AgentTurnUsage)[]) {
+    for (const field of [
+      "inputTokens",
+      "outputTokens",
+      "cachedInputTokens",
+      "cacheCreationTokens",
+      "reasoningTokens",
+      "totalTokens",
+    ] as const) {
       const value = single[field];
       if (value === undefined) continue;
       summary[field] = (summary[field] ?? 0) + value;
     }
+    for (const field of PI_COST_FIELDS) {
+      const value = single.cost?.[field];
+      if (value === undefined) continue;
+      cost[field] = addCost(cost[field], value);
+    }
+  }
+  if (Object.keys(cost).length > 0) {
+    summary.cost = cost;
   }
   return summary;
 }
 
-/** Extract GenAI token usage attributes from AI provider usage metadata for tracing. */
+/** Extract GenAI token and estimated USD cost attributes for tracing. */
 export function extractGenAiUsageAttributes(
   ...sources: unknown[]
 ): Partial<
@@ -1977,14 +2025,27 @@ export function extractGenAiUsageAttributes(
     | "gen_ai.usage.input_tokens.cache_write"
     | "gen_ai.usage.total_tokens",
     number
-  >
+  > &
+    Partial<
+      Record<
+        | "app.ai.cost.input_usd"
+        | "app.ai.cost.output_usd"
+        | "app.ai.cost.cache_read_usd"
+        | "app.ai.cost.cache_write_usd"
+        | "app.ai.cost.total_usd"
+        | "app.ai.reasoning_tokens",
+        number
+      >
+    >
 > {
   const {
     inputTokens,
     outputTokens,
     cachedInputTokens,
     cacheCreationTokens,
+    reasoningTokens,
     totalTokens,
+    cost,
   } = extractGenAiUsageSummary(...sources);
   const semanticInputTokens = sumTokenCounts(
     inputTokens,
@@ -2010,6 +2071,24 @@ export function extractGenAiUsageAttributes(
       : {}),
     ...(cacheCreationTokens !== undefined
       ? { "gen_ai.usage.input_tokens.cache_write": cacheCreationTokens }
+      : {}),
+    ...(reasoningTokens !== undefined
+      ? { "app.ai.reasoning_tokens": reasoningTokens }
+      : {}),
+    ...(cost?.input !== undefined
+      ? { "app.ai.cost.input_usd": cost.input }
+      : {}),
+    ...(cost?.output !== undefined
+      ? { "app.ai.cost.output_usd": cost.output }
+      : {}),
+    ...(cost?.cacheRead !== undefined
+      ? { "app.ai.cost.cache_read_usd": cost.cacheRead }
+      : {}),
+    ...(cost?.cacheWrite !== undefined
+      ? { "app.ai.cost.cache_write_usd": cost.cacheWrite }
+      : {}),
+    ...(cost?.total !== undefined
+      ? { "app.ai.cost.total_usd": cost.total }
       : {}),
   };
 }

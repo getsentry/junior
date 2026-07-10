@@ -19,12 +19,24 @@ export type ConversationReportStatus =
 
 export type ConversationSurface = "api" | "internal" | "scheduler" | "slack";
 
+/** Estimated USD cost breakdown for a conversation run. */
+export interface ConversationCost {
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+  total?: number;
+}
+
+/** Token and estimated USD cost usage for a conversation run. */
 export interface ConversationUsage {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
   cacheCreationTokens?: number;
+  reasoningTokens?: number;
   totalTokens?: number;
+  cost?: ConversationCost;
 }
 
 export interface ActorIdentity {
@@ -209,6 +221,7 @@ export interface ConversationStatsItem {
   hung: number;
   label: string;
   runs: number;
+  costUsd?: number;
   tokens?: number;
 }
 
@@ -224,6 +237,7 @@ export interface ConversationStatsReport {
   sampleLimit: number;
   sampleSize: number;
   source: "conversation_index";
+  costUsd?: number;
   tokens?: number;
   truncated: boolean;
   runs: number;

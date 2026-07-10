@@ -4,7 +4,12 @@ import {
   type DescribeEvalOptions,
   type JudgeContext,
 } from "vitest-evals";
-import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import {
+  completeText,
+  GEN_AI_PROVIDER_NAME,
+  resolveGatewayModel,
+} from "@/chat/pi/client";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   toJsonValue,
   type Harness,
@@ -229,7 +234,61 @@ function toSessionMessages(
   ];
 }
 
-function toHarnessRun(result: EvalResult): HarnessRun {
+function usageTotal(usage: AgentTurnUsage | undefined): number | undefined {
+  if (!usage) return undefined;
+  if (usage.totalTokens !== undefined) return usage.totalTokens;
+  const components = [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationTokens,
+  ].filter((value): value is number => value !== undefined);
+  return components.length > 0
+    ? components.reduce((sum, value) => sum + value, 0)
+    : undefined;
+}
+
+function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
+  const usage = result.usage;
+  const metadata = toJsonRecord({
+    ...(usage?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : {}),
+    ...(usage?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: usage.cacheCreationTokens }
+      : {}),
+    ...(usage?.cost
+      ? {
+          currency: "USD",
+          cost: usage.cost,
+          ...(usage.cost.total !== undefined
+            ? { costUsd: usage.cost.total }
+            : {}),
+        }
+      : {}),
+    ...(result.modelIds.length > 1 ? { modelIds: result.modelIds } : {}),
+  });
+  return {
+    provider: GEN_AI_PROVIDER_NAME,
+    ...(result.modelIds.length === 1 ? { model: result.modelIds[0] } : {}),
+    ...(usage?.inputTokens !== undefined
+      ? { inputTokens: usage.inputTokens }
+      : {}),
+    ...(usage?.outputTokens !== undefined
+      ? { outputTokens: usage.outputTokens }
+      : {}),
+    ...(usage?.reasoningTokens !== undefined
+      ? { reasoningTokens: usage.reasoningTokens }
+      : {}),
+    ...(usageTotal(usage) !== undefined
+      ? { totalTokens: usageTotal(usage) }
+      : {}),
+    toolCalls: result.toolInvocations.length,
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  };
+}
+
+function toHarnessRun(result: EvalResult, totalMs: number): HarnessRun {
   const toolCalls = result.toolInvocations.map(toToolCallRecord);
   const messages = toSessionMessages(result, toolCalls);
 
@@ -245,9 +304,8 @@ function toHarnessRun(result: EvalResult): HarnessRun {
         [CONVERSATION_IDS_METADATA_KEY]: result.conversationIds,
       }),
     },
-    usage: {
-      toolCalls: toolCalls.length,
-    },
+    usage: toHarnessUsage(result),
+    timings: { totalMs },
     errors: [],
   };
 }
@@ -460,6 +518,7 @@ function parseJudgeResult(text: string): JudgeResultPayload {
 export const slackHarness: Harness<SlackEvalInput> = {
   name: "slack",
   run: async (input, { signal }) => {
+    const startedAt = Date.now();
     const logRecords: EmittedLogRecord[] = [];
     const unregisterLogSink = registerLogRecordSink((record) => {
       logRecords.push(record);
@@ -498,7 +557,7 @@ export const slackHarness: Harness<SlackEvalInput> = {
         assertSandboxReady(result);
       }
       assertStatusCleared(result);
-      return toHarnessRun(result);
+      return toHarnessRun(result, Date.now() - startedAt);
     } finally {
       unregisterLogSink();
     }

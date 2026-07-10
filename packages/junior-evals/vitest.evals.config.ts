@@ -10,6 +10,10 @@ const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
 const EVAL_TEST_TIMEOUT_MS = 60_000;
+const evalReportPath = path.resolve(
+  evalsPackageRoot,
+  process.env.VITEST_EVALS_OUTPUT_FILE ?? "vitest-results.json",
+);
 
 loadJuniorTestEnvFiles({
   workspaceRoot,
@@ -52,7 +56,8 @@ export default defineConfig({
       path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
       path.resolve(__dirname, "src/setup.ts"),
     ],
-    reporters: [new DefaultEvalReporter()],
+    outputFile: { json: evalReportPath },
+    reporters: [new DefaultEvalReporter(), "json"],
     testTimeout: EVAL_TEST_TIMEOUT_MS,
   },
 });

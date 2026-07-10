@@ -1,8 +1,10 @@
 import {
+  formatCostSummary,
   formatCompactNumber,
   formatMs,
   formatTime,
   formatTokenSummary,
+  type CostUsageSummary,
   type MessageSummary,
   type TokenUsageSummary,
   type ToolCallSummary,
@@ -39,6 +41,12 @@ function tokenTooltip(summary: TokenUsageSummary): MetricTooltipLine[] {
           value: formatCompactNumber(summary.cacheCreationTokens),
         }
       : undefined,
+    summary.reasoningTokens !== undefined
+      ? {
+          label: "reasoning",
+          value: formatCompactNumber(summary.reasoningTokens),
+        }
+      : undefined,
     summary.providerTotalTokens !== undefined
       ? {
           label: "provider",
@@ -47,6 +55,46 @@ function tokenTooltip(summary: TokenUsageSummary): MetricTooltipLine[] {
       : undefined,
   ];
   return lines.filter(isMetricTooltipLine);
+}
+
+function costTooltip(summary: CostUsageSummary): MetricTooltipLine[] {
+  const lines: Array<MetricTooltipLine | undefined> = [
+    summary.input !== undefined
+      ? { label: "input", value: formatCostSummary({ total: summary.input }) }
+      : undefined,
+    summary.output !== undefined
+      ? {
+          label: "output",
+          value: formatCostSummary({ total: summary.output }),
+        }
+      : undefined,
+    summary.cacheRead !== undefined
+      ? {
+          label: "cache read",
+          value: formatCostSummary({ total: summary.cacheRead }),
+        }
+      : undefined,
+    summary.cacheWrite !== undefined
+      ? {
+          label: "cache write",
+          value: formatCostSummary({ total: summary.cacheWrite }),
+        }
+      : undefined,
+  ];
+  return lines.filter(isMetricTooltipLine);
+}
+
+/** Render estimated model cost with a hoverable USD breakdown. */
+export function CostMetric(props: {
+  align?: "left" | "right";
+  summary: CostUsageSummary | undefined;
+}) {
+  if (!props.summary) return null;
+  return (
+    <MetricValue align={props.align} tooltip={costTooltip(props.summary)}>
+      {formatCostSummary(props.summary)}
+    </MetricValue>
+  );
 }
 
 /** Render total token usage with a hoverable breakdown. */

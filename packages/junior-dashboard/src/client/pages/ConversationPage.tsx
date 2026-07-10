@@ -17,6 +17,7 @@ import {
   formatTime,
   peoplePath,
   slackLocationLabel,
+  summarizeCost,
   summarizeMessages,
   summarizeToolCalls,
   summarizeUsage,
@@ -24,6 +25,7 @@ import {
 } from "../format";
 import { MetricList, type MetricListItem } from "../components/Metric";
 import {
+  CostMetric,
   DurationMetric,
   MessagesMetric,
   TokenMetric,
@@ -227,6 +229,11 @@ function ConversationStats(props: {
       (turn) => turn.cumulativeUsage,
     ),
   );
+  const costSummary = summarizeCost(
+    (props.detail?.runs ?? props.conversation.runs).map(
+      (turn) => turn.cumulativeUsage,
+    ),
+  );
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
   });
@@ -256,6 +263,12 @@ function ConversationStats(props: {
       ? {
           content: <TokenMetric summary={tokenSummary} />,
           key: "tokens",
+        }
+      : undefined,
+    costSummary
+      ? {
+          content: <CostMetric summary={costSummary} />,
+          key: "cost",
         }
       : undefined,
     durationLabel !== "none"

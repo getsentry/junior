@@ -52,6 +52,7 @@ import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { executeAgentRun } from "@/chat/agent";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { resumeAwaitingSlackContinuation } from "@/chat/runtime/agent-continue-runner";
 import { scheduleAgentContinue } from "@/chat/services/agent-continue";
 import {
@@ -280,6 +281,7 @@ interface EvalReplyResultFixture {
   tool_invocations?: EvalToolInvocation[];
   tool_error_count?: number;
   tool_result_count?: number;
+  usage?: AgentTurnUsage;
   used_primary_text?: boolean;
 }
 
@@ -335,8 +337,10 @@ export interface EvalResult {
     emoji: string;
     timestamp: string;
   }>;
+  modelIds: string[];
   slackAdapter: FakeSlackAdapter;
   toolInvocations: EvalToolInvocation[];
+  usage?: AgentTurnUsage;
 }
 
 export interface AuthorizationCompletion {
@@ -401,7 +405,9 @@ interface QueueDelivery {
 
 interface RuntimeObservations {
   authorizationCompletions: AuthorizationCompletion[];
+  modelIds: Set<string>;
   toolInvocations: EvalToolInvocation[];
+  usage?: AgentTurnUsage;
 }
 
 function createReplayWebFetchDeps(
@@ -1783,6 +1789,13 @@ function buildRuntimeServices(
               ...(replyResult.tool_invocations ??
                 (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
             );
+            observations.usage = addAgentTurnUsage(
+              observations.usage,
+              replyResult.usage,
+            );
+            if (replyResult.usage) {
+              observations.modelIds.add("eval-reply-result");
+            }
             return completedAgentRun({
               text: replyResult.text,
               deliveryMode: "thread",
@@ -1803,6 +1816,7 @@ function buildRuntimeServices(
                 toolCalls: replyResult.tool_calls ?? [],
                 toolErrorCount: replyResult.tool_error_count ?? 0,
                 toolResultCount: replyResult.tool_result_count ?? 0,
+                ...(replyResult.usage ? { usage: replyResult.usage } : {}),
                 usedPrimaryText: replyResult.used_primary_text ?? true,
               },
             });
@@ -1901,6 +1915,14 @@ function buildRuntimeServices(
                 },
               },
             });
+            const usage =
+              outcome.status === "completed"
+                ? outcome.result.diagnostics.usage
+                : outcome.usage;
+            observations.usage = addAgentTurnUsage(observations.usage, usage);
+            if (outcome.status === "completed") {
+              observations.modelIds.add(outcome.result.diagnostics.modelId);
+            }
             replyState.successfulCount += 1;
             return outcome;
           } finally {
@@ -2407,9 +2429,11 @@ function collectResults(
     logRecords,
     authorizationCompletions: observations.authorizationCompletions,
     reactions,
+    modelIds: [...observations.modelIds],
     posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
     slackAdapter,
     toolInvocations: observations.toolInvocations,
+    ...(observations.usage ? { usage: observations.usage } : {}),
   };
 }
 
@@ -2445,6 +2469,7 @@ export async function runEvalScenario(
     const readyQueueDeliveries: QueueDelivery[] = [];
     const observations: RuntimeObservations = {
       authorizationCompletions: [],
+      modelIds: new Set(),
       toolInvocations: [],
     };
     const channelStateById = new Map<

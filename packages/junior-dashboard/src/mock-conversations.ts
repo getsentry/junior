@@ -87,7 +87,14 @@ function publicIncidentConversation(
           cachedInputTokens: 2200,
           inputTokens: 6900,
           outputTokens: 1400,
+          reasoningTokens: 640,
           totalTokens: 9700,
+          cost: {
+            input: 0.0207,
+            output: 0.0168,
+            cacheRead: 0.0044,
+            total: 0.0419,
+          },
         },
         surface: "slack",
         actorIdentity: {
@@ -186,7 +193,14 @@ function publicIncidentConversation(
           cachedInputTokens: 3100,
           inputTokens: 5200,
           outputTokens: 950,
+          reasoningTokens: 420,
           totalTokens: 9250,
+          cost: {
+            input: 0.0156,
+            output: 0.0114,
+            cacheRead: 0.0062,
+            total: 0.0332,
+          },
         },
         surface: "slack",
         actorIdentity: {
@@ -1150,6 +1164,7 @@ function conversationStatsReportFromSummaries(
   const actors = new Map<string, DashboardConversationStatsItem>();
   const locations = new Map<string, DashboardConversationStatsItem>();
   let durationMs = 0;
+  let costUsd: number | undefined;
   let tokens: number | undefined;
   let active = 0;
   let failed = 0;
@@ -1158,8 +1173,13 @@ function conversationStatsReportFromSummaries(
   for (const runs of conversations) {
     const contributions = runContributions(runs);
     const signals = statusSignals(runs);
+    const conversationCostUsd = contributionCostTotal(contributions);
     const conversationTokens = contributionTokenTotal(contributions);
     durationMs += contributionDurationTotal(contributions);
+    costUsd =
+      conversationCostUsd === undefined
+        ? costUsd
+        : addUsd(costUsd, conversationCostUsd);
     tokens = addTokenTotal(tokens, conversationTokens);
     active += signals.active ? 1 : 0;
     failed += signals.failed ? 1 : 0;
@@ -1183,6 +1203,7 @@ function conversationStatsReportFromSummaries(
       item.failed += actorSignals.failed ? 1 : 0;
       item.hung += actorSignals.hung ? 1 : 0;
       addItemTokens(item, contributionTokenTotal(actorContributions));
+      addItemCost(item, contributionCostTotal(actorContributions));
       actors.set(actor, item);
     }
 
@@ -1195,6 +1216,7 @@ function conversationStatsReportFromSummaries(
     locationItem.failed += signals.failed ? 1 : 0;
     locationItem.hung += signals.hung ? 1 : 0;
     addItemTokens(locationItem, conversationTokens);
+    addItemCost(locationItem, conversationCostUsd);
     locations.set(location, locationItem);
   }
 
@@ -1210,6 +1232,7 @@ function conversationStatsReportFromSummaries(
     sampleLimit: summaries.length,
     sampleSize: summaries.length,
     source: "conversation_index",
+    ...(costUsd !== undefined ? { costUsd } : {}),
     ...(tokens !== undefined ? { tokens } : {}),
     truncated: false,
     runs: conversations.reduce((sum, runs) => sum + runs.length, 0),
@@ -1219,6 +1242,7 @@ function conversationStatsReportFromSummaries(
 }
 
 type RunContribution = {
+  costUsd?: number;
   durationMs: number;
   tokens?: number;
   run: DashboardConversationSummary;
@@ -1292,24 +1316,48 @@ function usageTokenTotal(usage: DashboardRunUsage | undefined) {
     : undefined;
 }
 
+function usageCostTotal(usage: DashboardRunUsage | undefined) {
+  if (!usage?.cost) return undefined;
+  if (
+    typeof usage.cost.total === "number" &&
+    Number.isFinite(usage.cost.total)
+  ) {
+    return Math.max(0, usage.cost.total);
+  }
+  return [
+    usage.cost.input,
+    usage.cost.output,
+    usage.cost.cacheRead,
+    usage.cost.cacheWrite,
+  ].reduce<number | undefined>((sum, value) => {
+    const amount =
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, value)
+        : undefined;
+    return amount === undefined ? sum : (sum ?? 0) + amount;
+  }, undefined);
+}
+
+function addUsd(left: number | undefined, right: number): number {
+  return Math.round(((left ?? 0) + right) * 1e12) / 1e12;
+}
+
 function runContributions(
   runs: DashboardConversationSummary[],
 ): RunContribution[] {
-  let previousDuration = 0;
-  let previousTokens = 0;
   return runs.map((run) => {
     const duration = Math.max(0, Math.floor(run.cumulativeDurationMs));
     const tokens = usageTokenTotal(run.cumulativeUsage);
+    const costUsd = usageCostTotal(run.cumulativeUsage);
     const contribution: RunContribution = {
-      durationMs: Math.max(0, duration - previousDuration),
+      durationMs: duration,
       run,
     };
     if (tokens !== undefined) {
-      contribution.tokens = Math.max(0, tokens - previousTokens);
+      contribution.tokens = tokens;
     }
-    previousDuration = Math.max(previousDuration, duration);
-    if (tokens !== undefined) {
-      previousTokens = Math.max(previousTokens, tokens);
+    if (costUsd !== undefined) {
+      contribution.costUsd = costUsd;
     }
     return contribution;
   });
@@ -1334,6 +1382,18 @@ function contributionTokenTotal(
 ): number | undefined {
   return contributions.reduce(
     (sum, contribution) => addTokenTotal(sum, contribution.tokens),
+    undefined as number | undefined,
+  );
+}
+
+function contributionCostTotal(
+  contributions: RunContribution[],
+): number | undefined {
+  return contributions.reduce(
+    (sum, contribution) =>
+      contribution.costUsd === undefined
+        ? sum
+        : addUsd(sum, contribution.costUsd),
     undefined as number | undefined,
   );
 }
@@ -1387,6 +1447,15 @@ function addItemTokens(
 ): void {
   if (tokens !== undefined) {
     item.tokens = (item.tokens ?? 0) + tokens;
+  }
+}
+
+function addItemCost(
+  item: DashboardConversationStatsItem,
+  costUsd: number | undefined,
+): void {
+  if (costUsd !== undefined) {
+    item.costUsd = addUsd(item.costUsd, costUsd);
   }
 }
 

@@ -225,6 +225,7 @@ export function createResumeState(args: ResumeStateArgs) {
           outcome: {
             status: "suspended",
             resumeVersion: sessionRecord.version,
+            ...(usage ? { usage } : {}),
           },
         };
       }
@@ -252,6 +253,7 @@ export function createResumeState(args: ResumeStateArgs) {
             outcome: {
               status: "suspended",
               resumeVersion: sessionRecord.version,
+              ...(usage ? { usage } : {}),
             },
           };
         }
@@ -281,6 +283,7 @@ export function createResumeState(args: ResumeStateArgs) {
             outcome: {
               status: "awaiting_auth",
               providerDisplayName: error.providerDisplayName,
+              ...(usage ? { usage } : {}),
             },
           };
         }

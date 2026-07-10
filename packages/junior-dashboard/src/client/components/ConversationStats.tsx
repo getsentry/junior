@@ -1,4 +1,4 @@
-import { formatCompactNumber, formatMs } from "../format";
+import { formatCompactNumber, formatCostSummary, formatMs } from "../format";
 import type { ConversationStatsReport } from "../types";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
@@ -10,7 +10,13 @@ function plural(label: string, count: number): string {
 
 const EMPTY_STATS: Pick<
   ConversationStatsReport,
-  "active" | "conversations" | "durationMs" | "failed" | "hung" | "tokens"
+  | "active"
+  | "conversations"
+  | "costUsd"
+  | "durationMs"
+  | "failed"
+  | "hung"
+  | "tokens"
 > = {
   active: 0,
   conversations: 0,
@@ -47,7 +53,7 @@ export function ConversationStats(props: {
       >
         <SectionTitle>Stats</SectionTitle>
       </SectionHeader>
-      <div className="grid border-b border-white/10 sm:grid-cols-3">
+      <div className="grid border-b border-white/10 sm:grid-cols-4">
         <SummaryMetric
           label="conversations"
           value={formatCompactNumber(stats.conversations)}
@@ -56,6 +62,16 @@ export function ConversationStats(props: {
         <SummaryMetric
           label="tokens"
           value={stats.tokens ? formatCompactNumber(stats.tokens) : "0"}
+        />
+        <SummaryMetric
+          label="cost"
+          value={
+            formatCostSummary(
+              stats.costUsd === undefined
+                ? undefined
+                : { total: stats.costUsd },
+            ) || "$0.00"
+          }
         />
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">

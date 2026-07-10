@@ -1,4 +1,5 @@
 import { describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { mention, rubric, slackEvals, threadStart } from "../../src/helpers";
 
 describeEval("Lifecycle and Resilience", slackEvals, (it) => {
@@ -38,13 +39,28 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   it("when a short reply is interrupted by the provider, keep the partial answer in one marked post", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_results: [
           {
             stream_text: "Budget is still on track for Friday.",
             text: "Budget is still on track for Friday.",
             outcome: "provider_error",
+            usage: {
+              inputTokens: 120,
+              outputTokens: 20,
+              cachedInputTokens: 300,
+              cacheCreationTokens: 40,
+              reasoningTokens: 5,
+              totalTokens: 480,
+              cost: {
+                input: 0.001,
+                output: 0.002,
+                cacheRead: 0.0003,
+                cacheWrite: 0.0004,
+                total: 0.0037,
+              },
+            },
           },
         ],
       },
@@ -60,6 +76,27 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
           "Do not mention provider internals, execution failure details, or logged-for-debugging text.",
         ],
       }),
+    });
+    expect(result.usage).toMatchObject({
+      provider: "vercel-ai-gateway",
+      model: "eval-reply-result",
+      inputTokens: 120,
+      outputTokens: 20,
+      reasoningTokens: 5,
+      totalTokens: 480,
+      metadata: {
+        cachedInputTokens: 300,
+        cacheCreationTokens: 40,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0.0003,
+          cacheWrite: 0.0004,
+          total: 0.0037,
+        },
+        costUsd: 0.0037,
+        currency: "USD",
+      },
     });
   });
 });
