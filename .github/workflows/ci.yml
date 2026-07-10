@@ -72,6 +72,7 @@ jobs:
               - "sgconfig.yml"
             plugins:
               - "packages/junior-agent-browser/**"
+              - "packages/junior-amplitude/**"
               - "packages/junior-cloudflare/**"
               - "packages/junior-datadog/**"
               - "packages/junior-github/**"
@@ -185,8 +186,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior build
-      - run: pnpm --filter @sentry/junior test:coverage ${{ matrix.path }}
-      - name: Upload coverage and test results
+      - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --coverage ${{ matrix.path }}
+      - name: Upload coverage
         if: ${{ !cancelled() }}
         uses: getsentry/codecov-action@03112cc3b486a3397dc8d17a58680008721fc86f # v0.3.7
         with:
@@ -194,8 +195,8 @@ jobs:
           files: packages/junior/coverage/coverage-final.json
           coverage-format: istanbul
           disable-search: true
-          junit-xml-pattern: packages/junior/coverage/results.junit.xml
-          fail_ci_if_error: false
+          enable-tests: false
+          fail-ci-if-error: false
           informational-project: true
           informational-patch: true
 
@@ -231,7 +232,7 @@ jobs:
           coverage-format: istanbul
           disable-search: true
           junit-xml-pattern: packages/junior-dashboard/coverage/results.junit.xml
-          fail_ci_if_error: false
+          fail-ci-if-error: false
           informational-project: true
           informational-patch: true
 
@@ -240,6 +241,32 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.repo == 'true'
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      REDIS_URL: redis://localhost:6379
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
@@ -266,7 +293,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-example build
         env:
+          DATABASE_URL: postgres://junior:junior@localhost:5432/junior
           JUNIOR_SKIP_SNAPSHOT: "1"
+          REDIS_URL: redis://localhost:6379
 
   docs-check:
     name: check / docs
@@ -344,11 +373,11 @@ jobs:
       - build-example
       - docs-check
       - pack-release-artifacts
-    if: always()
+    if: ${{ always() && !cancelled() }}
     steps:
       - name: Check CI jobs
         # Path-gated jobs may skip on PRs; this single required status treats
-        # skipped jobs as passing while still failing any failed/cancelled job.
+        # skipped jobs as passing while still failing any failed job.
         run: |
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             exit 1
