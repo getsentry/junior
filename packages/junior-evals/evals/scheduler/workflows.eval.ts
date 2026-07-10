@@ -1,4 +1,5 @@
-import { describeEval } from "vitest-evals";
+import { describeEval, toolCalls } from "vitest-evals";
+import { expect } from "vitest";
 import {
   mention,
   rubric,
@@ -6,16 +7,49 @@ import {
   slackEvals,
 } from "../../src/helpers";
 
+const REMINDER_ONLY_FORBIDDEN_TOOLS = [
+  "webSearch",
+  "webFetch",
+  "bash",
+  "readFile",
+  "editFile",
+  "grep",
+  "findFiles",
+  "listDir",
+  "writeFile",
+  "callMcpTool",
+  "slackThreadRead",
+  "slackChannelListMessages",
+] as const;
+
+function scheduledTaskCreateCall(session: Parameters<typeof toolCalls>[0]) {
+  const calls = toolCalls(session).filter(
+    (call) => call.name === "scheduler_slackScheduleCreateTask",
+  );
+  expect(calls).toHaveLength(1);
+  return calls[0]!;
+}
+
+function expectNoToolCalls(
+  session: Parameters<typeof toolCalls>[0],
+  names: readonly string[],
+) {
+  expect(
+    toolCalls(session)
+      .map((call) => call.name)
+      .filter((name) => names.includes(name)),
+  ).toEqual([]);
+}
+
 describeEval("Scheduler", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [mention("@bot remind me in 1 minute to wash my hands")],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
-          "The schedule creation omits recurrence.",
           "The reply does not ask the user to confirm first.",
         ],
         fail: [
@@ -25,17 +59,19 @@ describeEval("Scheduler", slackEvals, (it) => {
         ],
       }),
     });
+    const createCall = scheduledTaskCreateCall(result.session);
+    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
+    expect(createCall.arguments).not.toHaveProperty("recurrence");
   });
 
   it("when asked for a terse one-off reminder, create it without recurrence", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [mention("@bot remind me to drink water in 1m")],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to drink water was scheduled.",
-          "The schedule creation omits recurrence.",
           "The reply does not ask the user to retry with a different one-time format.",
         ],
         fail: [
@@ -45,12 +81,15 @@ describeEval("Scheduler", slackEvals, (it) => {
         ],
       }),
     });
+    const createCall = scheduledTaskCreateCall(result.session);
+    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
+    expect(createCall.arguments).not.toHaveProperty("recurrence");
   });
 
   it("when asked for a specific one-off reminder, preserve the future work in the schedule", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         mention(
           "@bot remind me in 2 minutes to tell the channel standup moved",
@@ -58,8 +97,6 @@ describeEval("Scheduler", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The observed scheduler_slackScheduleCreateTask tool call has schedule_kind=one_off.",
-          "The observed scheduler_slackScheduleCreateTask tool call omits recurrence.",
           "The observed scheduler_slackScheduleCreateTask task is the reminder work to perform later, not instructions for how to create or manage a schedule.",
         ],
         fail: [
@@ -68,12 +105,15 @@ describeEval("Scheduler", slackEvals, (it) => {
         ],
       }),
     });
+    const createCall = scheduledTaskCreateCall(result.session);
+    expect(createCall.arguments).toMatchObject({ schedule_kind: "one_off" });
+    expect(createCall.arguments).not.toHaveProperty("recurrence");
   });
 
   it("when asked to schedule clear recurring work, create it without confirmation", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         mention(
           "@bot schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
@@ -82,7 +122,6 @@ describeEval("Scheduler", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The created task describes checking scheduler-related GitHub issues, not creating a schedule.",
-          "The schedule creation sets recurrence=weekly.",
           "The reply confirms the recurring schedule was created for Monday at 9am Pacific.",
         ],
         fail: [
@@ -92,12 +131,16 @@ describeEval("Scheduler", slackEvals, (it) => {
         ],
       }),
     });
+    expect(scheduledTaskCreateCall(result.session).arguments).toMatchObject({
+      schedule_kind: "recurring",
+      recurrence: "weekly",
+    });
   });
 
   it("when a one-off reminder becomes due, deliver the reminder outcome", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         scheduledTaskDue("Post this reminder: Standup moved to 10:30 today.", {
           schedule: "Once at noon UTC",
@@ -111,19 +154,19 @@ describeEval("Scheduler", slackEvals, (it) => {
           "The delivered message does not ask for clarification or confirmation.",
         ],
         fail: [
-          "Do not use webSearch, webFetch, bash, callMcpTool, sandbox, or Slack history tools for this reminder-only task.",
           "Do not say that a reminder was scheduled or will be scheduled.",
           "Do not omit the 10:30 standup update.",
           "Do not ask the user what to do with the reminder.",
         ],
       }),
     });
+    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 
   it("when a recurring scheduled task becomes due, deliver that occurrence", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       events: [
         scheduledTaskDue(
           "Post this reminder: Submit timesheets by 5pm today.",
@@ -141,12 +184,12 @@ describeEval("Scheduler", slackEvals, (it) => {
           "The delivered message is not just a confirmation that a recurring task exists.",
         ],
         fail: [
-          "Do not use webSearch, webFetch, bash, callMcpTool, sandbox, or Slack history tools for this reminder-only task.",
           "Do not say only that a weekly reminder was scheduled.",
           "Do not omit the timesheets by 5pm content.",
           "Do not ask the user to confirm the recurring task before posting.",
         ],
       }),
     });
+    expectNoToolCalls(result.session, REMINDER_ONLY_FORBIDDEN_TOOLS);
   });
 });

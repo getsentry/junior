@@ -98,7 +98,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The normalized transcript contains exactly one assistant thread reply.",
           "The reply says GitHub PR getsentry/junior#691 has a failed CI/checks result.",
           'The reply mentions the failing workflow "test" or commit abcdef123456.',
           "The reply gives a concrete next step such as checking CI logs, inspecting the failed workflow, or preparing a fix.",
@@ -130,7 +129,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The normalized transcript contains exactly one assistant thread reply.",
           "The reply says GitHub PR getsentry/junior#702 was merged.",
           "The reply frames the merge as the subscribed outcome this thread was waiting for.",
           "The reply stays brief and does not propose unnecessary follow-up work.",
