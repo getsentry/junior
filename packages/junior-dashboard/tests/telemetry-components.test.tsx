@@ -284,6 +284,42 @@ describe("dashboard telemetry components", () => {
     );
   });
 
+  it("shows subagent execution settings while the drawer is loading", () => {
+    const target = {
+      conversationId: "parent-conversation",
+      part: {
+        id: "advisor-loading",
+        modelId: "openai/gpt-5.6-sol",
+        reasoningLevel: "high",
+        status: "running",
+        subagentKind: "advisor",
+        type: "subagent",
+      },
+      turn: {
+        conversationId: "parent-conversation",
+        cumulativeDurationMs: 0,
+        displayTitle: "Parent conversation",
+        id: "turn-loading",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:01.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "active",
+        surface: "internal",
+        transcript: [],
+        transcriptAvailable: true,
+      },
+    } satisfies SubagentTranscriptTarget;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("gpt-5.6-sol");
+    expect(html).toContain("(high)");
+  });
+
   it("renders actor profiles with activity and recent conversations", () => {
     const profile: ActorProfile = {
       activityDays: [
@@ -708,8 +744,20 @@ describe("dashboard telemetry components", () => {
       runs: [
         {
           ...session,
+          id: "turn-active",
+          lastSeenAt: "2026-01-01T00:00:01.000Z",
           modelId: "openai/gpt-5.5",
           reasoningLevel: "high",
+          status: "active",
+          transcript: [],
+          transcriptAvailable: true,
+        },
+        {
+          ...session,
+          id: "turn-older",
+          lastSeenAt: "2025-12-31T23:59:59.000Z",
+          modelId: "openai/gpt-4.1",
+          reasoningLevel: "low",
           transcript: [],
           transcriptAvailable: true,
         },
@@ -722,6 +770,7 @@ describe("dashboard telemetry components", () => {
 
     expect(header).toContain("gpt-5.5");
     expect(header).toContain("(high)");
+    expect(header).not.toContain("gpt-4.1");
     expect(header).not.toContain(">Model<");
     expect(header).not.toContain(">Reasoning<");
   });

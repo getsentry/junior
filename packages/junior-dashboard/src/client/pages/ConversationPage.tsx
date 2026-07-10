@@ -135,14 +135,26 @@ function ConversationExecutionSignature(props: {
   detail: ConversationDetailFeed | undefined;
 }) {
   const runs = props.detail?.runs;
-  const latestRun = runs?.[runs.length - 1];
-  if (!latestRun?.modelId) return null;
+  const currentRun = runs?.reduce<(typeof runs)[number] | undefined>(
+    (selected, run) => {
+      if (!selected) return run;
+      if (run.status === "active" && selected.status !== "active") return run;
+      if (selected.status === "active" && run.status !== "active") {
+        return selected;
+      }
+      return Date.parse(run.lastSeenAt) > Date.parse(selected.lastSeenAt)
+        ? run
+        : selected;
+    },
+    undefined,
+  );
+  if (!currentRun?.modelId) return null;
 
   return (
     <ExecutionSignature
       className="mt-1.5 block"
-      modelId={latestRun.modelId}
-      reasoningLevel={latestRun.reasoningLevel}
+      modelId={currentRun.modelId}
+      reasoningLevel={currentRun.reasoningLevel}
     />
   );
 }

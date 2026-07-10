@@ -1367,9 +1367,9 @@ export async function readConversationReport(
     ? await listAgentTurnSessionSummariesForConversation(conversationId)
     : [];
   const currentTurnSummary = conversation
-    ? (turnSummaries.find(
+    ? turnSummaries.find(
         (summary) => summary.sessionId === conversation.execution.runId,
-      ) ?? turnSummaries[0])
+      )
     : undefined;
 
   const stepStore = getAgentStepStore();

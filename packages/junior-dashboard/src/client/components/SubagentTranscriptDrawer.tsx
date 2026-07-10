@@ -202,9 +202,13 @@ function subagentFallback(
     transcript: [],
     transcriptAvailable: false,
     ...(target.part.endedAt ? { endedAt: target.part.endedAt } : {}),
+    ...(target.part.modelId ? { modelId: target.part.modelId } : {}),
     ...(target.part.outcome ? { outcome: target.part.outcome } : {}),
     ...(target.part.parentToolCallId
       ? { parentToolCallId: target.part.parentToolCallId }
+      : {}),
+    ...(target.part.reasoningLevel
+      ? { reasoningLevel: target.part.reasoningLevel }
       : {}),
   };
 }

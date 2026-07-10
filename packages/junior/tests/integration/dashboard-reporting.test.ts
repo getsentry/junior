@@ -787,6 +787,42 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("omits execution settings when the current run has no matching summary", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { readConversationReport } =
+      await import("@/reporting/conversations");
+    const conversationId = "internal:missing-current-summary";
+
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: "turn-older",
+      sliceId: 1,
+      state: "completed",
+      modelId: "openai/gpt-4.1",
+      reasoningLevel: "low",
+      piMessages: [],
+    });
+
+    const report = await readConversationReport(conversationId, {
+      conversationStore: fixedConversationStore([
+        indexedConversation({
+          conversationId,
+          createdAtMs: 1,
+          lastActivityAtMs: 2,
+          execution: {
+            runId: "turn-current",
+            status: "running",
+            updatedAtMs: 2,
+          },
+        }),
+      ]),
+    });
+
+    expect(report.runs[0]).not.toHaveProperty("modelId");
+    expect(report.runs[0]).not.toHaveProperty("reasoningLevel");
+  });
+
   it("reports private execution activity as safe metadata", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
