@@ -651,14 +651,49 @@ describe("bot handlers (integration)", () => {
 
   it("keeps the turn successful when persistence fails after Slack accepted the reply", async () => {
     const conversationId = "slack:C0POSTDELIVERY:1700000000.000";
+    const sessionId = "turn_msg-post-delivery";
     const finalText = "Delivered before the state store failed.";
+    const promptMessages = turnPiMessages("please answer");
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
           agentRunner: {
-            run: async () =>
-              completedAgentRun({
+            run: async () => {
+              await upsertAgentTurnSessionRecord({
+                conversationId,
+                sessionId,
+                sliceId: 1,
+                state: "running",
+                piMessages: promptMessages,
+              });
+              return completedAgentRun({
                 text: finalText,
+                piMessages: [
+                  ...promptMessages,
+                  {
+                    role: "assistant" as const,
+                    content: [{ type: "text" as const, text: finalText }],
+                    api: "responses" as const,
+                    provider: "openai",
+                    model: "gpt-5.3",
+                    usage: {
+                      input: 1,
+                      output: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      totalTokens: 2,
+                      cost: {
+                        input: 0,
+                        output: 0,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        total: 0,
+                      },
+                    },
+                    stopReason: "stop" as const,
+                    timestamp: 2,
+                  },
+                ],
                 diagnostics: {
                   assistantMessageCount: 1,
                   modelId: "fake-agent-model",
@@ -668,7 +703,8 @@ describe("bot handlers (integration)", () => {
                   toolResultCount: 0,
                   usedPrimaryText: true,
                 },
-              }),
+              });
+            },
           },
         },
         visionContext: {
@@ -719,6 +755,26 @@ describe("bot handlers (integration)", () => {
         "I ran into an internal error while processing that.",
       ),
     ).toBe(false);
+
+    const conversation = await loadVisibleConversation(thread);
+    expect(conversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          text: finalText,
+        }),
+        expect.objectContaining({
+          id: "msg-post-delivery",
+          meta: expect.objectContaining({ replied: true }),
+        }),
+      ]),
+    );
+    await expect(
+      getAgentTurnSessionRecord(conversationId, sessionId),
+    ).resolves.toMatchObject({ state: "completed" });
+    await expect(loadProjection({ conversationId })).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ role: "assistant" })]),
+    );
   });
 
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {
