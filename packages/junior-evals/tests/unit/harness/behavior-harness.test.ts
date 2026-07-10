@@ -172,6 +172,40 @@ describe("behavior harness", () => {
     }
   });
 
+  it("does not retain the tunnel base URL for non-egress evals", async () => {
+    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
+    process.env.JUNIOR_BASE_URL = "https://junior-eval.example.dev";
+    try {
+      await runEvalScenario({
+        events: [
+          {
+            type: "new_mention",
+            thread: {
+              id: "fixture-local-base-url",
+              channel_id: "CLOCALBASE",
+              thread_ts: "1700000000.0003",
+            },
+            message: {
+              id: "m-local-base-url",
+              text: "hello",
+              is_mention: true,
+            },
+          },
+        ],
+      });
+
+      expect(observedRuntimeIds.juniorBaseUrl).toBe(
+        "https://junior.example.com",
+      );
+    } finally {
+      if (previousBaseUrl === undefined) {
+        delete process.env.JUNIOR_BASE_URL;
+      } else {
+        process.env.JUNIOR_BASE_URL = previousBaseUrl;
+      }
+    }
+  });
+
   it("rejects sandbox HTTP interception evals without a sandbox-reachable base URL", async () => {
     const previousBaseUrl = process.env.JUNIOR_BASE_URL;
     delete process.env.JUNIOR_BASE_URL;

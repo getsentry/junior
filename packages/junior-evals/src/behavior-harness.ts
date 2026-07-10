@@ -663,9 +663,7 @@ function configureHarnessBaseUrl(scenario: EvalScenario): void {
     return;
   }
 
-  if (!baseUrl) {
-    process.env.JUNIOR_BASE_URL = DEFAULT_EVAL_BASE_URL;
-  }
+  process.env.JUNIOR_BASE_URL = DEFAULT_EVAL_BASE_URL;
 }
 
 function requestHeadersFromNode(
