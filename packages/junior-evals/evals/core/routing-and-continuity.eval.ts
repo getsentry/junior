@@ -1,7 +1,14 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+import {
+  mention,
+  resourceEventNotification,
+  rubric,
+  slackEvals,
+  steer,
+  threadMessage,
+} from "../../src/helpers";
 
 type EvalSession = Parameters<typeof assistantMessages>[0];
 
@@ -24,11 +31,59 @@ function visibleText(session: EvalSession): string {
 }
 
 describeEval("Routing and Continuity", slackEvals, (it) => {
+  const steeringThread = {
+    id: "thread-direct-mention-steering",
+    channel_id: "CDIRECTMENTIONSTEERING",
+    thread_ts: "17000000.1300",
+  };
+
+  it("when directly mentioned during a bot-notification run, answer the user's instruction only", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        resourceEventNotification({
+          eventKey: "linear-issue-linked",
+          eventType: "issue.linked",
+          intent: "Track linked infrastructure work in this Slack thread.",
+          label: "Linear issue OPS-123",
+          provider: "linear",
+          resourceRef: "linear:issue:OPS-123",
+          thread: steeringThread,
+          trustedSummary: "Linear issue OPS-123 was linked to this thread.",
+        }),
+      ],
+      events: [
+        steer(
+          mention(
+            "@junior The deployment owner is Alice. Tell the thread who owns the deployment.",
+            { thread: steeringThread },
+          ),
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant posts exactly one visible reply.",
+          "The reply says Alice owns the deployment.",
+          "The Linear notification is treated only as context for the user's direct instruction.",
+        ],
+        fail: [
+          "Do not post a standalone response to the Linear notification.",
+          "Do not say there is nothing to act on before answering the user.",
+        ],
+      }),
+    });
+
+    const replies = visibleThreadReplies(result.session);
+    expect(replies).toHaveLength(1);
+    expect(textContent(replies[0]?.content)).toMatch(/Alice/i);
+  });
+
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
     run,
   }) => {
     await run({
-      events: [threadMessage("What is 2+2?", { is_mention: true })],
+      initialEvents: [threadMessage("What is 2+2?", { is_mention: true })],
       criteria: rubric({
         pass: [
           "The assistant posts exactly one reply.",
@@ -43,7 +98,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
         ),
@@ -72,7 +127,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention("The billing rollout is paused until the retry queue drains.", {
           thread: actorIdentityThread,
           author: {
@@ -81,6 +136,8 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
             full_name: "Alice Example",
           },
         }),
+      ],
+      events: [
         threadMessage(
           "Can you draft the one-sentence status update for this?",
           {
@@ -118,7 +175,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         mention(
           "For the rollout summary, my preferred wording is formal and cautious.",
           {
@@ -130,6 +187,8 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
             },
           },
         ),
+      ],
+      events: [
         threadMessage(
           "For the rollout summary, my preferred wording is casual and direct. What wording preference did I just give you?",
           {
@@ -166,7 +225,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [mention("react to this")],
+      initialEvents: [mention("react to this")],
       criteria: rubric({
         pass: [
           "The normalized transcript contains at least one reaction_added assistant message.",
@@ -200,8 +259,10 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention("I need the budget by Friday.", { thread: continuityThread }),
+      ],
+      events: [
         threadMessage("what did i just ask?", {
           thread: continuityThread,
           is_mention: true,

@@ -6,7 +6,7 @@ describeEval("Output Contract", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "Give me a short overview of how OAuth 2.0 authorization code flow works. Cover the authorization request, token exchange, and refresh. Keep it to a few short sections.",
         ),
@@ -29,7 +29,7 @@ describeEval("Output Contract", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "Where can I find the official documentation for the Slack Web API, Slack Bolt JS, and Slack Block Kit? Just point me at the three canonical starting pages.",
         ),
@@ -52,7 +52,7 @@ describeEval("Output Contract", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "Give me a short comparison of REST and GraphQL across these three dimensions: caching, over-fetching, and tooling maturity. Keep it tight.",
         ),

@@ -6,7 +6,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [threadStart()],
+      initialEvents: [threadStart()],
       criteria: rubric({
         pass: [
           "No assistant reply is posted.",
@@ -22,7 +22,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
   }) => {
     await run({
       overrides: { fail_reply_call: 1 },
-      events: [mention("What's the status of the deploy?")],
+      initialEvents: [mention("What's the status of the deploy?")],
       criteria: rubric({
         pass: [
           "The normalized transcript contains exactly one assistant thread reply.",
@@ -48,7 +48,7 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
           },
         ],
       },
-      events: [mention("Quick budget update?")],
+      initialEvents: [mention("Quick budget update?")],
       criteria: rubric({
         pass: [
           "The normalized transcript contains exactly one assistant thread reply because this answer fits in a single Slack post.",

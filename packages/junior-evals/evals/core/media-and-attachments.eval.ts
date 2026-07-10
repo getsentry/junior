@@ -8,7 +8,9 @@ describeEval("Media and Attachments", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: { mock_image_generation: true },
-      events: [mention("make an image showing how you feel and share it here")],
+      initialEvents: [
+        mention("make an image showing how you feel and share it here"),
+      ],
       criteria: rubric({
         pass: ["The assistant responds by attaching an image in the thread."],
         fail: [

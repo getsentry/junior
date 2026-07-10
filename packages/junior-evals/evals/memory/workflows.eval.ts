@@ -301,10 +301,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await clearMemories();
     const result = await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("Please remember that I prefer terse PR summaries.", {
           thread: explicitRememberThread,
         }),
+      ],
+      events: [
         mention("List the exact stored memory content for that preference.", {
           thread: explicitRememberThread,
         }),
@@ -364,10 +366,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     const userText = "ok remember that i think types in python are bad";
     const result = await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(userText, {
           thread: firstPersonRewrittenThread,
         }),
+      ],
+      events: [
         mention("What exact memory did you store about Python types?", {
           thread: firstPersonRewrittenThread,
         }),
@@ -471,10 +475,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       "Please remember that for flaky webhook triage, inspect delivery headers before retrying the job.";
     const result = await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(userText, {
           thread: explicitTaskProcedureThread,
         }),
+      ],
+      events: [
         mention("How should flaky webhook triage be done?", {
           thread: explicitTaskProcedureThread,
         }),
@@ -536,10 +542,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       "For sandbox timeout triage, inspect heartbeat gaps before increasing the timeout.";
     const result = await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(userText, {
           thread: passiveTaskProcedureThread,
         }),
+      ],
+      events: [
         mention("How should sandbox timeout triage be done?", {
           thread: passiveTaskProcedureThread,
         }),
@@ -601,10 +609,12 @@ describeEval("Memory Workflows", slackEvals, (it) => {
       "Branch QA runbooks require risk notes before summary notes.";
     const result = await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(userText, {
           thread: passiveConversationThread,
         }),
+      ],
+      events: [
         mention("What do branch QA runbooks require?", {
           thread: passiveConversationThread,
         }),
@@ -664,7 +674,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(
           "The analytics query says today's signup conversion rate is 8.4%.",
           {
@@ -699,7 +709,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
     await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("Please remember that David prefers terse PR summaries.", {
           thread: thirdPartyRememberThread,
         }),
@@ -737,7 +747,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
 
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("How should I structure my next PR summary?", {
           thread: autoRecallThread,
         }),
@@ -782,7 +792,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
 
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("For PR summaries, I still want risk notes first.", {
           thread: passiveDedupeThread,
         }),
@@ -827,7 +837,7 @@ describeEval("Memory Workflows", slackEvals, (it) => {
 
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("Please forget that I prefer terse PR summaries.", {
           thread: removeThread,
         }),

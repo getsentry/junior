@@ -11,7 +11,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
   }) => {
     await run({
       overrides: codingFixtureOverrides,
-      events: [
+      initialEvents: [
         mention(
           "In the eval coding fixture, change the default retry count from 2 to 3. Keep the reply brief and tell me which file changed.",
         ),
@@ -33,7 +33,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
   }) => {
     await run({
       overrides: codingFixtureOverrides,
-      events: [
+      initialEvents: [
         mention(
           "In the eval coding fixture, compare project/src/alerts.ts and project/docs/operations.md for emergency mode behavior. Summarize what each file says and do not change any files.",
         ),

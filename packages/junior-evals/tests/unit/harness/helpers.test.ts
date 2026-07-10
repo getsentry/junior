@@ -19,7 +19,7 @@ it("forwards the Vitest abort signal to the eval scenario", async () => {
 
   await expect(
     slackHarness.run(
-      { criteria: { pass: [] }, events: [] },
+      { criteria: { pass: [] }, initialEvents: [] },
       {
         artifacts: {},
         setArtifact: vi.fn(),
@@ -29,7 +29,7 @@ it("forwards the Vitest abort signal to the eval scenario", async () => {
   ).rejects.toBe(runError);
 
   expect(runEvalScenarioMock).toHaveBeenCalledWith(
-    { events: [], overrides: undefined },
+    { initialEvents: [], events: undefined, overrides: undefined },
     { logRecords: [], signal: controller.signal },
   );
 });

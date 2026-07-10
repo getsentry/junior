@@ -15,6 +15,7 @@ const {
     destinationChannelId: undefined as string | undefined,
     juniorBaseUrl: undefined as string | undefined,
     messageThreadId: undefined as string | undefined,
+    receivedAck: false,
     threadId: undefined as string | undefined,
   };
 
@@ -32,11 +33,16 @@ const {
       async (
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
-        options?: { destination?: { channelId?: string } },
+        options?: {
+          ack?: () => Promise<void>;
+          destination?: { channelId?: string };
+        },
       ) => {
+        await options?.ack?.();
         observedRuntimeIds.destinationChannelId =
           options?.destination?.channelId;
         observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
+        observedRuntimeIds.receivedAck = Boolean(options?.ack);
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
         await thread.post("observed");
@@ -46,11 +52,16 @@ const {
       async (
         thread: { id: string; post: (value: unknown) => Promise<void> },
         message: { threadId?: string },
-        options?: { destination?: { channelId?: string } },
+        options?: {
+          ack?: () => Promise<void>;
+          destination?: { channelId?: string };
+        },
       ) => {
+        await options?.ack?.();
         observedRuntimeIds.destinationChannelId =
           options?.destination?.channelId;
         observedRuntimeIds.juniorBaseUrl = process.env.JUNIOR_BASE_URL;
+        observedRuntimeIds.receivedAck = Boolean(options?.ack);
         observedRuntimeIds.threadId = thread.id;
         observedRuntimeIds.messageThreadId = message.threadId;
         await thread.post("observed");
@@ -102,6 +113,7 @@ describe("behavior harness", () => {
     observedRuntimeIds.juniorBaseUrl = undefined;
     observedRuntimeIds.threadId = undefined;
     observedRuntimeIds.messageThreadId = undefined;
+    observedRuntimeIds.receivedAck = false;
     runtimeState.agentRunner = undefined;
     executeAgentRunMock.mockClear();
     handleNewMentionMock.mockClear();
@@ -112,7 +124,9 @@ describe("behavior harness", () => {
   it("forwards the host signal into the eval agent policy", async () => {
     const controller = new AbortController();
 
-    await runEvalScenario({ events: [] }, { signal: controller.signal });
+    await runEvalScenario({ initialEvents: [] }, {
+      signal: controller.signal,
+    });
     await runtimeState.agentRunner?.run({ policy: {} });
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
@@ -124,7 +138,7 @@ describe("behavior harness", () => {
 
   it("normalizes eval thread fixtures to Slack-style runtime thread ids", async () => {
     const result = await runEvalScenario({
-      events: [
+      initialEvents: [
         {
           type: "new_mention",
           thread: {
@@ -149,6 +163,7 @@ describe("behavior harness", () => {
     expect(observedRuntimeIds.messageThreadId).toBe(
       "slack:CAUTH:1700000000.0001",
     );
+    expect(observedRuntimeIds.receivedAck).toBe(true);
     expect(result.posts).toEqual([
       {
         channel: "CAUTH",
@@ -161,14 +176,14 @@ describe("behavior harness", () => {
 
   it("normalizes eval destinations from adapter channel ids", async () => {
     await runEvalScenario({
-      events: [
+      initialEvents: [
         {
           type: "new_mention",
           thread: {
-            id: "slack:CAUTH:1700000000.0001",
+            id: "slack:CAUTH:1700000000.0002",
           },
           message: {
-            id: "m-auth-1",
+            id: "m-auth-2",
             text: "hello",
             is_mention: true,
           },
@@ -191,7 +206,7 @@ describe("behavior harness", () => {
           overrides: {
             credential_providers: ["github"],
           },
-          events: [],
+          initialEvents: [],
         }),
       ).rejects.toThrow(
         "Eval sandbox HTTP interception requires CLOUDFLARE_TUNNEL_TOKEN",
@@ -215,7 +230,7 @@ describe("behavior harness", () => {
     process.env.JUNIOR_BASE_URL = "https://junior-eval.example.dev";
     try {
       await runEvalScenario({
-        events: [
+        initialEvents: [
           {
             type: "new_mention",
             thread: {
@@ -253,7 +268,7 @@ describe("behavior harness", () => {
           overrides: {
             credential_providers: ["github"],
           },
-          events: [],
+          initialEvents: [],
         }),
       ).rejects.toThrow(
         "Eval sandbox HTTP interception requires JUNIOR_BASE_URL",
@@ -275,7 +290,7 @@ describe("behavior harness", () => {
     };
 
     const result = await runEvalScenario({
-      events: [
+      initialEvents: [
         {
           type: "new_mention",
           thread,
@@ -288,6 +303,8 @@ describe("behavior harness", () => {
             },
           },
         },
+      ],
+      events: [
         {
           type: "subscribed_message",
           thread,
@@ -321,9 +338,58 @@ describe("behavior harness", () => {
     ]);
   });
 
+  it("handles initial message events as one mailbox batch", async () => {
+    const thread = {
+      id: "fixture-initial-batch",
+      channel_id: "CINITIALBATCH",
+      thread_ts: "1700000000.0004",
+    };
+
+    const result = await runEvalScenario({
+      initialEvents: [
+        {
+          type: "new_mention",
+          thread,
+          message: {
+            id: "m-initial-batch-1",
+            text: "include the rollout owner",
+            is_mention: true,
+            author: { user_id: "UINITIALBATCH" },
+          },
+        },
+        {
+          type: "subscribed_message",
+          thread,
+          message: {
+            id: "m-initial-batch-2",
+            text: "summarize the thread",
+            is_mention: true,
+            author: { user_id: "UINITIALBATCH" },
+          },
+        },
+      ],
+    });
+
+    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
+    expect(handleSubscribedMessageMock).not.toHaveBeenCalled();
+    expect(result.posts).toEqual([
+      {
+        channel: "CINITIALBATCH",
+        files: [],
+        text: "observed",
+        thread_ts: "1700000000.0004",
+      },
+    ]);
+  });
+
   it("preserves attached file metadata on assistant thread posts", async () => {
     handleNewMentionMock.mockImplementationOnce(
-      async (thread: { post: (value: unknown) => Promise<void> }) => {
+      async (
+        thread: { post: (value: unknown) => Promise<void> },
+        _message: unknown,
+        options?: { ack?: () => Promise<void> },
+      ) => {
+        await options?.ack?.();
         await thread.post({
           raw: "",
           files: [
@@ -338,7 +404,7 @@ describe("behavior harness", () => {
     );
 
     const result = await runEvalScenario({
-      events: [
+      initialEvents: [
         {
           type: "new_mention",
           thread: {
@@ -380,7 +446,7 @@ describe("behavior harness", () => {
 
     await expect(
       runEvalScenario({
-        events: [],
+        initialEvents: [],
         overrides: {
           plugin_dirs: ["fixtures/plugins"],
           plugin_packages: ["../bad-package"],

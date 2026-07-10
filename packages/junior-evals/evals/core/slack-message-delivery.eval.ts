@@ -26,7 +26,7 @@ function visibleText(session: EvalSession): string {
 describeEval("Slack Message Delivery", slackEvals, (it) => {
   it("when asked for no visible reply, complete silently", async ({ run }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         mention(
           "please record that this has been seen, but do not post a visible reply",
         ),
@@ -51,7 +51,9 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [mention("@bot post this to the channel: deploy is unblocked")],
+      initialEvents: [
+        mention("@bot post this to the channel: deploy is unblocked"),
+      ],
       criteria: rubric({
         pass: [
           "The assistant does not call sendMessage.",
@@ -78,7 +80,7 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: { mock_image_generation: true },
-      events: [
+      initialEvents: [
         mention("make a small image of a launch checklist and share it here"),
       ],
       criteria: rubric({

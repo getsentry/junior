@@ -210,15 +210,10 @@ interface SubscribedMessageEvent extends EvalBaseEvent {
   type: "subscribed_message";
 }
 
-/**
- * Messages that are pending together in the conversation mailbox and are
- * handled as one worker turn: the last message becomes the live turn and the
- * earlier ones arrive as queued/skipped context, matching production mailbox
- * batching.
- */
-interface MessageBatchEvent {
+/** Models Slack messages that arrive while the preceding agent run is active. */
+export interface SteerEvent {
   events: Array<MentionEvent | SubscribedMessageEvent>;
-  type: "message_batch";
+  type: "steer";
 }
 
 interface AssistantThreadStartedEvent extends EvalBaseEvent {
@@ -244,18 +239,29 @@ interface ScheduledTaskDueEvent extends EvalBaseEvent {
 export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
-  | MessageBatchEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent;
 
-/** Expand message batches so consumers can treat scenario events uniformly. */
-function flattenEvalEvents(
-  events: readonly EvalEvent[],
-): Array<Exclude<EvalEvent, MessageBatchEvent>> {
-  return events.flatMap((event) =>
-    event.type === "message_batch" ? event.events : [event],
-  );
+type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
+
+function isSlackMessageEvent(event: EvalEvent): event is SlackMessageEvent {
+  return event.type === "new_mention" || event.type === "subscribed_message";
+}
+
+/** Events present before processing begins; multiple events form one Slack mailbox batch. */
+export type InitialEvents =
+  | []
+  | [EvalEvent]
+  | [SlackMessageEvent, SlackMessageEvent, ...SlackMessageEvent[]];
+
+function scenarioEvents(scenario: EvalScenario): EvalEvent[] {
+  return [
+    ...scenario.initialEvents,
+    ...(scenario.events ?? []).flatMap((event) =>
+      event.type === "steer" ? event.events : [event],
+    ),
+  ];
 }
 
 interface SubscribedDecisionFixture {
@@ -294,13 +300,18 @@ export interface EvalOverrides {
 }
 
 export interface EvalScenario {
-  events: EvalEvent[];
+  initialEvents: InitialEvents;
+  events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
 }
 
 interface EvalScenarioRunOptions {
   logRecords?: EmittedLogRecord[];
   signal?: AbortSignal;
+}
+
+interface SteeringDelivery {
+  deliver?: () => Promise<void>;
 }
 
 export interface EvalResult {
@@ -879,9 +890,9 @@ function attachTranscriptAccessors(
 
 async function cleanupHarnessThreadState(
   stateAdapter: HarnessStateAdapter,
-  scenarioEvents: readonly EvalEvent[],
+  scenario: EvalScenario,
 ): Promise<void> {
-  const events = flattenEvalEvents(scenarioEvents);
+  const events = scenarioEvents(scenario);
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
@@ -1593,7 +1604,7 @@ async function setupHarnessEnvironment(
       scenario.overrides?.credential_providers ?? [],
     );
     const authActorUsers = new Set(
-      flattenEvalEvents(scenario.events).flatMap((event) =>
+      scenarioEvents(scenario).flatMap((event) =>
         "message" in event
           ? [event.message.author?.user_id?.trim() || TEST_USER_ID]
           : "user_id" in event && event.user_id
@@ -1628,7 +1639,7 @@ async function setupHarnessEnvironment(
       : undefined;
     resetSkillDiscoveryCache();
     resetTestGitHubHttpFixtures();
-    await cleanupHarnessThreadState(stateAdapter, scenario.events);
+    await cleanupHarnessThreadState(stateAdapter, scenario);
     await cleanupMcpAuthState(authActorUsers, autoCompleteMcpOauthProviders);
     await cleanupOAuthTokens(authActorUsers, autoCompleteOauthProviders);
     await cleanupOAuthTokens(authActorUsers, credentialProviders);
@@ -1665,7 +1676,7 @@ async function teardownHarnessEnvironment(
 ): Promise<void> {
   resetSkillDiscoveryCache();
   pluginCatalogRuntime.setConfig(undefined);
-  await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
+  await cleanupHarnessThreadState(env.stateAdapter, scenario);
   await cleanupMcpAuthState(
     env.authActorUsers,
     env.autoCompleteMcpOauthProviders,
@@ -1687,6 +1698,7 @@ function buildRuntimeServices(
   threadRecordsById: Map<string, EvalThreadRecord>,
   observations: RuntimeObservations,
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
+  steeringDelivery: SteeringDelivery,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
@@ -1736,6 +1748,23 @@ function buildRuntimeServices(
     replyExecutor: {
       agentRunner: {
         run: async (request) => {
+          const pendingSteeringDelivery = steeringDelivery.deliver;
+          const runRequest = pendingSteeringDelivery
+            ? {
+                ...request,
+                durability: {
+                  ...request.durability,
+                  onInputCommitted: async () => {
+                    await request.durability?.onInputCommitted?.();
+                    if (steeringDelivery.deliver !== pendingSteeringDelivery) {
+                      return;
+                    }
+                    steeringDelivery.deliver = undefined;
+                    await pendingSteeringDelivery();
+                  },
+                },
+              }
+            : request;
           replyCallCount += 1;
           const mockImageGeneration = scenario.overrides?.mock_image_generation;
           if (scenario.overrides?.fail_reply_call === replyCallCount) {
@@ -1743,8 +1772,11 @@ function buildRuntimeServices(
           }
           const replyResult = replyResults[replyCallCount - 1];
           if (replyResult) {
+            await runRequest.durability?.onInputCommitted?.();
             if (replyResult.stream_text) {
-              await request.observers?.onTextDelta?.(replyResult.stream_text);
+              await runRequest.observers?.onTextDelta?.(
+                replyResult.stream_text,
+              );
             }
             replyState.successfulCount += 1;
             observations.toolInvocations.push(
@@ -1777,6 +1809,7 @@ function buildRuntimeServices(
           }
           const replyText = replyTexts[replyState.successfulCount];
           if (typeof replyText === "string") {
+            await runRequest.durability?.onInputCommitted?.();
             replyState.successfulCount += 1;
             return completedAgentRun({
               text: replyText,
@@ -1822,12 +1855,13 @@ function buildRuntimeServices(
               params: Record<string, unknown>;
             }> = [];
             const outcome = await executeAgentRun({
-              ...request,
+              ...runRequest,
               policy: {
-                ...request.policy,
+                ...runRequest.policy,
                 signal,
                 turnDeadlineAtMs: Math.min(
-                  request.policy?.turnDeadlineAtMs ?? Number.POSITIVE_INFINITY,
+                  runRequest.policy?.turnDeadlineAtMs ??
+                    Number.POSITIVE_INFINITY,
                   Date.now() + replyTimeoutMs,
                 ),
                 ...(env.configuredSkillDirs.length > 0
@@ -1836,7 +1870,7 @@ function buildRuntimeServices(
                 toolOverrides,
               },
               observers: {
-                ...request.observers,
+                ...runRequest.observers,
                 onToolInvocation: (invocation) => {
                   const evalInvocation = toEvalToolInvocation(invocation);
                   observations.toolInvocations.push(evalInvocation);
@@ -1928,6 +1962,7 @@ async function processEvents(args: {
   findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
+  steeringDelivery: SteeringDelivery;
 }): Promise<void> {
   const {
     scenario,
@@ -1939,6 +1974,7 @@ async function processEvents(args: {
     getThreadRecord,
     findEvalThread,
     readyQueueDeliveries,
+    steeringDelivery,
   } = args;
 
   const consumedOauthStates = new Set<string>();
@@ -2046,12 +2082,10 @@ async function processEvents(args: {
     }
   };
 
-  // Persist batch members through real Slack ingress so the conversation
-  // worker claims them as one mailbox batch (latest live, earlier queued).
-  const appendMailboxBatch = async (
-    batch: MessageBatchEvent,
+  const appendMailboxMessages = async (
+    events: Array<MentionEvent | SubscribedMessageEvent>,
   ): Promise<void> => {
-    for (const [index, event] of batch.events.entries()) {
+    for (const [index, event] of events.entries()) {
       const { thread, transcript } = getThreadRecord(event.thread);
       const route =
         (event.message.is_mention ?? event.type === "new_mention")
@@ -2221,13 +2255,7 @@ async function processEvents(args: {
     }
   };
 
-  for (const event of scenario.events) {
-    if (event.type === "message_batch") {
-      await appendMailboxBatch(event);
-      await maybeAutoCompleteAuth();
-      await drainQueuedConversationWork();
-      continue;
-    }
+  const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
@@ -2240,6 +2268,87 @@ async function processEvents(args: {
       await maybeAutoCompleteAuth();
       await drainQueuedConversationWork();
     }
+  };
+
+  const processMessageGroup = async (
+    messages: Array<MentionEvent | SubscribedMessageEvent>,
+    steering?: SteerEvent,
+  ): Promise<void> => {
+    if (steering) {
+      const conversationIds = new Set(
+        [...messages, ...steering.events].map((event) =>
+          buildRuntimeThreadId(event.thread),
+        ),
+      );
+      if (conversationIds.size !== 1) {
+        throw new Error(
+          "steer() messages must target the preceding Slack conversation",
+        );
+      }
+      steeringDelivery.deliver = async () => {
+        await appendMailboxMessages(steering.events);
+      };
+    }
+    await appendMailboxMessages(messages);
+    await maybeAutoCompleteAuth();
+    await drainQueuedConversationWork();
+    if (steeringDelivery.deliver) {
+      steeringDelivery.deliver = undefined;
+      throw new Error(
+        "steer() requires the preceding message group to start an agent run",
+      );
+    }
+  };
+
+  const remainingEvents = scenario.events ?? [];
+  let nextIndex = 0;
+  const initialSteering =
+    remainingEvents[0]?.type === "steer" ? remainingEvents[0] : undefined;
+  if (initialSteering) {
+    nextIndex = 1;
+  }
+
+  const initialMessages = Array.from(scenario.initialEvents).filter(
+    isSlackMessageEvent,
+  );
+
+  if (
+    initialMessages.length > 0 &&
+    initialMessages.length === scenario.initialEvents.length
+  ) {
+    await processMessageGroup(initialMessages, initialSteering);
+  } else {
+    if (scenario.initialEvents.length > 1 || initialSteering !== undefined) {
+      throw new Error(
+        "Multiple initialEvents and steer() require Slack message events",
+      );
+    }
+    const initialEvent = scenario.initialEvents[0];
+    if (initialEvent) {
+      await processSettledEvent(initialEvent);
+    }
+  }
+
+  while (nextIndex < remainingEvents.length) {
+    const event = remainingEvents[nextIndex];
+    if (!event) {
+      break;
+    }
+    if (event.type === "steer") {
+      throw new Error("steer() must follow a Slack message event");
+    }
+    const nextEvent = remainingEvents[nextIndex + 1];
+    const steering = nextEvent?.type === "steer" ? nextEvent : undefined;
+    if (steering) {
+      if (event.type !== "new_mention" && event.type !== "subscribed_message") {
+        throw new Error("steer() must follow a Slack message event");
+      }
+      await processMessageGroup([event], steering);
+      nextIndex += 2;
+      continue;
+    }
+    await processSettledEvent(event);
+    nextIndex += 1;
   }
 
   while (readyQueueDeliveries.length > 0) {
@@ -2374,12 +2483,14 @@ export async function runEvalScenario(
     };
 
     const conversationWorkQueue = createConversationWorkQueueTestAdapter();
+    const steeringDelivery: SteeringDelivery = {};
     const services = buildRuntimeServices(
       scenario,
       env,
       threadRecordsById,
       observations,
       conversationWorkQueue,
+      steeringDelivery,
       options.signal,
     );
     const evalAgentRunner = services.replyExecutor?.agentRunner;
@@ -2403,6 +2514,7 @@ export async function runEvalScenario(
       findEvalThread: (threadId) => threadRecordsById.get(threadId)?.thread,
       observations,
       readyQueueDeliveries,
+      steeringDelivery,
     });
 
     return collectResults(

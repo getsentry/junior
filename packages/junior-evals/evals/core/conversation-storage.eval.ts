@@ -16,7 +16,7 @@ describeEval("Conversation Storage", slackEvals, (it) => {
     const userText =
       "What is the capital of France? Answer in one short sentence.";
     const result = await run({
-      events: [mention(userText)],
+      initialEvents: [mention(userText)],
       requireSandboxReady: false,
       criteria: rubric({
         pass: ["The assistant posts one reply that names Paris."],
@@ -81,11 +81,13 @@ describeEval("Conversation Storage", slackEvals, (it) => {
         auto_complete_mcp_oauth: [EVAL_MCP_PROVIDER],
         plugin_dirs: ["fixtures/plugins"],
       },
-      events: [
+      initialEvents: [
         threadMessage(
           "<@U_APP> /eval-auth Use the demo MCP connection to check our current budget status.",
           { thread: providerReuseThread, is_mention: true },
         ),
+      ],
+      events: [
         threadMessage(
           "<@U_APP> /eval-auth Using that same connection, check the budget status one more time.",
           { thread: providerReuseThread, is_mention: true },

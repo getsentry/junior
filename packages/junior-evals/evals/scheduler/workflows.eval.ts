@@ -46,7 +46,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [mention("@bot remind me in 1 minute to wash my hands")],
+      initialEvents: [mention("@bot remind me in 1 minute to wash my hands")],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
@@ -68,7 +68,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [mention("@bot remind me to drink water in 1m")],
+      initialEvents: [mention("@bot remind me to drink water in 1m")],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to drink water was scheduled.",
@@ -90,7 +90,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         mention(
           "@bot remind me in 2 minutes to tell the channel standup moved",
         ),
@@ -114,7 +114,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         mention(
           "@bot schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
         ),
@@ -141,7 +141,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         scheduledTaskDue("Post this reminder: Standup moved to 10:30 today.", {
           schedule: "Once at noon UTC",
           schedule_kind: "one_off",
@@ -167,7 +167,7 @@ describeEval("Scheduler", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         scheduledTaskDue(
           "Post this reminder: Submit timesheets by 5pm today.",
           {

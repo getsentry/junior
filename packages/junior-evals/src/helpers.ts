@@ -33,6 +33,8 @@ import {
   type EvalEvent,
   type EvalOverrides,
   type EvalResult,
+  type InitialEvents,
+  type SteerEvent,
   runEvalScenario,
 } from "./behavior-harness";
 
@@ -258,7 +260,8 @@ interface EvalRubric {
 }
 
 export interface SlackEvalInput {
-  events: EvalEvent[];
+  initialEvents: InitialEvents;
+  events?: Array<EvalEvent | SteerEvent>;
   overrides?: EvalOverrides;
   criteria: EvalRubric;
   requireGatewayReady?: boolean;
@@ -465,6 +468,7 @@ export const slackHarness: Harness<SlackEvalInput> = {
       assertTimeoutBudget(input);
       const taskPromise = runEvalScenario(
         {
+          initialEvents: input.initialEvents,
           events: input.events,
           overrides: input.overrides,
         },
@@ -670,7 +674,7 @@ export function mention(
   };
 }
 
-/** Builds a follow-up subscribed-thread message for a harnessed Slack eval. */
+/** Builds a subscribed-thread message for a harnessed Slack eval. */
 export function threadMessage(
   text: string,
   opts?: {
@@ -699,19 +703,17 @@ export function threadMessage(
   };
 }
 
-/**
- * Groups messages that are pending together in the conversation mailbox so
- * the worker handles them as one turn: the last message becomes the live
- * turn and earlier ones arrive as queued context, matching production
- * mailbox batching when messages land faster than turns complete.
- */
-export function batch(
+/** Models Slack messages that arrive while the preceding agent run is active. */
+export function steer(
   ...events: Array<
     ReturnType<typeof mention> | ReturnType<typeof threadMessage>
   >
 ) {
+  if (events.length === 0) {
+    throw new Error("steer() requires at least one message event");
+  }
   return {
-    type: "message_batch" as const,
+    type: "steer" as const,
     events,
   };
 }

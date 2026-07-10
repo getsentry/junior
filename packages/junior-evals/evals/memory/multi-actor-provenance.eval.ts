@@ -6,13 +6,7 @@ import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
 } from "../../../junior-memory/src/db/schema";
-import {
-  batch,
-  mention,
-  rubric,
-  slackEvals,
-  threadMessage,
-} from "../../src/helpers";
+import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 
 /**
  * Multi-actor provenance evals for passive memory extraction.
@@ -106,7 +100,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(
           "Can you help capture takeaways from this retro discussion as we go?",
           {
@@ -114,6 +108,8 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
             author: ALICE,
           },
         ),
+      ],
+      events: [
         threadMessage(
           "Biggest takeaway from my side: the rollout checklist missed cache invalidation, and we only caught it because support flagged the stale pages.",
           {
@@ -174,7 +170,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention(
           "I prefer status updates with risks listed first. Can you draft one for the rollout pause?",
           {
@@ -182,6 +178,8 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
             author: ALICE,
           },
         ),
+      ],
+      events: [
         threadMessage(
           "personally I prefer status updates that lead with the customer impact, not risks.",
           {
@@ -245,23 +243,21 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // where Bob's first-person statement rides inside Alice's transcript.
     await run({
       overrides: memoryPluginOverrides,
-      events: [
-        batch(
-          mention(
-            "When you write up the recap, I prefer short bullet summaries over prose.",
-            {
-              thread: batchedMentionThread,
-              author: BOB,
-            },
-          ),
-          threadMessage(
-            "Can you recap what has been asked in this thread so far?",
-            {
-              thread: batchedMentionThread,
-              is_mention: true,
-              author: ALICE,
-            },
-          ),
+      initialEvents: [
+        mention(
+          "When you write up the recap, I prefer short bullet summaries over prose.",
+          {
+            thread: batchedMentionThread,
+            author: BOB,
+          },
+        ),
+        threadMessage(
+          "Can you recap what has been asked in this thread so far?",
+          {
+            thread: batchedMentionThread,
+            is_mention: true,
+            author: ALICE,
+          },
         ),
       ],
       criteria: rubric({
@@ -316,23 +312,21 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // actors on the completed run.
     await run({
       overrides: memoryPluginOverrides,
-      events: [
-        batch(
-          mention(
-            "Can you list the open questions from this thread when you get a chance?",
-            {
-              thread: actorPreferenceMultiActorThread,
-              author: BOB,
-            },
-          ),
-          threadMessage(
-            "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
-            {
-              thread: actorPreferenceMultiActorThread,
-              is_mention: true,
-              author: ALICE,
-            },
-          ),
+      initialEvents: [
+        mention(
+          "Can you list the open questions from this thread when you get a chance?",
+          {
+            thread: actorPreferenceMultiActorThread,
+            author: BOB,
+          },
+        ),
+        threadMessage(
+          "I prefer recaps as numbered lists, not paragraphs. Can you recap the asks in this thread so far?",
+          {
+            thread: actorPreferenceMultiActorThread,
+            is_mention: true,
+            author: ALICE,
+          },
         ),
       ],
       criteria: rubric({
@@ -397,11 +391,13 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     await clearMemories();
     await run({
       overrides: memoryPluginOverrides,
-      events: [
+      initialEvents: [
         mention("Can you help us plan the deploy for the retention fix?", {
           thread: sharedKnowledgeThread,
           author: ALICE,
         }),
+      ],
+      events: [
         threadMessage(
           "Just so you know, deploys freeze every Friday at noon here — risky changes always need to land earlier in the week.",
           {

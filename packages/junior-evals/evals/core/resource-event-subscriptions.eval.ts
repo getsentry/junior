@@ -29,7 +29,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       overrides: {
         plugin_dirs: ["fixtures/resource-event-plugins"],
       },
-      events: [
+      initialEvents: [
         mention(
           "/eval-resource-events Use the provider to create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
         ),
@@ -84,7 +84,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         resourceEventNotification({
           eventKey: "github-delivery-checks-failed",
           eventType: "checks.failed",
@@ -116,7 +116,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      events: [
+      initialEvents: [
         resourceEventNotification({
           eventKey: "github-delivery-pr-merged",
           eventType: "state.merged",

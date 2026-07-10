@@ -17,8 +17,8 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         credential_providers: ["sentry"],
         plugin_packages: ["@sentry/junior-sentry"],
       },
+      initialEvents: [mention("are you working", { thread: followUpThread })],
       events: [
-        mention("are you working", { thread: followUpThread }),
         threadMessage("what's up with the latest Sentry issues in getsentry?", {
           thread: followUpThread,
           is_mention: true,

@@ -16,7 +16,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       overrides: {
         skill_dirs: ["fixtures/github-headless-skills"],
       },
-      events: [
+      initialEvents: [
         resourceEventNotification({
           eventType: "checks.failed",
           intent:
@@ -59,7 +59,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
-      events: [
+      initialEvents: [
         mention(
           "Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? Keep it short.",
         ),
@@ -101,10 +101,12 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
-      events: [
+      initialEvents: [
         mention("Set the default repo to getsentry/junior for this channel.", {
           thread: defaultRepoThread,
         }),
+      ],
+      events: [
         threadMessage(
           "Now tell me which GitHub repo you'd use for issue commands when I omit --repo.",
           {
@@ -133,7 +135,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
-      events: [
+      initialEvents: [
         threadMessage(
           "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
           {
@@ -141,6 +143,8 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
             is_mention: true,
           },
         ),
+      ],
+      events: [
         threadMessage(
           "We need a tracking issue for the Junior bot. This example from getsentry/junior-eval-reference-never-exists#123 shows GitHub issue references can be mistaken for the target repo. Draft the issue I should approve with target repo, title, and body. Do not run GitHub commands.",
           {
@@ -172,7 +176,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         plugin_packages: ["@sentry/junior-github"],
         skill_dirs: ["../junior/skills"],
       },
-      events: [
+      initialEvents: [
         threadMessage(
           "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
           {
@@ -180,6 +184,8 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
             is_mention: true,
           },
         ),
+      ],
+      events: [
         threadMessage(
           "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Do not run GitHub commands.",
           {

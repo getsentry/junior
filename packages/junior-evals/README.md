@@ -121,6 +121,9 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 ## Authoring Rules
 
 - Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `describeEval()` with `slackEvals`.
+- Put messages that should be pending before processing starts in `initialEvents`.
+- Put ordinary later events in `events`; each is delivered after preceding work settles.
+- Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
 - Use event builders (`mention`, `threadMessage`, `threadStart`) from `src/helpers.ts`.
 - Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
@@ -138,6 +141,27 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 - Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
 - Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
 - If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
+
+Scenario scheduling uses three forms:
+
+```ts
+await run({
+  initialEvents: [
+    threadMessage("A provider linked incident OPS-123 to this thread"),
+  ],
+  events: [
+    steer(mention("@junior summarize the incident")),
+    threadMessage("Now include the rollout owner"),
+  ],
+  criteria: rubric({
+    pass: ["The assistant follows the direct request and later follow-up."],
+  }),
+});
+```
+
+- `initialEvents` are pending before processing starts. Multiple initial events must be Slack messages and form one mailbox batch.
+- `steer(...)` delivers message events through normal ingress while the preceding agent run is active. Steering messages must target that same Slack conversation.
+- Plain `events` are ordinary later events delivered after preceding work settles.
 
 Do not do these in eval files:
 
@@ -197,7 +221,7 @@ import { mention, rubric, slackEvals } from "../../src/helpers";
 describeEval("Routing", slackEvals, (it) => {
   it("when explicitly mentioned, post one direct reply", async ({ run }) => {
     await run({
-      events: [mention("Summarize this")],
+      initialEvents: [mention("Summarize this")],
       criteria: rubric({
         pass: ["The assistant posts exactly one reply to the mention."],
       }),

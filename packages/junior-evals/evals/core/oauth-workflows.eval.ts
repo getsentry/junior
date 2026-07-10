@@ -85,11 +85,13 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         auto_complete_mcp_oauth: ["eval-auth"],
         plugin_dirs: ["fixtures/plugins"],
       },
-      events: [
+      initialEvents: [
         threadMessage("Remember: the budget deadline is Friday.", {
           thread: mcpAuthResumeThread,
           is_mention: false,
         }),
+      ],
+      events: [
         threadMessage(
           "/eval-auth Connect, then tell me the budget deadline I mentioned.",
           { thread: mcpAuthResumeThread, is_mention: true },
@@ -143,11 +145,13 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["fixtures/plugins"],
       },
-      events: [
+      initialEvents: [
         threadMessage("Remember: the budget deadline is Friday.", {
           thread: oauthResumeThread,
           is_mention: false,
         }),
+      ],
+      events: [
         threadMessage(
           "/eval-oauth Connect, then tell me the budget deadline I mentioned.",
           { thread: oauthResumeThread, is_mention: true },
@@ -203,7 +207,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["fixtures/plugins"],
       },
-      events: [
+      initialEvents: [
         threadMessage(
           "Disconnect my eval-oauth account and reconnect it so we can test the auth flow.",
           { thread: oauthReconnectThread, is_mention: true },

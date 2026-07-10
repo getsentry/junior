@@ -6,7 +6,7 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "Read these three sources and give me one brief, coherent summary of how modern Slack agent streaming works. Keep it short enough to fit in one normal Slack reply, and do not include code samples: https://docs.slack.dev/changelog/2025/10/7/chat-streaming , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
         ),
@@ -29,7 +29,7 @@ describeEval("Research Reply Shape", slackEvals, (it) => {
     run,
   }) => {
     await run({
-      events: [
+      initialEvents: [
         mention(
           "Create a concise reusable canvas reference for modern Slack agent streaming that I can come back to later. Use these notes: Slack apps can stream AI responses with start, append, and stop stream methods; streamed messages should live in the user request thread; chunks can include markdown text and task updates; finalized messages can include blocks; apps need to account for content limits, rate limits, retries, and migration from single final replies. Keep the thread reply brief.",
         ),

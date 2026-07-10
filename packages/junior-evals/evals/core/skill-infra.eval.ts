@@ -8,7 +8,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
-      events: [mention("/candidate-brief David Cramer")],
+      initialEvents: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
         pass: [
           "The assistant posts exactly one reply for David Cramer.",
@@ -30,10 +30,12 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
-      events: [
+      initialEvents: [
         mention("/candidate-brief Alice Example", {
           thread: candidateBriefThread,
         }),
+      ],
+      events: [
         threadMessage("/candidate-brief Bob Example", {
           thread: candidateBriefThread,
           is_mention: true,
@@ -55,7 +57,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
-      events: [mention("/list-working-directory")],
+      initialEvents: [mention("/list-working-directory")],
       criteria: rubric({
         pass: [
           "The assistant posts exactly one working-directory listing reply.",
@@ -71,7 +73,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   }) => {
     await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
-      events: [
+      initialEvents: [
         mention(
           "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
         ),
@@ -98,7 +100,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
       overrides: {
         plugin_dirs: ["fixtures/plugins"],
       },
-      events: [
+      initialEvents: [
         mention(
           "/eval-mcp Ask the handbook what it says about US holidays, then summarize the result.",
         ),

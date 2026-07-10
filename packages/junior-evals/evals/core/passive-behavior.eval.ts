@@ -17,13 +17,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           "The deploy changed the billing worker and the API auth flow.",
         ],
       },
-      events: [
+      initialEvents: [
         mention(
           "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
           {
             thread: sideConversationThread,
           },
         ),
+      ],
+      events: [
         threadMessage("@sam can you take the billing worker rollback?", {
           thread: sideConversationThread,
         }),
@@ -52,10 +54,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       overrides: {
         reply_texts: ["You need the budget by Friday."],
       },
-      events: [
+      initialEvents: [
         mention("I need the budget by Friday.", {
           thread: directedFollowUpThread,
         }),
+      ],
+      events: [
         threadMessage("What did you just say about the budget?", {
           thread: directedFollowUpThread,
         }),
@@ -84,11 +88,13 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           "The deploy changed the billing worker and the API auth flow.",
         ],
       },
-      events: [
+      initialEvents: [
         mention(
           "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
           { thread: casualPronounThread },
         ),
+      ],
+      events: [
         threadMessage("Is that the right approach?", {
           thread: casualPronounThread,
         }),
@@ -119,10 +125,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           "The billing worker handles invoice processing and payment retries.",
         ],
       },
-      events: [
+      initialEvents: [
         mention("What does the billing worker do?", {
           thread: domainVocabThread,
         }),
+      ],
+      events: [
         threadMessage("What about the billing worker timeline?", {
           thread: domainVocabThread,
         }),
@@ -151,8 +159,10 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       overrides: {
         reply_texts: ["Here's the deployment status."],
       },
-      events: [
+      initialEvents: [
         mention("Show me the deployment status.", { thread: canYouThread }),
+      ],
+      events: [
         threadMessage("Can you check on this?", { thread: canYouThread }),
       ],
       criteria: rubric({
@@ -177,13 +187,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       overrides: {
         reply_texts: ["The deploy changed three services."],
       },
-      events: [
+      initialEvents: [
         mention(
           "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
           {
             thread: genuineFollowUpThread,
           },
         ),
+      ],
+      events: [
         threadMessage("Can you explain your last response in more detail?", {
           thread: genuineFollowUpThread,
         }),
@@ -213,10 +225,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           "The three services were billing, auth, and the API gateway.",
         ],
       },
-      events: [
+      initialEvents: [
         mention("What changed in the deploy?", {
           thread: terseFollowUpThread,
         }),
+      ],
+      events: [
         threadMessage("Which one?", {
           thread: terseFollowUpThread,
         }),
@@ -243,10 +257,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       overrides: {
         reply_texts: ["The deploy changed billing, auth, and the API gateway."],
       },
-      events: [
+      initialEvents: [
         mention("What changed in the deploy?", {
           thread: humansTookFloorThread,
         }),
+      ],
+      events: [
         threadMessage("I think auth should roll back first.", {
           thread: humansTookFloorThread,
         }),
@@ -279,8 +295,10 @@ describeEval("Passive Behavior", slackEvals, (it) => {
           "I'm back because you mentioned me again.",
         ],
       },
-      events: [
+      initialEvents: [
         mention("Can you help in this thread?", { thread: optOutThread }),
+      ],
+      events: [
         threadMessage("Stop watching or participating in this thread", {
           thread: optOutThread,
           is_mention: true,
