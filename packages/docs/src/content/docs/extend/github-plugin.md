@@ -2,7 +2,7 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for GitHub issue and pull request workflows.
 type: tutorial
-summary: Set up GitHub App installation reads and actor-attributed GitHub writes.
+summary: Set up Junior-owned GitHub issues, pull requests, and branch pushes.
 prerequisites:
   - /extend/
 related:
@@ -11,7 +11,7 @@ related:
   - /reference/runtime-commands/
 ---
 
-The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior reads through downscoped installation tokens and performs writes through GitHub App user-to-server tokens attributed to the requesting GitHub user with the app badge.
+The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior acts as the App installation for reads, issue and pull request maintenance, and Git branch pushes. Human OAuth remains reserved for operations whose GitHub meaning is personal, such as submitting a pull request review.
 
 ## Install
 
@@ -47,7 +47,7 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-`appPermissions` should match the permissions configured on the GitHub App. These values do not make installation-token reads write-capable: Junior requests read-level installation tokens for `installation-read` traffic and omits permissions that GitHub does not expose at `read`. Writes still require the actor, or an explicitly delegated user subject, to complete the private GitHub App OAuth flow.
+`appPermissions` should match the permissions configured on the GitHub App. Junior requests read-level installation tokens for read traffic and separate repository-scoped installation tokens for supported issue, pull request, and branch writes. Unsupported writes are denied instead of borrowing a user token.
 
 ## Configure environment variables
 
@@ -111,7 +111,9 @@ Create and install a GitHub App before you verify GitHub workflows:
 6. Install the app on the repository or organization Junior should access.
 7. Copy the App ID, OAuth client ID/secret, installation ID, bot name, bot noreply email, and, if you enabled PR event watches, the webhook secret into your deployment environment.
 
-Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. GitHub App user-to-server tokens are still constrained by the app's installed permissions, the installation's repository access, and the requesting user's own GitHub access. Junior's read-only default applies to installation-token leases, not to the App permission envelope.
+Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. Junior downscopes each installation token to the target repository and selected operation family.
+
+Git smart-HTTP push classification is repository-scoped, not branch-scoped. It does not independently identify Junior-managed branches or detect force updates or ref deletion. Protect important branches in GitHub and install the App only on repositories where Junior may push.
 
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.
@@ -119,6 +121,12 @@ That only helps when those repositories are covered by the same GitHub App insta
 ## Watch pull request events
 
 When `GITHUB_WEBHOOK_SECRET` is configured, `github_createPullRequest` returns a subscribable pull request resource. Junior can then subscribe the current Slack conversation to high-signal PR events when watching that PR serves the user's request.
+
+Subscribed events run headlessly as Junior's `resource-event` system actor.
+They can use repository-scoped installation credentials to commit and push a
+follow-up fix to the watched pull request without borrowing the subscriber's
+OAuth identity. Actions that represent human judgment, such as submitting a
+review, still require explicit delegated user authorization.
 
 Supported GitHub webhook deliveries become these Junior resource events:
 
@@ -145,11 +153,11 @@ Create a GitHub issue in owner/repo titled "Junior GitHub plugin check" with bod
 Then confirm:
 
 1. The issue is created in the expected repository.
-2. The author is the requesting GitHub user with the GitHub App badge.
+2. The author is the GitHub App bot, and the body includes `Requested by` attribution for the verified runtime actor.
 3. A follow-up GitHub request can update or comment on the same issue without asking the user to handle tokens manually after authorization.
-4. A pushed branch can be turned into a draft PR when Junior uses explicit repo targeting and `--head` during `gh pr create`.
+4. A pushed branch can be turned into a draft PR with `github_createPullRequest` using explicit `repo`, `head`, and `base` values.
 
-For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch or writes Git objects through the REST API. Those operations require `Contents: write` on the target repository and write access for the requesting GitHub user. If the commit changes workflow files under `.github/workflows`, expect `Workflows: write` as well. Creating the PR after the branch exists is a separate pull-request write operation.
+For code changes, a local `git commit` does not call GitHub. The GitHub write happens when Junior pushes the branch. That repository-scoped installation token requires `Contents: write`; configure `Workflows: write` when Junior may change files under `.github/workflows`. Creating the PR after the branch exists is a separate pull-request write operation.
 
 To verify PR event watches, create a PR through Junior in Slack and ask Junior to keep an eye on CI, review changes, or merge state. Trigger one configured GitHub webhook event, then confirm GitHub reports a successful delivery to `/api/webhooks/github` and Junior handles the event in the original Slack conversation according to the watch intent.
 
@@ -157,12 +165,13 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use GitHub App installation tokens that Junior downscopes to read. GitHub account identity checks and write requests require the actor to authorize the GitHub App, then use that user's GitHub App user-to-server token.
-- GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Effective write access comes from the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
-- The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow issued credentials.
+- App-readable requests use installation tokens downscoped to read. Allowlisted issue, pull request, and branch writes use separate repository-scoped installation tokens. GitHub account identity checks and human review operations use user-to-server tokens.
+- GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access comes from the App permissions, installation scope, and requesting user's access.
+- The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - GitHub webhooks are accepted only when the `X-Hub-Signature-256` header matches `GITHUB_WEBHOOK_SECRET`.
 - Resource event subscriptions are conversation-scoped. Core owns subscription records, dedupe, TTL, and mailbox delivery; GitHub webhook handling only verifies and normalizes provider events.
+- Resource-event turns do not inherit a subscriber's user credential. Bot-owned issue, pull request, and smart-HTTP push operations use scoped installation credentials; human-owned operations still enter the normal authorization flow.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.
 - It is not a full containment boundary. The agent can still request broader GitHub capabilities when a task genuinely needs them, so operators should treat GitHub App installation scope as the real trust boundary.
 
@@ -175,9 +184,9 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 - GitHub webhook delivery returns `202 Ignored`: the delivery was signed correctly but does not map to a supported PR watch event. Use one of the configured event types above.
 - GitHub delivery succeeds but no Slack follow-up appears: confirm the original conversation has an active resource event subscription for that PR and event type. A successful webhook alone does not create a subscription.
 - Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
-- Private OAuth prompt for GitHub writes: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
+- Private OAuth prompt for a human-identity operation such as a pull request review: the actor has not authorized the GitHub App yet, or the stored user-to-server token expired. Complete the private authorization prompt; do not paste personal access tokens into the chat or sandbox.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
-- Fork creation failures: GitHub requires `Administration: write` and `Contents: read`, plus app installation on both source and destination accounts. Routine PR creation should push a branch explicitly and use `gh pr create --head` instead of creating a fork.
+- Fork creation is outside the write allowlist. Routine PR creation should push a branch explicitly and use `github_createPullRequest` instead of creating a fork.
 
 ## Next step
 

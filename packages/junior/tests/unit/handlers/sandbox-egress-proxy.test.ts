@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  defineJuniorPlugin,
-  type IssueCredentialHookContext,
-} from "@sentry/junior-plugin-api";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 
 const {
   continueTraceMock,
@@ -163,11 +160,12 @@ function setSandboxEgressUserActor(userId = ACTOR_ID): void {
 }
 
 function setSandboxEgressSystemActor(input?: {
+  name?: string;
   subject?: CredentialSubject;
 }): void {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: {
-      actor: { platform: "system", name: "scheduler" },
+      actor: { platform: "system", name: input?.name ?? "scheduler" },
       ...(input?.subject ? { subject: input.subject } : {}),
     },
     egressId: EGRESS_ID,
@@ -912,32 +910,22 @@ describe("sandbox egress proxy", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
-  it("records current GitHub grant reason and smart HTTP target on cached-lease 403", async () => {
-    setSandboxEgressUserActor();
+  it("lets headless resource-event runs use scoped GitHub installation grants", async () => {
+    setSandboxEgressSystemActor({ name: "resource-event" });
     getProvidersMock.mockReturnValue([githubPlugin()]);
-    const issueCredential = vi.fn((ctx: IssueCredentialHookContext) => {
-      expect(ctx.grant).toMatchObject({
-        name: "user-write",
-        access: "write",
-        reason: "github.graphql-write",
-      });
+    const issueCredential = vi.fn(() => {
       return {
         type: "lease" as const,
         lease: {
-          account: {
-            id: "12345",
-            label: "actor",
-            url: "https://github.com/actor",
-          },
           expiresAt: new Date(Date.now() + 60_000).toISOString(),
           headerTransforms: [
             {
               domain: "api.github.com",
-              headers: { Authorization: "Bearer github-user-token" },
+              headers: { Authorization: "Bearer github-installation-token" },
             },
             {
               domain: "github.com",
-              headers: { Authorization: "Bearer github-user-token" },
+              headers: { Authorization: "Bearer github-installation-token" },
             },
           ],
         },
@@ -948,16 +936,18 @@ describe("sandbox egress proxy", () => {
         manifest: githubPlugin().manifest,
         hooks: {
           grantForEgress(ctx) {
-            if (ctx.request.url === "https://api.github.com/graphql") {
+            if (ctx.request.url.includes("/issues/780")) {
               return {
-                name: "user-write",
+                name: "installation-issues-write",
                 access: "write",
-                reason: "github.graphql-write",
+                leaseScope: "repository:getsentry/junior",
+                reason: "github.issues-write",
               };
             }
             return {
-              name: "user-write",
+              name: "installation-pr-branch-write",
               access: "write",
+              leaseScope: "repository:getsentry/sentry-mcp",
               reason: "github.git-write",
             };
           },
@@ -968,9 +958,12 @@ describe("sandbox egress proxy", () => {
     try {
       const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
         expect(new Headers(init?.headers).get("authorization")).toBe(
-          "Bearer github-user-token",
+          "Bearer github-installation-token",
         );
-        if (String(url) === "https://api.github.com/graphql") {
+        if (
+          String(url) ===
+          "https://api.github.com/repos/getsentry/junior/issues/780"
+        ) {
           return new Response("ok");
         }
         expect(String(url)).toBe(
@@ -986,16 +979,16 @@ describe("sandbox egress proxy", () => {
         });
       });
 
-      const graphqlResponse = await proxy(
+      const issueResponse = await proxy(
         egressRequest({
           host: "api.github.com",
-          method: "POST",
-          path: "/graphql",
-          body: "{}",
+          method: "PATCH",
+          path: "/repos/getsentry/junior/issues/780",
+          body: '{"state":"closed"}',
         }),
         fetchMock as typeof fetch,
       );
-      expect(graphqlResponse.status).toBe(200);
+      expect(issueResponse.status).toBe(200);
 
       const response = await proxy(
         egressRequest({
@@ -1007,23 +1000,32 @@ describe("sandbox egress proxy", () => {
 
       expect(response.status).toBe(403);
       await expect(response.text()).resolves.toBe("write denied");
-      expect(issueCredential).toHaveBeenCalledTimes(1);
+      expect(issueCredential).toHaveBeenCalledTimes(2);
+      expect(issueCredential).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          actor: { platform: "system", name: "resource-event" },
+          grant: expect.objectContaining({
+            name: "installation-pr-branch-write",
+            leaseScope: "repository:getsentry/sentry-mcp",
+          }),
+          tokens: {},
+        }),
+      );
+      expect(issueCredential.mock.calls[1]?.[0]).not.toHaveProperty(
+        "credentialSubject",
+      );
       await expect(
         consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
       ).resolves.toMatchObject({
         provider: "github",
-        account: {
-          id: "12345",
-          label: "actor",
-          url: "https://github.com/actor",
-        },
         grant: {
-          name: "user-write",
+          name: "installation-pr-branch-write",
           access: "write",
+          leaseScope: "repository:getsentry/sentry-mcp",
           reason: "github.git-write",
         },
         message:
-          "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
+          "github returned HTTP 403 after Junior injected the installation-pr-branch-write grant. Junior forwarded the request; this is not a local runtime block.",
         source: "upstream",
         status: 403,
         upstreamHost: "github.com",

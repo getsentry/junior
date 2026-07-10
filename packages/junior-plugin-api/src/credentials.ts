@@ -43,6 +43,7 @@ export const pluginStoredTokensSchema = z
 export const pluginGrantSchema = z
   .object({
     access: pluginGrantAccessSchema,
+    leaseScope: nonBlankStringSchema.optional(),
     name: pluginGrantNameSchema,
     reason: nonBlankStringSchema.optional(),
     requirements: z.array(nonBlankStringSchema).min(1).optional(),

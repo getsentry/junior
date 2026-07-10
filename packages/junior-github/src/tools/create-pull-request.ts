@@ -12,6 +12,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -259,13 +260,17 @@ function isDefinitiveGitHubPullRequestCreateRejection(
 function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
+  actor: ToolRegistrationHookContext["actor"],
 ): Request {
   const repo = parseRepo(input.repo);
   const payload = {
     title: nonEmptyString(input.title, "title"),
     head: nonEmptyString(input.head, "head"),
     base: nonEmptyString(input.base, "base"),
-    body: appendGitHubFooter(input.body ?? "", conversationId),
+    body: appendGitHubFooter(
+      appendGitHubRequesterAttribution(input.body ?? "", actor),
+      conversationId,
+    ),
     ...(input.draft !== undefined ? { draft: input.draft } : {}),
   };
   return new Request(
@@ -424,6 +429,7 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
           const request = createGitHubPullRequestRequest(
             conversationId,
             parsedInput,
+            ctx.actor,
           );
           const pendingState: CreatePullRequestState = {
             status: "pending",

@@ -161,11 +161,11 @@ Before finishing, reconcile any plan or checklist stated earlier — mark items 
 
 **PR inspection** — read-only `gh pr` and `gh api` commands. Query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{n}/comments` and `.../reviews`).
 
-**PR mutation** — push before create. Retry once on permission failure after verifying repo targeting. Treat merge, close-with-delete, and force-push as confirmation-required. No admin mutations.
+**PR mutation** — push before create. Use only the allowlisted REST endpoints in the API reference. Merge, close-with-delete, workflow dispatch, REST ref mutation, and admin operations are unsupported. Git smart HTTP does not independently prevent force updates or ref deletion; rely on GitHub rulesets and do not request destructive pushes.
 
 ## Guardrails
 
 - Default shallow clones; deepen only when needed.
-- Confirm before destructive merges or force operations.
+- Do not attempt destructive merges, force pushes, or ref deletion.
 - Answer source questions from repo evidence, not product framing or memory.
 - Stop and return concrete remediation on missing access or permissions.

@@ -68,6 +68,7 @@ import {
   clearPendingAuth,
 } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
+import type { CredentialContext } from "@/chat/credentials/context";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -332,19 +333,35 @@ export async function continueSlackAgentRun(
           payload.destination,
           "Slack continuation",
         );
-        const actor = await resolveContinuationActor({
-          conversationId: payload.conversationId,
-          sessionRecordActor: activeSessionRecord.actor,
-          teamId: destination.teamId,
-          userId: userMessage.author.userId,
-        });
-        if (!actor) {
-          await failStrandedSessionWithFallback({
+        const systemActor =
+          activeSessionRecord.actor?.platform === "system"
+            ? activeSessionRecord.actor
+            : undefined;
+        let actor: SlackActor | undefined;
+        let credentialContext: CredentialContext;
+        if (systemActor) {
+          credentialContext = { actor: systemActor };
+        } else {
+          actor = await resolveContinuationActor({
             conversationId: payload.conversationId,
-            errorMessage: "Stored Slack actor missing for continuation",
-            sessionRecord: activeSessionRecord,
+            sessionRecordActor: activeSessionRecord.actor,
+            teamId: destination.teamId,
+            userId: userMessage.author.userId,
           });
-          return false;
+          if (!actor) {
+            await failStrandedSessionWithFallback({
+              conversationId: payload.conversationId,
+              errorMessage: "Stored Slack actor missing for continuation",
+              sessionRecord: activeSessionRecord,
+            });
+            return false;
+          }
+          credentialContext = {
+            actor: {
+              type: "user",
+              userId: actor.userId,
+            },
+          };
         }
         if (!activeSessionRecord.source) {
           await failAgentTurnSessionRecord({
@@ -366,13 +383,8 @@ export async function continueSlackAgentRun(
               ...getTurnUserReplyAttachmentContext(userMessage),
             },
             routing: {
-              credentialContext: {
-                actor: {
-                  type: "user",
-                  userId: actor.userId,
-                },
-              },
-              actor,
+              credentialContext,
+              ...(actor ? { actor } : {}),
               destination: payload.destination,
               source: activeSessionRecord.source,
               correlation: {
@@ -380,7 +392,7 @@ export async function continueSlackAgentRun(
                 turnId: payload.sessionId,
                 channelId: thread.channelId,
                 threadTs: thread.threadTs,
-                actorId: actor.userId,
+                ...(actor ? { actorId: actor.userId } : {}),
               },
               toolChannelId:
                 artifacts.assistantContextChannelId ?? thread.channelId,

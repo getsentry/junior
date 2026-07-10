@@ -34,7 +34,7 @@ import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
-import { isUserActor } from "@/chat/actor";
+import { isUserActor, type Actor } from "@/chat/actor";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
@@ -360,27 +360,35 @@ export async function resumeSlackTurn(
 
     const activeReplyContext = runArgs.replyContext;
     if (!activeReplyContext) {
-      throw new Error(
-        "Resumed turn requires replyContext.routing.actor.userId",
-      );
-    }
-    const resumeActor = activeReplyContext.routing.actor;
-    if (!isUserActor(resumeActor)) {
-      throw new Error(
-        "Resumed turn requires replyContext.routing.actor.userId",
-      );
+      throw new Error("Resumed turn requires replyContext");
     }
     const credentialContext = activeReplyContext.routing.credentialContext;
     if (!credentialContext) {
       throw new Error("Resumed turn requires replyContext.credentialContext");
     }
-    if (
-      !("type" in credentialContext.actor) ||
-      credentialContext.actor.userId !== resumeActor.userId
-    ) {
-      throw new Error(
-        "Resumed turn credential actor must match replyContext.routing.actor.userId",
-      );
+    const routingActor = activeReplyContext.routing.actor;
+    let resumeActor: Actor;
+    if ("type" in credentialContext.actor) {
+      if (
+        !isUserActor(routingActor) ||
+        credentialContext.actor.userId !== routingActor.userId
+      ) {
+        throw new Error(
+          "Resumed turn credential actor must match replyContext.routing.actor.userId",
+        );
+      }
+      resumeActor = routingActor;
+    } else {
+      if (
+        routingActor &&
+        (routingActor.platform !== "system" ||
+          routingActor.name !== credentialContext.actor.name)
+      ) {
+        throw new Error(
+          "Resumed turn system credential actor must match replyContext.routing.actor",
+        );
+      }
+      resumeActor = credentialContext.actor;
     }
 
     if (runArgs.messageTs) {
@@ -430,7 +438,7 @@ export async function resumeSlackTurn(
         deferredPauseKind = "auth";
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
-          actorId: resumeActor.userId,
+          actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
         };
         deferredPauseHandler = async () => {
           await onAuthPause({
@@ -490,7 +498,7 @@ export async function resumeSlackTurn(
           currentUsage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
           source: replyContext.routing.source,
-          actor: replyContext.routing.actor,
+          actor: resumeActor,
           surface: "slack",
           logContext: {
             threadId: replyContext.routing.correlation.threadId,

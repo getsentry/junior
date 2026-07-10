@@ -1,6 +1,6 @@
 # GitHub Issue API Surface
 
-Issue creation uses Junior's `github_createIssue` tool. Other issue operations use `gh` CLI and must be deterministic and non-interactive.
+Issue creation uses Junior's `github_createIssue` tool. Other issue operations use allowlisted REST endpoints through `gh api`; generic GraphQL-backed `gh issue` mutations are not supported.
 
 ## Repo scoping
 
@@ -10,22 +10,22 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## GitHub App permission guidance
 
-| Permission capability | Operations                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------- |
-| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                                  |
-| `github.issues.write` | `github_createIssue`, `gh issue edit`, `gh issue comment`, `gh issue close`, `gh issue reopen` |
+| Permission capability | Operations                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `github.issues.read`  | `gh issue view`, `gh api /repos/.../comments`                                        |
+| `github.issues.write` | `github_createIssue` and allowlisted REST issue lifecycle endpoints through `gh api` |
 
 ## Command matrix
 
 | Operation           | Command                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Create issue        | `github_createIssue({ repo: "owner/repo", title: "...", body: "...", labels: ["..."] })`                      |
-| Update issue fields | `gh issue edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]`                                   |
-| Close issue         | `gh issue close NUMBER --repo owner/repo [--comment "..."]`                                                   |
-| Reopen issue        | `gh issue reopen NUMBER --repo owner/repo`                                                                    |
-| Add labels          | `gh issue edit NUMBER --repo owner/repo --add-label LABEL [--add-label LABEL2]`                               |
-| Remove labels       | `gh issue edit NUMBER --repo owner/repo --remove-label LABEL [--remove-label LABEL2]`                         |
-| Add comment         | `gh issue comment NUMBER --repo owner/repo --body-file PATH`                                                  |
+| Update issue fields | `gh api repos/owner/repo/issues/NUMBER --method PATCH --input payload.json`                                   |
+| Close issue         | `gh api repos/owner/repo/issues/NUMBER --method PATCH -f state=closed`                                        |
+| Reopen issue        | `gh api repos/owner/repo/issues/NUMBER --method PATCH -f state=open`                                          |
+| Add labels          | `gh api repos/owner/repo/issues/NUMBER/labels --method POST --input labels.json`                              |
+| Remove label        | `gh api repos/owner/repo/issues/NUMBER/labels/LABEL --method DELETE`                                          |
+| Add comment         | `gh api repos/owner/repo/issues/NUMBER/comments --method POST --input comment.json`                           |
 | List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                    |
 | Read issue          | `gh issue view NUMBER --repo owner/repo --json number,title,state,labels,assignees,author,url,body`           |
 | Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"` |

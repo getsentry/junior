@@ -80,6 +80,12 @@ Actor, author, creator, actor, credential subject, service principal, destinatio
 
 Copying one role into another is allowed only where a spec names that exact transition.
 
+Junior-owned provider resources should use Junior's service-principal identity
+when the provider supports one. Human identity is an explicit exception for
+operations whose meaning is inherently personal, such as approving a pull
+request. Requester, creator, author, and contributor metadata may credit a
+human without changing the credential principal that executes the operation.
+
 ### System Actors
 
 System actors are first-class actors, not absent users. They must have stable names and explicit credential envelopes.

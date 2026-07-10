@@ -88,7 +88,7 @@ export type CredentialedEgressHttpInterceptor = (input: {
 export interface CredentialedEgressDeps {
   clearCredentialLease?: (
     provider: string,
-    grantName: string,
+    grant: SandboxEgressCredentialLease["grant"],
     credentialContext: SandboxEgressCredentialContext,
   ) => Promise<void>;
   fetch?: typeof fetch;
@@ -778,7 +778,7 @@ export async function executeCredentialedEgressRequest(input: {
     if (!isEgressAuthRequired(error)) {
       throw error;
     }
-    await clearCredentialLease(provider, lease.grant.name, credentialContext);
+    await clearCredentialLease(provider, lease.grant, credentialContext);
     await recordAuthRequired({
       credentialContext,
       provider,
@@ -843,7 +843,7 @@ export async function executeCredentialedEgressRequest(input: {
         : "Sandbox egress upstream permission denied",
     );
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
-      await clearCredentialLease(provider, lease.grant.name, credentialContext);
+      await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordAuthRequired({
         credentialContext,
         provider,
@@ -858,7 +858,7 @@ export async function executeCredentialedEgressRequest(input: {
         message: `Provider rejected the injected ${provider} credential.\n`,
       });
     } else {
-      await clearCredentialLease(provider, lease.grant.name, credentialContext);
+      await clearCredentialLease(provider, lease.grant, credentialContext);
       await recordPermissionDenied({
         credentialContext,
         provider,

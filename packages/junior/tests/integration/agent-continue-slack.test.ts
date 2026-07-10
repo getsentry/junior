@@ -603,6 +603,94 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
+  it("resumes resource-event turns with the stored system actor", async () => {
+    const conversationId = "slack:C123:1712345.0012";
+    const sessionId = "turn_resource-event-msg_12";
+    const storedSource = slackSource("1712345.0012");
+    const sessionRecord =
+      await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        destination: SLACK_DESTINATION,
+        source: storedSource,
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "subscribed PR checks failed" }],
+            timestamp: 1,
+          },
+        ],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+        actor: { platform: "system", name: "resource-event" },
+      });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "resource-event-msg.12",
+            role: "user",
+            text: "subscribed PR checks failed",
+            createdAtMs: 1,
+            author: {
+              userId: "UJRNEVENT",
+              userName: "junior-event",
+              isBot: true,
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const continued = await continueAgentRun({
+      conversationId,
+      sessionId,
+      expectedVersion: sessionRecord.version,
+    });
+
+    expect(continued).toBe(true);
+    expect(executeAgentRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        routing: expect.objectContaining({
+          credentialContext: {
+            actor: { platform: "system", name: "resource-event" },
+          },
+          destination: SLACK_DESTINATION,
+          source: storedSource,
+          correlation: expect.not.objectContaining({
+            actorId: expect.anything(),
+          }),
+        }),
+      }),
+    );
+    expect(
+      executeAgentRunMock.mock.calls[0]?.[0].routing.actor,
+    ).toBeUndefined();
+  });
+
   it("terminally fails with a visible fallback when no stored actor can be recovered", async () => {
     // Issue #727: a missing stored actor must never throw out of the
     // continue callback (a throw NACKs the queue delivery and wedges the

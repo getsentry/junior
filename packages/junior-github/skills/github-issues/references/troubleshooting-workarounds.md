@@ -9,15 +9,15 @@ Use this table to recover quickly while keeping operations deterministic.
 | Command affects or authenticates against the wrong repo | Stale `github.repo` default or authenticated command missing explicit repo. | Pass `--repo owner/repo` for the target repository, or update `github.repo` before retrying.                                    |
 | `GraphQL: Could not resolve to a Repository`            | Repo slug is wrong or inaccessible.                                         | Validate `owner/repo` and confirm app installation on target repository.                                                        |
 | 401 Unauthorized                                        | Issued GitHub credentials were rejected upstream.                           | Verify the target repo, then use the grant/auth signal to distinguish stale user OAuth from app installation or host env setup. |
-| `junior-auth-required provider=github grant=user-write` | User-to-server OAuth is missing or stale for a write request.               | Follow the private OAuth prompt; do not ask the user to paste or manage tokens manually.                                        |
+| `junior-auth-required provider=github grant=user-write` | User-to-server OAuth is missing or stale for a human-identity operation.    | Follow the private OAuth prompt; do not ask the user to paste or manage tokens manually.                                        |
 | 403 Forbidden                                           | App lacks required permission on repo or install scope is too narrow.       | Verify the repo context, then confirm GitHub App permissions and installation scope.                                            |
 | 404 Not Found                                           | Issue number or repo is wrong.                                              | Validate repo + issue ID with `gh issue view NUMBER --repo owner/repo`.                                                         |
-| `gh issue edit` does not change labels                  | Wrong flag usage or wrong repo context.                                     | Use repeated `--add-label/--remove-label` flags and keep `--repo owner/repo` explicit.                                          |
-| Comment command fails with empty body                   | Body file missing/empty.                                                    | Ensure comment file exists and has content before `gh issue comment`.                                                           |
+| Issue label mutation fails                              | Wrong REST payload or wrong repo context.                                   | Use the allowlisted issue labels endpoint with an explicit `owner/repo` path and valid JSON input.                              |
+| Comment command fails with empty body                   | JSON input is missing a non-empty `body`.                                   | Ensure the REST comment payload contains a non-empty `body` before retrying.                                                    |
 
 ## Retry guidance
 
 - Retry once for transient transport failures after verifying repo context.
 - Do not loop retries on repeated 401/403/404 validation errors.
-- Treat missing or stale `user-read`/`user-write` grants as private GitHub App OAuth work; treat `installation-read` failures as app installation or host environment setup.
+- Treat missing or stale `user-read`/`user-write` grants as private GitHub App OAuth work. Treat all `installation-*` failures as App permission, installation scope, or host environment setup; they do not fall back to user OAuth.
 - For persistent permission problems, return explicit remediation and stop.

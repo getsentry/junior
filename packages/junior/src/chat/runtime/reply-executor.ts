@@ -902,7 +902,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             startedAtMs: turnStartedAtMs,
             state: "running",
             surface: "slack",
-            actor,
+            actor: executionActor,
             destination,
             destinationVisibility,
             source,

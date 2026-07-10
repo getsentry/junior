@@ -151,18 +151,17 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
 
   const env = {
     ...process.env,
-    GIT_AUTHOR_NAME: "David Cramer",
-    GIT_AUTHOR_EMAIL: "david@example.com",
-    JUNIOR_GIT_AUTHOR_NAME: "David Cramer",
-    JUNIOR_GIT_AUTHOR_EMAIL: "david@example.com",
+    GIT_AUTHOR_NAME: "sentry-junior[bot]",
+    GIT_AUTHOR_EMAIL: "bot@example.com",
+    JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
+    JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
     JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:
       "Co-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
-    JUNIOR_GIT_COAUTHOR_NAME: "sentry-junior[bot]",
-    JUNIOR_GIT_COAUTHOR_EMAIL: "bot@example.com",
   };
 
   return {
     dir,
+    hookPath,
     messagePath,
     runHook: () => spawnSync("bash", [hookPath, messagePath], { env }),
   };
@@ -288,6 +287,7 @@ async function grantForEgress(input: {
 }
 
 function githubToolsContext(input?: {
+  actor?: TestActor;
   conversationId?: string;
   egressFetch?: (request: {
     operation: string;
@@ -307,6 +307,7 @@ function githubToolsContext(input?: {
     db,
     log: pluginLog,
     plugin: { name: "github" },
+    ...(input?.actor ? { actor: input.actor } : {}),
     conversationId,
     destination: { platform: "local" as const, conversationId },
     source: {
@@ -382,7 +383,12 @@ function githubIssueCredentialContext(input: {
     refreshTokenExpiresAt?: number;
     scope?: string;
   };
-  grant: { access: "read" | "write"; name: string; reason?: string };
+  grant: {
+    access: "read" | "write";
+    leaseScope?: string;
+    name: string;
+    reason?: string;
+  };
   currentUserToken?: {
     account?: { id: string; label?: string; url?: string };
     accessToken: string;
@@ -509,7 +515,7 @@ describe("github plugin", () => {
     );
   });
 
-  it("selects installation-read for GitHub reads and user-write for write URLs", async () => {
+  it("selects installation identity for reads and typed resource writes", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -527,8 +533,9 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/issues",
       }),
     ).toMatchObject({
-      name: "user-write",
+      name: "installation-issues-write",
       access: "write",
+      leaseScope: "repository:getsentry/junior",
       reason: "github.issue-create",
     });
     expect(
@@ -538,20 +545,17 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/pulls",
       }),
     ).toMatchObject({
-      name: "user-write",
+      name: "installation-pull-requests-write",
       access: "write",
+      leaseScope: "repository:getsentry/junior",
       reason: "github.pull-create",
     });
-    expect(
-      await grantForEgress({
+    await expect(
+      grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
-    ).toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.fork-create",
-    });
+    ).rejects.toThrow("github.fork-create is not enabled");
   });
 
   it("denies raw GitHub issue creation outside the typed createIssue operation", async () => {
@@ -572,8 +576,14 @@ describe("github plugin", () => {
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
-  it("creates issues through host egress with a deterministic Junior footer", async () => {
+  it("creates issues with deterministic requester attribution", async () => {
     const ctx = githubToolsContext({
+      actor: {
+        fullName: "David Cramer",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U1",
+      },
       conversationId: "slack:C123:1712345.0001",
     });
     const plugin = githubPlugin();
@@ -622,7 +632,7 @@ describe("github plugin", () => {
     );
     await expect(request?.request.json()).resolves.toEqual({
       title: "Typed issue",
-      body: "Issue body",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
       labels: ["bug", "high-priority"],
     });
   });
@@ -933,9 +943,15 @@ Conversation: \`local:test:old-conversation\`
     expect(ctx.egressRequests()).toHaveLength(1);
   });
 
-  it("creates pull requests through host egress with a deterministic Junior footer", async () => {
+  it("creates pull requests with deterministic requester attribution", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const ctx = githubToolsContext({
+      actor: {
+        fullName: "David Cramer",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U1",
+      },
       conversationId: "slack:C123:1712345.0001",
       egressFetch: async () =>
         new Response(
@@ -1015,7 +1031,7 @@ Conversation: \`local:test:old-conversation\`
       title: "Typed PR",
       head: "dcramer/gh-660-pr-create",
       base: "main",
-      body: "PR body",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer** via Junior.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
   });
@@ -1265,8 +1281,9 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-receive-pack?service=git-upload-pack",
       }),
     ).toMatchObject({
-      name: "user-write",
+      name: "installation-pr-branch-write",
       access: "write",
+      leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
     });
     expect(
@@ -1275,21 +1292,23 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-upload-pack?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "user-write",
+      name: "installation-pr-branch-write",
       access: "write",
+      leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
     });
   });
 
-  it("selects user-write for Git push discovery GET requests", async () => {
+  it("selects repository-scoped installation identity for Git push discovery", async () => {
     expect(
       await grantForEgress({
         method: "GET",
         url: "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "user-write",
+      name: "installation-pr-branch-write",
       access: "write",
+      leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
     });
   });
@@ -1330,7 +1349,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("treats GitHub GraphQL GET as read and ambiguous POST as write", async () => {
+  it("treats GitHub GraphQL GET as read and denies ambiguous POST", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -1341,16 +1360,12 @@ Conversation: \`local:test:old-conversation\`
       access: "read",
       reason: "github.graphql-read",
     });
-    expect(
-      await grantForEgress({
+    await expect(
+      grantForEgress({
         method: "POST",
         url: "https://api.github.com/graphql",
       }),
-    ).toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
+    ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
   it("selects installation-read for GitHub GraphQL read operations", async () => {
@@ -1415,7 +1430,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("keeps GitHub GraphQL mutations and unparseable bodies on user-write", async () => {
+  it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
     await expect(
       grantForEgress({
         method: "POST",
@@ -1428,11 +1443,7 @@ Conversation: \`local:test:old-conversation\`
           }`,
         }),
       }),
-    ).resolves.toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
+    ).rejects.toThrow("GraphQL mutations are not enabled");
     await expect(
       grantForEgress({
         method: "POST",
@@ -1442,22 +1453,14 @@ Conversation: \`local:test:old-conversation\`
             "fragment prFields on PullRequest { number } mutation UpdatePullRequest($input: UpdatePullRequestInput!) { updatePullRequest(input: $input) { pullRequest { ...prFields } } }",
         }),
       }),
-    ).resolves.toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
+    ).rejects.toThrow("GraphQL mutations are not enabled");
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/graphql",
         bodyText: "{",
       }),
-    ).resolves.toMatchObject({
-      name: "user-write",
-      access: "write",
-      reason: "github.graphql-write",
-    });
+    ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
   it("denies GraphQL createIssue mutations from raw egress", async () => {
@@ -1510,19 +1513,160 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
-  it("adds provider requirements to known GitHub write grants", async () => {
+  it("adds provider requirements to scoped GitHub resource grants", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/issues/780",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-issues-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.issues-write",
+      requirements: expect.arrayContaining([
+        "GitHub App Issues: write on the target repository",
+      ]),
+    });
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/git/blobs",
       }),
+    ).rejects.toThrow("github.contents-write is not enabled");
+  });
+
+  it("separates pull request lifecycle writes from human review identity", async () => {
+    await expect(
+      grantForEgress({
+        method: "PATCH",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780",
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-pull-requests-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.pull-requests-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+      }),
     ).resolves.toMatchObject({
       name: "user-write",
       access: "write",
-      reason: "github.contents-write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.pull-review-write",
       requirements: expect.arrayContaining([
-        "GitHub App Contents: write on the target repository",
+        "requesting GitHub user permission to review the pull request",
       ]),
+    });
+  });
+
+  it("issues repository-scoped installation credentials for GitHub resource writes", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_INSTALLATION_ID = "456";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    const plugin = githubPlugin({
+      appPermissions: {
+        issues: "write",
+        pull_requests: "write",
+      },
+    });
+
+    const issueResult = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "scheduler" },
+      grant: {
+        name: "installation-issues-write",
+        access: "write",
+        leaseScope: "repository:getsentry/junior",
+        reason: "github.issue-create",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    const pullResult = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "scheduler" },
+      grant: {
+        name: "installation-pull-requests-write",
+        access: "write",
+        leaseScope: "repository:getsentry/junior",
+        reason: "github.pull-create",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    expect(issueResult?.type).toBe("lease");
+    expect(pullResult?.type).toBe("lease");
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({
+      method: "POST",
+      body: {
+        permissions: { issues: "write", metadata: "read" },
+        repositories: ["junior"],
+      },
+    });
+    expect(requests[1]).toMatchObject({
+      method: "POST",
+      body: {
+        permissions: { metadata: "read", pull_requests: "write" },
+        repositories: ["junior"],
+      },
+    });
+  });
+
+  it("issues repository-scoped push credentials for headless resource events", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_INSTALLATION_ID = "456";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    const plugin = githubPlugin({
+      appPermissions: {
+        contents: "write",
+        workflows: "write",
+      },
+    });
+
+    const result = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "resource-event" },
+      grant: {
+        name: "installation-pr-branch-write",
+        access: "write",
+        leaseScope: "repository:getsentry/junior",
+        reason: "github.git-write",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    expect(result?.type).toBe("lease");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      method: "POST",
+      body: {
+        permissions: {
+          contents: "write",
+          metadata: "read",
+          workflows: "write",
+        },
+        repositories: ["junior"],
+      },
     });
   });
 
@@ -1681,7 +1825,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.issue-create",
+          reason: "github.pull-review-write",
         },
         currentUserToken: {
           accessToken: "user-token",
@@ -1761,7 +1905,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.issue-create",
+            reason: "github.pull-review-write",
           },
           currentUserToken: {
             accessToken: "user-token",
@@ -1782,7 +1926,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.issue-create",
+          reason: "github.pull-review-write",
         },
         credentialSubjectToken: {
           account: {
@@ -1827,7 +1971,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.issue-create",
+          reason: "github.pull-review-write",
         },
         currentUserToken: {
           accessToken: "stale-token",
@@ -1864,7 +2008,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.issue-create",
+          reason: "github.pull-review-write",
         },
         currentUserToken: staleToken,
         currentUserTokenReads: [
@@ -1944,7 +2088,7 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "user-write",
         access: "write" as const,
-        reason: "github.issue-create",
+        reason: "github.pull-review-write",
       },
       db,
       log: pluginLog,
@@ -2026,7 +2170,7 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "user-write",
         access: "write",
-        reason: "github.issue-create",
+        reason: "github.pull-review-write",
       },
       db,
       log: pluginLog,
@@ -2054,7 +2198,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.issue-create",
+            reason: "github.pull-review-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2087,7 +2231,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.issue-create",
+          reason: "github.pull-review-write",
         },
         currentUserToken: {
           accessToken: "stale-token",
@@ -2120,7 +2264,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.issue-create",
+            reason: "github.pull-review-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2145,7 +2289,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.issue-create",
+            reason: "github.pull-review-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2170,7 +2314,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.issue-create",
+            reason: "github.pull-review-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2223,10 +2367,11 @@ Conversation: \`local:test:old-conversation\`
       "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
     );
     expect(String(writes[0]?.content)).toContain(
-      "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>",
+      "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
     );
+    expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
     expect(String(writes[0]?.content)).toContain(
-      "Git author was not set to the resolved actor identity",
+      "Git author was not set to the Junior identity",
     );
     expect(started).toEqual([
       "core.hooksPath",
@@ -2236,7 +2381,7 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
-  it("injects actor author and Junior coauthor env only for resolved actor identity", () => {
+  it("injects Junior author and committer identity", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2252,18 +2397,91 @@ Conversation: \`local:test:old-conversation\`
 
     expect(before.denial).toBeUndefined();
     expect(before.env).toMatchObject({
-      GIT_AUTHOR_NAME: "David Cramer",
-      GIT_AUTHOR_EMAIL: "david@example.com",
+      GIT_AUTHOR_NAME: "sentry-junior[bot]",
+      GIT_AUTHOR_EMAIL: "bot@example.com",
       GIT_COMMITTER_NAME: "sentry-junior[bot]",
       GIT_COMMITTER_EMAIL: "bot@example.com",
-      JUNIOR_GIT_AUTHOR_NAME: "David Cramer",
-      JUNIOR_GIT_AUTHOR_EMAIL: "david@example.com",
-      JUNIOR_GIT_COAUTHOR_NAME: "sentry-junior[bot]",
-      JUNIOR_GIT_COAUTHOR_EMAIL: "bot@example.com",
+      JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
+      JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
     });
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+      "Co-Authored-By: David Cramer <david@example.com>",
+    );
   });
 
-  it("credits additional run actors as co-author trailers, excluding the run actor", () => {
+  it("records Junior as Git author and committer with human attribution", async () => {
+    const {
+      copyFileSync,
+      mkdirSync,
+      mkdtempSync,
+      readFileSync,
+      rmSync,
+      writeFileSync,
+    } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { spawnSync } = await import("node:child_process");
+
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const before = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+
+    const hook = await prepareCommitMsgHookFixture("unused\n");
+    const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
+    mkdirSync(join(repoDir, ".git", "hooks"), { recursive: true });
+
+    const runGit = (...args: string[]) =>
+      spawnSync("git", args, {
+        cwd: repoDir,
+        env: { ...process.env, ...before.env },
+      });
+
+    try {
+      expect(runGit("init").status).toBe(0);
+      copyFileSync(
+        hook.hookPath,
+        join(repoDir, ".git", "hooks", "prepare-commit-msg"),
+      );
+      writeFileSync(join(repoDir, "README.md"), "test\n");
+      expect(runGit("add", "README.md").status).toBe(0);
+
+      const commit = runGit(
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        "test commit",
+      );
+      expect(commit.stderr.toString()).toBe("");
+      expect(commit.status).toBe(0);
+
+      const metadata = runGit("log", "-1", "--format=%an%n%ae%n%cn%n%ce%n%B");
+      expect(metadata.status).toBe(0);
+      expect(metadata.stdout.toString()).toBe(
+        "sentry-junior[bot]\n" +
+          "bot@example.com\n" +
+          "sentry-junior[bot]\n" +
+          "bot@example.com\n" +
+          "test commit\n" +
+          "\n" +
+          "Co-Authored-By: David Cramer <david@example.com>\n" +
+          "\n",
+      );
+      expect(readFileSync(join(repoDir, "README.md"), "utf8")).toBe("test\n");
+    } finally {
+      rmSync(hook.dir, { recursive: true, force: true });
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
+  it("credits the primary and additional run actors as co-author trailers", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2276,8 +2494,8 @@ Conversation: \`local:test:old-conversation\`
       userId: "U1",
     };
     const before = beforeToolContext(runActor, [
-      // Same identity as the run actor under a different display profile;
-      // it must still be excluded because distinctness is by identity ids.
+      // Same identity as the primary actor under a different display profile;
+      // it must still be included only once because distinctness uses ids.
       { ...runActor, fullName: "Dave" },
       {
         email: "bob@example.com",
@@ -2301,7 +2519,7 @@ Conversation: \`local:test:old-conversation\`
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
-      "Co-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
+      "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>\nCo-Authored-By: Carol Steer <carol@example.com>",
     );
   });
 
@@ -2338,7 +2556,37 @@ Conversation: \`local:test:old-conversation\`
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+      "Co-Authored-By: David Cramer <dave@example.com>",
+    );
+  });
+
+  it("uses a later resolvable profile for a duplicate actor identity", () => {
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const plugin = githubPlugin();
+    const runActor: TestActor = {
+      platform: "slack",
+      teamId: "T1",
+      userId: "U1",
+    };
+    const before = beforeToolContext(runActor, [
+      runActor,
+      {
+        email: "dave@example.com",
+        fullName: "David Cramer",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U1",
+      },
+    ]);
+
+    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+      "Co-Authored-By: David Cramer <dave@example.com>",
+    );
   });
 
   it("dedups additional actors by resolved email and drops one matching the bot email", () => {
@@ -2384,11 +2632,11 @@ Conversation: \`local:test:old-conversation\`
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
-      "Co-Authored-By: Bob Steer <bob@example.com>",
+      "Co-Authored-By: David Cramer <dave@example.com>\nCo-Authored-By: Bob Steer <bob@example.com>",
     );
   });
 
-  it("sets no actor co-author trailers env for a single-actor run", () => {
+  it("credits the primary actor in a single-actor run", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2407,42 +2655,31 @@ Conversation: \`local:test:old-conversation\`
     plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
-    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+      "Co-Authored-By: David Cramer <dave@example.com>",
+    );
   });
 
   it.each([
     [
-      "appends actor and bot trailers as one contiguous block and stays idempotent on rerun",
+      "appends human actor trailers as one contiguous block and stays idempotent on rerun",
       "initial commit message\n",
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
-        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
     [
       "ignores matching trailer lines outside the final trailer block",
       "initial commit message\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "body details continue here\n",
       "initial commit message\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "body details continue here\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
-        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
-    ],
-    [
-      "inserts missing actor trailers before an existing Junior bot trailer",
-      "initial commit message\n" +
-        "\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
-      "initial commit message\n" +
-        "\n" +
-        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
-        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
     [
       "extends an existing trailer block in place when some trailers are already present",
@@ -2452,8 +2689,19 @@ Conversation: \`local:test:old-conversation\`
       "initial commit message\n" +
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
-        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+    ],
+    [
+      "deduplicates desired trailers already repeated in the final block",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
+      "initial commit message\n" +
+        "\n" +
+        "Co-Authored-By: Bob Steer <bob@example.com>\n" +
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
     [
       "extends a final trailer block ending with another trailer",
@@ -2465,15 +2713,16 @@ Conversation: \`local:test:old-conversation\`
         "\n" +
         "Co-Authored-By: Bob Steer <bob@example.com>\n" +
         "Signed-off-by: Reviewer <reviewer@example.com>\n" +
-        "Co-Authored-By: Carol Steer <carol@example.com>\n" +
-        "Co-Authored-By: sentry-junior[bot] <bot@example.com>\n",
+        "Co-Authored-By: Carol Steer <carol@example.com>\n",
     ],
   ])("%s", async (_name, initialMessage, expectedMessage) => {
     const { readFileSync, rmSync } = await import("node:fs");
     const { dir, messagePath, runHook } =
       await prepareCommitMsgHookFixture(initialMessage);
 
-    expect(runHook().status).toBe(0);
+    const firstRun = runHook();
+    expect(firstRun.stderr.toString()).toBe("");
+    expect(firstRun.status).toBe(0);
     expect(readFileSync(messagePath, "utf8")).toBe(expectedMessage);
     expect(runHook().status).toBe(0);
     expect(readFileSync(messagePath, "utf8")).toBe(expectedMessage);
@@ -2481,7 +2730,7 @@ Conversation: \`local:test:old-conversation\`
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("does not inject author env when actor identity is unresolved", () => {
+  it("uses Junior author identity when the human actor is unresolved", () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -2498,10 +2747,11 @@ Conversation: \`local:test:old-conversation\`
     expect(before.env).toMatchObject({
       GIT_COMMITTER_NAME: "sentry-junior[bot]",
       GIT_COMMITTER_EMAIL: "bot@example.com",
-      JUNIOR_GIT_COAUTHOR_NAME: "sentry-junior[bot]",
-      JUNIOR_GIT_COAUTHOR_EMAIL: "bot@example.com",
+      GIT_AUTHOR_NAME: "sentry-junior[bot]",
+      GIT_AUTHOR_EMAIL: "bot@example.com",
+      JUNIOR_GIT_AUTHOR_NAME: "sentry-junior[bot]",
+      JUNIOR_GIT_AUTHOR_EMAIL: "bot@example.com",
     });
-    expect(before.env.GIT_AUTHOR_NAME).toBeUndefined();
-    expect(before.env.GIT_AUTHOR_EMAIL).toBeUndefined();
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe("");
   });
 });

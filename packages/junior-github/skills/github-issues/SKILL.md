@@ -62,7 +62,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 **Source attribution:**
 
-- GitHub records the issue creator natively; do not add body or footer text to identify who asked Junior to create the issue.
+- The runtime adds the verified `Requested by` block. Do not add or rewrite requester attribution in model-authored body text.
 - If the person who originally reported or observed the problem differs from the issue creator, capture that with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
 - Attach screenshots from the thread as image links when present.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.

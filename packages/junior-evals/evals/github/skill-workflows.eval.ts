@@ -1,7 +1,56 @@
-import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+import { describeEval, toolCalls } from "vitest-evals";
+import { expect } from "vitest";
+import {
+  mention,
+  resourceEventNotification,
+  rubric,
+  slackEvals,
+  threadMessage,
+} from "../../src/helpers";
 
 describeEval("GitHub Skill Workflows", slackEvals, (it) => {
+  it("when subscribed PR checks fail headlessly, commit and push the fix", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        skill_dirs: ["fixtures/github-headless-skills"],
+      },
+      events: [
+        resourceEventNotification({
+          eventType: "checks.failed",
+          intent:
+            "Fix failing checks on this pull request and push the update.",
+          label: "Fixture PR #42",
+          resourceRef: "github:pull:local/headless-fixture#42",
+          trustedSummary:
+            'The build expects skills/github-headless-pr-fixture/project/src/status.ts to export buildStatus = "fixed". Apply the fix, commit it, push the pull request branch, and verify the result.',
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant handles the subscribed event without asking a human to authorize GitHub.",
+          "The fixture status is changed from broken to fixed, committed, and pushed to the existing pull request branch.",
+          "The assistant reports that the remote branch contains the pushed fix.",
+        ],
+        fail: [
+          "Do not ask for OAuth, a personal access token, approval, or another human action before fixing the subscribed pull request.",
+          "Do not stop after describing a plan or editing the file without committing and pushing it.",
+          "Do not contact production GitHub or use a non-local remote.",
+        ],
+      }),
+    });
+
+    const verifyCall = toolCalls(result.session).find(
+      (call) =>
+        call.name === "bash" &&
+        JSON.stringify(call.result)?.includes(
+          "verified remote branch contains the pushed fix",
+        ) === true,
+    );
+    expect(verifyCall).toMatchObject({ result: { ok: true } });
+  });
+
   it("when asked about PR auth sequencing, mention push auth before PR auth", async ({
     run,
   }) => {

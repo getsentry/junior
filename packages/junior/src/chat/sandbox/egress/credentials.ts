@@ -190,7 +190,7 @@ export async function sandboxEgressCredentialLease(
   const { grant } = selection;
   const cached = await getSandboxEgressCredentialLease(
     provider,
-    grant.name,
+    grant,
     context,
   );
   if (cached) {

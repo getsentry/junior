@@ -76,19 +76,24 @@ export interface GitHubPluginOptions {
 }
 
 type JsonRecord = Record<string, unknown>;
-type GitHubGrantName = "installation-read" | "user-read" | "user-write";
+type GitHubGrantName =
+  | "installation-issues-write"
+  | "installation-pr-branch-write"
+  | "installation-pull-requests-write"
+  | "installation-read"
+  | "user-read"
+  | "user-write";
 type GitHubGrantReason =
   | "github.api-read"
-  | "github.api-write"
   | "github.contents-write"
   | "github.fork-create"
   | "github.git-read"
   | "github.git-write"
   | "github.graphql-read"
-  | "github.graphql-write"
   | "github.issue-create"
   | "github.issues-write"
   | "github.pull-create"
+  | "github.pull-review-write"
   | "github.pull-requests-write"
   | "github.user-read"
   | "github.workflows-write";
@@ -140,12 +145,20 @@ interface UserCredentialOptions {
 interface InstallationCredentialOptions {
   appIdEnv: string;
   installationIdEnv: string;
-  loadReadPermissions(input: {
-    appJwt: string;
-    installationId: number;
-  }): Promise<Record<string, "read">>;
+  loadPermissions?: LoadInstallationReadPermissions;
+  permissions?: Record<string, "read" | "write">;
   privateKeyEnv: string;
-  readPermissions?: Record<string, "read">;
+  repositories?: string[];
+}
+
+type LoadInstallationReadPermissions = (input: {
+  appJwt: string;
+  installationId: number;
+}) => Promise<Record<string, "read">>;
+
+interface GitHubRepository {
+  name: string;
+  owner: string;
 }
 
 const GITHUB_APP_ID_ENV = "GITHUB_APP_ID";
@@ -161,24 +174,16 @@ const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 const CONTENTS_WRITE_REQUIREMENTS = [
   "GitHub App Contents: write on the target repository",
-  "requesting GitHub user write access to the repository",
-];
-const WORKFLOWS_WRITE_REQUIREMENTS = [
-  "GitHub App Contents: write and Workflows: write on the target repository",
-  "requesting GitHub user write access to the repository",
 ];
 const ISSUES_WRITE_REQUIREMENTS = [
   "GitHub App Issues: write on the target repository",
-  "requesting GitHub user issue access to the repository",
 ];
 const PULL_REQUESTS_WRITE_REQUIREMENTS = [
   "GitHub App Pull requests: write on the target repository",
-  "requesting GitHub user write access to the repository",
 ];
-const FORK_CREATE_REQUIREMENTS = [
-  "GitHub App Administration: write and Contents: read",
-  "app installation access on the source and destination accounts",
-  "requesting GitHub user permission to fork the repository",
+const PULL_REVIEW_WRITE_REQUIREMENTS = [
+  ...PULL_REQUESTS_WRITE_REQUIREMENTS,
+  "requesting GitHub user permission to review the pull request",
 ];
 
 class GitHubUserRefreshRejectedError extends Error {
@@ -322,34 +327,27 @@ function actorIdentityKey(actor: Actor): string {
 }
 
 /**
- * Build `Co-Authored-By` trailers crediting run actors beyond the git author.
+ * Build `Co-Authored-By` trailers crediting human run actors.
  *
  * `run.actors` is attribution only (see `multi-actor-runs.md`): a steerer
  * without a resolvable name and email is silently omitted rather than
- * denying the commit, and the run actor is excluded because it is already
- * the git author. Dedupes by resolved email so the same human under two
- * display profiles, or a steerer matching the author or bot identity, only
- * ever produces one line.
+ * denying the commit. Dedupes by identity and resolved email so the same human
+ * under two display profiles, or an actor matching the bot identity, only ever
+ * produces one line.
  */
 function additionalActorCoauthorTrailers(args: {
   actors?: Actor[];
-  authorEmail?: string;
   botEmail: string;
-  runActor?: Actor;
 }): string[] {
   if (!args.actors || args.actors.length === 0) {
     return [];
   }
-  const runActorKey = args.runActor
-    ? actorIdentityKey(args.runActor)
-    : undefined;
   const seenEmails = new Set<string>([args.botEmail.toLowerCase()]);
-  if (args.authorEmail) {
-    seenEmails.add(args.authorEmail.toLowerCase());
-  }
+  const seenActors = new Set<string>();
   const trailers: string[] = [];
   for (const candidate of args.actors) {
-    if (runActorKey && actorIdentityKey(candidate) === runActorKey) {
+    const actorKey = actorIdentityKey(candidate);
+    if (seenActors.has(actorKey)) {
       continue;
     }
     const name = actorName(candidate);
@@ -361,6 +359,7 @@ function additionalActorCoauthorTrailers(args: {
     if (seenEmails.has(emailKey)) {
       continue;
     }
+    seenActors.add(actorKey);
     seenEmails.add(emailKey);
     trailers.push(`Co-Authored-By: ${name} <${email}>`);
   }
@@ -377,23 +376,18 @@ if [ -z "$message_file" ]; then
 fi
 
 if [ -z "\${JUNIOR_GIT_AUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_AUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: actor commit attribution was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: Junior author identity was not injected by the host runtime. Do not set Git author env vars manually; report this configuration error." >&2
   exit 1
 fi
 
 if [ "\${GIT_AUTHOR_NAME:-}" != "$JUNIOR_GIT_AUTHOR_NAME" ] || [ "\${GIT_AUTHOR_EMAIL:-}" != "$JUNIOR_GIT_AUTHOR_EMAIL" ]; then
-  echo "Junior GitHub plugin internal error: Git author was not set to the resolved actor identity. Do not override Git author manually; report this configuration error." >&2
-  exit 1
-fi
-
-if [ -z "\${JUNIOR_GIT_COAUTHOR_NAME:-}" ] || [ -z "\${JUNIOR_GIT_COAUTHOR_EMAIL:-}" ]; then
-  echo "Junior GitHub plugin internal error: Junior coauthor identity was not injected by the host runtime. Do not set coauthor env vars manually; report this configuration error." >&2
+  echo "Junior GitHub plugin internal error: Git author was not set to the Junior identity. Do not override Git author manually; report this configuration error." >&2
   exit 1
 fi
 
 # Git and GitHub only interpret the final contiguous paragraph as the trailer
 # block, so all missing trailers are collected and appended as one block:
-# actor trailers in order, Junior's agent trailer last.
+# human actor trailers in run order.
 desired_trailers=""
 add_trailer() {
   desired_trailers="$desired_trailers$1"$'\\n'
@@ -406,8 +400,6 @@ if [ -n "\${JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS:-}" ]; then
     fi
   done <<< "$JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS"
 fi
-
-add_trailer "Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
 
 final_trailer_block=$(awk '
   { lines[NR] = $0 }
@@ -434,6 +426,57 @@ final_trailer_block=$(awk '
   }
 ' "$message_file")
 
+duplicate_desired_trailer=false
+while IFS= read -r desired_trailer; do
+  if [ -n "$desired_trailer" ] && [ "$(printf '%s\\n' "$final_trailer_block" | grep -Fxc -- "$desired_trailer")" -gt 1 ]; then
+    duplicate_desired_trailer=true
+    break
+  fi
+done <<< "$desired_trailers"
+
+if [ "$duplicate_desired_trailer" = true ]; then
+  tmp_file=$(mktemp)
+  desired_file=$(mktemp)
+  trap 'rm -f "$tmp_file" "$desired_file"' EXIT
+  printf '%s' "$desired_trailers" > "$desired_file"
+  awk -v desired_file="$desired_file" '
+    BEGIN {
+      while ((getline value < desired_file) > 0) {
+        if (value != "") {
+          wanted[value] = 1
+        }
+      }
+      close(desired_file)
+    }
+    { lines[NR] = $0 }
+    END {
+      line = NR
+      while (line > 0 && lines[line] == "") {
+        line--
+      }
+      start = line
+      while (start > 0 && lines[start] != "") {
+        start--
+      }
+      valid = line > 0
+      for (i = start + 1; valid && i <= line; i++) {
+        if (lines[i] !~ /^[[:alnum:]-]+: .+/) {
+          valid = 0
+        }
+      }
+      for (i = 1; i <= NR; i++) {
+        if (valid && i > start && i <= line && wanted[lines[i]]) {
+          if (seen[lines[i]]++) {
+            continue
+          }
+        }
+        print lines[i]
+      }
+    }
+  ' "$message_file" > "$tmp_file"
+  cat "$tmp_file" > "$message_file"
+fi
+
 missing_trailers=""
 collect_missing_trailer() {
   if ! printf '%s\\n' "$final_trailer_block" | grep -Fqx -- "$1"; then
@@ -455,18 +498,7 @@ if [ -n "$(tail -c 1 "$message_file")" ]; then
   printf '\\n' >> "$message_file"
 fi
 
-# When the message already ends with Junior's bot trailer, insert missing
-# actor trailers before it so the bot trailer stays last.
-last_line=$(tail -n 1 "$message_file")
-bot_trailer="Co-Authored-By: $JUNIOR_GIT_COAUTHOR_NAME <$JUNIOR_GIT_COAUTHOR_EMAIL>"
-if [ "$last_line" = "$bot_trailer" ]; then
-  tmp_file=$(mktemp)
-  trap 'rm -f "$tmp_file"' EXIT
-  sed '$d' "$message_file" > "$tmp_file"
-  printf '%s' "$missing_trailers" >> "$tmp_file"
-  printf '%s\\n' "$bot_trailer" >> "$tmp_file"
-  cat "$tmp_file" > "$message_file"
-elif [ -n "$final_trailer_block" ]; then
+if [ -n "$final_trailer_block" ]; then
   printf '%s' "$missing_trailers" >> "$message_file"
 else
   printf '\\n%s' "$missing_trailers" >> "$message_file"
@@ -805,6 +837,51 @@ function readInstallationPermissions(
   return readGrantPermissions(installation.permissions);
 }
 
+function decodeGitHubPathSegment(value: string): string | undefined {
+  try {
+    const decoded = decodeURIComponent(value).trim();
+    return decoded && !decoded.includes("/") ? decoded : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function githubRepositoryFromUrl(
+  upstreamUrl: URL,
+): GitHubRepository | undefined {
+  const segments = upstreamUrl.pathname.split("/").filter(Boolean);
+  if (isGitHubApiUrl(upstreamUrl) && segments[0]?.toLowerCase() === "repos") {
+    const owner = segments[1]
+      ? decodeGitHubPathSegment(segments[1])
+      : undefined;
+    const name = segments[2] ? decodeGitHubPathSegment(segments[2]) : undefined;
+    return owner && name ? { owner, name } : undefined;
+  }
+  if (upstreamUrl.hostname.toLowerCase() !== "github.com") {
+    return undefined;
+  }
+  const owner = segments[0] ? decodeGitHubPathSegment(segments[0]) : undefined;
+  const rawName = segments[1]?.replace(/\.git$/i, "");
+  const name = rawName ? decodeGitHubPathSegment(rawName) : undefined;
+  return owner && name ? { owner, name } : undefined;
+}
+
+function githubRepositoryLeaseScope(repository: GitHubRepository): string {
+  return `repository:${repository.owner.toLowerCase()}/${repository.name.toLowerCase()}`;
+}
+
+function githubRepositoryFromLeaseScope(
+  leaseScope: string | undefined,
+): GitHubRepository {
+  const match = /^repository:([^/]+)\/([^/]+)$/.exec(leaseScope ?? "");
+  if (!match?.[1] || !match[2]) {
+    throw new GitHubPluginSetupError(
+      "GitHub installation write grant is missing a repository lease scope.",
+    );
+  }
+  return { owner: match[1], name: match[2] };
+}
+
 async function resolveUserAccount(
   tokens: PluginStoredTokens,
 ): Promise<PluginProviderAccount> {
@@ -1031,21 +1108,24 @@ async function issueInstallationCredential(
   }
 
   const appJwt = createAppJwt(appId, options.privateKeyEnv);
-  let tokenPermissions = options.readPermissions;
-  if (!tokenPermissions) {
-    tokenPermissions = await options.loadReadPermissions({
-      appJwt,
-      installationId,
-    });
+  const permissions =
+    options.permissions ??
+    (await options.loadPermissions?.({ appJwt, installationId }));
+  if (!permissions) {
+    throw new GitHubPluginSetupError(
+      "GitHub installation credential permissions are not configured.",
+    );
   }
-
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
     `/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
       token: appJwt,
-      body: { permissions: tokenPermissions },
+      body: {
+        permissions,
+        ...(options.repositories ? { repositories: options.repositories } : {}),
+      },
     },
   );
   const parsedToken = parseInstallationTokenResponse(accessTokenResponse);
@@ -1059,7 +1139,7 @@ async function issueInstallationCredential(
   });
 }
 
-function createPermissionCache(): InstallationCredentialOptions["loadReadPermissions"] {
+function createPermissionCache(): LoadInstallationReadPermissions {
   let cached:
     | {
         expiresAtMs: number;
@@ -1234,8 +1314,8 @@ function githubGraphqlAccess(
   if (operation) {
     return operation;
   }
-  // Unknown GraphQL POST bodies still require user-write attribution rather
-  // than risking an unattributed mutation through an installation-read token.
+  // Unknown GraphQL POST bodies are classified as writes and denied by the
+  // caller rather than receiving an installation or user credential.
   return "write";
 }
 
@@ -1308,6 +1388,20 @@ function githubApiWriteReason(
   ) {
     return "github.issues-write";
   }
+  if (
+    method === "PATCH" &&
+    /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+$/.test(pathname)
+  ) {
+    return "github.issues-write";
+  }
+  if (
+    (method === "POST" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/issues\/[^/]+\/(labels|assignees)(?:\/[^/]+)?$/.test(
+      pathname,
+    )
+  ) {
+    return "github.issues-write";
+  }
   if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/pulls$/.test(pathname)) {
     return "github.pull-create";
   }
@@ -1316,6 +1410,26 @@ function githubApiWriteReason(
     /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+$/.test(pathname)
   ) {
     return "github.pull-requests-write";
+  }
+  if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/ready_for_review$/.test(pathname)
+  ) {
+    return "github.pull-requests-write";
+  }
+  if (
+    (method === "POST" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/requested_reviewers$/.test(pathname)
+  ) {
+    return "github.pull-requests-write";
+  }
+  if (
+    /^\/repos\/[^/]+\/[^/]+\/pulls\/[^/]+\/reviews(?:\/[^/]+(?:\/(events|dismissals))?)?$/.test(
+      pathname,
+    ) &&
+    !HTTP_READ_METHODS.has(method)
+  ) {
+    return "github.pull-review-write";
   }
   if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/forks$/.test(pathname)) {
     return "github.fork-create";
@@ -1465,20 +1579,17 @@ function grantRequirements(reason: GitHubGrantReason): string[] | undefined {
   if (reason === "github.git-write" || reason === "github.contents-write") {
     return CONTENTS_WRITE_REQUIREMENTS;
   }
-  if (reason === "github.workflows-write") {
-    return WORKFLOWS_WRITE_REQUIREMENTS;
-  }
   if (reason === "github.issue-create" || reason === "github.issues-write") {
     return ISSUES_WRITE_REQUIREMENTS;
+  }
+  if (reason === "github.pull-review-write") {
+    return PULL_REVIEW_WRITE_REQUIREMENTS;
   }
   if (
     reason === "github.pull-create" ||
     reason === "github.pull-requests-write"
   ) {
     return PULL_REQUESTS_WRITE_REQUIREMENTS;
-  }
-  if (reason === "github.fork-create") {
-    return FORK_CREATE_REQUIREMENTS;
   }
   return undefined;
 }
@@ -1487,14 +1598,56 @@ function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
   name: GitHubGrantName,
+  leaseScope?: string,
 ): GitHubGrant {
   const requirements = grantRequirements(reason);
   return {
     name,
     access,
+    ...(leaseScope ? { leaseScope } : {}),
     reason,
     ...(requirements ? { requirements } : {}),
   };
+}
+
+function repositoryLeaseScope(upstreamUrl: URL): string {
+  const repository = githubRepositoryFromUrl(upstreamUrl);
+  if (!repository) {
+    throw new EgressPolicyDenied(
+      "GitHub write request does not identify a target repository.",
+    );
+  }
+  return githubRepositoryLeaseScope(repository);
+}
+
+function installationGrantForWrite(
+  reason: GitHubGrantReason,
+  upstreamUrl: URL,
+): GitHubGrant | undefined {
+  const leaseScope = repositoryLeaseScope(upstreamUrl);
+  if (reason === "github.issue-create" || reason === "github.issues-write") {
+    return grantForAccess(
+      "write",
+      reason,
+      "installation-issues-write",
+      leaseScope,
+    );
+  }
+  if (
+    reason === "github.pull-create" ||
+    reason === "github.pull-requests-write"
+  ) {
+    return grantForAccess(
+      "write",
+      reason,
+      "installation-pull-requests-write",
+      leaseScope,
+    );
+  }
+  if (reason === "github.pull-review-write") {
+    return grantForAccess("write", reason, "user-write", leaseScope);
+  }
+  return undefined;
 }
 
 async function githubGrantForEgress(
@@ -1512,10 +1665,18 @@ async function githubGrantForEgress(
   });
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
+    if (smartHttpAccess === "write") {
+      return grantForAccess(
+        "write",
+        "github.git-write",
+        "installation-pr-branch-write",
+        repositoryLeaseScope(upstreamUrl),
+      );
+    }
     return grantForAccess(
       smartHttpAccess,
-      smartHttpAccess === "write" ? "github.git-write" : "github.git-read",
-      smartHttpAccess === "write" ? "user-write" : "installation-read",
+      "github.git-read",
+      "installation-read",
     );
   }
 
@@ -1526,7 +1687,13 @@ async function githubGrantForEgress(
 
   const writeReason = githubApiWriteReason(method, upstreamUrl);
   if (writeReason) {
-    return grantForAccess("write", writeReason, "user-write");
+    const grant = installationGrantForWrite(writeReason, upstreamUrl);
+    if (grant) {
+      return grant;
+    }
+    throw new EgressPolicyDenied(
+      `GitHub write operation ${writeReason} is not enabled for Junior credentials.`,
+    );
   }
 
   const graphqlAccess = githubGraphqlAccess(
@@ -1535,21 +1702,69 @@ async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (graphqlAccess) {
+    if (graphqlAccess === "write") {
+      throw new EgressPolicyDenied(
+        "GitHub GraphQL mutations are not enabled for Junior credentials.",
+      );
+    }
     return grantForAccess(
       graphqlAccess,
-      graphqlAccess === "write"
-        ? "github.graphql-write"
-        : "github.graphql-read",
-      graphqlAccess === "write" ? "user-write" : "installation-read",
+      "github.graphql-read",
+      "installation-read",
     );
   }
 
   const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
-  return grantForAccess(
-    access,
-    access === "write" ? "github.api-write" : "github.api-read",
-    access === "write" ? "user-write" : "installation-read",
-  );
+  if (access === "write") {
+    throw new EgressPolicyDenied(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
+  }
+  return grantForAccess(access, "github.api-read", "installation-read");
+}
+
+function configuredWritePermission(
+  appPermissions: GitHubAppPermissions | undefined,
+  permission: "issues" | "pull_requests",
+): Record<string, "read" | "write"> {
+  const level = appPermissions?.[permission];
+  if (level !== undefined && level !== "write" && level !== "admin") {
+    throw new GitHubPluginSetupError(
+      `githubPlugin appPermissions.${permission} must allow write access for Junior-owned GitHub resources.`,
+    );
+  }
+  return {
+    metadata: "read",
+    [permission]: "write",
+  };
+}
+
+function configuredBranchWritePermissions(
+  appPermissions: GitHubAppPermissions | undefined,
+): Record<string, "read" | "write"> {
+  const contents = appPermissions?.contents;
+  if (contents !== undefined && contents !== "write" && contents !== "admin") {
+    throw new GitHubPluginSetupError(
+      "githubPlugin appPermissions.contents must allow write access for Junior-managed pull request branches.",
+    );
+  }
+  const workflows = appPermissions?.workflows;
+  if (
+    workflows !== undefined &&
+    workflows !== "write" &&
+    workflows !== "admin"
+  ) {
+    throw new GitHubPluginSetupError(
+      "githubPlugin appPermissions.workflows must allow write access when configured.",
+    );
+  }
+  return {
+    contents: "write",
+    metadata: "read",
+    ...(workflows === "write" || workflows === "admin"
+      ? { workflows: "write" as const }
+      : {}),
+  };
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -1644,23 +1859,15 @@ export function githubPlugin(
         if (!botName || !botEmail) {
           return;
         }
-        const authorName = actorName(ctx.actor);
-        const authorEmail = actorEmail(ctx.actor);
-        if (authorName && authorEmail) {
-          ctx.env.set("GIT_AUTHOR_NAME", authorName);
-          ctx.env.set("GIT_AUTHOR_EMAIL", authorEmail);
-          ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", authorName);
-          ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", authorEmail);
-        }
+        ctx.env.set("GIT_AUTHOR_NAME", botName);
+        ctx.env.set("GIT_AUTHOR_EMAIL", botEmail);
+        ctx.env.set("JUNIOR_GIT_AUTHOR_NAME", botName);
+        ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
-        ctx.env.set("JUNIOR_GIT_COAUTHOR_NAME", botName);
-        ctx.env.set("JUNIOR_GIT_COAUTHOR_EMAIL", botEmail);
         const actorTrailers = additionalActorCoauthorTrailers({
-          actors: ctx.actors,
-          authorEmail,
+          actors: [...(ctx.actor ? [ctx.actor] : []), ...(ctx.actors ?? [])],
           botEmail,
-          runActor: ctx.actor,
         });
         ctx.env.set(
           "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
@@ -1695,8 +1902,43 @@ export function githubPlugin(
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              readPermissions: appReadPermissions,
-              loadReadPermissions,
+              ...(appReadPermissions
+                ? { permissions: appReadPermissions }
+                : { loadPermissions: loadReadPermissions }),
+            });
+          }
+          if (
+            ctx.grant.name === "installation-issues-write" ||
+            ctx.grant.name === "installation-pull-requests-write"
+          ) {
+            const repository = githubRepositoryFromLeaseScope(
+              ctx.grant.leaseScope,
+            );
+            const permission =
+              ctx.grant.name === "installation-issues-write"
+                ? "issues"
+                : "pull_requests";
+            return await issueInstallationCredential({
+              appIdEnv,
+              privateKeyEnv,
+              installationIdEnv,
+              permissions: configuredWritePermission(
+                appPermissions,
+                permission,
+              ),
+              repositories: [repository.name],
+            });
+          }
+          if (ctx.grant.name === "installation-pr-branch-write") {
+            const repository = githubRepositoryFromLeaseScope(
+              ctx.grant.leaseScope,
+            );
+            return await issueInstallationCredential({
+              appIdEnv,
+              privateKeyEnv,
+              installationIdEnv,
+              permissions: configuredBranchWritePermissions(appPermissions),
+              repositories: [repository.name],
             });
           }
           if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {

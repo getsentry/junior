@@ -44,13 +44,16 @@ export type {
  */
 function leaseKey(
   provider: string,
-  grantName: string,
+  grant: SandboxEgressCredentialLease["grant"],
   context: SandboxEgressCredentialContext,
 ): string {
   const actor = context.credentials.actor;
   const actorKey =
     "type" in actor ? `user:${actor.userId}` : `system:${actor.name}`;
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grantName}:${actorKey}:${context.egressId}:${context.contextId}`;
+  const grantKey = grant.leaseScope
+    ? `${grant.name}:${grant.leaseScope}`
+    : grant.name;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grantKey}:${actorKey}:${context.egressId}:${context.contextId}`;
 }
 
 /**
@@ -213,11 +216,7 @@ export async function setSandboxEgressCredentialLease(
   );
   const state = getStateAdapter();
   await state.connect();
-  await state.set(
-    leaseKey(lease.provider, lease.grant.name, context),
-    lease,
-    ttlMs,
-  );
+  await state.set(leaseKey(lease.provider, lease.grant, context), lease, ttlMs);
 }
 
 /**
@@ -225,23 +224,23 @@ export async function setSandboxEgressCredentialLease(
  */
 export async function getSandboxEgressCredentialLease(
   provider: string,
-  grantName: string,
+  grant: SandboxEgressCredentialLease["grant"],
   context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(provider, grantName, context)));
+  return parseLease(await state.get(leaseKey(provider, grant, context)));
 }
 
 /** Clear a cached lease after the upstream provider rejects its auth headers. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
-  grantName: string,
+  grant: SandboxEgressCredentialLease["grant"],
   context: SandboxEgressCredentialContext,
 ): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(provider, grantName, context));
+  await state.delete(leaseKey(provider, grant, context));
 }
 
 /**

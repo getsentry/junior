@@ -11,6 +11,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -211,6 +212,7 @@ function isDefinitiveGitHubIssueCreateRejection(
 function createGitHubIssueRequest(
   conversationId: string,
   input: CreateGitHubIssueInput,
+  actor: ToolRegistrationHookContext["actor"],
 ): Request {
   const repo = parseRepo(input.repo);
   const labels = input.labels?.map((label) =>
@@ -218,7 +220,10 @@ function createGitHubIssueRequest(
   );
   const payload = {
     title: nonEmptyString(input.title, "title"),
-    body: appendGitHubFooter(input.body ?? "", conversationId),
+    body: appendGitHubFooter(
+      appendGitHubRequesterAttribution(input.body ?? "", actor),
+      conversationId,
+    ),
     ...(labels?.length ? { labels } : {}),
   };
   return new Request(
@@ -302,7 +307,11 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.",
             );
           }
-          const request = createGitHubIssueRequest(conversationId, parsedInput);
+          const request = createGitHubIssueRequest(
+            conversationId,
+            parsedInput,
+            ctx.actor,
+          );
           const pendingState: CreateIssueState = {
             status: "pending",
             createdAtMs: Date.now(),

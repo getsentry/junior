@@ -56,6 +56,16 @@ Rules:
    applies.
 5. Event delivery must not bypass final-reply, progress, tool-permission,
    continuation, or auth-pause rules.
+6. Resource-event turns run as a system actor without an inferred human
+   credential subject. They may use provider service-principal credentials for
+   explicitly bot-owned operations, including repository-scoped GitHub App
+   credentials for issue, pull request, and Git smart-HTTP branch writes.
+7. Operations that require human identity still pause for explicit delegated
+   authorization; a subscription does not inherit the subscriber's OAuth
+   credential.
+8. If a resource-event turn continues across execution slices, the stored
+   `resource-event` system actor and credential context are preserved; resume
+   must not require or fabricate a Slack user actor.
 
 ### Subscribable Resource Affordance
 

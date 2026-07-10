@@ -353,8 +353,12 @@ export interface EvalToolInvocation {
   arguments?: Record<string, unknown>;
   tool: string;
   bash_command?: string;
+  completed?: boolean;
+  error?: string;
   mcp_arguments?: Record<string, unknown>;
   mcp_tool_name?: string;
+  ok?: boolean;
+  result?: unknown;
   skill_name?: string;
 }
 
@@ -1805,6 +1809,10 @@ function buildRuntimeServices(
             delete process.env.VERCEL_OIDC_TOKEN;
           }
           try {
+            const pendingToolInvocations: Array<{
+              invocation: EvalToolInvocation;
+              params: Record<string, unknown>;
+            }> = [];
             const outcome = await executeAgentRun({
               ...request,
               policy: {
@@ -1821,9 +1829,32 @@ function buildRuntimeServices(
               observers: {
                 ...request.observers,
                 onToolInvocation: (invocation) => {
-                  observations.toolInvocations.push(
-                    toEvalToolInvocation(invocation),
+                  const evalInvocation = toEvalToolInvocation(invocation);
+                  observations.toolInvocations.push(evalInvocation);
+                  pendingToolInvocations.push({
+                    invocation: evalInvocation,
+                    params: invocation.params,
+                  });
+                },
+                onToolResult: (result) => {
+                  const pendingIndex = pendingToolInvocations.findIndex(
+                    (candidate) => candidate.params === result.params,
                   );
+                  if (pendingIndex === -1) {
+                    return;
+                  }
+                  const [{ invocation }] = pendingToolInvocations.splice(
+                    pendingIndex,
+                    1,
+                  );
+                  invocation.completed = true;
+                  invocation.ok = result.ok;
+                  if (result.error) {
+                    invocation.error = result.error;
+                  }
+                  if (result.result !== undefined) {
+                    invocation.result = result.result;
+                  }
                 },
               },
             });

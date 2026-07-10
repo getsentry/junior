@@ -7,12 +7,21 @@ import {
 
 const {
   getOAuthConfigMock,
+  getProvidersMock,
   hasEgressCredentialHooks,
   issuePluginCredential,
   issueProviderCredentialLease,
   getStateAdapter,
 } = vi.hoisted(() => ({
   getOAuthConfigMock: vi.fn(),
+  getProvidersMock: vi.fn(() => [
+    {
+      manifest: {
+        name: "sentry",
+        credentials: { domains: ["sentry.io"] },
+      },
+    },
+  ]),
   hasEgressCredentialHooks: vi.fn(),
   issuePluginCredential: vi.fn(),
   issueProviderCredentialLease: vi.fn(),
@@ -22,6 +31,7 @@ const {
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getOAuthConfig: getOAuthConfigMock,
+    getProviders: getProvidersMock,
   },
 }));
 vi.mock("@/chat/plugins/credential-hooks", () => ({
@@ -180,5 +190,60 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
         e.provider === PROVIDER &&
         e.grant.name === "user-write",
     );
+  });
+
+  it("isolates cached plugin leases by opaque lease scope", async () => {
+    hasEgressCredentialHooks.mockReturnValue(true);
+    issuePluginCredential.mockClear();
+    const state = new Map<string, unknown>();
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn((key: string) => state.get(key)),
+      set: vi.fn((key: string, value: unknown) => state.set(key, value)),
+      delete: vi.fn((key: string) => state.delete(key)),
+    };
+    getStateAdapter.mockReturnValue(stateStub);
+    issuePluginCredential.mockResolvedValue({
+      type: "lease",
+      lease: {
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer scoped-token" },
+          },
+        ],
+      },
+    });
+    const first = {
+      grant: {
+        name: "installation-write",
+        access: "write" as const,
+        leaseScope: "repository:getsentry/junior",
+      },
+      source: "plugin" as const,
+    };
+    const second = {
+      grant: {
+        name: "installation-write",
+        access: "write" as const,
+        leaseScope: "repository:getsentry/sentry",
+      },
+      source: "plugin" as const,
+    };
+
+    await sandboxEgressCredentialLease(PROVIDER, first, credentialContext());
+    await sandboxEgressCredentialLease(PROVIDER, second, credentialContext());
+    await sandboxEgressCredentialLease(PROVIDER, first, credentialContext());
+
+    expect(issuePluginCredential).toHaveBeenCalledTimes(2);
+    expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
+      expect.stringContaining(
+        ":installation-write:repository:getsentry/junior:",
+      ),
+      expect.stringContaining(
+        ":installation-write:repository:getsentry/sentry:",
+      ),
+    ]);
   });
 });

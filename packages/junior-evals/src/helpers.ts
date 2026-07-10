@@ -107,6 +107,16 @@ function toToolCallRecord(
   return {
     name: invocation.tool,
     ...(Object.keys(args).length > 0 ? { arguments: args } : {}),
+    ...(invocation.completed
+      ? {
+          result: toJson(
+            invocation.result ?? {
+              ok: invocation.ok ?? invocation.error === undefined,
+            },
+          ),
+        }
+      : {}),
+    ...(invocation.error ? { error: { message: invocation.error } } : {}),
   };
 }
 

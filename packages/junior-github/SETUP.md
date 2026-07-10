@@ -1,6 +1,6 @@
 # GitHub plugin setup
 
-This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Read operations use host-issued GitHub App installation tokens. Write operations use GitHub App user-to-server OAuth tokens so GitHub attributes the action to the requesting user with the app badge.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, allowlisted issue and pull request writes, and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as pull request reviews.
 
 ## 1) Create/install GitHub App
 
@@ -83,7 +83,7 @@ githubPlugin({
 
 Junior records these permissions as plugin capabilities. The configured values are the maximum GitHub App envelope Junior may need for writes. Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. GitHub remains the source of truth for whether a permission name or level exists.
 
-GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. GitHub returns an empty `scope` value for these tokens, so Junior cannot verify granted scopes from the token response.
+GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. Repository-scoped installation tokens instead use the App permission envelope and installation repository access without borrowing the requesting user's authority. GitHub returns an empty `scope` value for user-to-server tokens, so Junior cannot verify granted scopes from the token response.
 
 If you pass `additionalUserScopes`, Junior includes those values in the authorization URL and records the requested scope string as a local reauthorization contract. This does not expand or prove GitHub API permissions — configure GitHub App permissions with `appPermissions` and in the GitHub App settings for provider-enforced access:
 
@@ -93,15 +93,16 @@ githubPlugin({
 });
 ```
 
-Use `additionalUserScopes` only when an integration flow requires specific GitHub OAuth scope parameters in the authorization URL. Do not rely on it to authorize repository, Actions, or workflow writes — those are enforced by GitHub App permissions and the requesting user's own access.
+Use `additionalUserScopes` only when a human-identity integration flow requires specific GitHub OAuth scope parameters in the authorization URL. Do not rely on it to authorize Junior-owned repository or workflow writes — those use repository-scoped installation tokens and the configured GitHub App permissions.
 
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The plugin classifies GitHub traffic from the forwarded HTTP request. Safe app-readable API methods, GraphQL `GET`/`HEAD`/`OPTIONS` requests, GraphQL `POST` bodies that prove the operation is a query, and `git-upload-pack` use the `installation-read` grant. `GET /user` uses the `user-read` grant so account identity checks use the actor token. Write-specific REST URLs, GraphQL mutations/subscriptions, unknown GraphQL `POST` bodies, other non-read API methods, and `git-receive-pack` use the `user-write` grant.
-- `user-read` and `user-write` require the actor, or an explicitly delegated user subject from an allowed system run, to authorize the GitHub App through the private OAuth flow. Missing or expired user authorization pauses interactive turns, sends a private authorization link, and resumes after approval.
-- Git commits use the actor as the commit author, Junior as committer, and a Junior `Co-Authored-By` trailer.
-- Issued credentials are reused only within the current turn, credential leases are cached separately by plugin grant name, and upstream 403 permission denials clear the cached lease before the next retry.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Allowlisted issue and pull request mutations use repository-scoped installation grants. Git smart-HTTP pushes use `installation-pr-branch-write`. Unknown REST writes and GraphQL mutations are denied.
+- `user-read` and the remaining explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, and branch operations do not fall back to user OAuth.
+- Headless resource-event turns use the `resource-event` system actor and may receive the same repository-scoped installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
+- Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers.
+- Issued credentials are reused only within the current turn, credential leases are cached by plugin grant and repository lease scope, and upstream 403 permission denials clear the cached lease before the next retry.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage
@@ -121,33 +122,32 @@ git -C repo fetch --depth=50 origin
 git -C repo fetch --unshallow
 ```
 
-Load the relevant GitHub skill for command guidance and repo context:
-
-```bash
-gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
-```
+Load the relevant GitHub skill for command guidance and repo context. Create
+new resources through the typed tools, for example
+`github_createIssue({ repo: "owner/repo", title: "Example issue", body: "..." })`.
+Use `gh` for the allowlisted lifecycle operations described by the skill.
 
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-The plugin uses `installation-read` for read-only GitHub traffic and `user-write` for mutations. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes and merges, pull requests for PR mutations, actions/workflows for workflow operations.
+The plugin uses installation credentials for read-only GitHub traffic, allowlisted issue and pull request mutations, and Git smart-HTTP pushes. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes, pull requests for PR mutations, and workflows for workflow-file pushes.
 
 Committing and pushing code uses more than one GitHub surface:
 
-- Creating the local Git commit does not call GitHub. Junior sets the actor as author and the GitHub App bot as committer in the sandbox.
-- Pushing a branch with Git smart HTTP (`git push`) uses the `user-write` grant and requires the GitHub App to have `Contents: write` on the target repository. The requesting user must also have write access to that repository.
-- REST Git database writes used by some `gh` flows also require `Contents: write`: create blob (`POST /git/blobs`), create tree (`POST /git/trees`), create commit (`POST /git/commits`), and create/update refs (`POST /git/refs`, `PATCH /git/refs/{ref}`). Changes to workflow files may also require `Workflows: write`.
+- Creating the local Git commit does not call GitHub. Junior sets the GitHub App bot as author and committer and credits resolvable human actors with `Co-Authored-By` trailers.
+- Pushing a branch with Git smart HTTP (`git push`) uses the repository-scoped `installation-pr-branch-write` grant and requires `Contents: write`. If `Workflows: write` is configured, it is included so workflow-file changes can be pushed.
+- The smart-HTTP classifier does not distinguish Junior-managed branches or independently detect force updates or ref deletion. Use GitHub branch protection and limit the App installation to repositories where Junior may push.
+- REST Git database and ref writes are denied by the current write allowlist. Use Git smart HTTP (`git push`) for branch updates instead.
 - Opening the PR after the branch exists is separate: `github_createPullRequest` needs pull-request write permission, but it should not create or push commits itself.
 
-Fork creation is not part of the default PR path. `POST /repos/{owner}/{repo}/forks` uses the `user-write` grant, but GitHub requires `Administration: write` and `Contents: read`, and the app must be installed on both the source and destination accounts. Do not grant `Administration: write` for routine PR creation; push a branch explicitly and create the PR with `github_createPullRequest` instead.
+Fork creation is not part of the default PR path and is denied by the current write allowlist. Do not grant `Administration: write` for routine PR creation; push a branch explicitly and create the PR with `github_createPullRequest` instead.
 
 GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is provider-domain scoped for sandbox traffic to `api.github.com` and `github.com` during turns with a signed credential context. Keep repo context explicit, and let the plugin choose the required grant for the outbound request.
 
-Be careful with mixed-surface PR commands:
-
-- `gh pr edit` title/body/base/reviewer changes fit `github.pull-requests.write`.
-- `gh pr edit` label changes fit `github.issues.write`.
-- `gh pr edit` assignee/milestone changes fit `github.issues.write`.
-- `gh pr close --comment` may need `github.issues.write`.
-- `gh pr close --delete-branch` needs `github.contents.write`.
+Be careful with mixed-surface PR commands. Use the allowlisted REST endpoints
+rather than GraphQL-backed `gh pr` mutation commands. PR-native title, body,
+base, state, ready-for-review, and requested-reviewer changes use the pull
+request grant. Comments, labels, and assignees use GitHub's issue endpoints and
+the issue grant. Merge, branch deletion, REST ref mutation, and administration
+remain unsupported API operations.
 
 For PR creation in automation, push explicitly and pass that branch as `head`:
 
@@ -192,10 +192,10 @@ jr-rpc config set github.repo getsentry/junior
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
 4. Exercise `github-issues` to create an issue in a safe test repo.
-5. Verify the issue is authored by the requesting GitHub user with the GitHub App badge.
+5. Verify the issue is authored by the GitHub App bot and includes `Requested by` attribution.
 6. Exercise `github-issues` to update title/body, add/remove labels, and add a comment.
 7. Push a test branch and exercise `github-code` to create a draft PR using explicit repo targeting and `--head`.
-8. Verify all mutations succeed and are attributed to the requesting GitHub user with the app badge.
+8. Verify allowlisted mutations are attributed to the GitHub App bot, while a pull request review still requires delegated human authorization.
 9. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
 10. Verify raw token values are never printed in output or logs.
 11. Check logs for:
