@@ -5,7 +5,7 @@ injectWorkspacePackages: true
 autoInstallPeers: false
 dedupePeerDependents: false
 catalog:
-  "@sentry/node": 10.59.0
+  "@sentry/node": 10.65.0
   "@sentry/starlight-theme": ^0.7.0
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.2
@@ -28,6 +28,11 @@ syncInjectedDepsAfterScripts:
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/starlight-theme"
+  - "@sentry/core@10.65.0"
+  - "@sentry/node-core@10.65.0"
+  - "@sentry/node@10.65.0"
+  - "@sentry/opentelemetry@10.65.0"
+  - "@sentry/server-utils@10.65.0"
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry
