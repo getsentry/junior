@@ -64,6 +64,11 @@ deterministic reporting records that are hard to produce through a live local
 chat. Plugin report data is pass-through from the configured reporting provider
 and needs separate validation.
 
+The root dev command owns local auth-disabled defaults and the production-like
+Nitro preset. If it fails to start, diagnose or report the dev runner failure;
+do not change `apps/example/nitro.config.ts`, dashboard auth settings, or OAuth
+configuration to make visual QA run.
+
 Do not treat mock dashboard data as proof of runtime ingestion, Slack delivery,
 credential behavior, or model behavior. Pair it with local CLI or integration
 tests when the changed contract crosses those boundaries.

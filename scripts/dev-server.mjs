@@ -183,6 +183,7 @@ function startNitroDev() {
     "run",
     "--port",
     "8969",
+    "--",
     "pnpm",
     "--dir",
     exampleDir,
