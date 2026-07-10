@@ -484,6 +484,7 @@ export async function runAgentDispatchSlice(
         messages: reply.piMessages,
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
+        reasoningLevel: reply.diagnostics.thinkingLevel,
         destination: dispatch.destination,
         source: dispatch.source,
         actor: dispatch.actor,

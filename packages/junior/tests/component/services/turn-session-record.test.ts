@@ -909,11 +909,14 @@ describe("persistAuthPauseSessionRecord", () => {
       logContext: {
         modelId: "test-model",
       },
+      reasoningLevel: "high",
     });
 
     await expect(
       getAgentTurnSessionRecord("conversation-completed", "turn-completed"),
     ).resolves.toMatchObject({
+      modelId: "test-model",
+      reasoningLevel: "high",
       state: "completed",
       piMessages: [
         {

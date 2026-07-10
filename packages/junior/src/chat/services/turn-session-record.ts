@@ -236,7 +236,9 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  modelId?: string;
   actor?: Actor;
+  reasoningLevel?: string;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
@@ -255,6 +257,10 @@ export async function persistCompletedSessionRecord(args: {
       "Completed session record requires a slice id from the caller or the latest stored record",
     );
   }
+  const modelId =
+    latestSessionRecord?.modelId ?? args.modelId ?? args.logContext.modelId;
+  const reasoningLevel =
+    args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
   const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
     ...((args.channelName ?? latestSessionRecord?.channelName)
       ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
@@ -290,6 +296,8 @@ export async function persistCompletedSessionRecord(args: {
             args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
         }
       : {}),
+    ...(modelId ? { modelId } : {}),
+    ...(reasoningLevel ? { reasoningLevel } : {}),
     ...((args.actor ?? latestSessionRecord?.actor)
       ? { actor: args.actor ?? latestSessionRecord?.actor }
       : {}),
@@ -321,6 +329,7 @@ export async function completeDeliveredTurn(args: {
   logContext: SessionRecordLogContext;
   messages: PiMessage[];
   actor?: Actor;
+  reasoningLevel?: string;
   sessionId: string;
   sliceId: number;
   source: Source;
@@ -341,7 +350,9 @@ export async function completeDeliveredTurn(args: {
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     logContext: args.logContext,
+    modelId: args.logContext.modelId,
     actor: args.actor,
+    reasoningLevel: args.reasoningLevel,
     surface: args.surface,
     turnStartMessageIndex: args.turnStartMessageIndex,
   });

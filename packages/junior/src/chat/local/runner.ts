@@ -352,6 +352,7 @@ export async function runLocalAgentTurn(
       messages: reply.piMessages,
       durationMs: reply.diagnostics.durationMs,
       usage: reply.diagnostics.usage,
+      reasoningLevel: reply.diagnostics.thinkingLevel,
       destination,
       source,
       actor: localActor,
