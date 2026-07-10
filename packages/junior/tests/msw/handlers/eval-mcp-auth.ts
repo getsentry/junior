@@ -84,9 +84,27 @@ export const evalMcpAuthHandlers = [
                 additionalProperties: false,
               },
             },
+            {
+              name: "create-watchable-pull-request",
+              title: "Create Watchable Pull Request",
+              description:
+                "Create an eval pull request and return its subscribable resource events.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                },
+                required: ["title"],
+                additionalProperties: false,
+              },
+            },
           ],
         });
       case "tools/call": {
+        const toolName =
+          message?.params && typeof message.params.name === "string"
+            ? message.params.name
+            : undefined;
         const args =
           message?.params &&
           typeof message.params === "object" &&
@@ -94,6 +112,55 @@ export const evalMcpAuthHandlers = [
           typeof message.params.arguments === "object"
             ? (message.params.arguments as Record<string, unknown>)
             : undefined;
+        if (toolName === "create-watchable-pull-request") {
+          if (typeof args?.title !== "string") {
+            return jsonRpcResult(message?.id ?? null, {
+              content: [
+                {
+                  type: "text",
+                  text: 'Input validation error: Invalid arguments for tool create-watchable-pull-request:\n- "title": expected string, received undefined',
+                },
+              ],
+              isError: true,
+            });
+          }
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  number: 208,
+                  url: "https://github.com/getsentry/junior/pull/208",
+                  title: args.title,
+                  subscribable: {
+                    provider: "github",
+                    type: "pull_request",
+                    resourceRef: "github:pull_request:getsentry/junior#208",
+                    label: "GitHub PR getsentry/junior#208",
+                    supportedEvents: [
+                      "checks.failed",
+                      "comment.created",
+                      "review.changes_requested",
+                      "review.commented",
+                      "review_comment.created",
+                      "state.merged",
+                      "state.closed_unmerged",
+                    ],
+                    suggestedEvents: [
+                      "checks.failed",
+                      "review.changes_requested",
+                      "review.commented",
+                      "review_comment.created",
+                      "state.merged",
+                      "state.closed_unmerged",
+                    ],
+                  },
+                }),
+              },
+            ],
+            isError: false,
+          });
+        }
         if (typeof args?.query !== "string") {
           return jsonRpcResult(message?.id ?? null, {
             content: [

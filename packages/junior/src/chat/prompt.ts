@@ -355,7 +355,7 @@ const TOOL_POLICY_RULES = [
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
-  "- When a tool result includes a subscribable resource, subscribe only when high-signal follow-up events clearly serve the user's current intent; use the suggested events when they fit and write a concise intent summary.",
+  "- When a tool result includes a subscribable resource, use resource-event subscriptions for high-signal provider changes that serve the user's current intent; do not create scheduled polling tasks for events the subscription can deliver. Use the suggested events when they fit and write a concise intent summary.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];

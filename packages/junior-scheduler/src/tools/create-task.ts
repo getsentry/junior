@@ -28,7 +28,7 @@ export function createSlackScheduleCreateTaskTool(
 ) {
   return definePluginTool({
     description:
-      "Create a one-time or recurring Junior task in the active Slack conversation. For one-time reminders or one-time scheduled work, omit recurrence entirely; never choose a default recurrence. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
+      "Create a one-time or recurring Junior task in the active Slack conversation. For one-time reminders or one-time scheduled work, omit recurrence entirely; never choose a default recurrence. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Do not create scheduled polling tasks to watch provider resources when a subscribable tool result can deliver the requested events. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
     executionMode: "sequential",
     inputSchema: z.object({
       task: z.string().min(1).max(4000),

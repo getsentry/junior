@@ -20,6 +20,8 @@ Define the first scheduler contract for Junior: users can create durable tasks t
 ## Non-Goals
 
 - A generic event-rule engine for GitHub, Slack, Sentry, or webhook events.
+- Polling provider resources for changes that resource-event subscriptions can
+  deliver.
 - A full durable workflow runtime such as Temporal or Vercel Workflow.
 - Reusing agent continuation callbacks as the product scheduler.
 - Slack `chat.scheduleMessage` as the execution mechanism.

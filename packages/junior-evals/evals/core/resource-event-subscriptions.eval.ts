@@ -1,6 +1,7 @@
-import { assistantMessages, describeEval } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
+  mention,
   resourceEventNotification,
   rubric,
   slackEvals,
@@ -21,6 +22,67 @@ function visibleThreadReplies(
 }
 
 describeEval("Resource Event Subscriptions", slackEvals, (it) => {
+  it("when a created PR can emit requested events, subscribe instead of polling", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        plugin_dirs: ["fixtures/resource-event-plugins"],
+      },
+      events: [
+        mention(
+          "/eval-resource-events Use the provider to create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant creates the requested pull request.",
+          "The assistant subscribes this conversation to the requested high-signal pull request events.",
+          "The reply confirms the pull request and event-based monitoring without claiming a recurring polling schedule was created.",
+        ],
+        fail: [
+          "Do not create a scheduled task to poll the pull request.",
+          "Do not ask the user to monitor GitHub manually.",
+          "Do not omit the event subscription after creating the pull request.",
+        ],
+      }),
+    });
+
+    expect(toolCalls(result.session)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "callMcpTool",
+          arguments: expect.objectContaining({
+            tool_name:
+              "mcp__eval-resource-events__create-watchable-pull-request",
+            arguments: expect.objectContaining({
+              title: "Prefer event subscriptions",
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          name: "subscribeToResourceEvents",
+          arguments: expect.objectContaining({
+            provider: "github",
+            resourceRef: "github:pull_request:getsentry/junior#208",
+            resourceType: "pull_request",
+            events: expect.arrayContaining([
+              "checks.failed",
+              "review.changes_requested",
+              "review.commented",
+              "review_comment.created",
+              "state.merged",
+              "state.closed_unmerged",
+            ]),
+          }),
+        }),
+      ]),
+    );
+    expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
+      "scheduler_slackScheduleCreateTask",
+    );
+  });
+
   it("when a subscribed PR check fails, summarize the failure and suggest next steps", async ({
     run,
   }) => {

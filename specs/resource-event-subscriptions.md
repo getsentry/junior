@@ -94,6 +94,9 @@ Rules:
    action that produced the resource.
 4. Tool results must not include provider webhook filters, Slack coordinates, or
    credentials in the subscribable hint.
+5. When requested follow-up can be represented by supported resource events,
+   Junior must subscribe instead of creating a scheduled task that polls the
+   provider for the same changes.
 
 ### Core Subscription Tools
 

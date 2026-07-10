@@ -1,0 +1,8 @@
+name: eval-resource-events
+display-name: Eval Resource Events
+description: Creates eval pull requests with subscribable resource events
+
+mcp:
+  url: https://eval-mcp.example.test/mcp
+  allowed-tools:
+    - create-watchable-pull-request
