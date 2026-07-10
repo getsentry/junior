@@ -1,8 +1,8 @@
 ---
 title: GitHub Plugin
-description: Configure GitHub App credentials for GitHub issue and pull request workflows.
+description: Configure GitHub App credentials for GitHub repository workflows.
 type: tutorial
-summary: Set up Junior-owned GitHub issues, pull requests, and branch pushes.
+summary: Set up Junior-owned GitHub workflow dispatches, issues, pull requests, and branch pushes.
 prerequisites:
   - /extend/
 related:
@@ -11,7 +11,7 @@ related:
   - /reference/runtime-commands/
 ---
 
-The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior acts as the App installation for reads, issue and pull request maintenance, and Git branch pushes. Human OAuth remains reserved for operations whose GitHub meaning is personal, such as submitting a pull request review.
+The GitHub plugin uses one GitHub App permission envelope for the repositories Junior can reach. Junior acts as the App installation for reads, workflow dispatches, issue and pull request maintenance, and Git branch pushes. Human OAuth remains reserved for operations whose GitHub meaning is personal, such as submitting a pull request review.
 
 ## Install
 
@@ -47,7 +47,7 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-`appPermissions` should match the permissions configured on the GitHub App. Junior requests read-level installation tokens for read traffic and separate repository-scoped installation tokens for supported issue, pull request, and branch writes. Unsupported writes are denied instead of borrowing a user token.
+`appPermissions` should match the permissions configured on the GitHub App. Junior requests read-level installation tokens for read traffic and separate repository-scoped installation tokens for supported workflow dispatch, issue, pull request, and branch writes. Unsupported writes are denied instead of borrowing a user token.
 
 ## Configure environment variables
 
@@ -165,7 +165,7 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use installation tokens downscoped to read. Allowlisted issue, pull request, and branch writes use separate repository-scoped installation tokens. GitHub account identity checks and human review operations use user-to-server tokens.
+- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, and branch writes use separate repository-scoped installation tokens. GitHub account identity checks and human review operations use user-to-server tokens.
 - GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access comes from the App permissions, installation scope, and requesting user's access.
 - The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.

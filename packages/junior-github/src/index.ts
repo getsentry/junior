@@ -77,6 +77,7 @@ export interface GitHubPluginOptions {
 
 type JsonRecord = Record<string, unknown>;
 type GitHubGrantName =
+  | "installation-actions-write"
   | "installation-issues-write"
   | "installation-pr-branch-write"
   | "installation-pull-requests-write"
@@ -84,6 +85,7 @@ type GitHubGrantName =
   | "user-read"
   | "user-write";
 type GitHubGrantReason =
+  | "github.actions-workflow-dispatch"
   | "github.api-read"
   | "github.contents-write"
   | "github.fork-create"
@@ -174,6 +176,9 @@ const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
 const CONTENTS_WRITE_REQUIREMENTS = [
   "GitHub App Contents: write on the target repository",
+];
+const ACTIONS_WRITE_REQUIREMENTS = [
+  "GitHub App Actions: write on the target repository",
 ];
 const ISSUES_WRITE_REQUIREMENTS = [
   "GitHub App Issues: write on the target repository",
@@ -1379,6 +1384,14 @@ function githubApiWriteReason(
   if (!isGitHubApiUrl(upstreamUrl)) {
     return undefined;
   }
+  if (
+    method === "POST" &&
+    /^\/repos\/[^/]+\/[^/]+\/actions\/workflows\/[^/]+\/dispatches$/.test(
+      pathname,
+    )
+  ) {
+    return "github.actions-workflow-dispatch";
+  }
   if (method === "POST" && /^\/repos\/[^/]+\/[^/]+\/issues$/.test(pathname)) {
     return "github.issue-create";
   }
@@ -1576,6 +1589,9 @@ function assertGitHubWriteAllowed(input: {
 }
 
 function grantRequirements(reason: GitHubGrantReason): string[] | undefined {
+  if (reason === "github.actions-workflow-dispatch") {
+    return ACTIONS_WRITE_REQUIREMENTS;
+  }
   if (reason === "github.git-write" || reason === "github.contents-write") {
     return CONTENTS_WRITE_REQUIREMENTS;
   }
@@ -1625,6 +1641,14 @@ function installationGrantForWrite(
   upstreamUrl: URL,
 ): GitHubGrant | undefined {
   const leaseScope = repositoryLeaseScope(upstreamUrl);
+  if (reason === "github.actions-workflow-dispatch") {
+    return grantForAccess(
+      "write",
+      reason,
+      "installation-actions-write",
+      leaseScope,
+    );
+  }
   if (reason === "github.issue-create" || reason === "github.issues-write") {
     return grantForAccess(
       "write",
@@ -1725,7 +1749,7 @@ async function githubGrantForEgress(
 
 function configuredWritePermission(
   appPermissions: GitHubAppPermissions | undefined,
-  permission: "issues" | "pull_requests",
+  permission: "actions" | "issues" | "pull_requests",
 ): Record<string, "read" | "write"> {
   const level = appPermissions?.[permission];
   if (level !== undefined && level !== "write" && level !== "admin") {
@@ -1908,6 +1932,7 @@ export function githubPlugin(
             });
           }
           if (
+            ctx.grant.name === "installation-actions-write" ||
             ctx.grant.name === "installation-issues-write" ||
             ctx.grant.name === "installation-pull-requests-write"
           ) {
@@ -1915,9 +1940,11 @@ export function githubPlugin(
               ctx.grant.leaseScope,
             );
             const permission =
-              ctx.grant.name === "installation-issues-write"
-                ? "issues"
-                : "pull_requests";
+              ctx.grant.name === "installation-actions-write"
+                ? "actions"
+                : ctx.grant.name === "installation-issues-write"
+                  ? "issues"
+                  : "pull_requests";
             return await issueInstallationCredential({
               appIdEnv,
               privateKeyEnv,

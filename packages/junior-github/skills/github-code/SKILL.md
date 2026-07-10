@@ -161,7 +161,9 @@ Before finishing, reconcile any plan or checklist stated earlier — mark items 
 
 **PR inspection** — read-only `gh pr` and `gh api` commands. Query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{n}/comments` and `.../reviews`).
 
-**PR mutation** — push before create. Use only the allowlisted REST endpoints in the API reference. Merge, close-with-delete, workflow dispatch, REST ref mutation, and admin operations are unsupported. Git smart HTTP does not independently prevent force updates or ref deletion; rely on GitHub rulesets and do not request destructive pushes.
+**PR mutation** — push before create. Use only the allowlisted REST endpoints in the API reference. Merge, close-with-delete, REST ref mutation, and admin operations are unsupported. Git smart HTTP does not independently prevent force updates or ref deletion; rely on GitHub rulesets and do not request destructive pushes.
+
+**Workflow dispatch** — `gh workflow run` is supported for workflows that declare `workflow_dispatch`. Workflow reruns, cancellations, and other Actions mutations remain unsupported.
 
 ## Guardrails
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-06-09
+- Last Edited: 2026-07-10
 
 ## Related
 
@@ -78,7 +78,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
 - The GitHub plugin selects `installation-read` for app-readable egress,
-  repository-scoped `installation-issues-write` and
+  repository-scoped `installation-actions-write` for workflow dispatches,
+  `installation-issues-write` and
   `installation-pull-requests-write` grants for Junior-owned resource
   mutations, `installation-pr-branch-write` for Git smart-HTTP pushes,
   `user-read` for actor-account identity reads, and `user-write` only for
@@ -104,7 +105,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
 - Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but cache keys include the plugin grant name and opaque lease scope. A repository-scoped write lease must not be reused for another repository or grant family.
-- GitHub read grants are derived from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL queries, `GET /user`, and `git-upload-pack`. Only allowlisted issue and pull request REST writes receive scoped installation resource grants. `git-receive-pack` receives the repository-scoped `installation-pr-branch-write` grant. Unknown REST writes and GraphQL mutations are denied rather than falling back to `user-write`.
+- GitHub read grants are derived from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL queries, `GET /user`, and `git-upload-pack`. Allowlisted workflow dispatch, issue, and pull request REST writes receive scoped installation resource grants. Workflow dispatch is limited to `POST /repos/:owner/:repo/actions/workflows/:workflow_id/dispatches` and receives `installation-actions-write`. `git-receive-pack` receives the repository-scoped `installation-pr-branch-write` grant. Unknown REST writes and GraphQL mutations are denied rather than falling back to `user-write`.
 - The smart-HTTP push classifier scopes the token to the repository but does
   not independently distinguish a Junior-managed branch, detect a force
   update or ref deletion, or inspect the pushed commit range. Deployments must use GitHub
@@ -138,6 +139,31 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - `OAuthBearerBroker` checks for a per-user OAuth token stored by the credential user subject ID, which is the current user actor or an explicit delegated user subject.
 - If the token is near expiry, runtime refreshes it server-side.
 - Missing or stale auth triggers the private OAuth resume flow defined in the OAuth Flows Spec.
+
+## Verification
+
+A GitHub write surface is not supported until all of these contracts land in
+the same change:
+
+- the request classifier recognizes only the intended HTTP method and path;
+- credential issuance requests the minimum repository-scoped App permission;
+- the relevant GitHub skill documents both the supported command and adjacent
+  unsupported mutations;
+- `packages/junior-github/tests/github-plugin.test.ts` covers grant selection,
+  permission requirements, token permissions, and adjacent denials;
+- `packages/junior/tests/integration/sandbox-egress-proxy.test.ts` proves the
+  request crosses the real proxy with the scoped credential.
+
+Workflow dispatch must retain the named unit contract
+`maintains the workflow dispatch permission boundary` and the integration
+contract `uses repository-scoped GitHub App credentials for workflow dispatch`.
+The positive contract is only `workflow_dispatch`; rerun, cancel, and generic
+Actions writes must remain negative assertions unless this spec is explicitly
+expanded.
+
+Run the focused GitHub plugin and sandbox-egress integration files plus
+`pnpm skills:check`. Changes to this canonical spec also require the repository
+validation commands from `specs/AGENTS.md`.
 
 ## Observability
 

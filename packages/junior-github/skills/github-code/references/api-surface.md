@@ -13,6 +13,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Permission capability        | Commands                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------ |
 | `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
+| `github.actions.write`       | `gh workflow run` only                                                               |
 | `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
 | `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
 | `github.workflows.write`     | Workflow-file changes carried by Git smart-HTTP push                                 |
@@ -34,6 +35,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                                                    |
 | Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                        |
 | Push branch before PR creation     | `git -C DIRECTORY push -u origin BRANCH`                                                                                 |
+| Dispatch workflow                  | `gh workflow run WORKFLOW --repo owner/repo --ref REF [-f key=value]`                                                    |
 | Create pull request (draft)        | `github_createPullRequest({ repo: "owner/repo", head: "BRANCH", base: "BASE", title: "...", body: "...", draft: true })` |
 | Update pull request                | `gh api repos/owner/repo/pulls/NUMBER --method PATCH --input payload.json`                                               |
 | Mark ready for review              | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                                                    |
@@ -65,7 +67,7 @@ jr-rpc config set github.repo owner/repo
 - A local `git commit` does not call GitHub. Pushing that commit uses Junior's repository-scoped installation credential and requires `github.contents.write` on the target repo.
 - If the commit changes workflow files under `.github/workflows`, expect `github.workflows.write` in addition to contents write.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
-- Merge, fork creation, workflow dispatch, REST contents/Git database writes, and repository administration are outside the current write allowlist.
+- Merge, fork creation, workflow reruns or cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
 - PR comments, labels, and assignees use GitHub's issue endpoints and therefore the issue grant; use the `github-issues` REST guidance for those operations.
 - Return actionable errors for access, permission, not-found, and validation failures.

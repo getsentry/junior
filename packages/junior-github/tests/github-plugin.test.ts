@@ -558,6 +558,37 @@ describe("github plugin", () => {
     ).rejects.toThrow("github.fork-create is not enabled");
   });
 
+  it("maintains the workflow dispatch permission boundary", async () => {
+    expect(
+      await grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/actions/workflows/release.yml/dispatches",
+      }),
+    ).toMatchObject({
+      name: "installation-actions-write",
+      access: "write",
+      leaseScope: "repository:getsentry/junior",
+      reason: "github.actions-workflow-dispatch",
+      requirements: ["GitHub App Actions: write on the target repository"],
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/actions/runs/123/rerun",
+      }),
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/actions/runs/123/cancel",
+      }),
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
+  });
+
   it("denies raw GitHub issue creation outside the typed createIssue operation", async () => {
     await expect(
       grantForEgress({
@@ -1574,9 +1605,24 @@ Conversation: \`local:test:old-conversation\`
     const requests = mockGitHubInstallationApi();
     const plugin = githubPlugin({
       appPermissions: {
+        actions: "write",
         issues: "write",
         pull_requests: "write",
       },
+    });
+
+    const actionsResult = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "scheduler" },
+      grant: {
+        name: "installation-actions-write",
+        access: "write",
+        leaseScope: "repository:getsentry/junior",
+        reason: "github.actions-workflow-dispatch",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
     });
 
     const issueResult = await plugin.hooks?.issueCredential?.({
@@ -1607,17 +1653,25 @@ Conversation: \`local:test:old-conversation\`
       tokens: {},
     });
 
+    expect(actionsResult?.type).toBe("lease");
     expect(issueResult?.type).toBe("lease");
     expect(pullResult?.type).toBe("lease");
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
     expect(requests[0]).toMatchObject({
+      method: "POST",
+      body: {
+        permissions: { actions: "write", metadata: "read" },
+        repositories: ["junior"],
+      },
+    });
+    expect(requests[1]).toMatchObject({
       method: "POST",
       body: {
         permissions: { issues: "write", metadata: "read" },
         repositories: ["junior"],
       },
     });
-    expect(requests[1]).toMatchObject({
+    expect(requests[2]).toMatchObject({
       method: "POST",
       body: {
         permissions: { metadata: "read", pull_requests: "write" },

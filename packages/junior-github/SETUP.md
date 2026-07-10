@@ -1,6 +1,6 @@
 # GitHub plugin setup
 
-This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, allowlisted issue and pull request writes, and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as pull request reviews.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows). Junior uses GitHub App installation tokens for reads, workflow dispatches, allowlisted issue and pull request writes, and Git branch pushes. Human OAuth is reserved for explicitly personal operations such as pull request reviews.
 
 ## 1) Create/install GitHub App
 
@@ -98,7 +98,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Allowlisted issue and pull request mutations use repository-scoped installation grants. Git smart-HTTP pushes use `installation-pr-branch-write`. Unknown REST writes and GraphQL mutations are denied.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Workflow dispatches use the repository-scoped `installation-actions-write` grant. Allowlisted issue and pull request mutations use their own repository-scoped installation grants. Git smart-HTTP pushes use `installation-pr-branch-write`. Unknown REST writes and GraphQL mutations are denied.
 - `user-read` and the remaining explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, and branch operations do not fall back to user OAuth.
 - Headless resource-event turns use the `resource-event` system actor and may receive the same repository-scoped installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
 - Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers.
@@ -128,7 +128,7 @@ new resources through the typed tools, for example
 Use `gh` for the allowlisted lifecycle operations described by the skill.
 
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-The plugin uses installation credentials for read-only GitHub traffic, allowlisted issue and pull request mutations, and Git smart-HTTP pushes. GitHub App permissions still need to cover the operation: issues for issue edits/comments/labels, contents for pushes, pull requests for PR mutations, and workflows for workflow-file pushes.
+The plugin uses installation credentials for read-only GitHub traffic, workflow dispatches, allowlisted issue and pull request mutations, and Git smart-HTTP pushes. GitHub App permissions still need to cover the operation: actions for workflow dispatches, issues for issue edits/comments/labels, contents for pushes, pull requests for PR mutations, and workflows for workflow-file pushes.
 
 Committing and pushing code uses more than one GitHub surface:
 

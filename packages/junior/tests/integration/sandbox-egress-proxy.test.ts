@@ -937,6 +937,61 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("uses repository-scoped GitHub App credentials for workflow dispatch", async () => {
+    configureGitHubAppEnv();
+    const tokenRequests = mockGitHubInstallationToken();
+    await registerGitHubPlugin({
+      appPermissions: {
+        actions: "write",
+      },
+    });
+    const credentialToken = modules.session.createSandboxEgressCredentialToken({
+      credentials: { actor: { type: "user", userId: ACTOR_ID } },
+      egressId: EGRESS_ID,
+      ttlMs: 60_000,
+    });
+    const networkPolicy = modules.policy.buildSandboxEgressNetworkPolicy({
+      credentialToken,
+    });
+    const forwardURL = forwardUrlFor(networkPolicy, GITHUB_API_HOST);
+    const upstreamFetch = vi.fn(
+      async (url: URL | string, init?: RequestInit) => {
+        expect(String(url)).toBe(
+          "https://api.github.com/repos/getsentry/junior/actions/workflows/release.yml/dispatches",
+        );
+        expect(init?.method).toBe("POST");
+        expect(new Headers(init?.headers).get("authorization")).toBe(
+          "Bearer installation-token",
+        );
+        return new Response(null, { status: 204 });
+      },
+    );
+
+    const response = await modules.proxy.proxySandboxEgressRequest(
+      proxiedRequest({
+        body: JSON.stringify({ ref: "main", inputs: { bump: "minor" } }),
+        forwardURL,
+        method: "POST",
+        upstreamHost: GITHUB_API_HOST,
+        upstreamPath:
+          "/repos/getsentry/junior/actions/workflows/release.yml/dispatches",
+      }),
+      {
+        fetch: upstreamFetch as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    expect(tokenRequests).toEqual([
+      {
+        permissions: { actions: "write", metadata: "read" },
+        repositories: ["junior"],
+      },
+    ]);
+  });
+
   it("records GitHub GraphQL repository access errors without rewriting the response", async () => {
     configureGitHubAppEnv();
     mockGitHubInstallationToken();
