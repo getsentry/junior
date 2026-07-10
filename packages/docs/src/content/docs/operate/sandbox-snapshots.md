@@ -54,6 +54,12 @@ Rebuilds happen when:
 
 The default floating dependency max age is seven days. Set `SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS=0` only when you intentionally want floating dependencies rebuilt every time.
 
+## Build resources
+
+Snapshot builds use the same `SANDBOX_VCPUS` setting as runtime sandboxes. Set it when dependency installation or agent work needs more CPU or memory than the Vercel Sandbox default. Each vCPU provides 2 GB of memory, so `SANDBOX_VCPUS=4` creates 8 GB sandboxes.
+
+Leave the variable unset to use the Vercel default. Requested vCPU counts must be supported by the deployment's Vercel plan; unsupported values cause sandbox creation to fail.
+
 ## Failure behavior
 
 Snapshot build failures are deploy blockers. Junior must not silently continue with partially installed dependencies.

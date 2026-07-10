@@ -19,6 +19,7 @@ import {
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { getSandboxResources } from "@/chat/sandbox/resources";
 import {
   getRuntimeDependencyProfileHash,
   isSnapshotMissingError,
@@ -362,6 +363,7 @@ export function createSandboxSessionManager(options?: {
     sandboxCredentials: SandboxCredentials | undefined,
     initialSandboxName: string,
   ): Promise<SandboxInstance> => {
+    const resources = getSandboxResources();
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       const sandboxName =
         attempt === 0 ? initialSandboxName : createSandboxName();
@@ -377,6 +379,7 @@ export function createSandboxSessionManager(options?: {
               type: "snapshot",
               snapshotId,
             },
+            ...(resources ? { resources } : {}),
             ...(sandboxCredentials ?? {}),
           } as Parameters<typeof Sandbox.create>[0]),
         );
@@ -423,6 +426,7 @@ export function createSandboxSessionManager(options?: {
 
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
+      const resources = getSandboxResources();
       return createSandboxInstance(
         await Sandbox.create({
           timeout: timeoutMs,
@@ -430,6 +434,7 @@ export function createSandboxSessionManager(options?: {
           ...(networkPolicy
             ? { name: sandboxName, persistent: false, networkPolicy }
             : {}),
+          ...(resources ? { resources } : {}),
           ...(sandboxCredentials ?? {}),
         } as Parameters<typeof Sandbox.create>[0]),
       );

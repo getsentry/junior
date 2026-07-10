@@ -266,6 +266,7 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
+    delete process.env.SANDBOX_VCPUS;
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     process.env.JUNIOR_SECRET = "test-secret";
   });
@@ -650,6 +651,23 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       runtime: "node22",
+    });
+  });
+
+  it("configures resources for fresh sandboxes", async () => {
+    process.env.SANDBOX_VCPUS = "4";
+    const freshSandbox = makeSandbox("sbx_resources");
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 1000 * 60 * 30,
+      runtime: "node22",
+      resources: { vcpus: 4 },
     });
   });
 
@@ -1834,6 +1852,7 @@ describe("createSandboxExecutor", () => {
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {
+    process.env.SANDBOX_VCPUS = "4";
     const snapshotSandbox = makeSandbox("sbx_snapshot");
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
       snapshotId: "snap_123",
@@ -1856,6 +1875,7 @@ describe("createSandboxExecutor", () => {
         type: "snapshot",
         snapshotId: "snap_123",
       },
+      resources: { vcpus: 4 },
     });
   });
 

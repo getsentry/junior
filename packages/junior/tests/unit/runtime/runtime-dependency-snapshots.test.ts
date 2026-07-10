@@ -116,6 +116,7 @@ describe("runtime dependency snapshots", () => {
     getRuntimePostinstallMock.mockReturnValue([]);
     delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
     delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
+    delete process.env.SANDBOX_VCPUS;
     delete process.env.VERCEL_TOKEN;
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
@@ -276,6 +277,45 @@ describe("runtime dependency snapshots", () => {
       token: "sandbox-token",
       teamId: "team_123",
       projectId: "prj_123",
+    });
+  });
+
+  it("configures snapshot build resources from the environment", async () => {
+    process.env.SANDBOX_VCPUS = "4";
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "1.0.0" },
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_resources"));
+
+    await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 60_000,
+      runtime: "node22",
+      resources: { vcpus: 4 },
+    });
+  });
+
+  it("uses default snapshot build resources for invalid configuration", async () => {
+    process.env.SANDBOX_VCPUS = "4cores";
+    getRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "1.0.0" },
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(
+      makeSandbox("snap_default_resources"),
+    );
+
+    await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 60_000,
+      runtime: "node22",
     });
   });
 

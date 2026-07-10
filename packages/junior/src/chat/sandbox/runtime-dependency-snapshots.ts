@@ -13,6 +13,7 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import { getSandboxResources } from "@/chat/sandbox/resources";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
@@ -481,11 +482,13 @@ async function createDependencySnapshot(
     },
     async () => {
       const sandboxCredentials = getVercelSandboxCredentials();
+      const resources = getSandboxResources();
       const sandbox = createSandboxInstance(
         await Sandbox.create({
           timeout: timeoutMs,
           runtime,
           ...(sandboxCredentials ?? {}),
+          ...(resources ? { resources } : {}),
         }),
       );
 

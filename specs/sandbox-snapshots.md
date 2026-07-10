@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-06
-- Last Edited: 2026-03-06
+- Last Edited: 2026-07-10
 
 ## Purpose
 
@@ -15,6 +15,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 - Runtime post-install command declarations from plugin manifests.
 - Dependency profile hashing and snapshot cache-key generation.
 - Redis-backed snapshot registry and build locking.
+- Shared sandbox resource configuration.
 - Sandbox creation behavior for cache hit/miss/stale snapshot paths.
 - Rebuild controls for floating dependency selectors.
 
@@ -69,11 +70,15 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 - System URL dependencies are downloaded with `curl`, verified with `sha256sum`, then installed via `dnf install -y <local-rpm>` with `sudo: true`.
 - Npm dependency install uses `<package>@<version>`. Omitted manifest versions are normalized to `latest` before install.
 - Runtime post-install commands run in declaration order and fail snapshot build on non-zero exit.
+- `SANDBOX_VCPUS` configures every newly created sandbox through `resources.vcpus` when set to a positive integer, including snapshot builders and runtime sandboxes.
+- Unset or invalid `SANDBOX_VCPUS` values use the Vercel Sandbox default resources.
+- Sandbox resource sizing does not participate in `profileHash`; changing it affects sandbox capacity, not snapshot identity.
 
 ### Sandbox Create Contract
 
 - Fresh sandbox acquisition attempts snapshot-backed creation first when `snapshotId` is available:
   - `Sandbox.create({ source: { type: "snapshot", snapshotId } })`
+- Fresh base sandboxes and snapshot-backed sandboxes use the same configured resources.
 - If snapshot is missing/stale, runtime rebuilds once and retries with rebuilt `snapshotId`.
 - Existing in-memory and `sandboxId` reuse behavior remains unchanged and takes precedence over fresh create.
 

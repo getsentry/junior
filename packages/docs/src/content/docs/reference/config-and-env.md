@@ -27,6 +27,7 @@ related:
 | `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory v1 stores fixed 1536-dimensional vectors.      |
 | `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                  |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-5.4`; does not fall through to `AI_MODEL`.                                           |
+| `SANDBOX_VCPUS`                             | No          | vCPUs for newly created Vercel Sandboxes; each vCPU provides 2 GB of memory. Defaults to the Vercel Sandbox resource setting.                         |
 | `JUNIOR_BASE_URL`                           | No          | Canonical base URL for callback/auth URL generation.                                                                                                  |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Optional namespace prepended to all state-adapter keys, locks, and queues. Use separate prefixes when sharing one Redis database across environments. |
 | `CRON_SECRET` or `JUNIOR_SCHEDULER_SECRET`  | Conditional | Bearer token for the internal heartbeat route; use `CRON_SECRET` with Vercel Cron, or `JUNIOR_SCHEDULER_SECRET` for a non-Vercel heartbeat caller.    |
@@ -73,6 +74,11 @@ If your build command runs `junior snapshot create`:
 
 - `REDIS_URL` must be available during build.
 - `VERCEL_OIDC_TOKEN` must be available during build (via Vercel OIDC settings).
+
+| Variable                               | Required | Purpose                                                                              |
+| -------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS` | No       | Maximum cached age for snapshots with floating dependencies. Defaults to seven days. |
+| `SANDBOX_SNAPSHOT_REBUILD_EPOCH`       | No       | Operator-controlled value that forces a new snapshot profile when changed.           |
 
 ## Sandbox credential egress
 
