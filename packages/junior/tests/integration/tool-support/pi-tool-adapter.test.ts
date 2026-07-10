@@ -20,6 +20,17 @@ const { setSpanAttributes } = vi.hoisted(() => ({
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
   setSpanAttributes,
+  withSpan: async (
+    _name: string,
+    _op: string,
+    _context: unknown,
+    callback: (span: {
+      setAttributes: typeof setSpanAttributes;
+    }) => Promise<unknown>,
+  ) =>
+    callback({
+      setAttributes: setSpanAttributes,
+    }),
 }));
 
 const customerResultSchema = pluginToolResultSchema.extend({

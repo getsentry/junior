@@ -19,6 +19,17 @@ const { handleToolExecutionError, setSpanAttributes } = vi.hoisted(() => ({
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
   setSpanAttributes,
+  withSpan: async (
+    _name: string,
+    _op: string,
+    _context: unknown,
+    callback: (span: {
+      setAttributes: typeof setSpanAttributes;
+    }) => Promise<unknown>,
+  ) =>
+    callback({
+      setAttributes: setSpanAttributes,
+    }),
 }));
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
@@ -264,6 +275,42 @@ describe("Pi tool adapter", () => {
     expect(
       JSON.parse(resultAttributes?.["gen_ai.tool.call.result"] as string),
     ).toMatchObject({ secret: "public result" });
+  });
+
+  it("records model-facing content for public content-only results", async () => {
+    const tools = createPiAgentTools(
+      {
+        imageDemo: {
+          description: "Image demo",
+          inputSchema: Type.Object({}),
+          execute: async () => ({
+            content: [{ type: "text" as const, text: "image generated" }],
+            providerMetadata: { requestId: "internal" },
+          }),
+        },
+      },
+      new SkillSandbox([], []),
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "public",
+    );
+
+    await tools
+      .find((candidate) => candidate.name === "imageDemo")!
+      .execute("tool-image", {});
+
+    const resultAttributes = setSpanAttributes.mock.calls
+      .map(([attributes]) => attributes as Record<string, unknown>)
+      .find((attributes) => "gen_ai.tool.call.result" in attributes);
+    expect(
+      JSON.parse(resultAttributes?.["gen_ai.tool.call.result"] as string),
+    ).toEqual({
+      content: [{ type: "text", text: "image generated" }],
+    });
   });
 
   it("reports resolved tool identity when catalog preparation fails", async () => {

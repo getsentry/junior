@@ -7,9 +7,9 @@ import {
 import { serializeGenAiAttribute } from "@/chat/logging";
 import {
   logWarn,
-  setSpanAttributes,
   withSpan,
   type LogContext,
+  type SpanHandle,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -99,7 +99,7 @@ export function createPiAgentTools(
       );
     }
   };
-  const toolResultOk = (details: unknown, result: unknown): boolean => {
+  const toolResultOk = (details: unknown): boolean => {
     if (
       details &&
       typeof details === "object" &&
@@ -107,14 +107,26 @@ export function createPiAgentTools(
     ) {
       return (details as { ok: boolean }).ok;
     }
-    if (
-      result &&
-      typeof result === "object" &&
-      typeof (result as { ok?: unknown }).ok === "boolean"
-    ) {
-      return (result as { ok: boolean }).ok;
-    }
     return true;
+  };
+  const reportedToolResult = (
+    result: unknown,
+    isSandbox: boolean,
+    normalized: ReturnType<typeof normalizeToolResult>,
+  ): unknown => {
+    const unwrapped = isSandbox
+      ? (result as { result: unknown }).result
+      : result;
+    if (
+      unwrapped &&
+      typeof unwrapped === "object" &&
+      !Array.isArray(unwrapped) &&
+      "content" in unwrapped &&
+      !("details" in unwrapped)
+    ) {
+      return { content: normalized.content };
+    }
+    return normalized.details;
   };
   const executeDefinition = async (args: {
     normalizedToolCallId: string | undefined;
@@ -122,8 +134,10 @@ export function createPiAgentTools(
     signal: AbortSignal | undefined;
     toolDef: AnyToolDefinition;
     toolName: string;
+    span: SpanHandle;
   }) => {
-    const { normalizedToolCallId, params, signal, toolDef, toolName } = args;
+    const { normalizedToolCallId, params, signal, span, toolDef, toolName } =
+      args;
     if (typeof toolDef.execute !== "function") {
       throw new Error(`Tool ${toolName} does not define an executor.`);
     }
@@ -158,16 +172,11 @@ export function createPiAgentTools(
     if (isSandbox && pluginAuthOrchestration) {
       await pluginAuthOrchestration.maybeHandleAuthSignal(normalized.details);
     }
-    let resultAttributeValue = normalized.details;
-    if (
-      normalized.details &&
-      typeof normalized.details === "object" &&
-      "rawResult" in normalized.details &&
-      (normalized.details as { rawResult?: unknown }).rawResult !== undefined
-    ) {
-      resultAttributeValue = (normalized.details as { rawResult: unknown })
-        .rawResult;
-    }
+    const resultAttributeValue = reportedToolResult(
+      result,
+      isSandbox,
+      normalized,
+    );
     let projectedPrivateResult: unknown;
     let hasProjectedPrivateResult = false;
     if (
@@ -202,7 +211,7 @@ export function createPiAgentTools(
             { exposePrivate: hasProjectedPrivateResult },
           );
     if (toolResultAttribute) {
-      setSpanAttributes({
+      span.setAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
         ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
         ...toGenAiPayloadTraceAttributes(
@@ -212,7 +221,7 @@ export function createPiAgentTools(
       });
     }
     await notifyToolResult({
-      ok: toolResultOk(normalized.details, resultAttributeValue),
+      ok: toolResultOk(normalized.details),
       params: toolInput,
       result: resultAttributeValue,
       toolName,
@@ -256,7 +265,7 @@ export function createPiAgentTools(
         `execute_tool ${toolName}`,
         "gen_ai.execute_tool",
         spanContext,
-        async () => {
+        async (span) => {
           const parsed = params as Record<string, unknown>;
           let executionToolName = toolName;
           let executionParams = parsed;
@@ -269,7 +278,7 @@ export function createPiAgentTools(
               );
               executionToolName = resolvedCatalogCall.toolName;
               executionParams = resolvedCatalogCall.arguments;
-              setSpanAttributes({
+              span.setAttributes({
                 "app.ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
                 "gen_ai.tool.description":
                   resolvedCatalogCall.definition.description,
@@ -282,6 +291,7 @@ export function createPiAgentTools(
                 normalizedToolCallId,
                 params: catalogCall.arguments,
                 signal,
+                span,
                 toolDef: catalogCall.definition,
                 toolName: catalogCall.toolName,
               });
@@ -292,6 +302,7 @@ export function createPiAgentTools(
               normalizedToolCallId,
               params: parsed,
               signal,
+              span,
               toolDef,
               toolName,
             });
@@ -315,6 +326,7 @@ export function createPiAgentTools(
               shouldTrace,
               spanContext,
               effectiveConversationPrivacy,
+              span,
             );
           }
         },

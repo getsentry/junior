@@ -1,26 +1,59 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { activeSpan, getTraceData, startSpan } = vi.hoisted(() => ({
-  activeSpan: {
-    setAttribute: vi.fn(),
-  },
-  getTraceData: vi.fn(),
-  startSpan: vi.fn(
-    async (_options: unknown, callback: () => Promise<unknown>) => callback(),
-  ),
-}));
+const { activeSpan, getActiveSpan, getTraceData, parentSpan, startSpan } =
+  vi.hoisted(() => ({
+    activeSpan: {
+      setAttribute: vi.fn(),
+    },
+    parentSpan: {
+      setAttribute: vi.fn(),
+    },
+    getActiveSpan: vi.fn(),
+    getTraceData: vi.fn(),
+    startSpan: vi.fn(
+      async (
+        _options: unknown,
+        callback: (span: unknown) => Promise<unknown>,
+      ) => callback(activeSpan),
+    ),
+  }));
 
 vi.mock("@/chat/sentry", () => ({
-  getActiveSpan: () => activeSpan,
+  getActiveSpan,
   getTraceData,
   startSpan,
 }));
 
 describe("withSpan", () => {
+  beforeEach(() => {
+    getActiveSpan.mockReturnValue(activeSpan);
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
     getTraceData.mockReset();
     vi.resetModules();
+  });
+
+  it("provides the started span across async callback work", async () => {
+    getActiveSpan.mockReturnValue(parentSpan);
+    const { withSpan } = await import("@/chat/logging");
+
+    await withSpan(
+      "execute_tool demo",
+      "gen_ai.execute_tool",
+      {},
+      async (span) => {
+        await Promise.resolve();
+        span.setAttributes({ "gen_ai.tool.call.result": '{"ok":true}' });
+      },
+    );
+
+    expect(activeSpan.setAttribute).toHaveBeenCalledWith(
+      "gen_ai.tool.call.result",
+      '{"ok":true}',
+    );
+    expect(parentSpan.setAttribute).not.toHaveBeenCalled();
   });
 
   it("inherits parent log context attributes on child spans", async () => {

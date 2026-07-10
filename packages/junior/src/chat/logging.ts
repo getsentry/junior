@@ -1515,6 +1515,10 @@ export function setSentryScopeContext(
 type SpanAttributePrimitive = string | number | boolean;
 type SpanAttributeValue = SpanAttributePrimitive | string[];
 
+export interface SpanHandle {
+  setAttributes(attributes: Record<string, unknown>): void;
+}
+
 function toSpanAttributeValue(value: unknown): SpanAttributeValue | undefined {
   if (
     typeof value === "string" ||
@@ -1550,6 +1554,39 @@ function normalizeSpanAttributes(
     }
   }
   return normalized;
+}
+
+function setAttributesOnSpan(
+  span: unknown,
+  attributes: Record<string, unknown>,
+): void {
+  const setAttribute = (
+    span as { setAttribute?: (key: string, value: SpanAttributeValue) => void }
+  ).setAttribute;
+  if (typeof setAttribute !== "function") {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(
+    normalizeSpanAttributes(attributes),
+  )) {
+    setAttribute.call(span, key, value);
+  }
+}
+
+function setStatusOnSpan(span: unknown, status: "ok" | "error"): void {
+  const setStatus = (span as { setStatus?: (value: string) => void }).setStatus;
+  if (typeof setStatus !== "function") {
+    return;
+  }
+
+  setStatus.call(span, status === "ok" ? "ok" : "internal_error");
+}
+
+function spanHandle(span: unknown): SpanHandle {
+  return {
+    setAttributes: (attributes) => setAttributesOnSpan(span, attributes),
+  };
 }
 
 /** Capture an error to Sentry and emit an error log record. */
@@ -1645,7 +1682,7 @@ export async function withSpan<T>(
   name: string,
   op: string,
   context: LogContext,
-  callback: () => Promise<T>,
+  callback: (span: SpanHandle) => Promise<T>,
   attributes: Record<string, unknown> = {},
 ): Promise<T> {
   const normalizedAttributes = normalizeSpanAttributes(attributes);
@@ -1664,7 +1701,7 @@ export async function withSpan<T>(
           ...normalizedAttributes,
         },
       },
-      callback,
+      (span) => callback(spanHandle(span)),
     );
   });
 }
@@ -1698,19 +1735,7 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
   if (!span) {
     return;
   }
-
-  const setAttribute = (
-    span as { setAttribute?: (key: string, value: SpanAttributeValue) => void }
-  ).setAttribute;
-  if (typeof setAttribute !== "function") {
-    return;
-  }
-
-  for (const [key, value] of Object.entries(
-    normalizeSpanAttributes(attributes),
-  )) {
-    setAttribute.call(span, key, value);
-  }
+  setAttributesOnSpan(span, attributes);
 }
 
 /** Set the status of the currently active Sentry span. */
@@ -1720,13 +1745,7 @@ export function setSpanStatus(status: "ok" | "error"): void {
   if (!span) {
     return;
   }
-
-  const setStatus = (span as { setStatus?: (value: string) => void }).setStatus;
-  if (typeof setStatus !== "function") {
-    return;
-  }
-
-  setStatus.call(span, status === "ok" ? "ok" : "internal_error");
+  setStatusOnSpan(span, status);
 }
 
 /** Capture an exception within an isolated Sentry scope. */
