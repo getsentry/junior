@@ -287,6 +287,7 @@ function insertRow(
 export interface LegacyImportWrite {
   conversationId: string;
   fallbackCreatedAtMs: number;
+  lastActivityAtMs: number;
   steps: ImportedStep[];
   child?: { conversationId: string; steps: ImportedStep[] };
 }
@@ -316,8 +317,13 @@ export async function writeLegacyImport(
         if (existing.length > 0) {
           return false;
         }
-        const at = new Date(args.fallbackCreatedAtMs);
-        await ensureConversationRow(executor, args.conversationId, at);
+        const createdAt = new Date(args.fallbackCreatedAtMs);
+        await ensureConversationRow(
+          executor,
+          args.conversationId,
+          createdAt,
+          new Date(args.lastActivityAtMs),
+        );
         if (args.steps.length > 0) {
           await db
             .insert(juniorAgentSteps)
@@ -330,7 +336,7 @@ export async function writeLegacyImport(
             executor,
             args.child.conversationId,
             args.conversationId,
-            at,
+            createdAt,
           );
           if (args.child.steps.length > 0) {
             await db
@@ -350,7 +356,8 @@ export async function writeLegacyImport(
 async function ensureConversationRow(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  at: Date,
+  createdAt: Date,
+  lastActivityAt: Date,
 ): Promise<void> {
   await executor
     .db()
@@ -358,9 +365,9 @@ async function ensureConversationRow(
     .values({
       conversationId,
       schemaVersion: 1,
-      createdAt: at,
-      lastActivityAt: at,
-      updatedAt: at,
+      createdAt,
+      lastActivityAt,
+      updatedAt: lastActivityAt,
       executionStatus: "idle",
     })
     .onConflictDoNothing({ target: juniorConversations.conversationId });
@@ -372,7 +379,7 @@ async function ensureChildConversationRow(
   parentConversationId: string,
   at: Date,
 ): Promise<void> {
-  await ensureConversationRow(executor, parentConversationId, at);
+  await ensureConversationRow(executor, parentConversationId, at, at);
   await executor
     .db()
     .insert(juniorConversations)

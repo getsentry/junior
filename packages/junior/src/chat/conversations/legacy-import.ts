@@ -49,23 +49,47 @@ export interface LegacyImportDeps {
   loadVisibleMessages?: (
     conversationId: string,
   ) => Promise<ThreadConversationMessage[]>;
-  /** Conversation metadata record, used only for fallback `created_at`. */
+  /** Conversation metadata used for imported creation and activity clocks. */
   conversationRecord?: Conversation;
+  /** Latest activity recovered from the legacy thread-state payload. */
+  legacyLastActivityAtMs?: number;
 }
 
-/** Read the legacy visible-message list from `thread-state:<id>`. */
-async function loadThreadStateMessages(
-  conversationId: string,
-): Promise<ThreadConversationMessage[]> {
+/** Read legacy transcript data from `thread-state:<id>`. */
+async function loadThreadStateSnapshot(conversationId: string): Promise<{
+  messages: ThreadConversationMessage[];
+  lastActivityAtMs?: number;
+}> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   const raw = await stateAdapter.get<Record<string, unknown>>(
     `thread-state:${conversationId}`,
   );
   if (!raw) {
-    return [];
+    return { messages: [] };
   }
-  return parseLegacyVisibleMessages(raw);
+  const conversation = raw.conversation;
+  const stats =
+    conversation && typeof conversation === "object"
+      ? (conversation as { stats?: unknown }).stats
+      : undefined;
+  const updatedAtMs =
+    stats && typeof stats === "object"
+      ? (stats as { updatedAtMs?: unknown }).updatedAtMs
+      : undefined;
+  return {
+    messages: parseLegacyVisibleMessages(raw),
+    ...(typeof updatedAtMs === "number" && Number.isFinite(updatedAtMs)
+      ? { lastActivityAtMs: updatedAtMs }
+      : {}),
+  };
+}
+
+/** Read the legacy visible-message list from `thread-state:<id>`. */
+async function loadThreadStateMessages(
+  conversationId: string,
+): Promise<ThreadConversationMessage[]> {
+  return (await loadThreadStateSnapshot(conversationId)).messages;
 }
 
 const LEGACY_MESSAGE_ROLES = new Set(["user", "assistant", "system"]);
@@ -119,11 +143,10 @@ function parseLegacyVisibleMessages(
   return messages;
 }
 
-/** Earliest intrinsic timestamp across log + messages, used when no record exists. */
-function earliestIntrinsicMs(
+function intrinsicTimestamps(
   entries: SessionLogEntry[],
   visible: ThreadConversationMessage[],
-): number | undefined {
+): number[] {
   const candidates: number[] = [];
   const pushMessageTs = (message: PiMessage): void => {
     const timestamp = (message as { timestamp?: unknown }).timestamp;
@@ -143,7 +166,7 @@ function earliestIntrinsicMs(
   for (const message of visible) {
     candidates.push(message.createdAtMs);
   }
-  return candidates.length > 0 ? Math.min(...candidates) : undefined;
+  return candidates;
 }
 
 /**
@@ -172,10 +195,17 @@ export async function importConversationFromLegacy(
     return { imported: false };
   }
 
+  const intrinsic = intrinsicTimestamps(entries, visible);
   const fallbackCreatedAtMs =
     deps.conversationRecord?.createdAtMs ??
-    earliestIntrinsicMs(entries, visible) ??
+    (intrinsic.length > 0 ? Math.min(...intrinsic) : undefined) ??
     0;
+  const lastActivityAtMs = Math.max(
+    fallbackCreatedAtMs,
+    deps.conversationRecord?.lastActivityAtMs ?? 0,
+    deps.legacyLastActivityAtMs ?? 0,
+    intrinsic.length > 0 ? Math.max(...intrinsic) : 0,
+  );
 
   const converted = convertLegacySessionLog({
     conversationId,
@@ -232,6 +262,7 @@ export async function importConversationFromLegacy(
     await writeLegacyImport(deps.executor, {
       conversationId,
       fallbackCreatedAtMs,
+      lastActivityAtMs,
       steps: converted.steps,
       ...(child ? { child } : {}),
     });
@@ -259,15 +290,16 @@ export async function ensureLegacyConversationImport(args: {
   // import". SQL writes below stay unguarded and fail loudly per the storage
   // contract.
   let entries: SessionLogEntry[];
-  let visible: ThreadConversationMessage[];
+  let snapshot: Awaited<ReturnType<typeof loadThreadStateSnapshot>>;
   try {
     entries = await readSessionLogEntries({
       conversationId: args.conversationId,
     });
-    visible = await loadThreadStateMessages(args.conversationId);
+    snapshot = await loadThreadStateSnapshot(args.conversationId);
   } catch {
     return;
   }
+  const visible = snapshot.messages;
   if (entries.length === 0 && visible.length === 0) {
     return;
   }
@@ -277,5 +309,8 @@ export async function ensureLegacyConversationImport(args: {
     messageStore: getConversationMessageStore(),
     sessionLogStore: { read: async () => entries, append: async () => {} },
     loadVisibleMessages: async () => visible,
+    ...(snapshot.lastActivityAtMs === undefined
+      ? {}
+      : { legacyLastActivityAtMs: snapshot.lastActivityAtMs }),
   });
 }

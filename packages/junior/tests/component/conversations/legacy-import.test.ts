@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { juniorConversations } from "@/db/schema";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { requestConversationWork } from "@/chat/task-execution/store";
 import {
@@ -331,6 +333,12 @@ describe("legacy conversation import", () => {
         message: userMessage("straggler", 70),
       },
     ]);
+    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
+      conversation: {
+        messages: [],
+        stats: { updatedAtMs: 900 },
+      },
+    });
 
     try {
       await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
@@ -338,6 +346,12 @@ describe("legacy conversation import", () => {
       expect(history).toHaveLength(1);
       expect(history[0]!.entry.type).toBe("pi_message");
       expect(history[0]!.createdAtMs).toBe(70);
+      const [conversation] = await fixture.sql
+        .db()
+        .select({ lastActivityAt: juniorConversations.lastActivityAt })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(conversation?.lastActivityAt.getTime()).toBe(900);
 
       // Second read is idempotent: no duplicate rows.
       await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
