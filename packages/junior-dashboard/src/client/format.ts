@@ -477,6 +477,10 @@ export function summarizeUsage(
   for (const usage of usages) {
     if (!usage) continue;
 
+    summary.reasoningTokens = addOptionalCount(
+      summary.reasoningTokens,
+      getFiniteTokenCount(usage.reasoningTokens),
+    );
     const componentTotal = getUsageComponentTotal(usage);
     if (componentTotal !== undefined) {
       summary.totalTokens += componentTotal;
@@ -495,10 +499,6 @@ export function summarizeUsage(
       summary.cacheCreationTokens = addOptionalCount(
         summary.cacheCreationTokens,
         getFiniteTokenCount(usage.cacheCreationTokens),
-      );
-      summary.reasoningTokens = addOptionalCount(
-        summary.reasoningTokens,
-        getFiniteTokenCount(usage.reasoningTokens),
       );
       continue;
     }

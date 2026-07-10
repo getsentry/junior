@@ -172,13 +172,13 @@ describe("dashboard token formatting", () => {
           outputTokens: 5,
           reasoningTokens: 4,
         },
-        { totalTokens: 7 },
+        { reasoningTokens: 6, totalTokens: 7 },
       ]),
     ).toMatchObject({
       cachedInputTokens: 2,
       inputTokens: 3,
       outputTokens: 5,
-      reasoningTokens: 4,
+      reasoningTokens: 10,
       providerTotalTokens: 7,
       totalTokens: 17,
     });
