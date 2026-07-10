@@ -617,7 +617,7 @@ describe("dashboard reporting", () => {
         outputTokens: 20,
         cost: { input: 0.001, output: 0.002, total: 0.003 },
       },
-      actor: slackActor("API"),
+      actor: slackActor("Avery"),
       sessionId: "dispatch:first",
       sliceId: 1,
       state: "completed",
@@ -631,7 +631,7 @@ describe("dashboard reporting", () => {
         outputTokens: 10,
         cost: { input: 0.0005, output: 0.001, total: 0.0015 },
       },
-      actor: slackActor("API"),
+      actor: slackActor("Blake", "U2"),
       sessionId: "dispatch:second",
       sliceId: 1,
       state: "completed",
@@ -647,6 +647,12 @@ describe("dashboard reporting", () => {
       runs: 2,
       tokens: 180,
     });
+    expect(stats.actors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ costUsd: 0.003, label: "Avery", runs: 1 }),
+        expect.objectContaining({ costUsd: 0.0015, label: "Blake", runs: 1 }),
+      ]),
+    );
   });
 
   it("uses the complete conversation index when the global index is partial", async () => {
