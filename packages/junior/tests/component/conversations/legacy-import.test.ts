@@ -199,6 +199,19 @@ describe("legacy conversation import", () => {
       expect(messages[0]!.repliedAtMs).toBe(100);
       expect(messages[1]!.repliedAtMs).toBeUndefined();
 
+      const [conversation] = await fixture.sql
+        .db()
+        .select({
+          lastActivityAt: juniorConversations.lastActivityAt,
+          updatedAt: juniorConversations.updatedAt,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(conversation).toMatchObject({
+        lastActivityAt: new Date(900),
+        updatedAt: new Date(900),
+      });
+
       // Re-running is a no-op: step rows already exist.
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),

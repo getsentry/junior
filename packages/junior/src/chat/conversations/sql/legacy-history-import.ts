@@ -370,7 +370,14 @@ async function ensureConversationRow(
       updatedAt: lastActivityAt,
       executionStatus: "idle",
     })
-    .onConflictDoNothing({ target: juniorConversations.conversationId });
+    .onConflictDoUpdate({
+      target: juniorConversations.conversationId,
+      set: {
+        createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,
+        lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
+        updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
+      },
+    });
 }
 
 async function ensureChildConversationRow(
