@@ -18,6 +18,7 @@ jobs:
     outputs:
       evals_changed: ${{ steps.changes.outputs.evals_changed }}
       evals_requested: ${{ steps.request.outputs.evals_requested }}
+      egress_ready: ${{ steps.secrets.outputs.egress_ready }}
       gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
       sandbox_ready: ${{ steps.secrets.outputs.sandbox_ready }}
       should_run: ${{ steps.decision.outputs.should_run }}
@@ -61,6 +62,8 @@ jobs:
       - id: secrets
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          JUNIOR_BASE_URL: ${{ secrets.JUNIOR_BASE_URL }}
           VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
@@ -74,6 +77,12 @@ jobs:
             echo "gateway_ready=false" >> "$GITHUB_OUTPUT"
           fi
 
+          if [[ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" && -n "${JUNIOR_BASE_URL:-}" ]]; then
+            echo "egress_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "egress_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
           if [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]]; then
             echo "sandbox_ready=true" >> "$GITHUB_OUTPUT"
           else
@@ -84,13 +93,14 @@ jobs:
         env:
           EVALS_CHANGED: ${{ steps.changes.outputs.evals_changed }}
           EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
+          EGRESS_READY: ${{ steps.secrets.outputs.egress_ready }}
           GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
           SANDBOX_READY: ${{ steps.secrets.outputs.sandbox_ready }}
         run: |
           set -euo pipefail
 
           should_run=false
-          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
+          if [[ "$GATEWAY_READY" == "true" && "$SANDBOX_READY" == "true" && "$EGRESS_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
             should_run=true
           fi
 
@@ -100,6 +110,7 @@ jobs:
             echo
             echo "- evals_changed: $EVALS_CHANGED"
             echo "- evals_requested: $EVALS_REQUESTED"
+            echo "- egress_ready: $EGRESS_READY"
             echo "- gateway_ready: $GATEWAY_READY"
             echo "- sandbox_ready: $SANDBOX_READY"
             echo "- will_run: $should_run"
@@ -136,6 +147,8 @@ jobs:
       REDIS_URL: redis://localhost:6379
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+      JUNIOR_BASE_URL: ${{ secrets.JUNIOR_BASE_URL }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
