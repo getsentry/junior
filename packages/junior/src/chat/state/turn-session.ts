@@ -9,14 +9,15 @@
  */
 import { THREAD_STATE_TTL_MS } from "chat";
 import {
+  actorSchema,
+  destinationSchema,
   sourceSchema,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
-import { isRecord } from "@/chat/coerce";
-import { parseDestination } from "@/chat/destination";
+import { z } from "zod";
 import type { PiMessage } from "@/chat/pi/messages";
-import { parseActor, toStoredSlackActor, type Actor } from "@/chat/actor";
+import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
   instructionActors,
   instructionProvenanceFor,
@@ -112,10 +113,70 @@ interface StoredAgentTurnSessionRecord extends Omit<
   turnStartSeq?: number;
 }
 
-type ParsedAgentTurnSessionFields = Omit<
-  StoredAgentTurnSessionRecord,
-  "committedSeq" | "turnStartSeq"
->;
+const agentTurnSessionStatusSchema = z.enum([
+  "running",
+  "awaiting_resume",
+  "completed",
+  "failed",
+  "abandoned",
+]) satisfies z.ZodType<AgentTurnSessionStatus>;
+
+const agentTurnSurfaceSchema = z.enum([
+  "slack",
+  "api",
+  "scheduler",
+  "internal",
+]) satisfies z.ZodType<AgentTurnSurface>;
+
+const agentTurnResumeReasonSchema = z.enum([
+  "timeout",
+  "auth",
+  "yield",
+]) satisfies z.ZodType<AgentTurnResumeReason>;
+
+const nonNegativeNumberSchema = z.number().finite().nonnegative();
+const seqCursorSchema = z.number().int().min(-1);
+const agentTurnUsageSchema = z
+  .object({
+    inputTokens: nonNegativeNumberSchema.optional(),
+    outputTokens: nonNegativeNumberSchema.optional(),
+    cachedInputTokens: nonNegativeNumberSchema.optional(),
+    cacheCreationTokens: nonNegativeNumberSchema.optional(),
+    totalTokens: nonNegativeNumberSchema.optional(),
+  })
+  .strict() satisfies z.ZodType<AgentTurnUsage>;
+
+const agentTurnSessionSummarySchema = z
+  .object({
+    channelName: z.string().min(1).optional(),
+    version: z.number().int().nonnegative(),
+    conversationId: z.string().min(1),
+    cumulativeDurationMs: nonNegativeNumberSchema,
+    cumulativeUsage: agentTurnUsageSchema.optional(),
+    destination: destinationSchema.optional(),
+    source: sourceSchema.optional(),
+    lastProgressAtMs: nonNegativeNumberSchema,
+    loadedSkillNames: z.array(z.string()).optional(),
+    actor: actorSchema.optional(),
+    resumeReason: agentTurnResumeReasonSchema.optional(),
+    resumedFromSliceId: z.number().int().nonnegative().optional(),
+    sessionId: z.string().min(1),
+    sliceId: z.number().int().nonnegative(),
+    startedAtMs: nonNegativeNumberSchema,
+    state: agentTurnSessionStatusSchema,
+    surface: agentTurnSurfaceSchema.optional(),
+    traceId: z.string().optional(),
+    updatedAtMs: nonNegativeNumberSchema,
+  })
+  .strict() satisfies z.ZodType<AgentTurnSessionSummary>;
+
+const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
+  .extend({
+    committedSeq: seqCursorSchema,
+    errorMessage: z.string().optional(),
+    turnStartSeq: seqCursorSchema.optional(),
+  })
+  .strict() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
 
 function agentTurnSessionKey(
   conversationId: string,
@@ -126,65 +187,6 @@ function agentTurnSessionKey(
 
 function agentTurnSessionConversationIndexKey(conversationId: string): string {
   return `${AGENT_TURN_SESSION_PREFIX}:conversation:${conversationId}:index`;
-}
-
-function toFiniteNonNegativeNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.max(0, Math.floor(value))
-    : undefined;
-}
-
-function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const usage: AgentTurnUsage = {};
-  for (const field of [
-    "inputTokens",
-    "outputTokens",
-    "cachedInputTokens",
-    "cacheCreationTokens",
-    "totalTokens",
-  ] as const) {
-    const count = toFiniteNonNegativeNumber(value[field]);
-    if (count !== undefined) {
-      usage[field] = count;
-    }
-  }
-
-  return Object.keys(usage).length > 0 ? usage : undefined;
-}
-
-function parseStoredRecord(
-  value: unknown,
-): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function parseAgentTurnSessionStatus(
-  parsed: Record<string, unknown>,
-): AgentTurnSessionStatus | undefined {
-  const status = parsed.state;
-  if (
-    status === "running" ||
-    status === "awaiting_resume" ||
-    status === "completed" ||
-    status === "failed" ||
-    status === "abandoned"
-  ) {
-    return status;
-  }
-  return undefined;
-}
-
-function parseAgentTurnSurface(value: unknown): AgentTurnSurface | undefined {
-  return value === "slack" ||
-    value === "api" ||
-    value === "scheduler" ||
-    value === "internal"
-    ? value
-    : undefined;
 }
 
 function conversationExecutionFromSummary(
@@ -201,144 +203,20 @@ function conversationExecutionFromSummary(
   };
 }
 
-function parseSource(value: unknown): Source | undefined {
-  const result = sourceSchema.safeParse(value);
-  return result.success ? result.data : undefined;
-}
-
 function sessionLogActor(
   actor: Actor | undefined,
 ): ReturnType<typeof toStoredSlackActor> | undefined {
   return actor?.platform === "slack" ? toStoredSlackActor(actor) : undefined;
 }
 
-function parseAgentTurnSessionFields(
-  parsed: Record<string, unknown>,
-): ParsedAgentTurnSessionFields | undefined {
-  const status = parseAgentTurnSessionStatus(parsed);
-  if (!status) {
-    return undefined;
-  }
-
-  const channelName =
-    typeof parsed.channelName === "string" && parsed.channelName.trim()
-      ? parsed.channelName.trim()
-      : undefined;
-  const conversationId = parsed.conversationId;
-  const sessionId = parsed.sessionId;
-  const sliceId = toFiniteNonNegativeNumber(parsed.sliceId);
-  const version = toFiniteNonNegativeNumber(parsed.version);
-  const updatedAtMs = toFiniteNonNegativeNumber(parsed.updatedAtMs);
-  const cumulativeDurationMs =
-    toFiniteNonNegativeNumber(parsed.cumulativeDurationMs) ?? 0;
-  const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
-  const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
-  const actorValue = parsed.actor;
-  const actor = actorValue === undefined ? undefined : parseActor(actorValue);
-  const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
-  const surface = parseAgentTurnSurface(parsed.surface);
-  const destination =
-    parsed.destination === undefined
-      ? undefined
-      : parseDestination(parsed.destination);
-  const source =
-    parsed.source === undefined ? undefined : parseSource(parsed.source);
-  if (
-    typeof conversationId !== "string" ||
-    typeof sessionId !== "string" ||
-    sliceId === undefined ||
-    version === undefined ||
-    updatedAtMs === undefined ||
-    (parsed.destination !== undefined && !destination) ||
-    (parsed.source !== undefined && !source) ||
-    (actorValue !== undefined && !actor)
-  ) {
-    return undefined;
-  }
-
-  return {
-    version,
-    ...(channelName ? { channelName } : {}),
-    conversationId,
-    sessionId,
-    sliceId,
-    state: status,
-    startedAtMs: startedAtMs ?? updatedAtMs,
-    lastProgressAtMs: lastProgressAtMs ?? updatedAtMs,
-    updatedAtMs,
-    cumulativeDurationMs,
-    ...(cumulativeUsage ? { cumulativeUsage } : {}),
-    ...(destination ? { destination } : {}),
-    ...(source ? { source } : {}),
-    ...(actor ? { actor } : {}),
-    ...(Array.isArray(parsed.loadedSkillNames)
-      ? {
-          loadedSkillNames: parsed.loadedSkillNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
-      : {}),
-    ...(parsed.resumeReason === "timeout" ||
-    parsed.resumeReason === "auth" ||
-    parsed.resumeReason === "yield"
-      ? { resumeReason: parsed.resumeReason }
-      : {}),
-    ...(typeof parsed.errorMessage === "string"
-      ? { errorMessage: parsed.errorMessage }
-      : {}),
-    ...(typeof parsed.resumedFromSliceId === "number"
-      ? { resumedFromSliceId: parsed.resumedFromSliceId }
-      : {}),
-    ...(surface ? { surface } : {}),
-    ...(typeof parsed.traceId === "string" ? { traceId: parsed.traceId } : {}),
-  };
-}
-
-/** Parse a `seq` cursor: an integer >= -1 (-1 means nothing committed). */
-function toSeqCursor(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value >= -1
-    ? value
-    : undefined;
-}
-
 function parseAgentTurnSessionRecord(
   value: unknown,
-): StoredAgentTurnSessionRecord | undefined {
-  const parsed = parseStoredRecord(value);
-  if (!parsed) {
-    return undefined;
-  }
-
-  const fields = parseAgentTurnSessionFields(parsed);
-  const committedSeq = toSeqCursor(parsed.committedSeq);
-  if (!fields || committedSeq === undefined) {
-    // Records without a seq cursor (including pre-cutover count-based
-    // records) fail closed rather than guessing a boundary.
-    return undefined;
-  }
-  const turnStartSeq = toSeqCursor(parsed.turnStartSeq);
-
-  return {
-    ...fields,
-    committedSeq,
-    ...(turnStartSeq !== undefined ? { turnStartSeq } : {}),
-  };
+): StoredAgentTurnSessionRecord {
+  return storedAgentTurnSessionRecordSchema.parse(value);
 }
 
-function parseAgentTurnSessionSummary(
-  value: unknown,
-): AgentTurnSessionSummary | undefined {
-  const stored = parseStoredRecord(value);
-  if (!stored) {
-    return undefined;
-  }
-  const parsed = parseAgentTurnSessionFields(stored);
-  if (!parsed) {
-    return undefined;
-  }
-
-  const { errorMessage: _errorMessage, ...summary } = parsed;
-  return summary;
+function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
+  return agentTurnSessionSummarySchema.parse(value);
 }
 
 async function appendAgentTurnSessionSummary(
@@ -445,7 +323,7 @@ async function getStoredAgentTurnSessionRecord(
   const value = await stateAdapter.get(
     agentTurnSessionKey(conversationId, sessionId),
   );
-  return parseAgentTurnSessionRecord(value);
+  return value == null ? undefined : parseAgentTurnSessionRecord(value);
 }
 
 /** Read a materialized turn session record for resume and history loading. */
@@ -855,9 +733,6 @@ async function readAgentTurnSessionSummariesFromIndex(
 
   for (const value of [...values].reverse()) {
     const summary = parseAgentTurnSessionSummary(value);
-    if (!summary) {
-      continue;
-    }
     const key = `${summary.conversationId}:${summary.sessionId}`;
     if (!summaries.has(key)) {
       summaries.set(key, summary);
