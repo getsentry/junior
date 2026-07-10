@@ -14,6 +14,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 
 export const AGENT_CONTINUE_MAX_SLICES = 48;
 
@@ -212,8 +213,9 @@ export async function persistRunningSessionRecord(args: {
  *
  * Generation completing is not delivery: call this only after the destination
  * accepted the visible final reply, so an undelivered assistant reply never
- * becomes durable conversation history or a terminal completed state. Failures
- * are logged and swallowed because the reply is already user-visible.
+ * becomes durable conversation history or a terminal completed state. The
+ * write is retried because the reply is already user-visible, then any remaining
+ * failure surfaces to the post-delivery boundary for one authoritative error.
  */
 export async function persistCompletedSessionRecord(args: {
   channelName?: string;
@@ -234,79 +236,74 @@ export async function persistCompletedSessionRecord(args: {
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
 }): Promise<void> {
-  let sliceId = args.sliceId;
-  try {
-    const latestSessionRecord = await getAgentTurnSessionRecord(
+  let latestSessionRecord: AgentTurnSessionRecord | undefined;
+  await persistWithRetry(async () => {
+    latestSessionRecord = await getAgentTurnSessionRecord(
       args.conversationId,
       args.sessionId,
     );
-    sliceId = sliceId ?? latestSessionRecord?.sliceId;
-    if (sliceId === undefined) {
-      // Never fabricate a slice-1 completion: a completion without a known
-      // slice is a caller bug and must surface as the standard failure path.
-      throw new Error(
-        "Completed session record requires a slice id from the caller or the latest stored record",
-      );
-    }
-    await upsertAgentTurnSessionRecord({
-      ...((args.channelName ?? latestSessionRecord?.channelName)
-        ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
-        : {}),
-      conversationId: args.conversationId,
-      cumulativeDurationMs: addDurationMs(
-        latestSessionRecord?.cumulativeDurationMs,
-        args.currentDurationMs,
-      ),
-      cumulativeUsage: addAgentTurnUsage(
-        latestSessionRecord?.cumulativeUsage,
-        args.currentUsage,
-      ),
-      ...((args.destination ?? latestSessionRecord?.destination)
-        ? { destination: args.destination ?? latestSessionRecord?.destination }
-        : {}),
-      ...((args.source ?? latestSessionRecord?.source)
-        ? { source: args.source ?? latestSessionRecord?.source }
-        : {}),
-      ...(args.destinationVisibility
-        ? { destinationVisibility: args.destinationVisibility }
-        : {}),
-      sessionId: args.sessionId,
-      sliceId,
-      state: "completed",
-      piMessages: args.allMessages,
-      ...((args.surface ?? latestSessionRecord?.surface)
-        ? { surface: args.surface ?? latestSessionRecord?.surface }
-        : {}),
-      ...((args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames)
-        ? {
-            loadedSkillNames:
-              args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
-          }
-        : {}),
-      ...((args.actor ?? latestSessionRecord?.actor)
-        ? { actor: args.actor ?? latestSessionRecord?.actor }
-        : {}),
-      ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
-        ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
-        : {}),
-      ...((args.turnStartMessageIndex ??
-        latestSessionRecord?.turnStartMessageIndex) !== undefined
-        ? {
-            turnStartMessageIndex:
-              args.turnStartMessageIndex ??
-              latestSessionRecord?.turnStartMessageIndex,
-          }
-        : {}),
-    });
-  } catch (recordError) {
-    logSessionRecordError(
-      recordError,
-      "agent_turn_completed_session_record_failed",
-      args,
-      sliceId !== undefined ? { "app.ai.resume_slice_id": sliceId } : {},
-      "Failed to persist completed turn session record",
+  });
+  const sliceId = args.sliceId ?? latestSessionRecord?.sliceId;
+  if (sliceId === undefined) {
+    // Never fabricate a slice-1 completion: a completion without a known
+    // slice is a caller bug and must surface as the standard failure path.
+    throw new Error(
+      "Completed session record requires a slice id from the caller or the latest stored record",
     );
   }
+  const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
+    ...((args.channelName ?? latestSessionRecord?.channelName)
+      ? { channelName: args.channelName ?? latestSessionRecord?.channelName }
+      : {}),
+    conversationId: args.conversationId,
+    cumulativeDurationMs: addDurationMs(
+      latestSessionRecord?.cumulativeDurationMs,
+      args.currentDurationMs,
+    ),
+    cumulativeUsage: addAgentTurnUsage(
+      latestSessionRecord?.cumulativeUsage,
+      args.currentUsage,
+    ),
+    ...((args.destination ?? latestSessionRecord?.destination)
+      ? { destination: args.destination ?? latestSessionRecord?.destination }
+      : {}),
+    ...((args.source ?? latestSessionRecord?.source)
+      ? { source: args.source ?? latestSessionRecord?.source }
+      : {}),
+    ...(args.destinationVisibility
+      ? { destinationVisibility: args.destinationVisibility }
+      : {}),
+    sessionId: args.sessionId,
+    sliceId,
+    state: "completed",
+    piMessages: args.allMessages,
+    ...((args.surface ?? latestSessionRecord?.surface)
+      ? { surface: args.surface ?? latestSessionRecord?.surface }
+      : {}),
+    ...((args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames)
+      ? {
+          loadedSkillNames:
+            args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
+        }
+      : {}),
+    ...((args.actor ?? latestSessionRecord?.actor)
+      ? { actor: args.actor ?? latestSessionRecord?.actor }
+      : {}),
+    ...((getActiveTraceId() ?? latestSessionRecord?.traceId)
+      ? { traceId: getActiveTraceId() ?? latestSessionRecord?.traceId }
+      : {}),
+    ...((args.turnStartMessageIndex ??
+      latestSessionRecord?.turnStartMessageIndex) !== undefined
+      ? {
+          turnStartMessageIndex:
+            args.turnStartMessageIndex ??
+            latestSessionRecord?.turnStartMessageIndex,
+        }
+      : {}),
+  };
+  await persistWithRetry(async () => {
+    await upsertAgentTurnSessionRecord(target);
+  });
 }
 
 /** Complete a delivered single-slice run with an explicit session boundary. */

@@ -13,7 +13,12 @@
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
 import { isDeepStrictEqual } from "node:util";
-import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
+import { eq } from "drizzle-orm";
+import {
+  coerceThreadConversationState,
+  type ConversationCompaction,
+  type ConversationMessage as ThreadConversationMessage,
+} from "@/chat/state/conversation";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-messages";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -27,6 +32,7 @@ import {
   type AdvisorSessionStore,
 } from "@/chat/tools/advisor/session-store";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { juniorConversations } from "@/db/schema";
 import {
   getAgentStepStore,
   getConversationMessageStore,
@@ -51,6 +57,7 @@ export interface LegacyImportDeps {
   loadVisibleMessages?: (
     conversationId: string,
   ) => Promise<ThreadConversationMessage[]>;
+  legacyCompactions?: ConversationCompaction[];
   /** Conversation metadata used for imported creation and activity clocks. */
   conversationRecord?: Conversation;
   /** Latest activity recovered from the legacy thread-state payload. */
@@ -59,6 +66,7 @@ export interface LegacyImportDeps {
 
 /** Read legacy transcript data from `thread-state:<id>`. */
 async function loadThreadStateSnapshot(conversationId: string): Promise<{
+  compactions: ConversationCompaction[];
   messages: ThreadConversationMessage[];
   lastActivityAtMs?: number;
 }> {
@@ -68,7 +76,7 @@ async function loadThreadStateSnapshot(conversationId: string): Promise<{
     `thread-state:${conversationId}`,
   );
   if (!raw) {
-    return { messages: [] };
+    return { compactions: [], messages: [] };
   }
   const conversation = raw.conversation;
   const stats =
@@ -80,18 +88,12 @@ async function loadThreadStateSnapshot(conversationId: string): Promise<{
       ? (stats as { updatedAtMs?: unknown }).updatedAtMs
       : undefined;
   return {
+    compactions: coerceThreadConversationState(raw).compactions,
     messages: parseLegacyVisibleMessages(raw),
     ...(typeof updatedAtMs === "number" && Number.isFinite(updatedAtMs)
       ? { lastActivityAtMs: updatedAtMs }
       : {}),
   };
-}
-
-/** Read the legacy visible-message list from `thread-state:<id>`. */
-async function loadThreadStateMessages(
-  conversationId: string,
-): Promise<ThreadConversationMessage[]> {
-  return (await loadThreadStateSnapshot(conversationId)).messages;
 }
 
 const LEGACY_MESSAGE_ROLES = new Set(["user", "assistant", "system"]);
@@ -148,6 +150,7 @@ function parseLegacyVisibleMessages(
 function intrinsicTimestamps(
   entries: SessionLogEntry[],
   visible: ThreadConversationMessage[],
+  compactions: ConversationCompaction[],
 ): number[] {
   const candidates: number[] = [];
   const pushMessageTs = (message: PiMessage): void => {
@@ -167,6 +170,9 @@ function intrinsicTimestamps(
   }
   for (const message of visible) {
     candidates.push(message.createdAtMs);
+  }
+  for (const compaction of compactions) {
+    candidates.push(compaction.createdAtMs);
   }
   return candidates;
 }
@@ -189,15 +195,35 @@ export async function importConversationFromLegacy(
   const entries = deps.sessionLogStore
     ? await deps.sessionLogStore.read({ conversationId })
     : await readSessionLogEntries({ conversationId });
-  const visible = deps.loadVisibleMessages
-    ? await deps.loadVisibleMessages(conversationId)
-    : await loadThreadStateMessages(conversationId);
+  const snapshot = deps.loadVisibleMessages
+    ? {
+        compactions: deps.legacyCompactions ?? [],
+        messages: await deps.loadVisibleMessages(conversationId),
+      }
+    : await loadThreadStateSnapshot(conversationId);
+  const { compactions, messages: visible } = snapshot;
 
-  if (entries.length === 0 && visible.length === 0) {
+  if (
+    entries.length === 0 &&
+    visible.length === 0 &&
+    compactions.length === 0
+  ) {
     return { imported: false };
   }
 
-  const intrinsic = intrinsicTimestamps(entries, visible);
+  const hasAdvisor = entries.some((entry) => entry.type === "subagent_started");
+  const advisorMessages = hasAdvisor
+    ? await (deps.advisorSessionStore ?? createStateAdvisorSessionStore()).load(
+        conversationId,
+      )
+    : [];
+  const intrinsic = intrinsicTimestamps(entries, visible, compactions);
+  for (const message of advisorMessages) {
+    const timestamp = (message as { timestamp?: unknown }).timestamp;
+    if (typeof timestamp === "number") {
+      intrinsic.push(timestamp);
+    }
+  }
   const fallbackCreatedAtMs =
     deps.conversationRecord?.createdAtMs ??
     (intrinsic.length > 0 ? Math.min(...intrinsic) : undefined) ??
@@ -214,6 +240,14 @@ export async function importConversationFromLegacy(
     entries,
     fallbackCreatedAtMs,
   });
+  if (compactions.length > 0) {
+    converted.steps.push({
+      seq: converted.steps.length,
+      contextEpoch: converted.steps.at(-1)?.contextEpoch ?? 0,
+      entry: { type: "visible_context_compacted", compactions },
+      createdAtMs: compactions.at(-1)?.createdAtMs ?? fallbackCreatedAtMs,
+    });
+  }
 
   if (converted.steps.length === 0 && visible.length > 0) {
     const existingMessages = new Map(
@@ -235,6 +269,12 @@ export async function importConversationFromLegacy(
       );
     });
     if (fullyImported) {
+      await writeLegacyImport(deps.executor, {
+        conversationId,
+        fallbackCreatedAtMs,
+        lastActivityAtMs,
+        steps: [],
+      });
       return { imported: false };
     }
   }
@@ -246,63 +286,37 @@ export async function importConversationFromLegacy(
       }
     | undefined;
   if (converted.advisorChildConversationId) {
-    const advisorStore =
-      deps.advisorSessionStore ?? createStateAdvisorSessionStore();
-    const advisorMessages = await advisorStore.load(conversationId);
     child = {
       conversationId: converted.advisorChildConversationId,
       steps: convertAdvisorMessages(advisorMessages, fallbackCreatedAtMs),
     };
   }
 
-  // Ordering invariant: visible messages are written BEFORE the step rows,
-  // because the step rows are the normal import commit point. Message-only
-  // imports use the explicit completeness check above. If steps landed first and
-  // the message write then failed, every later retry would trip the gate and the
-  // visible transcript would be lost forever. Recording messages first is safe on
-  // retry: `record()` is idempotent via the store's natural key (`ON CONFLICT`
-  // meta-merge) and `markReplied` is idempotent, so a mid-message failure simply
-  // re-runs the whole sequence until the step write commits. Rows go through the
-  // shared `toStoredConversationMessage` projection so imported messages carry
-  // `meta.author` exactly like runtime-recorded rows; `meta.replied` becomes the
-  // durable `replied_at` delivery mark.
-  if (visible.length > 0) {
-    await deps.messageStore.record(
-      conversationId,
-      visible.map(toStoredConversationMessage),
-    );
-    for (const message of visible) {
-      if (message.meta?.replied) {
-        await deps.messageStore.markReplied(
-          conversationId,
-          message.id,
-          message.createdAtMs,
-        );
-      }
-    }
-  }
+  const messages = visible.map((message) => ({
+    ...toStoredConversationMessage(message),
+    ...(message.meta?.replied ? { repliedAtMs: message.createdAtMs } : {}),
+  }));
 
-  // Commit point: writing the step rows is what makes this import idempotent, so
-  // it must run last, only after every preceding write has succeeded.
-  if (converted.steps.length > 0) {
-    await writeLegacyImport(deps.executor, {
-      conversationId,
-      fallbackCreatedAtMs,
-      lastActivityAtMs,
-      steps: converted.steps,
-      ...(child ? { child } : {}),
-    });
-  }
+  // Messages and steps share one locked SQL transaction so retention can never
+  // purge between the legacy-source check and the import commit.
+  const imported = await writeLegacyImport(deps.executor, {
+    conversationId,
+    fallbackCreatedAtMs,
+    lastActivityAtMs,
+    ...(messages.length > 0 ? { messages } : {}),
+    steps: converted.steps,
+    ...(child ? { child } : {}),
+  });
 
-  return { imported: true };
+  return { imported };
 }
 
 /**
  * Lazy first-read import for a straggler the old deployment touched during
  * promotion. Runs under the conversation lease the worker already holds before
  * any turn/resume projection read; idempotent skip-if-rows-exist makes re-entry
- * safe. A missing or unreadable legacy source is treated as "nothing to import"
- * so a genuinely new conversation reads as empty exactly as before.
+ * safe. Missing legacy keys produce empty reads for genuinely new conversations;
+ * actual Redis read failures surface through normal worker recovery.
  */
 export async function ensureLegacyConversationImport(args: {
   conversationId: string;
@@ -311,30 +325,34 @@ export async function ensureLegacyConversationImport(args: {
   if ((await stepStore.loadCurrentEpoch(args.conversationId)).length > 0) {
     return;
   }
-  // Guard only the legacy Redis reads: the source is being decommissioned, so
-  // an absent or unreadable log/thread-state is normal and means "nothing to
-  // import". SQL writes below stay unguarded and fail loudly per the storage
-  // contract.
-  let entries: SessionLogEntry[];
-  let snapshot: Awaited<ReturnType<typeof loadThreadStateSnapshot>>;
-  try {
-    entries = await readSessionLogEntries({
-      conversationId: args.conversationId,
-    });
-    snapshot = await loadThreadStateSnapshot(args.conversationId);
-  } catch {
+  const entries = await readSessionLogEntries({
+    conversationId: args.conversationId,
+  });
+  const snapshot = await loadThreadStateSnapshot(args.conversationId);
+  const visible = snapshot.messages;
+  if (
+    entries.length === 0 &&
+    visible.length === 0 &&
+    snapshot.compactions.length === 0
+  ) {
     return;
   }
-  const visible = snapshot.messages;
-  if (entries.length === 0 && visible.length === 0) {
+  const executor = getSqlExecutor();
+  const purged = await executor
+    .db()
+    .select({ transcriptPurgedAt: juniorConversations.transcriptPurgedAt })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, args.conversationId));
+  if (purged[0]?.transcriptPurgedAt) {
     return;
   }
   await importConversationFromLegacy(args.conversationId, {
-    executor: getSqlExecutor(),
+    executor,
     stepStore,
     messageStore: getConversationMessageStore(),
     sessionLogStore: { read: async () => entries, append: async () => {} },
     loadVisibleMessages: async () => visible,
+    legacyCompactions: snapshot.compactions,
     ...(snapshot.lastActivityAtMs === undefined
       ? {}
       : { legacyLastActivityAtMs: snapshot.lastActivityAtMs }),

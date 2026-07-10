@@ -35,6 +35,7 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/visible-messages";
+import { persistConversationCompactions } from "@/chat/conversations/visible-compactions";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import type {
@@ -253,6 +254,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       actorId: args.context.actorId,
       runId: args.context.runId,
     });
+    if (conversationId) {
+      await persistConversationCompactions({ conversation, conversationId });
+    }
 
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,

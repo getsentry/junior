@@ -35,7 +35,6 @@ import type {
   ConversationExecution,
   ConversationStore,
 } from "@/chat/conversations/store";
-import { logWarn } from "@/chat/logging";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
@@ -386,40 +385,28 @@ async function recordConversationActivityMetadata(args: {
     args.summary.destination?.platform === "local"
       ? "local"
       : args.summary.surface;
-  try {
-    await conversationStore.recordActivity({
-      activityAtMs: args.summary.updatedAtMs,
-      channelName: args.summary.channelName,
-      conversationId: args.summary.conversationId,
-      destination: args.summary.destination,
-      nowMs: args.nowMs,
-      actor: sessionLogActor(args.summary.actor),
-      source,
-      visibility: args.destinationVisibility,
-    });
-    await conversationStore.recordExecution({
-      channelName: args.summary.channelName,
-      conversationId: args.summary.conversationId,
-      createdAtMs: args.summary.startedAtMs,
-      destination: args.summary.destination,
-      execution: conversationExecutionFromSummary(args.summary),
-      lastActivityAtMs: args.summary.updatedAtMs,
-      actor: sessionLogActor(args.summary.actor),
-      source,
-      updatedAtMs: args.nowMs,
-      visibility: args.destinationVisibility,
-    });
-  } catch (error) {
-    logWarn(
-      "conversation_activity_metadata_update_failed",
-      { conversationId: args.summary.conversationId },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to update conversation activity metadata",
-    );
-  }
+  await conversationStore.recordActivity({
+    activityAtMs: args.summary.updatedAtMs,
+    channelName: args.summary.channelName,
+    conversationId: args.summary.conversationId,
+    destination: args.summary.destination,
+    nowMs: args.nowMs,
+    actor: sessionLogActor(args.summary.actor),
+    source,
+    visibility: args.destinationVisibility,
+  });
+  await conversationStore.recordExecution({
+    channelName: args.summary.channelName,
+    conversationId: args.summary.conversationId,
+    createdAtMs: args.summary.startedAtMs,
+    destination: args.summary.destination,
+    execution: conversationExecutionFromSummary(args.summary),
+    lastActivityAtMs: args.summary.updatedAtMs,
+    actor: sessionLogActor(args.summary.actor),
+    source,
+    updatedAtMs: args.nowMs,
+    visibility: args.destinationVisibility,
+  });
 }
 
 function materializeAgentTurnSessionRecord(
@@ -584,6 +571,12 @@ async function setStoredRecord(args: {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
 
+  await recordConversationActivityMetadata({
+    conversationStore: args.conversationStore,
+    destinationVisibility: args.destinationVisibility,
+    nowMs: Date.now(),
+    summary: args.record,
+  });
   await stateAdapter.set(
     agentTurnSessionKey(args.record.conversationId, args.record.sessionId),
     args.record,
@@ -596,12 +589,6 @@ async function setStoredRecord(args: {
     ...summary
   } = args.record;
   await appendAgentTurnSessionSummary(summary, args.ttlMs);
-  await recordConversationActivityMetadata({
-    conversationStore: args.conversationStore,
-    destinationVisibility: args.destinationVisibility,
-    nowMs: Date.now(),
-    summary,
-  });
   return materializeAgentTurnSessionRecord(
     args.record,
     {
@@ -874,13 +861,13 @@ export async function recordAgentTurnSessionSummary(args: {
       ? { traceId: args.traceId ?? existing?.traceId }
       : {}),
   };
-  await appendAgentTurnSessionSummary(summary, ttlMs);
   await recordConversationActivityMetadata({
     conversationStore: args.conversationStore,
     destinationVisibility: args.destinationVisibility,
     nowMs,
     summary,
   });
+  await appendAgentTurnSessionSummary(summary, ttlMs);
 }
 
 async function readAgentTurnSessionSummariesFromIndex(

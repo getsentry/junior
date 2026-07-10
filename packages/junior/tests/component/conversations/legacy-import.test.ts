@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { requestConversationWork } from "@/chat/task-execution/store";
@@ -151,8 +151,8 @@ describe("legacy conversation import", () => {
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore(entries),
       advisorSessionStore: staticAdvisorStore([
-        userMessage("advisor q", 60),
-        assistantMessage("advisor a", 61),
+        userMessage("advisor q", 960),
+        assistantMessage("advisor a", 961),
       ]),
       loadVisibleMessages: async () => visible,
     };
@@ -188,7 +188,7 @@ describe("legacy conversation import", () => {
         "pi_message",
         "pi_message",
       ]);
-      expect(childHistory[0]!.createdAtMs).toBe(60);
+      expect(childHistory[0]!.createdAtMs).toBe(960);
 
       // Visible messages recorded; meta.replied becomes replied_at.
       const messages = await messageStore.list(CONVERSATION_ID);
@@ -199,18 +199,36 @@ describe("legacy conversation import", () => {
       expect(messages[0]!.repliedAtMs).toBe(100);
       expect(messages[1]!.repliedAtMs).toBeUndefined();
 
-      const [conversation] = await fixture.sql
+      const conversations = await fixture.sql
         .db()
         .select({
+          conversationId: juniorConversations.conversationId,
+          createdAt: juniorConversations.createdAt,
           lastActivityAt: juniorConversations.lastActivityAt,
           updatedAt: juniorConversations.updatedAt,
         })
         .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-      expect(conversation).toMatchObject({
-        lastActivityAt: new Date(900),
-        updatedAt: new Date(900),
-      });
+        .where(
+          inArray(juniorConversations.conversationId, [
+            CONVERSATION_ID,
+            childId,
+          ]),
+        );
+      expect(conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conversationId: CONVERSATION_ID,
+            lastActivityAt: new Date(961),
+            updatedAt: new Date(961),
+          }),
+          expect.objectContaining({
+            conversationId: childId,
+            createdAt: new Date(960),
+            lastActivityAt: new Date(961),
+            updatedAt: new Date(961),
+          }),
+        ]),
+      );
 
       // Re-running is a no-op: step rows already exist.
       await expect(
@@ -222,7 +240,7 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
-  it("retries fully after a mid-import message-store failure (gate not tripped)", async () => {
+  it("rolls back steps when the transactional message import fails", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const stepStore = createSqlAgentStepStore(fixture.sql);
@@ -236,15 +254,10 @@ describe("legacy conversation import", () => {
         message: userMessage("first", 10),
       },
     ] as SessionLogEntry[]);
-    const visible: ThreadConversationMessage[] = [
+    const invalidVisible: ThreadConversationMessage[] = [
       { id: "m1", role: "user", text: "hi there", createdAtMs: 100 },
-      { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
+      { id: "m1", role: "assistant", text: "duplicate", createdAtMs: 110 },
     ];
-
-    // First attempt: message write throws before any step row is committed.
-    const failingRecord = vi
-      .spyOn(messageStore, "record")
-      .mockRejectedValueOnce(new Error("record failed"));
 
     try {
       await expect(
@@ -254,19 +267,20 @@ describe("legacy conversation import", () => {
           messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
-          loadVisibleMessages: async () => visible,
+          loadVisibleMessages: async () => invalidVisible,
         }),
-      ).rejects.toThrow("record failed");
+      ).rejects.toThrow(
+        'Failed query: insert into "junior_conversation_messages"',
+      );
 
-      // Because the message write is the *first* write and steps are the commit
-      // point, the failed attempt left no step rows, so the idempotence gate is
-      // not tripped on retry.
+      // Messages and steps share one transaction, so neither side commits.
       expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(0);
       expect(await messageStore.list(CONVERSATION_ID)).toHaveLength(0);
 
-      failingRecord.mockRestore();
-
-      // Second attempt with a working store imports BOTH messages and steps.
+      const visible: ThreadConversationMessage[] = [
+        { id: "m1", role: "user", text: "hi there", createdAtMs: 100 },
+        { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
+      ];
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
@@ -338,6 +352,18 @@ describe("legacy conversation import", () => {
           repliedAtMs: 100,
         },
       ]);
+      const [conversation] = await fixture.sql
+        .db()
+        .select({
+          lastActivityAt: juniorConversations.lastActivityAt,
+          updatedAt: juniorConversations.updatedAt,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(conversation).toMatchObject({
+        lastActivityAt: new Date(900),
+        updatedAt: new Date(900),
+      });
     } finally {
       await fixture.close();
     }
@@ -490,6 +516,14 @@ describe("legacy conversation import", () => {
     await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
       conversation: {
         schemaVersion: 1,
+        compactions: [
+          {
+            id: "legacy-compaction",
+            summary: "Older imported context",
+            coveredMessageIds: ["older-message"],
+            createdAtMs: 90,
+          },
+        ],
         messages: [
           {
             id: "m1",
@@ -519,6 +553,127 @@ describe("legacy conversation import", () => {
       expect(hydratedUser?.author?.userId).toBe("U123");
       expect(hydratedUser?.author?.userName).toBe("alice");
       expect(hydratedUser?.meta?.replied).toBe(true);
+      expect(conversation.compactions).toEqual([
+        expect.objectContaining({ id: "legacy-compaction" }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("does not resurrect purged SQL history from legacy Redis", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+    const db = await import("@/chat/db");
+    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
+    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
+    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+
+    await fixture.sql
+      .db()
+      .insert(juniorConversations)
+      .values({
+        conversationId: CONVERSATION_ID,
+        createdAt: new Date(100),
+        lastActivityAt: new Date(100),
+        updatedAt: new Date(100),
+        executionStatus: "idle",
+        transcriptPurgedAt: new Date(200),
+      });
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
+      {
+        schemaVersion: 2,
+        type: "pi_message",
+        sessionId: "session_0",
+        message: userMessage("must stay purged", 50),
+      },
+    ]);
+
+    try {
+      const conversation = coerceThreadConversationState({});
+      await hydrateConversationMessages({
+        conversation,
+        conversationId: CONVERSATION_ID,
+      });
+      expect(conversation.messages).toEqual([]);
+      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("rejects a legacy import when the SQL transcript was already purged", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    await fixture.sql
+      .db()
+      .insert(juniorConversations)
+      .values({
+        conversationId: CONVERSATION_ID,
+        createdAt: new Date(100),
+        lastActivityAt: new Date(100),
+        updatedAt: new Date(100),
+        executionStatus: "idle",
+        transcriptPurgedAt: new Date(200),
+      });
+
+    try {
+      const result = await importConversationFromLegacy(CONVERSATION_ID, {
+        executor: fixture.sql,
+        stepStore,
+        messageStore,
+        sessionLogStore: staticSessionLogStore([
+          {
+            schemaVersion: 2,
+            type: "pi_message",
+            sessionId: "session_0",
+            message: userMessage("must stay purged", 50),
+          },
+        ]),
+        loadVisibleMessages: async () => [
+          {
+            id: "legacy-visible",
+            role: "user",
+            text: "must also stay purged",
+            createdAtMs: 60,
+          },
+        ],
+      });
+
+      expect(result).toEqual({ imported: false });
+      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+      expect(await messageStore.list(CONVERSATION_ID)).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("surfaces legacy Redis read failures during lazy import", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+    const db = await import("@/chat/db");
+    vi.spyOn(db, "getSqlExecutor").mockReturnValue(fixture.sql as never);
+    vi.spyOn(db, "getAgentStepStore").mockReturnValue(stepStore);
+    vi.spyOn(db, "getConversationMessageStore").mockReturnValue(messageStore);
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    vi.spyOn(stateAdapter, "getList").mockRejectedValueOnce(
+      new Error("legacy Redis unavailable"),
+    );
+
+    try {
+      await expect(
+        ensureLegacyConversationImport({ conversationId: CONVERSATION_ID }),
+      ).rejects.toThrow("legacy Redis unavailable");
     } finally {
       await fixture.close();
     }

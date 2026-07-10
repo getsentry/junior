@@ -170,24 +170,6 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("reads conversation title details when context is absent", async () => {
-    const { getConversationDetails, setConversationTitle } =
-      await import("@/chat/state/conversation-details");
-
-    await setConversationTitle("slack:C1:111", {
-      displayTitle: "Incident Triage",
-      titleSourceMessageId: "msg-1",
-    });
-
-    await expect(getConversationDetails("slack:C1:111")).resolves.toMatchObject(
-      {
-        conversationId: "slack:C1:111",
-        displayTitle: "Incident Triage",
-        titleSourceMessageId: "msg-1",
-      },
-    );
-  });
-
   it("lists recent conversations through reporting", async () => {
     const { getConversationStore } = await import("@/chat/db");
     const { createJuniorReporting } = await import("@/reporting");
@@ -320,77 +302,6 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("refreshes conversation context ttl without replacing origin context", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-01T00:00:00.000Z"));
-    const { THREAD_STATE_TTL_MS } = await import("chat");
-    const { getConversationDetails, initConversationContext } =
-      await import("@/chat/state/conversation-details");
-    const startedAtMs = Date.now();
-
-    await initConversationContext("slack:C1:111", {
-      channelName: "first-channel",
-      originActor: { fullName: "First Actor" },
-      originSurface: "slack",
-      startedAtMs,
-    });
-
-    vi.setSystemTime(Date.now() + THREAD_STATE_TTL_MS - 1_000);
-    await initConversationContext("slack:C1:111", {
-      channelName: "later-channel",
-      originActor: { fullName: "Later Actor" },
-      originSurface: "slack",
-      startedAtMs: Date.now(),
-    });
-
-    vi.setSystemTime(Date.now() + 2_000);
-    await expect(getConversationDetails("slack:C1:111")).resolves.toMatchObject(
-      {
-        channelName: "first-channel",
-        originActor: { fullName: "First Actor" },
-        startedAtMs,
-      },
-    );
-  });
-
-  it("does not replace malformed conversation context with later turn metadata", async () => {
-    const {
-      getConversationDetails,
-      initConversationContext,
-      setConversationTitle,
-    } = await import("@/chat/state/conversation-details");
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { THREAD_STATE_TTL_MS } = await import("chat");
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-
-    await stateAdapter.set(
-      "junior:conversation:slack:C1:malformed:context",
-      { channelName: "first-channel" },
-      THREAD_STATE_TTL_MS,
-    );
-    await setConversationTitle("slack:C1:malformed", {
-      displayTitle: "Existing Title",
-    });
-
-    await initConversationContext("slack:C1:malformed", {
-      channelName: "later-channel",
-      originActor: { fullName: "Later Actor" },
-      originSurface: "slack",
-      startedAtMs: Date.now(),
-    });
-
-    const details = await getConversationDetails("slack:C1:malformed");
-
-    expect(details).toMatchObject({
-      conversationId: "slack:C1:malformed",
-      displayTitle: "Existing Title",
-    });
-    expect(details).not.toHaveProperty("channelName");
-    expect(details).not.toHaveProperty("originActor");
-    expect(details).not.toHaveProperty("startedAtMs");
-  });
-
   it("uses SQL title and visible messages when agent steps are absent", async () => {
     const { getConversationMessageStore, getConversationStore } =
       await import("@/chat/db");
@@ -445,7 +356,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:index-only",
       destination: {
         platform: "slack",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
       },
       nowMs: Date.now(),
@@ -1324,7 +1235,7 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:999",
       destination: {
         platform: "slack",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
       },
       source: "slack",
@@ -1370,13 +1281,13 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:333",
       destination: {
         platform: "slack",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
       },
       source: {
         platform: "slack",
         type: "pub",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
         threadTs: "333",
       },
@@ -1400,13 +1311,13 @@ describe("dashboard reporting", () => {
       conversationId: "slack:C1:333",
       destination: {
         platform: "slack",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
       },
       source: {
         platform: "slack",
         type: "pub",
-        teamId: "T123",
+        teamId: "T1",
         channelId: "C1",
         threadTs: "333",
       },

@@ -7,6 +7,10 @@ import {
 } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
+  purgeConversationTree,
+  selectExpiredRoots,
+} from "@/chat/conversations/sql/purge";
+import {
   juniorAgentSteps,
   juniorConversationMessages,
   juniorConversations,
@@ -207,6 +211,43 @@ describe("retention purge job", () => {
     });
     expect(result.purged).toBe(1);
     expect(await stepCount(fixture.sql, "flip")).toBe(0);
+  });
+
+  it("rechecks activity and visibility inside the destructive transaction", async () => {
+    const dest = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "raced",
+      destinationId: dest,
+      lastActivityAtMs: BASE_MS,
+    });
+    const nowMs = BASE_MS + 91 * DAY_MS;
+    await expect(
+      selectExpiredRoots(fixture.sql, {
+        nowMs,
+        publicWindowMs: 90 * DAY_MS,
+        privateWindowMs: 14 * DAY_MS,
+        limit: 10,
+      }),
+    ).resolves.toEqual([expect.objectContaining({ conversationId: "raced" })]);
+
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ lastActivityAt: new Date(nowMs), updatedAt: new Date(nowMs) })
+      .where(eq(juniorConversations.conversationId, "raced"));
+    await setVisibility(fixture.sql, dest, "private");
+
+    await expect(
+      purgeConversationTree(fixture.sql, {
+        rootConversationId: "raced",
+        nowMs,
+        retention: {
+          publicWindowMs: 90 * DAY_MS,
+          privateWindowMs: 14 * DAY_MS,
+        },
+      }),
+    ).resolves.toEqual({ purged: false, conversations: 0 });
+    expect(await stepCount(fixture.sql, "raced")).toBe(1);
   });
 
   it("rides children on the root window and purges them with the root", async () => {

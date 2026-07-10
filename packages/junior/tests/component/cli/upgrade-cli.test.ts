@@ -10,6 +10,7 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import { resolveUpgradePluginSet } from "@/cli/upgrade";
@@ -36,6 +37,15 @@ const OTHER_SLACK_DESTINATION = {
   ...SLACK_DESTINATION,
   channelId: "C999",
 } as const;
+
+const stateOnlyConversationStore: ConversationStore = {
+  get: async () => undefined,
+  getDestinationVisibility: async () => undefined,
+  recordActivity: async () => {},
+  ensureChildConversation: async () => {},
+  recordExecution: async () => {},
+  listByActivity: async () => [],
+};
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -192,6 +202,7 @@ export const plugins = {
         await appendInboundMessage({
           message: inboundMessage(`page-${index}`, { conversationId }),
           nowMs: 1_000 + index,
+          conversationStore: stateOnlyConversationStore,
           state: stateAdapter,
         });
       }
@@ -229,6 +240,7 @@ export const plugins = {
       sessionId: "turn-timeout",
       sliceId: 2,
       state: "awaiting_resume",
+      conversationStore: stateOnlyConversationStore,
     });
     await persistActiveTurn(CONVERSATION_ID, "turn-timeout");
 
@@ -269,6 +281,7 @@ export const plugins = {
     await stateAdapter.connect();
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      conversationStore: stateOnlyConversationStore,
       destination: SLACK_DESTINATION,
       nowMs: 2_000,
       state: stateAdapter,
@@ -342,6 +355,7 @@ export const plugins = {
     await stateAdapter.connect();
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      conversationStore: stateOnlyConversationStore,
       destination: SLACK_DESTINATION,
       nowMs: 2_000,
       state: stateAdapter,
@@ -436,6 +450,7 @@ export const plugins = {
     await stateAdapter.connect();
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
+      conversationStore: stateOnlyConversationStore,
       destination: SLACK_DESTINATION,
       nowMs: 2_000,
       state: stateAdapter,

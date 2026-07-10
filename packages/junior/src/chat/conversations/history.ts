@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
+import type { ConversationCompaction } from "@/chat/state/conversation";
 import {
   piMessageProvenanceSchema,
   type PiMessageProvenance,
@@ -68,6 +69,18 @@ const toolExecutionStartedEntrySchema = z.object({
   args: z.unknown().optional(),
 });
 
+const visibleContextCompactedEntrySchema = z.object({
+  type: z.literal("visible_context_compacted"),
+  compactions: z.array(
+    z.object({
+      coveredMessageIds: z.array(z.string()),
+      createdAtMs: z.number(),
+      id: z.string().min(1),
+      summary: z.string(),
+    }),
+  ) satisfies z.ZodType<ConversationCompaction[]>,
+});
+
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
 const subagentStartedEntrySchema = z.object({
@@ -98,6 +111,7 @@ export const agentStepEntrySchema = z.discriminatedUnion("type", [
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
   toolExecutionStartedEntrySchema,
+  visibleContextCompactedEntrySchema,
   subagentStartedEntrySchema,
   subagentEndedEntrySchema,
 ]);

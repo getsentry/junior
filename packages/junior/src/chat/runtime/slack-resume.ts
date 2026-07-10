@@ -484,7 +484,8 @@ export async function resumeSlackTurn(
       finalReplyDelivered = true;
       // Destination acceptance is the completion boundary: only now commit the
       // final assistant messages and the terminal completed session record.
-      // Persistence failures are logged inside and never fail the turn.
+      // Persistence is retried and any remaining failure reaches this runtime
+      // boundary instead of being mistaken for a completed durable turn.
       if (
         replyContext.routing.correlation?.conversationId &&
         replyContext.routing.correlation.turnId &&

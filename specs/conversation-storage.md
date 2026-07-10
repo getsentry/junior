@@ -58,6 +58,10 @@ metadata, the visible conversation messages, and the model execution history.
 Plugin tables may join the same shared database through the package migration
 contract in `./plugin-database.md`.
 
+- `junior_conversations` is the authority for title, channel, source,
+  destination, actor, activity, and execution metadata. Redis has no parallel
+  conversation-details record.
+
 - `junior_conversation_messages` is the authority for visible conversation
   messages. The `conversation.messages` mirror in Redis `thread-state:<id>` is
   removed.
@@ -204,6 +208,10 @@ erasure.
   the message shape) and carries its payload `schemaVersion` per row. There is no
   `payloadBytes` column; sizes for redacted reporting compute at read time
   (`octet_length`).
+- Visible-thread context compactions are durable host-only
+  `visible_context_compacted` snapshot steps. The latest snapshot owns the
+  covered visible-message ids and summaries used to rebuild future turn
+  context; `thread-state` does not retain a competing compaction copy.
 
 #### Compaction And Rollback Epochs
 
@@ -392,6 +400,7 @@ one-time Redis→SQL import.
      markers plus per-message rows, converting advisor session keys into child
      conversations, and normalizing legacy v1 entry shapes;
    - visible message history into `junior_conversation_messages`.
+   - legacy visible-context compaction snapshots into `junior_agent_steps`.
      Import is bounded newest-first and idempotent per conversation: it skips a
      conversation when step rows already exist.
 3. For conversations the old deployment touched during promotion, the first read
@@ -402,6 +411,10 @@ one-time Redis→SQL import.
 4. Backfilled `pi_message` rows and message rows take `created_at` from
    message-internal Pi timestamps when present, falling back to the conversation's
    timestamps. Fabricated import-time (`now`) timestamps must never be used.
+5. One conversation's imported visible messages and agent steps commit in the
+   same row-locked transaction. A concurrent retention purge either runs after
+   the import and deletes it, or wins first and prevents the import from
+   resurrecting purged Redis content.
 
 Pending inbound payloads, leases, and wake-up state remain in Redis because they
 are execution state, not durable content. After cutover the legacy Redis

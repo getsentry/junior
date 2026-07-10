@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import {
+  hydrateConversationCompactions,
+  persistConversationCompactions,
+} from "@/chat/conversations/visible-compactions";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAgentSteps, juniorConversations } from "@/db/schema";
@@ -40,6 +45,46 @@ function userMessage(text: string) {
 }
 
 describe("conversation transcript SQL stores", () => {
+  it("persists visible-context compaction snapshots in agent history", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const steps = createSqlAgentStepStore(fixture.sql);
+      const conversation = coerceThreadConversationState({});
+      conversation.compactions = [
+        {
+          id: "compaction-1",
+          summary: "Earlier visible context",
+          coveredMessageIds: ["m1", "m2"],
+          createdAtMs: 2_000,
+        },
+      ];
+
+      await persistConversationCompactions({
+        conversation,
+        conversationId: CONVERSATION_ID,
+        stepStore: steps,
+      });
+      await persistConversationCompactions({
+        conversation,
+        conversationId: CONVERSATION_ID,
+        stepStore: steps,
+      });
+
+      const rehydrated = coerceThreadConversationState({});
+      await hydrateConversationCompactions({
+        conversation: rehydrated,
+        conversationId: CONVERSATION_ID,
+        stepStore: steps,
+      });
+      expect(rehydrated.compactions).toEqual(conversation.compactions);
+      expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("applies the transcript migration idempotently", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -389,6 +434,32 @@ INSERT INTO junior_agent_steps (
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
       expect(rows).toHaveLength(1);
       expect(rows[0]?.transcriptPurgedAt).toBeInstanceOf(Date);
+
+      await steps.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: userMessage("new history") },
+          createdAtMs: 6_000,
+        },
+      ]);
+      await messages.record(CONVERSATION_ID, [
+        {
+          messageId: "m2",
+          role: "user",
+          text: "new history",
+          createdAtMs: 6_000,
+        },
+      ]);
+
+      expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      expect(await messages.list(CONVERSATION_ID)).toHaveLength(1);
+      const reopened = await fixture.sql
+        .db()
+        .select({
+          transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+      expect(reopened[0]?.transcriptPurgedAt).toBe(null);
     } finally {
       await fixture.close();
     }

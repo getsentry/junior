@@ -133,7 +133,7 @@ describe("conversation work execution", () => {
     expect(queue.sentRecords()).toHaveLength(1);
   });
 
-  it("keeps queue wake-up when conversation metadata update fails", async () => {
+  it("surfaces SQL metadata failure after preserving the queue wake-up", async () => {
     const queue = createConversationWorkQueueTestAdapter();
 
     await expect(
@@ -143,7 +143,7 @@ describe("conversation work execution", () => {
         nowMs: 2_000,
         queue,
       }),
-    ).resolves.toMatchObject({ status: "appended", queueMessageId: "queue-1" });
+    ).rejects.toThrow("metadata unavailable");
 
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,

@@ -1550,15 +1550,10 @@ export async function readConversationSubagentTranscriptReport(
     });
   }
 
-  let childMessages: PiMessage[];
-  try {
-    childMessages = await loadProjection({
-      conversationId: childConversationId,
-      stepStore,
-    });
-  } catch {
-    childMessages = [];
-  }
+  const childMessages: PiMessage[] = await loadProjection({
+    conversationId: childConversationId,
+    stepStore,
+  });
   if (childMessages.length === 0) {
     return subagentTranscriptReport(activity, {
       ...conversationFields,

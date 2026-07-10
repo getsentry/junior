@@ -35,6 +35,7 @@ export async function ensureConversationRow(
       set: {
         lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
         updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
+        transcriptPurgedAt: null,
       },
     });
 }

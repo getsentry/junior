@@ -82,14 +82,7 @@ import {
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import {
-  createActor,
-  toStoredSlackActor,
-  parseActorUserId,
-  type Actor,
-  type SlackActor,
-  type StoredSlackActor,
-} from "@/chat/actor";
+import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
 import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
@@ -116,10 +109,7 @@ import {
   recordAgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { completeDeliveredTurn } from "@/chat/services/turn-session-record";
-import {
-  initConversationContext,
-  setConversationTitle,
-} from "@/chat/state/conversation-details";
+import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
   instructionProvenanceFor,
@@ -158,10 +148,6 @@ function collectCanvasUrls(artifacts: Partial<ThreadArtifactsState>) {
       ...(artifacts.recentCanvases?.map((canvas) => canvas.url) ?? []),
     ].filter((url): url is string => typeof url === "string" && url !== ""),
   );
-}
-
-function turnActor(actor: SlackActor): StoredSlackActor {
-  return toStoredSlackActor(actor);
 }
 
 /**
@@ -532,7 +518,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             : undefined;
         const executionActor: Actor | undefined =
           "type" in credentialContext.actor ? actor : credentialContext.actor;
-        const storedActor = actor ? turnActor(actor) : undefined;
         const slackActorId = actor?.userId;
 
         const preparedState =
@@ -914,41 +899,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Failed to record running turn summary",
             );
           });
-          void initConversationContext(conversationId, {
-            channelName,
-            originSurface: "slack",
-            originActor: storedActor,
-            startedAtMs: turnStartedAtMs,
-          }).catch((error) => {
-            logException(
-              error,
-              "conversation_details_context_init_failed",
-              turnTraceContext,
-              { "app.agent.turn.state": "running" },
-              "Failed to init conversation context at turn start",
-            );
-          });
-          const existingAssistantTitle =
-            preparedState.artifacts.assistantTitle?.trim();
-          if (existingAssistantTitle) {
-            void setConversationTitle(conversationId, {
-              displayTitle: existingAssistantTitle,
-              ...(preparedState.artifacts.assistantTitleSourceMessageId
-                ? {
-                    titleSourceMessageId:
-                      preparedState.artifacts.assistantTitleSourceMessageId,
-                  }
-                : {}),
-            }).catch((error) => {
-              logException(
-                error,
-                "conversation_details_title_refresh_failed",
-                turnTraceContext,
-                { "app.agent.turn.state": "running" },
-                "Failed to refresh conversation title from artifacts",
-              );
-            });
-          }
         }
         setTags({
           conversationId,
@@ -1153,17 +1103,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
               if (conversationId && titleUpdateResult.title) {
                 try {
-                  await setConversationTitle(conversationId, {
-                    displayTitle: titleUpdateResult.title,
-                    titleSourceMessageId: titleUpdateResult.sourceMessageId,
+                  await getConversationStore().recordActivity({
+                    activityAtMs: message.metadata.dateSent.getTime(),
+                    conversationId,
+                    nowMs: Date.now(),
+                    title: titleUpdateResult.title,
                   });
                 } catch (error) {
                   logException(
                     error,
-                    "conversation_details_title_set_failed",
+                    "conversation_title_persist_failed",
                     turnTraceContext,
                     {},
-                    "Failed to set conversation title in details record",
+                    "Failed to persist generated conversation title",
                   );
                 }
               }

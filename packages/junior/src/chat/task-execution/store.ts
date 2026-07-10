@@ -1,7 +1,6 @@
 import type { StateAdapter } from "chat";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { logWarn } from "@/chat/logging";
 import type { ConversationWorkQueue } from "./queue";
 import * as workState from "./state";
 export {
@@ -83,43 +82,31 @@ async function recordExecutionMetadata(args: {
   conversationStore?: ConversationStore;
   state?: StateAdapter;
 }): Promise<void> {
-  try {
-    const conversation = await workState.getConversation({
-      conversationId: args.conversationId,
-      state: args.state,
-    });
-    if (!conversation) {
-      return;
-    }
-    await metadataStore(args).recordExecution({
-      channelName: conversation.channelName,
-      conversationId: conversation.conversationId,
-      createdAtMs: conversation.createdAtMs,
-      destination: conversation.destination,
-      execution: {
-        lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
-        lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
-        runId: conversation.execution.runId,
-        status: conversation.execution.status,
-        updatedAtMs: conversation.execution.updatedAtMs,
-      },
-      lastActivityAtMs: conversation.lastActivityAtMs,
-      actor: conversation.actor,
-      source: conversation.source,
-      title: conversation.title,
-      updatedAtMs: conversation.updatedAtMs,
-    });
-  } catch (error) {
-    logWarn(
-      "conversation_execution_metadata_update_failed",
-      { conversationId: args.conversationId },
-      {
-        "exception.message":
-          error instanceof Error ? error.message : String(error),
-      },
-      "Failed to update conversation execution metadata",
-    );
+  const conversation = await workState.getConversation({
+    conversationId: args.conversationId,
+    state: args.state,
+  });
+  if (!conversation) {
+    return;
   }
+  await metadataStore(args).recordExecution({
+    channelName: conversation.channelName,
+    conversationId: conversation.conversationId,
+    createdAtMs: conversation.createdAtMs,
+    destination: conversation.destination,
+    execution: {
+      lastCheckpointAtMs: conversation.execution.lastCheckpointAtMs,
+      lastEnqueuedAtMs: conversation.execution.lastEnqueuedAtMs,
+      runId: conversation.execution.runId,
+      status: conversation.execution.status,
+      updatedAtMs: conversation.execution.updatedAtMs,
+    },
+    lastActivityAtMs: conversation.lastActivityAtMs,
+    actor: conversation.actor,
+    source: conversation.source,
+    title: conversation.title,
+    updatedAtMs: conversation.updatedAtMs,
+  });
 }
 
 /** Return a persisted conversation record, if one exists. */
@@ -244,13 +231,26 @@ export async function appendAndEnqueueInboundMessage(args: {
       conversationId: args.message.conversationId,
       state: args.state,
     });
-    if (!conversation || hasRecentEnqueueMarker(conversation, nowMs)) {
+    if (!conversation) {
+      return appendResult;
+    }
+    if (hasRecentEnqueueMarker(conversation, nowMs)) {
+      await recordExecutionMetadata({
+        conversationId: args.message.conversationId,
+        conversationStore: args.conversationStore,
+        state: args.state,
+      });
       return appendResult;
     }
     const duplicateStillPending = conversation.execution.pendingMessages.some(
       (message) => message.inboundMessageId === args.message.inboundMessageId,
     );
     if (!duplicateStillPending) {
+      await recordExecutionMetadata({
+        conversationId: args.message.conversationId,
+        conversationStore: args.conversationStore,
+        state: args.state,
+      });
       return appendResult;
     }
     idempotencyKey = duplicateInboundNudgeIdempotencyKey(args.message, nowMs);

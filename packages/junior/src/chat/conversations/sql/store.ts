@@ -26,11 +26,12 @@ import type {
 } from "@/db/schema/destinations";
 
 type ConversationRow = typeof juniorConversations.$inferSelect;
+type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 
 interface ConversationReadRow {
   conversation: ConversationRow;
-  destinationVisibility: JuniorDestinationVisibility | null;
+  destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
 }
 
@@ -220,21 +221,23 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
 function privacyFromRow(
   row: ConversationReadRow,
 ): ConversationPrivacy | undefined {
-  if (row.destinationVisibility === null) {
+  if (row.destination === null) {
     return undefined;
   }
-  return row.destinationVisibility === "public" ? "public" : "private";
+  return row.destination.visibility === "public" ? "public" : "private";
 }
 
 function actorFromIdentityRow(
   identity: IdentityRow | null,
   fallback: StoredSlackActor | undefined,
 ): StoredSlackActor | undefined {
-  if (!identity || identity.provider !== "slack") {
+  if (!identity) {
     return fallback;
   }
+  if (identity.provider !== "slack") {
+    return undefined;
+  }
   return {
-    ...(fallback ?? {}),
     ...(identity.emailNormalized
       ? { email: identity.emailNormalized }
       : identity.email
@@ -244,10 +247,29 @@ function actorFromIdentityRow(
     platform: "slack",
     slackUserId: identity.providerSubjectId,
     ...(identity.handle ? { slackUserName: identity.handle } : {}),
-    ...(identity.providerTenantId || fallback?.teamId
-      ? { teamId: identity.providerTenantId || fallback?.teamId }
-      : {}),
+    ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : {}),
   };
+}
+
+function destinationFromRow(
+  destination: DestinationRow | null,
+  fallback: unknown,
+): Destination | undefined {
+  const value = destination
+    ? destination.provider === "slack"
+      ? {
+          platform: "slack",
+          teamId: destination.providerTenantId,
+          channelId: destination.providerDestinationId,
+        }
+      : destination.provider === "local"
+        ? {
+            platform: "local",
+            conversationId: destination.providerDestinationId,
+          }
+        : undefined
+    : fallback;
+  return parseDestination(value);
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
@@ -257,17 +279,13 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
-  const destination =
-    row.destination === undefined || row.destination === null
-      ? undefined
-      : parseDestination(row.destination);
+  const destination = destinationFromRow(readRow.destination, row.destination);
   const actor = actorFromIdentityRow(
     readRow.actorIdentity,
     parseStoredSlackActor(row.actor),
   );
   if (
-    row.destination !== undefined &&
-    row.destination !== null &&
+    (readRow.destination !== null || row.destination !== null) &&
     !destination
   ) {
     throw new Error("Conversation record destination is invalid");
@@ -606,7 +624,7 @@ export class SqlStore implements ConversationStore {
       .db()
       .select({
         conversation: juniorConversations,
-        destinationVisibility: juniorDestinations.visibility,
+        destination: juniorDestinations,
         actorIdentity: juniorIdentities,
       })
       .from(juniorConversations)
@@ -683,7 +701,7 @@ export class SqlStore implements ConversationStore {
       .db()
       .select({
         conversation: juniorConversations,
-        destinationVisibility: juniorDestinations.visibility,
+        destination: juniorDestinations,
         actorIdentity: juniorIdentities,
       })
       .from(juniorConversations)
@@ -737,11 +755,11 @@ export class SqlStore implements ConversationStore {
         originId: null,
         originRunId: null,
         destinationId: destinationId ?? null,
-        destination: conversation.destination ?? null,
+        destination: null,
         actorIdentityId: actorIdentity?.id ?? null,
         creatorIdentityId: null,
         credentialSubjectIdentityId: null,
-        actor: conversation.actor ?? null,
+        actor: null,
         channelName: conversation.channelName ?? null,
         title: conversation.title ?? null,
         createdAt: dateFromMs(conversation.createdAtMs),
@@ -770,11 +788,9 @@ export class SqlStore implements ConversationStore {
           originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
           originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
-          destination: sql`coalesce(excluded.destination_json, ${juniorConversations.destination})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,
           credentialSubjectIdentityId: sql`coalesce(excluded.credential_subject_identity_id, ${juniorConversations.credentialSubjectIdentityId})`,
-          actor: sql`coalesce(excluded.actor_json, ${juniorConversations.actor})`,
           channelName: sql`coalesce(excluded.channel_name, ${juniorConversations.channelName})`,
           title: sql`coalesce(excluded.title, ${juniorConversations.title})`,
           createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,

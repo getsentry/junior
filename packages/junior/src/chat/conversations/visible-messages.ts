@@ -12,6 +12,7 @@ import type {
   NewConversationMessage,
 } from "@/chat/conversations/messages";
 import { getConversationMessageStore } from "@/chat/db";
+import { hydrateConversationCompactions } from "./visible-compactions";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 import type {
   ConversationAuthor,
@@ -100,6 +101,10 @@ export async function hydrateConversationMessages(args: {
   const { ensureLegacyConversationImport } =
     await import("@/chat/conversations/legacy-import");
   await ensureLegacyConversationImport({ conversationId: args.conversationId });
+  await hydrateConversationCompactions({
+    conversation: args.conversation,
+    conversationId: args.conversationId,
+  });
   const store = getConversationMessageStore();
   const rows = await store.list(args.conversationId);
   const coveredIds = new Set(

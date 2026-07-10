@@ -63,11 +63,16 @@ export async function runRetentionPurge(
     try {
       const result = await purgeConversationTree(executor, {
         rootConversationId: root.conversationId,
-        scrubMetadata: root.visibility !== "public",
         nowMs: args.nowMs,
+        retention: {
+          publicWindowMs: CONTENT_RETENTION_MS.public,
+          privateWindowMs: CONTENT_RETENTION_MS.private,
+        },
       });
-      purged += 1;
-      conversations += result.conversations;
+      if (result.purged) {
+        purged += 1;
+        conversations += result.conversations;
+      }
     } catch (error) {
       failed += 1;
       logException(

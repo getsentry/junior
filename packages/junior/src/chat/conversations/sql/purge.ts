@@ -16,6 +16,8 @@ export interface ExpiredRoot {
 
 /** Outcome of purging one conversation tree. */
 export interface PurgeTreeResult {
+  /** Whether this transaction still found the root eligible for purge. */
+  purged: boolean;
   /** Root plus descendant conversation rows stamped by the purge. */
   conversations: number;
 }
@@ -135,9 +137,44 @@ export async function selectExpiredRoots(
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
-  args: { rootConversationId: string; scrubMetadata: boolean; nowMs: number },
+  args: {
+    rootConversationId: string;
+    scrubMetadata?: boolean;
+    nowMs: number;
+    retention?: { privateWindowMs: number; publicWindowMs: number };
+  },
 ): Promise<PurgeTreeResult> {
   return await executor.transaction(async () => {
+    const roots = await executor
+      .db()
+      .select({
+        destinationId: juniorConversations.destinationId,
+        lastActivityAt: juniorConversations.lastActivityAt,
+        parentConversationId: juniorConversations.parentConversationId,
+      })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, args.rootConversationId))
+      .for("update");
+    const root = roots[0];
+    if (!root || (args.retention && root.parentConversationId !== null)) {
+      return { purged: false, conversations: 0 };
+    }
+    const destinations = root.destinationId
+      ? await executor
+          .db()
+          .select({ visibility: juniorDestinations.visibility })
+          .from(juniorDestinations)
+          .where(eq(juniorDestinations.id, root.destinationId))
+      : [];
+    const isPublic = destinations[0]?.visibility === "public";
+    if (args.retention) {
+      const windowMs = isPublic
+        ? args.retention.publicWindowMs
+        : args.retention.privateWindowMs;
+      if (root.lastActivityAt.getTime() >= args.nowMs - windowMs) {
+        return { purged: false, conversations: 0 };
+      }
+    }
     const ids = await conversationTreeIds(executor, args.rootConversationId);
     await executor
       .db()
@@ -152,12 +189,12 @@ export async function purgeConversationTree(
       .update(juniorConversations)
       .set({
         transcriptPurgedAt: new Date(args.nowMs),
-        ...(args.scrubMetadata
+        ...((args.retention ? !isPublic : args.scrubMetadata)
           ? { title: null, channelName: null, actor: null }
           : {}),
       })
       .where(inArray(juniorConversations.conversationId, ids));
-    return { conversations: ids.length };
+    return { purged: true, conversations: ids.length };
   });
 }
 

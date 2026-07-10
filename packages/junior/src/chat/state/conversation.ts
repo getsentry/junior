@@ -256,9 +256,13 @@ export function coerceThreadConversationState(
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,
 ): {
-  conversation: Omit<ThreadConversationState, "messages">;
+  conversation: Omit<ThreadConversationState, "compactions" | "messages">;
 } {
-  const { messages: _messages, ...scratch } = conversation;
+  const {
+    compactions: _compactions,
+    messages: _messages,
+    ...scratch
+  } = conversation;
   return {
     conversation: {
       ...scratch,

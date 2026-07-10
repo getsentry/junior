@@ -344,8 +344,7 @@ export async function runLocalAgentTurn(
   if (reply.piMessages?.length) {
     // Destination acceptance is the completion boundary: this first commits
     // the final assistant messages to the session log and marks the session
-    // record completed only after the CLI sink accepted the reply. Failures
-    // are logged inside and never fail the delivered turn.
+    // record completed only after the CLI sink accepted the reply.
     await completeDeliveredTurn({
       conversationId: input.conversationId,
       sessionId: turnId,

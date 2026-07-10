@@ -233,6 +233,16 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
         {
           conversationId: CONVERSATION_ID,
           channelName: "eng-runtime",
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+          },
+          actor: {
+            platform: "slack",
+            teamId: "T123",
+            slackUserId: "U123",
+          },
           title: "SQL conversation store",
           execution: {
             status: "idle",
@@ -246,7 +256,9 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
         .db()
         .select({
           actorIdentityId: juniorConversations.actorIdentityId,
+          actorJson: juniorConversations.actor,
           destinationId: juniorConversations.destinationId,
+          destinationJson: juniorConversations.destination,
           destinationKind: juniorDestinations.kind,
           destinationProvider: juniorDestinations.provider,
           destinationProviderSubject: juniorDestinations.providerDestinationId,
@@ -271,7 +283,9 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
       expect(linkedRows).toEqual([
         {
           actorIdentityId: linkedRows[0]?.actorIdentityId,
+          actorJson: null,
           destinationId: linkedRows[0]?.destinationId,
+          destinationJson: null,
           destinationKind: "channel",
           destinationProvider: "slack",
           destinationProviderSubject: "C123",
@@ -284,6 +298,38 @@ VALUES ($1, 'user', 'manual', '', 'manual-user', 'Manual User', NULL, 'Manual@Ex
           actorTenant: "T123",
         },
       ]);
+
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          destination: {
+            platform: "slack",
+            teamId: "T-stale",
+            channelId: "C-stale",
+          },
+          actor: {
+            platform: "slack",
+            teamId: "T-stale",
+            slackUserId: "U-stale",
+          },
+        })
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+
+      await expect(
+        store.get({ conversationId: CONVERSATION_ID }),
+      ).resolves.toMatchObject({
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        actor: {
+          platform: "slack",
+          teamId: "T123",
+          slackUserId: "U123",
+        },
+      });
     } finally {
       await fixture.close();
     }

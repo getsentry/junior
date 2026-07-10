@@ -227,7 +227,7 @@ describe("persistAuthPauseSessionRecord", () => {
     }
   });
 
-  it("keeps turn-session records when conversation metadata update fails", async () => {
+  it("fails before storing a turn-session record when SQL metadata fails", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -242,25 +242,17 @@ describe("persistAuthPauseSessionRecord", () => {
         state: "completed",
         surface: "slack",
       }),
-    ).resolves.toMatchObject({
-      conversationId: "slack:C123:metadata-failure",
-      sessionId: "turn-metadata-failure",
-      state: "completed",
-    });
+    ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
       getAgentTurnSessionRecord(
         "slack:C123:metadata-failure",
         "turn-metadata-failure",
       ),
-    ).resolves.toMatchObject({
-      conversationId: "slack:C123:metadata-failure",
-      sessionId: "turn-metadata-failure",
-      state: "completed",
-    });
+    ).resolves.toBeUndefined();
   });
 
-  it("keeps turn-session summaries when conversation metadata update fails", async () => {
+  it("fails before storing a turn-session summary when SQL metadata fails", async () => {
     const {
       listAgentTurnSessionSummariesForConversation,
       recordAgentTurnSessionSummary,
@@ -276,19 +268,13 @@ describe("persistAuthPauseSessionRecord", () => {
         state: "failed",
         surface: "slack",
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("conversation metadata unavailable");
 
     await expect(
       listAgentTurnSessionSummariesForConversation(
         "slack:C123:summary-metadata-failure",
       ),
-    ).resolves.toEqual([
-      expect.objectContaining({
-        conversationId: "slack:C123:summary-metadata-failure",
-        sessionId: "turn-summary-metadata-failure",
-        state: "failed",
-      }),
-    ]);
+    ).resolves.toEqual([]);
   });
 
   it("materializes auth completion events appended after the pause record", async () => {
@@ -908,15 +894,12 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("does not fail a completed turn when session record persistence fails", async () => {
-    const logException = vi.fn();
-    vi.doMock("@/chat/logging", () => ({
-      logException,
-    }));
+  it("retries and surfaces completed session persistence failures", async () => {
+    const getAgentTurnSessionRecord = vi.fn(async () => {
+      throw new Error("state adapter unavailable");
+    });
     vi.doMock("@/chat/state/turn-session", () => ({
-      getAgentTurnSessionRecord: vi.fn(async () => {
-        throw new Error("state adapter unavailable");
-      }),
+      getAgentTurnSessionRecord,
       upsertAgentTurnSessionRecord: vi.fn(),
     }));
     const { persistCompletedSessionRecord } =
@@ -941,24 +924,50 @@ describe("persistAuthPauseSessionRecord", () => {
           threadId: "slack:C123:1",
         },
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("state adapter unavailable");
+    expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(3);
+  });
 
-    expect(logException).toHaveBeenCalledWith(
-      expect.any(Error),
-      "agent_turn_completed_session_record_failed",
-      expect.objectContaining({
-        modelId: "test-model",
-        slackChannelId: "C123",
-        slackThreadId: "slack:C123:1",
-        slackUserId: "U123",
-      }),
-      expect.objectContaining({
-        "app.ai.resume_conversation_id": "conversation-1",
-        "app.ai.resume_session_id": "turn-1",
-        "app.ai.resume_slice_id": 1,
-      }),
-      "Failed to persist completed turn session record",
-    );
+  it("retries the same completed totals without double-counting", async () => {
+    const getAgentTurnSessionRecord = vi.fn(async () => ({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [],
+      piMessageProvenance: [],
+      cumulativeDurationMs: 1_000,
+      cumulativeUsage: { inputTokens: 10 },
+    }));
+    const upsertAgentTurnSessionRecord = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("summary append failed"))
+      .mockRejectedValueOnce(new Error("summary append failed"))
+      .mockResolvedValue(undefined);
+    vi.doMock("@/chat/state/turn-session", () => ({
+      getAgentTurnSessionRecord,
+      upsertAgentTurnSessionRecord,
+    }));
+    const { persistCompletedSessionRecord } =
+      await import("@/chat/services/turn-session-record");
+
+    await persistCompletedSessionRecord({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      currentDurationMs: 500,
+      currentUsage: { inputTokens: 5 },
+      allMessages: [userMessage("done")],
+      logContext: { modelId: "test-model" },
+    });
+
+    expect(getAgentTurnSessionRecord).toHaveBeenCalledTimes(1);
+    expect(upsertAgentTurnSessionRecord).toHaveBeenCalledTimes(3);
+    for (const [target] of upsertAgentTurnSessionRecord.mock.calls) {
+      expect(target).toMatchObject({
+        cumulativeDurationMs: 1_500,
+        cumulativeUsage: { inputTokens: 15 },
+      });
+    }
   });
 
   it("keeps completed session bootstrap context for later turns in the same session", async () => {

@@ -13,6 +13,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import type { NewConversationMessage } from "../messages";
 import {
   contextProvenance,
   legacyActorProvenance,
@@ -20,7 +21,11 @@ import {
   type SessionLogEntry,
 } from "@/chat/state/session-log";
 import { agentStepEntrySchema, type AgentStepEntry } from "../history";
-import { juniorAgentSteps, juniorConversations } from "@/db/schema";
+import {
+  juniorAgentSteps,
+  juniorConversationMessages,
+  juniorConversations,
+} from "@/db/schema";
 
 const INITIAL_SESSION_ID = "session_0";
 
@@ -288,6 +293,7 @@ export interface LegacyImportWrite {
   conversationId: string;
   fallbackCreatedAtMs: number;
   lastActivityAtMs: number;
+  messages?: Array<NewConversationMessage & { repliedAtMs?: number }>;
   steps: ImportedStep[];
   child?: { conversationId: string; steps: ImportedStep[] };
 }
@@ -309,6 +315,16 @@ export async function writeLegacyImport(
     () =>
       executor.transaction(async () => {
         const db = executor.db();
+        const conversations = await db
+          .select({
+            transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+          })
+          .from(juniorConversations)
+          .where(eq(juniorConversations.conversationId, args.conversationId))
+          .for("update");
+        if (conversations[0]?.transcriptPurgedAt) {
+          return false;
+        }
         const existing = await db
           .select({ seq: juniorAgentSteps.seq })
           .from(juniorAgentSteps)
@@ -324,6 +340,35 @@ export async function writeLegacyImport(
           createdAt,
           new Date(args.lastActivityAtMs),
         );
+        if (args.messages && args.messages.length > 0) {
+          await db
+            .insert(juniorConversationMessages)
+            .values(
+              args.messages.map((message) => ({
+                conversationId: args.conversationId,
+                messageId: message.messageId,
+                role: message.role,
+                authorIdentityId: message.authorIdentityId ?? null,
+                text: message.text,
+                meta: message.meta ?? null,
+                repliedAt:
+                  message.repliedAtMs === undefined
+                    ? null
+                    : new Date(message.repliedAtMs),
+                createdAt: new Date(message.createdAtMs),
+              })),
+            )
+            .onConflictDoUpdate({
+              target: [
+                juniorConversationMessages.conversationId,
+                juniorConversationMessages.messageId,
+              ],
+              set: {
+                meta: sql`nullif(coalesce(${juniorConversationMessages.meta}, '{}'::jsonb) || coalesce(excluded.meta, '{}'::jsonb), '{}'::jsonb)`,
+                repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, excluded.replied_at)`,
+              },
+            });
+        }
         if (args.steps.length > 0) {
           await db
             .insert(juniorAgentSteps)
@@ -332,11 +377,20 @@ export async function writeLegacyImport(
             );
         }
         if (args.child) {
+          const childCreatedAtMs =
+            args.child.steps.length > 0
+              ? Math.min(...args.child.steps.map((step) => step.createdAtMs))
+              : args.fallbackCreatedAtMs;
+          const childLastActivityAtMs =
+            args.child.steps.length > 0
+              ? Math.max(...args.child.steps.map((step) => step.createdAtMs))
+              : childCreatedAtMs;
           await ensureChildConversationRow(
             executor,
             args.child.conversationId,
             args.conversationId,
-            createdAt,
+            new Date(childCreatedAtMs),
+            new Date(childLastActivityAtMs),
           );
           if (args.child.steps.length > 0) {
             await db
@@ -384,9 +438,15 @@ async function ensureChildConversationRow(
   executor: JuniorSqlDatabase,
   childConversationId: string,
   parentConversationId: string,
-  at: Date,
+  createdAt: Date,
+  lastActivityAt: Date,
 ): Promise<void> {
-  await ensureConversationRow(executor, parentConversationId, at, at);
+  await ensureConversationRow(
+    executor,
+    parentConversationId,
+    createdAt,
+    lastActivityAt,
+  );
   await executor
     .db()
     .insert(juniorConversations)
@@ -394,15 +454,18 @@ async function ensureChildConversationRow(
       conversationId: childConversationId,
       schemaVersion: 1,
       parentConversationId,
-      createdAt: at,
-      lastActivityAt: at,
-      updatedAt: at,
+      createdAt,
+      lastActivityAt,
+      updatedAt: lastActivityAt,
       executionStatus: "idle",
     })
     .onConflictDoUpdate({
       target: juniorConversations.conversationId,
       set: {
         parentConversationId: sql`coalesce(${juniorConversations.parentConversationId}, excluded.parent_conversation_id)`,
+        createdAt: sql`least(${juniorConversations.createdAt}, excluded.created_at)`,
+        lastActivityAt: sql`greatest(${juniorConversations.lastActivityAt}, excluded.last_activity_at)`,
+        updatedAt: sql`greatest(${juniorConversations.updatedAt}, excluded.updated_at)`,
       },
     });
 }
