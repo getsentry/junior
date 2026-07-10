@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type IssueCredentialHookContext,
+} from "@sentry/junior-plugin-api";
 
 const {
   continueTraceMock,
@@ -913,7 +916,7 @@ describe("sandbox egress proxy", () => {
   it("lets headless resource-event runs use scoped GitHub installation grants", async () => {
     setSandboxEgressSystemActor({ name: "resource-event" });
     getProvidersMock.mockReturnValue([githubPlugin()]);
-    const issueCredential = vi.fn(() => {
+    const issueCredential = vi.fn((_ctx: IssueCredentialHookContext) => {
       return {
         type: "lease" as const,
         lease: {
