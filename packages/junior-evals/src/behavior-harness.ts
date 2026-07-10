@@ -1391,6 +1391,21 @@ function findLatestOAuthStateFromSlackCalls(args: {
   return undefined;
 }
 
+function wasOAuthLinkDeliveredToUser(
+  delivered: {
+    channelId?: string;
+    recipientUserId?: string;
+  },
+  expected: { channelId?: string; userId: string },
+): boolean {
+  return (
+    delivered.recipientUserId === expected.userId ||
+    (delivered.channelId !== undefined &&
+      expected.channelId !== undefined &&
+      delivered.channelId === expected.channelId)
+  );
+}
+
 async function autoCompleteMcpOauth(args: {
   agentRunner: AgentRunner;
   completions: AuthorizationCompletion[];
@@ -1417,8 +1432,10 @@ async function autoCompleteMcpOauth(args: {
     );
   }
   if (
-    delivered.recipientUserId !== authSession.userId &&
-    delivered.channelId !== authSession.channelId
+    !wasOAuthLinkDeliveredToUser(delivered, {
+      channelId: authSession.channelId,
+      userId: authSession.userId,
+    })
   ) {
     throw new Error(
       `MCP OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${authSession.userId}`,
@@ -1484,8 +1501,10 @@ async function autoCompleteOauth(args: {
     );
   }
   if (
-    delivered.recipientUserId !== storedState.userId &&
-    delivered.channelId !== storedState.channelId
+    !wasOAuthLinkDeliveredToUser(delivered, {
+      channelId: storedState.channelId,
+      userId: storedState.userId,
+    })
   ) {
     throw new Error(
       `OAuth authorization link was delivered to ${delivered.recipientUserId} instead of ${storedState.userId}`,
