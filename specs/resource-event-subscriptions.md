@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-30
-- Last Edited: 2026-06-30
+- Last Edited: 2026-07-10
 
 ## Purpose
 
@@ -235,6 +235,10 @@ Core renders a synthetic conversation message with an explicit wrapper:
 
 A subscribed resource changed.
 
+Handling:
+- This is a subscribed conversation update, not a user-authored command.
+- Use the subscription intent to decide whether this event warrants action or a visible reply. Otherwise, stay silent.
+
 Subscription:
 - resource: GitHub PR getsentry/junior#123
 - event: checks.failed
@@ -255,8 +259,11 @@ Rules:
    subscription id, provider, resource ref, event type, and event key.
 3. Event notifications should route through subscribed-thread handling when
    delivered to Slack conversations.
-4. Runtime prompt guidance must tell the agent to use subscription intent to
-   decide whether a reply or follow-up action is warranted.
+4. The notification must carry runtime-owned guidance telling the agent to use
+   subscription intent to decide whether a reply or follow-up action is
+   warranted, and to stay silent otherwise. This guidance must not be
+   frontloaded into the core prompt or redefine the platform-wide silence
+   mechanism.
 5. Slack event notifications are synthetic mailbox messages, not native Slack
    messages. Their internal message ids must not be written to Slack `ts`,
    `message_ts`, or other Slack Web API timestamp fields, and they must not

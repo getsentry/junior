@@ -1,6 +1,8 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
+  conversationMessages,
+  githubWebhook,
   mention,
   resourceEventNotification,
   rubric,
@@ -110,6 +112,57 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       }),
     });
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
+  });
+
+  it("when a subscribed event does not serve the intent, stay silent", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        githubWebhook({
+          eventName: "check_suite",
+          subscription: {
+            events: ["checks.recovered"],
+            intent:
+              "Let the original Slack thread know when Junior's pull request lands.",
+            label: "GitHub PR getsentry/junior#702",
+            resourceRef: "github:pull_request:getsentry/junior#702",
+            resourceType: "pull_request",
+          },
+          body: {
+            action: "completed",
+            repository: { full_name: "getsentry/junior" },
+            check_suite: {
+              conclusion: "success",
+              head_sha: "abcdef1234567890",
+              pull_requests: [{ number: 702 }],
+            },
+          },
+        }),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant does not post any visible thread reply.",
+          "The assistant treats recovered checks as outside the subscription intent, which only asks for the merge outcome.",
+        ],
+        fail: [
+          "Do not narrate or explain the recovered CI status.",
+          "Do not post a visible message for an event that does not serve the subscription intent.",
+        ],
+      }),
+    });
+    const messages = await conversationMessages(result.session);
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          text: expect.stringContaining(
+            "GitHub PR getsentry/junior#702 checks recovered",
+          ),
+        }),
+      ]),
+    );
+    expect(visibleThreadReplies(result.session)).toHaveLength(0);
   });
 
   it("when a subscribed PR is merged, report completion without extra work", async ({

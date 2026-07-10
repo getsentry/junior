@@ -107,6 +107,10 @@ describe("resource event subscriptions", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(work?.messages).toHaveLength(1);
+    const notificationText = work?.messages[0]?.input.text;
+    expect(notificationText).toContain("not a user-authored command");
+    expect(notificationText).toContain("subscription intent");
+    expect(notificationText).toContain("stay silent");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {

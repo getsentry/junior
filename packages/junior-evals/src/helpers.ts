@@ -18,6 +18,7 @@ import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
 import type { AgentStepEntry } from "@/chat/conversations/history";
 import type { ConversationMessage } from "@/chat/conversations/messages";
+import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
 import { advisorChildConversationId } from "@/chat/tools/advisor/tool";
 import {
   slackEventThread,
@@ -731,26 +732,55 @@ interface ResourceEventNotificationOptions {
   untrustedText?: string;
 }
 
+interface GitHubWebhookOptions {
+  body: unknown;
+  deliveryId?: string;
+  eventName: string;
+  subscription: {
+    events: string[];
+    intent: string;
+    label: string;
+    resourceRef: string;
+    resourceType: string;
+  };
+  thread?: ThreadOverrides;
+}
+
+/** Builds a GitHub webhook delivery backed by a real resource subscription. */
+export function githubWebhook(opts: GitHubWebhookOptions) {
+  const seq = nextId();
+  return {
+    type: "github_webhook" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts.thread,
+    },
+    body: opts.body,
+    delivery_id: opts.deliveryId ?? `eval-github-delivery-${seq}`,
+    event_name: opts.eventName,
+    subscription: {
+      events: opts.subscription.events,
+      intent: opts.subscription.intent,
+      label: opts.subscription.label,
+      resource_ref: opts.subscription.resourceRef,
+      resource_type: opts.subscription.resourceType,
+    },
+  };
+}
+
 function resourceEventNotificationText(
   opts: ResourceEventNotificationOptions,
 ): string {
-  const lines = [
-    "[event notification]",
-    "",
-    "A subscribed resource changed.",
-    "",
-    "Subscription:",
-    `- resource: ${opts.label}`,
-    `- event: ${opts.eventType}`,
-    `- intent: ${opts.intent}`,
-    "",
-    "Trusted event summary:",
-    opts.trustedSummary,
-  ];
-  if (opts.untrustedText?.trim()) {
-    lines.push("", "Untrusted provider content:", opts.untrustedText.trim());
-  }
-  return lines.join("\n");
+  return renderResourceEventNotificationText(
+    { intent: opts.intent, label: opts.label },
+    {
+      eventType: opts.eventType,
+      trustedSummary: opts.trustedSummary,
+      untrustedText: opts.untrustedText,
+    },
+  );
 }
 
 /** Builds a runtime-owned subscribed resource-event notification for Slack evals. */

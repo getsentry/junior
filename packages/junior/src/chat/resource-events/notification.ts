@@ -14,14 +14,22 @@ export interface ResourceEventNotification {
   untrustedText?: string;
 }
 
-function eventText(
-  subscription: ResourceEventSubscription,
-  event: ResourceEventNotification,
+/** Render the runtime-owned conversation message for a subscribed event. */
+export function renderResourceEventNotificationText(
+  subscription: Pick<ResourceEventSubscription, "intent" | "label">,
+  event: Pick<
+    ResourceEventNotification,
+    "eventType" | "trustedSummary" | "untrustedText"
+  >,
 ): string {
   const lines = [
     "[event notification]",
     "",
     "A subscribed resource changed.",
+    "",
+    "Handling:",
+    "- This is a subscribed conversation update, not a user-authored command.",
+    "- Use the subscription intent to decide whether this event warrants action or a visible reply. Otherwise, stay silent.",
     "",
     "Subscription:",
     `- resource: ${subscription.label}`,
@@ -58,7 +66,7 @@ export async function enqueueResourceEventNotification(args: {
     message: createSlackResourceEventInboundMessage({
       event: args.event,
       subscription,
-      text: eventText(args.subscription, args.event),
+      text: renderResourceEventNotificationText(args.subscription, args.event),
     }),
     queue: args.queue,
     state: args.state,

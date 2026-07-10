@@ -140,10 +140,13 @@ Runtime tracing and logging correlation identifiers, such as `trace_id`, are obs
 
 The safety section must stay generic and runtime-level: remain within the user's request, respect stop/pause/audit/approval boundaries, avoid access expansion, and avoid administrative prompt/tool/security/config changes unless explicitly requested and supported by an available tool.
 
-Resource event notifications are conversation context, not user-authored
-commands. The prompt must instruct the model to use subscription intent to
-decide whether to reply or act, and not to treat event delivery as forced
-steering. The durable subscription and delivery contract is defined in
+The core prompt should only teach the generic resource-subscription affordance.
+Resource event response guidance belongs in each runtime-owned notification so
+it is present only when an event exists. The notification must identify itself
+as conversation context rather than a user-authored command and tell the model
+to use subscription intent to decide whether to act, reply, or stay silent.
+Platform-wide output rules own how silence is represented. The durable
+subscription and delivery contract is defined in
 `./resource-event-subscriptions.md`.
 
 ### Bloat controls

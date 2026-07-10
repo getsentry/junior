@@ -66,6 +66,8 @@ import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
 import { verifyDispatchCallbackRequest } from "@/chat/agent-dispatch/signing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import type { DispatchCallback } from "@/chat/agent-dispatch/types";
+import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
@@ -108,6 +110,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
+import { normalizeGitHubResourceEvents } from "@/handlers/github-webhook";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
 
@@ -236,12 +239,27 @@ interface ScheduledTaskDueEvent extends EvalBaseEvent {
   timezone?: string;
 }
 
+interface GitHubWebhookEvent extends EvalBaseEvent {
+  body: unknown;
+  delivery_id: string;
+  event_name: string;
+  subscription: {
+    events: string[];
+    intent: string;
+    label: string;
+    resource_ref: string;
+    resource_type: string;
+  };
+  type: "github_webhook";
+}
+
 export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
-  | ScheduledTaskDueEvent;
+  | ScheduledTaskDueEvent
+  | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
 
@@ -2255,11 +2273,45 @@ async function processEvents(args: {
     }
   };
 
+  const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
+    const { thread } = getThreadRecord(event.thread);
+    const nowMs = Date.now();
+    await createResourceEventSubscription(
+      {
+        conversationId: thread.id,
+        destination: createEvalDestination(thread),
+        events: event.subscription.events,
+        expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+        intent: event.subscription.intent,
+        label: event.subscription.label,
+        provider: "github",
+        resourceRef: event.subscription.resource_ref,
+        resourceType: event.subscription.resource_type,
+      },
+      { nowMs, state: env.stateAdapter },
+    );
+    const normalizedEvents = normalizeGitHubResourceEvents({
+      body: event.body,
+      deliveryId: event.delivery_id,
+      eventName: event.event_name,
+    });
+    for (const normalizedEvent of normalizedEvents) {
+      await ingestResourceEvent(normalizedEvent, {
+        nowMs,
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      });
+    }
+    await drainQueuedConversationWork();
+  };
+
   const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
     } else if (event.type === "scheduled_task_due") {
       await runScheduledTaskDue(event);
+    } else if (event.type === "github_webhook") {
+      await runGitHubWebhook(event);
     } else {
       await runLifecycleEvent(event);
     }
