@@ -142,6 +142,14 @@ describe.sequential("example build discovery integration", () => {
 
     process.env = {
       ...originalEnv,
+      NODE_ENV: "development",
+      VERCEL: "1",
+      VERCEL_ENV: "development",
+    };
+    expect(config.exampleDashboardAuthRequired()).toBe(false);
+
+    process.env = {
+      ...originalEnv,
       JUNIOR_DASHBOARD_AUTH_REQUIRED: "false",
     };
     clearVercelEnv();
