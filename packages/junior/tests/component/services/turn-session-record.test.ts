@@ -135,47 +135,6 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("migrates legacy requester turn-session records while reading", async () => {
-    const { getAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(
-      "junior:agent_turn_session:conversation-legacy:turn-legacy",
-      {
-        version: 1,
-        conversationId: "conversation-legacy",
-        sessionId: "turn-legacy",
-        sliceId: 1,
-        state: "completed",
-        startedAtMs: 1,
-        lastProgressAtMs: 2,
-        updatedAtMs: 3,
-        committedSeq: -1,
-        cumulativeDurationMs: 0,
-        requester: {
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          userName: "alice",
-        },
-      },
-      60_000,
-    );
-
-    await expect(
-      getAgentTurnSessionRecord("conversation-legacy", "turn-legacy"),
-    ).resolves.toMatchObject({
-      actor: {
-        platform: "slack",
-        teamId: "T123",
-        userId: "U123",
-        userName: "alice",
-      },
-    });
-  });
-
   it("records Slack turn activity in SQL conversation metadata", async () => {
     vi.useFakeTimers({ now: 10_000 });
     const { upsertAgentTurnSessionRecord } =
@@ -378,61 +337,6 @@ describe("persistAuthPauseSessionRecord", () => {
         email: "alice@sentry.io",
       },
       piMessages: [userMessage],
-    });
-  });
-
-  it("decodes legacy stored requester as the bound actor on rehydration", async () => {
-    const { getStateAdapter } = await import("@/chat/state/adapter");
-    const { commitMessages } = await import("@/chat/conversations/projection");
-    const { getAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
-
-    const actor = {
-      platform: "slack" as const,
-      teamId: "T123",
-      userId: "U123",
-      userName: "alice",
-      fullName: "Alice Example",
-      email: "alice@sentry.io",
-    };
-    const message = userMessage("resume the deploy");
-
-    await commitMessages({
-      conversationId: "conversation-legacy-requester",
-      messages: [message],
-      provenance: [{ authority: "instruction", actor }],
-    });
-
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(
-      "junior:agent_turn_session:conversation-legacy-requester:turn-legacy-requester",
-      {
-        version: 1,
-        conversationId: "conversation-legacy-requester",
-        sessionId: "turn-legacy-requester",
-        sliceId: 1,
-        state: "awaiting_resume",
-        startedAtMs: 1,
-        lastProgressAtMs: 1,
-        updatedAtMs: 1,
-        cumulativeDurationMs: 0,
-        committedSeq: 0,
-        requester: actor,
-        resumeReason: "auth",
-      },
-      60_000,
-    );
-
-    await expect(
-      getAgentTurnSessionRecord(
-        "conversation-legacy-requester",
-        "turn-legacy-requester",
-      ),
-    ).resolves.toMatchObject({
-      actor,
-      actors: [actor],
-      piMessages: [message],
     });
   });
 

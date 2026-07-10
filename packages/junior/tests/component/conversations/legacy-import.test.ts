@@ -764,7 +764,6 @@ describe("legacy conversation import", () => {
             text: "legacy reply",
             createdAtMs: 110,
           },
-          { id: "bad", role: "user", text: 42, createdAtMs: 120 },
         ],
       },
     });
@@ -797,6 +796,36 @@ describe("legacy conversation import", () => {
         { messageId: "m1", text: "legacy hello", replied: true },
         { messageId: "m2", text: "legacy reply", replied: false },
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
+  it("rejects malformed legacy visible messages", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
+      conversation: {
+        messages: [{ id: "bad", role: "user", text: 42, createdAtMs: 120 }],
+      },
+    });
+
+    try {
+      await expect(
+        importConversationFromLegacy(CONVERSATION_ID, {
+          executor: fixture.sql,
+          stepStore,
+          messageStore,
+          conversationRecord: conversationRecord(),
+          sessionLogStore: staticSessionLogStore([]),
+          advisorSessionStore: staticAdvisorStore([]),
+        }),
+      ).rejects.toThrow("Invalid input");
+      await expect(messageStore.list(CONVERSATION_ID)).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

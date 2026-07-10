@@ -5,7 +5,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
-import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
+import type { StoredSlackActor } from "@/chat/actor";
 import { migrateSchema } from "./migrations";
 import type { JuniorSqlDatabase, JuniorSqlMigrationExecutor } from "@/db/db";
 import type {
@@ -229,10 +229,9 @@ function privacyFromRow(
 
 function actorFromIdentityRow(
   identity: IdentityRow | null,
-  fallback: StoredSlackActor | undefined,
 ): StoredSlackActor | undefined {
   if (!identity) {
-    return fallback;
+    return undefined;
   }
   if (identity.provider !== "slack") {
     return undefined;
@@ -253,22 +252,20 @@ function actorFromIdentityRow(
 
 function destinationFromRow(
   destination: DestinationRow | null,
-  fallback: unknown,
 ): Destination | undefined {
-  const value = destination
-    ? destination.provider === "slack"
+  const value =
+    destination?.provider === "slack"
       ? {
           platform: "slack",
           teamId: destination.providerTenantId,
           channelId: destination.providerDestinationId,
         }
-      : destination.provider === "local"
+      : destination?.provider === "local"
         ? {
             platform: "local",
             conversationId: destination.providerDestinationId,
           }
-        : undefined
-    : fallback;
+        : undefined;
   return parseDestination(value);
 }
 
@@ -279,19 +276,16 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
-  const destination = destinationFromRow(readRow.destination, row.destination);
-  const actor = actorFromIdentityRow(
-    readRow.actorIdentity,
-    parseStoredSlackActor(row.actor),
-  );
-  if (
-    (readRow.destination !== null || row.destination !== null) &&
-    !destination
-  ) {
-    throw new Error("Conversation record destination is invalid");
+  if (row.destination !== null && readRow.destination === null) {
+    throw new Error("Conversation legacy destination is not migrated");
   }
-  if (row.actor !== undefined && row.actor !== null && !actor) {
-    throw new Error("Conversation record actor is invalid");
+  if (row.actor !== null && readRow.actorIdentity === null) {
+    throw new Error("Conversation legacy actor is not migrated");
+  }
+  const destination = destinationFromRow(readRow.destination);
+  const actor = actorFromIdentityRow(readRow.actorIdentity);
+  if (readRow.destination !== null && !destination) {
+    throw new Error("Conversation record destination is invalid");
   }
   const source =
     row.source === undefined || row.source === null

@@ -159,19 +159,7 @@ function parseAgentTurnUsage(value: unknown): AgentTurnUsage | undefined {
 function parseStoredRecord(
   value: unknown,
 ): Record<string, unknown> | undefined {
-  if (isRecord(value)) {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
+  return isRecord(value) ? value : undefined;
 }
 
 function parseAgentTurnSessionStatus(
@@ -245,8 +233,7 @@ function parseAgentTurnSessionFields(
     toFiniteNonNegativeNumber(parsed.cumulativeDurationMs) ?? 0;
   const cumulativeUsage = parseAgentTurnUsage(parsed.cumulativeUsage);
   const lastProgressAtMs = toFiniteNonNegativeNumber(parsed.lastProgressAtMs);
-  const actorValue =
-    parsed.actor !== undefined ? parsed.actor : parsed.requester;
+  const actorValue = parsed.actor;
   const actor = actorValue === undefined ? undefined : parseActor(actorValue);
   const startedAtMs = toFiniteNonNegativeNumber(parsed.startedAtMs);
   const surface = parseAgentTurnSurface(parsed.surface);
@@ -541,16 +528,12 @@ function buildStoredRecord(args: {
     ...(args.destination ? { destination: args.destination } : {}),
     ...(args.source ? { source: args.source } : {}),
     ...(args.actor ? { actor: args.actor } : {}),
-    ...(Array.isArray(args.loadedSkillNames)
-      ? {
-          loadedSkillNames: args.loadedSkillNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
+    ...(args.loadedSkillNames
+      ? { loadedSkillNames: args.loadedSkillNames }
       : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-    ...(typeof args.resumedFromSliceId === "number"
+    ...(args.resumedFromSliceId !== undefined
       ? { resumedFromSliceId: args.resumedFromSliceId }
       : {}),
     ...(args.surface ? { surface: args.surface } : {}),
@@ -750,9 +733,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(turnStartSeq !== undefined ? { turnStartSeq } : {}),
       previousVersion: existingRecord?.version,
       cumulativeDurationMs:
-        toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
-        existingRecord?.cumulativeDurationMs ??
-        0,
+        args.cumulativeDurationMs ?? existingRecord?.cumulativeDurationMs ?? 0,
       ...(args.cumulativeUsage
         ? { cumulativeUsage: args.cumulativeUsage }
         : {}),
@@ -829,9 +810,7 @@ export async function recordAgentTurnSessionSummary(args: {
     state: args.state,
     updatedAtMs: nowMs,
     cumulativeDurationMs:
-      toFiniteNonNegativeNumber(args.cumulativeDurationMs) ??
-      existing?.cumulativeDurationMs ??
-      0,
+      args.cumulativeDurationMs ?? existing?.cumulativeDurationMs ?? 0,
     ...((args.cumulativeUsage ?? existing?.cumulativeUsage)
       ? { cumulativeUsage: args.cumulativeUsage ?? existing?.cumulativeUsage }
       : {}),
@@ -844,12 +823,8 @@ export async function recordAgentTurnSessionSummary(args: {
     ...((args.actor ?? existing?.actor)
       ? { actor: args.actor ?? existing?.actor }
       : {}),
-    ...(Array.isArray(args.loadedSkillNames)
-      ? {
-          loadedSkillNames: args.loadedSkillNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
+    ...(args.loadedSkillNames
+      ? { loadedSkillNames: args.loadedSkillNames }
       : existing?.loadedSkillNames
         ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),

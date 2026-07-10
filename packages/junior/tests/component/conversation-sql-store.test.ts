@@ -688,7 +688,7 @@ INSERT INTO junior_destinations (
     }
   });
 
-  it("rejects invalid serialized provider fields", async () => {
+  it("rejects legacy JSON metadata that was not migrated to foreign keys", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -716,10 +716,33 @@ INSERT INTO junior_conversations (
           "idle",
         ],
       );
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_conversations (
+  conversation_id,
+  actor_json,
+  created_at,
+  last_activity_at,
+  updated_at,
+  execution_status
+) VALUES ($1, $2::jsonb, $3, $4, $5, $6)
+`,
+        [
+          "slack:C123:legacy-actor",
+          JSON.stringify({ platform: "slack", slackUserId: "U123" }),
+          new Date(1_000).toISOString(),
+          new Date(1_000).toISOString(),
+          new Date(1_000).toISOString(),
+          "idle",
+        ],
+      );
 
       await expect(
         store.get({ conversationId: "slack:C123:invalid-json" }),
-      ).rejects.toThrow("Conversation record destination is invalid");
+      ).rejects.toThrow("Conversation legacy destination is not migrated");
+      await expect(
+        store.get({ conversationId: "slack:C123:legacy-actor" }),
+      ).rejects.toThrow("Conversation legacy actor is not migrated");
     } finally {
       await fixture.close();
     }

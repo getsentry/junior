@@ -14,8 +14,8 @@
  */
 import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import {
-  coerceThreadConversationState,
   type ConversationCompaction,
   type ConversationMessage as ThreadConversationMessage,
 } from "@/chat/state/conversation";
@@ -47,6 +47,36 @@ import {
   writeLegacyImport,
 } from "./sql/legacy-history-import";
 
+const legacyVisibleMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant", "system"]),
+  text: z.string(),
+  createdAtMs: z.number().finite(),
+  author: z.object({}).passthrough().optional(),
+  meta: z.object({}).passthrough().optional(),
+}) satisfies z.ZodType<ThreadConversationMessage>;
+
+const legacyCompactionSchema = z.object({
+  coveredMessageIds: z.array(z.string()),
+  createdAtMs: z.number().finite(),
+  id: z.string(),
+  summary: z.string(),
+}) satisfies z.ZodType<ConversationCompaction>;
+
+const legacyThreadStateSnapshotSchema = z.object({
+  conversation: z
+    .object({
+      compactions: z.array(legacyCompactionSchema).optional(),
+      messages: z.array(legacyVisibleMessageSchema).optional(),
+      stats: z
+        .object({ updatedAtMs: z.number().finite().optional() })
+        .passthrough()
+        .optional(),
+    })
+    .passthrough()
+    .optional(),
+});
+
 /** Injectable seams; production defaults resolve the process singletons. */
 export interface LegacyImportDeps {
   executor: JuniorSqlDatabase;
@@ -72,79 +102,18 @@ async function loadThreadStateSnapshot(conversationId: string): Promise<{
 }> {
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  const raw = await stateAdapter.get<Record<string, unknown>>(
-    `thread-state:${conversationId}`,
-  );
+  const raw = await stateAdapter.get<unknown>(`thread-state:${conversationId}`);
   if (!raw) {
     return { compactions: [], messages: [] };
   }
-  const conversation = raw.conversation;
-  const stats =
-    conversation && typeof conversation === "object"
-      ? (conversation as { stats?: unknown }).stats
-      : undefined;
-  const updatedAtMs =
-    stats && typeof stats === "object"
-      ? (stats as { updatedAtMs?: unknown }).updatedAtMs
-      : undefined;
+  const conversation = legacyThreadStateSnapshotSchema.parse(raw).conversation;
   return {
-    compactions: coerceThreadConversationState(raw).compactions,
-    messages: parseLegacyVisibleMessages(raw),
-    ...(typeof updatedAtMs === "number" && Number.isFinite(updatedAtMs)
-      ? { lastActivityAtMs: updatedAtMs }
+    compactions: conversation?.compactions ?? [],
+    messages: conversation?.messages ?? [],
+    ...(conversation?.stats?.updatedAtMs !== undefined
+      ? { lastActivityAtMs: conversation.stats.updatedAtMs }
       : {}),
   };
-}
-
-const LEGACY_MESSAGE_ROLES = new Set(["user", "assistant", "system"]);
-
-/**
- * Parse the legacy persisted visible-message list. The live thread-state
- * contract no longer reads or writes `conversation.messages`
- * (`coerceThreadConversationState` ignores it), so only pre-cutover Redis
- * payloads carry it; this parser exists solely for the one-time import.
- */
-function parseLegacyVisibleMessages(
-  raw: Record<string, unknown>,
-): ThreadConversationMessage[] {
-  const conversation = raw.conversation;
-  if (!conversation || typeof conversation !== "object") {
-    return [];
-  }
-  const list = (conversation as { messages?: unknown }).messages;
-  if (!Array.isArray(list)) {
-    return [];
-  }
-  const messages: ThreadConversationMessage[] = [];
-  for (const item of list) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-    const candidate = item as Record<string, unknown>;
-    if (
-      typeof candidate.id !== "string" ||
-      typeof candidate.text !== "string" ||
-      typeof candidate.role !== "string" ||
-      !LEGACY_MESSAGE_ROLES.has(candidate.role) ||
-      typeof candidate.createdAtMs !== "number" ||
-      !Number.isFinite(candidate.createdAtMs)
-    ) {
-      continue;
-    }
-    messages.push({
-      id: candidate.id,
-      role: candidate.role as ThreadConversationMessage["role"],
-      text: candidate.text,
-      createdAtMs: candidate.createdAtMs,
-      ...(candidate.author && typeof candidate.author === "object"
-        ? { author: candidate.author as ThreadConversationMessage["author"] }
-        : {}),
-      ...(candidate.meta && typeof candidate.meta === "object"
-        ? { meta: candidate.meta as ThreadConversationMessage["meta"] }
-        : {}),
-    });
-  }
-  return messages;
 }
 
 function intrinsicTimestamps(
