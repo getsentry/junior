@@ -2,9 +2,6 @@ name: CI
 
 permissions:
   contents: read
-  actions: write
-  statuses: write
-  pull-requests: read
 
 on:
   push:
@@ -25,6 +22,8 @@ jobs:
   changes:
     name: changes / detect
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       core: ${{ steps.filter.outputs.core }}
@@ -32,74 +31,22 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       evals: ${{ steps.filter.outputs.evals }}
       example: ${{ steps.filter.outputs.example }}
-      full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
+      full: ${{ steps.filter.outputs.full }}
       lint_config: ${{ steps.filter.outputs.lint_config }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            ci:
-              - ".github/workflows/**"
-              - ".github/actions/**"
-            core:
-              - "packages/junior/**"
-              - "packages/junior-plugin-api/**"
-              - "packages/junior-scheduler/**"
-              - "packages/junior-testing/**"
-              - "specs/**"
-              - "policies/**"
-            dashboard:
-              - "packages/junior-dashboard/**"
-              - "packages/junior/**"
-              - "packages/junior-plugin-api/**"
-            docs:
-              - "packages/docs/**"
-              - "README.md"
-              - "specs/**"
-              - "policies/**"
-            evals:
-              - "packages/junior-evals/**"
-            example:
-              - "apps/example/**"
-              - "packages/junior/**"
-              - "packages/junior-plugin-api/**"
-            lint_config:
-              - "ast-grep/**"
-              - "sgconfig.yml"
-            plugins:
-              - "packages/junior-agent-browser/**"
-              - "packages/junior-amplitude/**"
-              - "packages/junior-cloudflare/**"
-              - "packages/junior-datadog/**"
-              - "packages/junior-github/**"
-              - "packages/junior-hex/**"
-              - "packages/junior-linear/**"
-              - "packages/junior-maintenance/**"
-              - "packages/junior-memory/**"
-              - "packages/junior-notion/**"
-              - "packages/junior-sentry/**"
-              - "packages/junior-vercel/**"
-            repo:
-              - "package.json"
-              - "pnpm-lock.yaml"
-              - "pnpm-workspace.yaml"
-              - "tsconfig*.json"
-              - "packages/*/package.json"
-              - "apps/*/package.json"
-            release:
-              - ".craft.yml"
-              - ".github/workflows/ci.yml"
-              - ".github/workflows/release.yml"
-              - "CONTRIBUTING.md"
-              - "README.md"
-              - "scripts/bump-release-versions.mjs"
-              - "scripts/check-release-config.mjs"
-              - "packages/*/package.json"
-              - "packages/docs/**"
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/ci-paths.sh
+      - if: github.event_name == 'pull_request' && steps.filter.outputs.ci == 'true'
+        run: .github/scripts/ci-paths.test.sh
 
   release-check:
     name: check / release config
@@ -146,6 +93,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
     strategy:
       fail-fast: false
       matrix:
@@ -218,6 +170,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm

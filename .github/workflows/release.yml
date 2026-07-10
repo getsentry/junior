@@ -68,7 +68,7 @@ jobs:
           echo "new=$NEW" >> $GITHUB_OUTPUT
 
       - name: Prepare release
-        uses: getsentry/action-prepare-release@v1
+        uses: getsentry/action-prepare-release@c8e1c2009ab08259029170132c384f03c1064c0e # v1
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:

@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Score current PR
-        uses: getsentry/pr-risk-action@v0
+        uses: getsentry/pr-risk-action@f5126d7a979415ac5124b7c14919482b149382aa # v0
         with:
           repo: ${{ github.repository }}
           pr-number: ${{ github.event.pull_request.number }}
