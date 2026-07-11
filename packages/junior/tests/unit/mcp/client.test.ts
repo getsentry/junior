@@ -285,8 +285,12 @@ describe("PluginMcpClient", () => {
     await expect(client.listTools()).resolves.toHaveLength(1);
     expect(authProvider.saveMcpServerSessionId).toHaveBeenCalledWith(undefined);
     expect(transportOptions).toEqual([
-      { authProvider, sessionId: "stale-session" },
-      { authProvider },
+      {
+        authProvider,
+        fetch: expect.any(Function),
+        sessionId: "stale-session",
+      },
+      { authProvider, fetch: expect.any(Function) },
     ]);
   });
 

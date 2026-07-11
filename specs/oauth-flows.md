@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-06-12
+- Last Edited: 2026-07-10
 
 ## Related
 
@@ -91,7 +91,9 @@ User: invokes a skill that exposes MCP-backed tools
   ▼
 Agent: calls an MCP tool from the same plugin
   │
-  ├─ MCP server responds with 401 / auth challenge
+  ├─ MCP server responds with a standard 401 Bearer auth challenge
+  │    • Cloudflare Access 302/403 challenges are accepted only when they carry resource_metadata
+  │    • the transport normalizes that exact compatibility case to the SDK's 401 Bearer contract
   ├─ MCP OAuth provider persists auth session state
   ├─ Runtime privately delivers the authorization link to the requesting user
   ├─ Runtime posts a brief visible thread note that authorization is needed

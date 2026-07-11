@@ -6,8 +6,10 @@ import {
   type Source,
 } from "@sentry/junior-plugin-api";
 import {
+  configureEvalMcpAuthMock,
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
+  getCapturedEvalMcpAuthRequests,
 } from "../msw/handlers/eval-mcp-auth";
 import {
   getCapturedSlackApiCalls,
@@ -220,6 +222,7 @@ describe("mcp oauth callback slack integration", () => {
   });
 
   it("finalizes MCP OAuth and resumes the stored thread with persisted context", async () => {
+    configureEvalMcpAuthMock({ challenge: "cloudflare-access" });
     const threadId = "slack:C123:1700000000.001";
     const sessionId = "turn_user-1";
     const storedSource = createSlackSource({
@@ -497,6 +500,52 @@ describe("mcp oauth callback slack integration", () => {
         }),
       ]),
     );
+
+    expect(getCapturedEvalMcpAuthRequests()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          authenticated: false,
+          kind: "mcp",
+          method: "POST",
+        }),
+        expect.objectContaining({
+          kind: "cloudflare-resource-metadata",
+          method: "GET",
+        }),
+      ]),
+    );
+    expect(
+      getCapturedEvalMcpAuthRequests().some(
+        (request) => request.kind === "cloudflare-login",
+      ),
+    ).toBe(false);
+  });
+
+  it("starts MCP OAuth from a Cloudflare Access 403 challenge", async () => {
+    configureEvalMcpAuthMock({
+      challenge: "cloudflare-access",
+      cloudflareStatus: 403,
+    });
+    const authProvider = await createPendingAuthSession({
+      conversationId: "conversation-cloudflare-403",
+      sessionId: "turn-cloudflare-403",
+      userMessage: "list the budget",
+      channelId: "C123",
+      threadTs: "1700000000.403",
+    });
+
+    await expect(
+      mcpAuthStoreModule.getMcpAuthSession(authProvider.authSessionId),
+    ).resolves.toMatchObject({
+      authorizationUrl: expect.stringContaining(
+        "https://eval-auth.example.test/oauth/authorize",
+      ),
+    });
+    expect(
+      getCapturedEvalMcpAuthRequests().some(
+        (request) => request.kind === "cloudflare-login",
+      ),
+    ).toBe(false);
   });
 
   it("fails MCP OAuth resume when stored actor team mismatches destination", async () => {

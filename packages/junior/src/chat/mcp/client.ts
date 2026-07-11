@@ -9,6 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { setSpanAttributes } from "@/chat/logging";
 import type { PluginDefinition } from "@/chat/plugins/types";
+import { createMcpTransportFetch } from "./transport-fetch";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 type ToolCallResult = Awaited<ReturnType<Client["callTool"]>>;
@@ -179,9 +180,10 @@ export class PluginMcpClient {
 
     const sessionId = await this.getStoredTransportSessionId();
     this.lastAttemptedTransportSessionId = sessionId;
-    const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
+    const serverUrl = new URL(mcp.url);
+    const transport = new StreamableHTTPClientTransport(serverUrl, {
       ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
-      ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
+      fetch: createMcpTransportFetch(serverUrl, this.options.fetch),
       ...(this.options.authProvider
         ? { authProvider: this.options.authProvider }
         : {}),

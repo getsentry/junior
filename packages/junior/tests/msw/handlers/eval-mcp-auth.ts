@@ -7,13 +7,47 @@ export const EVAL_MCP_SERVER_URL = `${EVAL_MCP_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_NO_AUTH_ORIGIN = "https://eval-mcp.example.test";
 const EVAL_MCP_NO_AUTH_SERVER_URL = `${EVAL_MCP_NO_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-protected-resource/mcp`;
+const EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/cloudflare-access-protected-resource/mcp`;
+const EVAL_MCP_CLOUDFLARE_LOGIN_URL = `${EVAL_MCP_AUTH_ORIGIN}/cdn-cgi/access/login`;
 export const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/authorize`;
 const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
 const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
 
+type EvalMcpAuthChallenge = "bearer" | "cloudflare-access";
+
+interface EvalMcpAuthRequest {
+  authenticated: boolean;
+  kind: "cloudflare-login" | "cloudflare-resource-metadata" | "mcp";
+  method: string;
+}
+
+let challenge: EvalMcpAuthChallenge = "bearer";
+let cloudflareStatus: 302 | 403 = 302;
+const capturedRequests: EvalMcpAuthRequest[] = [];
+
+function captureRequest(
+  kind: EvalMcpAuthRequest["kind"],
+  request: Request,
+): void {
+  capturedRequests.push({
+    authenticated: request.headers.has("authorization"),
+    kind,
+    method: request.method,
+  });
+}
+
 function unauthorizedResponse() {
+  if (challenge === "cloudflare-access") {
+    return new HttpResponse(null, {
+      status: cloudflareStatus,
+      headers: {
+        location: EVAL_MCP_CLOUDFLARE_LOGIN_URL,
+        "WWW-Authenticate": `Cloudflare-Access resource_metadata="${EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL}", scope="mcp:read"`,
+      },
+    });
+  }
   return new HttpResponse(null, {
     status: 401,
     headers: {
@@ -35,7 +69,26 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
   );
 }
 
-export function resetEvalMcpAuthMockState(): void {}
+/** Enables adversarial protected-resource challenges in OAuth integration tests. */
+export function configureEvalMcpAuthMock(options: {
+  challenge: EvalMcpAuthChallenge;
+  cloudflareStatus?: 302 | 403;
+}): void {
+  challenge = options.challenge;
+  cloudflareStatus = options.cloudflareStatus ?? 302;
+}
+
+/** Exposes a secret-free outbox for asserting the external OAuth request flow. */
+export function getCapturedEvalMcpAuthRequests(): EvalMcpAuthRequest[] {
+  return capturedRequests.map((request) => ({ ...request }));
+}
+
+/** Isolates OAuth integration tests that share the stateful protocol fixture. */
+export function resetEvalMcpAuthMockState(): void {
+  challenge = "bearer";
+  cloudflareStatus = 302;
+  capturedRequests.length = 0;
+}
 
 export const evalMcpAuthHandlers = [
   http.get(
@@ -204,6 +257,7 @@ export const evalMcpAuthHandlers = [
     async () => new HttpResponse(null, { status: 405 }),
   ),
   http.post(EVAL_MCP_SERVER_URL, async ({ request }) => {
+    captureRequest("mcp", request);
     const authorization = request.headers.get("authorization");
     if (authorization !== `Bearer ${EVAL_MCP_ACCESS_TOKEN}`) {
       return unauthorizedResponse();
@@ -318,6 +372,21 @@ export const evalMcpAuthHandlers = [
       scopes_supported: ["mcp:read"],
     }),
   ),
+  http.get(EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL, async ({ request }) => {
+    captureRequest("cloudflare-resource-metadata", request);
+    return HttpResponse.json({
+      resource: EVAL_MCP_SERVER_URL,
+      authorization_servers: [EVAL_MCP_AUTH_ORIGIN],
+      scopes_supported: ["mcp:read"],
+    });
+  }),
+  http.get(EVAL_MCP_CLOUDFLARE_LOGIN_URL, async ({ request }) => {
+    captureRequest("cloudflare-login", request);
+    return new HttpResponse("Cloudflare Access login", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
+  }),
   http.get(
     `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-authorization-server`,
     async () =>
