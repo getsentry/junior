@@ -367,7 +367,9 @@ Postgres advisory lock encloses each table's journal lookup, legacy adoption,
 and Drizzle migration application. Existing installations adopt the generated
 core baseline only when all expected legacy core migrations are recorded with
 checksums. Partial legacy state fails `junior upgrade` explicitly instead of
-skipping baseline DDL.
+skipping baseline DDL. The conversation backfill aggregates retained turn
+summaries into absolute per-conversation metrics and writes them only while the
+SQL metric columns are empty, so later SQL writes remain authoritative.
 
 Schema migrations must be expand-only because the old deployment can continue
 serving traffic while Vercel builds and promotes the new deployment:
@@ -432,8 +434,9 @@ transcript/session keys and advisor session keys become dead and expire naturall
   fails according to the SQL executor. Runtime request handlers must not run
   migrations concurrently.
 - If the bulk import fails partway through, already imported conversations remain
-  valid. The next `junior upgrade` run repeats the bounded import and skips
-  conversations that already have rows.
+  valid. The next `junior upgrade` repeats idempotent metadata upserts and fills
+  retained aggregate metrics only where the SQL totals are still empty. Later
+  SQL metric writes remain authoritative.
 - SQL is now the transcript authority. If SQL is unavailable when a worker must
   append messages or agent steps, the write fails loudly and execution fails —
   there is no Redis fallback for history. The worker follows the standard

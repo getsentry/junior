@@ -652,8 +652,16 @@ export class SqlStore implements ConversationStore {
       });
   }
 
-  /** Copy one conversation record into SQL during backfill. */
-  async backfillConversation(sourceConversation: Conversation): Promise<void> {
+  /** Copy one conversation record and retained metrics into SQL during backfill. */
+  async backfillConversation(
+    sourceConversation: Conversation,
+    metrics?: {
+      durationMs: number;
+      executionDurationMs: number;
+      executionUsage?: AgentTurnUsage;
+      usage?: AgentTurnUsage;
+    },
+  ): Promise<void> {
     // Backfilled records are not live source signals: never let them confirm
     // destination visibility.
     const { visibility: _visibility, ...conversation } = sourceConversation;
@@ -698,6 +706,31 @@ export class SqlStore implements ConversationStore {
             }
           : conversation;
         await this.upsertConversation({ conversation: mergedConversation });
+        if (metrics) {
+          await this.executor
+            .db()
+            .update(juniorConversations)
+            .set({
+              durationMs: metrics.durationMs,
+              usage: metrics.usage ?? null,
+              ...(refreshExecutionFromSource
+                ? {
+                    executionDurationMs: metrics.executionDurationMs,
+                    executionUsage: metrics.executionUsage ?? null,
+                  }
+                : {}),
+            })
+            .where(
+              and(
+                eq(
+                  juniorConversations.conversationId,
+                  conversation.conversationId,
+                ),
+                eq(juniorConversations.durationMs, 0),
+                isNull(juniorConversations.usage),
+              ),
+            );
+        }
       },
     );
   }

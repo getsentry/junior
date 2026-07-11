@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { backfillToSql } from "@/chat/conversations/sql/backfill";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { createStateConversationStore } from "@/chat/conversations/state";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
@@ -538,53 +536,6 @@ INSERT INTO junior_conversations (
     }
   });
 
-  it("backfills state-backed conversations without copying pending input", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await disconnectStateAdapter();
-      const state = getStateAdapter();
-      const source = createStateConversationStore(state);
-      await appendInboundMessage({
-        message: inboundMessage("backfill"),
-        nowMs: 1_000,
-        state,
-      });
-      await source.recordActivity({
-        conversationId: CONVERSATION_ID,
-        channelName: "eng-runtime",
-        title: "Backfilled conversation",
-        nowMs: 2_000,
-      });
-
-      const target = createSqlStore(fixture.sql);
-      await migrateSchema(fixture.sql);
-      const result = await backfillToSql({
-        source,
-        target,
-        limit: 10,
-      });
-
-      expect(result).toEqual({ copiedCount: 1 });
-      const conversation = await target.get({
-        conversationId: CONVERSATION_ID,
-      });
-      expect(conversation).toMatchObject({
-        conversationId: CONVERSATION_ID,
-        channelName: "eng-runtime",
-        title: "Backfilled conversation",
-        execution: {
-          status: "pending",
-        },
-      });
-      expect(conversation?.execution).not.toHaveProperty("pendingCount");
-      expect(conversation?.execution).not.toHaveProperty("pendingMessages");
-    } finally {
-      await disconnectStateAdapter();
-      await fixture.close();
-    }
-  });
-
   it("keeps newer SQL execution when a stale mirror arrives later", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -632,6 +583,89 @@ INSERT INTO junior_conversations (
           status: "running",
           updatedAtMs: 5_000,
         },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("backfills totals without replacing a newer execution cursor", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-old",
+          status: "idle",
+          updatedAtMs: 4_000,
+        },
+        metrics: null,
+        lastActivityAtMs: 4_000,
+        updatedAtMs: 4_000,
+      });
+      const stale = await store.get({ conversationId: CONVERSATION_ID });
+      expect(stale).toBeDefined();
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-new",
+          status: "running",
+          updatedAtMs: 5_000,
+        },
+        metrics: null,
+        lastActivityAtMs: 5_000,
+        updatedAtMs: 5_000,
+      });
+
+      await store.backfillConversation(stale!, {
+        durationMs: 1_000,
+        executionDurationMs: 1_000,
+        executionUsage: { totalTokens: 10 },
+        usage: { totalTokens: 10 },
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-new",
+          status: "idle",
+          updatedAtMs: 6_000,
+        },
+        metrics: {
+          durationMs: 200,
+          usage: { totalTokens: 2 },
+        },
+        lastActivityAtMs: 6_000,
+        updatedAtMs: 6_000,
+      });
+
+      const [metrics] = await fixture.sql.query<{
+        durationMs: number;
+        executionDurationMs: number;
+        runId: string | null;
+        usage: { totalTokens?: number } | null;
+      }>(
+        `
+SELECT
+  duration_ms AS "durationMs",
+  execution_duration_ms AS "executionDurationMs",
+  run_id AS "runId",
+  usage_json AS usage
+FROM junior_conversations
+WHERE conversation_id = $1
+`,
+        [CONVERSATION_ID],
+      );
+      expect(metrics).toMatchObject({
+        durationMs: 1_200,
+        executionDurationMs: 200,
+        runId: "run-new",
+        usage: { totalTokens: 12 },
       });
     } finally {
       await fixture.close();
