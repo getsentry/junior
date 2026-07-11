@@ -5,12 +5,12 @@ prev: false
 title: "createJuniorReporting"
 ---
 
-> **createJuniorReporting**(): [`JuniorReporting`](/reference/api/interfaces/juniorreporting/) & `object`
+> **createJuniorReporting**(): [`JuniorReporting`](/reference/api/interfaces/juniorreporting/)
 
-Defined in: [junior/src/reporting.ts:162](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L162)
+Defined in: [junior/src/reporting.ts:104](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting.ts#L104)
 
 Create the read-only reporting boundary used by plugins and other consumers.
 
 ## Returns
 
-[`JuniorReporting`](/reference/api/interfaces/juniorreporting/) & `object`
+[`JuniorReporting`](/reference/api/interfaces/juniorreporting/)

@@ -1,11 +1,5 @@
 import type { ConversationSummaryReport, ConversationSurface } from "./types";
 
-/** Parse an ISO report timestamp without leaking invalid numbers downstream. */
-export function reportTime(value: string): number | undefined {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : undefined;
-}
-
 /** Format a Slack destination without exposing private channel names. */
 export function slackStatsLocationLabel(
   input: Pick<
@@ -36,15 +30,4 @@ export function surfaceFallbackLabel(surface: ConversationSurface): string {
   if (surface === "api") return "API";
   if (surface === "internal") return "Internal";
   return "Conversation";
-}
-
-/** Select the most recently seen run independent of input ordering. */
-export function newestRun(
-  runs: ConversationSummaryReport[],
-): ConversationSummaryReport {
-  return [...runs].sort(
-    (left, right) =>
-      (reportTime(right.lastSeenAt) ?? 0) -
-        (reportTime(left.lastSeenAt) ?? 0) || right.id.localeCompare(left.id),
-  )[0]!;
 }

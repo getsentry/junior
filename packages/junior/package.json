@@ -40,6 +40,18 @@
       "types": "./dist/api/conversations/stats.d.ts",
       "default": "./dist/api/conversations/stats.js"
     },
+    "./api/conversations/list": {
+      "types": "./dist/api/conversations/list.d.ts",
+      "default": "./dist/api/conversations/list.js"
+    },
+    "./api/conversations/detail": {
+      "types": "./dist/api/conversations/detail.d.ts",
+      "default": "./dist/api/conversations/detail.js"
+    },
+    "./api/conversations/subagent": {
+      "types": "./dist/api/conversations/subagent.d.ts",
+      "default": "./dist/api/conversations/subagent.js"
+    },
     "./reporting": {
       "types": "./dist/reporting.d.ts",
       "default": "./dist/reporting.js"

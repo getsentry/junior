@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
+import { readConversationDetail } from "@/api/conversations/detail";
 
 const { agentMode, counters, sessionLogState } = vi.hoisted(() => ({
   agentMode: {
@@ -349,7 +350,6 @@ import { getAwaitingAgentContinueRequest } from "@/chat/services/agent-continue"
 import { persistCompletedSessionRecord } from "@/chat/services/turn-session-record";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/state/turn-session";
-import { createJuniorReporting } from "@/reporting";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -599,10 +599,8 @@ describe("executeAgentRun provider retry", () => {
     expect(serializedMessages).toContain("help me");
     expect(serializedMessages).toContain("actually do the other thing");
 
-    const report = await createJuniorReporting().getConversation(
-      "slack:C123:1712345.0001",
-    );
-    const transcript = report.runs[0]?.transcript ?? [];
+    const report = await readConversationDetail("slack:C123:1712345.0001");
+    const transcript = report?.runs[0]?.transcript ?? [];
     expect(JSON.stringify(transcript)).toContain("previous question");
     expect(transcript).toHaveLength(5);
     expect(transcript[2]).toMatchObject({

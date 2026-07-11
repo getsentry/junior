@@ -25,18 +25,23 @@ describe("people profile API", () => {
           active: 0,
           activeDays: 2,
           conversations: 2,
+          durationMs: 1_500,
           failed: 1,
-          runs: 2,
+          tokens: 150,
         },
         locations: [
           expect.objectContaining({
             conversations: 1,
+            durationMs: 1_000,
             label: "#proj-alpha",
+            tokens: 100,
           }),
           expect.objectContaining({
             conversations: 1,
+            durationMs: 500,
             failed: 1,
             label: "Private Conversation",
+            tokens: 50,
           }),
         ],
       });
@@ -45,7 +50,9 @@ describe("people profile API", () => {
         report.activityDays.find((day) => day.date === "2026-06-12"),
       ).toMatchObject({
         conversations: 1,
+        durationMs: 500,
         failed: 1,
+        tokens: 50,
       });
       expect(
         report.recentConversations.map((item) => item.conversationId),

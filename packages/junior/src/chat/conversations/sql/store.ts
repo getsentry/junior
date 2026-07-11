@@ -20,6 +20,7 @@ import {
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
+import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
@@ -396,6 +397,66 @@ function mergeActor(
   };
 }
 
+function tokenTotal(usage: AgentTurnUsage | undefined): number {
+  if (!usage) return 0;
+  if (usage.totalTokens !== undefined) return usage.totalTokens;
+  return (
+    (usage.inputTokens ?? 0) +
+    (usage.outputTokens ?? 0) +
+    (usage.cachedInputTokens ?? 0) +
+    (usage.cacheCreationTokens ?? 0)
+  );
+}
+
+function updateConversationUsage(args: {
+  current: AgentTurnUsage | undefined;
+  previousExecution: AgentTurnUsage | undefined;
+  nextExecution: AgentTurnUsage;
+}): AgentTurnUsage {
+  const usage: AgentTurnUsage = {
+    totalTokens:
+      tokenTotal(args.current) -
+      tokenTotal(args.previousExecution) +
+      tokenTotal(args.nextExecution),
+  };
+  if (
+    args.current?.reasoningTokens !== undefined ||
+    args.previousExecution?.reasoningTokens !== undefined ||
+    args.nextExecution.reasoningTokens !== undefined
+  ) {
+    usage.reasoningTokens =
+      (args.current?.reasoningTokens ?? 0) -
+      (args.previousExecution?.reasoningTokens ?? 0) +
+      (args.nextExecution.reasoningTokens ?? 0);
+  }
+  const costFields = [
+    "input",
+    "output",
+    "cacheRead",
+    "cacheWrite",
+    "total",
+  ] as const satisfies ReadonlyArray<keyof AgentTurnCost>;
+  const cost: AgentTurnCost = {};
+  for (const field of costFields) {
+    if (
+      args.current?.cost?.[field] === undefined &&
+      args.previousExecution?.cost?.[field] === undefined &&
+      args.nextExecution.cost?.[field] === undefined
+    ) {
+      continue;
+    }
+    cost[field] =
+      Math.round(
+        ((args.current?.cost?.[field] ?? 0) -
+          (args.previousExecution?.cost?.[field] ?? 0) +
+          (args.nextExecution.cost?.[field] ?? 0)) *
+          1e12,
+      ) / 1e12;
+  }
+  if (Object.keys(cost).length > 0) usage.cost = cost;
+  return usage;
+}
+
 export class SqlStore implements ConversationStore {
   private schemaReady: Promise<void> | undefined;
 
@@ -492,6 +553,10 @@ export class SqlStore implements ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
+    metrics: {
+      durationMs: number;
+      usage?: AgentTurnUsage;
+    } | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;
@@ -499,6 +564,21 @@ export class SqlStore implements ConversationStore {
     visibility?: ConversationPrivacy;
   }): Promise<void> {
     await this.withConversationMutation(args.conversationId, async () => {
+      const existingRow = await this.readConversationRow(args.conversationId);
+      const existing = existingRow
+        ? conversationFromRow(existingRow)
+        : undefined;
+      const incomingExecutionAt =
+        args.execution.updatedAtMs ?? args.updatedAtMs;
+      const existingExecutionAt =
+        existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
+      const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
+      const sameRun =
+        Boolean(existing?.execution.runId) &&
+        existing?.execution.runId === args.execution.runId;
+      const execution = incomingIsFresh
+        ? args.execution
+        : (existing?.execution ?? args.execution);
       await this.upsertConversation({
         conversation: {
           schemaVersion: 1,
@@ -512,9 +592,45 @@ export class SqlStore implements ConversationStore {
           ...(args.source ? { source: args.source } : {}),
           ...(args.title ? { title: args.title } : {}),
           ...(args.visibility ? { visibility: args.visibility } : {}),
-          execution: args.execution,
+          execution,
         },
       });
+      if (incomingIsFresh && args.metrics) {
+        const row = existingRow?.conversation;
+        const usage = args.metrics.usage
+          ? updateConversationUsage({
+              current: row?.usage ?? undefined,
+              previousExecution: sameRun
+                ? (row?.executionUsage ?? undefined)
+                : undefined,
+              nextExecution: args.metrics.usage,
+            })
+          : (row?.usage ?? undefined);
+        await this.executor
+          .db()
+          .update(juniorConversations)
+          .set({
+            durationMs:
+              (row?.durationMs ?? 0) -
+              (sameRun ? (row?.executionDurationMs ?? 0) : 0) +
+              args.metrics.durationMs,
+            usage: usage ?? null,
+            executionDurationMs: args.metrics.durationMs,
+            executionUsage:
+              args.metrics.usage ??
+              (sameRun ? (row?.executionUsage ?? null) : null),
+          })
+          .where(eq(juniorConversations.conversationId, args.conversationId));
+      } else if (incomingIsFresh && !sameRun) {
+        await this.executor
+          .db()
+          .update(juniorConversations)
+          .set({
+            executionDurationMs: 0,
+            executionUsage: null,
+          })
+          .where(eq(juniorConversations.conversationId, args.conversationId));
+      }
     });
   }
 

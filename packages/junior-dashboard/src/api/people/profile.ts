@@ -1,5 +1,3 @@
-import { readPeopleProfile } from "@sentry/junior/api/people/profile";
-
 /** Serve the dashboard person profile endpoint from the SQL-backed people API. */
 export async function peopleProfileResponse(email: string): Promise<Response> {
   if (!email.trim()) {
@@ -7,6 +5,8 @@ export async function peopleProfileResponse(email: string): Promise<Response> {
   }
 
   try {
+    const { readPeopleProfile } =
+      await import("@sentry/junior/api/people/profile");
     return Response.json(await readPeopleProfile(email));
   } catch (error) {
     console.error("Failed to load person profile", error);

@@ -1,50 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { getPluginOperationalReports } from "@/chat/plugins/agent-hooks";
-import { discoverSkills } from "@/chat/skills";
-import { homeDir } from "@/chat/discovery";
-import { GET as healthGET } from "@/handlers/health";
 import type { PluginOperationalReport } from "@sentry/junior-plugin-api";
-import { getConversationStore } from "@/chat/db";
-import {
-  readConversationFeed,
-  readConversationReport,
-  readConversationSubagentTranscriptReport,
-  readConversationStatsReport,
-  listRecentConversationSummaries,
-  type ConversationFeed,
-  type PluginConversationSummary,
-  type ConversationReport,
-  type ConversationSubagentTranscriptReport,
-  type ConversationStatsReport,
-} from "./reporting/conversations";
 
 export type {
   PluginConversationStatus,
   PluginConversations,
   PluginConversationSummary,
-  ConversationActivityReport,
-  ConversationActivityStatus,
-  ConversationCost,
-  ConversationFeed,
-  ConversationReport,
-  ConversationReportStatus,
-  ConversationRunReport,
-  ConversationSubagentActivityReport,
-  ConversationSubagentTranscriptReport,
-  ConversationStatsItem,
-  ConversationStatsReport,
-  ConversationSummaryReport,
-  ConversationSurface,
-  ConversationToolActivityReport,
-  ConversationUsage,
-  ActorIdentity,
-  TranscriptMessage,
-  TranscriptPart,
-  TranscriptPartType,
-  TranscriptRole,
-} from "./reporting/conversations";
+} from "@sentry/junior-plugin-api";
 
 export interface HealthReport {
   status: "ok";
@@ -102,39 +64,13 @@ export interface JuniorReporting {
   getPlugins(): Promise<PluginReport[]>;
   /** Read discovered skill names for reporting consumers. */
   getSkills(): Promise<SkillReport[]>;
-  /** List recent conversation summaries for reporting consumers. */
-  listConversations(): Promise<ConversationFeed>;
-  /** Read aggregate conversation stats for reporting consumers. */
-  getConversationStats?(): Promise<ConversationStatsReport>;
-  /** Read recent conversation summaries without transcript payloads. */
-  listRecentConversations?(options?: {
-    limit?: number;
-  }): Promise<PluginConversationSummary[]>;
   /** Read sanitized operational summaries contributed by plugins. */
-  getPluginOperationalReports?(): Promise<PluginOperationalReportFeed>;
-  /**
-   * Read one conversation transcript for reporting consumers.
-   *
-   * Transcript messages and activity steps come from SQL (`junior_agent_steps`
-   * / `junior_conversation_messages`); the API should stay compatible with a
-   * future Sentry trace-history source, so avoid fields that require store
-   * internals.
-   */
-  getConversation(conversationId: string): Promise<ConversationReport>;
-  /** Load a child-agent transcript only when an operator opens that subagent. */
-  getConversationSubagentTranscript(
-    conversationId: string,
-    runId: string,
-    subagentId: string,
-  ): Promise<ConversationSubagentTranscriptReport>;
+  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
 }
 
-function readDescriptionText(): string | undefined {
+function readDescriptionText(home: string): string | undefined {
   try {
-    const raw = readFileSync(
-      path.join(homeDir(), "DESCRIPTION.md"),
-      "utf8",
-    ).trim();
+    const raw = readFileSync(path.join(home, "DESCRIPTION.md"), "utf8").trim();
     return raw || undefined;
   } catch {
     return undefined;
@@ -142,11 +78,13 @@ function readDescriptionText(): string | undefined {
 }
 
 async function readHealth(): Promise<HealthReport> {
+  const { GET: healthGET } = await import("@/handlers/health");
   const res = healthGET();
   return (await res.json()) as HealthReport;
 }
 
 async function readSkills(): Promise<SkillReport[]> {
+  const { discoverSkills } = await import("@/chat/skills");
   const skills = await discoverSkills();
   return skills.map((skill) => ({
     name: skill.name,
@@ -155,37 +93,36 @@ async function readSkills(): Promise<SkillReport[]> {
 }
 
 async function readPlugins(): Promise<PluginReport[]> {
+  const { pluginCatalogRuntime } =
+    await import("@/chat/plugins/catalog-runtime");
   return pluginCatalogRuntime.getProviders().map((plugin) => ({
     name: plugin.manifest.name,
   }));
 }
 
 /** Create the read-only reporting boundary used by plugins and other consumers. */
-export function createJuniorReporting(): JuniorReporting & {
-  getConversationStats(): Promise<ConversationStatsReport>;
-  listRecentConversations(options?: {
-    limit?: number;
-  }): Promise<PluginConversationSummary[]>;
-  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
-} {
-  const conversationStore = getConversationStore();
-  const listRecent = (listOptions?: { limit?: number }) =>
-    listRecentConversationSummaries({
-      ...listOptions,
-      conversationStore,
-    });
+export function createJuniorReporting(): JuniorReporting {
+  const listRecent = async (listOptions?: { limit?: number }) => {
+    const { listRecentConversationSummaries } =
+      await import("./reporting/plugin-conversations");
+    return listRecentConversationSummaries(listOptions?.limit);
+  };
   return {
     getHealth: readHealth,
     async getRuntimeInfo() {
-      const [plugins, skills] = await Promise.all([
-        readPlugins(),
-        readSkills(),
-      ]);
+      const [{ homeDir }, { pluginCatalogRuntime }, plugins, skills] =
+        await Promise.all([
+          import("@/chat/discovery"),
+          import("@/chat/plugins/catalog-runtime"),
+          readPlugins(),
+          readSkills(),
+        ]);
+      const home = homeDir();
 
       return {
         cwd: process.cwd(),
-        homeDir: homeDir(),
-        descriptionText: readDescriptionText(),
+        homeDir: home,
+        descriptionText: readDescriptionText(home),
         providers: plugins.map((plugin) => plugin.name),
         skills,
         packagedContent: pluginCatalogRuntime.getPackageContent(),
@@ -193,12 +130,10 @@ export function createJuniorReporting(): JuniorReporting & {
     },
     getPlugins: readPlugins,
     getSkills: readSkills,
-    listConversations: () => readConversationFeed({ conversationStore }),
-    getConversationStats: () =>
-      readConversationStatsReport({ conversationStore }),
-    listRecentConversations: listRecent,
     getPluginOperationalReports: async () => {
       const nowMs = Date.now();
+      const { getPluginOperationalReports } =
+        await import("@/chat/plugins/agent-hooks");
       return {
         source: "plugins",
         generatedAt: new Date(nowMs).toISOString(),
@@ -207,13 +142,5 @@ export function createJuniorReporting(): JuniorReporting & {
         }),
       };
     },
-    getConversation: (conversationId) =>
-      readConversationReport(conversationId, { conversationStore }),
-    getConversationSubagentTranscript: (conversationId, runId, subagentId) =>
-      readConversationSubagentTranscriptReport(
-        conversationId,
-        runId,
-        subagentId,
-      ),
   };
 }

@@ -36,7 +36,6 @@ export function SubagentTranscriptDrawer(props: {
     props.target
       ? {
           conversationId: props.target.conversationId,
-          runId: props.target.turn.id,
           subagentId: props.target.part.id,
         }
       : undefined,

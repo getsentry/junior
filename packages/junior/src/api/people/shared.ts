@@ -160,9 +160,9 @@ export function summaryFromRow(
     row.destinationVisibility !== "public";
   return {
     conversationId: row.conversationId,
-    cumulativeDurationMs: 0,
+    cumulativeDurationMs: row.durationMs,
     displayTitle: titleFromRow(row, surface),
-    id: row.runId ?? row.conversationId,
+    id: row.conversationId,
     lastProgressAt: new Date(
       row.executionUpdatedAt ?? row.updatedAt,
     ).toISOString(),
@@ -182,6 +182,22 @@ export function summaryFromRow(
   };
 }
 
+/** Collapse stored conversation usage into the dashboard token total. */
+export function usageTokens(row: PeopleConversationRow): number | undefined {
+  const usage = row.usage;
+  if (!usage) return undefined;
+  if (usage.totalTokens !== undefined) return usage.totalTokens;
+  const values = [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationTokens,
+  ].filter((value): value is number => value !== undefined);
+  return values.length > 0
+    ? values.reduce((sum, value) => sum + value, 0)
+    : undefined;
+}
+
 /** Build a zeroed totals object for people API aggregations. */
 export function emptyTotals(): ActorTotalsReport {
   return {
@@ -191,7 +207,6 @@ export function emptyTotals(): ActorTotalsReport {
     durationMs: 0,
     failed: 0,
     hung: 0,
-    runs: 0,
   };
 }
 
@@ -204,7 +219,6 @@ export function emptyStatsItem(label: string): ConversationStatsItem {
     failed: 0,
     hung: 0,
     label,
-    runs: 0,
   };
 }
 
@@ -217,7 +231,6 @@ export function emptyActivityDay(date: string): ActorActivityDayReport {
     durationMs: 0,
     failed: 0,
     hung: 0,
-    runs: 0,
   };
 }
 
@@ -300,7 +313,6 @@ export function statsItems(map: Map<string, ConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
-      right.runs - left.runs ||
       right.durationMs - left.durationMs ||
       left.label.localeCompare(right.label),
   );
@@ -318,6 +330,7 @@ export async function actorRows(
       conversationId: juniorConversations.conversationId,
       createdAt: juniorConversations.createdAt,
       destinationVisibility: juniorDestinations.visibility,
+      durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,
       executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
@@ -325,10 +338,10 @@ export async function actorRows(
       handle: juniorIdentities.handle,
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: juniorIdentities.providerSubjectId,
-      runId: juniorConversations.runId,
       source: juniorConversations.source,
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
+      usage: juniorConversations.usage,
     })
     .from(juniorConversations)
     .innerJoin(

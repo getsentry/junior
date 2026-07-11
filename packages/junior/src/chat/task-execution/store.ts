@@ -102,6 +102,7 @@ async function recordExecutionMetadata(args: {
       updatedAtMs: conversation.execution.updatedAtMs,
     },
     lastActivityAtMs: conversation.lastActivityAtMs,
+    metrics: null,
     actor: conversation.actor,
     source: conversation.source,
     title: conversation.title,

@@ -75,6 +75,7 @@ describe("dashboard token formatting", () => {
 
   it("sums turn runtime", () => {
     expect(formatDurationTotal([1_000, 2_500])).toBe("3.5s");
+    expect(formatDurationTotal([0])).toBe("");
   });
 
   it("rounds long chart duration ticks to whole minutes", () => {

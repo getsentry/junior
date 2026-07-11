@@ -2,7 +2,7 @@ import type {
   TranscriptMessage,
   TranscriptPart,
   TranscriptRole,
-} from "@sentry/junior/reporting";
+} from "@sentry/junior/api/conversations/detail";
 
 export type MockTextPartOptions = {
   bytes?: number;

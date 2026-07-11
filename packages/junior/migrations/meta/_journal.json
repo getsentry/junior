@@ -8,6 +8,13 @@
       "when": 1783631415804,
       "tag": "0000_overconfident_exodus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783744639799,
+      "tag": "0006_conversation_metrics",
+      "breakpoints": true
     }
   ]
 }

@@ -4,29 +4,20 @@ import {
   resolveSlackConversationContextFromThreadId,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import type { Actor, StoredSlackActor } from "@/chat/actor";
-import type { AgentTurnSessionSummary } from "@/chat/state/turn-session";
+import type { StoredSlackActor } from "@/chat/actor";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
 } from "@/chat/conversations/store";
-import { conversationStore, type ConversationReaderOptions } from "./context";
-import {
-  newestRun,
-  slackStatsLocationLabel,
-  surfaceFallbackLabel,
-} from "./shared";
+import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
 import type {
   ActorIdentity,
-  ConversationFeed,
   ConversationReportStatus,
   ConversationSummaryReport,
   ConversationSurface,
-  PluginConversationSummary,
 } from "./types";
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
-const CONVERSATION_FEED_LIMIT = 50;
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -62,23 +53,9 @@ function surfaceFromSource(
 }
 
 function actorIdentityReport(
-  actor: Actor | StoredSlackActor | undefined,
+  actor: StoredSlackActor | undefined,
 ): ActorIdentity | undefined {
   if (!actor) return undefined;
-  if ("name" in actor) {
-    return { fullName: actor.name };
-  }
-  if ("userId" in actor) {
-    const identity: ActorIdentity = {
-      ...(actor.email !== undefined ? { email: actor.email } : {}),
-      ...(actor.fullName !== undefined ? { fullName: actor.fullName } : {}),
-      ...(actor.platform === "slack" ? { slackUserId: actor.userId } : {}),
-      ...(actor.platform === "slack" && actor.userName !== undefined
-        ? { slackUserName: actor.userName }
-        : {}),
-    };
-    return Object.keys(identity).length > 0 ? identity : undefined;
-  }
   const identity: ActorIdentity = {
     ...(actor.email !== undefined ? { email: actor.email } : {}),
     ...(actor.fullName !== undefined ? { fullName: actor.fullName } : {}),
@@ -94,12 +71,8 @@ function actorIdentityReport(
 
 function statusFromConversation(
   conversation: StoredConversation,
-  fallback: ConversationReportStatus | undefined,
   nowMs: number,
 ): ConversationReportStatus {
-  if (fallback) {
-    return fallback;
-  }
   if (conversation.execution.status === "idle") {
     return "completed";
   }
@@ -208,7 +181,7 @@ export function sessionReportFromConversation(
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation, undefined, nowMs),
+    status: statusFromConversation(conversation, nowMs),
     surface,
     ...(actorIdentity ? { actorIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
@@ -216,141 +189,3 @@ export function sessionReportFromConversation(
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
   };
 }
-
-function statusFromTurnSummary(
-  summary: AgentTurnSessionSummary,
-  nowMs: number,
-): ConversationReportStatus {
-  if (
-    summary.state === "running" &&
-    nowMs - summary.lastProgressAtMs > HUNG_TURN_PROGRESS_MS
-  ) {
-    return "hung";
-  }
-  if (summary.state === "running" || summary.state === "awaiting_resume") {
-    return "active";
-  }
-  if (summary.state === "abandoned") {
-    return "superseded";
-  }
-  return summary.state;
-}
-
-/** Enrich a durable conversation projection with one complete turn summary. */
-export function sessionReportFromTurnSummary(
-  conversation: StoredConversation,
-  summary: AgentTurnSessionSummary,
-  nowMs: number,
-): ConversationSummaryReport {
-  const base = sessionReportFromConversation(conversation, nowMs);
-  if (summary.actor !== undefined) {
-    const actorIdentity = actorIdentityReport(summary.actor);
-    if (actorIdentity) {
-      base.actorIdentity = actorIdentity;
-    } else {
-      delete base.actorIdentity;
-    }
-  }
-  return {
-    ...base,
-    cumulativeDurationMs: summary.cumulativeDurationMs,
-    ...(summary.cumulativeUsage
-      ? { cumulativeUsage: summary.cumulativeUsage }
-      : {}),
-    id: summary.sessionId,
-    lastProgressAt: new Date(summary.lastProgressAtMs).toISOString(),
-    lastSeenAt: new Date(summary.updatedAtMs).toISOString(),
-    startedAt: new Date(summary.startedAtMs).toISOString(),
-    status: statusFromTurnSummary(summary, nowMs),
-    surface: summary.surface ?? base.surface,
-    ...(summary.state === "completed"
-      ? { completedAt: new Date(summary.updatedAtMs).toISOString() }
-      : {}),
-    ...(summary.traceId ? { traceId: summary.traceId } : {}),
-  };
-}
-
-async function reportsFromConversations(args: {
-  conversations: StoredConversation[];
-  nowMs: number;
-}): Promise<Map<string, ConversationSummaryReport[]>> {
-  const reports = new Map<string, ConversationSummaryReport[]>();
-  for (const conversation of args.conversations) {
-    reports.set(conversation.conversationId, [
-      sessionReportFromConversation(conversation, args.nowMs),
-    ]);
-  }
-  return reports;
-}
-
-/** Read the recent conversation feed for reporting consumers. */
-export async function readConversationFeed(
-  options: ConversationReaderOptions = {},
-): Promise<ConversationFeed> {
-  const store = conversationStore(options);
-  const nowMs = Date.now();
-  const conversations = await store.listByActivity({
-    limit: CONVERSATION_FEED_LIMIT,
-  });
-  const reportsByConversation = await reportsFromConversations({
-    conversations,
-    nowMs,
-  });
-  return {
-    source: "conversation_index",
-    generatedAt: new Date(nowMs).toISOString(),
-    conversations: conversations.map((conversation) =>
-      newestRun(
-        reportsByConversation.get(conversation.conversationId) ?? [
-          sessionReportFromConversation(conversation, nowMs),
-        ],
-      ),
-    ),
-  };
-}
-
-/** List recent conversation summaries for plugin operational reports. */
-export async function listRecentConversationSummaries(
-  options: {
-    limit?: number;
-  } & ConversationReaderOptions = {},
-): Promise<PluginConversationSummary[]> {
-  const store = conversationStore(options);
-  const nowMs = Date.now();
-  const limit = Math.max(0, Math.min(100, Math.floor(options.limit ?? 25)));
-  const conversations = await store.listByActivity({
-    limit,
-  });
-  const reportsByConversation = await reportsFromConversations({
-    conversations,
-    nowMs,
-  });
-  return conversations.map((conversation) => {
-    const surface = surfaceFromSource(
-      conversation.source,
-      conversation.conversationId,
-    );
-    const channelName = channelNameFromConversation(conversation);
-    const channelNameRedacted =
-      channelNameRedactedFromConversation(conversation);
-    const report = newestRun(
-      reportsByConversation.get(conversation.conversationId) ?? [
-        sessionReportFromConversation(conversation, nowMs),
-      ],
-    );
-    return {
-      conversationId: conversation.conversationId,
-      displayTitle: titleFromConversation({ conversation, surface }),
-      lastActivityAt: new Date(conversation.lastActivityAtMs).toISOString(),
-      lastUpdatedAt: new Date(
-        conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
-      ).toISOString(),
-      status: report.status,
-      ...(channelName ? { channelName } : {}),
-      ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
-      ...(conversation.source ? { source: conversation.source } : {}),
-    };
-  });
-}
-
-/** Build the current run's reportable content from the current context epoch. */

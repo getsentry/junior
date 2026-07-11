@@ -43,62 +43,11 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [];
     },
-    async listConversations() {
-      return {
-        conversations: [],
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        source: "conversation_index",
-      };
-    },
-    async getConversationStats() {
-      return {
-        active: 0,
-        conversations: 0,
-        durationMs: 0,
-        failed: 0,
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        hung: 0,
-        locations: [],
-        actors: [],
-        runs: 0,
-        sampleLimit: 0,
-        sampleSize: 0,
-        source: "conversation_index",
-        truncated: false,
-        windowEnd: "2026-06-12T00:00:00.000Z",
-        windowStart: "2026-06-05T00:00:00.000Z",
-      };
-    },
     async getPluginOperationalReports() {
       return {
         generatedAt: "2026-06-12T00:00:00.000Z",
         reports: [],
         source: "plugins",
-      };
-    },
-    async getConversation(conversationId) {
-      return {
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        id: conversationId,
-        runs: [],
-        transcript: [],
-        transcriptAvailable: true,
-      };
-    },
-    async getConversationSubagentTranscript(
-      _conversationId,
-      _runId,
-      subagentId,
-    ) {
-      return {
-        type: "subagent",
-        createdAt: "2026-06-12T00:00:00.000Z",
-        id: subagentId,
-        status: "error",
-        subagentKind: "unknown",
-        transcript: [],
-        transcriptAvailable: false,
-        unavailableReason: "not_found",
       };
     },
   };
@@ -193,6 +142,7 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(
     page.getByLabel("conversations by duration over the last 7 days"),
   ).toBeVisible();
+  await expect(page.getByText("0ms runtime")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
 

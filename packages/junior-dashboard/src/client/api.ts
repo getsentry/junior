@@ -94,7 +94,6 @@ function emptyConversationStatsReport(): ConversationStatsReport {
     sampleSize: 0,
     source: "conversation_index",
     truncated: false,
-    runs: 0,
     windowEnd: new Date(nowMs).toISOString(),
     windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
   };
@@ -239,7 +238,6 @@ export function useConversationSubagentTranscriptData(
   params:
     | {
         conversationId: string;
-        runId: string;
         subagentId: string;
       }
     | undefined,
@@ -249,7 +247,6 @@ export function useConversationSubagentTranscriptData(
     queryKey: [
       "conversation-subagent",
       params?.conversationId,
-      params?.runId,
       params?.subagentId,
     ],
     queryFn: async (): Promise<ConversationSubagentTranscript> => {
@@ -257,9 +254,7 @@ export function useConversationSubagentTranscriptData(
       return await read<ConversationSubagentTranscript>(
         `/api/conversations/${encodeURIComponent(
           active.conversationId,
-        )}/runs/${encodeURIComponent(active.runId)}/subagents/${encodeURIComponent(
-          active.subagentId,
-        )}`,
+        )}/subagents/${encodeURIComponent(active.subagentId)}`,
       );
     },
     retry: false,

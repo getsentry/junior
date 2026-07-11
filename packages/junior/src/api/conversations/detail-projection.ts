@@ -4,6 +4,7 @@ import type {
   ConversationMessageStore,
 } from "@/chat/conversations/messages";
 import type { AgentStepStore } from "@/chat/conversations/history";
+import type { Conversation } from "@/chat/conversations/store";
 import { loadProjection, projectSteps } from "@/chat/conversations/projection";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -11,8 +12,6 @@ import {
   buildSentryConversationUrl,
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
-import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
-import { conversationStore, type ConversationReaderOptions } from "./context";
 import {
   buildConversationActivityFromSteps,
   subagentActivityFromSteps,
@@ -20,7 +19,7 @@ import {
   type SubagentStartedStep,
 } from "./activity";
 import { surfaceFallbackLabel } from "./shared";
-import { sessionReportFromConversation } from "./summaries";
+import { sessionReportFromConversation } from "./projection";
 import {
   countConversationMessages,
   normalizeTranscriptMessage,
@@ -72,26 +71,18 @@ function visibleMessageTranscript(
   };
 }
 
-/** Read one conversation transcript for reporting consumers. */
-export async function readConversationReport(
-  conversationId: string,
-  options: ConversationReaderOptions = {},
-): Promise<ConversationReport> {
-  const store = conversationStore(options);
+/** Build one conversation REST detail from durable SQL records. */
+export async function buildConversationDetail(args: {
+  conversation: Conversation;
+  durationMs: number;
+  usage: ConversationRunReport["cumulativeUsage"];
+}): Promise<ConversationReport> {
+  const { conversation } = args;
+  const conversationId = conversation.conversationId;
   const nowMs = Date.now();
-  const conversation = await store.get({ conversationId });
-  const turnSummaries = conversation
-    ? await listAgentTurnSessionSummariesForConversation(conversationId)
-    : [];
-  const currentTurnSummary = conversation
-    ? turnSummaries.find(
-        (summary) => summary.sessionId === conversation.execution.runId,
-      )
-    : undefined;
-
   const stepStore = getAgentStepStore();
-  const messageStore = options.messageStore ?? getConversationMessageStore();
-  const transcriptPurgedAtMs = conversation?.transcriptPurgedAtMs;
+  const messageStore = getConversationMessageStore();
+  const transcriptPurgedAtMs = conversation.transcriptPurgedAtMs;
   const transcriptExpiredAt =
     transcriptPurgedAtMs !== undefined
       ? new Date(transcriptPurgedAtMs).toISOString()
@@ -100,14 +91,12 @@ export async function readConversationReport(
   // The activity timeline is the current run's, derived from the current
   // context epoch's durable steps; older epochs stay audit-only. Purged
   // conversations have no steps to read.
-  const canExposeSqlContent =
-    conversation !== undefined &&
-    canExposeConversationPayload({
-      conversationId,
-      visibility: conversation.visibility,
-    });
+  const canExposeSqlContent = canExposeConversationPayload({
+    conversationId,
+    visibility: conversation.visibility,
+  });
   const currentContent =
-    conversation && transcriptPurgedAtMs === undefined
+    transcriptPurgedAtMs === undefined
       ? await currentRunContent({
           conversationId,
           messageStore,
@@ -121,60 +110,44 @@ export async function readConversationReport(
     ? traceIdFromTranscript(currentTranscript)
     : undefined;
   const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
-  const effectiveRuns: ConversationRunReport[] = conversation
-    ? [
-        {
-          ...sessionReportFromConversation(conversation, nowMs),
-          ...(currentTurnSummary
-            ? {
-                cumulativeDurationMs: currentTurnSummary.cumulativeDurationMs,
-                ...(currentTurnSummary.cumulativeUsage
-                  ? { cumulativeUsage: currentTurnSummary.cumulativeUsage }
-                  : {}),
-              }
-            : {}),
-          ...(currentTurnSummary?.modelId
-            ? { modelId: currentTurnSummary.modelId }
-            : {}),
-          ...(currentTurnSummary?.reasoningLevel
-            ? { reasoningLevel: currentTurnSummary.reasoningLevel }
-            : {}),
-          ...(traceId ? { traceId } : {}),
-          ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
-          activity: currentContent.activity,
-          transcriptAvailable:
-            transcriptExpiredAt === undefined &&
-            canExposeSqlContent &&
-            currentTranscript.length > 0,
-          ...(currentTranscript.length > 0
-            ? {
-                transcriptMessageCount:
-                  countConversationMessages(currentTranscript),
-              }
-            : {}),
-          ...(!canExposeSqlContent && transcriptExpiredAt === undefined
-            ? {
-                transcriptMetadata: currentTranscript.map(
-                  redactTranscriptMessage,
-                ),
-                transcriptRedacted: true,
-                transcriptRedactionReason: "non_public_conversation" as const,
-              }
-            : {}),
-          ...(transcriptExpiredAt !== undefined
-            ? {
-                transcriptExpired: true,
-                transcriptExpiredAt,
-                transcriptMetadata: [],
-              }
-            : {}),
-          transcript:
-            transcriptExpiredAt === undefined && canExposeSqlContent
-              ? currentTranscript
-              : [],
-        },
-      ]
-    : [];
+  const effectiveRuns: ConversationRunReport[] = [
+    {
+      ...sessionReportFromConversation(conversation, nowMs),
+      cumulativeDurationMs: args.durationMs,
+      ...(args.usage ? { cumulativeUsage: args.usage } : {}),
+      ...(traceId ? { traceId } : {}),
+      ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
+      activity: currentContent.activity,
+      transcriptAvailable:
+        transcriptExpiredAt === undefined &&
+        canExposeSqlContent &&
+        currentTranscript.length > 0,
+      ...(currentTranscript.length > 0
+        ? {
+            transcriptMessageCount:
+              countConversationMessages(currentTranscript),
+          }
+        : {}),
+      ...(!canExposeSqlContent && transcriptExpiredAt === undefined
+        ? {
+            transcriptMetadata: currentTranscript.map(redactTranscriptMessage),
+            transcriptRedacted: true,
+            transcriptRedactionReason: "non_public_conversation" as const,
+          }
+        : {}),
+      ...(transcriptExpiredAt !== undefined
+        ? {
+            transcriptExpired: true,
+            transcriptExpiredAt,
+            transcriptMetadata: [],
+          }
+        : {}),
+      transcript:
+        transcriptExpiredAt === undefined && canExposeSqlContent
+          ? currentTranscript
+          : [],
+    },
+  ];
 
   const firstRun = effectiveRuns[0];
   const displayTitle =
@@ -191,19 +164,14 @@ export async function readConversationReport(
   };
 }
 
-/** Read one child-agent transcript through its parent conversation. */
-export async function readConversationSubagentTranscriptReport(
-  conversationId: string,
-  _runId: string,
+/** Build one child-agent REST detail from durable SQL history. */
+export async function buildConversationSubagent(
+  conversation: Conversation,
   subagentId: string,
-  options: ConversationReaderOptions = {},
 ): Promise<ConversationSubagentTranscriptReport> {
-  const store = conversationStore(options);
+  const conversationId = conversation.conversationId;
   const stepStore = getAgentStepStore();
-  const [conversation, parentSteps] = await Promise.all([
-    store.get({ conversationId }),
-    stepStore.loadHistory(conversationId),
-  ]);
+  const parentSteps = await stepStore.loadHistory(conversationId);
 
   // Retention purge deletes the parent tree's steps wholesale; present the
   // subagent as expired rather than "not found" (data-redaction-policy.md).

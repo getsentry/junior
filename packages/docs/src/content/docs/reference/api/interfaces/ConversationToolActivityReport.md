@@ -5,11 +5,7 @@ prev: false
 title: "ConversationToolActivityReport"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:221](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L221)
-
-## Extends
-
-- `ActivityPayloadMetadata`
+Defined in: junior/src/api/conversations/types.ts:129
 
 ## Properties
 
@@ -17,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:221](https://github.com/getse
 
 > `optional` **args?**: `unknown`
 
-Defined in: [junior/src/reporting/conversations.ts:223](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L223)
+Defined in: junior/src/api/conversations/types.ts:131
 
 ---
 
@@ -25,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:223](https://github.com/getse
 
 > **createdAt**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:224](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L224)
+Defined in: junior/src/api/conversations/types.ts:132
 
 ---
 
@@ -33,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:224](https://github.com/getse
 
 > **id**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:225](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L225)
+Defined in: junior/src/api/conversations/types.ts:133
 
 ---
 
@@ -41,11 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:225](https://github.com/getse
 
 > `optional` **inputKeys?**: `string`[]
 
-Defined in: [junior/src/reporting/conversations.ts:203](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L203)
-
-#### Inherited from
-
-`ActivityPayloadMetadata.inputKeys`
+Defined in: junior/src/api/conversations/types.ts:134
 
 ---
 
@@ -53,11 +45,7 @@ Defined in: [junior/src/reporting/conversations.ts:203](https://github.com/getse
 
 > `optional` **inputSizeBytes?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:204](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L204)
-
-#### Inherited from
-
-`ActivityPayloadMetadata.inputSizeBytes`
+Defined in: junior/src/api/conversations/types.ts:135
 
 ---
 
@@ -65,11 +53,7 @@ Defined in: [junior/src/reporting/conversations.ts:204](https://github.com/getse
 
 > `optional` **inputSizeChars?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:205](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L205)
-
-#### Inherited from
-
-`ActivityPayloadMetadata.inputSizeChars`
+Defined in: junior/src/api/conversations/types.ts:136
 
 ---
 
@@ -77,11 +61,7 @@ Defined in: [junior/src/reporting/conversations.ts:205](https://github.com/getse
 
 > `optional` **inputType?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:206](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L206)
-
-#### Inherited from
-
-`ActivityPayloadMetadata.inputType`
+Defined in: junior/src/api/conversations/types.ts:137
 
 ---
 
@@ -89,7 +69,7 @@ Defined in: [junior/src/reporting/conversations.ts:206](https://github.com/getse
 
 > `optional` **redacted?**: `boolean`
 
-Defined in: [junior/src/reporting/conversations.ts:226](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L226)
+Defined in: junior/src/api/conversations/types.ts:138
 
 ---
 
@@ -97,7 +77,7 @@ Defined in: [junior/src/reporting/conversations.ts:226](https://github.com/getse
 
 > **status**: [`ConversationActivityStatus`](/reference/api/type-aliases/conversationactivitystatus/)
 
-Defined in: [junior/src/reporting/conversations.ts:227](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L227)
+Defined in: junior/src/api/conversations/types.ts:139
 
 ---
 
@@ -105,7 +85,7 @@ Defined in: [junior/src/reporting/conversations.ts:227](https://github.com/getse
 
 > **subagents**: [`ConversationSubagentActivityReport`](/reference/api/interfaces/conversationsubagentactivityreport/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:228](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L228)
+Defined in: junior/src/api/conversations/types.ts:140
 
 ---
 
@@ -113,7 +93,7 @@ Defined in: [junior/src/reporting/conversations.ts:228](https://github.com/getse
 
 > **toolCallId**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:229](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L229)
+Defined in: junior/src/api/conversations/types.ts:141
 
 ---
 
@@ -121,7 +101,7 @@ Defined in: [junior/src/reporting/conversations.ts:229](https://github.com/getse
 
 > **toolName**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:230](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L230)
+Defined in: junior/src/api/conversations/types.ts:142
 
 ---
 
@@ -129,4 +109,4 @@ Defined in: [junior/src/reporting/conversations.ts:230](https://github.com/getse
 
 > **type**: `"tool_execution"`
 
-Defined in: [junior/src/reporting/conversations.ts:222](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L222)
+Defined in: junior/src/api/conversations/types.ts:130

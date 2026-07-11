@@ -11,7 +11,6 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import {
   juniorConversations,
@@ -20,10 +19,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import {
-  listRecentConversationSummaries,
-  readConversationFeed,
-} from "@/reporting/conversations";
+import { readConversationFeedFromSql } from "@/api/conversations/list.query";
 import {
   CONVERSATION_ID,
   conversationQueueMessage,
@@ -811,6 +807,7 @@ INSERT INTO junior_conversations (
           status: "running",
           updatedAtMs: 5_000,
         },
+        metrics: null,
         lastActivityAtMs: 5_000,
         title: "Fresh execution",
         updatedAtMs: 5_000,
@@ -823,6 +820,7 @@ INSERT INTO junior_conversations (
           status: "idle",
           updatedAtMs: 4_000,
         },
+        metrics: null,
         lastActivityAtMs: 6_000,
         title: "Stale execution",
         updatedAtMs: 4_000,
@@ -862,6 +860,7 @@ INSERT INTO junior_conversations (
           status: "running",
           updatedAtMs: 5_000,
         },
+        metrics: null,
         lastActivityAtMs: 5_000,
         updatedAtMs: 5_000,
       });
@@ -873,6 +872,7 @@ INSERT INTO junior_conversations (
           status: "failed",
           updatedAtMs: 6_000,
         },
+        metrics: null,
         lastActivityAtMs: 6_000,
         updatedAtMs: 6_000,
       });
@@ -911,6 +911,7 @@ INSERT INTO junior_conversations (
           status: "running",
           updatedAtMs: 6_000,
         },
+        metrics: null,
         lastActivityAtMs: 6_000,
         updatedAtMs: 6_000,
       });
@@ -939,21 +940,21 @@ INSERT INTO junior_conversations (
         createdAtMs: 1_000,
         destination: inboundMessage("summary-target").destination,
         execution: { status: "failed", updatedAtMs: 1_200 },
+        metrics: null,
         lastActivityAtMs: 1_200,
         updatedAtMs: 1_200,
       });
 
       await expect(
-        listRecentConversationSummaries({
-          limit: 1,
-          conversationStore: store,
-        }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          conversationId: CONVERSATION_ID,
-          status: "failed",
-        }),
-      ]);
+        readConversationFeedFromSql(fixture.sql.db(), 1),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: CONVERSATION_ID,
+            status: "failed",
+          }),
+        ],
+      });
     } finally {
       await disconnectStateAdapter();
       await fixture.close();
@@ -973,21 +974,21 @@ INSERT INTO junior_conversations (
         createdAtMs: 1_000,
         destination: inboundMessage("active-target").destination,
         execution: { status: "running", updatedAtMs: 1_500 },
+        metrics: null,
         lastActivityAtMs: 1_500,
         updatedAtMs: 1_500,
       });
 
       await expect(
-        listRecentConversationSummaries({
-          limit: 1,
-          conversationStore: store,
-        }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          conversationId: CONVERSATION_ID,
-          status: "active",
-        }),
-      ]);
+        readConversationFeedFromSql(fixture.sql.db(), 1),
+      ).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: CONVERSATION_ID,
+            status: "active",
+          }),
+        ],
+      });
     } finally {
       vi.useRealTimers();
       await disconnectStateAdapter();
@@ -1012,69 +1013,18 @@ INSERT INTO junior_conversations (
           status: "idle",
           updatedAtMs: 2_000,
         },
+        metrics: null,
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
       });
       await expect(
-        listRecentConversationSummaries({
-          limit: 1,
-          conversationStore: store,
-        }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          conversationId: CONVERSATION_ID,
-          status: "completed",
-        }),
-      ]);
-    } finally {
-      vi.useRealTimers();
-      await disconnectStateAdapter();
-      await fixture.close();
-    }
-  });
-
-  it("keeps fresh SQL progress over stale turn-session state", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      vi.useFakeTimers({ now: 600_000 });
-      await disconnectStateAdapter();
-      const store = createSqlStore(fixture.sql);
-      await store.migrate();
-      await store.recordExecution({
-        conversationId: CONVERSATION_ID,
-        createdAtMs: 1_000,
-        destination: inboundMessage("hung-target").destination,
-        execution: {
-          runId: "run-hung",
-          status: "running",
-          updatedAtMs: 600_000,
-        },
-        lastActivityAtMs: 600_000,
-        updatedAtMs: 600_000,
-      });
-      await upsertAgentTurnSessionRecord({
-        conversationStore: store,
-        conversationId: CONVERSATION_ID,
-        destination: inboundMessage("hung-target").destination,
-        lastProgressAtMs: 1_000,
-        piMessages: [],
-        sessionId: "turn-hung",
-        sliceId: 1,
-        state: "running",
-        surface: "slack",
-      });
-
-      await expect(
-        readConversationFeed({ conversationStore: store }),
+        readConversationFeedFromSql(fixture.sql.db(), 1),
       ).resolves.toMatchObject({
         conversations: [
-          {
+          expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            lastProgressAt: new Date(600_000).toISOString(),
-            lastSeenAt: new Date(600_000).toISOString(),
-            status: "active",
-          },
+            status: "completed",
+          }),
         ],
       });
     } finally {

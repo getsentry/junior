@@ -59,8 +59,9 @@ Plugin tables may join the same shared database through the package migration
 contract in `./plugin-database.md`.
 
 - `junior_conversations` is the authority for title, channel, source,
-  destination, actor, activity, and execution metadata. Redis has no parallel
-  conversation-details record.
+  destination, actor, activity, execution metadata, and cumulative conversation
+  runtime/token usage. Redis has no parallel conversation-details or dashboard
+  metrics record.
 
 - `junior_conversation_messages` is the authority for visible conversation
   messages. The `conversation.messages` mirror in Redis `thread-state:<id>` is

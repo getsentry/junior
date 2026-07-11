@@ -1,16 +1,19 @@
 import type {
-  ConversationReport as DashboardConversationReport,
   ConversationStatsItem as DashboardConversationStatsItem,
   ConversationStatsReport as DashboardConversationStatsReport,
-  ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscriptReport,
+} from "@sentry/junior/api/conversations/stats";
+import type {
   ActorIdentity as DashboardActorIdentity,
   ConversationFeed as DashboardConversationFeed,
   ConversationSummaryReport as DashboardConversationSummary,
   ConversationUsage as DashboardRunUsage,
+} from "@sentry/junior/api/conversations/list";
+import type {
+  ConversationReport as DashboardConversationReport,
   TranscriptMessage as DashboardTranscriptMessage,
   ConversationRunReport as DashboardRunReport,
-  JuniorReporting,
-} from "@sentry/junior/reporting";
+} from "@sentry/junior/api/conversations/detail";
+import type { ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscriptReport } from "@sentry/junior/api/conversations/subagent";
 
 import { longReleaseConversation } from "./mock-release-conversation";
 import {
@@ -1131,31 +1134,6 @@ function mockConversationFeed(nowMs: number): DashboardConversationFeed {
   };
 }
 
-function mergeConversationFeeds(
-  mockFeed: DashboardConversationFeed,
-  realFeed: DashboardConversationFeed,
-): DashboardConversationFeed {
-  const mockSummaryKeys = new Set(
-    mockFeed.conversations.map(
-      (conversation) => `${conversation.conversationId}:${conversation.id}`,
-    ),
-  );
-
-  return {
-    source: realFeed.source,
-    generatedAt: realFeed.generatedAt,
-    conversations: [
-      ...mockFeed.conversations,
-      ...realFeed.conversations.filter(
-        (conversation) =>
-          !mockSummaryKeys.has(
-            `${conversation.conversationId}:${conversation.id}`,
-          ),
-      ),
-    ],
-  };
-}
-
 function conversationStatsReportFromSummaries(
   nowMs: number,
   summaries: DashboardConversationSummary[],
@@ -1197,7 +1175,6 @@ function conversationStatsReportFromSummaries(
         actorContributions.map((contribution) => contribution.run),
       );
       item.conversations += 1;
-      item.runs += actorContributions.length;
       item.durationMs += contributionDurationTotal(actorContributions);
       item.active += actorSignals.active ? 1 : 0;
       item.failed += actorSignals.failed ? 1 : 0;
@@ -1210,7 +1187,6 @@ function conversationStatsReportFromSummaries(
     const location = locationLabel(newestRun(runs));
     const locationItem = locations.get(location) ?? emptyStatsItem(location);
     locationItem.conversations += 1;
-    locationItem.runs += runs.length;
     locationItem.durationMs += contributionDurationTotal(contributions);
     locationItem.active += signals.active ? 1 : 0;
     locationItem.failed += signals.failed ? 1 : 0;
@@ -1235,10 +1211,15 @@ function conversationStatsReportFromSummaries(
     ...(costUsd !== undefined ? { costUsd } : {}),
     ...(tokens !== undefined ? { tokens } : {}),
     truncated: false,
-    runs: conversations.reduce((sum, runs) => sum + runs.length, 0),
     windowEnd: iso(nowMs),
     windowStart: iso(nowMs, -7 * 24 * 60 * 60 * 1000),
   };
+}
+
+/** Build mock dashboard stats from the explicit mock conversation feed. */
+export function readMockConversationStats(): DashboardConversationStatsReport {
+  const feed = mockConversationFeed(Date.now());
+  return conversationStatsReportFromSummaries(Date.now(), feed.conversations);
 }
 
 type RunContribution = {
@@ -1437,7 +1418,6 @@ function emptyStatsItem(label: string): DashboardConversationStatsItem {
     failed: 0,
     hung: 0,
     label,
-    runs: 0,
   };
 }
 
@@ -1471,7 +1451,6 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
-      right.runs - left.runs ||
       right.durationMs - left.durationMs ||
       left.label.localeCompare(right.label),
   );
@@ -1484,86 +1463,24 @@ function surfaceLabel(turn: DashboardConversationSummary): string {
   return "Conversation";
 }
 
-function isLocalPersistenceUnavailable(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.includes(
-      "REDIS_URL is required for durable Slack thread state",
-    )
-  );
+/** Return the explicit visual-QA conversation feed. */
+export function readMockConversationFeed(): DashboardConversationFeed {
+  return mockConversationFeed(Date.now());
 }
 
-/** Layer visual-QA conversation fixtures over a real read-only reporting source. */
-export function createMockConversationReporting(
-  reporting: JuniorReporting,
-): JuniorReporting {
-  const overlay: JuniorReporting = {
-    getHealth: reporting.getHealth,
-    getRuntimeInfo: reporting.getRuntimeInfo,
-    getPlugins: reporting.getPlugins,
-    getSkills: reporting.getSkills,
-    listRecentConversations: reporting.listRecentConversations,
-    async listConversations() {
-      const mockFeed = mockConversationFeed(Date.now());
-      try {
-        return mergeConversationFeeds(
-          mockFeed,
-          await reporting.listConversations(),
-        );
-      } catch (error) {
-        if (!isLocalPersistenceUnavailable(error)) {
-          throw error;
-        }
-        return mockFeed;
-      }
-    },
-    async getConversationStats() {
-      const nowMs = Date.now();
-      const mockFeed = mockConversationFeed(nowMs);
-      try {
-        const mergedFeed = mergeConversationFeeds(
-          mockFeed,
-          await reporting.listConversations(),
-        );
-        return conversationStatsReportFromSummaries(
-          nowMs,
-          mergedFeed.conversations,
-        );
-      } catch (error) {
-        if (!isLocalPersistenceUnavailable(error)) {
-          throw error;
-        }
-        return conversationStatsReportFromSummaries(
-          nowMs,
-          mockFeed.conversations,
-        );
-      }
-    },
-    async getConversation(conversationId: string) {
-      const conversation = mockConversationMap(Date.now()).get(conversationId);
-      if (conversation) {
-        return conversation;
-      }
-      return reporting.getConversation(conversationId);
-    },
-    async getConversationSubagentTranscript(
-      conversationId: string,
-      _runId: string,
-      subagentId: string,
-    ) {
-      if (conversationId === DASHBOARD_QA_CONVERSATION_ID) {
-        const transcript = dashboardQaAdvisorTranscript(Date.now(), subagentId);
-        if (transcript) return transcript;
-      }
-      return reporting.getConversationSubagentTranscript(
-        conversationId,
-        _runId,
-        subagentId,
-      );
-    },
-  };
-  if (reporting.getPluginOperationalReports) {
-    overlay.getPluginOperationalReports = reporting.getPluginOperationalReports;
-  }
-  return overlay;
+/** Return one explicit visual-QA conversation detail fixture. */
+export function readMockConversationDetail(
+  conversationId: string,
+): DashboardConversationReport | undefined {
+  return mockConversationMap(Date.now()).get(conversationId);
+}
+
+/** Return one explicit visual-QA subagent transcript fixture. */
+export function readMockConversationSubagent(
+  conversationId: string,
+  subagentId: string,
+): DashboardConversationSubagentTranscriptReport | undefined {
+  return conversationId === DASHBOARD_QA_CONVERSATION_ID
+    ? dashboardQaAdvisorTranscript(Date.now(), subagentId)
+    : undefined;
 }

@@ -70,7 +70,6 @@ function dashboardData(
       sampleSize: 0,
       source: "conversation_index",
       truncated: false,
-      runs: 0,
       windowEnd: "2026-01-01T00:00:00.000Z",
       windowStart: "2025-12-25T00:00:00.000Z",
     },
@@ -236,12 +235,7 @@ describe("dashboard telemetry components", () => {
       },
     } satisfies SubagentTranscriptTarget;
     client.setQueryData(
-      [
-        "conversation-subagent",
-        "parent-conversation",
-        "turn-1",
-        "advisor-call",
-      ],
+      ["conversation-subagent", "parent-conversation", "advisor-call"],
       {
         type: "subagent",
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -330,7 +324,6 @@ describe("dashboard telemetry components", () => {
           durationMs: 0,
           failed: 0,
           hung: 0,
-          runs: 0,
         },
         {
           active: 0,
@@ -339,7 +332,6 @@ describe("dashboard telemetry components", () => {
           durationMs: 1_200,
           failed: 0,
           hung: 0,
-          runs: 2,
         },
       ],
       generatedAt: "2026-01-02T00:00:00.000Z",
@@ -351,7 +343,6 @@ describe("dashboard telemetry components", () => {
           failed: 0,
           hung: 0,
           label: "#proj-alpha",
-          runs: 2,
         },
       ],
       recentConversations: [
@@ -387,7 +378,6 @@ describe("dashboard telemetry components", () => {
           failed: 0,
           hung: 0,
           label: "Conversation",
-          runs: 2,
         },
       ],
       totals: {
@@ -397,7 +387,6 @@ describe("dashboard telemetry components", () => {
         durationMs: 1_200,
         failed: 0,
         hung: 0,
-        runs: 2,
       },
       truncated: false,
       windowEnd: "2026-01-02T00:00:00.000Z",
@@ -1025,7 +1014,6 @@ describe("dashboard telemetry components", () => {
           failed: 0,
           hung: 0,
           label: "#proj-alpha",
-          runs: 1,
         },
       ],
       actors: [
@@ -1036,14 +1024,12 @@ describe("dashboard telemetry components", () => {
           failed: 1,
           hung: 0,
           label: "Avery",
-          runs: 2,
         },
       ],
       sampleLimit: 2,
       sampleSize: 2,
       source: "conversation_index",
       truncated: false,
-      runs: 2,
       windowEnd: "2026-01-05T00:00:00.000Z",
       windowStart: "2025-12-29T00:00:00.000Z",
     };

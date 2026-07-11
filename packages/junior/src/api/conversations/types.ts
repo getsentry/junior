@@ -1,15 +1,3 @@
-import type {
-  PluginConversationStatus,
-  PluginConversations,
-  PluginConversationSummary,
-} from "@sentry/junior-plugin-api";
-
-export type {
-  PluginConversationStatus,
-  PluginConversations,
-  PluginConversationSummary,
-};
-
 export type ConversationReportStatus =
   | "active"
   | "completed"
@@ -220,7 +208,6 @@ export interface ConversationStatsItem {
   failed: number;
   hung: number;
   label: string;
-  runs: number;
   costUsd?: number;
   tokens?: number;
 }
@@ -240,7 +227,6 @@ export interface ConversationStatsReport {
   costUsd?: number;
   tokens?: number;
   truncated: boolean;
-  runs: number;
   windowEnd: string;
   windowStart: string;
 }

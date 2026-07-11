@@ -80,6 +80,9 @@ export default defineConfig({
   external: [
     "@sentry/junior",
     "@sentry/junior/api/conversations/stats",
+    "@sentry/junior/api/conversations/list",
+    "@sentry/junior/api/conversations/detail",
+    "@sentry/junior/api/conversations/subagent",
     "@sentry/junior/api/people/list",
     "@sentry/junior/api/people/profile",
     "@sentry/junior/instrumentation",

@@ -1,13 +1,15 @@
 import type {
-  ConversationActivityReport,
-  ConversationReport,
   ConversationReportStatus,
-  ConversationRunReport,
   ConversationSurface,
   ConversationUsage,
   ActorIdentity,
+} from "@sentry/junior/api/conversations/list";
+import type {
+  ConversationActivityReport,
+  ConversationReport,
+  ConversationRunReport,
   TranscriptMessage,
-} from "@sentry/junior/reporting";
+} from "@sentry/junior/api/conversations/detail";
 
 import { mockIso } from "./time";
 import { mockTranscriptMessage } from "./transcript";

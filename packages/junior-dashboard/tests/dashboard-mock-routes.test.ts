@@ -1,13 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscript,
-  JuniorReporting,
-} from "@sentry/junior/reporting";
+import type { JuniorReporting } from "@sentry/junior/reporting";
+import type { ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscript } from "@sentry/junior/api/conversations/subagent";
 import { createDashboardApp } from "../src/app";
-import {
-  createMockConversationReporting,
-  DASHBOARD_QA_CONVERSATION_ID,
-} from "../src/mock-conversations";
+import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-conversations";
 
 function reporting(): JuniorReporting {
   return {
@@ -40,92 +35,11 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [{ name: "triage", pluginProvider: "github" }];
     },
-    async listConversations() {
-      return {
-        source: "conversation_index",
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        conversations: [
-          {
-            conversationId: "slack:C1:123",
-            cumulativeDurationMs: 0,
-            id: "turn-1",
-            status: "active",
-            startedAt: "2026-05-29T00:00:00.000Z",
-            lastSeenAt: "2026-05-29T00:00:01.000Z",
-            lastProgressAt: "2026-05-29T00:00:01.000Z",
-            surface: "slack",
-            displayTitle: "Conversation",
-            channel: "C1",
-          },
-        ],
-      };
-    },
-    async getConversationStats() {
-      return {
-        active: 1,
-        conversations: 1,
-        durationMs: 0,
-        failed: 0,
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        hung: 0,
-        locations: [],
-        actors: [],
-        sampleLimit: 1,
-        sampleSize: 1,
-        source: "conversation_index",
-        truncated: false,
-        runs: 1,
-        windowEnd: "2026-05-29T00:00:00.000Z",
-        windowStart: "2026-05-22T00:00:00.000Z",
-      };
-    },
-    async listRecentConversations() {
-      return [];
-    },
     async getPluginOperationalReports() {
       return {
         source: "plugins",
         generatedAt: "2026-05-29T00:00:00.000Z",
         reports: [],
-      };
-    },
-    async getConversation(conversationId: string) {
-      return {
-        conversationId,
-        displayTitle: "Conversation",
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        runs: [
-          {
-            conversationId,
-            cumulativeDurationMs: 0,
-            id: "turn-1",
-            status: "active",
-            startedAt: "2026-05-29T00:00:00.000Z",
-            lastSeenAt: "2026-05-29T00:00:01.000Z",
-            lastProgressAt: "2026-05-29T00:00:01.000Z",
-            surface: "slack",
-            displayTitle: "Conversation",
-            channel: "C1",
-            transcriptAvailable: true,
-            transcript: [],
-          },
-        ],
-      };
-    },
-    async getConversationSubagentTranscript(
-      _conversationId,
-      _runId,
-      subagentId,
-    ) {
-      return {
-        type: "subagent",
-        createdAt: "2026-05-29T00:00:00.000Z",
-        id: subagentId,
-        status: "error",
-        subagentKind: "unknown",
-        transcript: [],
-        transcriptAvailable: false,
-        unavailableReason: "not_found",
       };
     },
   };
@@ -162,11 +76,6 @@ describe("dashboard mock conversation routes", () => {
     expect(conversationBody.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
-    expect(
-      conversationBody.conversations.map(
-        (conversation) => conversation.conversationId,
-      ),
-    ).toContain("slack:C1:123");
     expect(
       conversationBody.conversations.map(
         (conversation) => conversation.conversationId,
@@ -328,7 +237,7 @@ describe("dashboard mock conversation routes", () => {
       new Request(
         `http://localhost/api/conversations/${encodeURIComponent(
           DASHBOARD_QA_CONVERSATION_ID,
-        )}/runs/mock-dashboard-qa-advisor-code-change/subagents/toolu_mock_dashboard_advisor_plan`,
+        )}/subagents/toolu_mock_dashboard_advisor_plan`,
       ),
     );
     expect(firstAdvisorTranscript.status).toBe(200);
@@ -352,7 +261,7 @@ describe("dashboard mock conversation routes", () => {
       new Request(
         `http://localhost/api/conversations/${encodeURIComponent(
           DASHBOARD_QA_CONVERSATION_ID,
-        )}/runs/mock-dashboard-qa-advisor-code-change/subagents/toolu_mock_dashboard_advisor_review`,
+        )}/subagents/toolu_mock_dashboard_advisor_review`,
       ),
     );
     expect(secondAdvisorTranscript.status).toBe(200);
@@ -446,16 +355,12 @@ describe("dashboard mock conversation routes", () => {
     ).toBe("user");
   });
 
-  it("serves mock conversations when local persistence is unavailable", async () => {
-    const mockReporting = reporting();
-    mockReporting.listConversations = async () => {
-      throw new Error("REDIS_URL is required for durable Slack thread state");
-    };
+  it("serves explicit mock conversation data", async () => {
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
       mockConversations: true,
-      reporting: mockReporting,
+      reporting: reporting(),
     });
 
     const response = await app.fetch(
@@ -480,69 +385,5 @@ describe("dashboard mock conversation routes", () => {
       conversations: expect.any(Number),
       truncated: false,
     });
-  });
-
-  it("excludes stale real conversations from mock aggregate stats", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
-    const mockReporting = reporting();
-    mockReporting.listConversations = async () => ({
-      source: "conversation_index",
-      generatedAt: "2026-06-04T12:00:00.000Z",
-      conversations: [
-        {
-          conversationId: "slack:COLD:111",
-          cumulativeDurationMs: 1_000_000,
-          id: "old-real-turn",
-          lastProgressAt: "2026-05-01T00:00:00.000Z",
-          lastSeenAt: "2026-05-01T00:00:00.000Z",
-          startedAt: "2026-05-01T00:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          displayTitle: "Old real turn",
-        },
-      ],
-    });
-    const app = createDashboardApp({
-      authRequired: false,
-      allowedGoogleDomains: [],
-      mockConversations: true,
-      reporting: mockReporting,
-    });
-
-    const conversations = await app.fetch(
-      new Request("http://localhost/api/conversations"),
-    );
-    const conversationBody = (await conversations.json()) as {
-      conversations: Array<{ conversationId: string; lastSeenAt: string }>;
-    };
-    expect(
-      conversationBody.conversations.map((session) => session.conversationId),
-    ).toContain("slack:COLD:111");
-
-    const stats = await app.fetch(
-      new Request("http://localhost/api/conversations/stats"),
-    );
-    const statsBody = (await stats.json()) as { conversations: number };
-    const windowStartMs =
-      Date.parse("2026-06-04T12:00:00.000Z") - 7 * 24 * 60 * 60 * 1000;
-    const recentConversationIds = new Set(
-      conversationBody.conversations
-        .filter((session) => Date.parse(session.lastSeenAt) >= windowStartMs)
-        .map((session) => session.conversationId),
-    );
-
-    expect(statsBody.conversations).toBe(recentConversationIds.size);
-  });
-
-  it("does not hide unexpected reporting errors in mock mode", async () => {
-    const mockReporting = reporting();
-    mockReporting.listConversations = async () => {
-      throw new Error("session index corrupted");
-    };
-
-    await expect(
-      createMockConversationReporting(mockReporting).listConversations(),
-    ).rejects.toThrow("session index corrupted");
   });
 });

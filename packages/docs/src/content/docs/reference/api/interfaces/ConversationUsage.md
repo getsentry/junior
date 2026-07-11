@@ -5,7 +5,7 @@ prev: false
 title: "ConversationUsage"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:107](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L107)
+Defined in: junior/src/api/conversations/types.ts:10
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:107](https://github.com/getse
 
 > `optional` **cacheCreationTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:111](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L111)
+Defined in: junior/src/api/conversations/types.ts:14
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:111](https://github.com/getse
 
 > `optional` **cachedInputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:110](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L110)
+Defined in: junior/src/api/conversations/types.ts:13
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:110](https://github.com/getse
 
 > `optional` **inputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:108](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L108)
+Defined in: junior/src/api/conversations/types.ts:11
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:108](https://github.com/getse
 
 > `optional` **outputTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:109](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L109)
+Defined in: junior/src/api/conversations/types.ts:12
 
 ---
 
@@ -45,4 +45,4 @@ Defined in: [junior/src/reporting/conversations.ts:109](https://github.com/getse
 
 > `optional` **totalTokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:112](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L112)
+Defined in: junior/src/api/conversations/types.ts:15

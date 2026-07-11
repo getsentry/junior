@@ -152,7 +152,7 @@ describe("conversation SQL migrations", () => {
     expect(ddl).not.toMatch(/\btranscript\b/i);
   });
 
-  it("pins the recorded checksums of migrations 0001-0005", () => {
+  it("pins recorded migration checksums", () => {
     // These migrations are recorded (id + statement-text checksum) in
     // junior_schema_migrations on provisioned databases. Their statement text
     // must stay byte-identical through any refactor, so pin the checksums the
@@ -169,6 +169,8 @@ describe("conversation SQL migrations", () => {
         "d41b8bfa66b8a88d69e84af38950025ba4c9be56341565cbe1411f0ca50c1dc2",
       "0005_conversation_transcripts":
         "add299d1b254e023f89b5993c417dd2248dc009e874efdeaf31ec0732e0d4fb4",
+      "0006_conversation_metrics":
+        "7c7ca5c9e11ed4b0e14737fd90d3348ea46e306c88fdf31199b7afb2a11c6a41",
     };
 
     const actual = Object.fromEntries(

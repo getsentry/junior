@@ -28,20 +28,6 @@ export type {
   PluginConversationStatus,
   PluginConversations,
   PluginConversationSummary,
-  ConversationActivityReport,
-  ConversationActivityStatus,
-  ConversationCost,
-  ConversationFeed,
-  ConversationReport,
-  ConversationReportStatus,
-  ConversationRunReport,
-  ConversationSubagentActivityReport,
-  ConversationStatsItem,
-  ConversationStatsReport,
-  ConversationSummaryReport,
-  ConversationSurface,
-  ConversationToolActivityReport,
-  ConversationUsage,
   HealthReport,
   JuniorReporting,
   PluginOperationalReport,
@@ -49,13 +35,34 @@ export type {
   PluginPackageContentItemReport,
   PluginPackageContentReport,
   PluginReport,
-  ActorIdentity,
   RuntimeInfoReport,
   SkillReport,
+} from "./reporting";
+export type {
+  ActorIdentity,
+  ConversationCost,
+  ConversationFeed,
+  ConversationReportStatus,
+  ConversationSummaryReport,
+  ConversationSurface,
+  ConversationUsage,
+} from "./api/conversations/list";
+export type {
+  ConversationActivityReport,
+  ConversationActivityStatus,
+  ConversationReport,
+  ConversationRunReport,
+  ConversationSubagentActivityReport,
+  ConversationToolActivityReport,
   TranscriptMessage,
   TranscriptPart,
   TranscriptPartType,
   TranscriptRole,
-} from "./reporting";
+} from "./api/conversations/detail";
+export type { ConversationSubagentTranscriptReport } from "./api/conversations/subagent";
+export type {
+  ConversationStatsItem,
+  ConversationStatsReport,
+} from "./api/conversations/stats";
 export { juniorVercelConfig } from "./vercel";
 export type { JuniorVercelConfigOptions } from "./vercel";

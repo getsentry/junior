@@ -155,7 +155,7 @@ export function formatDurationTotal(
     if (typeof value !== "number" || !Number.isFinite(value)) return sum;
     return (sum ?? 0) + Math.max(0, Math.floor(value));
   }, undefined);
-  return total === undefined ? "" : formatMs(total);
+  return total === undefined || total === 0 ? "" : formatMs(total);
 }
 
 /** Format transcript event timestamps independently from turn start offsets. */

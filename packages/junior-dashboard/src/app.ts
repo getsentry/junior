@@ -1,11 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type {
-  ConversationStatsReport,
-  PluginOperationalReportFeed,
-  JuniorReporting,
-} from "@sentry/junior/reporting";
+import type { JuniorReporting } from "@sentry/junior/reporting";
 import { createJuniorReporting } from "@sentry/junior/reporting";
 import { initSentry } from "@sentry/junior/instrumentation";
 import type {
@@ -22,7 +18,12 @@ import {
   type DashboardSession,
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
-import { createMockConversationReporting } from "./mock-conversations";
+import {
+  readMockConversationDetail,
+  readMockConversationFeed,
+  readMockConversationStats,
+  readMockConversationSubagent,
+} from "./mock-conversations";
 import { conversationStatsResponse } from "./api/conversations/stats";
 import { peopleListResponse } from "./api/people/list";
 import { peopleProfileResponse } from "./api/people/profile";
@@ -205,60 +206,6 @@ function dashboardLoginUrl(request: Request, basePath: string): string {
 
 function dashboardLoginPath(basePath: string): string {
   return basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
-}
-
-function emptyPluginReportFeed(): PluginOperationalReportFeed {
-  return {
-    generatedAt: new Date().toISOString(),
-    reports: [],
-    source: "plugins",
-  };
-}
-
-function emptyConversationStatsReport(): ConversationStatsReport {
-  const nowMs = Date.now();
-  return {
-    active: 0,
-    conversations: 0,
-    durationMs: 0,
-    failed: 0,
-    generatedAt: new Date(nowMs).toISOString(),
-    hung: 0,
-    locations: [],
-    actors: [],
-    sampleLimit: 0,
-    sampleSize: 0,
-    source: "conversation_index",
-    truncated: false,
-    runs: 0,
-    windowEnd: new Date(nowMs).toISOString(),
-    windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
-  };
-}
-
-async function mockConversationStatsResponse(
-  reporting: JuniorReporting,
-): Promise<Response> {
-  if (!reporting.getConversationStats) {
-    return Response.json(emptyConversationStatsReport());
-  }
-  try {
-    return Response.json(await reporting.getConversationStats());
-  } catch {
-    return Response.json(
-      { error: "Conversation stats failed to load." },
-      { status: 500 },
-    );
-  }
-}
-
-async function readPluginReports(
-  reporting: JuniorReporting,
-): Promise<PluginOperationalReportFeed> {
-  if (!reporting.getPluginOperationalReports) {
-    return emptyPluginReportFeed();
-  }
-  return await reporting.getPluginOperationalReports();
 }
 
 function callbackUrl(request: Request, basePath: string): string {
@@ -562,10 +509,7 @@ export function createDashboardApp(
         sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
       }))
     : undefined;
-  const baseReporting = options.reporting ?? createJuniorReporting();
-  const reporting = options.mockConversations
-    ? createMockConversationReporting(baseReporting)
-    : baseReporting;
+  const reporting = options.reporting ?? createJuniorReporting();
   const app = new Hono<{ Variables: Variables }>();
 
   app.get(dashboardLoginPath(basePath), async (c) => {
@@ -635,7 +579,12 @@ export function createDashboardApp(
     return Response.json(await reporting.getSkills());
   });
   app.get("/api/conversations", async () => {
-    return Response.json(await reporting.listConversations());
+    if (options.mockConversations) {
+      return Response.json(readMockConversationFeed());
+    }
+    const { readConversationFeed } =
+      await import("@sentry/junior/api/conversations/list");
+    return Response.json(await readConversationFeed());
   });
   for (const route of options.pluginRoutes ?? []) {
     const prefix = pluginRoutePrefix(route.pluginName);
@@ -651,7 +600,7 @@ export function createDashboardApp(
   }
   app.get("/api/conversations/stats", async () => {
     return options.mockConversations
-      ? mockConversationStatsResponse(reporting)
+      ? Response.json(readMockConversationStats())
       : conversationStatsResponse();
   });
   app.get("/api/people", () => peopleListResponse());
@@ -660,7 +609,7 @@ export function createDashboardApp(
   });
   app.get("/api/plugin-reports", async () => {
     try {
-      return Response.json(await readPluginReports(reporting));
+      return Response.json(await reporting.getPluginOperationalReports());
     } catch {
       return Response.json(
         { error: "Plugin stats failed to load." },
@@ -669,22 +618,40 @@ export function createDashboardApp(
     }
   });
   app.get("/api/conversations/:conversationId", async (c) => {
-    return Response.json(
-      await reporting.getConversation(
-        decodeURIComponent(c.req.param("conversationId")),
-      ),
-    );
+    const conversationId = decodeURIComponent(c.req.param("conversationId"));
+    if (!options.mockConversations) {
+      const { readConversationDetail } =
+        await import("@sentry/junior/api/conversations/detail");
+      const report = await readConversationDetail(conversationId);
+      return report
+        ? Response.json(report)
+        : Response.json({ error: "Conversation not found." }, { status: 404 });
+    }
+    const report = readMockConversationDetail(conversationId);
+    return report
+      ? Response.json(report)
+      : Response.json({ error: "Conversation not found." }, { status: 404 });
   });
   app.get(
-    "/api/conversations/:conversationId/runs/:runId/subagents/:subagentId",
+    "/api/conversations/:conversationId/subagents/:subagentId",
     async (c) => {
-      return Response.json(
-        await reporting.getConversationSubagentTranscript(
-          decodeURIComponent(c.req.param("conversationId")),
-          decodeURIComponent(c.req.param("runId")),
-          decodeURIComponent(c.req.param("subagentId")),
-        ),
-      );
+      const conversationId = decodeURIComponent(c.req.param("conversationId"));
+      const subagentId = decodeURIComponent(c.req.param("subagentId"));
+      if (!options.mockConversations) {
+        const { readConversationSubagent } =
+          await import("@sentry/junior/api/conversations/subagent");
+        const report = await readConversationSubagent(
+          conversationId,
+          subagentId,
+        );
+        return report.unavailableReason === "not_found"
+          ? Response.json(report, { status: 404 })
+          : Response.json(report);
+      }
+      const report = readMockConversationSubagent(conversationId, subagentId);
+      return report
+        ? Response.json(report)
+        : Response.json({ error: "Subagent not found." }, { status: 404 });
     },
   );
   app.get("/api/config", () => {

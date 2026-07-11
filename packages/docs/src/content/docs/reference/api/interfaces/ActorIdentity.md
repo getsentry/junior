@@ -5,7 +5,7 @@ prev: false
 title: "ActorIdentity"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:115](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L115)
+Defined in: junior/src/api/conversations/types.ts:18
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:115](https://github.com/getse
 
 > `optional` **email?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:116](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L116)
+Defined in: junior/src/api/conversations/types.ts:19
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:116](https://github.com/getse
 
 > `optional` **fullName?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:117](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L117)
+Defined in: junior/src/api/conversations/types.ts:20
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:117](https://github.com/getse
 
 > `optional` **slackUserId?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:118](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L118)
+Defined in: junior/src/api/conversations/types.ts:21
 
 ---
 
@@ -37,4 +37,4 @@ Defined in: [junior/src/reporting/conversations.ts:118](https://github.com/getse
 
 > `optional` **slackUserName?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:119](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L119)
+Defined in: junior/src/api/conversations/types.ts:22

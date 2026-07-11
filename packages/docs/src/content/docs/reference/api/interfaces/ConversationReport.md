@@ -5,7 +5,7 @@ prev: false
 title: "ConversationReport"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:237](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L237)
+Defined in: junior/src/api/conversations/types.ts:149
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:237](https://github.com/getse
 
 > **conversationId**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:238](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L238)
+Defined in: junior/src/api/conversations/types.ts:150
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:238](https://github.com/getse
 
 > **displayTitle**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:240](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L240)
+Defined in: junior/src/api/conversations/types.ts:152
 
 Always-populated display title, computed the same way as per-run reports.
 
@@ -31,7 +31,7 @@ Always-populated display title, computed the same way as per-run reports.
 
 > **generatedAt**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:241](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L241)
+Defined in: junior/src/api/conversations/types.ts:153
 
 ---
 
@@ -39,7 +39,7 @@ Defined in: [junior/src/reporting/conversations.ts:241](https://github.com/getse
 
 > **runs**: [`ConversationRunReport`](/reference/api/interfaces/conversationrunreport/)[]
 
-Defined in: [junior/src/reporting/conversations.ts:243](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L243)
+Defined in: junior/src/api/conversations/types.ts:155
 
 ---
 
@@ -47,4 +47,4 @@ Defined in: [junior/src/reporting/conversations.ts:243](https://github.com/getse
 
 > `optional` **sentryConversationUrl?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:242](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L242)
+Defined in: junior/src/api/conversations/types.ts:154

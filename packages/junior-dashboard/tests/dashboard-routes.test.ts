@@ -2,8 +2,14 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
 import { readConversationStats } from "@sentry/junior/api/conversations/stats";
+import { readConversationFeed } from "@sentry/junior/api/conversations/list";
+import { readConversationDetail } from "@sentry/junior/api/conversations/detail";
+import { readConversationSubagent } from "@sentry/junior/api/conversations/subagent";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import type { JuniorReporting } from "@sentry/junior/reporting";
+import type { ConversationFeed } from "@sentry/junior/api/conversations/list";
+import type { ConversationReport } from "@sentry/junior/api/conversations/detail";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/conversations/subagent";
 import { createDashboardApp } from "../src/app";
 import {
   createDashboardAuth,
@@ -15,6 +21,15 @@ import type { Conversation } from "../src/client/types";
 
 vi.mock("@sentry/junior/api/conversations/stats", () => ({
   readConversationStats: vi.fn(),
+}));
+vi.mock("@sentry/junior/api/conversations/list", () => ({
+  readConversationFeed: vi.fn(),
+}));
+vi.mock("@sentry/junior/api/conversations/detail", () => ({
+  readConversationDetail: vi.fn(),
+}));
+vi.mock("@sentry/junior/api/conversations/subagent", () => ({
+  readConversationSubagent: vi.fn(),
 }));
 
 const dashboardEnvNames = [
@@ -34,6 +49,92 @@ const dashboardEnvNames = [
   "SENTRY_DSN",
   "SENTRY_ORG_SLUG",
 ] as const;
+
+function conversationFeed(): ConversationFeed {
+  return {
+    source: "conversation_index",
+    generatedAt: "2026-05-29T00:00:00.000Z",
+    conversations: [
+      {
+        conversationId: "slack:C1:123",
+        cumulativeDurationMs: 0,
+        id: "turn-1",
+        status: "active",
+        startedAt: "2026-05-29T00:00:00.000Z",
+        lastSeenAt: "2026-05-29T00:00:01.000Z",
+        lastProgressAt: "2026-05-29T00:00:01.000Z",
+        surface: "slack",
+        displayTitle: "Conversation",
+        channel: "C1",
+        actorIdentity: {
+          email: "person@sentry.io",
+          fullName: "Person Example",
+        },
+      },
+    ],
+  };
+}
+
+function conversationDetail(conversationId: string): ConversationReport {
+  return {
+    conversationId,
+    displayTitle: "Conversation",
+    generatedAt: "2026-05-29T00:00:00.000Z",
+    sentryConversationUrl:
+      "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
+    runs: [
+      {
+        conversationId,
+        cumulativeDurationMs: 0,
+        id: "turn-1",
+        status: "active",
+        startedAt: "2026-05-29T00:00:00.000Z",
+        lastSeenAt: "2026-05-29T00:00:01.000Z",
+        lastProgressAt: "2026-05-29T00:00:01.000Z",
+        surface: "slack",
+        displayTitle: "Conversation",
+        channel: "C1",
+        transcriptAvailable: true,
+        transcript: [
+          {
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Checking." },
+              {
+                type: "tool_call",
+                name: "search",
+                input: { query: "issue" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function conversationSubagent(
+  subagentId: string,
+): ConversationSubagentTranscriptReport {
+  return {
+    type: "subagent",
+    createdAt: "2026-05-29T00:00:01.000Z",
+    endedAt: "2026-05-29T00:00:02.000Z",
+    id: subagentId,
+    outcome: "success",
+    parentToolCallId: "advisor-call",
+    status: "success",
+    subagentKind: "advisor",
+    transcriptAvailable: true,
+    transcriptMessageCount: 1,
+    transcript: [
+      {
+        role: "assistant",
+        parts: [{ type: "text", text: "Advisor transcript." }],
+      },
+    ],
+  };
+}
 
 function reporting(): JuniorReporting {
   return {
@@ -66,72 +167,6 @@ function reporting(): JuniorReporting {
     async getSkills() {
       return [{ name: "triage", pluginProvider: "github" }];
     },
-    async listConversations() {
-      return {
-        source: "conversation_index",
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        conversations: [
-          {
-            conversationId: "slack:C1:123",
-            cumulativeDurationMs: 0,
-            id: "turn-1",
-            status: "active",
-            startedAt: "2026-05-29T00:00:00.000Z",
-            lastSeenAt: "2026-05-29T00:00:01.000Z",
-            lastProgressAt: "2026-05-29T00:00:01.000Z",
-            surface: "slack",
-            displayTitle: "Conversation",
-            channel: "C1",
-            actorIdentity: {
-              email: "person@sentry.io",
-              fullName: "Person Example",
-            },
-          },
-        ],
-      };
-    },
-    async getConversationStats() {
-      return {
-        active: 1,
-        conversations: 1,
-        durationMs: 0,
-        failed: 0,
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        hung: 0,
-        locations: [
-          {
-            active: 1,
-            conversations: 1,
-            durationMs: 0,
-            failed: 0,
-            hung: 0,
-            label: "Public Channel",
-            runs: 1,
-          },
-        ],
-        actors: [
-          {
-            active: 1,
-            conversations: 1,
-            durationMs: 0,
-            failed: 0,
-            hung: 0,
-            label: "Unknown",
-            runs: 1,
-          },
-        ],
-        sampleLimit: 1,
-        sampleSize: 1,
-        source: "conversation_index",
-        truncated: false,
-        runs: 1,
-        windowEnd: "2026-05-29T00:00:00.000Z",
-        windowStart: "2026-05-22T00:00:00.000Z",
-      };
-    },
-    async listRecentConversations() {
-      return [];
-    },
     async getPluginOperationalReports() {
       return {
         source: "plugins",
@@ -140,67 +175,6 @@ function reporting(): JuniorReporting {
           {
             pluginName: "scheduler",
             metrics: [{ label: "active", value: "1" }],
-          },
-        ],
-      };
-    },
-    async getConversation(conversationId: string) {
-      return {
-        conversationId,
-        displayTitle: "Conversation",
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        sentryConversationUrl:
-          "https://sentry.sentry.io/explore/conversations/slack%3AC1%3A123/?project=1",
-        runs: [
-          {
-            conversationId,
-            cumulativeDurationMs: 0,
-            id: "turn-1",
-            status: "active",
-            startedAt: "2026-05-29T00:00:00.000Z",
-            lastSeenAt: "2026-05-29T00:00:01.000Z",
-            lastProgressAt: "2026-05-29T00:00:01.000Z",
-            surface: "slack",
-            displayTitle: "Conversation",
-            channel: "C1",
-            transcriptAvailable: true,
-            transcript: [
-              {
-                role: "assistant",
-                parts: [
-                  { type: "text", text: "Checking." },
-                  {
-                    type: "tool_call",
-                    name: "search",
-                    input: { query: "issue" },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      };
-    },
-    async getConversationSubagentTranscript(
-      _conversationId,
-      _runId,
-      subagentId,
-    ) {
-      return {
-        type: "subagent",
-        createdAt: "2026-05-29T00:00:01.000Z",
-        endedAt: "2026-05-29T00:00:02.000Z",
-        id: subagentId,
-        outcome: "success",
-        parentToolCallId: "advisor-call",
-        status: "success",
-        subagentKind: "advisor",
-        transcriptAvailable: true,
-        transcriptMessageCount: 1,
-        transcript: [
-          {
-            role: "assistant",
-            parts: [{ type: "text", text: "Advisor transcript." }],
           },
         ],
       };
@@ -254,8 +228,37 @@ function mockDashboardVirtualConfig() {
 describe("dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readConversationStats).mockImplementation(async () =>
-      reporting().getConversationStats!(),
+    vi.mocked(readConversationStats).mockResolvedValue({
+      active: 1,
+      conversations: 1,
+      durationMs: 0,
+      failed: 0,
+      generatedAt: "2026-05-29T00:00:00.000Z",
+      hung: 0,
+      locations: [],
+      actors: [
+        {
+          active: 1,
+          conversations: 1,
+          durationMs: 0,
+          failed: 0,
+          hung: 0,
+          label: "Unknown",
+        },
+      ],
+      sampleLimit: 1,
+      sampleSize: 1,
+      source: "conversation_index",
+      truncated: false,
+      windowEnd: "2026-05-29T00:00:00.000Z",
+      windowStart: "2026-05-22T00:00:00.000Z",
+    });
+    vi.mocked(readConversationFeed).mockResolvedValue(conversationFeed());
+    vi.mocked(readConversationDetail).mockImplementation(
+      async (conversationId) => conversationDetail(conversationId),
+    );
+    vi.mocked(readConversationSubagent).mockImplementation(
+      async (_conversationId, subagentId) => conversationSubagent(subagentId),
     );
   });
 
@@ -455,7 +458,7 @@ describe("dashboard routes", () => {
       "/api/people/person%40sentry.io",
       "/api/plugin-reports",
       "/api/conversations/slack%3AC1%3A123",
-      "/api/conversations/slack%3AC1%3A123/runs/turn-1/subagents/advisor-call",
+      "/api/conversations/slack%3AC1%3A123/subagents/advisor-call",
       "/api/config",
       "/api/me",
     ]) {
@@ -627,9 +630,6 @@ describe("dashboard routes", () => {
   });
 
   it("reads conversation stats independently of the reporting provider", async () => {
-    const { getConversationStats: _getConversationStats, ...legacyReporting } =
-      reporting();
-    expect(_getConversationStats).toBeTypeOf("function");
     const app = dashboard(
       {
         user: {
@@ -638,7 +638,7 @@ describe("dashboard routes", () => {
           hostedDomain: "sentry.io",
         },
       },
-      legacyReporting,
+      reporting(),
     );
 
     const conversationStats = await app.fetch(
@@ -679,34 +679,6 @@ describe("dashboard routes", () => {
     expect(conversationStats.status).toBe(500);
     expect(await conversationStats.json()).toEqual({
       error: "Conversation stats failed to load.",
-    });
-  });
-
-  it("returns an empty plugin report feed for legacy reporting providers", async () => {
-    const {
-      getPluginOperationalReports: _getPluginOperationalReports,
-      ...legacyReporting
-    } = reporting();
-    expect(_getPluginOperationalReports).toBeTypeOf("function");
-    const app = dashboard(
-      {
-        user: {
-          email: "person@sentry.io",
-          emailVerified: true,
-          hostedDomain: "sentry.io",
-        },
-      },
-      legacyReporting,
-    );
-
-    const pluginReports = await app.fetch(
-      new Request("http://localhost/api/plugin-reports"),
-    );
-
-    expect(pluginReports.status).toBe(200);
-    expect(await pluginReports.json()).toMatchObject({
-      reports: [],
-      source: "plugins",
     });
   });
 
@@ -776,6 +748,7 @@ describe("dashboard routes", () => {
       ],
       source: "conversation_index",
     });
+    expect(readConversationFeed).toHaveBeenCalledWith();
   });
 
   it("returns authenticated conversation transcript details", async () => {
@@ -810,6 +783,24 @@ describe("dashboard routes", () => {
         },
       ],
     });
+    expect(readConversationDetail).toHaveBeenCalledWith("slack:C1:123");
+  });
+
+  it("returns 404 for a missing SQL conversation", async () => {
+    vi.mocked(readConversationDetail).mockResolvedValue(undefined);
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/conversations/missing"),
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("returns authenticated subagent transcript details", async () => {
@@ -823,7 +814,7 @@ describe("dashboard routes", () => {
 
     const response = await app.fetch(
       new Request(
-        "http://localhost/api/conversations/slack%3AC1%3A123/runs/turn-1/subagents/advisor-call",
+        "http://localhost/api/conversations/slack%3AC1%3A123/subagents/advisor-call",
       ),
     );
 
@@ -842,42 +833,68 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("returns redacted private conversation details without transcript payloads", async () => {
-    const privateReporting = reporting();
-    privateReporting.getConversation = async (conversationId: string) => ({
-      conversationId,
-      displayTitle: "Conversation",
-      generatedAt: "2026-05-29T00:00:00.000Z",
-      runs: [
-        {
-          conversationId,
-          cumulativeDurationMs: 1_000,
-          id: "turn-1",
-          status: "completed",
-          startedAt: "2026-05-29T00:00:00.000Z",
-          lastSeenAt: "2026-05-29T00:00:01.000Z",
-          lastProgressAt: "2026-05-29T00:00:01.000Z",
-          surface: "slack",
-          displayTitle: "Conversation",
-          channel: "D1",
-          transcriptAvailable: false,
-          transcriptMessageCount: 2,
-          transcriptRedacted: true,
-          transcriptRedactionReason: "non_public_conversation",
-          transcript: [],
-        },
-      ],
+  it("returns 404 for a missing SQL subagent", async () => {
+    vi.mocked(readConversationSubagent).mockResolvedValue({
+      type: "subagent",
+      createdAt: new Date(0).toISOString(),
+      id: "missing",
+      status: "error",
+      subagentKind: "unknown",
+      transcript: [],
+      transcriptAvailable: false,
+      unavailableReason: "not_found",
     });
-    const app = dashboard(
-      {
-        user: {
-          email: "person@sentry.io",
-          emailVerified: true,
-          hostedDomain: "sentry.io",
-        },
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
       },
-      privateReporting,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/conversations/slack%3AC1%3A123/subagents/missing",
+      ),
     );
+
+    expect(response.status).toBe(404);
+  });
+
+  it("returns redacted private conversation details without transcript payloads", async () => {
+    vi.mocked(readConversationDetail).mockImplementation(
+      async (conversationId) => ({
+        conversationId,
+        displayTitle: "Conversation",
+        generatedAt: "2026-05-29T00:00:00.000Z",
+        runs: [
+          {
+            conversationId,
+            cumulativeDurationMs: 1_000,
+            id: "turn-1",
+            status: "completed",
+            startedAt: "2026-05-29T00:00:00.000Z",
+            lastSeenAt: "2026-05-29T00:00:01.000Z",
+            lastProgressAt: "2026-05-29T00:00:01.000Z",
+            surface: "slack",
+            displayTitle: "Conversation",
+            channel: "D1",
+            transcriptAvailable: false,
+            transcriptMessageCount: 2,
+            transcriptRedacted: true,
+            transcriptRedactionReason: "non_public_conversation",
+            transcript: [],
+          },
+        ],
+      }),
+    );
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
+      },
+    });
 
     const response = await app.fetch(
       new Request("http://localhost/api/conversations/slack%3AD1%3A123"),

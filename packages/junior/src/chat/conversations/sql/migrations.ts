@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { juniorSqlSchema as schema } from "@/db/schema";
@@ -50,9 +51,12 @@ function defineMigration(id: string, statements: readonly string[]): Migration {
 
 /** Absolute path to a drizzle-kit-generated `.sql` file in the `migrations/` out dir. */
 function kitMigrationPath(fileName: string): string {
-  return fileURLToPath(
-    new URL(`../../../../migrations/${fileName}`, import.meta.url),
-  );
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const packageRoot =
+    basename(moduleDir) === "dist"
+      ? dirname(moduleDir)
+      : resolve(moduleDir, "../../../..");
+  return join(packageRoot, "migrations", fileName);
 }
 
 /**
@@ -402,6 +406,10 @@ export const migrations = [
   defineMigration(
     "0005_conversation_transcripts",
     conversationTranscriptStatements,
+  ),
+  defineMigrationFromFile(
+    "0006_conversation_metrics",
+    "0006_conversation_metrics.sql",
   ),
 ] as const;
 

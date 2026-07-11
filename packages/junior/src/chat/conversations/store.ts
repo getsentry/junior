@@ -1,6 +1,7 @@
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 export type ConversationSource =
   | "api"
@@ -90,6 +91,10 @@ export interface ConversationStore {
     destination?: Destination;
     execution: ConversationExecution;
     lastActivityAtMs: number;
+    metrics: {
+      durationMs: number;
+      usage?: AgentTurnUsage;
+    } | null;
     actor?: StoredSlackActor;
     source?: ConversationSource;
     title?: string;

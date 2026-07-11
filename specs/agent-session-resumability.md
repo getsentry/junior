@@ -395,9 +395,11 @@ The reducer owns:
 - connected MCP providers
 - cumulative duration/usage when these are still product-relevant
 
-These values must not be persisted as a second durable run-state log. A
-temporary read model may exist during migration, but it must be treated as a
-cache/index that can be rebuilt from the session log.
+These values must not be persisted as a second durable run-state log. The
+conversation row may retain cumulative runtime/usage aggregates for SQL
+reporting, but those totals are not resumability state and cannot restore a
+turn. A temporary read model may exist during migration, but it must be treated
+as a cache/index that can be rebuilt from the session log.
 
 ### Lifecycle Projection
 

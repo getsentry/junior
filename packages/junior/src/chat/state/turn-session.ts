@@ -262,6 +262,12 @@ async function recordConversationActivityMetadata(args: {
     destination: args.summary.destination,
     execution: conversationExecutionFromSummary(args.summary),
     lastActivityAtMs: args.summary.updatedAtMs,
+    metrics: {
+      durationMs: args.summary.cumulativeDurationMs,
+      ...(args.summary.cumulativeUsage
+        ? { usage: args.summary.cumulativeUsage }
+        : {}),
+    },
     actor: sessionLogActor(args.summary.actor),
     source,
     updatedAtMs: args.nowMs,

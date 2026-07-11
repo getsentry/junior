@@ -28,6 +28,19 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     nowMs: Date.parse("2026-06-10T10:03:00.000Z"),
   });
   await store.recordExecution({
+    conversationId: "slack:C1:123",
+    createdAtMs: Date.parse("2026-06-10T10:03:00.000Z"),
+    execution: {
+      runId: "turn-1",
+      status: "idle",
+      updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
+    },
+    lastActivityAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
+    metrics: { durationMs: 1_000, usage: { totalTokens: 100 } },
+    source: "slack",
+    updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
+  });
+  await store.recordExecution({
     conversationId: "slack:C4:456",
     createdAtMs: Date.parse("2026-06-12T11:00:00.000Z"),
     destination: {
@@ -36,10 +49,12 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
       channelId: "C4",
     },
     execution: {
+      runId: "turn-2",
       status: "failed",
       updatedAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
     },
     lastActivityAtMs: Date.parse("2026-06-12T11:01:00.000Z"),
+    metrics: { durationMs: 500, usage: { totalTokens: 50 } },
     actor: {
       email: "alice@example.com",
       fullName: "Provider Specific Alice",

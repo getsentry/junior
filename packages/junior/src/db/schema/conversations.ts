@@ -12,6 +12,7 @@ import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
+import type { AgentTurnUsage } from "@/chat/usage";
 import type {
   ConversationSource,
   ConversationStatus,
@@ -58,6 +59,10 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
+    durationMs: integer("duration_ms").notNull().default(0),
+    usage: jsonb("usage_json").$type<AgentTurnUsage>(),
+    executionDurationMs: integer("execution_duration_ms").notNull().default(0),
+    executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(

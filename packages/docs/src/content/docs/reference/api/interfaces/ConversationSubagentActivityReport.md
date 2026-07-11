@@ -5,7 +5,7 @@ prev: false
 title: "ConversationSubagentActivityReport"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:209](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L209)
+Defined in: junior/src/api/conversations/types.ts:115
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:209](https://github.com/getse
 
 > **createdAt**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:211](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L211)
+Defined in: junior/src/api/conversations/types.ts:117
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:211](https://github.com/getse
 
 > `optional` **endedAt?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:212](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L212)
+Defined in: junior/src/api/conversations/types.ts:118
 
 ---
 
@@ -29,15 +29,23 @@ Defined in: [junior/src/reporting/conversations.ts:212](https://github.com/getse
 
 > **id**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:213](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L213)
+Defined in: junior/src/api/conversations/types.ts:119
+
+---
+
+### modelId?
+
+> `optional` **modelId?**: `string`
+
+Defined in: junior/src/api/conversations/types.ts:120
 
 ---
 
 ### outcome?
 
-> `optional` **outcome?**: `"error"` \| `"success"` \| `"aborted"`
+> `optional` **outcome?**: `"error"` \| `"aborted"` \| `"success"`
 
-Defined in: [junior/src/reporting/conversations.ts:214](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L214)
+Defined in: junior/src/api/conversations/types.ts:121
 
 ---
 
@@ -45,7 +53,15 @@ Defined in: [junior/src/reporting/conversations.ts:214](https://github.com/getse
 
 > `optional` **parentToolCallId?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:215](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L215)
+Defined in: junior/src/api/conversations/types.ts:122
+
+---
+
+### reasoningLevel?
+
+> `optional` **reasoningLevel?**: `string`
+
+Defined in: junior/src/api/conversations/types.ts:123
 
 ---
 
@@ -53,7 +69,7 @@ Defined in: [junior/src/reporting/conversations.ts:215](https://github.com/getse
 
 > **status**: [`ConversationActivityStatus`](/reference/api/type-aliases/conversationactivitystatus/)
 
-Defined in: [junior/src/reporting/conversations.ts:216](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L216)
+Defined in: junior/src/api/conversations/types.ts:124
 
 ---
 
@@ -61,7 +77,7 @@ Defined in: [junior/src/reporting/conversations.ts:216](https://github.com/getse
 
 > **subagentKind**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:217](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L217)
+Defined in: junior/src/api/conversations/types.ts:125
 
 ---
 
@@ -69,7 +85,7 @@ Defined in: [junior/src/reporting/conversations.ts:217](https://github.com/getse
 
 > `optional` **transcriptAvailable?**: `boolean`
 
-Defined in: [junior/src/reporting/conversations.ts:218](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L218)
+Defined in: junior/src/api/conversations/types.ts:126
 
 ---
 
@@ -77,4 +93,4 @@ Defined in: [junior/src/reporting/conversations.ts:218](https://github.com/getse
 
 > **type**: `"subagent"`
 
-Defined in: [junior/src/reporting/conversations.ts:210](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L210)
+Defined in: junior/src/api/conversations/types.ts:116

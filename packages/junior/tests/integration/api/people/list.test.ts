@@ -29,7 +29,9 @@ describe("people list API", () => {
         active: 0,
         activeDays: 2,
         conversations: 2,
+        durationMs: 1_500,
         failed: 1,
+        tokens: 150,
         actor: {
           email: "alice@example.com",
           fullName: "Alice Example",

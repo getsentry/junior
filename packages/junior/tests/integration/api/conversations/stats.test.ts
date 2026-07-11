@@ -36,6 +36,27 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-06-15T11:50:00.000Z"),
       });
       await store.recordExecution({
+        conversationId: "slack:C1:recent",
+        createdAtMs: Date.parse("2026-06-15T11:50:00.000Z"),
+        execution: {
+          runId: "turn-recent",
+          status: "idle",
+          updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
+        },
+        lastActivityAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
+        metrics: {
+          durationMs: 1_500,
+          usage: {
+            inputTokens: 100,
+            outputTokens: 20,
+            reasoningTokens: 5,
+            cost: { input: 0.001, output: 0.002, total: 0.003 },
+          },
+        },
+        source: "slack",
+        updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
+      });
+      await store.recordExecution({
         conversationId: "slack:D1:failed",
         createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
         destination: {
@@ -44,10 +65,15 @@ describe("conversation stats API", () => {
           channelId: "D1",
         },
         execution: {
+          runId: "turn-failed",
           status: "failed",
           updatedAtMs: Date.parse("2026-06-15T11:01:00.000Z"),
         },
         lastActivityAtMs: Date.parse("2026-06-15T11:01:00.000Z"),
+        metrics: {
+          durationMs: 500,
+          usage: { totalTokens: 30, cost: { total: 0.0015 } },
+        },
         actor: {
           email: "bob@example.com",
           fullName: "Bob Example",
@@ -87,33 +113,37 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-06-15T11:55:00.000Z"),
       });
 
-      const report = await readConversationStatsFromSql({
-        db: fixture.sql.db(),
-      });
+      const report = await readConversationStatsFromSql(fixture.sql.db());
 
       expect(report).toMatchObject({
         active: 0,
         conversations: 3,
-        durationMs: 0,
+        costUsd: 0.0045,
+        durationMs: 2_000,
         failed: 1,
         hung: 0,
-        runs: 3,
+        tokens: 150,
         sampleLimit: 5_000,
         sampleSize: 3,
         source: "conversation_index",
         truncated: false,
       });
-      expect(report).not.toHaveProperty("tokens");
       expect(report.actors).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             conversations: 1,
+            costUsd: 0.003,
+            durationMs: 1_500,
             label: "alice@example.com",
+            tokens: 120,
           }),
           expect.objectContaining({
             conversations: 1,
+            costUsd: 0.0015,
+            durationMs: 500,
             failed: 1,
             label: "bob@example.com",
+            tokens: 30,
           }),
           expect.objectContaining({
             conversations: 1,
@@ -160,9 +190,7 @@ describe("conversation stats API", () => {
           ),
         );
 
-      const report = await readConversationStatsFromSql({
-        db: fixture.sql.db(),
-      });
+      const report = await readConversationStatsFromSql(fixture.sql.db());
 
       expect(report.sampleSize).toBe(5_000);
       expect(report.truncated).toBe(true);

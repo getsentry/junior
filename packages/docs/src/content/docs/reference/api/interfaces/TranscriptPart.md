@@ -5,7 +5,7 @@ prev: false
 title: "TranscriptPart"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:150](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L150)
+Defined in: junior/src/api/conversations/types.ts:53
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:150](https://github.com/getse
 
 > `optional` **bytes?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:151](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L151)
+Defined in: junior/src/api/conversations/types.ts:54
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:151](https://github.com/getse
 
 > `optional` **chars?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:152](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L152)
+Defined in: junior/src/api/conversations/types.ts:55
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:152](https://github.com/getse
 
 > `optional` **id?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:153](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L153)
+Defined in: junior/src/api/conversations/types.ts:56
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:153](https://github.com/getse
 
 > `optional` **input?**: `unknown`
 
-Defined in: [junior/src/reporting/conversations.ts:154](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L154)
+Defined in: junior/src/api/conversations/types.ts:57
 
 ---
 
@@ -45,7 +45,7 @@ Defined in: [junior/src/reporting/conversations.ts:154](https://github.com/getse
 
 > `optional` **inputKeys?**: `string`[]
 
-Defined in: [junior/src/reporting/conversations.ts:155](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L155)
+Defined in: junior/src/api/conversations/types.ts:58
 
 ---
 
@@ -53,7 +53,7 @@ Defined in: [junior/src/reporting/conversations.ts:155](https://github.com/getse
 
 > `optional` **inputSizeBytes?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:156](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L156)
+Defined in: junior/src/api/conversations/types.ts:59
 
 ---
 
@@ -61,7 +61,7 @@ Defined in: [junior/src/reporting/conversations.ts:156](https://github.com/getse
 
 > `optional` **inputSizeChars?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:157](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L157)
+Defined in: junior/src/api/conversations/types.ts:60
 
 ---
 
@@ -69,7 +69,7 @@ Defined in: [junior/src/reporting/conversations.ts:157](https://github.com/getse
 
 > `optional` **inputType?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:158](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L158)
+Defined in: junior/src/api/conversations/types.ts:61
 
 ---
 
@@ -77,7 +77,7 @@ Defined in: [junior/src/reporting/conversations.ts:158](https://github.com/getse
 
 > `optional` **name?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:159](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L159)
+Defined in: junior/src/api/conversations/types.ts:62
 
 ---
 
@@ -85,7 +85,7 @@ Defined in: [junior/src/reporting/conversations.ts:159](https://github.com/getse
 
 > `optional` **output?**: `unknown`
 
-Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L160)
+Defined in: junior/src/api/conversations/types.ts:63
 
 ---
 
@@ -93,7 +93,7 @@ Defined in: [junior/src/reporting/conversations.ts:160](https://github.com/getse
 
 > `optional` **outputKeys?**: `string`[]
 
-Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L161)
+Defined in: junior/src/api/conversations/types.ts:64
 
 ---
 
@@ -101,7 +101,7 @@ Defined in: [junior/src/reporting/conversations.ts:161](https://github.com/getse
 
 > `optional` **outputSizeBytes?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L162)
+Defined in: junior/src/api/conversations/types.ts:65
 
 ---
 
@@ -109,7 +109,7 @@ Defined in: [junior/src/reporting/conversations.ts:162](https://github.com/getse
 
 > `optional` **outputSizeChars?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L163)
+Defined in: junior/src/api/conversations/types.ts:66
 
 ---
 
@@ -117,7 +117,7 @@ Defined in: [junior/src/reporting/conversations.ts:163](https://github.com/getse
 
 > `optional` **outputType?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:164](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L164)
+Defined in: junior/src/api/conversations/types.ts:67
 
 ---
 
@@ -125,7 +125,7 @@ Defined in: [junior/src/reporting/conversations.ts:164](https://github.com/getse
 
 > `optional` **redacted?**: `boolean`
 
-Defined in: [junior/src/reporting/conversations.ts:165](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L165)
+Defined in: junior/src/api/conversations/types.ts:68
 
 ---
 
@@ -133,7 +133,7 @@ Defined in: [junior/src/reporting/conversations.ts:165](https://github.com/getse
 
 > `optional` **sourceType?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L166)
+Defined in: junior/src/api/conversations/types.ts:69
 
 ---
 
@@ -141,7 +141,7 @@ Defined in: [junior/src/reporting/conversations.ts:166](https://github.com/getse
 
 > `optional` **text?**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L167)
+Defined in: junior/src/api/conversations/types.ts:70
 
 ---
 
@@ -149,4 +149,4 @@ Defined in: [junior/src/reporting/conversations.ts:167](https://github.com/getse
 
 > **type**: [`TranscriptPartType`](/reference/api/type-aliases/transcriptparttype/)
 
-Defined in: [junior/src/reporting/conversations.ts:168](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L168)
+Defined in: junior/src/api/conversations/types.ts:71

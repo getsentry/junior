@@ -5,7 +5,7 @@ prev: false
 title: "ConversationStatsItem"
 ---
 
-Defined in: [junior/src/reporting/conversations.ts:274](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L274)
+Defined in: junior/src/api/conversations/types.ts:192
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/reporting/conversations.ts:274](https://github.com/getse
 
 > **active**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:275](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L275)
+Defined in: junior/src/api/conversations/types.ts:193
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: [junior/src/reporting/conversations.ts:275](https://github.com/getse
 
 > **conversations**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:276](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L276)
+Defined in: junior/src/api/conversations/types.ts:194
 
 ---
 
@@ -29,7 +29,7 @@ Defined in: [junior/src/reporting/conversations.ts:276](https://github.com/getse
 
 > **durationMs**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:277](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L277)
+Defined in: junior/src/api/conversations/types.ts:195
 
 ---
 
@@ -37,7 +37,7 @@ Defined in: [junior/src/reporting/conversations.ts:277](https://github.com/getse
 
 > **failed**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:278](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L278)
+Defined in: junior/src/api/conversations/types.ts:196
 
 ---
 
@@ -45,7 +45,7 @@ Defined in: [junior/src/reporting/conversations.ts:278](https://github.com/getse
 
 > **hung**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:279](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L279)
+Defined in: junior/src/api/conversations/types.ts:197
 
 ---
 
@@ -53,15 +53,7 @@ Defined in: [junior/src/reporting/conversations.ts:279](https://github.com/getse
 
 > **label**: `string`
 
-Defined in: [junior/src/reporting/conversations.ts:280](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L280)
-
----
-
-### runs
-
-> **runs**: `number`
-
-Defined in: [junior/src/reporting/conversations.ts:281](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L281)
+Defined in: junior/src/api/conversations/types.ts:198
 
 ---
 
@@ -69,4 +61,4 @@ Defined in: [junior/src/reporting/conversations.ts:281](https://github.com/getse
 
 > `optional` **tokens?**: `number`
 
-Defined in: [junior/src/reporting/conversations.ts:282](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting/conversations.ts#L282)
+Defined in: junior/src/api/conversations/types.ts:199

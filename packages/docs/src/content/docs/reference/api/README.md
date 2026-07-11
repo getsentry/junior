@@ -14,6 +14,7 @@ title: "@sentry/junior"
 - [ConversationStatsItem](/reference/api/interfaces/conversationstatsitem/)
 - [ConversationStatsReport](/reference/api/interfaces/conversationstatsreport/)
 - [ConversationSubagentActivityReport](/reference/api/interfaces/conversationsubagentactivityreport/)
+- [ConversationSubagentTranscriptReport](/reference/api/interfaces/conversationsubagenttranscriptreport/)
 - [ConversationSummaryReport](/reference/api/interfaces/conversationsummaryreport/)
 - [ConversationToolActivityReport](/reference/api/interfaces/conversationtoolactivityreport/)
 - [ConversationUsage](/reference/api/interfaces/conversationusage/)

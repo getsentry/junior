@@ -39,7 +39,6 @@ export interface ConversationStatsItem {
   failed: number;
   hung: number;
   label: string;
-  runs: number;
   tokens?: number;
 }
 
@@ -50,7 +49,6 @@ export interface ActorActivityDayReport {
   durationMs: number;
   failed: number;
   hung: number;
-  runs: number;
   tokens?: number;
 }
 
@@ -61,7 +59,6 @@ export interface ActorTotalsReport {
   durationMs: number;
   failed: number;
   hung: number;
-  runs: number;
   tokens?: number;
 }
 

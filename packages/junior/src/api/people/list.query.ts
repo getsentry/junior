@@ -15,6 +15,7 @@ import {
   SAMPLE_LIMIT,
   signals,
   summaryFromRow,
+  usageTokens,
   type PeopleApiQueryOptions,
 } from "./shared";
 
@@ -36,7 +37,7 @@ function directoryItem(accumulator: DirectoryAccumulator): ActorSummaryReport {
     hung: accumulator.hung,
     lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
     actor: accumulator.actor,
-    runs: accumulator.runs,
+    ...(accumulator.tokens !== undefined ? { tokens: accumulator.tokens } : {}),
   };
 }
 
@@ -70,7 +71,11 @@ export async function readPeopleListFromSql(
 
     accumulator.actor = mergeIdentity(accumulator.actor, actor);
     accumulator.conversations += 1;
-    accumulator.runs += 1;
+    accumulator.durationMs += summary.cumulativeDurationMs;
+    const tokens = usageTokens(row);
+    if (tokens !== undefined) {
+      accumulator.tokens = (accumulator.tokens ?? 0) + tokens;
+    }
     addSignals(accumulator, signals(summary));
     accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
     accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);

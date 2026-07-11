@@ -34,35 +34,11 @@ export function dashboardReporting(): JuniorReporting {
     async getSkills() {
       return [];
     },
-    async listConversations() {
+    async getPluginOperationalReports() {
       return {
-        conversations: [],
         generatedAt: "2026-06-15T12:00:00.000Z",
-        source: "conversation_index",
-        truncated: false,
-      };
-    },
-    async getConversation(conversationId) {
-      return {
-        conversationId,
-        displayTitle: "Conversation",
-        generatedAt: "2026-06-15T12:00:00.000Z",
-        runs: [],
-      };
-    },
-    async getConversationSubagentTranscript(
-      _conversationId,
-      _runId,
-      subagentId,
-    ) {
-      return {
-        createdAt: "2026-06-15T12:00:00.000Z",
-        id: subagentId,
-        status: "running",
-        subagentKind: "agent",
-        transcript: [],
-        transcriptAvailable: false,
-        type: "subagent",
+        reports: [],
+        source: "plugins",
       };
     },
   };
@@ -86,7 +62,6 @@ export function directoryReport(): ActorDirectoryReport {
           email: "person@example.com",
           fullName: "Person Example",
         },
-        runs: 2,
       },
     ],
     sampleLimit: 5000,
@@ -117,7 +92,6 @@ export async function profileReport(
       durationMs: 0,
       failed: 0,
       hung: 0,
-      runs: 1,
     },
     truncated: false,
     windowEnd: "2026-06-15T00:00:00.000Z",

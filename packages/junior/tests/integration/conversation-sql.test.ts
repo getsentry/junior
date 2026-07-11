@@ -6,6 +6,7 @@ import {
 } from "@/chat/conversations/sql/migrations";
 import { juniorSqlSchema as schema } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { readConversationFeedFromSql } from "@/api/conversations/list.query";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import {
@@ -209,12 +210,72 @@ WHERE conversation_id = $1
       await recordAgentTurnSessionSummary({
         conversationId: "agent-dispatch:dispatch_scheduler_run",
         cumulativeDurationMs: 2400,
+        cumulativeUsage: {
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 5,
+          cost: { total: 0.003 },
+        },
         destination: {
           platform: "slack",
           teamId: "T123",
           channelId: "C123",
         },
         sessionId: "dispatch:scheduler-run",
+        sliceId: 1,
+        state: "completed",
+        conversationStore: store,
+        surface: "scheduler",
+      });
+      await recordAgentTurnSessionSummary({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        cumulativeDurationMs: 2_600,
+        sessionId: "dispatch:scheduler-run",
+        sliceId: 2,
+        state: "running",
+        conversationStore: store,
+        surface: "scheduler",
+      });
+      await recordAgentTurnSessionSummary({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        cumulativeDurationMs: 3_000,
+        cumulativeUsage: {
+          inputTokens: 150,
+          outputTokens: 30,
+          reasoningTokens: 7,
+          cost: { total: 0.004 },
+        },
+        sessionId: "dispatch:scheduler-run",
+        sliceId: 2,
+        state: "completed",
+        conversationStore: store,
+        surface: "scheduler",
+      });
+      const beforeNextTurn = await store.get({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+      });
+      await store.recordExecution({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        createdAtMs: beforeNextTurn!.createdAtMs,
+        execution: {
+          runId: "dispatch:scheduler-run-2",
+          status: "running",
+          updatedAtMs: Date.now(),
+        },
+        lastActivityAtMs: Date.now(),
+        metrics: null,
+        source: "scheduler",
+        updatedAtMs: Date.now(),
+      });
+      await recordAgentTurnSessionSummary({
+        conversationId: "agent-dispatch:dispatch_scheduler_run",
+        cumulativeDurationMs: 500,
+        cumulativeUsage: {
+          totalTokens: 25,
+          reasoningTokens: 2,
+          cost: { total: 0.0015 },
+        },
+        sessionId: "dispatch:scheduler-run-2",
         sliceId: 1,
         state: "completed",
         conversationStore: store,
@@ -233,9 +294,28 @@ WHERE conversation_id = $1
           channelId: "C123",
         },
         execution: {
+          runId: "dispatch:scheduler-run-2",
           status: "idle",
         },
         source: "scheduler",
+      });
+
+      await expect(
+        readConversationFeedFromSql(fixture.sql.db()),
+      ).resolves.toMatchObject({
+        conversations: [
+          {
+            conversationId: "agent-dispatch:dispatch_scheduler_run",
+            id: "agent-dispatch:dispatch_scheduler_run",
+            cumulativeDurationMs: 3_500,
+            cumulativeUsage: {
+              totalTokens: 205,
+              reasoningTokens: 9,
+              cost: { total: 0.0055 },
+            },
+          },
+        ],
+        source: "conversation_index",
       });
     } finally {
       await disconnectStateAdapter();

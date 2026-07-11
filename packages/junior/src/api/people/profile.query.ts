@@ -24,6 +24,7 @@ import {
   slackLocationLabel,
   statsItems,
   summaryFromRow,
+  usageTokens,
   surfaceLabel,
   type PeopleApiQueryOptions,
 } from "./shared";
@@ -81,14 +82,17 @@ export async function readPeopleProfileFromSql(
     const value = signals(summary);
     const date = reportDate(summary.lastSeenAt);
     totals.conversations += 1;
-    totals.runs += 1;
+    totals.durationMs += summary.cumulativeDurationMs;
+    const tokens = usageTokens(row);
+    if (tokens !== undefined) totals.tokens = (totals.tokens ?? 0) + tokens;
     addSignals(totals, value);
 
     if (date) {
       activeDates.add(date);
       const day = days.get(date) ?? emptyActivityDay(date);
       day.conversations += 1;
-      day.runs += 1;
+      day.durationMs += summary.cumulativeDurationMs;
+      if (tokens !== undefined) day.tokens = (day.tokens ?? 0) + tokens;
       addSignals(day, value);
       days.set(date, day);
     }
@@ -97,14 +101,20 @@ export async function readPeopleProfileFromSql(
       slackLocationLabel(summary) ?? surfaceLabel(summary.surface);
     const locationItem = locations.get(location) ?? emptyStatsItem(location);
     locationItem.conversations += 1;
-    locationItem.runs += 1;
+    locationItem.durationMs += summary.cumulativeDurationMs;
+    if (tokens !== undefined) {
+      locationItem.tokens = (locationItem.tokens ?? 0) + tokens;
+    }
     addSignals(locationItem, value);
     locations.set(location, locationItem);
 
     const surface = surfaceLabel(summary.surface);
     const surfaceItem = surfaces.get(surface) ?? emptyStatsItem(surface);
     surfaceItem.conversations += 1;
-    surfaceItem.runs += 1;
+    surfaceItem.durationMs += summary.cumulativeDurationMs;
+    if (tokens !== undefined) {
+      surfaceItem.tokens = (surfaceItem.tokens ?? 0) + tokens;
+    }
     addSignals(surfaceItem, value);
     surfaces.set(surface, surfaceItem);
   }

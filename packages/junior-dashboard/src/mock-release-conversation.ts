@@ -1,7 +1,7 @@
 import type {
   ConversationReport as DashboardConversationReport,
   TranscriptMessage as DashboardTranscriptMessage,
-} from "@sentry/junior/reporting";
+} from "@sentry/junior/api/conversations/detail";
 
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 

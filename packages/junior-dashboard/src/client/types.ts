@@ -1,20 +1,26 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
-  ConversationStatsItem as ReportingConversationStatsItem,
-  ConversationStatsReport as ReportingConversationStatsReport,
-  ConversationReport as ReportingConversationReport,
-  ConversationSubagentTranscriptReport as ReportingConversationSubagentTranscriptReport,
   PluginOperationalReportFeed,
   PluginOperationalReport,
-  ConversationFeed as ReportingConversationFeed,
-  ConversationSummaryReport,
-  ConversationRunReport,
-  ConversationUsage,
   HealthReport,
   PluginReport as RuntimePluginReport,
   RuntimeInfoReport,
   SkillReport,
 } from "@sentry/junior/reporting";
+import type {
+  ConversationStatsItem as ApiConversationStatsItem,
+  ConversationStatsReport as ApiConversationStatsReport,
+} from "@sentry/junior/api/conversations/stats";
+import type {
+  ConversationFeed as ApiConversationFeed,
+  ConversationSummaryReport,
+  ConversationUsage,
+} from "@sentry/junior/api/conversations/list";
+import type {
+  ConversationReport as ApiConversationReport,
+  ConversationRunReport,
+} from "@sentry/junior/api/conversations/detail";
+import type { ConversationSubagentTranscriptReport as ApiConversationSubagentTranscriptReport } from "@sentry/junior/api/conversations/subagent";
 import type {
   ActorDirectoryReport,
   ActorIdentity as ApiActorIdentity,
@@ -38,12 +44,12 @@ export type PluginReport = PluginOperationalReport;
 
 export type PluginReportFeed = PluginOperationalReportFeed;
 
-export type ConversationStatsReport = ReportingConversationStatsReport;
+export type ConversationStatsReport = ApiConversationStatsReport;
 
 export type ConversationSubagentTranscript =
-  ReportingConversationSubagentTranscriptReport;
+  ApiConversationSubagentTranscriptReport;
 
-export type ConversationStatsItem = ReportingConversationStatsItem;
+export type ConversationStatsItem = ApiConversationStatsItem;
 
 export type ActorIdentity = ApiActorIdentity;
 
@@ -129,7 +135,7 @@ export type ConversationTurn = ConversationRunReport & {
   assistantLabel?: string;
 };
 
-export type ConversationDetailFeed = ReportingConversationReport;
+export type ConversationDetailFeed = ApiConversationReport;
 
 export type Conversation = {
   channel?: string;
@@ -147,7 +153,7 @@ export type Conversation = {
   runs: ConversationSummary[];
 };
 
-export type ConversationFeed = ReportingConversationFeed;
+export type ConversationFeed = ApiConversationFeed;
 
 export type Identity = { user: { email?: string; hostedDomain?: string } };
 
