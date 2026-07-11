@@ -84,7 +84,7 @@ describe("conversation transcript SQL stores", () => {
       await migrateSchema(fixture.sql);
 
       const [applied] = await fixture.sql.query<{ count: number }>(
-        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
       expect(applied?.count).toBe(2);
     } finally {

@@ -13,6 +13,7 @@ const LEGACY_CORE_MIGRATION_IDS = [
   "0005_conversation_transcripts",
 ] as const;
 const LEGACY_METRICS_MIGRATION_ID = "0006_conversation_metrics";
+const MIGRATIONS_TABLE = "__drizzle_junior_core";
 
 /** Resolve the packaged Drizzle migration directory in source or built output. */
 function migrationFolder(): string {
@@ -35,7 +36,7 @@ async function adoptLegacyMigrationState(
     legacyTable: string | null;
   }>(`
 SELECT
-  to_regclass('drizzle.__drizzle_migrations')::text AS "drizzleTable",
+  to_regclass('drizzle.__drizzle_junior_core')::text AS "drizzleTable",
   to_regclass('public.junior_schema_migrations')::text AS "legacyTable"
 `);
   if (!tables?.legacyTable || tables.drizzleTable) {
@@ -82,14 +83,14 @@ WHERE table_schema = 'public'
   await executor.transaction(async () => {
     await executor.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
     await executor.execute(`
-CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+CREATE TABLE IF NOT EXISTS drizzle.__drizzle_junior_core (
   id SERIAL PRIMARY KEY,
   hash TEXT NOT NULL,
   created_at BIGINT
 )
 `);
     await executor.execute(
-      `INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+      `INSERT INTO drizzle.__drizzle_junior_core (hash, created_at)
        VALUES ($1, $2)`,
       [migration.hash, migration.folderMillis],
     );
@@ -103,6 +104,11 @@ export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
 ): Promise<void> {
   const migrationsFolder = migrationFolder();
-  await adoptLegacyMigrationState(executor, migrationsFolder);
-  await executor.migrate({ migrationsFolder });
+  await executor.withMigrationLock(MIGRATIONS_TABLE, async () => {
+    await adoptLegacyMigrationState(executor, migrationsFolder);
+    await executor.migrate({
+      migrationsFolder,
+      migrationsTable: MIGRATIONS_TABLE,
+    });
+  });
 }

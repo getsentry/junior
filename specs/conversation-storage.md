@@ -362,9 +362,12 @@ owning schema, run that package's `db:generate` script, and commit the generated
 SQL, snapshot, and journal changes together. `junior upgrade` passes the core
 folder and each enabled plugin folder to Drizzle ORM's migrator before any data
 backfill runs. Request handlers and runtime stores never apply schema
-migrations. Existing installations adopt the generated core baseline only when
-all expected legacy core migrations are recorded with checksums. Partial legacy
-state fails `junior upgrade` explicitly instead of skipping baseline DDL.
+migrations. Core and each plugin use separate Junior-owned migration tables. A
+Postgres advisory lock encloses each table's journal lookup, legacy adoption,
+and Drizzle migration application. Existing installations adopt the generated
+core baseline only when all expected legacy core migrations are recorded with
+checksums. Partial legacy state fails `junior upgrade` explicitly instead of
+skipping baseline DDL.
 
 Schema migrations must be expand-only because the old deployment can continue
 serving traffic while Vercel builds and promotes the new deployment:

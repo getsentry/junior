@@ -41,6 +41,7 @@ vi.mock("@/db/executor", () => ({
       migrate: NEON.sql.migrate.bind(NEON.sql),
       transaction: NEON.sql.transaction.bind(NEON.sql),
       withLock: NEON.sql.withLock.bind(NEON.sql),
+      withMigrationLock: NEON.sql.withMigrationLock.bind(NEON.sql),
       close: async () => {},
     };
   }),

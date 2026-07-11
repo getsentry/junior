@@ -1,6 +1,7 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
 import { juniorSqlSchema as schema } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -9,6 +10,10 @@ import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import {
+  createEmptyJuniorSqlFixture,
+  hasJuniorPostgresTestDatabase,
+} from "../fixtures/postgres/fixture";
 
 describe("conversation SQL local mode", () => {
   it("creates migrated tables matching the Drizzle schema", async () => {
@@ -109,6 +114,89 @@ ORDER BY table_name ASC, constraint_name ASC
     }
   });
 
+  it("keeps core migrations separate from another Drizzle journal", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await fixture.sql.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
+      await fixture.sql.execute(`
+CREATE TABLE drizzle.__drizzle_migrations (
+  id SERIAL PRIMARY KEY,
+  hash TEXT NOT NULL,
+  created_at BIGINT
+)
+`);
+      await fixture.sql.execute(`
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+VALUES ('host-migration', 9999999999999)
+`);
+
+      await migrateSchema(fixture.sql);
+
+      const [host] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+      );
+      const [core] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
+      );
+      expect(host?.count).toBe(1);
+      expect(core?.count).toBe(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it.skipIf(!hasJuniorPostgresTestDatabase())(
+    "serializes concurrent legacy adoption and core migrations",
+    async () => {
+      const fixture = await createEmptyJuniorSqlFixture();
+      const second = createPostgresJuniorSqlExecutor({
+        connectionString: fixture.connectionString,
+      });
+
+      try {
+        await migrateSchema(fixture.sql);
+        await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+        await fixture.sql.execute(`
+INSERT INTO junior_schema_migrations (id, checksum)
+VALUES
+  ('0001_conversation_core', 'legacy-checksum-1'),
+  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
+  ('0003_user_identities', 'legacy-checksum-3'),
+  ('0004_actor_cutover', 'legacy-checksum-4'),
+  ('0005_conversation_transcripts', 'legacy-checksum-5')
+`);
+        await fixture.sql.execute("DROP TABLE drizzle.__drizzle_junior_core");
+        await fixture.sql.execute(`
+ALTER TABLE junior_conversations
+  DROP COLUMN duration_ms,
+  DROP COLUMN usage_json,
+  DROP COLUMN execution_duration_ms,
+  DROP COLUMN execution_usage_json
+`);
+        await Promise.all([
+          fixture.sql.query("SELECT 1"),
+          second.query("SELECT 1"),
+        ]);
+
+        await Promise.all([migrateSchema(fixture.sql), migrateSchema(second)]);
+        const [journal] = await fixture.sql.query<{ count: number }>(
+          "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
+        );
+        expect(journal?.count).toBe(2);
+      } finally {
+        await second.close();
+        await fixture.close();
+      }
+    },
+  );
+
   it("runs migrations and stores metadata through the Drizzle schema", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -166,7 +254,7 @@ WHERE conversation_id = $1
         ["slack:C123:1718123456.000000"],
       );
       const [migrationRows] = await fixture.sql.query<{ count: number }>(
-        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
 
       expect(migrationRows?.count).toBe(2);
@@ -239,7 +327,7 @@ WHERE table_schema = 'public'
 ORDER BY column_name
 `);
       const [migrationRows] = await fixture.sql.query<{ count: number }>(
-        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
 
       expect(metricColumns.map((row) => row.column_name)).toEqual([
@@ -281,7 +369,7 @@ VALUES
       await migrateSchema(fixture.sql);
 
       const [migrationRows] = await fixture.sql.query<{ count: number }>(
-        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
       const metricColumns = await fixture.sql.query<{ column_name: string }>(`
 SELECT column_name

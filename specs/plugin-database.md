@@ -126,7 +126,9 @@ Each plugin receives its own migration table in Drizzle's migration schema, so
 independently generated plugin journals cannot advance or skip one another.
 Junior passes the plugin folder and that table name directly to Drizzle ORM's
 migrator. The pre-Drizzle shared migration table is read only to adopt already
-deployed plugin schemas on their first upgrade through this cutover.
+deployed plugin schemas on their first upgrade through this cutover. One
+Postgres advisory lock encloses the plugin's journal lookup, legacy adoption,
+and Drizzle migration application.
 
 ### Storage Migration Hooks
 

@@ -28,6 +28,11 @@ export interface JuniorSqlMigrationExecutor extends JuniorSqlDatabase {
     statement: string,
     params?: readonly unknown[],
   ): Promise<T[]>;
+  /** Serialize adoption and migration for one Drizzle journal. */
+  withMigrationLock<T>(
+    migrationTable: string,
+    callback: () => Promise<T>,
+  ): Promise<T>;
 }
 
 export interface JuniorSqlExecutor extends JuniorSqlMigrationExecutor {

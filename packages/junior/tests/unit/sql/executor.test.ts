@@ -17,6 +17,7 @@ function executor(name: string): JuniorSqlExecutor {
     query: vi.fn(),
     transaction: vi.fn(async (callback) => await callback()),
     withLock: vi.fn(async (_lockName, callback) => await callback()),
+    withMigrationLock: vi.fn(async (_migrationTable, callback) => callback()),
   };
 }
 

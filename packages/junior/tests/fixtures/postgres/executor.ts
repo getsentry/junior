@@ -65,6 +65,13 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
     return await callback();
   }
 
+  async withMigrationLock<T>(
+    _migrationTable: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    return await callback();
+  }
+
   async close(): Promise<void> {
     await this.closeTransaction();
   }

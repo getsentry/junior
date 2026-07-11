@@ -143,22 +143,24 @@ export async function migratePluginSchemas(
   for (const root of orderedRoots) {
     const migrations = readMigrationFiles({ migrationsFolder: root.dir });
     const table = migrationTable(root.pluginName);
-    const currentTime =
-      (await appliedMigrationTime(executor, table)) ??
-      (await adoptLegacyMigrationState({
-        executor,
-        migrations,
-        pluginName: root.pluginName,
-        table,
-      }));
-    const existing = appliedCount(migrations, currentTime);
-    await executor.migrate({
-      migrationsFolder: root.dir,
-      migrationsTable: table,
+    await executor.withMigrationLock(table, async () => {
+      const currentTime =
+        (await appliedMigrationTime(executor, table)) ??
+        (await adoptLegacyMigrationState({
+          executor,
+          migrations,
+          pluginName: root.pluginName,
+          table,
+        }));
+      const existing = appliedCount(migrations, currentTime);
+      await executor.migrate({
+        migrationsFolder: root.dir,
+        migrationsTable: table,
+      });
+      result.scanned += migrations.length;
+      result.existing += existing;
+      result.migrated += migrations.length - existing;
     });
-    result.scanned += migrations.length;
-    result.existing += existing;
-    result.migrated += migrations.length - existing;
   }
   return result;
 }

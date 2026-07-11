@@ -113,6 +113,21 @@ class PostgresExecutor implements JuniorSqlExecutor {
     }
   }
 
+  async withMigrationLock<T>(
+    migrationTable: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    const lockName = `junior:migrate:${migrationTable}`;
+    try {
+      await client.query("SELECT pg_advisory_lock(hashtext($1))", [lockName]);
+      return await callback();
+    } finally {
+      // Ending the session releases the lock without replacing a migration error.
+      client.release(true);
+    }
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
