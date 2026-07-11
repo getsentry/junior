@@ -85,17 +85,7 @@ Disable dashboard route mounting while preserving serializable config shape.
 
 Defined in: [junior/src/app.ts:120](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L120)
 
-Overlay dashboard visual-QA fixture conversations onto real reporting data.
-
----
-
-### reporting?
-
-> `optional` **reporting?**: [`JuniorReporting`](/reference/api/interfaces/juniorreporting/)
-
-Defined in: [junior/src/app.ts:122](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L122)
-
-Reporting implementation used by authenticated product APIs. Defaults to core reporting.
+Replace conversation API responses with dashboard visual-QA fixtures.
 
 ---
 
@@ -103,7 +93,7 @@ Reporting implementation used by authenticated product APIs. Defaults to core re
 
 > `optional` **sessionMaxAgeSeconds?**: `number`
 
-Defined in: [junior/src/app.ts:124](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L124)
+Defined in: [junior/src/app.ts:122](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L122)
 
 Browser session lifetime in seconds.
 
@@ -113,6 +103,6 @@ Browser session lifetime in seconds.
 
 > `optional` **trustedOrigins?**: `string`[]
 
-Defined in: [junior/src/app.ts:126](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L126)
+Defined in: [junior/src/app.ts:124](https://github.com/getsentry/junior/blob/main/packages/junior/src/app.ts#L124)
 
 Additional trusted origins accepted by Better Auth.

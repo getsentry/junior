@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
+import type { TranscriptMessage } from "@sentry/junior/api/schema";
 
 import {
   groupTranscriptMessages,
   groupTranscriptParts,
 } from "../src/client/components/transcriptRenderModel";
-import { turnHasMatch } from "../src/client/components/transcriptSearch";
-import { turnTranscriptMessages } from "../src/client/transcriptActivity";
-import type { ConversationTurn, TranscriptMessage } from "../src/client/types";
+import { conversationHasMatch } from "../src/client/components/transcriptSearch";
+import { conversationTranscriptMessages } from "../src/client/transcriptActivity";
+import type { ConversationTranscript } from "../src/client/types";
 
 function conversationTurn(
-  overrides: Partial<ConversationTurn>,
-): ConversationTurn {
+  overrides: Partial<ConversationTranscript>,
+): ConversationTranscript {
   return {
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
     displayTitle: "Conversation",
-    id: "turn-1",
     lastProgressAt: "2026-01-01T00:00:00.000Z",
     lastSeenAt: "2026-01-01T00:00:00.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
@@ -143,7 +143,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+    expect(
+      groupTranscriptMessages(conversationTranscriptMessages(turn)),
+    ).toEqual([
       {
         call: {
           type: "tool_call",
@@ -188,7 +190,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+    expect(
+      groupTranscriptMessages(conversationTranscriptMessages(turn)),
+    ).toEqual([
       {
         call: {
           type: "tool_call",
@@ -239,7 +243,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+    expect(
+      groupTranscriptMessages(conversationTranscriptMessages(turn)),
+    ).toEqual([
       {
         call: {
           type: "tool_call",
@@ -320,7 +326,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+    expect(
+      groupTranscriptMessages(conversationTranscriptMessages(turn)),
+    ).toEqual([
       {
         call: {
           type: "tool_call",
@@ -383,7 +391,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(groupTranscriptMessages(turnTranscriptMessages(turn))).toEqual([
+    expect(
+      groupTranscriptMessages(conversationTranscriptMessages(turn)),
+    ).toEqual([
       {
         call: {
           type: "tool_call",
@@ -581,9 +591,9 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(turnHasMatch(turn, "advisor")).toBe(true);
-    expect(turnHasMatch(turn, "running")).toBe(true);
-    expect(turnHasMatch(turn, "not-present")).toBe(false);
+    expect(conversationHasMatch(turn, "advisor")).toBe(true);
+    expect(conversationHasMatch(turn, "running")).toBe(true);
+    expect(conversationHasMatch(turn, "not-present")).toBe(false);
   });
 
   it("matches tool activity status in transcript search", () => {
@@ -603,6 +613,6 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(turnHasMatch(turn, "running")).toBe(true);
+    expect(conversationHasMatch(turn, "running")).toBe(true);
   });
 });

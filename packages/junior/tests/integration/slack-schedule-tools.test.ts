@@ -18,7 +18,7 @@ import {
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
-import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -42,13 +42,12 @@ function schedulerMigrationsDir(): string {
 
 async function useSchedulerSqlPlugin() {
   const fixture = await createLocalJuniorSqlFixture();
-  await migratePluginSchemas(
-    fixture.sql,
-    readPluginMigrations({
+  await migratePluginSchemas(fixture.sql, [
+    {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
-    }),
-  );
+    },
+  ]);
   const db = fixture.sql.db() as unknown as SchedulerDb;
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
   return {

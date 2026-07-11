@@ -947,8 +947,8 @@ describe("plugin heartbeat", () => {
       }),
     );
 
-    const { createJuniorReporting } = await import("@/reporting");
-    const feed = await createJuniorReporting().getPluginOperationalReports();
+    const { readPluginOperationalReportFeed } = await import("@/reporting");
+    const feed = await readPluginOperationalReportFeed();
     const scheduler = feed.reports.find(
       (report) => report.pluginName === "scheduler",
     );
@@ -1015,8 +1015,8 @@ describe("plugin heartbeat", () => {
       ).resolves.toBeDefined();
     }
 
-    const { createJuniorReporting } = await import("@/reporting");
-    const feed = await createJuniorReporting().getPluginOperationalReports();
+    const { readPluginOperationalReportFeed } = await import("@/reporting");
+    const feed = await readPluginOperationalReportFeed();
     const scheduler = feed.reports.find(
       (report) => report.pluginName === "scheduler",
     );

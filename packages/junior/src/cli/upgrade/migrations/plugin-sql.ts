@@ -1,5 +1,5 @@
 import { getChatConfig } from "@/chat/config";
-import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import { resolveUpgradePlugins } from "./upgrade-plugins";
@@ -17,10 +17,10 @@ export async function migratePluginsToSql(
     driver: sql.driver,
   });
   try {
-    const migrations = pluginCatalogRuntime
-      .getMigrationRoots()
-      .flatMap((root) => readPluginMigrations(root));
-    const result = await migratePluginSchemas(executor, migrations);
+    const result = await migratePluginSchemas(
+      executor,
+      pluginCatalogRuntime.getMigrationRoots(),
+    );
     return {
       existing: result.existing,
       migrated: result.migrated,

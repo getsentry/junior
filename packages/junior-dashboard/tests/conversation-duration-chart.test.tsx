@@ -3,10 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
 
 import { client } from "../src/client/api";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
-import type { ConversationSummary } from "../src/client/types";
 
 const chartState = vi.hoisted(() => ({
   scatterData: [] as Array<Record<string, unknown>>,
@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 function renderChart(
-  conversationSummaries: ConversationSummary[],
+  conversationSummaries: ConversationSummaryReport[],
   nowMs: number,
 ): string {
   return renderToStaticMarkup(
@@ -53,29 +53,15 @@ function renderChart(
 }
 
 describe("conversation duration chart", () => {
-  it("plots recent conversation runtime without double-counting cumulative turns", () => {
+  it("plots persisted cumulative conversation runtime", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T12:00:00.000Z"));
 
     const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
-    const conversationSummaries: ConversationSummary[] = [
+    const conversationSummaries: ConversationSummaryReport[] = [
       {
-        completedAt: "2026-06-02T09:05:00.000Z",
-        conversationId: "conversation-1",
-        cumulativeDurationMs: 1_000,
-        id: "turn-1",
-        lastProgressAt: "2026-06-02T09:05:00.000Z",
-        lastSeenAt: "2026-06-02T09:05:00.000Z",
-        startedAt: "2026-06-02T09:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-        displayTitle: "Conversation",
-      },
-      {
-        completedAt: "2026-06-02T11:03:00.000Z",
         conversationId: "conversation-1",
         cumulativeDurationMs: 2_500,
-        id: "turn-2",
         lastProgressAt: "2026-06-02T11:03:00.000Z",
         lastSeenAt: "2026-06-02T11:03:00.000Z",
         startedAt: "2026-06-02T11:00:00.000Z",
@@ -86,7 +72,6 @@ describe("conversation duration chart", () => {
       {
         conversationId: "conversation-active",
         cumulativeDurationMs: 3_000,
-        id: "active-turn",
         lastProgressAt: "2026-06-02T11:30:00.000Z",
         lastSeenAt: "2026-06-02T11:30:00.000Z",
         startedAt: "2026-06-02T11:30:00.000Z",
@@ -95,10 +80,8 @@ describe("conversation duration chart", () => {
         displayTitle: "Conversation",
       },
       {
-        completedAt: "2026-06-02T10:10:00.000Z",
         conversationId: "conversation-carryover",
         cumulativeDurationMs: 9_000,
-        id: "carryover-turn",
         lastProgressAt: "2026-06-02T10:10:00.000Z",
         lastSeenAt: "2026-06-02T10:10:00.000Z",
         startedAt: "2026-05-20T09:00:00.000Z",
@@ -107,10 +90,8 @@ describe("conversation duration chart", () => {
         displayTitle: "Conversation",
       },
       {
-        completedAt: "2026-05-20T09:05:00.000Z",
         conversationId: "conversation-old",
         cumulativeDurationMs: 9_000,
-        id: "old-turn",
         lastProgressAt: "2026-05-20T09:05:00.000Z",
         lastSeenAt: "2026-05-20T09:05:00.000Z",
         startedAt: "2026-05-20T09:00:00.000Z",

@@ -1,16 +1,22 @@
 import { sameToolInvocation } from "./toolInvocations";
+import type { ConversationActivityReport } from "@sentry/junior/api/schema";
 import type {
-  ConversationActivity,
-  ConversationTurn,
+  ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
   TranscriptViewSubagentPart,
   TranscriptViewToolCallPart,
 } from "./types";
 
-type ToolActivity = Extract<ConversationActivity, { type: "tool_execution" }>;
+type ToolActivity = Extract<
+  ConversationActivityReport,
+  { type: "tool_execution" }
+>;
 
-type SubagentActivity = Extract<ConversationActivity, { type: "subagent" }>;
+type SubagentActivity = Extract<
+  ConversationActivityReport,
+  { type: "subagent" }
+>;
 
 type IndexedMessage = {
   message: TranscriptViewMessage;
@@ -91,14 +97,16 @@ function subagentPart(activity: SubagentActivity): TranscriptViewSubagentPart {
   };
 }
 
-function toolActivities(turn: ConversationTurn): ToolActivity[] {
-  return (turn.activity ?? []).filter(
+function toolActivities(conversation: ConversationTranscript): ToolActivity[] {
+  return (conversation.activity ?? []).filter(
     (activity): activity is ToolActivity => activity.type === "tool_execution",
   );
 }
 
-function orphanSubagentActivities(turn: ConversationTurn): SubagentActivity[] {
-  return (turn.activity ?? []).filter(
+function orphanSubagentActivities(
+  conversation: ConversationTranscript,
+): SubagentActivity[] {
+  return (conversation.activity ?? []).filter(
     (activity): activity is SubagentActivity => activity.type === "subagent",
   );
 }
@@ -314,15 +322,15 @@ function mergeMessages(
   return merged;
 }
 
-/** Return the transcript rows that dashboard views should render for a turn. */
-export function turnTranscriptMessages(
-  turn: ConversationTurn,
+/** Return the transcript rows that dashboard views should render for a conversation. */
+export function conversationTranscriptMessages(
+  conversation: ConversationTranscript,
 ): TranscriptViewMessage[] {
-  const source = turn.transcriptAvailable
-    ? turn.transcript
-    : (turn.transcriptMetadata ?? []);
-  const activities = toolActivities(turn);
-  const orphanSubagents = orphanSubagentActivities(turn);
+  const source = conversation.transcriptAvailable
+    ? conversation.transcript
+    : (conversation.transcriptMetadata ?? []);
+  const activities = toolActivities(conversation);
+  const orphanSubagents = orphanSubagentActivities(conversation);
   if (activities.length === 0 && orphanSubagents.length === 0) {
     return source;
   }

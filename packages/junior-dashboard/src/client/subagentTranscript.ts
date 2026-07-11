@@ -1,10 +1,11 @@
-import type { ConversationSubagentTranscript, ConversationTurn } from "./types";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import type { ConversationTranscript } from "./types";
 
 /** Project a child-agent report through the shared transcript renderer. */
-export function subagentTranscriptTurn(
+export function subagentConversationTranscript(
   conversationId: string,
-  report: ConversationSubagentTranscript,
-): ConversationTurn {
+  report: ConversationSubagentTranscriptReport,
+): ConversationTranscript {
   const status =
     report.status === "running"
       ? "active"
@@ -17,7 +18,6 @@ export function subagentTranscriptTurn(
     assistantLabel: report.subagentKind,
     cumulativeDurationMs: subagentDurationMs(report) ?? 0,
     displayTitle: report.subagentKind,
-    id: report.id,
     lastProgressAt: report.endedAt ?? report.createdAt,
     lastSeenAt: report.endedAt ?? report.createdAt,
     startedAt: report.createdAt,
@@ -25,7 +25,6 @@ export function subagentTranscriptTurn(
     surface: "internal",
     transcript: report.transcript,
     transcriptAvailable: report.transcriptAvailable,
-    ...(report.endedAt ? { completedAt: report.endedAt } : {}),
     ...(report.transcriptMessageCount !== undefined
       ? { transcriptMessageCount: report.transcriptMessageCount }
       : {}),
@@ -38,9 +37,9 @@ export function subagentTranscriptTurn(
   };
 }
 
-/** Calculate a completed child-agent run duration when timestamps are valid. */
+/** Calculate a completed child-agent duration when timestamps are valid. */
 export function subagentDurationMs(
-  report: Pick<ConversationSubagentTranscript, "createdAt" | "endedAt">,
+  report: Pick<ConversationSubagentTranscriptReport, "createdAt" | "endedAt">,
 ): number | undefined {
   if (!report.endedAt) return undefined;
   const startedAt = Date.parse(report.createdAt);

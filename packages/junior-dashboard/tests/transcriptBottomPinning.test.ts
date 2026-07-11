@@ -6,15 +6,14 @@ import {
   transcriptFollowIntent,
   transcriptBottomVersion,
 } from "../src/client/components/transcriptBottomPinning";
-import type { ConversationTurn } from "../src/client/types";
+import type { ConversationTranscript } from "../src/client/types";
 
 function activeTurn(
-  overrides: Partial<ConversationTurn> = {},
-): ConversationTurn {
+  overrides: Partial<ConversationTranscript> = {},
+): ConversationTranscript {
   return {
     conversationId: "conversation-1",
     cumulativeDurationMs: 0,
-    id: "turn-1",
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
@@ -30,7 +29,7 @@ function activeTurn(
     ],
     transcriptAvailable: true,
     ...overrides,
-  } as ConversationTurn;
+  } as ConversationTranscript;
 }
 
 describe("transcript bottom pinning", () => {
@@ -53,8 +52,8 @@ describe("transcript bottom pinning", () => {
   });
 
   it("changes the tail version when streamed text grows", () => {
-    const before = transcriptBottomVersion([activeTurn()]);
-    const after = transcriptBottomVersion([
+    const before = transcriptBottomVersion(activeTurn());
+    const after = transcriptBottomVersion(
       activeTurn({
         transcript: [
           {
@@ -64,31 +63,30 @@ describe("transcript bottom pinning", () => {
           },
         ],
       }),
-    ]);
+    );
 
     expect(after).not.toBe(before);
   });
 
   it("keeps the tail version stable when only polling timestamps change", () => {
-    const before = transcriptBottomVersion([activeTurn()]);
-    const after = transcriptBottomVersion([
+    const before = transcriptBottomVersion(activeTurn());
+    const after = transcriptBottomVersion(
       activeTurn({
         lastProgressAt: "2026-01-01T00:01:00.000Z",
         lastSeenAt: "2026-01-01T00:01:00.000Z",
       }),
-    ]);
+    );
 
     expect(after).toBe(before);
   });
 
   it("changes the tail version when the live turn completes", () => {
-    const before = transcriptBottomVersion([activeTurn()]);
-    const after = transcriptBottomVersion([
+    const before = transcriptBottomVersion(activeTurn());
+    const after = transcriptBottomVersion(
       activeTurn({
-        completedAt: "2026-01-01T00:00:12.000Z",
         status: "completed",
       }),
-    ]);
+    );
 
     expect(after).not.toBe(before);
   });

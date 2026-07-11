@@ -1,6 +1,5 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
-import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorDestinations,
@@ -10,12 +9,14 @@ import {
 import type {
   ConversationStatsItem,
   ConversationSummaryReport,
-  PeopleConversationStatus,
-  PeopleConversationSurface,
   ActorActivityDayReport,
   ActorIdentity,
   ActorTotalsReport,
-} from "./types";
+} from "./schema";
+import type {
+  ConversationReportStatus,
+  ConversationSurface,
+} from "../conversations/schema";
 
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 export const SAMPLE_LIMIT = 5_000;
@@ -31,10 +32,6 @@ type Source =
   | "resource_event"
   | "scheduler"
   | "slack";
-
-export interface PeopleApiQueryOptions {
-  db?: JuniorDatabase;
-}
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {
@@ -61,7 +58,7 @@ function channelFromConversationId(conversationId: string): string | undefined {
   return provider === "slack" && channel ? channel : undefined;
 }
 
-function surfaceFromRow(row: PeopleConversationRow): PeopleConversationSurface {
+function surfaceFromRow(row: PeopleConversationRow): ConversationSurface {
   const source = row.source as Source | null;
   if (source === "api" || source === "scheduler" || source === "slack") {
     return source;
@@ -75,7 +72,7 @@ function surfaceFromRow(row: PeopleConversationRow): PeopleConversationSurface {
 function statusFromRow(
   row: PeopleConversationRow,
   nowMs: number,
-): PeopleConversationStatus {
+): ConversationReportStatus {
   if (row.executionStatus === "failed") {
     return "failed";
   }
@@ -93,7 +90,7 @@ function statusFromRow(
 }
 
 /** Return the dashboard label for a conversation surface. */
-export function surfaceLabel(surface: PeopleConversationSurface): string {
+export function surfaceLabel(surface: ConversationSurface): string {
   if (surface === "scheduler") return "Scheduler";
   if (surface === "api") return "API";
   if (surface === "internal") return "Internal";
@@ -131,7 +128,7 @@ function channelNameFromRow(row: PeopleConversationRow): string | undefined {
 
 function titleFromRow(
   row: PeopleConversationRow,
-  surface: PeopleConversationSurface,
+  surface: ConversationSurface,
 ): string {
   if (row.destinationVisibility && row.destinationVisibility !== "public") {
     return PRIVATE_CONVERSATION_LABEL;
@@ -162,7 +159,6 @@ export function summaryFromRow(
     conversationId: row.conversationId,
     cumulativeDurationMs: row.durationMs,
     displayTitle: titleFromRow(row, surface),
-    id: row.conversationId,
     lastProgressAt: new Date(
       row.executionUpdatedAt ?? row.updatedAt,
     ).toISOString(),
@@ -319,12 +315,9 @@ export function statsItems(map: Map<string, ConversationStatsItem>) {
 }
 
 /** Read verified actor conversation rows directly from the SQL identity model. */
-export async function actorRows(
-  options: PeopleApiQueryOptions = {},
-  email?: string,
-) {
+export async function actorRows(email?: string) {
   const normalizedEmail = normalizeEmail(email);
-  const rows = await (options.db ?? getDb())
+  const rows = await getDb()
     .select({
       channelName: juniorConversations.channelName,
       conversationId: juniorConversations.conversationId,

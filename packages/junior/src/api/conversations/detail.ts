@@ -1,22 +1,11 @@
 import { readConversationDetailFromSql } from "./detail.query";
-import type { ConversationReport } from "./types";
+import { conversationDetailReportSchema } from "./schema";
+import type { ConversationDetailReport } from "./schema";
 
 /** Load one conversation directly from durable SQL records. */
 export async function readConversationDetail(
   conversationId: string,
-): Promise<ConversationReport | undefined> {
-  return readConversationDetailFromSql(conversationId);
+): Promise<ConversationDetailReport | undefined> {
+  const report = await readConversationDetailFromSql(conversationId);
+  return report ? conversationDetailReportSchema.parse(report) : undefined;
 }
-
-export type {
-  ConversationActivityReport,
-  ConversationActivityStatus,
-  ConversationReport,
-  ConversationRunReport,
-  ConversationSubagentActivityReport,
-  ConversationToolActivityReport,
-  TranscriptMessage,
-  TranscriptPart,
-  TranscriptPartType,
-  TranscriptRole,
-} from "./types";

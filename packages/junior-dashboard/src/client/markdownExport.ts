@@ -13,12 +13,12 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
-import { turnTranscriptMessages } from "./transcriptActivity";
+import { conversationTranscriptMessages } from "./transcriptActivity";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 import type {
   Conversation,
-  ConversationDetailFeed,
-  ConversationSubagentTranscript,
-  ConversationTurn,
+  ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
   TranscriptViewSubagentPart,
@@ -26,114 +26,124 @@ import type {
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
 export function buildConversationMarkdown(
-  detail: ConversationDetailFeed,
+  detail: ConversationDetailReport,
   conversation?: Conversation,
 ): string {
   const lines: string[] = [];
-  const firstTurn = detail.runs[0];
 
   lines.push(`# ${headingText(conversationTitle(detail, conversation))}`, "");
   addMetaLine(lines, "Conversation ID", inlineCode(detail.conversationId));
   addMetaLine(lines, "Generated", detail.generatedAt);
-  addMetaLine(lines, "Actor", conversationActor(conversation, firstTurn));
-  addMetaLine(lines, "Location", conversationLocation(conversation, firstTurn));
+  addMetaLine(lines, "Actor", conversationActor(conversation, detail));
+  addMetaLine(lines, "Location", conversationLocation(conversation, detail));
   addMetaLine(
     lines,
     "Usage",
     [
-      formatUsageTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
-      formatCostTotal(detail.runs.map((turn) => turn.cumulativeUsage)),
+      formatUsageTotal(detail.cumulativeUsage),
+      formatCostTotal(detail.cumulativeUsage),
     ]
       .filter(Boolean)
       .join(" · "),
   );
   addMetaLine(lines, "Sentry conversation", detail.sentryConversationUrl);
 
-  if (detail.runs.length === 0) {
-    lines.push("", "## Transcript", "", "No transcript is available.");
-    return finishMarkdown(lines);
-  }
-
   lines.push("", "## Transcript");
-  detail.runs.forEach((turn) => {
-    appendTurnTranscript(lines, turn);
-  });
+  appendConversationTranscript(lines, detail);
 
   return finishMarkdown(lines);
 }
 
 /** Build Markdown for one child-agent transcript using the shared formatter. */
 export function buildSubagentMarkdown(
-  report: ConversationSubagentTranscript,
-  turn: ConversationTurn,
+  report: ConversationSubagentTranscriptReport,
+  conversationTranscript: ConversationTranscript,
 ): string {
   const lines: string[] = [`# ${headingText(report.subagentKind)}`, ""];
   addMetaLine(lines, "Subagent ID", inlineCode(report.id));
   addMetaLine(lines, "Conversation ID", report.subagentConversationId);
   addMetaLine(lines, "Created", report.createdAt);
   addMetaLine(lines, "Status", report.outcome ?? report.status);
-  addMetaLine(lines, "Duration", formatMs(turn.cumulativeDurationMs));
+  addMetaLine(
+    lines,
+    "Duration",
+    formatMs(conversationTranscript.cumulativeDurationMs),
+  );
   addMetaLine(
     lines,
     "Sentry conversation",
     report.subagentSentryConversationUrl,
   );
   lines.push("", "## Transcript");
-  appendTurnTranscript(lines, turn);
+  appendConversationTranscript(lines, conversationTranscript);
   return finishMarkdown(lines);
 }
 
-function appendTurnTranscript(lines: string[], turn: ConversationTurn): void {
-  const transcript = turnTranscriptMessages(turn);
+function appendConversationTranscript(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+): void {
+  const transcript = conversationTranscriptMessages(conversationTranscript);
 
-  if (turn.transcriptAvailable) {
-    appendTranscriptMessages(lines, turn, transcript, false);
+  if (conversationTranscript.transcriptAvailable) {
+    appendTranscriptMessages(lines, conversationTranscript, transcript, false);
     return;
   }
 
-  if (turn.transcriptRedacted && transcript.length) {
+  if (conversationTranscript.transcriptRedacted && transcript.length) {
     lines.push(
       "",
       "Transcript hidden because this conversation is not public.",
     );
-    appendTranscriptMessages(lines, turn, transcript, true);
+    appendTranscriptMessages(lines, conversationTranscript, transcript, true);
     return;
   }
 
   if (transcript.length) {
-    appendTranscriptMessages(lines, turn, transcript, false);
+    appendTranscriptMessages(lines, conversationTranscript, transcript, false);
     return;
   }
 
-  lines.push("", unavailableTranscriptLabel(turn));
+  lines.push("", unavailableTranscriptLabel(conversationTranscript));
 }
 
 function appendTranscriptMessages(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   messages: TranscriptViewMessage[],
   redacted: boolean,
 ): void {
   for (const entry of groupTranscriptMessages(messages)) {
     if (entry.kind === "message") {
-      appendMessage(lines, turn, entry.message, redacted);
+      appendMessage(lines, conversationTranscript, entry.message, redacted);
       continue;
     }
 
     if (entry.kind === "thinking") {
-      appendThinking(lines, turn, entry.part, entry.timestamp, redacted);
+      appendThinking(
+        lines,
+        conversationTranscript,
+        entry.part,
+        entry.timestamp,
+        redacted,
+      );
       continue;
     }
 
     if (entry.kind === "subagent") {
-      appendSubagent(lines, turn, entry.part, entry.timestamp);
+      appendSubagent(
+        lines,
+        conversationTranscript,
+        entry.part,
+        entry.timestamp,
+      );
       continue;
     }
 
     if (redacted) {
       appendRedactedTool(
         lines,
-        turn,
+        conversationTranscript,
         entry.call,
         entry.result,
         entry.timestamp,
@@ -144,7 +154,7 @@ function appendTranscriptMessages(
 
     appendTool(
       lines,
-      turn,
+      conversationTranscript,
       entry.call,
       entry.result,
       entry.timestamp,
@@ -155,12 +165,12 @@ function appendTranscriptMessages(
 
 function appendMessage(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   message: TranscriptViewMessage,
   redacted: boolean,
 ): void {
-  lines.push("", `### ${messageRoleLabel(message, turn)}`);
-  addEventMeta(lines, turn, message.timestamp);
+  lines.push("", `### ${messageRoleLabel(message, conversationTranscript)}`);
+  addEventMeta(lines, conversationTranscript, message.timestamp);
 
   if (redacted) {
     const redactedLines = message.parts.map(redactedPartLabel);
@@ -174,13 +184,13 @@ function appendMessage(
 
 function appendThinking(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   part: TranscriptViewPart,
   timestamp: number | undefined,
   redacted: boolean,
 ): void {
   lines.push("", "### Thinking");
-  addEventMeta(lines, turn, timestamp);
+  addEventMeta(lines, conversationTranscript, timestamp);
 
   if (redacted) {
     lines.push("", `- ${redactedPartLabel(part)}`);
@@ -192,37 +202,51 @@ function appendThinking(
 
 function appendSubagent(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   part: TranscriptViewSubagentPart,
   timestamp: number | undefined,
 ): void {
   lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
-  addEventMeta(lines, turn, timestamp);
+  addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.outcome ?? part.status);
   addMetaLine(lines, "Parent tool call", part.parentToolCallId);
 }
 
 function appendTool(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   call: TranscriptViewPart | undefined,
   result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
-  appendToolHeader(lines, turn, call, result, timestamp, resultTimestamp);
+  appendToolHeader(
+    lines,
+    conversationTranscript,
+    call,
+    result,
+    timestamp,
+    resultTimestamp,
+  );
   lines.push("", fencedBlock(stringifyPartValue({ call, result }), "json"));
 }
 
 function appendRedactedTool(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   call: TranscriptViewPart | undefined,
   result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
-  appendToolHeader(lines, turn, call, result, timestamp, resultTimestamp);
+  appendToolHeader(
+    lines,
+    conversationTranscript,
+    call,
+    result,
+    timestamp,
+    resultTimestamp,
+  );
 
   const redactedLines = [call, result]
     .filter((part): part is TranscriptViewPart => part !== undefined)
@@ -232,14 +256,14 @@ function appendRedactedTool(
 
 function appendToolHeader(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   call: TranscriptViewPart | undefined,
   result: TranscriptViewPart | undefined,
   timestamp: number | undefined,
   resultTimestamp: number | undefined,
 ): void {
   lines.push("", `### Tool: ${headingText(toolName(call, result))}`);
-  addEventMeta(lines, turn, timestamp);
+  addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Result timestamp", eventTimestamp(resultTimestamp));
   addMetaLine(lines, "Duration", toolDuration(timestamp, resultTimestamp));
   if (!result) {
@@ -253,19 +277,20 @@ function appendToolHeader(
 
 function addEventMeta(
   lines: string[],
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   timestamp: number | undefined,
 ): void {
-  const meta = [eventTimestamp(timestamp), eventOffset(turn, timestamp)].filter(
-    isNonEmptyString,
-  );
+  const meta = [
+    eventTimestamp(timestamp),
+    eventOffset(conversationTranscript, timestamp),
+  ].filter(isNonEmptyString);
   if (meta.length) {
     lines.push("", `_${meta.join(" - ")}_`);
   }
 }
 
 function conversationTitle(
-  detail: ConversationDetailFeed,
+  detail: ConversationDetailReport,
   conversation: Conversation | undefined,
 ): string {
   const title = detail.displayTitle.trim();
@@ -275,26 +300,34 @@ function conversationTitle(
 
 function conversationActor(
   conversation: Conversation | undefined,
-  turn: ConversationTurn | undefined,
+  conversationTranscript: ConversationTranscript | undefined,
 ): string {
-  return actorLabel(conversation?.actorIdentity ?? turn?.actorIdentity) ?? "";
+  return (
+    actorLabel(
+      conversation?.actorIdentity ?? conversationTranscript?.actorIdentity,
+    ) ?? ""
+  );
 }
 
 function conversationLocation(
   conversation: Conversation | undefined,
-  turn: ConversationTurn | undefined,
+  conversationTranscript: ConversationTranscript | undefined,
 ): string {
   if (conversation) return slackLocationLabel(conversation) ?? "";
-  return turn ? (slackLocationLabel(turn) ?? "") : "";
+  return conversationTranscript
+    ? (slackLocationLabel(conversationTranscript) ?? "")
+    : "";
 }
 
 function messageRoleLabel(
   message: TranscriptViewMessage,
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return turn.assistantLabel ?? "Junior";
-  if (kind === "user") return actorLabel(turn.actorIdentity) ?? "User";
+  if (kind === "assistant")
+    return conversationTranscript.assistantLabel ?? "Junior";
+  if (kind === "user")
+    return actorLabel(conversationTranscript.actorIdentity) ?? "User";
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
   return headingText(message.role || "Unknown");
@@ -343,11 +376,11 @@ function eventTimestamp(timestamp: number | undefined): string {
 }
 
 function eventOffset(
-  turn: ConversationTurn,
+  conversationTranscript: ConversationTranscript,
   timestamp: number | undefined,
 ): string {
   if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "";
-  const start = Date.parse(turn.startedAt);
+  const start = Date.parse(conversationTranscript.startedAt);
   if (!Number.isFinite(start) || timestamp < start) return "";
   return `+${formatMs(timestamp - start)}`;
 }

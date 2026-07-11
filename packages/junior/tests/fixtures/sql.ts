@@ -5,10 +5,13 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
   createEmptyJuniorSqlFixture,
   hasJuniorPostgresTestDatabase,
 } from "./postgres/fixture";
+import { closeDb, getSqlExecutor } from "@/chat/db";
 
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
@@ -32,12 +35,33 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
   }
 
   const fixture =
-    await createLocalPgliteFixture<JuniorDatabase>(juniorSqlSchema);
+    await createLocalPgliteFixture<PgliteDatabase<typeof juniorSqlSchema>>(
+      juniorSqlSchema,
+    );
+
+  const sql: JuniorSqlExecutor = {
+    close: () => fixture.close(),
+    db: () => fixture.db() as unknown as JuniorDatabase,
+    execute: (statement, params) => fixture.execute(statement, params),
+    migrate: (config) => migrate(fixture.db(), config),
+    query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
+      fixture.query<T>(statement, params),
+    transaction: (callback) => fixture.transaction(callback),
+    withLock: (lockName, callback) => fixture.withLock(lockName, callback),
+  };
 
   return {
     client: fixture.client,
-    sql: fixture as unknown as JuniorSqlExecutor,
+    sql,
     close: () => fixture.close(),
+  };
+}
+
+/** Use the product-configured SQL connection for API boundary tests. */
+export function createConfiguredJuniorSqlFixture(): LocalJuniorSqlFixture {
+  return {
+    sql: getSqlExecutor(),
+    close: closeDb,
   };
 }
 

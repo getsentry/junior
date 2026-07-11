@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ToggleButton } from "./Button";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 
-/** Render transcript controls without coupling them to turn rendering. */
+/** Render transcript controls without coupling them to message rendering. */
 export function TranscriptHeader(props: {
   actions?: ReactNode;
   onChange(value: TranscriptViewMode): void;

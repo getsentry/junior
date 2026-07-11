@@ -41,13 +41,13 @@ pnpm dev
 
 This starts the example app on `http://localhost:3000` by default. It also rebuilds and watches the workspace packages that the example app consumes, so dashboard and runtime package edits are reflected without manually rebuilding first.
 
-For dashboard visual QA without generating real Slack traffic, overlay sample conversations:
+For dashboard visual QA without generating real Slack traffic, replace conversation API responses with sample fixtures:
 
 ```bash
 JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true pnpm dev
 ```
 
-The fixtures are read-only dashboard data and appear before any real local conversation sessions.
+The fixtures are read-only dashboard data; mock mode does not query or merge real conversation records.
 
 ## Work in isolated branches
 

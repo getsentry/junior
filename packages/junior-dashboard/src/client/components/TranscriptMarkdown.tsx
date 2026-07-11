@@ -12,7 +12,10 @@ import {
   findTranscriptMarkdownLinks,
   TRANSCRIPT_ANCHOR_CLASS,
 } from "./transcriptMarkdownLinks";
-import { buildSearchDecorations, useTranscriptSearch } from "./transcriptSearch";
+import {
+  buildSearchDecorations,
+  useTranscriptSearch,
+} from "./transcriptSearch";
 
 const TRANSCRIPT_MARKDOWN_CACHE_KEY = "transcript-markdown";
 

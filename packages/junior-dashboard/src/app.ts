@@ -1,14 +1,22 @@
 import { Hono, type Context, type Next } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { JuniorReporting } from "@sentry/junior/reporting";
-import { createJuniorReporting } from "@sentry/junior/reporting";
+import { createJuniorApi } from "@sentry/junior/api";
+import {
+  conversationDetailReportSchema,
+  conversationFeedSchema,
+  conversationParamsSchema,
+  conversationStatsReportSchema,
+  conversationSubagentTranscriptReportSchema,
+  subagentParamsSchema,
+} from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
+import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
 import { dashboardClientAsset, dashboardTailwindAsset } from "./assets";
 import {
   createDashboardAuth,
@@ -24,9 +32,6 @@ import {
   readMockConversationStats,
   readMockConversationSubagent,
 } from "./mock-conversations";
-import { conversationStatsResponse } from "./api/conversations/stats";
-import { peopleListResponse } from "./api/people/list";
-import { peopleProfileResponse } from "./api/people/profile";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -44,7 +49,6 @@ export interface JuniorDashboardOptions {
   sessionMaxAgeSeconds?: number;
   trustedOrigins?: string[];
   auth?: DashboardAuth;
-  reporting?: JuniorReporting;
   mockConversations?: boolean;
 }
 
@@ -509,7 +513,6 @@ export function createDashboardApp(
         sessionMaxAgeSeconds: options.sessionMaxAgeSeconds,
       }))
     : undefined;
-  const reporting = options.reporting ?? createJuniorReporting();
   const app = new Hono<{ Variables: Variables }>();
 
   app.get(dashboardLoginPath(basePath), async (c) => {
@@ -566,26 +569,6 @@ export function createDashboardApp(
       app.get(`${path}/*`, () => renderDashboard(basePath));
     }
   }
-  app.get("/api/health", async () => {
-    return Response.json(await reporting.getHealth());
-  });
-  app.get("/api/runtime", async () => {
-    return Response.json(await reporting.getRuntimeInfo());
-  });
-  app.get("/api/plugins", async () => {
-    return Response.json(await reporting.getPlugins());
-  });
-  app.get("/api/skills", async () => {
-    return Response.json(await reporting.getSkills());
-  });
-  app.get("/api/conversations", async () => {
-    if (options.mockConversations) {
-      return Response.json(readMockConversationFeed());
-    }
-    const { readConversationFeed } =
-      await import("@sentry/junior/api/conversations/list");
-    return Response.json(await readConversationFeed());
-  });
   for (const route of options.pluginRoutes ?? []) {
     const prefix = pluginRoutePrefix(route.pluginName);
     const handler = (c: Context<{ Variables: Variables }>) =>
@@ -598,75 +581,52 @@ export function createDashboardApp(
     app.all(prefix, handler);
     app.all(`${prefix}/*`, handler);
   }
-  app.get("/api/conversations/stats", async () => {
-    return options.mockConversations
-      ? Response.json(readMockConversationStats())
-      : conversationStatsResponse();
-  });
-  app.get("/api/people", () => peopleListResponse());
-  app.get("/api/people/:email", async (c) => {
-    return peopleProfileResponse(decodeURIComponent(c.req.param("email")));
-  });
-  app.get("/api/plugin-reports", async () => {
-    try {
-      return Response.json(await reporting.getPluginOperationalReports());
-    } catch {
+  if (options.mockConversations) {
+    app.get("/api/conversations", () => {
       return Response.json(
-        { error: "Plugin stats failed to load." },
-        { status: 500 },
+        conversationFeedSchema.parse(readMockConversationFeed()),
       );
-    }
-  });
-  app.get("/api/conversations/:conversationId", async (c) => {
-    const conversationId = decodeURIComponent(c.req.param("conversationId"));
-    if (!options.mockConversations) {
-      const { readConversationDetail } =
-        await import("@sentry/junior/api/conversations/detail");
-      const report = await readConversationDetail(conversationId);
-      return report
-        ? Response.json(report)
-        : Response.json({ error: "Conversation not found." }, { status: 404 });
-    }
-    const report = readMockConversationDetail(conversationId);
-    return report
-      ? Response.json(report)
-      : Response.json({ error: "Conversation not found." }, { status: 404 });
-  });
-  app.get(
-    "/api/conversations/:conversationId/subagents/:subagentId",
-    async (c) => {
-      const conversationId = decodeURIComponent(c.req.param("conversationId"));
-      const subagentId = decodeURIComponent(c.req.param("subagentId"));
-      if (!options.mockConversations) {
-        const { readConversationSubagent } =
-          await import("@sentry/junior/api/conversations/subagent");
-        const report = await readConversationSubagent(
-          conversationId,
-          subagentId,
-        );
-        return report.unavailableReason === "not_found"
-          ? Response.json(report, { status: 404 })
-          : Response.json(report);
-      }
-      const report = readMockConversationSubagent(conversationId, subagentId);
-      return report
-        ? Response.json(report)
-        : Response.json({ error: "Subagent not found." }, { status: 404 });
-    },
-  );
-  app.get("/api/config", () => {
-    return Response.json({
-      allowedEmailCount: allowedEmails.length,
-      allowedGoogleDomainCount: allowedDomains.length,
-      authRequired,
-      authPath,
-      basePath,
-      sentryConversationLinks: hasSentryConversationLinks(),
-      timeZone: dashboardTimeZone(),
     });
+    app.get("/api/conversations/stats", () => {
+      return Response.json(
+        conversationStatsReportSchema.parse(readMockConversationStats()),
+      );
+    });
+    app.get("/api/conversations/:conversationId", (c) => {
+      const { conversationId } = conversationParamsSchema.parse(c.req.param());
+      const report = readMockConversationDetail(conversationId);
+      return report
+        ? Response.json(conversationDetailReportSchema.parse(report))
+        : Response.json({ error: "Conversation not found." }, { status: 404 });
+    });
+    app.get("/api/conversations/:conversationId/subagents/:subagentId", (c) => {
+      const { conversationId, subagentId } = subagentParamsSchema.parse(
+        c.req.param(),
+      );
+      const report = conversationSubagentTranscriptReportSchema.parse(
+        readMockConversationSubagent(conversationId, subagentId),
+      );
+      return report.unavailableReason === "not_found"
+        ? Response.json(report, { status: 404 })
+        : Response.json(report);
+    });
+  }
+  app.route("/", createJuniorApi());
+  app.get("/api/config", () => {
+    return Response.json(
+      dashboardConfigSchema.parse({
+        allowedEmailCount: allowedEmails.length,
+        allowedGoogleDomainCount: allowedDomains.length,
+        authRequired,
+        authPath,
+        basePath,
+        sentryConversationLinks: hasSentryConversationLinks(),
+        timeZone: dashboardTimeZone(),
+      }),
+    );
   });
   app.get("/api/me", (c) => {
-    return Response.json(c.get("authSession"));
+    return Response.json(dashboardIdentitySchema.parse(c.get("authSession")));
   });
   app.get(DASHBOARD_CLIENT_PATH, () => {
     return new Response(readDashboardClient(), {

@@ -9,8 +9,8 @@ import {
   type RefObject,
 } from "react";
 
-import type { ConversationTurn, TranscriptViewPart } from "../types";
-import { turnTranscriptMessages } from "../transcriptActivity";
+import type { ConversationTranscript, TranscriptViewPart } from "../types";
+import { conversationTranscriptMessages } from "../transcriptActivity";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const USER_SCROLL_DELTA_PX = 2;
@@ -48,18 +48,18 @@ export function isNearScrollBottom(
 }
 
 /** Build a compact transcript-tail key so polling without content changes does not look new. */
-export function transcriptBottomVersion(turns: ConversationTurn[]): string {
-  const lastTurn = turns.at(-1);
-  if (!lastTurn) return "empty";
+export function transcriptBottomVersion(
+  conversation: ConversationTranscript | undefined,
+): string {
+  if (!conversation) return "empty";
 
-  const messages = turnTranscriptMessages(lastTurn);
+  const messages = conversationTranscriptMessages(conversation);
   const lastMessage = messages.at(-1);
   const lastPart = lastMessage?.parts.at(-1);
 
   return [
-    turns.length,
-    lastTurn.id,
-    lastTurn.status,
+    conversation.conversationId,
+    conversation.status,
     messages.length,
     lastMessage?.role ?? "",
     lastMessage?.timestamp ?? "",

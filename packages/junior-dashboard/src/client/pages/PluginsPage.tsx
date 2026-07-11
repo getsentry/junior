@@ -2,11 +2,16 @@ import { PluginReports } from "../components/PluginReports";
 import { Section } from "../components/Section";
 import { SectionHeader } from "../components/SectionHeader";
 import { SectionTitle } from "../components/SectionTitle";
-import type { DashboardData, Plugin, PluginReport, Skill } from "../types";
+import type {
+  PluginOperationalReport,
+  PluginReport,
+  SkillReport,
+} from "@sentry/junior/api/schema";
+import type { DashboardData } from "../types";
 
 type PluginRow = {
   name: string;
-  skills: Skill[];
+  skills: SkillReport[];
 };
 
 /** Render plugin inventory and operational summaries. */
@@ -124,9 +129,9 @@ function PluginMetric(props: { label: string; value: number | string }) {
 }
 
 function buildPluginRows(input: {
-  plugins: Plugin[];
-  reports: PluginReport[];
-  skills: Skill[];
+  plugins: PluginReport[];
+  reports: PluginOperationalReport[];
+  skills: SkillReport[];
 }): PluginRow[] {
   const names = new Set<string>();
   for (const plugin of input.plugins) {

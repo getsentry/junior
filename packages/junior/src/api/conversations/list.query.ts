@@ -7,8 +7,8 @@ import {
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
-import { sessionReportFromConversation } from "./projection";
-import type { ConversationFeed } from "./types";
+import { conversationSummaryFromStoredConversation } from "./projection";
+import type { ConversationFeed } from "./schema";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
@@ -92,7 +92,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
 /** Read one normalized conversation record directly from its SQL row. */
 export async function readConversationRecordFromSql(
   conversationId: string,
-  db: JuniorDatabase = getDb(),
 ): Promise<
   | {
       conversation: Conversation;
@@ -101,6 +100,7 @@ export async function readConversationRecordFromSql(
     }
   | undefined
 > {
+  const db = getDb();
   const rows = await db
     .select({
       conversation: juniorConversations,
@@ -135,19 +135,19 @@ export async function readConversationRecordFromSql(
 
 /** Build the dashboard conversation feed directly from durable SQL rows. */
 export async function readConversationFeedFromSql(
-  db: JuniorDatabase = getDb(),
   limit = CONVERSATION_FEED_LIMIT,
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
-  const rows = await conversationRows(db, limit);
+  const rows = await conversationRows(getDb(), limit);
   return {
-    conversations: rows.map((row) => ({
-      ...sessionReportFromConversation(conversationFromRow(row), nowMs),
-      cumulativeDurationMs: row.conversation.durationMs,
-      ...(row.conversation.usage
-        ? { cumulativeUsage: row.conversation.usage }
-        : {}),
-    })),
+    conversations: rows.map((row) =>
+      conversationSummaryFromStoredConversation({
+        conversation: conversationFromRow(row),
+        durationMs: row.conversation.durationMs,
+        nowMs,
+        usage: row.conversation.usage ?? undefined,
+      }),
+    ),
     generatedAt: new Date(nowMs).toISOString(),
     source: "conversation_index",
   };

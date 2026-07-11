@@ -1,4 +1,4 @@
-import type { ConversationSummaryReport, ConversationSurface } from "./types";
+import type { ConversationSummaryReport, ConversationSurface } from "./schema";
 
 /** Format a Slack destination without exposing private channel names. */
 export function slackStatsLocationLabel(

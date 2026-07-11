@@ -1,6 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { codeToHtml, type BundledLanguage, type DecorationItem } from "shiki/bundle/web";
+import {
+  codeToHtml,
+  type BundledLanguage,
+  type DecorationItem,
+} from "shiki/bundle/web";
 
 import { canRenderStructuredMarkup, parseMarkupNodes } from "./format";
 import type { CodeBlock, MarkupNode } from "./types";
@@ -145,10 +149,7 @@ export function HighlightedCode(props: {
   const searchDecorations = search.active
     ? buildSearchDecorations(props.code, search.normalizedQuery)
     : [];
-  const allDecorations = [
-    ...(props.decorations ?? []),
-    ...searchDecorations,
-  ];
+  const allDecorations = [...(props.decorations ?? []), ...searchDecorations];
 
   const highlighted = useQuery({
     queryKey: search.active

@@ -18,8 +18,7 @@ import {
   type SubagentEndedStep,
   type SubagentStartedStep,
 } from "./activity";
-import { surfaceFallbackLabel } from "./shared";
-import { sessionReportFromConversation } from "./projection";
+import { conversationSummaryFromStoredConversation } from "./projection";
 import {
   countConversationMessages,
   normalizeTranscriptMessage,
@@ -29,11 +28,10 @@ import {
 } from "./transcript";
 import type {
   ConversationActivityReport,
-  ConversationReport,
-  ConversationRunReport,
+  ConversationDetailReport,
   ConversationSubagentTranscriptReport,
   TranscriptMessage,
-} from "./types";
+} from "./schema";
 async function currentRunContent(args: {
   conversationId: string;
   messageStore: ConversationMessageStore;
@@ -75,8 +73,8 @@ function visibleMessageTranscript(
 export async function buildConversationDetail(args: {
   conversation: Conversation;
   durationMs: number;
-  usage: ConversationRunReport["cumulativeUsage"];
-}): Promise<ConversationReport> {
+  usage: ConversationDetailReport["cumulativeUsage"];
+}): Promise<ConversationDetailReport> {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
   const nowMs = Date.now();
@@ -110,57 +108,47 @@ export async function buildConversationDetail(args: {
     ? traceIdFromTranscript(currentTranscript)
     : undefined;
   const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
-  const effectiveRuns: ConversationRunReport[] = [
-    {
-      ...sessionReportFromConversation(conversation, nowMs),
-      cumulativeDurationMs: args.durationMs,
-      ...(args.usage ? { cumulativeUsage: args.usage } : {}),
-      ...(traceId ? { traceId } : {}),
-      ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
-      activity: currentContent.activity,
-      transcriptAvailable:
-        transcriptExpiredAt === undefined &&
-        canExposeSqlContent &&
-        currentTranscript.length > 0,
-      ...(currentTranscript.length > 0
-        ? {
-            transcriptMessageCount:
-              countConversationMessages(currentTranscript),
-          }
-        : {}),
-      ...(!canExposeSqlContent && transcriptExpiredAt === undefined
-        ? {
-            transcriptMetadata: currentTranscript.map(redactTranscriptMessage),
-            transcriptRedacted: true,
-            transcriptRedactionReason: "non_public_conversation" as const,
-          }
-        : {}),
-      ...(transcriptExpiredAt !== undefined
-        ? {
-            transcriptExpired: true,
-            transcriptExpiredAt,
-            transcriptMetadata: [],
-          }
-        : {}),
-      transcript:
-        transcriptExpiredAt === undefined && canExposeSqlContent
-          ? currentTranscript
-          : [],
-    },
-  ];
-
-  const firstRun = effectiveRuns[0];
-  const displayTitle =
-    firstRun?.displayTitle ??
-    surfaceFallbackLabel(firstRun?.surface ?? "slack");
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 
   return {
-    conversationId,
-    displayTitle,
+    ...conversationSummaryFromStoredConversation({
+      conversation,
+      durationMs: args.durationMs,
+      nowMs,
+      usage: args.usage,
+    }),
+    ...(traceId ? { traceId } : {}),
+    ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
+    activity: currentContent.activity,
+    transcriptAvailable:
+      transcriptExpiredAt === undefined &&
+      canExposeSqlContent &&
+      currentTranscript.length > 0,
+    ...(currentTranscript.length > 0
+      ? {
+          transcriptMessageCount: countConversationMessages(currentTranscript),
+        }
+      : {}),
+    ...(!canExposeSqlContent && transcriptExpiredAt === undefined
+      ? {
+          transcriptMetadata: currentTranscript.map(redactTranscriptMessage),
+          transcriptRedacted: true,
+          transcriptRedactionReason: "non_public_conversation" as const,
+        }
+      : {}),
+    ...(transcriptExpiredAt !== undefined
+      ? {
+          transcriptExpired: true,
+          transcriptExpiredAt,
+          transcriptMetadata: [],
+        }
+      : {}),
+    transcript:
+      transcriptExpiredAt === undefined && canExposeSqlContent
+        ? currentTranscript
+        : [],
     generatedAt: new Date(nowMs).toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
-    runs: effectiveRuns,
   };
 }
 

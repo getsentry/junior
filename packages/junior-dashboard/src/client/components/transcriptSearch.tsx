@@ -2,8 +2,8 @@ import { type ReactNode, createContext, useContext } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
 import { stringifyPartValue } from "../format";
-import { turnTranscriptMessages } from "../transcriptActivity";
-import type { ConversationTurn } from "../types";
+import { conversationTranscriptMessages } from "../transcriptActivity";
+import type { ConversationTranscript } from "../types";
 import {
   groupTranscriptMessages,
   messageRawText,
@@ -160,15 +160,15 @@ export function entryMatchesSearch(
   return false;
 }
 
-/** Returns true if the turn has at least one entry matching the normalised query. */
-export function turnHasMatch(
-  turn: ConversationTurn,
+/** Returns true if the conversation has at least one entry matching the normalised query. */
+export function conversationHasMatch(
+  conversation: ConversationTranscript,
   normalizedQuery: string,
 ): boolean {
   if (!normalizedQuery) return true;
-  return groupTranscriptMessages(turnTranscriptMessages(turn)).some((entry) =>
-    entryMatchesSearch(entry, normalizedQuery),
-  );
+  return groupTranscriptMessages(
+    conversationTranscriptMessages(conversation),
+  ).some((entry) => entryMatchesSearch(entry, normalizedQuery));
 }
 
 function textContains(text: string | undefined, query: string): boolean {

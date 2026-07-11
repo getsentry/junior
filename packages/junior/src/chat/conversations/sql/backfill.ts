@@ -6,7 +6,6 @@ export interface BackfillResult {
 
 export interface BackfillTarget {
   backfillConversation(conversation: Conversation): Promise<void>;
-  migrate(): Promise<void>;
 }
 
 /** Copy bounded legacy conversation metadata from an existing store into SQL. */
@@ -19,7 +18,6 @@ export async function backfillToSql(args: {
   const conversations = await args.source.listByActivity({
     limit,
   });
-  await args.target.migrate();
   for (const conversation of conversations) {
     await args.target.backfillConversation(conversation);
   }

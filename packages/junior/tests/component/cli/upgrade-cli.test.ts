@@ -10,6 +10,7 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
@@ -141,6 +142,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
+      await migrateSchema(fixture.sql);
       const context = {
         io: { info: () => {} },
         stateAdapter,
@@ -197,6 +199,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
+      await migrateSchema(fixture.sql);
       for (let index = 0; index < 3; index++) {
         const conversationId = `slack:C123:page-${index}`;
         await appendInboundMessage({
@@ -459,6 +462,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
+      await migrateSchema(fixture.sql);
       const context = {
         io: { info: () => {} },
         stateAdapter,

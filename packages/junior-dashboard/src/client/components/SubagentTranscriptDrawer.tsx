@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Bot, ExternalLink, X } from "lucide-react";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 
 import { useConversationSubagentTranscriptData } from "../api";
 import { formatMessageTimestamp, formatMs } from "../format";
@@ -7,11 +8,10 @@ import { buildSubagentMarkdown } from "../markdownExport";
 import { cn } from "../styles";
 import {
   subagentDurationMs,
-  subagentTranscriptTurn,
+  subagentConversationTranscript,
 } from "../subagentTranscript";
 import type {
-  ConversationSubagentTranscript,
-  ConversationTurn,
+  ConversationTranscript,
   TranscriptViewSubagentPart,
 } from "../types";
 import { Button } from "./Button";
@@ -23,11 +23,11 @@ import { transcriptEmptyClass } from "./transcriptStyles";
 
 export interface SubagentTranscriptTarget {
   conversationId: string;
+  conversation: ConversationTranscript;
   part: TranscriptViewSubagentPart;
-  turn: ConversationTurn;
 }
 
-/** Show a lazily loaded child-agent transcript without leaving the parent run. */
+/** Show a lazily loaded child-agent transcript without leaving the parent conversation. */
 export function SubagentTranscriptDrawer(props: {
   onClose: () => void;
   target: SubagentTranscriptTarget | undefined;
@@ -60,7 +60,7 @@ export function SubagentTranscriptDrawer(props: {
   const label = visible.subagentKind;
   const duration = subagentDuration(visible);
   const transcriptTurn = report
-    ? subagentTranscriptTurn(props.target.conversationId, report)
+    ? subagentConversationTranscript(props.target.conversationId, report)
     : undefined;
   const meta = [
     statusLabel(visible),
@@ -129,7 +129,7 @@ export function SubagentTranscriptDrawer(props: {
               Transcript failed to load.
             </DrawerEmptyState>
           ) : report?.transcriptAvailable && transcriptTurn ? (
-            <Transcript turns={[transcriptTurn]} />
+            <Transcript transcript={transcriptTurn} />
           ) : (
             <DrawerEmptyState>
               {subagentUnavailableLabel(report)}
@@ -142,7 +142,7 @@ export function SubagentTranscriptDrawer(props: {
 }
 
 function DrawerConversationIdentity(props: {
-  report: ConversationSubagentTranscript;
+  report: ConversationSubagentTranscriptReport;
 }) {
   if (
     !props.report.subagentConversationId &&
@@ -191,10 +191,10 @@ function DrawerConversationIdentity(props: {
 
 function subagentFallback(
   target: SubagentTranscriptTarget,
-): ConversationSubagentTranscript {
+): ConversationSubagentTranscriptReport {
   return {
     type: "subagent",
-    createdAt: new Date(target.turn.startedAt).toISOString(),
+    createdAt: new Date(target.conversation.startedAt).toISOString(),
     id: target.part.id,
     status: target.part.status,
     subagentKind: target.part.subagentKind,
@@ -213,14 +213,14 @@ function subagentFallback(
 }
 
 function subagentDuration(
-  report: Pick<ConversationSubagentTranscript, "createdAt" | "endedAt">,
+  report: Pick<ConversationSubagentTranscriptReport, "createdAt" | "endedAt">,
 ): string | undefined {
   const durationMs = subagentDurationMs(report);
   return durationMs === undefined ? undefined : formatMs(durationMs);
 }
 
 function statusLabel(
-  report: ConversationSubagentTranscript,
+  report: ConversationSubagentTranscriptReport,
 ): string | undefined {
   if (report.outcome === "error") return "error";
   if (report.outcome === "aborted") return "aborted";
@@ -231,7 +231,7 @@ function statusLabel(
 }
 
 function subagentUnavailableLabel(
-  report: ConversationSubagentTranscript | undefined,
+  report: ConversationSubagentTranscriptReport | undefined,
 ): string {
   if (report?.transcriptRedacted) {
     return "Transcript hidden because this conversation is not public.";

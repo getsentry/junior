@@ -56,7 +56,6 @@ async function resetPostgresTestDatabase(client: pg.PoolClient): Promise<void> {
 SELECT format('%I.%I', schemaname, tablename) AS qualified_name
 FROM pg_tables
 WHERE schemaname = $1
-  AND tablename <> 'junior_schema_migrations'
 ORDER BY tablename ASC
 `,
       [schemaName],
@@ -79,9 +78,6 @@ ORDER BY sequence_name ASC
       await client.query(`ALTER SEQUENCE ${sequenceName} RESTART WITH 1`);
     }
 
-    await client.query(
-      "DELETE FROM junior_schema_migrations WHERE id LIKE 'plugin:%'",
-    );
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

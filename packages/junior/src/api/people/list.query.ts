@@ -3,7 +3,7 @@ import type {
   ActorIdentity,
   ActorSummaryReport,
   ActorTotalsReport,
-} from "./types";
+} from "./schema";
 import {
   addSignals,
   emptyTotals,
@@ -16,7 +16,6 @@ import {
   signals,
   summaryFromRow,
   usageTokens,
-  type PeopleApiQueryOptions,
 } from "./shared";
 
 type DirectoryAccumulator = ActorTotalsReport & {
@@ -41,12 +40,10 @@ function directoryItem(accumulator: DirectoryAccumulator): ActorSummaryReport {
   };
 }
 
-/** Load the people list from the configured or injected SQL database. */
-export async function readPeopleListFromSql(
-  options: PeopleApiQueryOptions = {},
-): Promise<ActorDirectoryReport> {
+/** Load the people list from the configured SQL database. */
+export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const nowMs = Date.now();
-  const { rows, truncated } = await actorRows(options);
+  const { rows, truncated } = await actorRows();
   const people = new Map<string, DirectoryAccumulator>();
 
   for (const row of rows) {

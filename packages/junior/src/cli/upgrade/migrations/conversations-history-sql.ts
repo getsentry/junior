@@ -1,7 +1,6 @@
 import { getChatConfig } from "@/chat/config";
 import { importConversationFromLegacy } from "@/chat/conversations/legacy-import";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createStateConversationStore } from "@/chat/conversations/state";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
@@ -43,7 +42,6 @@ export async function migrateConversationHistoryToSql(
   }
   const limit = Math.max(1, options.batchSize ?? HISTORY_BACKFILL_LIMIT);
   try {
-    await migrateSchema(executor);
     const messageStore = createSqlConversationMessageStore(executor);
     const conversations = await source.listByActivity({ limit });
     let migrated = 0;

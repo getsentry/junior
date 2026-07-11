@@ -1,6 +1,6 @@
 import { formatTime } from "../format";
 import { cn } from "../styles";
-import type { PluginReport } from "../types";
+import type { PluginOperationalReport } from "@sentry/junior/api/schema";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
@@ -8,7 +8,7 @@ import { SectionTitle } from "./SectionTitle";
 /** Render plugin operational reports without plugin-specific UI code. */
 export function PluginReports(props: {
   emptyText?: string;
-  reports: PluginReport[];
+  reports: PluginOperationalReport[];
 }) {
   if (props.reports.length === 0 && !props.emptyText) {
     return null;
@@ -36,7 +36,7 @@ export function PluginReports(props: {
   );
 }
 
-function PluginReportView(props: { report: PluginReport }) {
+function PluginReportView(props: { report: PluginOperationalReport }) {
   const title = props.report.title ?? props.report.pluginName;
   return (
     <Section>
@@ -85,7 +85,7 @@ function PluginReportView(props: { report: PluginReport }) {
 }
 
 type PluginReportRecordSetType = NonNullable<
-  PluginReport["recordSets"]
+  PluginOperationalReport["recordSets"]
 >[number];
 
 function PluginReportRecordSet(props: {

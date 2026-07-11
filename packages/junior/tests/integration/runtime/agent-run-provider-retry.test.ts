@@ -600,7 +600,7 @@ describe("executeAgentRun provider retry", () => {
     expect(serializedMessages).toContain("actually do the other thing");
 
     const report = await readConversationDetail("slack:C123:1712345.0001");
-    const transcript = report?.runs[0]?.transcript ?? [];
+    const transcript = report?.transcript ?? [];
     expect(JSON.stringify(transcript)).toContain("previous question");
     expect(transcript).toHaveLength(5);
     expect(transcript[2]).toMatchObject({

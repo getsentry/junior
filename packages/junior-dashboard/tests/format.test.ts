@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   buildConversations,
@@ -12,9 +14,9 @@ import {
   filterConversationList,
   formatConversationDuration,
   formatCostTotal,
-  formatDurationTotal,
+  formatRuntime,
   formatDurationTick,
-  formatTurnDuration,
+  formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
   actorLabel,
@@ -23,59 +25,69 @@ import {
   summarizeCost,
   summarizeToolCalls,
   summarizeUsage,
-  turnMessageCount,
+  conversationMessageCount,
 } from "../src/client/format";
-import type {
-  ConversationDetailFeed,
-  ConversationSummary,
-  ConversationTurn,
-} from "../src/client/types";
+import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
+function transcript(
+  overrides: Partial<ConversationTranscript> = {},
+): ConversationTranscript {
+  const startedAt = "2026-01-01T00:00:00.000Z";
+  return {
+    conversationId: "conversation-1",
+    cumulativeDurationMs: 0,
+    displayTitle: "Conversation",
+    lastProgressAt: startedAt,
+    lastSeenAt: startedAt,
+    startedAt,
+    status: "completed",
+    surface: "internal",
+    transcript: [],
+    transcriptAvailable: true,
+    ...overrides,
+  };
+}
+
 describe("dashboard token formatting", () => {
-  it("sums turn usage for conversation totals", () => {
+  it("formats cumulative conversation usage", () => {
     expect(
-      formatUsageTotal([
-        { totalTokens: 125 },
-        {
-          cachedInputTokens: 25,
-          cacheCreationTokens: 30,
-          inputTokens: 10,
-          outputTokens: 15,
-          totalTokens: 999,
-        },
-      ]),
-    ).toBe("205 tokens");
+      formatUsageTotal({
+        cachedInputTokens: 25,
+        cacheCreationTokens: 30,
+        inputTokens: 10,
+        outputTokens: 15,
+        totalTokens: 999,
+      }),
+    ).toBe("80 tokens");
   });
 
-  it("sums and formats estimated conversation cost", () => {
-    const usages = [
-      { cost: { input: 0.001, output: 0.002, total: 0.003 } },
-      {
-        cost: {
-          input: 0.004,
-          output: 0.005,
-          cacheRead: 0.0001,
-          total: 0.0091,
-        },
+  it("formats cumulative estimated conversation cost", () => {
+    const usage = {
+      cost: {
+        input: 0.005,
+        output: 0.007,
+        cacheRead: 0.0001,
+        total: 0.0121,
       },
-    ];
+    };
 
-    expect(summarizeCost(usages)).toEqual({
+    expect(summarizeCost(usage)).toEqual({
       input: 0.005,
       output: 0.007,
       cacheRead: 0.0001,
+      cacheWrite: undefined,
       total: 0.0121,
     });
-    expect(formatCostTotal(usages)).toBe("$0.0121");
+    expect(formatCostTotal(usage)).toBe("$0.0121");
   });
 
-  it("sums turn runtime", () => {
-    expect(formatDurationTotal([1_000, 2_500])).toBe("3.5s");
-    expect(formatDurationTotal([0])).toBe("");
+  it("formats cumulative conversation runtime", () => {
+    expect(formatRuntime(3_500)).toBe("3.5s");
+    expect(formatRuntime(0)).toBe("");
   });
 
   it("rounds long chart duration ticks to whole minutes", () => {
@@ -84,21 +96,17 @@ describe("dashboard token formatting", () => {
     expect(formatDurationTick(9 * 60_000 + 59_900)).toBe("10m");
   });
 
-  it("formats turn duration from start to completion time", () => {
+  it("formats conversation duration from start to last activity", () => {
     expect(
-      formatTurnDuration({
-        completedAt: "2026-01-01T00:02:00.000Z",
-        lastSeenAt: "2026-01-01T00:05:00.000Z",
+      formatTranscriptDuration({
+        lastSeenAt: "2026-01-01T00:02:00.000Z",
         startedAt: "2026-01-01T00:00:00.000Z",
       }),
     ).toBe("2m 0s");
   });
 
   it("counts conversational transcript messages instead of tool events", () => {
-    const turn = {
-      id: "turn-1",
-      status: "completed",
-      transcriptAvailable: true,
+    const conversation = transcript({
       transcript: [
         {
           role: "user",
@@ -121,17 +129,14 @@ describe("dashboard token formatting", () => {
           parts: [{ type: "text", text: "done" }],
         },
       ],
-    } as ConversationTurn;
+    });
 
-    expect(turnMessageCount(turn)).toBe(2);
+    expect(conversationMessageCount(conversation)).toBe(2);
   });
 
   it("summarizes tooltip metrics from visible transcripts", () => {
-    const turn = {
-      id: "turn-1",
+    const conversation = transcript({
       actorIdentity: { fullName: "alice" },
-      status: "completed",
-      transcriptAvailable: true,
       transcript: [
         {
           role: "user",
@@ -152,13 +157,13 @@ describe("dashboard token formatting", () => {
           parts: [{ type: "text", text: "done" }],
         },
       ],
-    } as ConversationTurn;
+    });
 
-    expect(summarizeToolCalls([turn])).toEqual({
+    expect(summarizeToolCalls(conversation)).toEqual({
       items: [{ count: 1, name: "search", totalDurationMs: 1_500 }],
       total: 1,
     });
-    expect(summarizeMessages([turn])).toEqual({
+    expect(summarizeMessages(conversation)).toEqual({
       items: [
         { author: "alice", bytes: 10 },
         { author: "Junior", bytes: 4 },
@@ -166,31 +171,26 @@ describe("dashboard token formatting", () => {
       total: 2,
     });
     expect(
-      summarizeUsage([
-        {
-          cachedInputTokens: 2,
-          inputTokens: 3,
-          outputTokens: 5,
-          reasoningTokens: 4,
-        },
-        { reasoningTokens: 6, totalTokens: 7 },
-      ]),
+      summarizeUsage({
+        cachedInputTokens: 2,
+        inputTokens: 3,
+        outputTokens: 5,
+        reasoningTokens: 10,
+      }),
     ).toMatchObject({
       cachedInputTokens: 2,
       inputTokens: 3,
       outputTokens: 5,
       reasoningTokens: 10,
-      providerTotalTokens: 7,
-      totalTokens: 17,
+      totalTokens: 10,
     });
   });
 
   it("counts activity-only tool calls in tool summaries", () => {
-    const turn = {
+    const conversation = {
       conversationId: "conversation-activity",
       cumulativeDurationMs: 0,
       displayTitle: "Activity",
-      id: "turn-activity",
       lastProgressAt: "2026-01-01T00:00:01.000Z",
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -209,20 +209,19 @@ describe("dashboard token formatting", () => {
           subagents: [],
         },
       ],
-    } as ConversationTurn;
+    } satisfies ConversationTranscript;
 
-    expect(summarizeToolCalls([turn])).toEqual({
+    expect(summarizeToolCalls(conversation)).toEqual({
       items: [{ count: 1, name: "advisor" }],
       total: 1,
     });
   });
 
   it("uses transcript message count when only activity rows are visible", () => {
-    const turn = {
+    const conversation = {
       conversationId: "conversation-activity",
       cumulativeDurationMs: 0,
       displayTitle: "Activity",
-      id: "turn-activity",
       lastProgressAt: "2026-01-01T00:00:01.000Z",
       lastSeenAt: "2026-01-01T00:00:01.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -242,54 +241,17 @@ describe("dashboard token formatting", () => {
           subagents: [],
         },
       ],
-    } as ConversationTurn;
+    } satisfies ConversationTranscript;
 
-    expect(turnMessageCount(turn)).toBe(3);
-    expect(summarizeToolCalls([turn])).toEqual({
+    expect(conversationMessageCount(conversation)).toBe(3);
+    expect(summarizeToolCalls(conversation)).toEqual({
       items: [{ count: 1, name: "advisor" }],
       total: 1,
     });
   });
 
-  it("does not match tool durations across different turns", () => {
-    const turns = [
-      {
-        id: "turn-1",
-        status: "completed",
-        transcriptAvailable: true,
-        transcript: [
-          {
-            role: "assistant",
-            timestamp: 1_000,
-            parts: [{ type: "tool_call", name: "search" }],
-          },
-        ],
-      },
-      {
-        id: "turn-2",
-        status: "completed",
-        transcriptAvailable: true,
-        transcript: [
-          {
-            role: "toolResult",
-            timestamp: 2_000,
-            parts: [{ type: "tool_result", name: "search" }],
-          },
-        ],
-      },
-    ] as ConversationTurn[];
-
-    expect(summarizeToolCalls(turns)).toEqual({
-      items: [{ count: 1, name: "search" }],
-      total: 1,
-    });
-  });
-
   it("does not match id-bearing tool calls to name-only results", () => {
-    const turn = {
-      id: "turn-1",
-      status: "completed",
-      transcriptAvailable: true,
+    const conversation = transcript({
       transcript: [
         {
           role: "assistant",
@@ -307,19 +269,16 @@ describe("dashboard token formatting", () => {
           parts: [{ type: "tool_result", name: "search" }],
         },
       ],
-    } as ConversationTurn;
+    });
 
-    expect(summarizeToolCalls([turn])).toEqual({
+    expect(summarizeToolCalls(conversation)).toEqual({
       items: [{ count: 2, name: "search" }],
       total: 2,
     });
   });
 
   it("does not infer tool durations for unnamed calls and results", () => {
-    const turn = {
-      id: "turn-1",
-      status: "completed",
-      transcriptAvailable: true,
+    const conversation = transcript({
       transcript: [
         {
           role: "assistant",
@@ -332,22 +291,21 @@ describe("dashboard token formatting", () => {
           parts: [{ type: "tool_result" }],
         },
       ],
-    } as ConversationTurn;
+    });
 
-    expect(summarizeToolCalls([turn])).toEqual({
+    expect(summarizeToolCalls(conversation)).toEqual({
       items: [{ count: 1, name: "unknown" }],
       total: 1,
     });
   });
 
   it("uses the API-supplied displayTitle directly", () => {
-    const conversations: ConversationSummary[] = [
+    const conversations: ConversationSummaryReport[] = [
       {
         channel: "C1",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Public Channel",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         actorIdentity: {
@@ -383,7 +341,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Older title",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
@@ -394,7 +351,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Newer title",
-        id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
         startedAt: "2026-06-01T11:00:00.000Z",
@@ -408,43 +364,22 @@ describe("dashboard token formatting", () => {
 
   it("builds permalink header metadata from conversation detail reports", () => {
     const conversation = conversationFromDetail({
+      channel: "C1",
+      channelName: "proj-alpha",
       conversationId: "slack:C1:123",
+      cumulativeDurationMs: 0,
       displayTitle: "Detail Title",
       generatedAt: "2026-06-01T11:06:00.000Z",
+      lastProgressAt: "2026-06-01T11:05:00.000Z",
+      lastSeenAt: "2026-06-01T11:05:00.000Z",
+      actorIdentity: { email: "alice@example.com" },
       sentryConversationUrl: "https://sentry.example/conversations/123",
-      runs: [
-        {
-          channel: "C1",
-          channelName: "proj-alpha",
-          conversationId: "slack:C1:123",
-          cumulativeDurationMs: 0,
-          displayTitle: "Older title",
-          id: "turn-1",
-          lastProgressAt: "2026-06-01T10:05:00.000Z",
-          lastSeenAt: "2026-06-01T10:05:00.000Z",
-          actorIdentity: { email: "alice@example.com" },
-          startedAt: "2026-06-01T10:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          transcriptAvailable: true,
-          transcript: [],
-        },
-        {
-          channel: "C1",
-          conversationId: "slack:C1:123",
-          cumulativeDurationMs: 0,
-          displayTitle: "Newest turn title",
-          id: "turn-2",
-          lastProgressAt: "2026-06-01T11:05:00.000Z",
-          lastSeenAt: "2026-06-01T11:05:00.000Z",
-          startedAt: "2026-06-01T11:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          transcriptAvailable: true,
-          transcript: [],
-        },
-      ],
-    } satisfies ConversationDetailFeed);
+      startedAt: "2026-06-01T10:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      transcriptAvailable: true,
+      transcript: [],
+    } satisfies ConversationDetailReport);
 
     expect(conversationDisplayTitle(conversation)).toBe("Detail Title");
     expect(conversation?.channelName).toBe("proj-alpha");
@@ -453,7 +388,7 @@ describe("dashboard token formatting", () => {
     );
   });
 
-  it("keeps the newest visible channel name when the newest turn omits it", () => {
+  it("does not carry missing SQL fields across conversation rows", () => {
     const [conversation] = buildConversations([
       {
         channel: "C1",
@@ -461,7 +396,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "#proj-alpha",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
@@ -473,7 +407,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Public Channel",
-        id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
         startedAt: "2026-06-01T11:00:00.000Z",
@@ -482,19 +415,18 @@ describe("dashboard token formatting", () => {
       },
     ]);
 
-    expect(conversation?.channelName).toBe("proj-alpha");
+    expect(conversation?.channelName).toBeUndefined();
     expect(conversationDisplayTitle(conversation)).toBe("Public Channel");
   });
 
   it("keeps actor labels even when the title matches", () => {
-    const conversations: ConversationSummary[] = [
+    const conversations: ConversationSummaryReport[] = [
       {
         channel: "C1",
         channelName: "alice",
         conversationId: "slack:C1:123",
         displayTitle: "Alice",
         cumulativeDurationMs: 0,
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         actorIdentity: {
@@ -522,7 +454,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Checkout latency triage",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:05:00.000Z",
         lastSeenAt: "2026-06-01T10:05:00.000Z",
         actorIdentity: {
@@ -537,7 +468,6 @@ describe("dashboard token formatting", () => {
         conversationId: "internal:memory:456",
         cumulativeDurationMs: 0,
         displayTitle: "Memory cleanup",
-        id: "turn-2",
         lastProgressAt: "2026-06-01T11:05:00.000Z",
         lastSeenAt: "2026-06-01T11:05:00.000Z",
         actorIdentity: { fullName: "Casey" },
@@ -577,7 +507,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
         startedAt: "2026-06-01T10:00:00.000Z",
@@ -595,7 +524,6 @@ describe("dashboard token formatting", () => {
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Conversation",
-        id: "turn-1",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "not-a-date",
         startedAt: "2026-06-01T10:00:00.000Z",

@@ -31,7 +31,7 @@ export type RenderedThinkingEntry = {
   timestamp?: number;
 };
 
-/** A single entry in a mixed tool-and-thinking run group. */
+/** A single entry in a consecutive tool-and-thinking group. */
 export type RenderedToolRunEntry = RenderedToolEntry | RenderedThinkingEntry;
 
 export type RenderedSubagentEntry = {
@@ -161,7 +161,7 @@ function findToolEntry(
     : undefined;
 }
 
-/** Flatten message-local tool parts into turn-level events for scan-friendly rendering. */
+/** Flatten message-local tool parts into conversation events for scan-friendly rendering. */
 export function groupTranscriptMessages(
   messages: TranscriptViewMessage[],
 ): RenderedTranscriptEntry[] {

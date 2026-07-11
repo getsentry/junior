@@ -1,11 +1,12 @@
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { juniorConversations, juniorIdentities } from "@/db/schema";
 import type { LocalJuniorSqlFixture } from "../../../fixtures/sql";
 
 /** Seed representative verified and untrusted people rows for people API tests. */
 export async function seedPeople(fixture: LocalJuniorSqlFixture) {
   const store = createSqlStore(fixture.sql);
-  await store.migrate();
+  await migrateSchema(fixture.sql);
 
   await store.recordActivity({
     conversationId: "slack:C1:123",

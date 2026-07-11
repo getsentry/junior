@@ -4,7 +4,7 @@ import type {
   ActorActivityDayReport,
   ActorIdentity,
   ActorProfileReport,
-} from "./types";
+} from "./schema";
 import {
   ACTIVITY_DAYS,
   activityDays,
@@ -26,7 +26,6 @@ import {
   summaryFromRow,
   usageTokens,
   surfaceLabel,
-  type PeopleApiQueryOptions,
 } from "./shared";
 
 function emptyProfile(email: string, nowMs: number): ActorProfileReport {
@@ -51,10 +50,9 @@ function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   };
 }
 
-/** Load one person profile from the configured or injected SQL database. */
+/** Load one person profile from the configured SQL database. */
 export async function readPeopleProfileFromSql(
   email: string,
-  options: PeopleApiQueryOptions = {},
 ): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
@@ -62,7 +60,7 @@ export async function readPeopleProfileFromSql(
     return emptyProfile("", nowMs);
   }
 
-  const { rows, truncated } = await actorRows(options, normalizedEmail);
+  const { rows, truncated } = await actorRows(normalizedEmail);
   let actor: (ActorIdentity & { email: string }) | undefined;
   const totals = emptyTotals();
   const activeDates = new Set<string>();

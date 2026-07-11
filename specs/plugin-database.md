@@ -15,7 +15,7 @@ requiring a memory-specific storage API or a globally merged plugin schema type.
 
 - Plugin package migration layout and discovery.
 - Plugin-owned migration generation workflow.
-- Migration ordering, checksums, and application through `junior upgrade`.
+- Migration ordering, journals, and application through `junior upgrade`.
 - Plugin-owned storage migration hooks for moving existing plugin state into
   plugin SQL tables.
 - The `ctx.db` surface exposed to plugin hooks.
@@ -41,8 +41,12 @@ Code plugin packages may include SQL migrations by convention:
 ```txt
 plugin-package/
 ├── migrations/
-│   ├── 0001_init.sql
-│   └── 0002_add_indexes.sql
+│   ├── 0000_init.sql
+│   ├── 0001_add_indexes.sql
+│   └── meta/
+│       ├── 0000_snapshot.json
+│       ├── 0001_snapshot.json
+│       └── _journal.json
 └── src/
     └── db/
         └── schema.ts
@@ -100,8 +104,8 @@ Rules:
 1. Core does not generate plugin migrations.
 2. Plugin migrations are generated from plugin-owned schema only.
 3. Generated SQL files are committed and published as plugin package content.
-4. Drizzle generation metadata may exist in the plugin package for future
-   plugin development, but Junior applies only `migrations/*.sql`.
+4. Drizzle generation metadata is committed and published with the SQL files;
+   Junior passes the complete folder to Drizzle ORM's migrator.
 5. A plugin package must not require the consuming app to run Drizzle Kit to use
    the published plugin.
 6. Schema DDL should come from the generator. Hand-written SQL in a generated
@@ -115,23 +119,14 @@ Rules:
 
 1. Core Junior migrations.
 2. Plugin migrations, ordered by plugin name.
-3. Migration files within each plugin, ordered lexically by filename.
+3. Journal entries within each plugin, in Drizzle order.
 4. Plugin storage migration hooks, ordered by plugin name.
 
-Plugin migration records use the shared `junior_schema_migrations` table. The
-stored migration id is:
-
-```txt
-plugin:<pluginName>/<filename>
-```
-
-Core computes the checksum from the exact SQL file contents. If a migration id
-already exists with a different checksum, upgrade must fail.
-
-Migration filenames must be stable, non-empty basenames matching
-`NNNN_name.sql`, where `NNNN` is a zero-padded numeric prefix. This keeps
-lexical filename ordering identical to migration order. Subdirectories are not
-part of V1 migration discovery.
+Each plugin receives its own migration table in Drizzle's migration schema, so
+independently generated plugin journals cannot advance or skip one another.
+Junior passes the plugin folder and that table name directly to Drizzle ORM's
+migrator. The pre-Drizzle shared migration table is read only to adopt already
+deployed plugin schemas on their first upgrade through this cutover.
 
 ### Storage Migration Hooks
 
@@ -260,8 +255,8 @@ This surface is only for plugin hooks running in Junior host runtime code. It
 must not be exposed to sandboxed model-controlled code.
 
 Runtime does not validate plugin migration state before creating `ctx.db`.
-`junior upgrade` is the only command that applies plugin migrations and checks
-stored migration checksums. Deployments must run `junior upgrade` before serving
+`junior upgrade` is the only command that applies plugin migrations. Deployments
+must run `junior upgrade` before serving
 traffic for a build that enables or changes SQL-owning plugins.
 
 The V1 runtime surface is the shared Junior Drizzle database connection. Hook
@@ -336,8 +331,7 @@ Rules:
    URL.
 2. Plugin hook contexts receive `ctx.db` regardless of whether the plugin owns
    migrations.
-3. Migration application and checksum validation happen only in `junior
-upgrade`.
+3. Migration application happens only in `junior upgrade`.
 4. Declarative `plugin.yaml` cannot declare executable database behavior.
 
 ### Store Boundaries
@@ -358,7 +352,7 @@ interfaces and must not be passed as `ctx.db`.
 
 1. Missing database URL: `junior upgrade` and startup fail.
 2. Migration discovery failure for an enabled plugin: upgrade fails.
-3. Migration checksum mismatch: upgrade fails.
+3. Missing or invalid Drizzle migration journal: upgrade fails.
 4. Plugin migration SQL failure: upgrade fails before the new runtime serves
    traffic.
 5. Plugin storage migration hook failure: upgrade fails after schema migration and
@@ -371,8 +365,6 @@ interfaces and must not be passed as `ctx.db`.
 Plugin database logs and spans may include:
 
 - plugin name
-- migration filename and migration id
-- checksum prefix
 - migration count
 - migration outcome and duration
 - database availability state
@@ -391,9 +383,9 @@ Use integration tests with the local Postgres-compatible PGlite fixture for:
   `migrations/*.sql`
 - no discovery from undeclared packages
 - no migration application from package-name or local `plugin.yaml` plugins
-- migration id/checksum recording in `junior_schema_migrations`
+- independent Drizzle migration state for each plugin
 - deterministic plugin migration order
-- checksum mismatch failure
+- invalid or missing migration journal failure
 - missing database URL failure
 - plugin hook contexts receive `ctx.db`
 - typed plugin table queries using plugin-owned Drizzle table objects
@@ -404,7 +396,7 @@ Do not add permanent feature-level tests for every generated schema or data
 migration. Review and verify those migration artifacts directly: regenerate
 from the owning schema, inspect the SQL for deploy safety, and run a targeted
 upgrade probe when a data rewrite or constraint narrowing needs evidence. Keep
-tests for reusable migration runners, ordering, checksum behavior, storage
+tests for migration ordering and isolation, storage
 migration hooks, and explicit migration-contract surfaces.
 
 Use unit tests for:

@@ -32,7 +32,6 @@ import type {
   PluginRegistration,
   PluginRouteMethod,
 } from "@sentry/junior-plugin-api";
-import type { JuniorReporting } from "./reporting";
 import {
   pluginCatalogConfigFromEnv,
   pluginCatalogConfigFromPluginSet,
@@ -117,10 +116,8 @@ export interface JuniorDashboardOptions {
   baseURL?: string;
   /** Disable dashboard route mounting while preserving serializable config shape. */
   disabled?: boolean;
-  /** Overlay dashboard visual-QA fixture conversations onto real reporting data. */
+  /** Replace conversation API responses with dashboard visual-QA fixtures. */
   mockConversations?: boolean;
-  /** Reporting implementation used by authenticated product APIs. Defaults to core reporting. */
-  reporting?: JuniorReporting;
   /** Browser session lifetime in seconds. */
   sessionMaxAgeSeconds?: number;
   /** Additional trusted origins accepted by Better Auth. */
@@ -131,7 +128,7 @@ interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   pluginRoutes?: PluginApiRouteRegistration[];
 }
 
-type JuniorVirtualDashboardOptions = Omit<JuniorDashboardOptions, "reporting">;
+type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface DashboardApp {
   fetch(request: Request): Promise<Response> | Response;

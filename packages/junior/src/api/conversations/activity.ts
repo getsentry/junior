@@ -8,7 +8,7 @@ import type {
   ConversationActivityReport,
   ConversationActivityStatus,
   ConversationSubagentActivityReport,
-} from "./types";
+} from "./schema";
 
 interface ActivityPayloadMetadata {
   inputKeys?: string[];

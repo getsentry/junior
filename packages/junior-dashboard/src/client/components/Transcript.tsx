@@ -1,48 +1,56 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Search } from "lucide-react";
 
-import type { ConversationTurn, TranscriptViewSubagentPart } from "../types";
+import type {
+  ConversationTranscript,
+  TranscriptViewSubagentPart,
+} from "../types";
 import { cn } from "../styles";
 import { Button } from "./Button";
 import { TranscriptHeader } from "./TranscriptHeader";
-import { ConversationTranscriptSegment } from "./TranscriptTurn";
+import { ConversationTranscriptView } from "./ConversationTranscript";
 import {
   transcriptBottomVersion,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
-import { TranscriptSearchProvider, turnHasMatch } from "./transcriptSearch";
+import {
+  TranscriptSearchProvider,
+  conversationHasMatch,
+} from "./transcriptSearch";
 
-/** Render ordered conversation transcript segments as message and tool events. */
+/** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
   actions?: ReactNode;
   live?: boolean;
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
-    turn: ConversationTurn;
+    conversation: ConversationTranscript;
   }) => void;
-  turns: ConversationTurn[];
+  transcript?: ConversationTranscript;
 }) {
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
 
   const normalizedSearch = search.trim().toLowerCase();
-  const hasRedactedTurns = props.turns.some((turn) => turn.transcriptRedacted);
+  const redacted = Boolean(props.transcript?.transcriptRedacted);
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
-    version: transcriptBottomVersion(props.turns),
+    version: transcriptBottomVersion(props.transcript),
   });
 
-  const visibleTurns = useMemo(
+  const visibleTurn = useMemo(
     () =>
-      normalizedSearch
-        ? props.turns.filter((turn) => turnHasMatch(turn, normalizedSearch))
-        : props.turns,
-    [props.turns, normalizedSearch],
+      normalizedSearch && props.transcript
+        ? conversationHasMatch(props.transcript, normalizedSearch)
+          ? props.transcript
+          : undefined
+        : props.transcript,
+    [props.transcript, normalizedSearch],
   );
 
-  if (props.turns.length === 0) {
+  if (!props.transcript) {
     return (
       <div className={transcriptEmptyClass()}>
         No transcript is available for this conversation.
@@ -58,7 +66,7 @@ export function Transcript(props: {
       >
         <TranscriptHeader
           actions={props.actions}
-          redacted={hasRedactedTurns}
+          redacted={redacted}
           value={view}
           onChange={setView}
         />
@@ -78,15 +86,12 @@ export function Transcript(props: {
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
         </div>
-        {visibleTurns.length > 0 ? (
-          visibleTurns.map((turn) => (
-            <ConversationTranscriptSegment
-              key={turn.id}
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              turn={turn}
-              view={view}
-            />
-          ))
+        {visibleTurn ? (
+          <ConversationTranscriptView
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={visibleTurn}
+            view={view}
+          />
         ) : normalizedSearch ? (
           <div className={transcriptEmptyClass()}>
             No events match your search.

@@ -7,7 +7,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import type { ConversationStatsItem, ConversationStatsReport } from "./types";
+import type { ConversationStatsItem, ConversationStatsReport } from "./schema";
 
 const SAMPLE_LIMIT = 5_000;
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -188,12 +188,14 @@ function usageCostUsd(
 }
 
 /** Build aggregate dashboard stats from normalized durable SQL records. */
-export async function readConversationStatsFromSql(
-  db: JuniorDatabase = getDb(),
-): Promise<ConversationStatsReport> {
+export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
   const windowStartMs = nowMs - WINDOW_MS;
-  const rows = await statsRows(db, new Date(windowStartMs), new Date(nowMs));
+  const rows = await statsRows(
+    getDb(),
+    new Date(windowStartMs),
+    new Date(nowMs),
+  );
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
   let active = 0;

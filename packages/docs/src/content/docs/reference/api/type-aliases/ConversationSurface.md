@@ -5,6 +5,6 @@ prev: false
 title: "ConversationSurface"
 ---
 
-> **ConversationSurface** = `"api"` \| `"internal"` \| `"scheduler"` \| `"slack"`
+> **ConversationSurface** = `z.infer`\<_typeof_ `conversationSurfaceSchema`\>
 
-Defined in: junior/src/api/conversations/types.ts:8
+Defined in: junior/src/api/conversations/schema.ts:234

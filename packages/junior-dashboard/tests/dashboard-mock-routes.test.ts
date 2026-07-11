@@ -1,49 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JuniorReporting } from "@sentry/junior/reporting";
-import type { ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscript } from "@sentry/junior/api/conversations/subagent";
+import {
+  conversationSubagentTranscriptReportSchema,
+  type ConversationSubagentTranscriptReport,
+} from "@sentry/junior/api/schema";
 import { createDashboardApp } from "../src/app";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-conversations";
-
-function reporting(): JuniorReporting {
-  return {
-    async getHealth() {
-      return {
-        status: "ok",
-        service: "junior",
-        timestamp: "2026-05-29T00:00:00.000Z",
-      };
-    },
-    async getRuntimeInfo() {
-      return {
-        cwd: "/workspace",
-        homeDir: "/workspace/app",
-        descriptionText: "Dashboard mock route test",
-        providers: ["github"],
-        skills: [{ name: "triage", pluginProvider: "github" }],
-        packagedContent: {
-          packageNames: ["@sentry/junior-github"],
-          packages: [],
-          manifestRoots: [],
-          skillRoots: [],
-          tracingIncludes: [],
-        },
-      };
-    },
-    async getPlugins() {
-      return [{ name: "github" }];
-    },
-    async getSkills() {
-      return [{ name: "triage", pluginProvider: "github" }];
-    },
-    async getPluginOperationalReports() {
-      return {
-        source: "plugins",
-        generatedAt: "2026-05-29T00:00:00.000Z",
-        reports: [],
-      };
-    },
-  };
-}
 
 describe("dashboard mock conversation routes", () => {
   afterEach(() => {
@@ -58,7 +19,6 @@ describe("dashboard mock conversation routes", () => {
       authRequired: false,
       allowedGoogleDomains: [],
       mockConversations: true,
-      reporting: reporting(),
     });
 
     const conversations = await app.fetch(
@@ -70,7 +30,6 @@ describe("dashboard mock conversation routes", () => {
         activity?: unknown;
         conversationId: string;
         cumulativeDurationMs: number;
-        id: string;
       }>;
     };
     expect(conversationBody.conversations[0]?.conversationId).toBe(
@@ -86,13 +45,12 @@ describe("dashboard mock conversation routes", () => {
         (conversation) => conversation.conversationId,
       ),
     ).toContain(DASHBOARD_QA_CONVERSATION_ID);
-    const qaActivityOnlySession = conversationBody.conversations.find(
+    const qaConversationSummary = conversationBody.conversations.find(
       (conversation) =>
-        conversation.conversationId === DASHBOARD_QA_CONVERSATION_ID &&
-        conversation.id === "mock-dashboard-qa-activity-only",
+        conversation.conversationId === DASHBOARD_QA_CONVERSATION_ID,
     );
-    expect(qaActivityOnlySession).toBeDefined();
-    expect(qaActivityOnlySession).not.toHaveProperty("activity");
+    expect(qaConversationSummary).toBeDefined();
+    expect(qaConversationSummary).not.toHaveProperty("activity");
     const conversationStats = await app.fetch(
       new Request("http://localhost/api/conversations/stats"),
     );
@@ -127,14 +85,12 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(activeConversation.status).toBe(200);
     const activeConversationBody = (await activeConversation.json()) as {
-      runs: Array<{
-        transcript: Array<{
-          parts: Array<{ name?: string }>;
-        }>;
+      transcript: Array<{
+        parts: Array<{ name?: string }>;
       }>;
     };
     expect(
-      activeConversationBody.runs[0]?.transcript
+      activeConversationBody.transcript
         .flatMap((message) => message.parts)
         .map((part) => part.name)
         .filter(Boolean),
@@ -149,60 +105,59 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(qaConversation.status).toBe(200);
     const qaConversationBody = (await qaConversation.json()) as {
-      runs: Array<{
-        activity?: Array<{
+      activity?: Array<{
+        status?: string;
+        subagents?: Array<{
+          parentToolCallId?: string;
           status?: string;
-          subagents?: Array<{
-            parentToolCallId?: string;
-            status?: string;
-            subagentKind?: string;
-            type: string;
-          }>;
-          toolCallId?: string;
-          toolName?: string;
+          subagentKind?: string;
           type: string;
         }>;
-        id?: string;
-        transcript: Array<{
-          parts: Array<{ id?: string; name?: string; type: string }>;
-          timestamp?: number;
-        }>;
-        transcriptMessageCount?: number;
+        toolCallId?: string;
+        toolName?: string;
+        type: string;
       }>;
+      conversationId: string;
+      transcript: Array<{
+        parts: Array<{ id?: string; name?: string; type: string }>;
+        timestamp?: number;
+      }>;
+      transcriptMessageCount?: number;
     };
-    expect(qaConversationBody.runs[0]).toMatchObject({
-      id: "mock-dashboard-qa-activity-only",
-      transcript: [],
-      transcriptMessageCount: 3,
-      activity: [
-        {
-          type: "tool_execution",
-          status: "running",
-          toolName: "mock.dashboard_running_tool",
-        },
-      ],
+    expect(qaConversationBody.activity?.[0]).toMatchObject({
+      type: "tool_execution",
+      status: "running",
+      toolName: "mock.dashboard_running_tool",
     });
-    const invertedRun = qaConversationBody.runs[1];
-    expect(invertedRun?.transcript[0]?.parts[0]).toMatchObject({
+    const invertedMessages = qaConversationBody.transcript.filter((message) =>
+      message.parts.some(
+        (part) => part.name === "mock.inverted_timestamp_tool",
+      ),
+    );
+    expect(invertedMessages[0]?.parts[0]).toMatchObject({
       type: "tool_call",
       name: "mock.inverted_timestamp_tool",
     });
-    expect(invertedRun?.transcript[1]?.parts[0]).toMatchObject({
+    expect(invertedMessages[1]?.parts[0]).toMatchObject({
       type: "tool_result",
       name: "mock.inverted_timestamp_tool",
     });
-    expect(invertedRun?.transcript[1]?.timestamp).toBeLessThan(
-      invertedRun?.transcript[0]?.timestamp ?? 0,
+    expect(invertedMessages[1]?.timestamp).toBeLessThan(
+      invertedMessages[0]?.timestamp ?? 0,
     );
-    const advisorRun = qaConversationBody.runs[2];
-    expect(advisorRun?.id).toBe("mock-dashboard-qa-advisor-code-change");
+    expect(qaConversationBody.conversationId).toBe("internal:dashboard-qa");
     expect(
-      advisorRun?.transcript
+      qaConversationBody.transcript
         .flatMap((message) => message.parts)
         .filter((part) => part.name === "advisor")
         .map((part) => part.type),
     ).toEqual(["tool_call", "tool_result", "tool_call", "tool_result"]);
-    expect(advisorRun?.activity?.[0]).toMatchObject({
+    expect(
+      qaConversationBody.activity?.find(
+        (activity) =>
+          activity.toolCallId === "toolu_mock_dashboard_advisor_plan",
+      ),
+    ).toMatchObject({
       type: "tool_execution",
       status: "completed",
       toolCallId: "toolu_mock_dashboard_advisor_plan",
@@ -217,7 +172,12 @@ describe("dashboard mock conversation routes", () => {
         },
       ],
     });
-    expect(advisorRun?.activity?.[3]).toMatchObject({
+    expect(
+      qaConversationBody.activity?.find(
+        (activity) =>
+          activity.toolCallId === "toolu_mock_dashboard_advisor_review",
+      ),
+    ).toMatchObject({
       type: "tool_execution",
       status: "completed",
       toolCallId: "toolu_mock_dashboard_advisor_review",
@@ -242,7 +202,7 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(firstAdvisorTranscript.status).toBe(200);
     const firstAdvisorBody =
-      (await firstAdvisorTranscript.json()) as DashboardConversationSubagentTranscript;
+      (await firstAdvisorTranscript.json()) as ConversationSubagentTranscriptReport;
     expect(firstAdvisorBody.subagentConversationId).toBe(
       "junior:internal:dashboard-qa:advisor_session",
     );
@@ -266,7 +226,7 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(secondAdvisorTranscript.status).toBe(200);
     const secondAdvisorBody =
-      (await secondAdvisorTranscript.json()) as DashboardConversationSubagentTranscript;
+      (await secondAdvisorTranscript.json()) as ConversationSubagentTranscriptReport;
     expect(JSON.stringify(secondAdvisorBody.transcript)).toContain(
       "Review the dashboard plan before editing",
     );
@@ -281,43 +241,37 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(longConversation.status).toBe(200);
     const longConversationBody = (await longConversation.json()) as {
-      runs: Array<{
-        transcript: Array<{
-          role: string;
-          parts: Array<{ id?: string; name?: string; type: string }>;
-          timestamp?: number;
-        }>;
-        transcriptMessageCount?: number;
+      transcript: Array<{
+        role: string;
+        parts: Array<{ id?: string; name?: string; type: string }>;
+        timestamp?: number;
       }>;
+      transcriptMessageCount?: number;
     };
-    const longConversationParts = longConversationBody.runs.flatMap((turn) =>
-      turn.transcript.flatMap((message) => message.parts),
+    const longConversationParts = longConversationBody.transcript.flatMap(
+      (message) => message.parts,
     );
-    const systemMessages = longConversationBody.runs.flatMap((turn) =>
-      turn.transcript.filter((message) => message.role === "system"),
+    const systemMessages = longConversationBody.transcript.filter(
+      (message) => message.role === "system",
     );
     const bashCallTimes = new Map<string, number>();
-    const bashDurations = longConversationBody.runs.flatMap((turn) =>
-      turn.transcript.flatMap((message) =>
-        message.parts.flatMap((part) => {
-          if (part.name !== "bash" || !part.id || !message.timestamp) {
-            return [];
-          }
-          if (part.type === "tool_call") {
-            bashCallTimes.set(part.id, message.timestamp);
-            return [];
-          }
-          const startedAt = bashCallTimes.get(part.id);
-          return startedAt === undefined ? [] : [message.timestamp - startedAt];
-        }),
-      ),
+    const bashDurations = longConversationBody.transcript.flatMap((message) =>
+      message.parts.flatMap((part) => {
+        if (part.name !== "bash" || !part.id || !message.timestamp) {
+          return [];
+        }
+        if (part.type === "tool_call") {
+          bashCallTimes.set(part.id, message.timestamp);
+          return [];
+        }
+        const startedAt = bashCallTimes.get(part.id);
+        return startedAt === undefined ? [] : [message.timestamp - startedAt];
+      }),
     );
-    expect(longConversationBody.runs).toHaveLength(2);
     expect(systemMessages).toHaveLength(1);
-    expect(longConversationBody.runs[1]?.transcript[0]?.role).toBe("user");
-    for (const turn of longConversationBody.runs) {
-      expect(turn.transcriptMessageCount).toBe(turn.transcript.length);
-    }
+    expect(longConversationBody.transcriptMessageCount).toBe(
+      longConversationBody.transcript.length,
+    );
     expect(
       longConversationParts.filter((part) => part.name === "bash").length,
     ).toBeGreaterThan(20);
@@ -334,25 +288,17 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(conversation.status).toBe(200);
     const redactedConversationBody = (await conversation.json()) as {
-      runs: Array<{
-        transcriptAvailable: boolean;
-        transcriptMetadata?: Array<{ role: string }>;
-        transcriptRedacted?: boolean;
-      }>;
+      transcriptAvailable: boolean;
+      transcriptMetadata?: Array<{ role: string }>;
+      transcriptRedacted?: boolean;
     };
     expect(redactedConversationBody).toMatchObject({
       conversationId: "slack:DQA123:1770007200.000300",
-      runs: [
-        {
-          transcriptAvailable: false,
-          transcriptRedacted: true,
-          transcript: [],
-        },
-      ],
+      transcriptAvailable: false,
+      transcriptRedacted: true,
+      transcript: [],
     });
-    expect(
-      redactedConversationBody.runs[0]?.transcriptMetadata?.[0]?.role,
-    ).toBe("user");
+    expect(redactedConversationBody.transcriptMetadata?.[0]?.role).toBe("user");
   });
 
   it("serves explicit mock conversation data", async () => {
@@ -360,7 +306,6 @@ describe("dashboard mock conversation routes", () => {
       authRequired: false,
       allowedGoogleDomains: [],
       mockConversations: true,
-      reporting: reporting(),
     });
 
     const response = await app.fetch(
@@ -384,6 +329,30 @@ describe("dashboard mock conversation routes", () => {
     expect(await stats.json()).toMatchObject({
       conversations: expect.any(Number),
       truncated: false,
+    });
+  });
+
+  it("returns the canonical subagent not-found response", async () => {
+    const app = createDashboardApp({
+      authRequired: false,
+      allowedGoogleDomains: [],
+      mockConversations: true,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/conversations/missing/subagents/missing-child",
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(
+      conversationSubagentTranscriptReportSchema.parse(await response.json()),
+    ).toMatchObject({
+      id: "missing-child",
+      transcript: [],
+      transcriptAvailable: false,
+      unavailableReason: "not_found",
     });
   });
 });

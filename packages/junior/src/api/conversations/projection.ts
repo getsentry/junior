@@ -15,7 +15,8 @@ import type {
   ConversationReportStatus,
   ConversationSummaryReport,
   ConversationSurface,
-} from "./types";
+  ConversationUsage,
+} from "./schema";
 const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 
@@ -158,11 +159,14 @@ function channelNameRedactedFromConversation(
   );
 }
 
-/** Project the current stored execution into the public run summary shape. */
-export function sessionReportFromConversation(
-  conversation: StoredConversation,
-  nowMs: number,
-): ConversationSummaryReport {
+/** Project one durable conversation and its SQL metrics into the REST summary. */
+export function conversationSummaryFromStoredConversation(args: {
+  conversation: StoredConversation;
+  durationMs: number;
+  nowMs: number;
+  usage?: ConversationUsage;
+}): ConversationSummaryReport {
+  const { conversation, durationMs, nowMs, usage } = args;
   const surface = surfaceFromSource(
     conversation.source,
     conversation.conversationId,
@@ -173,9 +177,8 @@ export function sessionReportFromConversation(
   const channelNameRedacted = channelNameRedactedFromConversation(conversation);
   return {
     conversationId: conversation.conversationId,
-    cumulativeDurationMs: 0,
+    cumulativeDurationMs: durationMs,
     displayTitle: titleFromConversation({ conversation, surface }),
-    id: conversation.conversationId,
     lastProgressAt: new Date(
       conversation.execution.updatedAtMs ?? conversation.updatedAtMs,
     ).toISOString(),
@@ -183,6 +186,7 @@ export function sessionReportFromConversation(
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation, nowMs),
     surface,
+    ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),

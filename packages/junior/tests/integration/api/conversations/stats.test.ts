@@ -1,21 +1,21 @@
 import { describe, expect, test, vi } from "vitest";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
-  createLocalJuniorSqlFixture,
+  createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
-    const fixture = await createLocalJuniorSqlFixture();
+    const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
-
     try {
-      await store.migrate();
+      await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: "slack:C1:recent",
         channelName: "proj-alpha",
@@ -113,7 +113,7 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-06-15T11:55:00.000Z"),
       });
 
-      const report = await readConversationStatsFromSql(fixture.sql.db());
+      const report = await readConversationStatsFromSql();
 
       expect(report).toMatchObject({
         active: 0,
@@ -167,11 +167,10 @@ describe("conversation stats API", () => {
   test("marks a sample truncated when it reaches the cap", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
-    const fixture = await createLocalJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
+    const fixture = createConfiguredJuniorSqlFixture();
 
     try {
-      await store.migrate();
+      await migrateSchema(fixture.sql);
       const now = new Date("2026-06-15T11:00:00.000Z");
       await fixture.sql
         .db()
@@ -190,7 +189,7 @@ describe("conversation stats API", () => {
           ),
         );
 
-      const report = await readConversationStatsFromSql(fixture.sql.db());
+      const report = await readConversationStatsFromSql();
 
       expect(report.sampleSize).toBe(5_000);
       expect(report.truncated).toBe(true);

@@ -6,8 +6,7 @@ import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import type { StoredSlackActor } from "@/chat/actor";
-import { migrateSchema } from "./migrations";
-import type { JuniorSqlDatabase, JuniorSqlMigrationExecutor } from "@/db/db";
+import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   Conversation,
   ConversationExecution,
@@ -458,28 +457,7 @@ function updateConversationUsage(args: {
 }
 
 export class SqlStore implements ConversationStore {
-  private schemaReady: Promise<void> | undefined;
-
-  constructor(
-    private readonly executor: JuniorSqlDatabase,
-    private readonly migrationExecutor: JuniorSqlMigrationExecutor,
-  ) {}
-
-  /** Apply SQL schema migrations before runtime uses this store. */
-  async migrate(): Promise<void> {
-    if (!this.schemaReady) {
-      this.schemaReady = migrateSchema(this.migrationExecutor);
-    }
-    const schemaReady = this.schemaReady;
-    try {
-      await schemaReady;
-    } catch (error) {
-      if (this.schemaReady === schemaReady) {
-        this.schemaReady = undefined;
-      }
-      throw error;
-    }
-  }
+  constructor(private readonly executor: JuniorSqlDatabase) {}
 
   async get(args: {
     conversationId: string;
@@ -964,6 +942,6 @@ export class SqlStore implements ConversationStore {
 }
 
 /** Create a SQL-backed conversation store. */
-export function createSqlStore(executor: JuniorSqlMigrationExecutor): SqlStore {
-  return new SqlStore(executor, executor);
+export function createSqlStore(executor: JuniorSqlDatabase): SqlStore {
+  return new SqlStore(executor);
 }

@@ -1,17 +1,8 @@
 import { readConversationFeedFromSql } from "./list.query";
-import type { ConversationFeed } from "./types";
+import { conversationFeedSchema } from "./schema";
+import type { ConversationFeed } from "./schema";
 
 /** Load the conversation feed directly from durable SQL records. */
 export async function readConversationFeed(): Promise<ConversationFeed> {
-  return readConversationFeedFromSql();
+  return conversationFeedSchema.parse(await readConversationFeedFromSql());
 }
-
-export type {
-  ActorIdentity,
-  ConversationCost,
-  ConversationFeed,
-  ConversationReportStatus,
-  ConversationSummaryReport,
-  ConversationSurface,
-  ConversationUsage,
-} from "./types";

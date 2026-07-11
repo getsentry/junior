@@ -1,5 +1,5 @@
 import { formatCompactNumber, formatCostSummary, formatMs } from "../format";
-import type { ConversationStatsReport } from "../types";
+import type { ConversationStatsReport } from "@sentry/junior/api/schema";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
@@ -25,7 +25,7 @@ const EMPTY_STATS: Pick<
   hung: 0,
 };
 
-/** Render aggregate conversation stats returned by the reporting API. */
+/** Render aggregate conversation stats returned by the REST API. */
 export function ConversationStats(props: {
   stats?: ConversationStatsReport;
   statsError?: boolean;

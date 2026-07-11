@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
-import { Button } from "../components/Button";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
-import { ExecutionSignature } from "../components/ExecutionSignature";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -37,11 +36,7 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "../components/SubagentTranscriptDrawer";
-import type {
-  Conversation,
-  ConversationDetailFeed,
-  DashboardData,
-} from "../types";
+import type { Conversation, DashboardData } from "../types";
 
 /** Render one permalinkable conversation transcript route. */
 export function ConversationPage(props: { data?: DashboardData }) {
@@ -81,7 +76,6 @@ export function ConversationPage(props: { data?: DashboardData }) {
                 detail={detail.data}
               />
             </div>
-            <ConversationExecutionSignature detail={detail.data} />
           </div>
           <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.8rem] leading-snug text-[#b8b8b8] md:items-end md:text-right">
             <div className="break-words">
@@ -117,11 +111,11 @@ export function ConversationPage(props: { data?: DashboardData }) {
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
-            onOpenSubagentTranscript={({ part, turn }) => {
+            onOpenSubagentTranscript={({ part, conversation }) => {
               if (!conversationId) return;
-              setSubagentTarget({ conversationId, part, turn });
+              setSubagentTarget({ conversation, conversationId, part });
             }}
-            turns={detail.data?.runs ?? []}
+            transcript={detail.data}
           />
         )}
       </section>
@@ -133,46 +127,18 @@ export function ConversationPage(props: { data?: DashboardData }) {
   );
 }
 
-function ConversationExecutionSignature(props: {
-  detail: ConversationDetailFeed | undefined;
-}) {
-  const runs = props.detail?.runs;
-  const currentRun = runs?.reduce<(typeof runs)[number] | undefined>(
-    (selected, run) => {
-      if (!selected) return run;
-      if (run.status === "active" && selected.status !== "active") return run;
-      if (selected.status === "active" && run.status !== "active") {
-        return selected;
-      }
-      return Date.parse(run.lastSeenAt) > Date.parse(selected.lastSeenAt)
-        ? run
-        : selected;
-    },
-    undefined,
-  );
-  if (!currentRun?.modelId) return null;
-
-  return (
-    <ExecutionSignature
-      className="mt-1.5 block"
-      modelId={currentRun.modelId}
-      reasoningLevel={currentRun.reasoningLevel}
-    />
-  );
-}
-
 function conversationIsLive(
   visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
-  detail: ConversationDetailFeed | undefined,
+  detail: ConversationDetailReport | undefined,
 ): boolean {
-  if (detail) return detail.runs.some((turn) => turn.status === "active");
+  if (detail) return detail.status === "active";
   return visualStatus === "active";
 }
 
 function ConversationIdentity(props: {
   conversation: Conversation | undefined;
   conversationId: string | undefined;
-  detail: ConversationDetailFeed | undefined;
+  detail: ConversationDetailReport | undefined;
 }) {
   const email = props.conversation?.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
@@ -215,25 +181,19 @@ function ConversationIdentity(props: {
 
 function ConversationStats(props: {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailFeed;
+  detail?: ConversationDetailReport;
 }) {
   if (!props.conversation) return null;
   const messageSummary = props.detail
-    ? summarizeMessages(props.detail.runs)
+    ? summarizeMessages(props.detail)
     : undefined;
   const toolSummary = props.detail
-    ? summarizeToolCalls(props.detail.runs)
+    ? summarizeToolCalls(props.detail)
     : undefined;
-  const tokenSummary = summarizeUsage(
-    (props.detail?.runs ?? props.conversation.runs).map(
-      (turn) => turn.cumulativeUsage,
-    ),
-  );
-  const costSummary = summarizeCost(
-    (props.detail?.runs ?? props.conversation.runs).map(
-      (turn) => turn.cumulativeUsage,
-    ),
-  );
+  const usage =
+    props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
+  const tokenSummary = summarizeUsage(usage);
+  const costSummary = summarizeCost(usage);
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
   });

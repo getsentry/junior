@@ -5,6 +5,7 @@ import {
 import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { sqlConversationMigration } from "./upgrade/migrations/conversations-sql";
+import { coreSqlSchemaMigration } from "./upgrade/migrations/core-sql";
 import { sqlConversationHistoryMigration } from "./upgrade/migrations/conversations-history-sql";
 import { pluginStorageMigration } from "./upgrade/migrations/plugin-storage";
 import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
@@ -25,6 +26,7 @@ const localPluginLoader = createJiti(import.meta.url, { moduleCache: false });
 
 const MIGRATIONS: UpgradeMigration[] = [
   redisConversationStateMigration,
+  coreSqlSchemaMigration,
   sqlConversationMigration,
   sqlConversationHistoryMigration,
   sqlPluginMigration,

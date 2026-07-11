@@ -1,5 +1,4 @@
 import type { PluginConversationSummary } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
 import { readConversationFeedFromSql } from "@/api/conversations/list.query";
 
 /** Supply bounded SQL conversation metadata to plugin operational reports. */
@@ -7,7 +6,7 @@ export async function listRecentConversationSummaries(
   requestedLimit = 25,
 ): Promise<PluginConversationSummary[]> {
   const limit = Math.max(0, Math.min(100, Math.floor(requestedLimit)));
-  const feed = await readConversationFeedFromSql(getDb(), limit);
+  const feed = await readConversationFeedFromSql(limit);
   return feed.conversations.map((report) => {
     return {
       conversationId: report.conversationId,

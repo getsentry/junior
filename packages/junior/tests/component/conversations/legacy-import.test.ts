@@ -650,6 +650,7 @@ describe("legacy conversation import", () => {
     ]);
 
     try {
+      await migrateSchema(fixture.sql);
       const context = { io: { info: () => {} }, stateAdapter };
       await expect(
         migrateConversationHistoryToSql(context, { executor: fixture.sql }),

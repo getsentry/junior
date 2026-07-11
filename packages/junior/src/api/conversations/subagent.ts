@@ -1,6 +1,7 @@
 import { buildConversationSubagent } from "./detail-projection";
 import { readConversationRecordFromSql } from "./list.query";
-import type { ConversationSubagentTranscriptReport } from "./types";
+import { conversationSubagentTranscriptReportSchema } from "./schema";
+import type { ConversationSubagentTranscriptReport } from "./schema";
 
 /** Load one child-agent transcript from durable SQL conversation history. */
 export async function readConversationSubagent(
@@ -9,7 +10,7 @@ export async function readConversationSubagent(
 ): Promise<ConversationSubagentTranscriptReport> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) {
-    return {
+    return conversationSubagentTranscriptReportSchema.parse({
       type: "subagent",
       createdAt: new Date(0).toISOString(),
       id: subagentId,
@@ -18,9 +19,9 @@ export async function readConversationSubagent(
       transcript: [],
       transcriptAvailable: false,
       unavailableReason: "not_found",
-    };
+    });
   }
-  return buildConversationSubagent(record.conversation, subagentId);
+  return conversationSubagentTranscriptReportSchema.parse(
+    await buildConversationSubagent(record.conversation, subagentId),
+  );
 }
-
-export type { ConversationSubagentTranscriptReport } from "./types";

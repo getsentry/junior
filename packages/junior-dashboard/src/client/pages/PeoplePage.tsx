@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { Mail, UserRound } from "lucide-react";
+import type { ConversationStatsItem } from "@sentry/junior/api/schema";
+import type {
+  ActorDirectoryReport,
+  ActorSummaryReport,
+  ActorTotalsReport,
+} from "@sentry/junior/api/schema";
+import type {
+  ActorActivityDayReport,
+  ActorProfileReport,
+} from "@sentry/junior/api/schema";
 
 import { useActorDirectoryData, useActorProfileData } from "../api";
 import { Button } from "../components/Button";
@@ -21,24 +31,16 @@ import {
   formatTime,
 } from "../format";
 import { cn } from "../styles";
-import type {
-  ConversationStatsItem,
-  ActorActivityDay,
-  ActorDirectory,
-  ActorProfile,
-  ActorSummary,
-  ActorTotals,
-} from "../types";
 
 type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
 
-function actorName(person: Pick<ActorSummary, "actor">): string {
+function actorName(person: Pick<ActorSummaryReport, "actor">): string {
   return (
     person.actor.fullName ?? person.actor.slackUserName ?? person.actor.email
   );
 }
 
-function personMeta(person: ActorSummary): string {
+function personMeta(person: ActorSummaryReport): string {
   const pieces = [
     person.actor.email,
     person.actor.slackUserName ? `@${person.actor.slackUserName}` : undefined,
@@ -47,7 +49,9 @@ function personMeta(person: ActorSummary): string {
   return pieces.filter(Boolean).join(" / ");
 }
 
-function sampleLabel(data: Pick<ActorDirectory, "sampleSize" | "truncated">) {
+function sampleLabel(
+  data: Pick<ActorDirectoryReport, "sampleSize" | "truncated">,
+) {
   return `${formatCompactNumber(data.sampleSize)} sampled conversations${
     data.truncated ? " / limited sample" : ""
   }`;
@@ -58,7 +62,7 @@ function runtimeLabel(durationMs: number, conversations: number): string {
   return formatMs(durationMs);
 }
 
-/** Render the actor directory from dashboard reporting data. */
+/** Render the actor directory returned by the REST API. */
 export function PeoplePage() {
   const query = useActorDirectoryData();
   return <PeoplePageContent data={query.data} error={query.error} />;
@@ -69,7 +73,7 @@ export function PeoplePageContent({
   data,
   error,
 }: {
-  data: ActorDirectory | undefined;
+  data: ActorDirectoryReport | undefined;
   error: unknown;
 }) {
   const [peopleSearch, setPeopleSearch] = useState("");
@@ -120,10 +124,10 @@ export function PeoplePageContent({
 }
 
 function filterPeople(
-  people: ActorSummary[],
+  people: ActorSummaryReport[],
   query: string,
   sort: PeopleSort,
-): ActorSummary[] {
+): ActorSummaryReport[] {
   const normalized = query.trim().toLowerCase();
   const filtered = normalized
     ? people.filter((person) =>
@@ -190,7 +194,7 @@ function PeopleToolbar(props: {
   );
 }
 
-function PeopleDirectory(props: { people: ActorSummary[] }) {
+function PeopleDirectory(props: { people: ActorSummaryReport[] }) {
   if (props.people.length === 0) {
     return (
       <div className="p-3">
@@ -273,7 +277,7 @@ export function PersonProfilePage() {
   );
 }
 
-export function Profile(props: { profile: ActorProfile }) {
+export function Profile(props: { profile: ActorProfileReport }) {
   const profile = props.profile;
   const [recentSearch, setRecentSearch] = useState("");
   const conversations = buildConversations(profile.recentConversations);
@@ -362,7 +366,7 @@ export function Profile(props: { profile: ActorProfile }) {
   );
 }
 
-function ProfileMetrics(props: { totals: ActorTotals }) {
+function ProfileMetrics(props: { totals: ActorTotalsReport }) {
   const totals = props.totals;
   const metrics = [
     ["conversations", formatCompactNumber(totals.conversations)],
@@ -389,19 +393,22 @@ function ProfileMetrics(props: { totals: ActorTotals }) {
   );
 }
 
-function ContributionGrid(props: { days: ActorActivityDay[] }) {
+function ContributionGrid(props: { days: ActorActivityDayReport[] }) {
   const max = Math.max(1, ...props.days.map((day) => day.conversations));
-  const weeks: Array<Array<ActorActivityDay | null>> = [];
+  const weeks: Array<Array<ActorActivityDayReport | null>> = [];
   const leadingDays = props.days[0]
     ? new Date(`${props.days[0].date}T00:00:00Z`).getUTCDay()
     : 0;
-  const cells: Array<ActorActivityDay | null> = [
+  const cells: Array<ActorActivityDayReport | null> = [
     ...Array.from({ length: leadingDays }, () => null),
     ...props.days,
   ];
   while (cells.length > 0 && cells.length % 7 !== 0) cells.push(null);
   for (let index = 0; index < cells.length; index += 7) {
-    const week: Array<ActorActivityDay | null> = cells.slice(index, index + 7);
+    const week: Array<ActorActivityDayReport | null> = cells.slice(
+      index,
+      index + 7,
+    );
     while (week.length < 7) week.push(null);
     weeks.push(week);
   }

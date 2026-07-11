@@ -5,7 +5,7 @@ declare module "#junior/config" {
   import type { JuniorPluginSet } from "@/plugins";
   import type { PluginRouteApp } from "@sentry/junior-plugin-api";
 
-  type VirtualDashboardConfig = Omit<JuniorDashboardOptions, "reporting">;
+  type VirtualDashboardConfig = JuniorDashboardOptions;
 
   interface VirtualDashboardOptions extends VirtualDashboardConfig {
     pluginRoutes?: Array<{

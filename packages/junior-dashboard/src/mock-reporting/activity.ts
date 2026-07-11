@@ -2,7 +2,7 @@ import type {
   ConversationActivityStatus,
   ConversationSubagentActivityReport,
   ConversationToolActivityReport,
-} from "@sentry/junior/api/conversations/detail";
+} from "@sentry/junior/api/schema";
 
 import { mockIso } from "./time";
 

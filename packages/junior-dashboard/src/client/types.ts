@@ -1,84 +1,23 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   PluginOperationalReportFeed,
-  PluginOperationalReport,
   HealthReport,
-  PluginReport as RuntimePluginReport,
+  PluginReport,
   RuntimeInfoReport,
   SkillReport,
-} from "@sentry/junior/reporting";
+} from "@sentry/junior/api/schema";
+import type { ConversationStatsReport } from "@sentry/junior/api/schema";
 import type {
-  ConversationStatsItem as ApiConversationStatsItem,
-  ConversationStatsReport as ApiConversationStatsReport,
-} from "@sentry/junior/api/conversations/stats";
-import type {
-  ConversationFeed as ApiConversationFeed,
+  ConversationFeed,
   ConversationSummaryReport,
-  ConversationUsage,
-} from "@sentry/junior/api/conversations/list";
+} from "@sentry/junior/api/schema";
 import type {
-  ConversationReport as ApiConversationReport,
-  ConversationRunReport,
-} from "@sentry/junior/api/conversations/detail";
-import type { ConversationSubagentTranscriptReport as ApiConversationSubagentTranscriptReport } from "@sentry/junior/api/conversations/subagent";
-import type {
-  ActorDirectoryReport,
-  ActorIdentity as ApiActorIdentity,
-  ActorSummaryReport,
-  ActorTotalsReport,
-} from "@sentry/junior/api/people/list";
-import type {
-  ActorActivityDayReport,
-  ActorProfileReport,
-} from "@sentry/junior/api/people/profile";
-
-export type Health = HealthReport;
-
-export type Runtime = RuntimeInfoReport;
-
-export type Plugin = RuntimePluginReport;
-
-export type Skill = SkillReport;
-
-export type PluginReport = PluginOperationalReport;
-
-export type PluginReportFeed = PluginOperationalReportFeed;
-
-export type ConversationStatsReport = ApiConversationStatsReport;
-
-export type ConversationSubagentTranscript =
-  ApiConversationSubagentTranscriptReport;
-
-export type ConversationStatsItem = ApiConversationStatsItem;
-
-export type ActorIdentity = ApiActorIdentity;
-
-export type ActorActivityDay = ActorActivityDayReport;
-
-export type ActorDirectory = ActorDirectoryReport;
-
-export type ActorProfile = ActorProfileReport;
-
-export type ActorSummary = ActorSummaryReport;
-
-export type ActorTotals = ActorTotalsReport;
-
-export type TurnUsage = ConversationUsage;
-
-export type ConversationSummary = ConversationSummaryReport;
-
-export type TranscriptPart =
-  ConversationRunReport["transcript"][number]["parts"][number];
-
-export type TranscriptMessage = ConversationRunReport["transcript"][number];
-
-export type ConversationActivity = NonNullable<
-  ConversationRunReport["activity"]
->[number];
-
-export type TranscriptActivityStatus = NonNullable<
-  ConversationRunReport["activity"]
->[number]["status"];
+  ConversationActivityStatus,
+  ConversationDetailReport,
+  TranscriptMessage,
+  TranscriptPart,
+} from "@sentry/junior/api/schema";
+import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
 // Dashboard view transcript parts merge reporting transcript payloads with
 // lifecycle activity rows; the backend reporting transcript contract is unchanged.
@@ -86,7 +25,7 @@ type TranscriptViewReportingPart = TranscriptPart & {
   endedAt?: never;
   outcome?: never;
   parentToolCallId?: never;
-  status?: TranscriptActivityStatus;
+  status?: ConversationActivityStatus;
   subagentKind?: never;
 };
 
@@ -115,7 +54,7 @@ export type TranscriptViewSubagentPart = {
   parentToolCallId?: string;
   reasoningLevel?: string;
   redacted?: boolean;
-  status: TranscriptActivityStatus;
+  status: ConversationActivityStatus;
   subagentKind: string;
   transcriptAvailable?: boolean;
   text?: never;
@@ -131,56 +70,47 @@ export type TranscriptViewMessage = Omit<TranscriptMessage, "parts"> & {
   parts: TranscriptViewPart[];
 };
 
-export type ConversationTurn = ConversationRunReport & {
+export type ConversationTranscript = Omit<
+  ConversationDetailReport,
+  "generatedAt" | "sentryConversationUrl"
+> & {
   assistantLabel?: string;
 };
-
-export type ConversationDetailFeed = ApiConversationReport;
 
 export type Conversation = {
   channel?: string;
   channelName?: string;
+  cumulativeDurationMs: number;
+  cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
   id: string;
   lastProgressAt: string;
   lastSeenAt: string;
-  actorIdentity?: ActorIdentity;
+  actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
   startedAt: string;
-  status: ConversationSummary["status"];
-  surface: ConversationSummary["surface"];
+  status: ConversationSummaryReport["status"];
+  surface: ConversationSummaryReport["surface"];
   traceId?: string;
-  runs: ConversationSummary[];
 };
 
-export type ConversationFeed = ApiConversationFeed;
-
-export type Identity = { user: { email?: string; hostedDomain?: string } };
-
-export type DashboardConfig = {
-  allowedEmailCount: number;
-  allowedGoogleDomainCount: number;
-  authRequired: boolean;
-  authPath: string;
-  basePath: string;
-  sentryConversationLinks: boolean;
-  timeZone: string;
-};
+export type Identity = DashboardIdentity;
+export type { DashboardConfig };
 
 export type DashboardData = {
   config: DashboardConfig;
-  conversationStats: ConversationStatsReport;
+  conversationStats?: ConversationStatsReport;
   conversationStatsError: boolean;
   conversationStatsLoading: boolean;
-  health: Health;
+  health: HealthReport;
   me: Identity;
   pluginReportsError: boolean;
-  pluginReports: PluginReportFeed;
+  pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
-  plugins: Plugin[];
-  runtime: Runtime;
+  plugins: PluginReport[];
+  runtime: RuntimeInfoReport;
   conversations: ConversationFeed;
-  skills: Skill[];
+  skills: SkillReport[];
 };
 
 export type ConversationFilter =

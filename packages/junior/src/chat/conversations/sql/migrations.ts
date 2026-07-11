@@ -1,472 +1,108 @@
-/**
- * SQL schema migrations for durable conversation records.
- *
- * Migrations are checksum-pinned and run under an advisory lock from
- * `junior upgrade`; request handlers must not apply them.
- */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+/** SQL schema migrations for durable Junior records. */
 import { basename, dirname, join, resolve } from "node:path";
-import { z } from "zod";
+import { fileURLToPath } from "node:url";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
-const MIGRATION_LOCK_NAME = "junior_conversation_schema";
+const LEGACY_CORE_MIGRATION_IDS = [
+  "0001_conversation_core",
+  "0002_slack_destination_visibility_backfill",
+  "0003_user_identities",
+  "0004_actor_cutover",
+  "0005_conversation_transcripts",
+] as const;
+const LEGACY_METRICS_MIGRATION_ID = "0006_conversation_metrics";
 
-const migrationRecordSchema = z
-  .object({
-    id: z.string().min(1),
-    checksum: z.string().min(1),
-  })
-  .strict();
-
-export interface Migration {
-  checksum: string;
-  id: string;
-  statements: readonly string[];
-}
-
-interface StoredMigrationRecord {
-  checksum: string;
-  id: string;
-}
-
-function checksumStatements(statements: readonly string[]): string {
-  const hash = createHash("sha256");
-  for (const statement of statements) {
-    hash.update(statement);
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-
-function defineMigration(id: string, statements: readonly string[]): Migration {
-  return {
-    id,
-    checksum: checksumStatements(statements),
-    statements,
-  };
-}
-
-/** Absolute path to a drizzle-kit-generated `.sql` file in the `migrations/` out dir. */
-function kitMigrationPath(fileName: string): string {
+/** Resolve the packaged Drizzle migration directory in source or built output. */
+function migrationFolder(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const packageRoot =
     basename(moduleDir) === "dist"
       ? dirname(moduleDir)
-      : resolve(moduleDir, "../../../..");
-  return join(packageRoot, "migrations", fileName);
+      : basename(dirname(moduleDir)) === "dist"
+        ? resolve(moduleDir, "../..")
+        : resolve(moduleDir, "../../../..");
+  return join(packageRoot, "migrations");
 }
 
-/**
- * Register a drizzle-kit-generated `.sql` file as a checksum-pinned migration.
- *
- * Migrations 0006 onward are authored by editing the Drizzle schema and running
- * `pnpm --filter @sentry/junior db:generate`; each generated file becomes one
- * line here. Statements are split on drizzle-kit's `--> statement-breakpoint`
- * markers and applied by the custom `junior upgrade` runner (never
- * `drizzle-kit migrate`). Migrations 0001–0005 predate kit and stay inline so
- * their recorded checksums remain byte-stable.
- */
-export function defineMigrationFromFile(
-  id: string,
-  fileName: string,
-): Migration {
-  const contents = readFileSync(kitMigrationPath(fileName), "utf8");
-  const statements = contents
-    .split(/-->\s*statement-breakpoint/)
-    .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
-  return defineMigration(id, statements);
-}
-
-const createMigrationTable = `
-CREATE TABLE IF NOT EXISTS junior_schema_migrations (
-  id TEXT PRIMARY KEY,
-  checksum TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-)
-`;
-
-const coreMetadataStatements = [
-  `
-CREATE TABLE IF NOT EXISTS junior_identities (
-  id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  provider_tenant_id TEXT NOT NULL DEFAULT '',
-  provider_subject_id TEXT NOT NULL,
-  display_name TEXT,
-  handle TEXT,
-  email TEXT,
-  avatar_url TEXT,
-  metadata_json JSONB,
-  created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
-)
-`,
-  `
-CREATE UNIQUE INDEX IF NOT EXISTS junior_identities_provider_subject_uidx
-  ON junior_identities (provider, provider_tenant_id, provider_subject_id)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_identities_kind_provider_idx
-  ON junior_identities (kind, provider)
-`,
-  `
-CREATE TABLE IF NOT EXISTS junior_destinations (
-  id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL,
-  provider_tenant_id TEXT NOT NULL DEFAULT '',
-  provider_destination_id TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  parent_destination_id TEXT,
-  display_name TEXT,
-  visibility TEXT NOT NULL DEFAULT 'unknown',
-  metadata_json JSONB,
-  created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
-)
-`,
-  `
-CREATE UNIQUE INDEX IF NOT EXISTS junior_destinations_provider_destination_uidx
-  ON junior_destinations (provider, provider_tenant_id, provider_destination_id)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_destinations_provider_kind_idx
-  ON junior_destinations (provider, kind)
-`,
-  `
-CREATE TABLE IF NOT EXISTS junior_conversations (
-  conversation_id TEXT PRIMARY KEY,
-  schema_version INTEGER NOT NULL DEFAULT 1,
-  source TEXT,
-  origin_type TEXT,
-  origin_id TEXT,
-  origin_run_id TEXT,
-  destination_id TEXT REFERENCES junior_destinations (id),
-  destination_json JSONB,
-  actor_identity_id TEXT REFERENCES junior_identities (id),
-  requester_identity_id TEXT REFERENCES junior_identities (id),
-  creator_identity_id TEXT REFERENCES junior_identities (id),
-  credential_subject_identity_id TEXT REFERENCES junior_identities (id),
-  requester_json JSONB,
-  channel_name TEXT,
-  title TEXT,
-  created_at TIMESTAMPTZ NOT NULL,
-  last_activity_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL,
-  execution_updated_at TIMESTAMPTZ,
-  execution_status TEXT NOT NULL,
-  run_id TEXT,
-  last_checkpoint_at TIMESTAMPTZ,
-  last_enqueued_at TIMESTAMPTZ
-)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_last_activity_idx
-  ON junior_conversations (last_activity_at DESC, conversation_id)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_active_idx
-  ON junior_conversations (coalesce(execution_updated_at, updated_at) ASC, conversation_id)
-  WHERE execution_status <> 'idle'
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_destination_activity_idx
-  ON junior_conversations (destination_id, last_activity_at DESC)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_actor_activity_idx
-  ON junior_conversations (actor_identity_id, last_activity_at DESC)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_requester_activity_idx
-  ON junior_conversations (requester_identity_id, last_activity_at DESC)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_origin_idx
-  ON junior_conversations (origin_type, origin_id, last_activity_at DESC)
-`,
-] as const;
-
-const destinationVisibilityBackfillStatements = [
-  `
-UPDATE junior_destinations
-  SET visibility = 'private'
-  WHERE provider = 'slack'
-    AND visibility = 'public'
-`,
-] as const;
-
-const userIdentityStatements = [
-  `
-CREATE TABLE IF NOT EXISTS junior_users (
-  id TEXT PRIMARY KEY,
-  primary_email TEXT NOT NULL,
-  primary_email_normalized TEXT NOT NULL,
-  display_name TEXT,
-  created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
-)
-`,
-  `
-CREATE UNIQUE INDEX IF NOT EXISTS junior_users_primary_email_normalized_uidx
-  ON junior_users (primary_email_normalized)
-`,
-  `
-ALTER TABLE junior_identities
-  ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES junior_users (id)
-`,
-  `
-ALTER TABLE junior_identities
-  ADD COLUMN IF NOT EXISTS email_normalized TEXT
-`,
-  `
-ALTER TABLE junior_identities
-  ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false
-`,
-  `
-UPDATE junior_identities
-  SET email_normalized = lower(trim(email)),
-      email_verified = CASE
-        WHEN kind = 'user' AND provider = 'slack' THEN true
-        ELSE email_verified
-      END
-  WHERE email IS NOT NULL
-    AND trim(email) <> ''
-`,
-  `
-WITH first_identity AS (
-  SELECT DISTINCT ON (email_normalized)
-    id,
-    COALESCE(NULLIF(trim(email), ''), email_normalized) AS email,
-    email_normalized,
-    display_name,
-    created_at,
-    updated_at
-  FROM junior_identities
-  WHERE kind = 'user'
-    AND email_verified = true
-    AND email_normalized IS NOT NULL
-  ORDER BY email_normalized, created_at ASC, id ASC
-)
-INSERT INTO junior_users (
-  id,
-  primary_email,
-  primary_email_normalized,
-  display_name,
-  created_at,
-  updated_at
-)
-SELECT
-  'identity:' || id,
-  email,
-  email_normalized,
-  display_name,
-  created_at,
-  updated_at
-FROM first_identity
-ON CONFLICT (primary_email_normalized) DO NOTHING
-`,
-  `
-UPDATE junior_identities AS identity
-  SET user_id = junior_users.id
-  FROM junior_users
-  WHERE identity.kind = 'user'
-    AND identity.user_id IS NULL
-    AND identity.email_verified = true
-    AND identity.email_normalized = junior_users.primary_email_normalized
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_identities_user_idx
-  ON junior_identities (user_id)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_identities_verified_email_idx
-  ON junior_identities (email_normalized)
-  WHERE email_verified = true
-    AND email_normalized IS NOT NULL
-`,
-] as const;
-
-const actorCutoverStatements = [
-  `
-UPDATE junior_conversations
-  SET actor_identity_id = requester_identity_id
-  WHERE requester_identity_id IS NOT NULL
-`,
-  `
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = 'junior_conversations'
-      AND column_name = 'requester_json'
-  ) AND NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = 'junior_conversations'
-      AND column_name = 'actor_json'
-  ) THEN
-    ALTER TABLE junior_conversations
-      RENAME COLUMN requester_json TO actor_json;
-  END IF;
-END $$;
-`,
-  `
-ALTER TABLE junior_conversations
-  ADD COLUMN IF NOT EXISTS actor_json JSONB
-`,
-  `
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = 'junior_conversations'
-      AND column_name = 'requester_json'
-  ) THEN
-    UPDATE junior_conversations
-      SET actor_json = COALESCE(actor_json, requester_json);
-  END IF;
-END $$;
-`,
-  `
-DROP INDEX IF EXISTS junior_conversations_requester_activity_idx
-`,
-  `
-ALTER TABLE junior_conversations
-  DROP COLUMN IF EXISTS requester_identity_id
-`,
-  `
-ALTER TABLE junior_conversations
-  DROP COLUMN IF EXISTS requester_json
-`,
-] as const;
-
-const conversationTranscriptStatements = [
-  `
-CREATE TABLE IF NOT EXISTS junior_agent_steps (
-  conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id),
-  seq INTEGER NOT NULL,
-  context_epoch INTEGER NOT NULL,
-  type TEXT NOT NULL,
-  role TEXT,
-  payload JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (conversation_id, seq)
-)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_agent_steps_epoch_idx
-  ON junior_agent_steps (conversation_id, context_epoch, seq)
-`,
-  `
-CREATE TABLE IF NOT EXISTS junior_conversation_messages (
-  conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id),
-  message_id TEXT NOT NULL,
-  role TEXT NOT NULL,
-  author_identity_id TEXT REFERENCES junior_identities (id),
-  text TEXT NOT NULL,
-  meta JSONB,
-  replied_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL,
-  PRIMARY KEY (conversation_id, message_id)
-)
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversation_messages_activity_idx
-  ON junior_conversation_messages (conversation_id, created_at)
-`,
-  `
-ALTER TABLE junior_conversations
-  ADD COLUMN IF NOT EXISTS parent_conversation_id TEXT REFERENCES junior_conversations (conversation_id)
-`,
-  `
-ALTER TABLE junior_conversations
-  ADD COLUMN IF NOT EXISTS transcript_purged_at TIMESTAMPTZ
-`,
-  `
-CREATE INDEX IF NOT EXISTS junior_conversations_parent_idx
-  ON junior_conversations (parent_conversation_id)
-`,
-] as const;
-
-export const migrations = [
-  defineMigration("0001_conversation_core", coreMetadataStatements),
-  defineMigration(
-    "0002_slack_destination_visibility_backfill",
-    destinationVisibilityBackfillStatements,
-  ),
-  defineMigration("0003_user_identities", userIdentityStatements),
-  defineMigration("0004_actor_cutover", actorCutoverStatements),
-  defineMigration(
-    "0005_conversation_transcripts",
-    conversationTranscriptStatements,
-  ),
-  defineMigrationFromFile(
-    "0006_conversation_metrics",
-    "0006_conversation_metrics.sql",
-  ),
-] as const;
-
-export { schema };
-
-function parseStoredMigrationRecord(value: unknown): StoredMigrationRecord {
-  return migrationRecordSchema.parse(value);
-}
-
-async function listAppliedMigrations(
+async function adoptLegacyMigrationState(
   executor: JuniorSqlMigrationExecutor,
-): Promise<Map<string, StoredMigrationRecord>> {
-  const rows = await executor.query(
-    "SELECT id, checksum FROM junior_schema_migrations ORDER BY id ASC",
-  );
-  const records = new Map<string, StoredMigrationRecord>();
-  for (const row of rows) {
-    const record = parseStoredMigrationRecord(row);
-    records.set(record.id, record);
-  }
-  return records;
-}
-
-async function applyMigration(
-  executor: JuniorSqlMigrationExecutor,
-  migration: Migration,
+  migrationsFolder: string,
 ): Promise<void> {
+  const [tables] = await executor.query<{
+    drizzleTable: string | null;
+    legacyTable: string | null;
+  }>(`
+SELECT
+  to_regclass('drizzle.__drizzle_migrations')::text AS "drizzleTable",
+  to_regclass('public.junior_schema_migrations')::text AS "legacyTable"
+`);
+  if (!tables?.legacyTable || tables.drizzleTable) {
+    return;
+  }
+
+  const migrations = readMigrationFiles({ migrationsFolder });
+  const [metrics] = await executor.query<{ complete: boolean }>(`
+SELECT count(*) = 4 AS complete
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'junior_conversations'
+  AND column_name IN (
+    'duration_ms',
+    'usage_json',
+    'execution_duration_ms',
+    'execution_usage_json'
+  )
+`);
+  const legacyRecords = await executor.query<{
+    checksum: string;
+    id: string;
+  }>("SELECT id, checksum FROM junior_schema_migrations");
+  const expectedIds = metrics?.complete
+    ? [...LEGACY_CORE_MIGRATION_IDS, LEGACY_METRICS_MIGRATION_ID]
+    : [...LEGACY_CORE_MIGRATION_IDS];
+  const validIds = new Set(
+    legacyRecords
+      .filter((record) => record.checksum.trim().length > 0)
+      .map((record) => record.id),
+  );
+  const missingIds = expectedIds.filter((id) => !validIds.has(id));
+  if (missingIds.length > 0) {
+    throw new Error(
+      `Cannot adopt partial legacy core migration state; missing: ${missingIds.join(", ")}`,
+    );
+  }
+
+  const migration = metrics?.complete ? migrations.at(-1) : migrations[0];
+  if (!migration) {
+    throw new Error("No core Drizzle migrations were packaged");
+  }
+
   await executor.transaction(async () => {
-    for (const statement of migration.statements) {
-      await executor.execute(statement);
-    }
+    await executor.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
+    await executor.execute(`
+CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (
+  id SERIAL PRIMARY KEY,
+  hash TEXT NOT NULL,
+  created_at BIGINT
+)
+`);
     await executor.execute(
-      "INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)",
-      [migration.id, migration.checksum],
+      `INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+       VALUES ($1, $2)`,
+      [migration.hash, migration.folderMillis],
     );
   });
 }
 
-/** Apply pending SQL schema migrations for queryable conversation records. */
+export { schema };
+
+/** Apply the packaged Drizzle migrations during `junior upgrade`. */
 export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
-  migrationList: readonly Migration[] = migrations,
 ): Promise<void> {
-  await executor.withLock(MIGRATION_LOCK_NAME, async () => {
-    await executor.execute(createMigrationTable);
-    const applied = await listAppliedMigrations(executor);
-    for (const migration of migrationList) {
-      const existing = applied.get(migration.id);
-      if (existing) {
-        if (existing.checksum !== migration.checksum) {
-          throw new Error(
-            `Conversation migration ${migration.id} checksum changed`,
-          );
-        }
-        continue;
-      }
-      await applyMigration(executor, migration);
-    }
-  });
+  const migrationsFolder = migrationFolder();
+  await adoptLegacyMigrationState(executor, migrationsFolder);
+  await executor.migrate({ migrationsFolder });
 }

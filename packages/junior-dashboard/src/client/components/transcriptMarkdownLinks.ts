@@ -311,7 +311,11 @@ function readMarkdownHref(destination: string): string | undefined {
 
 function safeLinkHref(href: string): string | undefined {
   const trimmed = href.trim();
-  if (!trimmed || /[\u0000-\u001f\u007f\s]/.test(trimmed)) return undefined;
+  const hasControlCharacter = [...trimmed].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+  if (!trimmed || hasControlCharacter || /\s/.test(trimmed)) return undefined;
   try {
     const url = new URL(trimmed);
     return url.protocol === "http:" ||

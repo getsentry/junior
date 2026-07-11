@@ -20,7 +20,7 @@ if (!TEST_DATABASE_URL) {
   );
 }
 
-async function readConversationReport(conversationId: string) {
+async function readConversationDetailReport(conversationId: string) {
   const report = await readConversationDetail(conversationId);
   if (!report) throw new Error(`Missing SQL conversation ${conversationId}`);
   return report;
@@ -274,14 +274,13 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    const report = await readConversationReport("slack:C1:details-only");
+    const report = await readConversationDetailReport("slack:C1:details-only");
 
     expect(report).toMatchObject({
       conversationId: "slack:C1:details-only",
       displayTitle: "SQL Title",
     });
-    expect(report.runs).toHaveLength(1);
-    expect(report.runs[0]).toMatchObject({
+    expect(report).toMatchObject({
       transcriptAvailable: true,
       transcriptMessageCount: 1,
       transcript: [
@@ -294,7 +293,7 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("reports conversation-index detail when turn summaries are absent", async () => {
+  it("reports conversation-index detail when conversation records are absent", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-04T12:00:00.000Z"));
     const { requestConversationWork } =
@@ -310,18 +309,13 @@ describe("dashboard reporting", () => {
       nowMs: Date.now(),
     });
 
-    const report = await readConversationReport("slack:C1:index-only");
+    const report = await readConversationDetailReport("slack:C1:index-only");
 
     expect(report).toMatchObject({
       conversationId: "slack:C1:index-only",
-      runs: [
-        expect.objectContaining({
-          id: "slack:C1:index-only",
-          status: "active",
-          transcriptAvailable: false,
-          transcript: [],
-        }),
-      ],
+      status: "active",
+      transcriptAvailable: false,
+      transcript: [],
     });
   });
 
@@ -398,14 +392,12 @@ describe("dashboard reporting", () => {
     });
 
     const report = await readConversationDetailFromSql("slack:C1:222");
-
-    expect(report?.runs).toHaveLength(1);
-    expect(report?.runs[0]).toMatchObject({
+    expect(report).toMatchObject({
       cumulativeDurationMs: 1_200,
       cumulativeUsage: { totalTokens: 120 },
       transcriptMessageCount: 4,
     });
-    expect(report?.runs[0]!.transcript).toEqual([
+    expect(report?.transcript).toEqual([
       {
         role: "user",
         timestamp: 1,
@@ -513,9 +505,9 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    const report = await readConversationReport("slack:G1:activity");
+    const report = await readConversationDetailReport("slack:G1:activity");
 
-    expect(report.runs[0]?.activity).toEqual([
+    expect(report.activity).toEqual([
       expect.objectContaining({
         type: "tool_execution",
         toolCallId: "advisor-call-1",
@@ -538,9 +530,7 @@ describe("dashboard reporting", () => {
         ],
       }),
     ]);
-    expect(JSON.stringify(report.runs[0]?.activity)).not.toContain(
-      "private question",
-    );
+    expect(JSON.stringify(report.activity)).not.toContain("private question");
   });
 
   it("loads advisor subagent transcript history from the child conversation", async () => {
@@ -785,11 +775,11 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    const report = await readConversationReport(
+    const report = await readConversationDetailReport(
       "slack:C1:activity-parent-result",
     );
 
-    expect(report.runs[0]?.activity).toEqual([
+    expect(report.activity).toEqual([
       expect.objectContaining({
         type: "tool_execution",
         status: "completed",
@@ -850,13 +840,13 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
-    const report = await readConversationReport("slack:C1:steering-transcript");
-
-    expect(report.runs).toHaveLength(1);
-    expect(report.runs[0]).toMatchObject({
+    const report = await readConversationDetailReport(
+      "slack:C1:steering-transcript",
+    );
+    expect(report).toMatchObject({
       transcriptMessageCount: 6,
     });
-    expect(report.runs[0]!.transcript).toEqual([
+    expect(report.transcript).toEqual([
       {
         role: "user",
         timestamp: 1,
@@ -890,7 +880,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports a conversation directly from SQL without a turn index", async () => {
+  it("reports a conversation directly from SQL without a secondary execution index", async () => {
     const { getAgentStepStore, getConversationStore } =
       await import("@/chat/db");
     await getConversationStore().recordActivity({
@@ -917,14 +907,12 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    const report = await readConversationReport("slack:C1:999");
-
-    expect(report.runs).toHaveLength(1);
-    expect(report.runs[0]).toMatchObject({
-      id: "slack:C1:999",
+    const report = await readConversationDetailReport("slack:C1:999");
+    expect(report).toMatchObject({
+      conversationId: "slack:C1:999",
       transcriptAvailable: true,
     });
-    expect(report.runs[0]!.transcript).toEqual([
+    expect(report.transcript).toEqual([
       {
         role: "user",
         timestamp: 1,
@@ -933,7 +921,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("reports multiple turns as one complete SQL transcript", async () => {
+  it("reports multiple message exchanges as one complete SQL transcript", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -1009,11 +997,9 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
 
-    const report = await readConversationReport("slack:C1:333");
-
-    expect(report.runs).toHaveLength(1);
-    expect(report.runs[0]).toMatchObject({ id: "slack:C1:333" });
-    expect(report.runs[0]!.transcript).toEqual([
+    const report = await readConversationDetailReport("slack:C1:333");
+    expect(report).toMatchObject({ conversationId: "slack:C1:333" });
+    expect(report.transcript).toEqual([
       {
         role: "user",
         timestamp: 1,
@@ -1088,13 +1074,13 @@ describe("dashboard reporting", () => {
       traceId: "0123456789abcdef0123456789abcdef",
     });
 
-    const report = await readConversationReport("slack:D1:222");
+    const report = await readConversationDetailReport("slack:D1:222");
 
-    expect(report.runs[0]).toMatchObject({
+    expect(report).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       channelNameRedacted: true,
-      id: "slack:D1:222",
+      conversationId: "slack:D1:222",
       actorIdentity: {
         email: "david@sentry.io",
         slackUserId: "U1",
@@ -1105,7 +1091,7 @@ describe("dashboard reporting", () => {
       transcriptRedactionReason: "non_public_conversation",
       transcript: [],
     });
-    expect(report.runs[0]).not.toHaveProperty("actor");
+    expect(report).not.toHaveProperty("actor");
     expect(JSON.stringify(report)).not.toContain("private question");
     expect(JSON.stringify(report)).not.toContain("private answer");
     expect(JSON.stringify(report)).not.toContain("private value");
@@ -1113,7 +1099,7 @@ describe("dashboard reporting", () => {
       "sensitive generated thread title",
     );
     expect(JSON.stringify(report)).not.toContain("secret-dm-name");
-    const toolCall = report.runs[0]!.transcriptMetadata?.[1]?.parts.find(
+    const toolCall = report.transcriptMetadata?.[1]?.parts.find(
       (part) => part.type === "tool_call",
     );
     expect(toolCall?.inputKeys).toHaveLength(20);
@@ -1132,13 +1118,13 @@ describe("dashboard reporting", () => {
       state: "completed",
     });
 
-    const report = await readConversationReport("slack:D1:333");
+    const report = await readConversationDetailReport("slack:D1:333");
 
-    expect(report.runs[0]).toMatchObject({
+    expect(report).toMatchObject({
       displayTitle: "Direct Message",
       channelName: "Direct Message",
       channelNameRedacted: true,
-      id: "slack:D1:333",
+      conversationId: "slack:D1:333",
       transcriptAvailable: false,
       transcriptMetadata: [],
       transcriptRedacted: true,
@@ -1180,11 +1166,9 @@ describe("dashboard reporting", () => {
       nowMs: Date.now(),
     });
 
-    const report = await readConversationReport(conversationId);
-
-    expect(report.runs).toHaveLength(1);
-    expect(report.runs[0]).toMatchObject({
-      id: "slack:C1:purged",
+    const report = await readConversationDetailReport(conversationId);
+    expect(report).toMatchObject({
+      conversationId,
       transcriptAvailable: false,
       transcriptExpired: true,
       transcriptMetadata: [],
@@ -1192,8 +1176,8 @@ describe("dashboard reporting", () => {
     });
     // Expiry under retention is distinct from privacy redaction, even though
     // this conversation is public.
-    expect(report.runs[0]).not.toHaveProperty("transcriptRedacted");
-    expect(report.runs[0]?.transcriptExpiredAt).toEqual(expect.any(String));
+    expect(report).not.toHaveProperty("transcriptRedacted");
+    expect(report.transcriptExpiredAt).toEqual(expect.any(String));
     expect(JSON.stringify(report)).not.toContain("public question");
     expect(JSON.stringify(report)).not.toContain("public answer");
   });
@@ -1271,8 +1255,8 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    const report = await readConversationReport(conversationId);
-    const currentRun = report.runs.at(-1);
+    const report = await readConversationDetailReport(conversationId);
+    const currentRun = report;
     const toolIds = (currentRun?.activity ?? [])
       .filter((row) => row.type === "tool_execution")
       .map((row) => row.toolCallId);

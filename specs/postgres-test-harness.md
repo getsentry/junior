@@ -69,10 +69,9 @@ The worker database URL must include the harness application name so production
 code-created pools remain visible to harness cleanup.
 
 Before each test, the worker setup resets product data in the worker database
-under a Postgres advisory lock. Reset truncates public tables except
-`junior_schema_migrations`, restarts identity/serial sequences, and removes
-plugin migration records from `junior_schema_migrations`. Core Junior migration
-records remain because global setup already migrated the worker template.
+under a Postgres advisory lock. Reset truncates public application tables,
+restarts their identity/serial sequences, and preserves migration journals in
+the `drizzle` schema because global setup already migrated the worker template.
 
 ## Fixture Modes
 

@@ -1,21 +1,28 @@
 import { QueryClient, useQuery } from "@tanstack/react-query";
+import type { ZodType } from "zod";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import {
+  conversationDetailReportSchema,
+  conversationFeedSchema,
+  conversationStatsReportSchema,
+  conversationSubagentTranscriptReportSchema,
+} from "@sentry/junior/api/schema";
+import {
+  actorDirectoryReportSchema,
+  actorProfileReportSchema,
+} from "@sentry/junior/api/schema";
+import {
+  healthReportSchema,
+  pluginOperationalReportFeedSchema,
+  pluginReportsSchema,
+  runtimeInfoReportSchema,
+  skillReportsSchema,
+} from "@sentry/junior/api/schema";
 
-import type {
-  ConversationStatsReport,
-  ConversationSubagentTranscript,
-  ConversationDetailFeed,
-  ConversationFeed,
-  DashboardConfig,
-  DashboardData,
-  Health,
-  Identity,
-  Plugin,
-  PluginReportFeed,
-  ActorDirectory,
-  ActorProfile,
-  Runtime,
-  Skill,
-} from "./types";
+import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
+import type { DashboardData } from "./types";
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
@@ -61,66 +68,14 @@ function restartDashboardSignIn(): void {
   }
 }
 
-async function read<T>(path: string): Promise<T> {
+async function read<T>(schema: ZodType<T>, path: string): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin" });
   if (response.status === 401) {
     restartDashboardSignIn();
     throw new DashboardApiError(path, response.status);
   }
   if (!response.ok) throw new DashboardApiError(path, response.status);
-  return (await response.json()) as T;
-}
-
-function emptyPluginReportFeed(): PluginReportFeed {
-  return {
-    generatedAt: new Date().toISOString(),
-    reports: [],
-    source: "plugins",
-  };
-}
-
-function emptyConversationStatsReport(): ConversationStatsReport {
-  const nowMs = Date.now();
-  return {
-    active: 0,
-    conversations: 0,
-    durationMs: 0,
-    failed: 0,
-    generatedAt: new Date(nowMs).toISOString(),
-    hung: 0,
-    locations: [],
-    actors: [],
-    sampleLimit: 0,
-    sampleSize: 0,
-    source: "conversation_index",
-    truncated: false,
-    windowEnd: new Date(nowMs).toISOString(),
-    windowStart: new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString(),
-  };
-}
-
-function emptyConversationFeed(): ConversationFeed {
-  return {
-    conversations: [],
-    generatedAt: new Date().toISOString(),
-    source: "conversation_index",
-  };
-}
-
-async function readConversationFeed(): Promise<ConversationFeed> {
-  return await read<ConversationFeed>("/api/conversations");
-}
-
-async function readConversationStats(): Promise<ConversationStatsReport> {
-  return await read<ConversationStatsReport>("/api/conversations/stats");
-}
-
-async function readPluginReports(): Promise<PluginReportFeed> {
-  return await read<PluginReportFeed>("/api/plugin-reports");
-}
-
-async function readActorDirectory(): Promise<ActorDirectory> {
-  return await read<ActorDirectory>("/api/people");
+  return schema.parse(await response.json());
 }
 
 /** Fetch dashboard shell data shared across browser routes. */
@@ -129,12 +84,12 @@ export function useDashboardCoreData() {
     queryKey: ["dashboard", "core"],
     queryFn: async (): Promise<DashboardCoreData> => {
       const [health, runtime, plugins, skills, me, config] = await Promise.all([
-        read<Health>("/api/health"),
-        read<Runtime>("/api/runtime"),
-        read<Plugin[]>("/api/plugins"),
-        read<Skill[]>("/api/skills"),
-        read<Identity>("/api/me"),
-        read<DashboardConfig>("/api/config"),
+        read(healthReportSchema, "/api/health"),
+        read(runtimeInfoReportSchema, "/api/runtime"),
+        read(pluginReportsSchema, "/api/plugins"),
+        read(skillReportsSchema, "/api/skills"),
+        read(dashboardIdentitySchema, "/api/me"),
+        read(dashboardConfigSchema, "/api/config"),
       ]);
       return {
         config,
@@ -153,7 +108,7 @@ export function useDashboardCoreData() {
 export function useConversationsData() {
   return useQuery({
     queryKey: ["dashboard", "conversations"],
-    queryFn: readConversationFeed,
+    queryFn: () => read(conversationFeedSchema, "/api/conversations"),
     retry: false,
   });
 }
@@ -162,7 +117,7 @@ export function useConversationsData() {
 export function useActorDirectoryData() {
   return useQuery({
     queryKey: ["dashboard", "people"],
-    queryFn: readActorDirectory,
+    queryFn: () => read(actorDirectoryReportSchema, "/api/people"),
     retry: false,
   });
 }
@@ -172,8 +127,11 @@ export function useActorProfileData(email: string | undefined) {
   return useQuery({
     enabled: Boolean(email),
     queryKey: ["dashboard", "people", email],
-    queryFn: async (): Promise<ActorProfile> =>
-      read<ActorProfile>(`/api/people/${encodeURIComponent(email!)}`),
+    queryFn: async (): Promise<ActorProfileReport> =>
+      read(
+        actorProfileReportSchema,
+        `/api/people/${encodeURIComponent(email!)}`,
+      ),
     retry: false,
   });
 }
@@ -184,32 +142,37 @@ export function useDashboardData() {
   const conversationsQuery = useConversationsData();
   const conversationStatsQuery = useQuery({
     queryKey: ["dashboard", "conversation-stats"],
-    queryFn: readConversationStats,
+    queryFn: () =>
+      read(conversationStatsReportSchema, "/api/conversations/stats"),
     retry: false,
   });
   const pluginReportsQuery = useQuery({
     queryKey: ["dashboard", "plugin-reports"],
-    queryFn: readPluginReports,
+    queryFn: () =>
+      read(pluginOperationalReportFeedSchema, "/api/plugin-reports"),
     retry: false,
   });
+  const dataReady = coreQuery.data && conversationsQuery.data;
   return {
     ...coreQuery,
-    data: coreQuery.data
+    data: dataReady
       ? {
           ...coreQuery.data,
-          conversationStats:
-            conversationStatsQuery.data ?? emptyConversationStatsReport(),
+          ...(conversationStatsQuery.data
+            ? { conversationStats: conversationStatsQuery.data }
+            : {}),
           conversationStatsError: Boolean(conversationStatsQuery.error),
-          conversationStatsLoading:
-            conversationStatsQuery.isPending && !conversationStatsQuery.data,
+          conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
-          pluginReports: pluginReportsQuery.data ?? emptyPluginReportFeed(),
-          pluginReportsLoading:
-            pluginReportsQuery.isPending && !pluginReportsQuery.data,
-          conversations: conversationsQuery.data ?? emptyConversationFeed(),
+          ...(pluginReportsQuery.data
+            ? { pluginReports: pluginReportsQuery.data }
+            : {}),
+          pluginReportsLoading: pluginReportsQuery.isPending,
+          conversations: conversationsQuery.data,
         }
       : undefined,
     error: coreQuery.error ?? conversationsQuery.error,
+    isPending: coreQuery.isPending || conversationsQuery.isPending,
   };
 }
 
@@ -218,7 +181,7 @@ export function useConversationData(conversationId: string | undefined) {
   return useQuery({
     enabled: Boolean(conversationId),
     queryKey: ["conversation", conversationId],
-    queryFn: async (): Promise<ConversationDetailFeed> =>
+    queryFn: async (): Promise<ConversationDetailReport> =>
       readConversationData(conversationId!),
     retry: false,
   });
@@ -227,8 +190,9 @@ export function useConversationData(conversationId: string | undefined) {
 /** Read one conversation transcript payload for dashboard-local detail views. */
 export function readConversationData(
   conversationId: string,
-): Promise<ConversationDetailFeed> {
-  return read<ConversationDetailFeed>(
+): Promise<ConversationDetailReport> {
+  return read(
+    conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
 }
@@ -249,9 +213,10 @@ export function useConversationSubagentTranscriptData(
       params?.conversationId,
       params?.subagentId,
     ],
-    queryFn: async (): Promise<ConversationSubagentTranscript> => {
+    queryFn: async (): Promise<ConversationSubagentTranscriptReport> => {
       const active = params!;
-      return await read<ConversationSubagentTranscript>(
+      return await read(
+        conversationSubagentTranscriptReportSchema,
         `/api/conversations/${encodeURIComponent(
           active.conversationId,
         )}/subagents/${encodeURIComponent(active.subagentId)}`,

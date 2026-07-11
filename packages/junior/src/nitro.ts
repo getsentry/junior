@@ -28,10 +28,7 @@ import {
 import { loadPluginSetFromModule, resolvePluginModule } from "./plugin-module";
 import type { JuniorDashboardOptions } from "./app";
 
-export type JuniorNitroDashboardOptions = Omit<
-  JuniorDashboardOptions,
-  "reporting"
->;
+export type JuniorNitroDashboardOptions = JuniorDashboardOptions;
 
 export interface JuniorPluginModuleReference {
   /** Runtime-safe module that exports a `defineJuniorPlugins(...)` set. */

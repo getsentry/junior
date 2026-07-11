@@ -17,7 +17,7 @@ import {
 } from "../format";
 import type { ConversationFilter, DashboardData } from "../types";
 
-/** Render the searchable conversation index from reporting data. */
+/** Render the searchable conversation index returned by the REST API. */
 export function ConversationsPage(props: { data?: DashboardData }) {
   const [params, setParams] = useSearchParams();
   const filter = getFilter(params.get("filter"));

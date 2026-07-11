@@ -30,14 +30,14 @@ function renderDashboardImport(enabled: boolean): string[] {
 }
 
 function dashboardEnabled(
-  dashboard: Omit<JuniorDashboardOptions, "reporting"> | undefined,
+  dashboard: JuniorDashboardOptions | undefined,
 ): boolean {
   return Boolean(dashboard && !dashboard.disabled);
 }
 
 /** Render the virtual config module consumed by createApp(). */
 export function renderVirtualConfig(options: {
-  dashboard?: Omit<JuniorDashboardOptions, "reporting">;
+  dashboard?: JuniorDashboardOptions;
   plugins?: PluginCatalogConfig;
   pluginModule?: RuntimePluginModule;
   pluginRuntimeRegistrations?: string[];
@@ -66,7 +66,7 @@ export function injectVirtualConfig(
     pluginModule?: RuntimePluginModule;
     plugins?: PluginCatalogConfig;
     pluginRuntimeRegistrations?: string[];
-    dashboard?: Omit<JuniorDashboardOptions, "reporting">;
+    dashboard?: JuniorDashboardOptions;
   } = {},
 ): void {
   nitro.options.virtual["#junior/config"] = async () => {

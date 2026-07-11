@@ -125,7 +125,7 @@ the state-backed task execution store.
 ### Drizzle SQL Shape
 
 - `junior_schema_migrations`
-  - migration id, checksum, applied timestamp
+  - legacy migration state retained only to adopt pre-Drizzle installations
 - `junior_identities`
   - internal id, kind (`user`, `system`, `service`), provider, provider tenant
     id, provider subject id, display/contact fields, provider metadata
@@ -325,10 +325,8 @@ Postgres, not as a special transcript, queue, or analytics backend:
 - Neon driver/client types stay inside SQL infrastructure modules
   (`src/db/` and `chat/conversations/sql/`).
 - Feature store ports remain the public runtime/dashboard/plugin boundaries.
-- Migration and import code must use transaction-scoped database locks so
-  Neon/Vercel's normal pooled `DATABASE_URL` works. Neon HTTP may be used for
-  one-shot query paths only when no advisory lock or interactive transaction is
-  required.
+- Schema migrations run through Drizzle ORM during `junior upgrade`; bounded
+  imports use transaction-scoped locks where they coordinate concurrent writes.
 - Step appends batch at safe boundaries and the projection read is one indexed
   query; store-boundary latency is logged per `./instrumentation.md`.
 
@@ -359,17 +357,14 @@ applied before the new deployment starts serving traffic:
 pnpm exec junior upgrade && pnpm build
 ```
 
-drizzle-kit is the DDL **generator** only: edit the schema under
-`src/db/schema/`, run `pnpm --filter @sentry/junior db:generate`, and register
-each generated file (0006 onward) as a checksum-pinned migration via
-`defineMigrationFromFile` in `chat/conversations/sql/migrations.ts`. Migrations
-0001–0005 predate kit and stay inline so their recorded checksums remain
-byte-stable. Core and plugin packages both keep generated artifacts under
-`migrations/`; the core kit baseline (`migrations/meta/`) exists only to diff
-future edits and its `0000` baseline SQL is never registered. The custom `junior upgrade`
-runner remains the sole applier — with checksum pinning, an advisory lock, and
-the expand-only contract below — and no runtime path may call `drizzle-kit
-migrate` or `migrate()`.
+Core and plugin packages keep standard Drizzle migration folders: edit the
+owning schema, run that package's `db:generate` script, and commit the generated
+SQL, snapshot, and journal changes together. `junior upgrade` passes the core
+folder and each enabled plugin folder to Drizzle ORM's migrator before any data
+backfill runs. Request handlers and runtime stores never apply schema
+migrations. Existing installations adopt the generated core baseline only when
+all expected legacy core migrations are recorded with checksums. Partial legacy
+state fails `junior upgrade` explicitly instead of skipping baseline DDL.
 
 Schema migrations must be expand-only because the old deployment can continue
 serving traffic while Vercel builds and promotes the new deployment:
@@ -382,9 +377,10 @@ serving traffic while Vercel builds and promotes the new deployment:
 
 Migrations must not drop columns, rewrite large tables synchronously, or require
 all old deployment instances to stop before the new deployment can serve traffic.
-The migration for this change is expand-only: it adds `junior_conversation_messages`,
-`junior_agent_steps`, and `junior_conversations.parent_conversation_id` +
-`transcript_purged_at`.
+The generated `0000_initial` baseline describes the complete existing schema.
+The expand-only `0001_conversation_metrics` migration adds cumulative duration
+and usage columns to `junior_conversations`; it does not replay the baseline on
+complete legacy installations.
 
 ### Backfill And Cutover
 

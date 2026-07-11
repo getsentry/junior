@@ -9,7 +9,7 @@ import {
   persistConversationCompactions,
 } from "@/chat/conversations/visible-compactions";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { migrateSchema, migrations } from "@/chat/conversations/sql/migrations";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAgentSteps, juniorConversations } from "@/db/schema";
 import {
@@ -76,22 +76,17 @@ describe("conversation transcript SQL stores", () => {
     expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
   });
 
-  it("applies the transcript migration idempotently", async () => {
+  it("applies Drizzle migrations idempotently", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
       await migrateSchema(fixture.sql);
 
-      const applied = await fixture.sql.query<{ id: string }>(
-        "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
+      const [applied] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
       );
-      expect(applied.map((row) => row.id)).toEqual(
-        migrations.map((migration) => migration.id),
-      );
-      expect(applied.map((row) => row.id)).toContain(
-        "0005_conversation_transcripts",
-      );
+      expect(applied?.count).toBe(2);
     } finally {
       await fixture.close();
     }

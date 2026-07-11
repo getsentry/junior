@@ -15,7 +15,7 @@ read-only dashboard data boundaries.
 - Dashboard route ownership for human-facing diagnostics.
 - Better Auth configuration for browser sessions.
 - Google domain and email authorization policy.
-- In-process reporting interfaces exported by `@sentry/junior`.
+- Concrete, schema-validated report functions exported by `@sentry/junior`.
 - SQL-backed dashboard API modules for product-owned views.
 - Core route integration for mounting dashboard routes into Junior's Hono app.
 - Authenticated, namespaced plugin API route integration.
@@ -24,7 +24,7 @@ read-only dashboard data boundaries.
 
 - Slack, provider OAuth, sandbox egress, or internal worker authentication.
 - A dashboard-owned database, user table, or persistent session store.
-- A remote reporting HTTP API.
+- A separate remote reporting service outside Junior's core REST API.
 - Model-facing access to dashboard data.
 - Per-session or per-user revocation without storage.
 
@@ -34,6 +34,7 @@ Dashboard functionality lives outside the core Junior runtime package.
 
 ```txt
 packages/junior/
+  src/api.ts
   src/api/conversations/detail.ts
   src/api/conversations/list.ts
   src/api/conversations/stats.ts
@@ -43,7 +44,6 @@ packages/junior/
   src/reporting/**
 
 packages/junior-dashboard/
-  src/api/**
   src/app.ts
   src/auth.ts
   src/client/**
@@ -52,33 +52,29 @@ packages/junior-dashboard/
   src/url.ts
 ```
 
-`@sentry/junior` exports a read-only, dashboard-neutral reporting surface for
-runtime and plugin reports. The dashboard package consumes this surface and may
-alias the returned report types into UI-specific names locally.
+Junior core exposes concrete functions for runtime and plugin reports. The REST
+router calls them directly; there is no reporting service interface or
+dashboard injection point.
 
 ```ts
-export interface JuniorReporting {
-  getHealth(): Promise<HealthReport>;
-  getRuntimeInfo(): Promise<RuntimeInfoReport>;
-  getPlugins(): Promise<PluginReport[]>;
-  getSkills(): Promise<SkillReport[]>;
-  getPluginOperationalReports(): Promise<PluginOperationalReportFeed>;
-}
-
-export function createJuniorReporting(): JuniorReporting;
+export function readHealthReport(): Promise<HealthReport>;
+export function readRuntimeInfoReport(): Promise<RuntimeInfoReport>;
+export function readPluginReports(): Promise<PluginReport[]>;
+export function readSkillReports(): Promise<SkillReport[]>;
+export function readPluginOperationalReportFeed(): Promise<PluginOperationalReportFeed>;
 ```
 
 Every exported reporting function must have a brief JSDoc comment explaining why the data is exposed.
 
-Product-owned conversation stats and People API endpoints live outside
-`JuniorReporting` and read the SQL schema directly with Drizzle:
+Product-owned conversation stats and People API endpoints read the SQL schema
+directly with Drizzle:
 
 ```ts
 export function readConversationStats(): Promise<ConversationStatsReport>;
 export function readConversationFeed(): Promise<ConversationFeed>;
 export function readConversationDetail(
   conversationId: string,
-): Promise<ConversationReport | undefined>;
+): Promise<ConversationDetailReport | undefined>;
 export function readConversationSubagent(
   conversationId: string,
   subagentId: string,
@@ -87,10 +83,12 @@ export function readPeopleList(): Promise<ActorDirectoryReport>;
 export function readPeopleProfile(email: string): Promise<ActorProfileReport>;
 ```
 
-These modules are consumed by the dashboard API route wrappers and must not
-depend on plugin reporting hooks or runtime summary state.
-Conversation routes are not part of `JuniorReporting`; production and mock
-routes each call their explicit data source.
+`createJuniorApi()` in `packages/junior/src/api.ts` owns the production REST
+router and calls these modules directly. The dashboard app mounts that one core
+router behind browser authentication; it must not duplicate or proxy individual
+product handlers.
+Explicit local mock mode replaces only the core conversation routes with the
+dashboard's visual-QA fixtures.
 
 `@sentry/junior` accepts dashboard configuration in `createApp()` and
 `juniorNitro()`:
@@ -154,8 +152,8 @@ The dashboard package owns browser-facing routes:
 | `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks. |
 | `/auth/login`                      | Public entrypoint                                      | Starts the dashboard login flow.    |
 
-Junior's product APIs are REST-style and authenticated by default when they are
-owned by the dashboard package. Only the auth callback/login paths and explicit
+Junior core owns the product REST API. The dashboard app authenticates requests
+before mounting the core router. Only the auth callback/login paths and explicit
 public health route bypass dashboard auth.
 
 | Route                                                      | Contract                                                              |
@@ -241,17 +239,15 @@ If auth is enabled and no domains and no emails are configured, dashboard route 
 
 ## Reporting Contract
 
-The dashboard reads runtime and plugin data through in-process reporting
-interfaces. Product-owned API endpoints may read durable SQL data directly with
-Drizzle. Dashboard code must not import legacy diagnostics handlers or other
-private route handlers.
+The dashboard reads the authenticated REST resources owned by Junior core.
+Product endpoints query durable SQL data directly with Drizzle; dashboard code
+must not import legacy diagnostics handlers or private route handlers.
 
-Core reporting code belongs under `packages/junior/src/reporting/**` and must
-use neutral reporting names such as `ConversationReport`,
-`ConversationStatsReport`, and `ActorIdentity`. Dashboard-specific names
-belong in `packages/junior-dashboard/**`.
+Core response schemas and inferred types use domain names such as
+`ConversationDetailReport`, `ConversationStatsReport`, and `ActorIdentity`.
+Dashboard code imports those canonical types instead of aliasing them.
 
-Reporting interfaces are read-only and must not:
+Reporting reads must not:
 
 - mutate runtime state
 - issue provider credentials
@@ -268,18 +264,20 @@ Reporting data may include:
 - configured plugin names
 - skill names and owning plugin provider
 - aggregate conversation stats from a dedicated reporting endpoint
-- Pi-reported token usage, reasoning tokens, and estimated USD model cost on
-  run summaries and aggregates when turn-session metadata is available
+- persisted per-conversation token usage, reasoning tokens, and estimated USD
+  model cost on conversation summaries and aggregates
 - plugin operational summaries made of bounded string metrics and record sets
-- expiring raw conversation transcripts, including tool calls/results, only for public conversations while session-log messages are still present
+- expiring raw conversation transcripts, including tool calls/results, only
+  for public conversations while durable SQL message and step history remains
 - redacted private-conversation transcript metadata, such as message roles, timestamps, sizes, and tool names
 - Sentry conversation links on conversation detail reports when Sentry DSN and org slug configuration are present
 - trace IDs for agent runs when the runtime captured an active Sentry trace
 - packaged content summary
 - sanitized runtime paths only when explicitly needed by an authenticated dashboard view
 
-Session/run reporting must not include conversation text, Pi messages, tool
-results, raw session-log payloads, or agent-run error messages.
+Conversation summaries and aggregates must not include conversation text, Pi
+messages, tool results, raw durable-history payloads, or agent-run error
+messages.
 
 Conversation detail routes must source their header title, owner, location,
 status, runtime, transcript metrics, and Sentry conversation link from
@@ -293,21 +291,14 @@ Public health responses must not include runtime discovery data such as cwd, hom
 ### Conversation Stats Reports
 
 The conversation list, conversation stats, and People APIs read the normalized
-SQL tables directly with Drizzle. They must not depend on `JuniorReporting` or
-runtime summary state. During the one-time legacy SQL import, the state-backed
-store can read the expiring activity index defined in `./task-execution.md`:
-
-```text
-junior:conversation:by-activity
-  member: conversationId
-  score:  lastActivityAtMs
-```
-
-The dashboard must treat this index as the conversation feed. It should not
-reconstruct the primary conversation list by grouping recent agent-run rows in
-the React client. Agent-run rows may still be joined on detail views or
-secondary per-conversation views, but conversation identity, title, source,
-location, actor, and latest activity come from the conversation record.
+SQL tables directly with Drizzle. They must not depend on runtime summary state.
+The dashboard conversation feed is ordered by the durable SQL conversation
+activity columns and must not read the legacy expiring Redis activity index.
+The React client must not reconstruct conversation records by grouping execution
+rows. Conversation identity, title, source, location, actor, latest activity,
+cumulative runtime, and cumulative usage all come from the conversation record.
+Detail routes may join durable SQL message and agent-step history only to build
+the single conversation transcript and activity projection.
 
 Conversation stats must be exposed through `GET /api/conversations/stats`,
 not reconstructed from the recent conversation feed in the React client. The report
@@ -321,12 +312,12 @@ Stats reports are conversation-index aggregates. They count conversations and
 read latest status, actor, location, cumulative runtime, and cumulative token
 usage from durable conversation records. Estimated cost and reasoning-token
 usage, when available, are also cumulative conversation fields rather than
-turn-reporting joins. Per-turn metrics are not part of the dashboard contract;
+execution-row joins. Per-execution metrics are not part of the dashboard contract;
 feed, detail, stats, and People views expose persisted per-conversation totals.
 
 People list and profile APIs must read durable actor identities from the
-SQL conversation index with Drizzle. They must not use `JuniorReporting`,
-plugin reporting hooks, or expiring turn-session summary state.
+SQL conversation index with Drizzle. They must not use plugin reporting hooks
+or expiring runtime-session summary state.
 
 ### Plugin Operational Reports
 

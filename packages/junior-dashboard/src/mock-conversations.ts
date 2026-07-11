@@ -1,26 +1,24 @@
 import type {
-  ConversationStatsItem as DashboardConversationStatsItem,
-  ConversationStatsReport as DashboardConversationStatsReport,
-} from "@sentry/junior/api/conversations/stats";
+  ConversationStatsItem,
+  ConversationStatsReport,
+} from "@sentry/junior/api/schema";
 import type {
-  ActorIdentity as DashboardActorIdentity,
-  ConversationFeed as DashboardConversationFeed,
-  ConversationSummaryReport as DashboardConversationSummary,
-  ConversationUsage as DashboardRunUsage,
-} from "@sentry/junior/api/conversations/list";
+  ActorIdentity,
+  ConversationFeed,
+  ConversationSummaryReport,
+  ConversationUsage,
+} from "@sentry/junior/api/schema";
 import type {
-  ConversationReport as DashboardConversationReport,
-  TranscriptMessage as DashboardTranscriptMessage,
-  ConversationRunReport as DashboardRunReport,
-} from "@sentry/junior/api/conversations/detail";
-import type { ConversationSubagentTranscriptReport as DashboardConversationSubagentTranscriptReport } from "@sentry/junior/api/conversations/subagent";
+  ConversationDetailReport,
+  TranscriptMessage,
+} from "@sentry/junior/api/schema";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 
 import { longReleaseConversation } from "./mock-release-conversation";
 import {
   mockSubagentActivity,
   mockToolActivity,
 } from "./mock-reporting/activity";
-import { mockConversation, mockRun } from "./mock-reporting/conversation";
 import {
   mockToolCallPart,
   mockToolResultPart,
@@ -49,25 +47,40 @@ function sentryTraceUrl(traceId: string): string {
   return `https://sentry.example.com/performance/trace/${traceId}/`;
 }
 
-function summaryFromRun(run: DashboardRunReport): DashboardConversationSummary {
-  const {
-    activity,
-    transcript,
-    transcriptAvailable,
-    transcriptMessageCount,
-    transcriptMetadata,
-    transcriptRedacted,
-    transcriptRedactionReason,
-    ...session
-  } = run;
-  return session;
+function summaryFromConversation(
+  conversation: ConversationDetailReport,
+): ConversationSummaryReport {
+  return {
+    displayTitle: conversation.displayTitle,
+    cumulativeDurationMs: conversation.cumulativeDurationMs,
+    conversationId: conversation.conversationId,
+    status: conversation.status,
+    startedAt: conversation.startedAt,
+    lastSeenAt: conversation.lastSeenAt,
+    lastProgressAt: conversation.lastProgressAt,
+    surface: conversation.surface,
+    ...(conversation.cumulativeUsage
+      ? { cumulativeUsage: conversation.cumulativeUsage }
+      : {}),
+    ...(conversation.actorIdentity
+      ? { actorIdentity: conversation.actorIdentity }
+      : {}),
+    ...(conversation.channel ? { channel: conversation.channel } : {}),
+    ...(conversation.channelName
+      ? { channelName: conversation.channelName }
+      : {}),
+    ...(conversation.channelNameRedacted !== undefined
+      ? { channelNameRedacted: conversation.channelNameRedacted }
+      : {}),
+    ...(conversation.sentryTraceUrl
+      ? { sentryTraceUrl: conversation.sentryTraceUrl }
+      : {}),
+    ...(conversation.traceId ? { traceId: conversation.traceId } : {}),
+  };
 }
 
-function publicIncidentConversation(
-  nowMs: number,
-): DashboardConversationReport {
+function publicIncidentConversation(nowMs: number): ConversationDetailReport {
   const traceId = "5f2c7f7df83e4a37a03c9d4a14f4c991";
-  const startedAt = iso(nowMs, -58 * 60_000);
   const secondStartedAt = iso(nowMs, -44 * 60_000);
 
   return {
@@ -75,201 +88,87 @@ function publicIncidentConversation(
     displayTitle: "Checkout latency triage",
     generatedAt: iso(nowMs),
     sentryConversationUrl: sentryConversationUrl(INCIDENT_CONVERSATION_ID),
-    runs: [
+    status: "completed",
+    startedAt: secondStartedAt,
+    lastProgressAt: iso(nowMs, -42 * 60_000),
+    lastSeenAt: iso(nowMs, -41 * 60_000),
+    cumulativeDurationMs: 206_000,
+    cumulativeUsage: {
+      cachedInputTokens: 3100,
+      inputTokens: 5200,
+      outputTokens: 950,
+      reasoningTokens: 420,
+      totalTokens: 9250,
+      cost: {
+        input: 0.0156,
+        output: 0.0114,
+        cacheRead: 0.0062,
+        total: 0.0332,
+      },
+    },
+    surface: "slack",
+    actorIdentity: {
+      email: "morgan@sentry.io",
+      fullName: "Morgan Lee",
+      slackUserId: "UQA222",
+      slackUserName: "morgan",
+    },
+    channel: "CQA123",
+    channelName: "proj-checkout",
+    sentryTraceUrl: sentryTraceUrl(traceId),
+    traceId,
+    transcriptAvailable: true,
+    transcriptMessageCount: 3,
+    transcript: [
       {
-        conversationId: INCIDENT_CONVERSATION_ID,
-        displayTitle: "Checkout latency triage",
-        id: "mock-incident-turn-1",
-        status: "completed",
-        startedAt,
-        lastProgressAt: iso(nowMs, -56 * 60_000),
-        lastSeenAt: iso(nowMs, -55 * 60_000),
-        completedAt: iso(nowMs, -55 * 60_000),
-        cumulativeDurationMs: 181_000,
-        cumulativeUsage: {
-          cachedInputTokens: 2200,
-          inputTokens: 6900,
-          outputTokens: 1400,
-          reasoningTokens: 640,
-          totalTokens: 9700,
-          cost: {
-            input: 0.0207,
-            output: 0.0168,
-            cacheRead: 0.0044,
-            total: 0.0419,
-          },
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "avery@sentry.io",
-          fullName: "Avery Stone",
-          slackUserId: "UQA111",
-          slackUserName: "avery",
-        },
-        channel: "CQA123",
-        channelName: "proj-checkout",
-        sentryTraceUrl: sentryTraceUrl(traceId),
-        traceId,
-        transcriptAvailable: true,
-        transcriptMessageCount: 4,
-        transcript: [
+        role: "user",
+        timestamp: Date.parse(secondStartedAt),
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(startedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Can you check why checkout p95 jumped after the last deploy? Keep it short but include the likely next owner.",
-              },
-            ],
-          },
-          {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 19_000,
-            parts: [
-              {
-                type: "thinking",
-                output:
-                  "Correlate deploy timing, Sentry issue volume, and endpoint latency before assigning ownership.",
-              },
-              {
-                id: "toolu_mock_trace_search",
-                name: "sentry.search_traces",
-                input: {
-                  project: "checkout-api",
-                  query: "transaction:/api/checkout p95:>2s",
-                  window: "30m",
-                },
-                type: "tool_call",
-              },
-            ],
-          },
-          {
-            role: "toolResult",
-            timestamp: Date.parse(startedAt) + 51_000,
-            parts: [
-              {
-                id: "toolu_mock_trace_search",
-                name: "sentry.search_traces",
-                output: {
-                  examples: [
-                    {
-                      durationMs: 2840,
-                      operation: "POST /api/checkout",
-                      traceId,
-                    },
-                  ],
-                  p95Ms: 2310,
-                  suspectedSpan: "stripe.payment_intents.create",
-                },
-                type: "tool_result",
-              },
-            ],
-          },
-          {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 163_000,
-            parts: [
-              {
-                type: "text",
-                text: [
-                  "Checkout p95 is tracking the Stripe payment intent span, not app CPU. The jump starts within five minutes of the `payments-v42` deploy.",
-                  "",
-                  "Suggested owner: payments platform. I would ask them to compare Stripe idempotency-key behavior between `v41` and `v42` before rolling back.",
-                ].join("\n"),
-              },
-            ],
+            type: "text",
+            text: "Can you draft the rollback note with the exact evidence?",
           },
         ],
       },
       {
-        conversationId: INCIDENT_CONVERSATION_ID,
-        displayTitle: "Checkout latency triage",
-        id: "mock-incident-turn-2",
-        status: "completed",
-        startedAt: secondStartedAt,
-        lastProgressAt: iso(nowMs, -42 * 60_000),
-        lastSeenAt: iso(nowMs, -41 * 60_000),
-        completedAt: iso(nowMs, -41 * 60_000),
-        cumulativeDurationMs: 206_000,
-        cumulativeUsage: {
-          cachedInputTokens: 3100,
-          inputTokens: 5200,
-          outputTokens: 950,
-          reasoningTokens: 420,
-          totalTokens: 9250,
-          cost: {
-            input: 0.0156,
-            output: 0.0114,
-            cacheRead: 0.0062,
-            total: 0.0332,
-          },
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "morgan@sentry.io",
-          fullName: "Morgan Lee",
-          slackUserId: "UQA222",
-          slackUserName: "morgan",
-        },
-        channel: "CQA123",
-        channelName: "proj-checkout",
-        sentryTraceUrl: sentryTraceUrl(traceId),
-        traceId,
-        transcriptAvailable: true,
-        transcriptMessageCount: 3,
-        transcript: [
+        role: "assistant",
+        timestamp: Date.parse(secondStartedAt) + 12_000,
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(secondStartedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Can you draft the rollback note with the exact evidence?",
-              },
-            ],
+            id: "toolu_mock_issue_lookup",
+            name: "sentry.get_issue",
+            input: {
+              issue: "CHECKOUT-9B2",
+              project: "checkout-api",
+            },
+            type: "tool_call",
           },
           {
-            role: "assistant",
-            timestamp: Date.parse(secondStartedAt) + 12_000,
-            parts: [
-              {
-                id: "toolu_mock_issue_lookup",
-                name: "sentry.get_issue",
-                input: {
-                  issue: "CHECKOUT-9B2",
-                  project: "checkout-api",
-                },
-                type: "tool_call",
-              },
-              {
-                id: "toolu_mock_release_lookup",
-                name: "vercel.get_deployment",
-                input: {
-                  deployment: "payments-v42",
-                  team: "acme",
-                },
-                type: "tool_call",
-              },
-            ],
+            id: "toolu_mock_release_lookup",
+            name: "vercel.get_deployment",
+            input: {
+              deployment: "payments-v42",
+              team: "acme",
+            },
+            type: "tool_call",
           },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(secondStartedAt) + 188_000,
+        parts: [
           {
-            role: "assistant",
-            timestamp: Date.parse(secondStartedAt) + 188_000,
-            parts: [
-              {
-                type: "text",
-                text: [
-                  "Rollback note:",
-                  "",
-                  "```md",
-                  "Rolling back payments-v42. Evidence: checkout p95 rose from 740ms to 2.3s, traces isolate the regression to stripe.payment_intents.create, and CHECKOUT-9B2 began after the deployment window.",
-                  "```",
-                  "",
-                  "Keep the rollback scoped to payments; frontend traffic and auth spans look stable.",
-                ].join("\n"),
-              },
-            ],
+            type: "text",
+            text: [
+              "Rollback note:",
+              "",
+              "```md",
+              "Rolling back payments-v42. Evidence: checkout p95 rose from 740ms to 2.3s, traces isolate the regression to stripe.payment_intents.create, and CHECKOUT-9B2 began after the deployment window.",
+              "```",
+              "",
+              "Keep the rollback scoped to payments; frontend traffic and auth spans look stable.",
+            ].join("\n"),
           },
         ],
       },
@@ -277,7 +176,7 @@ function publicIncidentConversation(
   };
 }
 
-function activeConversation(nowMs: number): DashboardConversationReport {
+function activeConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -6 * 60_000);
 
   return {
@@ -285,62 +184,55 @@ function activeConversation(nowMs: number): DashboardConversationReport {
     displayTitle: "Deploy rollout watch",
     generatedAt: iso(nowMs),
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
-    runs: [
+    status: "active",
+    startedAt,
+    lastProgressAt: iso(nowMs, -18_000),
+    lastSeenAt: iso(nowMs, -12_000),
+    cumulativeDurationMs: 348_000,
+    cumulativeUsage: {
+      inputTokens: 7800,
+      outputTokens: 620,
+      totalTokens: 8420,
+    },
+    surface: "slack",
+    actorIdentity: {
+      email: "sam@sentry.io",
+      fullName: "Sam Rivera",
+      slackUserId: "UQA333",
+      slackUserName: "sam",
+    },
+    channel: "CQA123",
+    channelName: "proj-checkout",
+    transcriptAvailable: true,
+    transcriptMessageCount: 2,
+    transcript: [
       {
-        conversationId: ACTIVE_CONVERSATION_ID,
-        displayTitle: "Deploy rollout watch",
-        id: "mock-active-turn-1",
-        status: "active",
-        startedAt,
-        lastProgressAt: iso(nowMs, -18_000),
-        lastSeenAt: iso(nowMs, -12_000),
-        cumulativeDurationMs: 348_000,
-        cumulativeUsage: {
-          inputTokens: 7800,
-          outputTokens: 620,
-          totalTokens: 8420,
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "sam@sentry.io",
-          fullName: "Sam Rivera",
-          slackUserId: "UQA333",
-          slackUserName: "sam",
-        },
-        channel: "CQA123",
-        channelName: "proj-checkout",
-        transcriptAvailable: true,
-        transcriptMessageCount: 2,
-        transcript: [
+        role: "user",
+        timestamp: Date.parse(startedAt),
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(startedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Watch the rollout for the next few minutes and call out anything that looks unsafe.",
-              },
-            ],
+            type: "text",
+            text: "Watch the rollout for the next few minutes and call out anything that looks unsafe.",
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(startedAt) + 41_000,
+        parts: [
+          {
+            type: "thinking",
+            output:
+              "Keep the user updated only if the rollout crosses the agreed error-budget threshold.",
           },
           {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 41_000,
-            parts: [
-              {
-                type: "thinking",
-                output:
-                  "Keep the user updated only if the rollout crosses the agreed error-budget threshold.",
-              },
-              {
-                id: "toolu_mock_datacat_rollout",
-                name: "datacat.search_logs",
-                input: {
-                  query: "service:checkout-api env:prod rollout:v42",
-                  window: "15m",
-                },
-                type: "tool_call",
-              },
-            ],
+            id: "toolu_mock_datacat_rollout",
+            name: "datacat.search_logs",
+            input: {
+              query: "service:checkout-api env:prod rollout:v42",
+              window: "15m",
+            },
+            type: "tool_call",
           },
         ],
       },
@@ -348,51 +240,41 @@ function activeConversation(nowMs: number): DashboardConversationReport {
   };
 }
 
-function privateConversation(nowMs: number): DashboardConversationReport {
+function privateConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -24 * 60_000);
 
   return {
     conversationId: PRIVATE_CONVERSATION_ID,
     displayTitle: "Direct Message",
     generatedAt: iso(nowMs),
-    runs: [
-      {
-        conversationId: PRIVATE_CONVERSATION_ID,
-        displayTitle: "Direct Message",
-        id: "mock-private-turn-1",
-        status: "completed",
-        startedAt,
-        lastProgressAt: iso(nowMs, -23 * 60_000),
-        lastSeenAt: iso(nowMs, -22 * 60_000),
-        completedAt: iso(nowMs, -22 * 60_000),
-        cumulativeDurationMs: 94_000,
-        cumulativeUsage: {
-          inputTokens: 3100,
-          outputTokens: 440,
-          totalTokens: 3540,
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "private-user@sentry.io",
-          slackUserId: "UQA444",
-          slackUserName: "private-user",
-        },
-        channel: "DQA123",
-        channelName: "Direct Message",
-        transcriptAvailable: false,
-        transcriptMessageCount: 4,
-        transcriptMetadata: redactedPrivateTranscript(Date.parse(startedAt)),
-        transcriptRedacted: true,
-        transcriptRedactionReason: "non_public_conversation",
-        transcript: [],
-      },
-    ],
+    status: "completed",
+    startedAt,
+    lastProgressAt: iso(nowMs, -23 * 60_000),
+    lastSeenAt: iso(nowMs, -22 * 60_000),
+    cumulativeDurationMs: 94_000,
+    cumulativeUsage: {
+      inputTokens: 3100,
+      outputTokens: 440,
+      totalTokens: 3540,
+    },
+    surface: "slack",
+    actorIdentity: {
+      email: "private-user@sentry.io",
+      slackUserId: "UQA444",
+      slackUserName: "private-user",
+    },
+    channel: "DQA123",
+    channelName: "Direct Message",
+    transcriptAvailable: false,
+    transcriptMessageCount: 4,
+    transcriptMetadata: redactedPrivateTranscript(Date.parse(startedAt)),
+    transcriptRedacted: true,
+    transcriptRedactionReason: "non_public_conversation",
+    transcript: [],
   };
 }
 
-function redactedPrivateTranscript(
-  startedAtMs: number,
-): DashboardTranscriptMessage[] {
+function redactedPrivateTranscript(startedAtMs: number): TranscriptMessage[] {
   return [
     {
       role: "user",
@@ -455,7 +337,7 @@ function redactedPrivateTranscript(
   ];
 }
 
-function hungConversation(nowMs: number): DashboardConversationReport {
+function hungConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -18 * 60_000);
 
   return {
@@ -463,68 +345,61 @@ function hungConversation(nowMs: number): DashboardConversationReport {
     displayTitle: "Sandbox QA run",
     generatedAt: iso(nowMs),
     sentryConversationUrl: sentryConversationUrl(HUNG_CONVERSATION_ID),
-    runs: [
+    status: "hung",
+    startedAt,
+    lastProgressAt: iso(nowMs, -11 * 60_000),
+    lastSeenAt: iso(nowMs, -10 * 60_000),
+    cumulativeDurationMs: 480_000,
+    cumulativeUsage: {
+      inputTokens: 11_200,
+      outputTokens: 800,
+      totalTokens: 12_000,
+    },
+    surface: "slack",
+    actorIdentity: {
+      email: "dana@sentry.io",
+      fullName: "Dana Chen",
+      slackUserId: "UQA555",
+      slackUserName: "dana",
+    },
+    channel: "CQA999",
+    channelName: "quality",
+    transcriptAvailable: true,
+    transcriptMessageCount: 3,
+    transcript: [
       {
-        conversationId: HUNG_CONVERSATION_ID,
-        displayTitle: "Sandbox QA run",
-        id: "mock-hung-turn-1",
-        status: "hung",
-        startedAt,
-        lastProgressAt: iso(nowMs, -11 * 60_000),
-        lastSeenAt: iso(nowMs, -10 * 60_000),
-        cumulativeDurationMs: 480_000,
-        cumulativeUsage: {
-          inputTokens: 11_200,
-          outputTokens: 800,
-          totalTokens: 12_000,
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "dana@sentry.io",
-          fullName: "Dana Chen",
-          slackUserId: "UQA555",
-          slackUserName: "dana",
-        },
-        channel: "CQA999",
-        channelName: "quality",
-        transcriptAvailable: true,
-        transcriptMessageCount: 3,
-        transcript: [
+        role: "user",
+        timestamp: Date.parse(startedAt),
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(startedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Run the checkout smoke test in the sandbox and tell me if the redirect loop still reproduces.",
-              },
-            ],
+            type: "text",
+            text: "Run the checkout smoke test in the sandbox and tell me if the redirect loop still reproduces.",
           },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(startedAt) + 35_000,
+        parts: [
           {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 35_000,
-            parts: [
-              {
-                id: "toolu_mock_sandbox_run",
-                name: "sandbox.run_command",
-                input: {
-                  args: ["pnpm", "test", "checkout-smoke"],
-                  cwd: "/repo",
-                  timeoutMs: 600000,
-                },
-                type: "tool_call",
-              },
-            ],
+            id: "toolu_mock_sandbox_run",
+            name: "sandbox.run_command",
+            input: {
+              args: ["pnpm", "test", "checkout-smoke"],
+              cwd: "/repo",
+              timeoutMs: 600000,
+            },
+            type: "tool_call",
           },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(startedAt) + 2 * 60_000,
+        parts: [
           {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 2 * 60_000,
-            parts: [
-              {
-                type: "text",
-                text: "The sandbox command started. I am waiting on the browser trace before calling the result.",
-              },
-            ],
+            type: "text",
+            text: "The sandbox command started. I am waiting on the browser trace before calling the result.",
           },
         ],
       },
@@ -532,7 +407,7 @@ function hungConversation(nowMs: number): DashboardConversationReport {
   };
 }
 
-function failedConversation(nowMs: number): DashboardConversationReport {
+function failedConversation(nowMs: number): ConversationDetailReport {
   const traceId = "29bbf789f14b469cb4f6ed830a47224d";
   const startedAt = iso(nowMs, -36 * 60_000);
 
@@ -541,75 +416,68 @@ function failedConversation(nowMs: number): DashboardConversationReport {
     displayTitle: "OAuth callback investigation",
     generatedAt: iso(nowMs),
     sentryConversationUrl: sentryConversationUrl(FAILED_CONVERSATION_ID),
-    runs: [
+    status: "failed",
+    startedAt,
+    lastProgressAt: iso(nowMs, -35 * 60_000),
+    lastSeenAt: iso(nowMs, -35 * 60_000),
+    cumulativeDurationMs: 72_000,
+    cumulativeUsage: {
+      inputTokens: 4500,
+      outputTokens: 390,
+      totalTokens: 4890,
+    },
+    surface: "slack",
+    actorIdentity: {
+      email: "riley@sentry.io",
+      fullName: "Riley Patel",
+      slackUserId: "UQA666",
+      slackUserName: "riley",
+    },
+    channel: "CQA777",
+    channelName: "platform-auth",
+    sentryTraceUrl: sentryTraceUrl(traceId),
+    traceId,
+    transcriptAvailable: true,
+    transcriptMessageCount: 3,
+    transcript: [
       {
-        conversationId: FAILED_CONVERSATION_ID,
-        displayTitle: "OAuth callback investigation",
-        id: "mock-failed-turn-1",
-        status: "failed",
-        startedAt,
-        lastProgressAt: iso(nowMs, -35 * 60_000),
-        lastSeenAt: iso(nowMs, -35 * 60_000),
-        cumulativeDurationMs: 72_000,
-        cumulativeUsage: {
-          inputTokens: 4500,
-          outputTokens: 390,
-          totalTokens: 4890,
-        },
-        surface: "slack",
-        actorIdentity: {
-          email: "riley@sentry.io",
-          fullName: "Riley Patel",
-          slackUserId: "UQA666",
-          slackUserName: "riley",
-        },
-        channel: "CQA777",
-        channelName: "platform-auth",
-        sentryTraceUrl: sentryTraceUrl(traceId),
-        traceId,
-        transcriptAvailable: true,
-        transcriptMessageCount: 3,
-        transcript: [
+        role: "user",
+        timestamp: Date.parse(startedAt),
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(startedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Why are new Notion OAuth callbacks failing in staging?",
-              },
-            ],
+            type: "text",
+            text: "Why are new Notion OAuth callbacks failing in staging?",
           },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(startedAt) + 15_000,
+        parts: [
           {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 15_000,
-            parts: [
-              {
-                id: "toolu_mock_oauth_logs",
-                name: "sentry.search_errors",
-                input: {
-                  environment: "staging",
-                  query: "OAuth callback Notion status:500",
-                },
-                type: "tool_call",
-              },
-            ],
+            id: "toolu_mock_oauth_logs",
+            name: "sentry.search_errors",
+            input: {
+              environment: "staging",
+              query: "OAuth callback Notion status:500",
+            },
+            type: "tool_call",
           },
+        ],
+      },
+      {
+        role: "toolResult",
+        timestamp: Date.parse(startedAt) + 53_000,
+        parts: [
           {
-            role: "toolResult",
-            timestamp: Date.parse(startedAt) + 53_000,
-            parts: [
-              {
-                id: "toolu_mock_oauth_logs",
-                name: "sentry.search_errors",
-                output: {
-                  error:
-                    "Provider token exchange failed: invalid_client for staging callback origin",
-                  traceId,
-                },
-                type: "tool_result",
-              },
-            ],
+            id: "toolu_mock_oauth_logs",
+            name: "sentry.search_errors",
+            output: {
+              error:
+                "Provider token exchange failed: invalid_client for staging callback origin",
+              traceId,
+            },
+            type: "tool_result",
           },
         ],
       },
@@ -617,52 +485,44 @@ function failedConversation(nowMs: number): DashboardConversationReport {
   };
 }
 
-function schedulerConversation(nowMs: number): DashboardConversationReport {
+function schedulerConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -2 * 60 * 60_000);
 
   return {
     conversationId: SCHEDULER_CONVERSATION_ID,
     displayTitle: "Daily operations digest",
     generatedAt: iso(nowMs),
-    runs: [
+    status: "completed",
+    startedAt,
+    lastProgressAt: iso(nowMs, -119 * 60_000),
+    lastSeenAt: iso(nowMs, -118 * 60_000),
+    cumulativeDurationMs: 115_000,
+    cumulativeUsage: {
+      inputTokens: 6200,
+      outputTokens: 760,
+      totalTokens: 6960,
+    },
+    surface: "scheduler",
+    transcriptAvailable: true,
+    transcriptMessageCount: 2,
+    transcript: [
       {
-        conversationId: SCHEDULER_CONVERSATION_ID,
-        displayTitle: "Daily operations digest",
-        id: "mock-scheduler-turn-1",
-        status: "completed",
-        startedAt,
-        lastProgressAt: iso(nowMs, -119 * 60_000),
-        lastSeenAt: iso(nowMs, -118 * 60_000),
-        completedAt: iso(nowMs, -118 * 60_000),
-        cumulativeDurationMs: 115_000,
-        cumulativeUsage: {
-          inputTokens: 6200,
-          outputTokens: 760,
-          totalTokens: 6960,
-        },
-        surface: "scheduler",
-        transcriptAvailable: true,
-        transcriptMessageCount: 2,
-        transcript: [
+        role: "user",
+        timestamp: Date.parse(startedAt),
+        parts: [
           {
-            role: "user",
-            timestamp: Date.parse(startedAt),
-            parts: [
-              {
-                type: "text",
-                text: "Scheduled task: summarize overnight production risk for the checkout team.",
-              },
-            ],
+            type: "text",
+            text: "Scheduled task: summarize overnight production risk for the checkout team.",
           },
+        ],
+      },
+      {
+        role: "assistant",
+        timestamp: Date.parse(startedAt) + 109_000,
+        parts: [
           {
-            role: "assistant",
-            timestamp: Date.parse(startedAt) + 109_000,
-            parts: [
-              {
-                type: "text",
-                text: "Overnight risk stayed low. One staging OAuth regression is still open; checkout production latency returned to baseline after the payments rollback.",
-              },
-            ],
+            type: "text",
+            text: "Overnight risk stayed low. One staging OAuth regression is still open; checkout production latency returned to baseline after the payments rollback.",
           },
         ],
       },
@@ -670,7 +530,7 @@ function schedulerConversation(nowMs: number): DashboardConversationReport {
   };
 }
 
-function dashboardQaConversation(nowMs: number): DashboardConversationReport {
+function dashboardQaConversation(nowMs: number): ConversationDetailReport {
   const conversationId = DASHBOARD_QA_CONVERSATION_ID;
   const displayTitle = "Dashboard QA edge cases";
   const activityStartedAt = iso(nowMs, -11 * 60_000);
@@ -682,342 +542,296 @@ function dashboardQaConversation(nowMs: number): DashboardConversationReport {
   const readFileToolId = "toolu_mock_dashboard_read_file";
   const editFileToolId = "toolu_mock_dashboard_edit_file";
 
-  return mockConversation({
+  return {
     conversationId,
     displayTitle,
     generatedAt: iso(nowMs),
-    runs: [
-      mockRun({
-        conversationId,
-        displayTitle,
-        id: "mock-dashboard-qa-activity-only",
-        status: "active",
-        startedAt: activityStartedAt,
-        lastProgressAt: iso(nowMs, -10 * 60_000),
-        lastSeenAt: iso(nowMs, -10 * 60_000),
-        cumulativeDurationMs: 60_000,
-        modelId: "openai/gpt-5.5",
-        reasoningLevel: "high",
-        surface: "internal",
-        transcriptAvailable: true,
-        transcript: [],
-        transcriptMessageCount: 3,
-        activity: [
-          mockToolActivity({
-            id: runningToolId,
-            toolCallId: runningToolId,
-            toolName: "mock.dashboard_running_tool",
-            createdAt: iso(nowMs, -10 * 60_000),
-            status: "running",
-            args: { query: "activity-only edge case" },
-          }),
-        ],
-      }),
-      mockRun({
-        conversationId,
-        displayTitle,
-        id: "mock-dashboard-qa-inverted-tool",
-        status: "completed",
-        startedAt: transcriptStartedAt,
-        lastProgressAt: iso(nowMs, -9 * 60_000),
-        lastSeenAt: iso(nowMs, -9 * 60_000),
-        completedAt: iso(nowMs, -9 * 60_000),
-        cumulativeDurationMs: 120_000,
-        surface: "internal",
-        transcriptAvailable: true,
-        transcriptMessageCount: 2,
-        transcript: [
-          mockTranscriptMessage({
-            role: "assistant",
-            timestamp: Date.parse(transcriptStartedAt) + 2_000,
-            parts: [
-              mockToolCallPart({
-                id: invertedToolId,
-                name: "mock.inverted_timestamp_tool",
-                input: { order: "call before result" },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "toolResult",
-            timestamp: Date.parse(transcriptStartedAt) + 1_000,
-            parts: [
-              mockToolResultPart({
-                id: invertedToolId,
-                name: "mock.inverted_timestamp_tool",
-                output: { ok: true },
-              }),
-            ],
-          }),
-        ],
-        activity: [
-          mockToolActivity({
+    status: "completed",
+    startedAt: activityStartedAt,
+    lastProgressAt: iso(nowMs, -5 * 60_000),
+    lastSeenAt: iso(nowMs, -5 * 60_000),
+    cumulativeDurationMs: 180_000,
+    surface: "internal",
+    transcriptAvailable: true,
+    transcriptMessageCount: 12,
+    transcript: [
+      mockTranscriptMessage({
+        role: "assistant",
+        timestamp: Date.parse(transcriptStartedAt) + 2_000,
+        parts: [
+          mockToolCallPart({
             id: invertedToolId,
-            toolCallId: invertedToolId,
-            toolName: "mock.inverted_timestamp_tool",
-            createdAt: transcriptStartedAt,
-            status: "completed",
+            name: "mock.inverted_timestamp_tool",
+            input: { order: "call before result" },
           }),
         ],
       }),
-      mockRun({
-        conversationId,
-        displayTitle,
-        id: "mock-dashboard-qa-advisor-code-change",
-        status: "completed",
-        startedAt: iso(nowMs, -8 * 60_000),
-        lastProgressAt: iso(nowMs, -5 * 60_000),
-        lastSeenAt: iso(nowMs, -5 * 60_000),
-        completedAt: iso(nowMs, -5 * 60_000),
-        cumulativeDurationMs: 180_000,
-        modelId: "openai/gpt-5.5",
-        reasoningLevel: "high",
-        surface: "internal",
-        transcriptAvailable: true,
-        transcriptMessageCount: 7,
-        transcript: [
-          mockTranscriptMessage({
-            role: "user",
-            timestamp: nowMs - 8 * 60_000,
-            parts: [
-              {
-                type: "text",
-                text: "Add a people profile page to the dashboard and make conversation emails link to the profile. Be careful with privacy and keep the UI practical.",
-              },
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "assistant",
-            timestamp: nowMs - 8 * 60_000 + 4_000,
-            parts: [
-              mockToolCallPart({
-                id: advisorPlanToolId,
-                name: "advisor",
-                input: {
-                  question:
-                    "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "toolResult",
-            timestamp: nowMs - 8 * 60_000 + 35_000,
-            parts: [
-              mockToolResultPart({
-                id: advisorPlanToolId,
-                name: "advisor",
-                output: {
-                  verdict: "proceed",
-                  summary:
-                    "Use trusted actorIdentity.email, keep metrics to conversations/runtime/tokens, and make profile activity scannable before adding heavier analytics.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "assistant",
-            timestamp: nowMs - 7 * 60_000 + 5_000,
-            parts: [
-              mockToolCallPart({
-                id: readFileToolId,
-                name: "readFile",
-                input: {
-                  path: "packages/junior-dashboard/src/client/pages/ConversationPage.tsx",
-                },
-              }),
-              mockToolCallPart({
-                id: editFileToolId,
-                name: "editFile",
-                input: {
-                  path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
-                  operations: [
-                    {
-                      action: "insert",
-                      anchor: "ProfileMetrics",
-                      lines: 42,
-                    },
-                    {
-                      action: "replace",
-                      anchor: "RecentConversationList",
-                      lines: 18,
-                    },
-                  ],
-                  summary:
-                    "Add actor activity grid, recent conversations, and email profile links.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "toolResult",
-            timestamp: nowMs - 6 * 60_000 + 10_000,
-            parts: [
-              mockToolResultPart({
-                id: readFileToolId,
-                name: "readFile",
-                output: {
-                  lines: 260,
-                  result: "Conversation detail component inspected.",
-                  imports: [
-                    "Transcript",
-                    "ConversationStats",
-                    "ConversationIdentity",
-                  ],
-                  risks: {
-                    auth: "dashboard routes remain authenticated",
-                    privacy:
-                      "actor emails are trusted from normalized reporting identity",
-                  },
-                },
-              }),
-              mockToolResultPart({
-                id: editFileToolId,
-                name: "editFile",
-                output: {
-                  filesChanged: [
-                    {
-                      path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
-                      added: 216,
-                      removed: 0,
-                    },
-                    {
-                      path: "packages/junior-dashboard/src/client/components/ConversationSummary.tsx",
-                      added: 18,
-                      removed: 4,
-                    },
-                  ],
-                  checks: {
-                    typecheck: "passed",
-                    visualQa: "needs browser review",
-                  },
-                  notes:
-                    "The profile page uses a contribution-style activity grid, compact stat row, and searchable recent conversations. Keep the grid cell size stable so long month labels do not shift the layout.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "assistant",
-            timestamp: nowMs - 6 * 60_000 + 20_000,
-            parts: [
-              mockToolCallPart({
-                id: advisorReviewToolId,
-                name: "advisor",
-                input: {
-                  question:
-                    "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "toolResult",
-            timestamp: nowMs - 5 * 60_000 + 20_000,
-            parts: [
-              mockToolResultPart({
-                id: advisorReviewToolId,
-                name: "advisor",
-                output: {
-                  verdict: "revise",
-                  summary:
-                    "Remove low-signal attention widgets, add list search/filtering, and verify the activity grid fills the available width.",
-                },
-              }),
-            ],
-          }),
-          mockTranscriptMessage({
-            role: "assistant",
-            timestamp: nowMs - 5 * 60_000 + 30_000,
-            parts: [
-              {
-                type: "text",
-                text: "Implemented the people profile route, linked actor emails, and tightened the dashboard widgets based on the advisor review.",
-              },
-            ],
+      mockTranscriptMessage({
+        role: "toolResult",
+        timestamp: Date.parse(transcriptStartedAt) + 1_000,
+        parts: [
+          mockToolResultPart({
+            id: invertedToolId,
+            name: "mock.inverted_timestamp_tool",
+            output: { ok: true },
           }),
         ],
-        activity: [
-          mockToolActivity({
+      }),
+      mockTranscriptMessage({
+        role: "user",
+        timestamp: nowMs - 8 * 60_000,
+        parts: [
+          {
+            type: "text",
+            text: "Add a people profile page to the dashboard and make conversation emails link to the profile. Be careful with privacy and keep the UI practical.",
+          },
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "assistant",
+        timestamp: nowMs - 8 * 60_000 + 4_000,
+        parts: [
+          mockToolCallPart({
             id: advisorPlanToolId,
-            toolCallId: advisorPlanToolId,
-            toolName: "advisor",
-            createdAt: iso(nowMs, -8 * 60_000 + 4_000),
-            status: "completed",
-            args: {
+            name: "advisor",
+            input: {
               question:
                 "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
             },
-            subagents: [
-              mockSubagentActivity({
-                id: advisorPlanToolId,
-                modelId: "openai/gpt-5.6-sol",
-                parentToolCallId: advisorPlanToolId,
-                reasoningLevel: "high",
-                subagentKind: "advisor",
-                createdAt: iso(nowMs, -8 * 60_000 + 6_000),
-                endedAt: iso(nowMs, -8 * 60_000 + 35_000),
-                status: "completed",
-                outcome: "success",
-                transcriptAvailable: true,
-              }),
-            ],
           }),
-          mockToolActivity({
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "toolResult",
+        timestamp: nowMs - 8 * 60_000 + 35_000,
+        parts: [
+          mockToolResultPart({
+            id: advisorPlanToolId,
+            name: "advisor",
+            output: {
+              verdict: "proceed",
+              summary:
+                "Use trusted actorIdentity.email, keep metrics to conversations/runtime/tokens, and make profile activity scannable before adding heavier analytics.",
+            },
+          }),
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "assistant",
+        timestamp: nowMs - 7 * 60_000 + 5_000,
+        parts: [
+          mockToolCallPart({
             id: readFileToolId,
-            toolCallId: readFileToolId,
-            toolName: "readFile",
-            createdAt: iso(nowMs, -7 * 60_000 + 5_000),
-            status: "completed",
-            args: {
+            name: "readFile",
+            input: {
               path: "packages/junior-dashboard/src/client/pages/ConversationPage.tsx",
             },
           }),
-          mockToolActivity({
+          mockToolCallPart({
             id: editFileToolId,
-            toolCallId: editFileToolId,
-            toolName: "editFile",
-            createdAt: iso(nowMs, -7 * 60_000 + 20_000),
-            status: "completed",
-            args: {
+            name: "editFile",
+            input: {
               path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+              operations: [
+                {
+                  action: "insert",
+                  anchor: "ProfileMetrics",
+                  lines: 42,
+                },
+                {
+                  action: "replace",
+                  anchor: "RecentConversationList",
+                  lines: 18,
+                },
+              ],
+              summary:
+                "Add actor activity grid, recent conversations, and email profile links.",
             },
           }),
-          mockToolActivity({
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "toolResult",
+        timestamp: nowMs - 6 * 60_000 + 10_000,
+        parts: [
+          mockToolResultPart({
+            id: readFileToolId,
+            name: "readFile",
+            output: {
+              lines: 260,
+              result: "Conversation detail component inspected.",
+              imports: [
+                "Transcript",
+                "ConversationStats",
+                "ConversationIdentity",
+              ],
+              risks: {
+                auth: "dashboard routes remain authenticated",
+                privacy:
+                  "actor emails are trusted from normalized reporting identity",
+              },
+            },
+          }),
+          mockToolResultPart({
+            id: editFileToolId,
+            name: "editFile",
+            output: {
+              filesChanged: [
+                {
+                  path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+                  added: 216,
+                  removed: 0,
+                },
+                {
+                  path: "packages/junior-dashboard/src/client/components/ConversationSummary.tsx",
+                  added: 18,
+                  removed: 4,
+                },
+              ],
+              checks: {
+                typecheck: "passed",
+                visualQa: "needs browser review",
+              },
+              notes:
+                "The profile page uses a contribution-style activity grid, compact stat row, and searchable recent conversations. Keep the grid cell size stable so long month labels do not shift the layout.",
+            },
+          }),
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "assistant",
+        timestamp: nowMs - 6 * 60_000 + 20_000,
+        parts: [
+          mockToolCallPart({
             id: advisorReviewToolId,
-            toolCallId: advisorReviewToolId,
-            toolName: "advisor",
-            createdAt: iso(nowMs, -6 * 60_000 + 20_000),
-            status: "completed",
-            args: {
+            name: "advisor",
+            input: {
               question:
                 "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
             },
-            subagents: [
-              mockSubagentActivity({
-                id: advisorReviewToolId,
-                modelId: "openai/gpt-5.6-sol",
-                parentToolCallId: advisorReviewToolId,
-                reasoningLevel: "high",
-                subagentKind: "advisor",
-                createdAt: iso(nowMs, -6 * 60_000 + 25_000),
-                endedAt: iso(nowMs, -5 * 60_000 + 20_000),
-                status: "completed",
-                outcome: "success",
-                transcriptAvailable: true,
-              }),
-            ],
+          }),
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "toolResult",
+        timestamp: nowMs - 5 * 60_000 + 20_000,
+        parts: [
+          mockToolResultPart({
+            id: advisorReviewToolId,
+            name: "advisor",
+            output: {
+              verdict: "revise",
+              summary:
+                "Remove low-signal attention widgets, add list search/filtering, and verify the activity grid fills the available width.",
+            },
+          }),
+        ],
+      }),
+      mockTranscriptMessage({
+        role: "assistant",
+        timestamp: nowMs - 5 * 60_000 + 30_000,
+        parts: [
+          {
+            type: "text",
+            text: "Implemented the people profile route, linked actor emails, and tightened the dashboard widgets based on the advisor review.",
+          },
+        ],
+      }),
+    ],
+    activity: [
+      mockToolActivity({
+        id: runningToolId,
+        toolCallId: runningToolId,
+        toolName: "mock.dashboard_running_tool",
+        createdAt: iso(nowMs, -10 * 60_000),
+        status: "running",
+        args: { query: "activity-only edge case" },
+      }),
+      mockToolActivity({
+        id: invertedToolId,
+        toolCallId: invertedToolId,
+        toolName: "mock.inverted_timestamp_tool",
+        createdAt: transcriptStartedAt,
+        status: "completed",
+      }),
+      mockToolActivity({
+        id: advisorPlanToolId,
+        toolCallId: advisorPlanToolId,
+        toolName: "advisor",
+        createdAt: iso(nowMs, -8 * 60_000 + 4_000),
+        status: "completed",
+        args: {
+          question:
+            "Review the dashboard plan before editing. Focus on whether actor email can be trusted, what profile metrics are useful, and what UI risks to avoid.",
+        },
+        subagents: [
+          mockSubagentActivity({
+            id: advisorPlanToolId,
+            modelId: "openai/gpt-5.6-sol",
+            parentToolCallId: advisorPlanToolId,
+            reasoningLevel: "high",
+            subagentKind: "advisor",
+            createdAt: iso(nowMs, -8 * 60_000 + 6_000),
+            endedAt: iso(nowMs, -8 * 60_000 + 35_000),
+            status: "completed",
+            outcome: "success",
+            transcriptAvailable: true,
+          }),
+        ],
+      }),
+      mockToolActivity({
+        id: readFileToolId,
+        toolCallId: readFileToolId,
+        toolName: "readFile",
+        createdAt: iso(nowMs, -7 * 60_000 + 5_000),
+        status: "completed",
+        args: {
+          path: "packages/junior-dashboard/src/client/pages/ConversationPage.tsx",
+        },
+      }),
+      mockToolActivity({
+        id: editFileToolId,
+        toolCallId: editFileToolId,
+        toolName: "editFile",
+        createdAt: iso(nowMs, -7 * 60_000 + 20_000),
+        status: "completed",
+        args: {
+          path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+        },
+      }),
+      mockToolActivity({
+        id: advisorReviewToolId,
+        toolCallId: advisorReviewToolId,
+        toolName: "advisor",
+        createdAt: iso(nowMs, -6 * 60_000 + 20_000),
+        status: "completed",
+        args: {
+          question:
+            "Review the implementation after the first advisor pass. Check whether the UI is too noisy and whether any data shape assumptions are weak.",
+        },
+        subagents: [
+          mockSubagentActivity({
+            id: advisorReviewToolId,
+            modelId: "openai/gpt-5.6-sol",
+            parentToolCallId: advisorReviewToolId,
+            reasoningLevel: "high",
+            subagentKind: "advisor",
+            createdAt: iso(nowMs, -6 * 60_000 + 25_000),
+            endedAt: iso(nowMs, -5 * 60_000 + 20_000),
+            status: "completed",
+            outcome: "success",
+            transcriptAvailable: true,
           }),
         ],
       }),
     ],
-  });
+  };
 }
 
 function dashboardQaAdvisorTranscript(
   nowMs: number,
   subagentId: string,
-): DashboardConversationSubagentTranscriptReport | undefined {
+): ConversationSubagentTranscriptReport | undefined {
   const createdAt =
     subagentId === "toolu_mock_dashboard_advisor_plan"
       ? iso(nowMs, -8 * 60_000 + 6_000)
@@ -1032,7 +846,7 @@ function dashboardQaAdvisorTranscript(
         : undefined;
   if (!createdAt || !endedAt) return undefined;
 
-  const sharedAdvisorSession: DashboardTranscriptMessage[] = [
+  const sharedAdvisorSession: TranscriptMessage[] = [
     mockTranscriptMessage({
       role: "user",
       timestamp: Date.parse(createdAt),
@@ -1100,7 +914,7 @@ function dashboardQaAdvisorTranscript(
   };
 }
 
-function mockConversations(nowMs: number): DashboardConversationReport[] {
+function mockConversations(nowMs: number): ConversationDetailReport[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -1115,7 +929,7 @@ function mockConversations(nowMs: number): DashboardConversationReport[] {
 
 function mockConversationMap(
   nowMs: number,
-): Map<string, DashboardConversationReport> {
+): Map<string, ConversationDetailReport> {
   return new Map(
     mockConversations(nowMs).map((conversation) => [
       conversation.conversationId,
@@ -1124,23 +938,25 @@ function mockConversationMap(
   );
 }
 
-function mockConversationFeed(nowMs: number): DashboardConversationFeed {
+function mockConversationFeed(nowMs: number): ConversationFeed {
   return {
     source: "conversation_index",
     generatedAt: iso(nowMs),
-    conversations: mockConversations(nowMs).flatMap((conversation) =>
-      conversation.runs.map(summaryFromRun),
-    ),
+    conversations: mockConversations(nowMs).map(summaryFromConversation),
   };
 }
 
 function conversationStatsReportFromSummaries(
   nowMs: number,
-  summaries: DashboardConversationSummary[],
-): DashboardConversationStatsReport {
-  const conversations = recentConversationGroups(nowMs, summaries);
-  const actors = new Map<string, DashboardConversationStatsItem>();
-  const locations = new Map<string, DashboardConversationStatsItem>();
+  summaries: ConversationSummaryReport[],
+): ConversationStatsReport {
+  const windowStartMs = nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
+  const conversations = summaries.filter((conversation) => {
+    const lastSeenAt = Date.parse(conversation.lastSeenAt);
+    return lastSeenAt >= windowStartMs && lastSeenAt <= nowMs;
+  });
+  const actors = new Map<string, ConversationStatsItem>();
+  const locations = new Map<string, ConversationStatsItem>();
   let durationMs = 0;
   let costUsd: number | undefined;
   let tokens: number | undefined;
@@ -1148,51 +964,27 @@ function conversationStatsReportFromSummaries(
   let failed = 0;
   let hung = 0;
 
-  for (const runs of conversations) {
-    const contributions = runContributions(runs);
-    const signals = statusSignals(runs);
-    const conversationCostUsd = contributionCostTotal(contributions);
-    const conversationTokens = contributionTokenTotal(contributions);
-    durationMs += contributionDurationTotal(contributions);
+  for (const conversation of conversations) {
+    const conversationCostUsd = usageCostTotal(conversation.cumulativeUsage);
+    const conversationTokens = usageTokenTotal(conversation.cumulativeUsage);
+    durationMs += conversation.cumulativeDurationMs;
     costUsd =
       conversationCostUsd === undefined
         ? costUsd
         : addUsd(costUsd, conversationCostUsd);
     tokens = addTokenTotal(tokens, conversationTokens);
-    active += signals.active ? 1 : 0;
-    failed += signals.failed ? 1 : 0;
-    hung += signals.hung ? 1 : 0;
+    active += conversation.status === "active" ? 1 : 0;
+    failed += conversation.status === "failed" ? 1 : 0;
+    hung += conversation.status === "hung" ? 1 : 0;
 
-    const actorRuns = new Map<string, RunContribution[]>();
-    for (const contribution of contributions) {
-      const actor = actorLabel(contribution.run.actorIdentity) ?? "Unknown";
-      actorRuns.set(actor, [...(actorRuns.get(actor) ?? []), contribution]);
-    }
+    const actor = actorLabel(conversation.actorIdentity) ?? "Unknown";
+    const actorItem = actors.get(actor) ?? emptyStatsItem(actor);
+    addConversationStats(actorItem, conversation);
+    actors.set(actor, actorItem);
 
-    for (const [actor, actorContributions] of actorRuns) {
-      const item = actors.get(actor) ?? emptyStatsItem(actor);
-      const actorSignals = statusSignals(
-        actorContributions.map((contribution) => contribution.run),
-      );
-      item.conversations += 1;
-      item.durationMs += contributionDurationTotal(actorContributions);
-      item.active += actorSignals.active ? 1 : 0;
-      item.failed += actorSignals.failed ? 1 : 0;
-      item.hung += actorSignals.hung ? 1 : 0;
-      addItemTokens(item, contributionTokenTotal(actorContributions));
-      addItemCost(item, contributionCostTotal(actorContributions));
-      actors.set(actor, item);
-    }
-
-    const location = locationLabel(newestRun(runs));
+    const location = locationLabel(conversation);
     const locationItem = locations.get(location) ?? emptyStatsItem(location);
-    locationItem.conversations += 1;
-    locationItem.durationMs += contributionDurationTotal(contributions);
-    locationItem.active += signals.active ? 1 : 0;
-    locationItem.failed += signals.failed ? 1 : 0;
-    locationItem.hung += signals.hung ? 1 : 0;
-    addItemTokens(locationItem, conversationTokens);
-    addItemCost(locationItem, conversationCostUsd);
+    addConversationStats(locationItem, conversation);
     locations.set(location, locationItem);
   }
 
@@ -1217,64 +1009,12 @@ function conversationStatsReportFromSummaries(
 }
 
 /** Build mock dashboard stats from the explicit mock conversation feed. */
-export function readMockConversationStats(): DashboardConversationStatsReport {
+export function readMockConversationStats(): ConversationStatsReport {
   const feed = mockConversationFeed(Date.now());
   return conversationStatsReportFromSummaries(Date.now(), feed.conversations);
 }
 
-type RunContribution = {
-  costUsd?: number;
-  durationMs: number;
-  tokens?: number;
-  run: DashboardConversationSummary;
-};
-
-function reportTime(value: string): number | undefined {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : undefined;
-}
-
-function newestRun(
-  runs: DashboardConversationSummary[],
-): DashboardConversationSummary {
-  return [...runs].sort(
-    (left, right) =>
-      (reportTime(right.lastSeenAt) ?? 0) -
-        (reportTime(left.lastSeenAt) ?? 0) || right.id.localeCompare(left.id),
-  )[0]!;
-}
-
-function recentConversationGroups(
-  nowMs: number,
-  summaries: DashboardConversationSummary[],
-): DashboardConversationSummary[][] {
-  const startMs = nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
-  const groups = new Map<string, DashboardConversationSummary[]>();
-  for (const summary of summaries) {
-    groups.set(summary.conversationId, [
-      ...(groups.get(summary.conversationId) ?? []),
-      summary,
-    ]);
-  }
-
-  return [...groups.values()]
-    .map((runs) =>
-      [...runs].sort(
-        (left, right) =>
-          (reportTime(left.startedAt) ?? 0) -
-            (reportTime(right.startedAt) ?? 0) ||
-          left.id.localeCompare(right.id),
-      ),
-    )
-    .filter((runs) => {
-      const activityAt = reportTime(newestRun(runs).lastSeenAt);
-      return (
-        activityAt !== undefined && activityAt >= startMs && activityAt <= nowMs
-      );
-    });
-}
-
-function usageTokenTotal(usage: DashboardRunUsage | undefined) {
+function usageTokenTotal(usage: ConversationUsage | undefined) {
   if (!usage) return undefined;
   const components = [
     usage.inputTokens,
@@ -1297,7 +1037,7 @@ function usageTokenTotal(usage: DashboardRunUsage | undefined) {
     : undefined;
 }
 
-function usageCostTotal(usage: DashboardRunUsage | undefined) {
+function usageCostTotal(usage: ConversationUsage | undefined) {
   if (!usage?.cost) return undefined;
   if (
     typeof usage.cost.total === "number" &&
@@ -1323,34 +1063,6 @@ function addUsd(left: number | undefined, right: number): number {
   return Math.round(((left ?? 0) + right) * 1e12) / 1e12;
 }
 
-function runContributions(
-  runs: DashboardConversationSummary[],
-): RunContribution[] {
-  return runs.map((run) => {
-    const duration = Math.max(0, Math.floor(run.cumulativeDurationMs));
-    const tokens = usageTokenTotal(run.cumulativeUsage);
-    const costUsd = usageCostTotal(run.cumulativeUsage);
-    const contribution: RunContribution = {
-      durationMs: duration,
-      run,
-    };
-    if (tokens !== undefined) {
-      contribution.tokens = tokens;
-    }
-    if (costUsd !== undefined) {
-      contribution.costUsd = costUsd;
-    }
-    return contribution;
-  });
-}
-
-function contributionDurationTotal(contributions: RunContribution[]): number {
-  return contributions.reduce(
-    (sum, contribution) => sum + contribution.durationMs,
-    0,
-  );
-}
-
 function addTokenTotal(
   total: number | undefined,
   tokens: number | undefined,
@@ -1358,39 +1070,16 @@ function addTokenTotal(
   return tokens === undefined ? total : (total ?? 0) + tokens;
 }
 
-function contributionTokenTotal(
-  contributions: RunContribution[],
-): number | undefined {
-  return contributions.reduce(
-    (sum, contribution) => addTokenTotal(sum, contribution.tokens),
-    undefined as number | undefined,
-  );
-}
-
-function contributionCostTotal(
-  contributions: RunContribution[],
-): number | undefined {
-  return contributions.reduce(
-    (sum, contribution) =>
-      contribution.costUsd === undefined
-        ? sum
-        : addUsd(sum, contribution.costUsd),
-    undefined as number | undefined,
-  );
-}
-
-function actorLabel(
-  actor: DashboardActorIdentity | undefined,
-): string | undefined {
+function actorLabel(actor: ActorIdentity | undefined): string | undefined {
   const email = actor?.email?.trim() || undefined;
   const fullName = actor?.fullName?.trim() || undefined;
   const slackUserName = actor?.slackUserName?.trim() || undefined;
   return email ?? fullName ?? slackUserName ?? actor?.slackUserId;
 }
 
-function locationLabel(turn: DashboardConversationSummary): string {
-  const channelId = turn.channel;
-  const name = turn.channelName?.replace(/^#/, "");
+function locationLabel(conversation: ConversationSummaryReport): string {
+  const channelId = conversation.channel;
+  const name = conversation.channelName?.replace(/^#/, "");
   if (channelId?.startsWith("D")) {
     return "Direct Message";
   }
@@ -1401,16 +1090,16 @@ function locationLabel(turn: DashboardConversationSummary): string {
     if (name?.startsWith("mpdm-")) return "Group DM";
     return "Private Channel";
   }
-  return turn.surface === "scheduler"
+  return conversation.surface === "scheduler"
     ? "Scheduler"
-    : turn.surface === "api"
+    : conversation.surface === "api"
       ? "API"
-      : turn.surface === "internal"
+      : conversation.surface === "internal"
         ? "Internal"
         : (name ?? channelId ?? "Unknown");
 }
 
-function emptyStatsItem(label: string): DashboardConversationStatsItem {
+function emptyStatsItem(label: string): ConversationStatsItem {
   return {
     active: 0,
     conversations: 0,
@@ -1422,7 +1111,7 @@ function emptyStatsItem(label: string): DashboardConversationStatsItem {
 }
 
 function addItemTokens(
-  item: DashboardConversationStatsItem,
+  item: ConversationStatsItem,
   tokens: number | undefined,
 ): void {
   if (tokens !== undefined) {
@@ -1431,7 +1120,7 @@ function addItemTokens(
 }
 
 function addItemCost(
-  item: DashboardConversationStatsItem,
+  item: ConversationStatsItem,
   costUsd: number | undefined,
 ): void {
   if (costUsd !== undefined) {
@@ -1439,15 +1128,20 @@ function addItemCost(
   }
 }
 
-function statusSignals(runs: DashboardConversationSummary[]) {
-  return {
-    active: runs.some((turn) => turn.status === "active"),
-    failed: runs.some((turn) => turn.status === "failed"),
-    hung: runs.some((turn) => turn.status === "hung"),
-  };
+function addConversationStats(
+  item: ConversationStatsItem,
+  conversation: ConversationSummaryReport,
+): void {
+  item.conversations += 1;
+  item.durationMs += conversation.cumulativeDurationMs;
+  item.active += conversation.status === "active" ? 1 : 0;
+  item.failed += conversation.status === "failed" ? 1 : 0;
+  item.hung += conversation.status === "hung" ? 1 : 0;
+  addItemTokens(item, usageTokenTotal(conversation.cumulativeUsage));
+  addItemCost(item, usageCostTotal(conversation.cumulativeUsage));
 }
 
-function statsItems(map: Map<string, DashboardConversationStatsItem>) {
+function statsItems(map: Map<string, ConversationStatsItem>) {
   return [...map.values()].sort(
     (left, right) =>
       right.conversations - left.conversations ||
@@ -1456,22 +1150,15 @@ function statsItems(map: Map<string, DashboardConversationStatsItem>) {
   );
 }
 
-function surfaceLabel(turn: DashboardConversationSummary): string {
-  if (turn.surface === "scheduler") return "Scheduler";
-  if (turn.surface === "api") return "API";
-  if (turn.surface === "internal") return "Internal";
-  return "Conversation";
-}
-
 /** Return the explicit visual-QA conversation feed. */
-export function readMockConversationFeed(): DashboardConversationFeed {
+export function readMockConversationFeed(): ConversationFeed {
   return mockConversationFeed(Date.now());
 }
 
 /** Return one explicit visual-QA conversation detail fixture. */
 export function readMockConversationDetail(
   conversationId: string,
-): DashboardConversationReport | undefined {
+): ConversationDetailReport | undefined {
   return mockConversationMap(Date.now()).get(conversationId);
 }
 
@@ -1479,8 +1166,19 @@ export function readMockConversationDetail(
 export function readMockConversationSubagent(
   conversationId: string,
   subagentId: string,
-): DashboardConversationSubagentTranscriptReport | undefined {
-  return conversationId === DASHBOARD_QA_CONVERSATION_ID
-    ? dashboardQaAdvisorTranscript(Date.now(), subagentId)
-    : undefined;
+): ConversationSubagentTranscriptReport {
+  if (conversationId === DASHBOARD_QA_CONVERSATION_ID) {
+    const report = dashboardQaAdvisorTranscript(Date.now(), subagentId);
+    if (report) return report;
+  }
+  return {
+    type: "subagent",
+    createdAt: new Date(0).toISOString(),
+    id: subagentId,
+    status: "error",
+    subagentKind: "unknown",
+    transcript: [],
+    transcriptAvailable: false,
+    unavailableReason: "not_found",
+  };
 }

@@ -5,6 +5,6 @@ prev: false
 title: "ConversationActivityReport"
 ---
 
-> **ConversationActivityReport** = [`ConversationToolActivityReport`](/reference/api/interfaces/conversationtoolactivityreport/) \| [`ConversationSubagentActivityReport`](/reference/api/interfaces/conversationsubagentactivityreport/)
+> **ConversationActivityReport** = `z.infer`\<_typeof_ `conversationActivityReportSchema`\>
 
-Defined in: junior/src/api/conversations/types.ts:145
+Defined in: junior/src/api/conversations/schema.ts:254

@@ -15,6 +15,7 @@ export default defineConfig({
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   noExternal: [
+    "@sentry/junior/api/schema",
     "@tanstack/react-query",
     "lucide-react",
     "react",
@@ -23,5 +24,6 @@ export default defineConfig({
     "react-router",
     "recharts",
     "shiki",
+    "zod",
   ],
 });

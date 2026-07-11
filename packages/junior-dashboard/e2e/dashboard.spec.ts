@@ -6,52 +6,10 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { expect, test } from "@playwright/test";
-import type { JuniorReporting } from "@sentry/junior/reporting";
 import { createDashboardApp } from "../dist/app.js";
 
 let server: ReturnType<typeof createServer> | undefined;
 let baseURL = "http://127.0.0.1";
-
-function reporting(): JuniorReporting {
-  return {
-    async getHealth() {
-      return {
-        service: "junior",
-        status: "ok",
-        timestamp: "2026-06-12T00:00:00.000Z",
-      };
-    },
-    async getRuntimeInfo() {
-      return {
-        cwd: "/workspace",
-        descriptionText: "Dashboard e2e",
-        homeDir: "/workspace",
-        packagedContent: {
-          manifestRoots: [],
-          packageNames: [],
-          packages: [],
-          skillRoots: [],
-          tracingIncludes: [],
-        },
-        providers: ["github"],
-        skills: [],
-      };
-    },
-    async getPlugins() {
-      return [{ name: "github" }];
-    },
-    async getSkills() {
-      return [];
-    },
-    async getPluginOperationalReports() {
-      return {
-        generatedAt: "2026-06-12T00:00:00.000Z",
-        reports: [],
-        source: "plugins",
-      };
-    },
-  };
-}
 
 function requestFromNode(req: IncomingMessage): Request {
   const url = new URL(req.url ?? "/", baseURL);
@@ -90,7 +48,6 @@ test.beforeAll(async () => {
   const app = createDashboardApp({
     authRequired: false,
     mockConversations: true,
-    reporting: reporting(),
   });
 
   server = createServer((req, res) => {
@@ -119,6 +76,18 @@ test.afterAll(async () => {
 
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
+  });
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/plugin-reports", async (route) => {
+    await route.fulfill({
+      json: {
+        generatedAt: "2026-06-12T00:00:00.000Z",
+        reports: [],
+        source: "plugins",
+      },
+    });
   });
 });
 

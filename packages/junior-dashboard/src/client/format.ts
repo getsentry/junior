@@ -1,21 +1,23 @@
 import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
+import type {
+  ActorIdentity,
+  ConversationSummaryReport,
+  ConversationUsage,
+} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import type {
   CodeBlock,
   Conversation,
-  ConversationDetailFeed,
-  ConversationTurn,
+  ConversationTranscript,
   ConversationFilter,
-  ConversationSummary,
   MarkupNode,
-  ActorIdentity,
   TranscriptViewMessage,
   TranscriptViewPart,
-  TurnUsage,
   VisualStatus,
 } from "./types";
 import { sameToolInvocation } from "./toolInvocations";
-import { turnTranscriptMessages } from "./transcriptActivity";
+import { conversationTranscriptMessages } from "./transcriptActivity";
 
 let dashboardTimeZone = "America/Los_Angeles";
 const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -29,33 +31,31 @@ function displayTimeZone(): string {
   return dashboardTimeZone;
 }
 
-function isActiveSummary(summary: ConversationSummary): boolean {
+function isActiveSummary(summary: ConversationSummaryReport): boolean {
   return summary.status === "active";
 }
 
 /** Identify summaries that should appear in failed conversation filters. */
 export function isFailedConversationSummary(
-  summary: ConversationSummary,
+  summary: ConversationSummaryReport,
 ): boolean {
   return summary.status === "failed";
 }
 
-function isHungSummary(summary: ConversationSummary): boolean {
+function isHungSummary(summary: ConversationSummaryReport): boolean {
   return summary.status === "hung";
 }
 
 function isActiveConversation(conversation: Conversation): boolean {
-  return conversation.runs.some(
-    (turn) => visualStatusForSummary(turn) === "active",
-  );
+  return conversation.status === "active";
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
-  return conversation.runs.some(isFailedConversationSummary);
+  return conversation.status === "failed";
 }
 
 function isHungConversation(conversation: Conversation): boolean {
-  return conversation.runs.some(isHungSummary);
+  return conversation.status === "hung";
 }
 
 function parseTime(value: string | undefined): number | null {
@@ -147,18 +147,14 @@ export function formatDurationTick(value: number | undefined): string {
   return formatMs(ms);
 }
 
-/** Format aggregate runtime across turn summaries when duration data exists. */
-export function formatDurationTotal(
-  durations: Array<number | undefined>,
-): string {
-  const total = durations.reduce<number | undefined>((sum, value) => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return sum;
-    return (sum ?? 0) + Math.max(0, Math.floor(value));
-  }, undefined);
-  return total === undefined || total === 0 ? "" : formatMs(total);
+/** Format a persisted conversation runtime when duration data exists. */
+export function formatRuntime(durationMs: number | undefined): string {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return "";
+  const runtime = Math.max(0, Math.floor(durationMs));
+  return runtime === 0 ? "" : formatMs(runtime);
 }
 
-/** Format transcript event timestamps independently from turn start offsets. */
+/** Format transcript event timestamps independently from conversation start. */
 export function formatMessageTimestamp(value: number | undefined): string {
   if (typeof value !== "number" || !Number.isFinite(value))
     return "no timestamp";
@@ -194,7 +190,7 @@ function getFiniteTokenCount(value: unknown): number | undefined {
     : undefined;
 }
 
-function getUsageComponentTotal(usage: TurnUsage): number | undefined {
+function getUsageComponentTotal(usage: ConversationUsage): number | undefined {
   return [
     usage.inputTokens,
     usage.outputTokens,
@@ -224,14 +220,14 @@ export function formatBytes(value: number | undefined): string {
   return `${scaled.toFixed(precision).replace(/\.0$/, "")}${suffix}`;
 }
 
-function transcriptSource(turn: ConversationTurn) {
-  return turnTranscriptMessages(turn);
+function transcriptSource(conversation: ConversationTranscript) {
+  return conversationTranscriptMessages(conversation);
 }
 
-function rawTranscriptSource(turn: ConversationTurn) {
-  return turn.transcriptAvailable
-    ? turn.transcript
-    : (turn.transcriptMetadata ?? []);
+function rawTranscriptSource(conversation: ConversationTranscript) {
+  return conversation.transcriptAvailable
+    ? conversation.transcript
+    : (conversation.transcriptMetadata ?? []);
 }
 
 /** Normalized role category for transcript messages. */
@@ -271,13 +267,15 @@ function isConversationMessage(
   return message.parts.length > 0;
 }
 
-/** Count visible or redacted message records for a turn. */
-export function turnMessageCount(turn: ConversationTurn): number {
-  const source = rawTranscriptSource(turn);
+/** Count visible or redacted message records for a conversation. */
+export function conversationMessageCount(
+  conversation: ConversationTranscript,
+): number {
+  const source = rawTranscriptSource(conversation);
   if (source.length > 0) {
     return source.filter(isConversationMessage).length;
   }
-  return turn.transcriptMessageCount ?? 0;
+  return conversation.transcriptMessageCount ?? 0;
 }
 
 export type ToolCallSummaryItem = {
@@ -315,49 +313,47 @@ function findPendingToolCallIndex(
 
 /** Summarize tool calls and matched result durations from transcript metadata. */
 export function summarizeToolCalls(
-  turns: ConversationTurn[],
+  conversation: ConversationTranscript,
   limit = 5,
 ): ToolCallSummary {
   const byName = new Map<string, ToolCallSummaryItem>();
   let total = 0;
 
-  for (const turn of turns) {
-    const pending: PendingToolCall[] = [];
-    for (const message of transcriptSource(turn)) {
-      for (const part of message.parts) {
-        if (part.type === "tool_call") {
-          const name = toolCallName(part);
-          const item = byName.get(name) ?? { count: 0, name };
-          item.count += 1;
-          byName.set(name, item);
-          pending.push({
-            ...(part.id ? { id: part.id } : {}),
-            name,
-            ...(typeof message.timestamp === "number"
-              ? { timestamp: message.timestamp }
-              : {}),
-          });
-          total += 1;
-          continue;
-        }
-
-        if (part.type !== "tool_result") continue;
-        const pendingIndex = findPendingToolCallIndex(pending, part);
-        if (pendingIndex < 0) continue;
-        const [call] = pending.splice(pendingIndex, 1);
-        if (
-          !call ||
-          typeof call.timestamp !== "number" ||
-          typeof message.timestamp !== "number" ||
-          message.timestamp < call.timestamp
-        ) {
-          continue;
-        }
-        const item = byName.get(call.name);
-        if (!item) continue;
-        item.totalDurationMs =
-          (item.totalDurationMs ?? 0) + (message.timestamp - call.timestamp);
+  const pending: PendingToolCall[] = [];
+  for (const message of transcriptSource(conversation)) {
+    for (const part of message.parts) {
+      if (part.type === "tool_call") {
+        const name = toolCallName(part);
+        const item = byName.get(name) ?? { count: 0, name };
+        item.count += 1;
+        byName.set(name, item);
+        pending.push({
+          ...(part.id ? { id: part.id } : {}),
+          name,
+          ...(typeof message.timestamp === "number"
+            ? { timestamp: message.timestamp }
+            : {}),
+        });
+        total += 1;
+        continue;
       }
+
+      if (part.type !== "tool_result") continue;
+      const pendingIndex = findPendingToolCallIndex(pending, part);
+      if (pendingIndex < 0) continue;
+      const [call] = pending.splice(pendingIndex, 1);
+      if (
+        !call ||
+        typeof call.timestamp !== "number" ||
+        typeof message.timestamp !== "number" ||
+        message.timestamp < call.timestamp
+      ) {
+        continue;
+      }
+      const item = byName.get(call.name);
+      if (!item) continue;
+      item.totalDurationMs =
+        (item.totalDurationMs ?? 0) + (message.timestamp - call.timestamp);
     }
   }
 
@@ -384,13 +380,13 @@ export type MessageSummary = {
 };
 
 function transcriptMessageAuthor(
-  turn: ConversationTurn,
+  conversation: ConversationTranscript,
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
   if (kind === "assistant") return "Junior";
   if (kind === "user") {
-    return actorLabel(turn.actorIdentity) ?? "User";
+    return actorLabel(conversation.actorIdentity) ?? "User";
   }
   if (kind === "system") return "System";
   if (kind === "tool") return "Tool";
@@ -419,20 +415,20 @@ function transcriptPartBytes(part: TranscriptViewPart): number {
 }
 
 /** Summarize conversational messages by author and serialized size. */
-export function summarizeMessages(turns: ConversationTurn[]): MessageSummary {
+export function summarizeMessages(
+  conversation: ConversationTranscript,
+): MessageSummary {
   const items: MessageSummaryItem[] = [];
 
-  for (const turn of turns) {
-    for (const message of transcriptSource(turn)) {
-      if (!isConversationMessage(message)) continue;
-      items.push({
-        author: transcriptMessageAuthor(turn, message),
-        bytes: message.parts.reduce(
-          (sum, part) => sum + transcriptPartBytes(part),
-          0,
-        ),
-      });
-    }
+  for (const message of transcriptSource(conversation)) {
+    if (!isConversationMessage(message)) continue;
+    items.push({
+      author: transcriptMessageAuthor(conversation, message),
+      bytes: message.parts.reduce(
+        (sum, part) => sum + transcriptPartBytes(part),
+        0,
+      ),
+    });
   }
 
   return { items, total: items.length };
@@ -461,53 +457,28 @@ export type CostUsageSummary = {
   total: number;
 };
 
-function addOptionalCount(
-  left: number | undefined,
-  right: number | undefined,
-): number | undefined {
-  return right === undefined ? left : (left ?? 0) + right;
-}
-
 /** Summarize token usage without double-counting provider total fields. */
 export function summarizeUsage(
-  usages: Array<TurnUsage | undefined>,
+  usage: ConversationUsage | undefined,
 ): TokenUsageSummary | undefined {
+  if (!usage) return undefined;
   const summary: TokenUsageSummary = { totalTokens: 0 };
 
-  for (const usage of usages) {
-    if (!usage) continue;
-
-    summary.reasoningTokens = addOptionalCount(
-      summary.reasoningTokens,
-      getFiniteTokenCount(usage.reasoningTokens),
+  summary.reasoningTokens = getFiniteTokenCount(usage.reasoningTokens);
+  const componentTotal = getUsageComponentTotal(usage);
+  if (componentTotal !== undefined) {
+    summary.totalTokens = componentTotal;
+    summary.inputTokens = getFiniteTokenCount(usage.inputTokens);
+    summary.outputTokens = getFiniteTokenCount(usage.outputTokens);
+    summary.cachedInputTokens = getFiniteTokenCount(usage.cachedInputTokens);
+    summary.cacheCreationTokens = getFiniteTokenCount(
+      usage.cacheCreationTokens,
     );
-    const componentTotal = getUsageComponentTotal(usage);
-    if (componentTotal !== undefined) {
-      summary.totalTokens += componentTotal;
-      summary.inputTokens = addOptionalCount(
-        summary.inputTokens,
-        getFiniteTokenCount(usage.inputTokens),
-      );
-      summary.outputTokens = addOptionalCount(
-        summary.outputTokens,
-        getFiniteTokenCount(usage.outputTokens),
-      );
-      summary.cachedInputTokens = addOptionalCount(
-        summary.cachedInputTokens,
-        getFiniteTokenCount(usage.cachedInputTokens),
-      );
-      summary.cacheCreationTokens = addOptionalCount(
-        summary.cacheCreationTokens,
-        getFiniteTokenCount(usage.cacheCreationTokens),
-      );
-      continue;
-    }
-
+  } else {
     const providerTotal = getFiniteTokenCount(usage.totalTokens);
     if (providerTotal !== undefined) {
-      summary.totalTokens += providerTotal;
-      summary.providerTotalTokens =
-        (summary.providerTotalTokens ?? 0) + providerTotal;
+      summary.totalTokens = providerTotal;
+      summary.providerTotalTokens = providerTotal;
     }
   }
 
@@ -521,9 +492,9 @@ export function formatTokenSummary(
   return summary ? `${formatNumber(summary.totalTokens)} tokens` : "";
 }
 
-/** Format the aggregate token count across conversation turns. */
-export function formatUsageTotal(usages: Array<TurnUsage | undefined>): string {
-  return formatTokenSummary(summarizeUsage(usages));
+/** Format the persisted cumulative token count for a conversation. */
+export function formatUsageTotal(usage: ConversationUsage | undefined): string {
+  return formatTokenSummary(summarizeUsage(usage));
 }
 
 function getFiniteCost(value: unknown): number | undefined {
@@ -536,42 +507,30 @@ function addCost(left: number, right: number): number {
   return Math.round((left + right) * 1e12) / 1e12;
 }
 
-/** Summarize estimated Pi model cost in USD across conversation turns. */
+/** Summarize persisted cumulative Pi model cost for a conversation. */
 export function summarizeCost(
-  usages: Array<TurnUsage | undefined>,
+  usage: ConversationUsage | undefined,
 ): CostUsageSummary | undefined {
+  if (!usage?.cost) return undefined;
   const summary: CostUsageSummary = { total: 0 };
-  let hasCost = false;
-
-  for (const usage of usages) {
-    if (!usage?.cost) continue;
-    const cost = usage.cost;
-    const total = getFiniteCost(cost.total);
-    const components = {
-      input: getFiniteCost(cost.input),
-      output: getFiniteCost(cost.output),
-      cacheRead: getFiniteCost(cost.cacheRead),
-      cacheWrite: getFiniteCost(cost.cacheWrite),
-    };
-    const componentTotal = Object.values(components).reduce<number>(
-      (sum, value) => sum + (value ?? 0),
-      0,
-    );
-    summary.total = addCost(summary.total, total ?? componentTotal);
-    summary.input = addOptionalCount(summary.input, components.input);
-    summary.output = addOptionalCount(summary.output, components.output);
-    summary.cacheRead = addOptionalCount(
-      summary.cacheRead,
-      components.cacheRead,
-    );
-    summary.cacheWrite = addOptionalCount(
-      summary.cacheWrite,
-      components.cacheWrite,
-    );
-    hasCost = hasCost || total !== undefined || componentTotal > 0;
-  }
-
-  return hasCost ? summary : undefined;
+  const cost = usage.cost;
+  const total = getFiniteCost(cost.total);
+  const components = {
+    input: getFiniteCost(cost.input),
+    output: getFiniteCost(cost.output),
+    cacheRead: getFiniteCost(cost.cacheRead),
+    cacheWrite: getFiniteCost(cost.cacheWrite),
+  };
+  const componentTotal = Object.values(components).reduce<number>(
+    (sum, value) => sum + (value ?? 0),
+    0,
+  );
+  summary.total = addCost(summary.total, total ?? componentTotal);
+  summary.input = components.input;
+  summary.output = components.output;
+  summary.cacheRead = components.cacheRead;
+  summary.cacheWrite = components.cacheWrite;
+  return total !== undefined || componentTotal > 0 ? summary : undefined;
 }
 
 /** Format estimated model cost in USD with useful sub-cent precision. */
@@ -587,29 +546,29 @@ export function formatCostSummary(
   }).format(summary.total);
 }
 
-/** Format aggregate estimated model cost across conversation turns. */
-export function formatCostTotal(usages: Array<TurnUsage | undefined>): string {
-  return formatCostSummary(summarizeCost(usages));
+/** Format persisted cumulative estimated model cost for a conversation. */
+export function formatCostTotal(usage: ConversationUsage | undefined): string {
+  return formatCostSummary(summarizeCost(usage));
 }
 
-/** Keep turn duration displays aligned on elapsed transcript time. */
-export function turnElapsedDurationMs(
-  turn: Pick<ConversationTurn, "completedAt" | "lastSeenAt" | "startedAt">,
+/** Keep conversation duration displays aligned on elapsed transcript time. */
+export function transcriptElapsedDurationMs(
+  conversation: Pick<ConversationTranscript, "lastSeenAt" | "startedAt">,
 ): number | undefined {
-  const start = parseTime(turn.startedAt);
-  const end = parseTime(turn.completedAt ?? turn.lastSeenAt);
+  const start = parseTime(conversation.startedAt);
+  const end = parseTime(conversation.lastSeenAt);
   if (start == null || end == null || end < start) return undefined;
   return Math.max(0, end - start);
 }
 
-/** Format elapsed turn time for chart dots and transcript metadata. */
-export function formatTurnDuration(
-  turn: Pick<ConversationTurn, "completedAt" | "lastSeenAt" | "startedAt">,
+/** Format elapsed conversation time for chart dots and transcript metadata. */
+export function formatTranscriptDuration(
+  conversation: Pick<ConversationTranscript, "lastSeenAt" | "startedAt">,
 ): string {
-  return formatMs(turnElapsedDurationMs(turn));
+  return formatMs(transcriptElapsedDurationMs(conversation));
 }
 
-/** Format a conversation span from first turn start to latest activity. */
+/** Format a conversation span from its start to latest activity. */
 export function formatConversationDuration(conversation: Conversation): string {
   const start = parseTime(conversation.startedAt);
   const end = parseTime(conversation.lastSeenAt);
@@ -621,27 +580,17 @@ export function formatConversationDuration(conversation: Conversation): string {
   return `${Math.round(minutes / 60)}h`;
 }
 
-/** Return cumulative conversation runtime without double-counting prior turns. */
+/** Return the persisted cumulative conversation runtime. */
 export function conversationRuntimeMs(
-  conversation: Pick<Conversation, "runs">,
+  conversation: Pick<Conversation, "cumulativeDurationMs">,
 ): number | undefined {
-  if (!conversation.runs.some((turn) => durationSnapshot(turn) !== undefined)) {
-    return undefined;
-  }
-  return contributionDurationTotal(turnContributions(conversation.runs));
-}
-
-/** Resolve the owning conversation id for a run summary. */
-export function conversationIdForSummary(summary: ConversationSummary): string {
-  return summary.conversationId;
+  return Number.isFinite(conversation.cumulativeDurationMs)
+    ? Math.max(0, Math.floor(conversation.cumulativeDurationMs))
+    : undefined;
 }
 
 function compareTimeDesc(a: string | undefined, b: string | undefined): number {
   return (parseTime(b) ?? 0) - (parseTime(a) ?? 0);
-}
-
-function compareTimeAsc(a: string | undefined, b: string | undefined): number {
-  return (parseTime(a) ?? 0) - (parseTime(b) ?? 0);
 }
 
 /** Return the display title prepared by the reporting API. */
@@ -692,7 +641,7 @@ export function conversationIdentityMeta(
 /** Convert Slack channel ids and names into user-facing location labels. */
 export function slackLocationLabel(
   input: Pick<
-    ConversationSummary,
+    ConversationSummaryReport,
     "channel" | "channelName" | "channelNameRedacted"
   >,
   options: { includeId?: boolean } = {},
@@ -724,7 +673,7 @@ export function slackLocationLabel(
 
 /** Collapse raw summary states into the dashboard's visual status language. */
 export function visualStatusForSummary(
-  summary: ConversationSummary,
+  summary: ConversationSummaryReport,
 ): VisualStatus {
   if (isHungSummary(summary)) return "hung";
   if (isFailedConversationSummary(summary)) return "failed";
@@ -732,7 +681,7 @@ export function visualStatusForSummary(
   return "idle";
 }
 
-/** Derive conversation status from its turn summaries. */
+/** Derive the dashboard status from a conversation record. */
 export function visualStatusForConversation(
   conversation: Conversation,
 ): VisualStatus {
@@ -743,11 +692,13 @@ export function visualStatusForConversation(
 }
 
 /** Explain why a transcript body is absent without exposing private content. */
-export function unavailableTranscriptLabel(turn: ConversationTurn): string {
-  if (turn.transcriptRedacted) {
+export function unavailableTranscriptLabel(
+  conversation: ConversationTranscript,
+): string {
+  if (conversation.transcriptRedacted) {
     return "Transcript hidden because this conversation is not public.";
   }
-  const status = visualStatusForSummary(turn);
+  const status = visualStatusForSummary(conversation);
   if (status === "active") {
     return "Transcript pending while this conversation is active.";
   }
@@ -986,105 +937,42 @@ function markupNodeFromDom(node: ChildNode): MarkupNode {
   return { type: "text", text: node.textContent ?? "" };
 }
 
-/** Group recent run summaries into conversation rows. */
+/** Convert SQL conversation summaries into dashboard rows. */
 export function buildConversations(
-  summaries: ConversationSummary[],
+  summaries: ConversationSummaryReport[],
 ): Conversation[] {
-  const byId = new Map<string, ConversationSummary[]>();
-  for (const summary of summaries) {
-    const id = conversationIdForSummary(summary);
-    byId.set(id, [...(byId.get(id) ?? []), summary]);
-  }
-
-  return [...byId.entries()]
-    .map(([id, turns]) => {
-      const sortedTurns = [...turns].sort((a, b) =>
-        compareTimeAsc(a.startedAt, b.startedAt),
-      );
-      const recentTurns = [...turns].sort((a, b) =>
-        compareTimeDesc(a.lastSeenAt, b.lastSeenAt),
-      );
-      const newest = recentTurns[0]!;
-      const oldest = sortedTurns.reduce((current, next) =>
-        (parseTime(next.startedAt) ?? Number.MAX_SAFE_INTEGER) <
-        (parseTime(current.startedAt) ?? Number.MAX_SAFE_INTEGER)
-          ? next
-          : current,
-      );
-      const status = sortedTurns.some(isHungSummary)
-        ? "hung"
-        : sortedTurns.some(isActiveSummary)
-          ? "active"
-          : sortedTurns.some(isFailedConversationSummary)
-            ? "failed"
-            : newest.status;
-      const actorTurn = sortedTurns.find((turn) => turn.actorIdentity);
-      return {
-        channel: newest.channel,
-        channelName: recentTurns.find((turn) => turn.channelName)?.channelName,
-        displayTitle: newest.displayTitle,
-        id,
-        lastProgressAt: newest.lastProgressAt,
-        lastSeenAt: newest.lastSeenAt,
-        actorIdentity: actorTurn?.actorIdentity,
-        sentryTraceUrl: newest.sentryTraceUrl,
-        startedAt: oldest.startedAt,
-        status,
-        surface: newest.surface,
-        traceId: newest.traceId,
-        runs: sortedTurns,
-      };
-    })
+  return summaries
+    .map((summary) => ({
+      channel: summary.channel,
+      channelName: summary.channelName,
+      cumulativeDurationMs: summary.cumulativeDurationMs,
+      cumulativeUsage: summary.cumulativeUsage,
+      displayTitle: summary.displayTitle,
+      id: summary.conversationId,
+      lastProgressAt: summary.lastProgressAt,
+      lastSeenAt: summary.lastSeenAt,
+      actorIdentity: summary.actorIdentity,
+      sentryTraceUrl: summary.sentryTraceUrl,
+      startedAt: summary.startedAt,
+      status: summary.status,
+      surface: summary.surface,
+      traceId: summary.traceId,
+    }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
 }
 
 /** Build a conversation row from a detail report so permalinks do not depend on the feed. */
 export function conversationFromDetail(
-  detail: ConversationDetailFeed | undefined,
+  detail: ConversationDetailReport | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  const conversation = buildConversations(detail.runs)[0];
+  const conversation = buildConversations([detail])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;
 }
 
-function durationSnapshot(turn: ConversationSummary): number | undefined {
-  const duration = turn.cumulativeDurationMs;
-  return typeof duration === "number" && Number.isFinite(duration)
-    ? Math.max(0, Math.floor(duration))
-    : undefined;
-}
-
-type TurnContribution = {
-  durationMs: number;
-  turn: ConversationSummary;
-};
-
-function turnContributions(turns: ConversationSummary[]): TurnContribution[] {
-  let previousDuration = 0;
-  return turns.map((turn) => {
-    const duration = durationSnapshot(turn);
-    const contribution: TurnContribution = {
-      durationMs:
-        duration === undefined ? 0 : Math.max(0, duration - previousDuration),
-      turn,
-    };
-    if (duration !== undefined) {
-      previousDuration = Math.max(previousDuration, duration);
-    }
-    return contribution;
-  });
-}
-
-function contributionDurationTotal(contributions: TurnContribution[]): number {
-  return contributions.reduce(
-    (sum, contribution) => sum + contribution.durationMs,
-    0,
-  );
-}
-
-/** Apply the dashboard conversation filter to grouped conversation rows. */
+/** Apply the dashboard conversation filter to conversation rows. */
 export function filterConversations(
   conversations: Conversation[],
   filter: ConversationFilter,

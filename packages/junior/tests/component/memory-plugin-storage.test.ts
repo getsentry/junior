@@ -12,7 +12,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -37,6 +38,7 @@ vi.mock("@/db/executor", () => ({
       db: NEON.sql.db.bind(NEON.sql),
       execute: NEON.sql.execute.bind(NEON.sql),
       query: NEON.sql.query.bind(NEON.sql),
+      migrate: NEON.sql.migrate.bind(NEON.sql),
       transaction: NEON.sql.transaction.bind(NEON.sql),
       withLock: NEON.sql.withLock.bind(NEON.sql),
       close: async () => {},
@@ -77,13 +79,12 @@ function memoryMigrationsDir(): string {
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(
-    fixture.sql,
-    readPluginMigrations({
+  await migratePluginSchemas(fixture.sql, [
+    {
       dir: memoryMigrationsDir(),
       pluginName: "memory",
-    }),
-  );
+    },
+  ]);
 }
 
 describe("memory plugin host wiring", () => {
@@ -94,9 +95,8 @@ describe("memory plugin host wiring", () => {
     NEON.sql = fixture.sql;
 
     try {
-      const migrationCount = readPluginMigrations({
-        dir: memoryMigrationsDir(),
-        pluginName: "memory",
+      const migrationCount = readMigrationFiles({
+        migrationsFolder: memoryMigrationsDir(),
       }).length;
       await expect(
         migratePluginsToSql({

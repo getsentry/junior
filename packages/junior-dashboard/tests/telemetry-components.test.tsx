@@ -2,6 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ActorProfileReport } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../src/client/code";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
@@ -17,7 +20,7 @@ import { ToolValueInspector } from "../src/client/components/ToolValueInspector"
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
 import { TranscriptSubagentView } from "../src/client/components/TranscriptSubagentView";
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { ConversationTranscriptSegment } from "../src/client/components/TranscriptTurn";
+import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
@@ -27,11 +30,8 @@ import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
-  ConversationDetailFeed,
-  ConversationSummary,
-  ConversationTurn,
+  ConversationTranscript,
   DashboardData,
-  ActorProfile,
 } from "../src/client/types";
 
 afterEach(() => {
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 function dashboardData(
-  conversationSummaries: ConversationSummary[],
+  conversationSummaries: ConversationSummaryReport[],
 ): DashboardData {
   return {
     config: {
@@ -121,10 +121,9 @@ function renderConversationPage(data: DashboardData): string {
   );
 }
 
-function toolRunTurn(toolCount: number): ConversationTurn {
+function toolRunTurn(toolCount: number): ConversationTranscript {
   return {
     conversationId: "conversation-1",
-    id: "turn-1",
     lastProgressAt: "2026-01-01T00:00:10.000Z",
     lastSeenAt: "2026-01-01T00:00:10.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
@@ -143,7 +142,7 @@ function toolRunTurn(toolCount: number): ConversationTurn {
       ],
     })),
     transcriptAvailable: true,
-  } as ConversationTurn;
+  } as ConversationTranscript;
 }
 
 describe("dashboard telemetry components", () => {
@@ -220,11 +219,10 @@ describe("dashboard telemetry components", () => {
         transcriptAvailable: true,
         type: "subagent",
       },
-      turn: {
+      conversation: {
         conversationId: "parent-conversation",
         cumulativeDurationMs: 1000,
         displayTitle: "Parent conversation",
-        id: "turn-1",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:01.000Z",
         startedAt: "2026-01-01T00:00:00.000Z",
@@ -289,11 +287,10 @@ describe("dashboard telemetry components", () => {
         subagentKind: "advisor",
         type: "subagent",
       },
-      turn: {
+      conversation: {
         conversationId: "parent-conversation",
         cumulativeDurationMs: 0,
         displayTitle: "Parent conversation",
-        id: "turn-loading",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:01.000Z",
         startedAt: "2026-01-01T00:00:00.000Z",
@@ -315,7 +312,7 @@ describe("dashboard telemetry components", () => {
   });
 
   it("renders actor profiles with activity and recent conversations", () => {
-    const profile: ActorProfile = {
+    const profile: ActorProfileReport = {
       activityDays: [
         {
           active: 0,
@@ -350,7 +347,6 @@ describe("dashboard telemetry components", () => {
           conversationId: "slack:C1:123",
           cumulativeDurationMs: 1_200,
           displayTitle: "Incident triage",
-          id: "turn-1",
           lastProgressAt: "2026-01-02T00:00:00.000Z",
           lastSeenAt: "2026-01-02T00:00:00.000Z",
           actorIdentity: {
@@ -459,11 +455,8 @@ describe("dashboard telemetry components", () => {
     const turn = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
-      modelId: "openai/gpt-5.5",
-      reasoningLevel: "high",
       sentryTraceUrl: "https://sentry.example/trace/abc",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
@@ -471,22 +464,20 @@ describe("dashboard telemetry components", () => {
       displayTitle: "Conversation",
       transcript: [],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
-      <ConversationTranscriptSegment turn={turn} view="rich" />,
+      <ConversationTranscriptView conversation={turn} view="rich" />,
     );
 
     expect(html).toContain("View in Sentry");
     expect(html).toContain("https://sentry.example/trace/abc");
-    expect(html).toContain("(high)");
   });
 
   it("removes residual grid row gap from collapsed system prompts", () => {
     const turn = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -500,11 +491,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -518,7 +509,6 @@ describe("dashboard telemetry components", () => {
   it("keeps message timestamps in a shared heading row without elapsed offsets", () => {
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -533,11 +523,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -552,7 +542,6 @@ describe("dashboard telemetry components", () => {
   it("renders safe markdown links as transcript anchors", () => {
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -572,11 +561,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -610,7 +599,6 @@ describe("dashboard telemetry components", () => {
     );
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -625,11 +613,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -643,15 +631,13 @@ describe("dashboard telemetry components", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 3_000,
-      id: "turn-1",
-      completedAt: "2026-01-01T00:00:03.000Z",
       lastProgressAt: "2026-01-01T00:00:03.000Z",
       lastSeenAt: "2026-01-01T00:00:03.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
       displayTitle: "Conversation",
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
@@ -686,26 +672,19 @@ describe("dashboard telemetry components", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "not-a-date",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "internal",
       displayTitle: "Conversation",
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
     const detail = {
-      conversationId: "conversation-1",
-      displayTitle: session.displayTitle,
+      ...session,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      runs: [
-        {
-          ...session,
-          transcript: [],
-          transcriptAvailable: true,
-        },
-      ],
-    } satisfies ConversationDetailFeed;
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
     client.setQueryData(["conversation", "conversation-1"], detail);
 
     const html = renderConversationPage(dashboardData([session]));
@@ -714,100 +693,43 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("tool call");
   });
 
-  it("shows the latest main execution profile in the conversation header", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      id: "turn-1",
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "internal",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummary;
-    const detail = {
-      conversationId: "conversation-1",
-      displayTitle: session.displayTitle,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      runs: [
-        {
-          ...session,
-          id: "turn-active",
-          lastSeenAt: "2026-01-01T00:00:01.000Z",
-          modelId: "openai/gpt-5.5",
-          reasoningLevel: "high",
-          status: "active",
-          transcript: [],
-          transcriptAvailable: true,
-        },
-        {
-          ...session,
-          id: "turn-older",
-          lastSeenAt: "2025-12-31T23:59:59.000Z",
-          modelId: "openai/gpt-4.1",
-          reasoningLevel: "low",
-          transcript: [],
-          transcriptAvailable: true,
-        },
-      ],
-    } satisfies ConversationDetailFeed;
-    client.setQueryData(["conversation", "conversation-1"], detail);
-
-    const html = renderConversationPage(dashboardData([session]));
-    const header = html.slice(0, html.indexOf('aria-label="Transcript view"'));
-
-    expect(header).toContain("gpt-5.5");
-    expect(header).toContain("(high)");
-    expect(header).not.toContain("gpt-4.1");
-    expect(header).not.toContain(">Model<");
-    expect(header).not.toContain(">Reasoning<");
-  });
-
   it("renders execution activity inside the transcript", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "internal",
       displayTitle: "Conversation",
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
     const detail = {
-      conversationId: "conversation-1",
-      displayTitle: session.displayTitle,
+      ...session,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      runs: [
+      activity: [
         {
-          ...session,
-          activity: [
+          type: "tool_execution",
+          id: "advisor-call-1",
+          toolCallId: "advisor-call-1",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
             {
-              type: "tool_execution",
+              type: "subagent",
               id: "advisor-call-1",
-              toolCallId: "advisor-call-1",
-              toolName: "advisor",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call-1",
               createdAt: "2026-01-01T00:00:01.000Z",
               status: "running",
-              subagents: [
-                {
-                  type: "subagent",
-                  id: "advisor-call-1",
-                  subagentKind: "advisor",
-                  parentToolCallId: "advisor-call-1",
-                  createdAt: "2026-01-01T00:00:01.000Z",
-                  status: "running",
-                },
-              ],
             },
           ],
-          transcript: [],
-          transcriptAvailable: true,
         },
       ],
-    } satisfies ConversationDetailFeed;
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
     client.setQueryData(["conversation", "conversation-1"], detail);
 
     const html = renderConversationPage(dashboardData([session]));
@@ -826,7 +748,6 @@ describe("dashboard telemetry components", () => {
     const summary = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -837,21 +758,15 @@ describe("dashboard telemetry components", () => {
         email: "avery@example.com",
         fullName: "Avery Example",
       },
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
     const detail = {
-      conversationId: "conversation-1",
-      displayTitle: summary.displayTitle,
+      ...summary,
       generatedAt: "2026-01-01T00:00:00.000Z",
       sentryConversationUrl:
         "https://sentry.example/explore/conversations/conversation-1/?project=1",
-      runs: [
-        {
-          ...summary,
-          transcript: [],
-          transcriptAvailable: true,
-        },
-      ],
-    } satisfies ConversationDetailFeed;
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
     client.setQueryData(["conversation", "conversation-1"], detail);
 
     const html = renderConversationPage(dashboardData([summary]));
@@ -867,14 +782,13 @@ describe("dashboard telemetry components", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
       displayTitle: "Readable transcript",
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
 
     const data = dashboardData([session]);
     const conversation = renderConversationPage(data);
@@ -908,7 +822,6 @@ describe("dashboard telemetry components", () => {
         conversationId: "slack:C1:100",
         cumulativeDurationMs: 1_000,
         displayTitle: "Checkout latency triage",
-        id: "turn-1",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:02.000Z",
         actorIdentity: {
@@ -923,7 +836,6 @@ describe("dashboard telemetry components", () => {
         conversationId: "internal:memory:200",
         cumulativeDurationMs: 2_000,
         displayTitle: "Memory cleanup",
-        id: "turn-2",
         lastProgressAt: "2026-01-01T00:02:01.000Z",
         lastSeenAt: "2026-01-01T00:02:02.000Z",
         actorIdentity: { fullName: "Casey" },
@@ -955,13 +867,12 @@ describe("dashboard telemetry components", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
 
-    const conversationSummaries: ConversationSummary[] = [
+    const conversationSummaries: ConversationSummaryReport[] = [
       {
         channel: "C1",
         channelName: "proj-alpha",
         conversationId: "slack:C1:100",
         cumulativeDurationMs: 1_000,
-        id: "turn-1",
         lastProgressAt: "2026-01-01T00:00:01.000Z",
         lastSeenAt: "2026-01-01T00:00:02.000Z",
         actorIdentity: { fullName: "Avery" },
@@ -974,7 +885,6 @@ describe("dashboard telemetry components", () => {
         channel: "D1",
         conversationId: "slack:D1:200",
         cumulativeDurationMs: 2_000,
-        id: "turn-2",
         lastProgressAt: "2026-01-01T00:02:01.000Z",
         lastSeenAt: "2026-01-01T00:02:02.000Z",
         actorIdentity: { fullName: "Avery" },
@@ -988,7 +898,6 @@ describe("dashboard telemetry components", () => {
         channelName: "old-project",
         conversationId: "slack:C2:300",
         cumulativeDurationMs: 5_000,
-        id: "old-turn",
         lastProgressAt: "2025-12-20T00:00:01.000Z",
         lastSeenAt: "2025-12-20T00:00:02.000Z",
         actorIdentity: { fullName: "Casey" },
@@ -1034,7 +943,7 @@ describe("dashboard telemetry components", () => {
       windowStart: "2025-12-29T00:00:00.000Z",
     };
     data.plugins = [{ name: "github" }];
-    data.pluginReports.reports = [
+    data.pluginReports!.reports = [
       {
         pluginName: "scheduler",
         title: "Scheduler",
@@ -1147,7 +1056,7 @@ describe("dashboard telemetry components", () => {
   it("shows plugin report failures while keeping stale reports visible", () => {
     const data = dashboardData([]);
     data.pluginReportsError = true;
-    data.pluginReports.reports = [
+    data.pluginReports!.reports = [
       {
         metrics: [{ label: "active", value: "1" }],
         pluginName: "scheduler",
@@ -1182,7 +1091,7 @@ describe("dashboard telemetry components", () => {
 
   it("marks sampled conversation stats as limited", () => {
     const data = dashboardData([]);
-    data.conversationStats.truncated = true;
+    data.conversationStats!.truncated = true;
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
@@ -1197,31 +1106,24 @@ describe("dashboard telemetry components", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
       displayTitle: "Readable transcript",
-    } satisfies ConversationSummary;
+    } satisfies ConversationSummaryReport;
     const detail = {
-      conversationId: "conversation-1",
-      displayTitle: session.displayTitle,
+      ...session,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      runs: [
+      transcript: [
         {
-          ...session,
-          transcript: [
-            {
-              parts: [{ text: "hello", type: "text" }],
-              role: "user",
-            },
-          ],
-          transcriptAvailable: true,
+          parts: [{ text: "hello", type: "text" }],
+          role: "user",
         },
       ],
-    } satisfies ConversationDetailFeed;
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
     client.setQueryData(["conversation", "conversation-1"], detail);
 
     const html = renderConversationPage(dashboardData([session]));
@@ -1388,7 +1290,6 @@ describe("dashboard telemetry components", () => {
     const turn = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:00.000Z",
       lastSeenAt: "2026-01-01T00:00:00.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1402,11 +1303,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="raw" />
+        <ConversationTranscriptView conversation={turn} view="raw" />
       </QueryClientProvider>,
     );
 
@@ -1418,7 +1319,7 @@ describe("dashboard telemetry components", () => {
   it("renders four consecutive tool calls behind a reveal disclosure", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={toolRunTurn(4)} view="rich" />
+        <ConversationTranscriptView conversation={toolRunTurn(4)} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1438,7 +1339,7 @@ describe("dashboard telemetry components", () => {
   it("keeps three consecutive tool calls expanded", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={toolRunTurn(3)} view="rich" />
+        <ConversationTranscriptView conversation={toolRunTurn(3)} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1451,7 +1352,6 @@ describe("dashboard telemetry components", () => {
   it("renders thinking rows as collapsed disclosures", () => {
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1471,11 +1371,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1501,7 +1401,6 @@ describe("dashboard telemetry components", () => {
   it("collapses short thinking rows by default", () => {
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1516,11 +1415,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1538,7 +1437,6 @@ describe("dashboard telemetry components", () => {
   it("expands thinking rows during transcript search", () => {
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1558,12 +1456,12 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="deploy">
-          <ConversationTranscriptSegment turn={turn} view="rich" />
+          <ConversationTranscriptView conversation={turn} view="rich" />
         </TranscriptSearchProvider>
       </QueryClientProvider>,
     );
@@ -1577,7 +1475,6 @@ describe("dashboard telemetry components", () => {
     // 2 tool calls + 2 thinking entries = 4 total = at threshold
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1597,11 +1494,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1618,7 +1515,6 @@ describe("dashboard telemetry components", () => {
     // 1 tool + 2 thinking = 3 total, below threshold
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1637,11 +1533,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1660,7 +1556,6 @@ describe("dashboard telemetry components", () => {
     }));
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1679,11 +1574,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 
@@ -1694,7 +1589,6 @@ describe("dashboard telemetry components", () => {
     // 4 consecutive thinking entries collapse the same as tool runs
     const turn = {
       conversationId: "conversation-1",
-      id: "turn-1",
       lastProgressAt: "2026-01-01T00:00:10.000Z",
       lastSeenAt: "2026-01-01T00:00:10.000Z",
       startedAt: "2026-01-01T00:00:00.000Z",
@@ -1714,11 +1608,11 @@ describe("dashboard telemetry components", () => {
         },
       ],
       transcriptAvailable: true,
-    } as ConversationTurn;
+    } as ConversationTranscript;
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptSegment turn={turn} view="rich" />
+        <ConversationTranscriptView conversation={turn} view="rich" />
       </QueryClientProvider>,
     );
 

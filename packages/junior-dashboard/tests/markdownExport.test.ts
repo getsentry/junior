@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 
 import {
   buildConversationMarkdown,
   buildSubagentMarkdown,
 } from "../src/client/markdownExport";
-import { subagentTranscriptTurn } from "../src/client/subagentTranscript";
-import type {
-  Conversation,
-  ConversationDetailFeed,
-  ConversationSubagentTranscript,
-  ConversationTurn,
-} from "../src/client/types";
+import { subagentConversationTranscript } from "../src/client/subagentTranscript";
+import type { Conversation } from "../src/client/types";
 
 describe("dashboard markdown export", () => {
   it("serializes child-agent transcripts with shared formatting", () => {
@@ -38,8 +35,8 @@ describe("dashboard markdown export", () => {
         },
       ],
       transcriptAvailable: true,
-    } satisfies ConversationSubagentTranscript;
-    const turn = subagentTranscriptTurn("conversation-1", report);
+    } satisfies ConversationSubagentTranscriptReport;
+    const turn = subagentConversationTranscript("conversation-1", report);
 
     const markdown = buildSubagentMarkdown(report, turn);
 
@@ -59,75 +56,69 @@ describe("dashboard markdown export", () => {
     const startedAt = "2026-01-01T00:00:00.000Z";
     const detail = {
       conversationId: "slack:C1:222",
+      cumulativeDurationMs: 0,
       displayTitle: "Copy button discussion",
       generatedAt: "2026-01-01T00:00:08.000Z",
-      runs: [
+      channel: "C1",
+      channelName: "eng",
+      lastProgressAt: "2026-01-01T00:00:07.000Z",
+      lastSeenAt: "2026-01-01T00:00:07.000Z",
+      actorIdentity: { fullName: "Alice" },
+      startedAt,
+      status: "completed",
+      surface: "slack",
+      transcriptAvailable: true,
+      transcript: [
         {
-          channel: "C1",
-          channelName: "eng",
-          conversationId: "slack:C1:222",
-          id: "turn-1",
-          lastProgressAt: "2026-01-01T00:00:07.000Z",
-          lastSeenAt: "2026-01-01T00:00:07.000Z",
-          actorIdentity: { fullName: "Alice" },
-          startedAt,
-          status: "completed",
-          surface: "slack",
-          displayTitle: "Conversation",
-          transcriptAvailable: true,
-          transcript: [
+          role: "user",
+          timestamp: Date.parse(startedAt) + 1_000,
+          parts: [
             {
-              role: "user",
-              timestamp: Date.parse(startedAt) + 1_000,
-              parts: [
-                {
-                  type: "text",
-                  text: "  copy this conversation  \n",
-                },
-              ],
-            },
-            {
-              role: "assistant",
-              timestamp: Date.parse(startedAt) + 2_000,
-              parts: [
-                {
-                  type: "thinking",
-                  output: "Need a deterministic export.  \n",
-                },
-                {
-                  type: "tool_call",
-                  id: "call-1",
-                  name: "search",
-                  input: { query: "copy markdown" },
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              timestamp: Date.parse(startedAt) + 3_500,
-              parts: [
-                {
-                  type: "tool_result",
-                  id: "call-1",
-                  name: "search",
-                  output: { ok: true },
-                },
-              ],
-            },
-            {
-              role: "assistant",
-              timestamp: Date.parse(startedAt) + 5_000,
-              parts: [
-                {
-                  type: "text",
-                  text: "## Done\n\n\n\nCopied as Markdown.",
-                },
-              ],
+              type: "text",
+              text: "  copy this conversation  \n",
             },
           ],
-        } as ConversationTurn,
+        },
+        {
+          role: "assistant",
+          timestamp: Date.parse(startedAt) + 2_000,
+          parts: [
+            {
+              type: "thinking",
+              output: "Need a deterministic export.  \n",
+            },
+            {
+              type: "tool_call",
+              id: "call-1",
+              name: "search",
+              input: { query: "copy markdown" },
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          timestamp: Date.parse(startedAt) + 3_500,
+          parts: [
+            {
+              type: "tool_result",
+              id: "call-1",
+              name: "search",
+              output: { ok: true },
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          timestamp: Date.parse(startedAt) + 5_000,
+          parts: [
+            {
+              type: "text",
+              text: "## Done\n\n\n\nCopied as Markdown.",
+            },
+          ],
+        },
       ],
-    } satisfies ConversationDetailFeed;
+    } satisfies ConversationDetailReport;
 
     const markdown = buildConversationMarkdown(detail);
 
@@ -152,13 +143,21 @@ describe("dashboard markdown export", () => {
     const generatedAt = "2026-01-01T00:00:08.000Z";
     const detail = {
       conversationId: "slack:C1:222",
+      cumulativeDurationMs: 0,
       displayTitle: "Fresh async title",
       generatedAt,
-      runs: [],
-    } satisfies ConversationDetailFeed;
+      lastProgressAt: generatedAt,
+      lastSeenAt: generatedAt,
+      startedAt: generatedAt,
+      status: "completed",
+      surface: "slack",
+      transcript: [],
+      transcriptAvailable: false,
+    } satisfies ConversationDetailReport;
     const conversation = {
       channel: "C1",
       channelName: "eng",
+      cumulativeDurationMs: 0,
       displayTitle: "Public Channel",
       id: "slack:C1:222",
       lastProgressAt: generatedAt,
@@ -166,7 +165,6 @@ describe("dashboard markdown export", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       status: "completed",
       surface: "slack",
-      runs: [],
     } satisfies Conversation;
 
     const markdown = buildConversationMarkdown(detail, conversation);
@@ -180,42 +178,35 @@ describe("dashboard markdown export", () => {
       conversationId: "conversation-activity",
       displayTitle: "Activity transcript",
       generatedAt: "2026-01-01T00:00:08.000Z",
-      runs: [
+      cumulativeDurationMs: 0,
+      lastProgressAt: "2026-01-01T00:00:02.000Z",
+      lastSeenAt: "2026-01-01T00:00:02.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "active",
+      surface: "internal",
+      transcriptAvailable: true,
+      transcript: [],
+      activity: [
         {
-          conversationId: "conversation-activity",
-          cumulativeDurationMs: 0,
-          displayTitle: "Activity transcript",
-          id: "turn-activity",
-          lastProgressAt: "2026-01-01T00:00:02.000Z",
-          lastSeenAt: "2026-01-01T00:00:02.000Z",
-          startedAt: "2026-01-01T00:00:00.000Z",
-          status: "active",
-          surface: "internal",
-          transcriptAvailable: true,
-          transcript: [],
-          activity: [
+          type: "tool_execution",
+          id: "advisor-call",
+          toolCallId: "advisor-call",
+          toolName: "advisor",
+          createdAt: "2026-01-01T00:00:01.000Z",
+          status: "running",
+          subagents: [
             {
-              type: "tool_execution",
+              type: "subagent",
               id: "advisor-call",
-              toolCallId: "advisor-call",
-              toolName: "advisor",
-              createdAt: "2026-01-01T00:00:01.000Z",
+              subagentKind: "advisor",
+              parentToolCallId: "advisor-call",
+              createdAt: "2026-01-01T00:00:02.000Z",
               status: "running",
-              subagents: [
-                {
-                  type: "subagent",
-                  id: "advisor-call",
-                  subagentKind: "advisor",
-                  parentToolCallId: "advisor-call",
-                  createdAt: "2026-01-01T00:00:02.000Z",
-                  status: "running",
-                },
-              ],
             },
           ],
-        } as ConversationTurn,
+        },
       ],
-    } satisfies ConversationDetailFeed;
+    } satisfies ConversationDetailReport;
 
     const markdown = buildConversationMarkdown(detail);
 
@@ -231,80 +222,73 @@ describe("dashboard markdown export", () => {
       conversationId: "slack:D1:222",
       displayTitle: "Direct Message",
       generatedAt: "2026-01-01T00:00:08.000Z",
-      runs: [
+      channel: "D1",
+      channelName: "Direct Message",
+      cumulativeDurationMs: 7_000,
+      lastProgressAt: "2026-01-01T00:00:07.000Z",
+      lastSeenAt: "2026-01-01T00:00:07.000Z",
+      actorIdentity: { email: "alice@example.com" },
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      transcriptAvailable: false,
+      transcriptRedacted: true,
+      transcriptRedactionReason: "non_public_conversation",
+      transcript: [],
+      transcriptMetadata: [
         {
-          channel: "D1",
-          channelName: "Direct Message",
-          conversationId: "slack:D1:222",
-          displayTitle: "Direct Message",
-          cumulativeDurationMs: 7_000,
-          id: "turn-private",
-          lastProgressAt: "2026-01-01T00:00:07.000Z",
-          lastSeenAt: "2026-01-01T00:00:07.000Z",
-          actorIdentity: { email: "alice@example.com" },
-          startedAt: "2026-01-01T00:00:00.000Z",
-          status: "completed",
-          surface: "slack",
-          transcriptAvailable: false,
-          transcriptRedacted: true,
-          transcriptRedactionReason: "non_public_conversation",
-          transcript: [],
-          transcriptMetadata: [
+          role: "user",
+          timestamp: 1_767_225_601_000,
+          parts: [
             {
-              role: "user",
-              timestamp: 1_767_225_601_000,
-              parts: [
-                {
-                  bytes: 24,
-                  chars: 24,
-                  redacted: true,
-                  text: "private question",
-                  type: "text",
-                },
-              ],
-            },
-            {
-              role: "assistant",
-              timestamp: 1_767_225_602_000,
-              parts: [
-                {
-                  bytes: 22,
-                  chars: 22,
-                  redacted: true,
-                  text: "private answer",
-                  type: "text",
-                },
-                {
-                  id: "call-1",
-                  input: { query: "private search value" },
-                  inputKeys: ["query"],
-                  inputSizeBytes: 42,
-                  inputType: "object",
-                  name: "search",
-                  redacted: true,
-                  type: "tool_call",
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              timestamp: 1_767_225_603_000,
-              parts: [
-                {
-                  id: "call-1",
-                  name: "search",
-                  output: "private tool result",
-                  outputSizeBytes: 19,
-                  outputType: "string",
-                  redacted: true,
-                  type: "tool_result",
-                },
-              ],
+              bytes: 24,
+              chars: 24,
+              redacted: true,
+              text: "private question",
+              type: "text",
             },
           ],
-        } as ConversationTurn,
+        },
+        {
+          role: "assistant",
+          timestamp: 1_767_225_602_000,
+          parts: [
+            {
+              bytes: 22,
+              chars: 22,
+              redacted: true,
+              text: "private answer",
+              type: "text",
+            },
+            {
+              id: "call-1",
+              input: { query: "private search value" },
+              inputKeys: ["query"],
+              inputSizeBytes: 42,
+              inputType: "object",
+              name: "search",
+              redacted: true,
+              type: "tool_call",
+            },
+          ],
+        },
+        {
+          role: "toolResult",
+          timestamp: 1_767_225_603_000,
+          parts: [
+            {
+              id: "call-1",
+              name: "search",
+              output: "private tool result",
+              outputSizeBytes: 19,
+              outputType: "string",
+              redacted: true,
+              type: "tool_result",
+            },
+          ],
+        },
       ],
-    } satisfies ConversationDetailFeed;
+    } satisfies ConversationDetailReport;
 
     const markdown = buildConversationMarkdown(detail);
 

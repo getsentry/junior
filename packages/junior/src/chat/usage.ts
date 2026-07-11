@@ -1,29 +1,12 @@
-import { z } from "zod";
+import { usageCostSchema, usageSchema } from "@/usage-schema";
+import type { Usage, UsageCost } from "@/usage-schema";
 
-export const agentTurnCostSchema = z
-  .object({
-    input: z.number().finite().nonnegative().optional(),
-    output: z.number().finite().nonnegative().optional(),
-    cacheRead: z.number().finite().nonnegative().optional(),
-    cacheWrite: z.number().finite().nonnegative().optional(),
-    total: z.number().finite().nonnegative().optional(),
-  })
-  .strict();
+export const agentTurnCostSchema = usageCostSchema;
 
 /** Estimated USD cost reported by pi-ai for one or more model calls. */
-export type AgentTurnCost = z.output<typeof agentTurnCostSchema>;
+export type AgentTurnCost = UsageCost;
 
-export const agentTurnUsageSchema = z
-  .object({
-    inputTokens: z.number().int().nonnegative().optional(),
-    outputTokens: z.number().int().nonnegative().optional(),
-    cachedInputTokens: z.number().int().nonnegative().optional(),
-    cacheCreationTokens: z.number().int().nonnegative().optional(),
-    reasoningTokens: z.number().int().nonnegative().optional(),
-    totalTokens: z.number().int().nonnegative().optional(),
-    cost: agentTurnCostSchema.optional(),
-  })
-  .strict();
+export const agentTurnUsageSchema = usageSchema;
 
 /**
  * Structured token and cost usage captured for a single agent turn.
@@ -33,7 +16,7 @@ export const agentTurnUsageSchema = z
  * provider normalizes into the pi-ai shape as its own item. Renderers decide
  * whether to display a breakdown or a single aggregate.
  */
-export type AgentTurnUsage = z.output<typeof agentTurnUsageSchema>;
+export type AgentTurnUsage = Usage;
 
 const COMPONENT_USAGE_FIELDS = [
   "inputTokens",

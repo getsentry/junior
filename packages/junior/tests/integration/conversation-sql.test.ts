@@ -1,12 +1,8 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  migrations as declaredMigrations,
-  migrateSchema,
-} from "@/chat/conversations/sql/migrations";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { juniorSqlSchema as schema } from "@/db/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { readConversationFeedFromSql } from "@/api/conversations/list.query";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import {
@@ -76,7 +72,6 @@ ORDER BY indexname ASC
           "junior_identities_provider_subject_uidx",
           "junior_identities_user_idx",
           "junior_identities_verified_email_idx",
-          "junior_schema_migrations_pkey",
           "junior_users_pkey",
           "junior_users_primary_email_normalized_uidx",
         ]),
@@ -170,13 +165,11 @@ WHERE conversation_id = $1
 `,
         ["slack:C123:1718123456.000000"],
       );
-      const migrationRows = await fixture.sql.query<{ id: string }>(
-        "SELECT id FROM junior_schema_migrations ORDER BY id ASC",
+      const [migrationRows] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
       );
 
-      expect(migrationRows).toEqual(
-        declaredMigrations.map((migration) => ({ id: migration.id })),
-      );
+      expect(migrationRows?.count).toBe(2);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",
@@ -195,6 +188,145 @@ WHERE conversation_id = $1
           teamId: "T123",
         },
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("adopts a deployed pre-Drizzle schema before applying new migrations", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      await fixture.sql.execute(`
+INSERT INTO junior_schema_migrations (id, checksum)
+VALUES
+  ('0001_conversation_core', 'legacy-checksum-1'),
+  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
+  ('0003_user_identities', 'legacy-checksum-3'),
+  ('0004_actor_cutover', 'legacy-checksum-4'),
+  ('0005_conversation_transcripts', 'legacy-checksum-5')
+`);
+      await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
+      await fixture.sql.execute(`
+ALTER TABLE junior_conversations
+  DROP COLUMN duration_ms,
+  DROP COLUMN usage_json,
+  DROP COLUMN execution_duration_ms,
+  DROP COLUMN execution_usage_json
+`);
+
+      await migrateSchema(fixture.sql);
+
+      const metricColumns = await fixture.sql.query<{ column_name: string }>(`
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'junior_conversations'
+  AND column_name IN (
+    'duration_ms',
+    'usage_json',
+    'execution_duration_ms',
+    'execution_usage_json'
+  )
+ORDER BY column_name
+`);
+      const [migrationRows] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+      );
+
+      expect(metricColumns.map((row) => row.column_name)).toEqual([
+        "duration_ms",
+        "execution_duration_ms",
+        "execution_usage_json",
+        "usage_json",
+      ]);
+      expect(migrationRows?.count).toBe(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("adopts a fully migrated legacy schema without replaying metrics", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      await fixture.sql.execute(`
+INSERT INTO junior_schema_migrations (id, checksum)
+VALUES
+  ('0001_conversation_core', 'legacy-checksum-1'),
+  ('0002_slack_destination_visibility_backfill', 'legacy-checksum-2'),
+  ('0003_user_identities', 'legacy-checksum-3'),
+  ('0004_actor_cutover', 'legacy-checksum-4'),
+  ('0005_conversation_transcripts', 'legacy-checksum-5'),
+  ('0006_conversation_metrics', 'legacy-checksum-6')
+`);
+      await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
+
+      await migrateSchema(fixture.sql);
+
+      const [migrationRows] = await fixture.sql.query<{ count: number }>(
+        "SELECT count(*)::integer AS count FROM drizzle.__drizzle_migrations",
+      );
+      const metricColumns = await fixture.sql.query<{ column_name: string }>(`
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'junior_conversations'
+  AND column_name IN (
+    'duration_ms',
+    'usage_json',
+    'execution_duration_ms',
+    'execution_usage_json'
+  )
+ORDER BY column_name
+`);
+      expect(migrationRows?.count).toBe(1);
+      expect(metricColumns.map((row) => row.column_name)).toEqual([
+        "duration_ms",
+        "execution_duration_ms",
+        "execution_usage_json",
+        "usage_json",
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects partial pre-Drizzle core migration state", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      await fixture.sql.execute(`
+INSERT INTO junior_schema_migrations (id, checksum)
+VALUES ('0001_conversation_core', 'legacy-checksum-1')
+`);
+
+      await expect(migrateSchema(fixture.sql)).rejects.toThrow(
+        "Cannot adopt partial legacy core migration state",
+      );
     } finally {
       await fixture.close();
     }
@@ -299,23 +431,27 @@ WHERE conversation_id = $1
         },
         source: "scheduler",
       });
-
-      await expect(
-        readConversationFeedFromSql(fixture.sql.db()),
-      ).resolves.toMatchObject({
-        conversations: [
-          {
-            conversationId: "agent-dispatch:dispatch_scheduler_run",
-            id: "agent-dispatch:dispatch_scheduler_run",
-            cumulativeDurationMs: 3_500,
-            cumulativeUsage: {
-              totalTokens: 205,
-              reasoningTokens: 9,
-              cost: { total: 0.0055 },
-            },
-          },
-        ],
-        source: "conversation_index",
+      const [metrics] = await fixture.sql.query<{
+        durationMs: number;
+        usage: {
+          cost?: { total?: number };
+          reasoningTokens?: number;
+          totalTokens?: number;
+        } | null;
+      }>(`
+SELECT
+  duration_ms::integer AS "durationMs",
+  usage_json AS usage
+FROM junior_conversations
+WHERE conversation_id = 'agent-dispatch:dispatch_scheduler_run'
+`);
+      expect(metrics).toMatchObject({
+        durationMs: 3_500,
+        usage: {
+          cost: { total: 0.0055 },
+          reasoningTokens: 9,
+          totalTokens: 205,
+        },
       });
     } finally {
       await disconnectStateAdapter();

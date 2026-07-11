@@ -8,7 +8,7 @@ import type {
   TranscriptMessage,
   TranscriptPart,
   TranscriptRole,
-} from "./types";
+} from "./schema";
 
 const SAFE_METADATA_KEY_LIMIT = 20;
 function textPart(text: string): TranscriptPart {

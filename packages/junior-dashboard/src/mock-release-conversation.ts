@@ -1,7 +1,7 @@
 import type {
-  ConversationReport as DashboardConversationReport,
-  TranscriptMessage as DashboardTranscriptMessage,
-} from "@sentry/junior/api/conversations/detail";
+  ConversationDetailReport,
+  TranscriptMessage,
+} from "@sentry/junior/api/schema";
 
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 
@@ -75,7 +75,7 @@ function toolCall(
   id: string,
   name: string,
   input: unknown,
-): DashboardTranscriptMessage {
+): TranscriptMessage {
   return {
     role: "assistant",
     timestamp: startedAtMs + offsetMs,
@@ -96,7 +96,7 @@ function toolResult(
   id: string,
   name: string,
   output: unknown,
-): DashboardTranscriptMessage {
+): TranscriptMessage {
   return {
     role: "toolResult",
     timestamp: startedAtMs + offsetMs,
@@ -123,7 +123,7 @@ function bashPair(
     stderr?: string;
     timedOut?: boolean;
   },
-): DashboardTranscriptMessage[] {
+): TranscriptMessage[] {
   const id = `toolu_mock_release_bash_${index}`;
   const durationMs = options?.durationMs ?? 900 + ((index * 977) % 4200);
   return [
@@ -146,7 +146,7 @@ function progressPair(
   index: number,
   offsetMs: number,
   message: string,
-): DashboardTranscriptMessage[] {
+): TranscriptMessage[] {
   const id = `toolu_mock_release_progress_${index}`;
   return [
     toolCall(startedAtMs, offsetMs, id, "reportProgress", { message }),
@@ -154,9 +154,9 @@ function progressPair(
   ];
 }
 
-function releaseTranscriptTurnOne(
+function releaseConversationTranscriptOne(
   startedAtMs: number,
-): DashboardTranscriptMessage[] {
+): TranscriptMessage[] {
   return [
     {
       role: "system",
@@ -268,9 +268,9 @@ function releaseTranscriptTurnOne(
   ];
 }
 
-function releaseTranscriptTurnTwo(
+function releaseConversationTranscriptTwo(
   startedAtMs: number,
-): DashboardTranscriptMessage[] {
+): TranscriptMessage[] {
   return [
     {
       role: "user",
@@ -523,12 +523,14 @@ function releaseTranscriptTurnTwo(
 /** Build a long sanitized release/update transcript for dashboard visual QA. */
 export function longReleaseConversation(
   nowMs: number,
-): DashboardConversationReport {
+): ConversationDetailReport {
   const traceId = "7a4f12c9e3d84901b6c7d8e9f0123456";
   const firstStartedAt = iso(nowMs, -92 * 60_000);
   const secondStartedAt = iso(nowMs, -90 * 60_000);
-  const firstTranscript = releaseTranscriptTurnOne(Date.parse(firstStartedAt));
-  const secondTranscript = releaseTranscriptTurnTwo(
+  const firstTranscript = releaseConversationTranscriptOne(
+    Date.parse(firstStartedAt),
+  );
+  const secondTranscript = releaseConversationTranscriptTwo(
     Date.parse(secondStartedAt),
   );
 
@@ -537,67 +539,29 @@ export function longReleaseConversation(
     displayTitle: "Package release and self-update",
     generatedAt: iso(nowMs),
     sentryConversationUrl: sentryConversationUrl(LONG_CONVERSATION_ID),
-    runs: [
-      {
-        conversationId: LONG_CONVERSATION_ID,
-        displayTitle: "Package release and self-update",
-        id: "mock-release-turn-1",
-        status: "completed",
-        startedAt: firstStartedAt,
-        lastProgressAt: iso(nowMs, -91 * 60_000),
-        lastSeenAt: iso(nowMs, -91 * 60_000),
-        completedAt: iso(nowMs, -91 * 60_000),
-        cumulativeDurationMs: 48_449,
-        cumulativeUsage: {
-          cachedInputTokens: 167_859,
-          cacheCreationTokens: 19_277,
-          inputTokens: 13,
-          outputTokens: 1037,
-        },
-        surface: "slack",
-        actorIdentity: {
-          fullName: "Jordan Blake",
-          slackUserId: "UQA777",
-          slackUserName: "jordan",
-        },
-        channel: "CQA456",
-        channelName: "proj-release",
-        sentryTraceUrl: sentryTraceUrl(traceId),
-        traceId,
-        transcriptAvailable: true,
-        transcriptMessageCount: firstTranscript.length,
-        transcript: firstTranscript,
-      },
-      {
-        conversationId: LONG_CONVERSATION_ID,
-        displayTitle: "Package release and self-update",
-        id: "mock-release-turn-2",
-        status: "completed",
-        startedAt: secondStartedAt,
-        lastProgressAt: iso(nowMs, -81 * 60_000),
-        lastSeenAt: iso(nowMs, -81 * 60_000),
-        completedAt: iso(nowMs, -81 * 60_000),
-        cumulativeDurationMs: 552_761,
-        cumulativeUsage: {
-          cachedInputTokens: 1_266_200,
-          cacheCreationTokens: 21_129,
-          inputTokens: 43,
-          outputTokens: 5765,
-        },
-        surface: "slack",
-        actorIdentity: {
-          fullName: "Jordan Blake",
-          slackUserId: "UQA777",
-          slackUserName: "jordan",
-        },
-        channel: "CQA456",
-        channelName: "proj-release",
-        sentryTraceUrl: sentryTraceUrl(traceId),
-        traceId,
-        transcriptAvailable: true,
-        transcriptMessageCount: secondTranscript.length,
-        transcript: secondTranscript,
-      },
-    ],
+    status: "completed",
+    startedAt: firstStartedAt,
+    lastProgressAt: iso(nowMs, -81 * 60_000),
+    lastSeenAt: iso(nowMs, -81 * 60_000),
+    cumulativeDurationMs: 552_761,
+    cumulativeUsage: {
+      cachedInputTokens: 1_266_200,
+      cacheCreationTokens: 21_129,
+      inputTokens: 43,
+      outputTokens: 5765,
+    },
+    surface: "slack",
+    actorIdentity: {
+      fullName: "Jordan Blake",
+      slackUserId: "UQA777",
+      slackUserName: "jordan",
+    },
+    channel: "CQA456",
+    channelName: "proj-release",
+    sentryTraceUrl: sentryTraceUrl(traceId),
+    traceId,
+    transcriptAvailable: true,
+    transcriptMessageCount: firstTranscript.length + secondTranscript.length,
+    transcript: [...firstTranscript, ...secondTranscript],
   };
 }

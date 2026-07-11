@@ -1,5 +1,8 @@
 import path from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createMemoryState } from "@chat-adapter/state-memory";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import {
@@ -10,7 +13,7 @@ import {
 } from "@sentry/junior-scheduler";
 import { createSchedulerStore } from "../../../junior-scheduler/src/store";
 import { defineJuniorPlugins } from "@/plugins";
-import { migratePluginSchemas, readPluginMigrations } from "@/chat/plugins/db";
+import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { runPluginStorageMigrations } from "@/cli/upgrade/migrations/plugin-storage";
@@ -38,6 +41,7 @@ vi.mock("@/db/executor", () => ({
       db: NEON.sql.db.bind(NEON.sql),
       execute: NEON.sql.execute.bind(NEON.sql),
       query: NEON.sql.query.bind(NEON.sql),
+      migrate: NEON.sql.migrate.bind(NEON.sql),
       transaction: NEON.sql.transaction.bind(NEON.sql),
       withLock: NEON.sql.withLock.bind(NEON.sql),
       close: async () => {},
@@ -52,16 +56,19 @@ function schedulerMigrationsDir(): string {
   return path.resolve(process.cwd(), "../junior-scheduler/migrations");
 }
 
+function memoryMigrationsDir(): string {
+  return path.resolve(process.cwd(), "../junior-memory/migrations");
+}
+
 async function migrateSchedulerSchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(
-    fixture.sql,
-    readPluginMigrations({
+  await migratePluginSchemas(fixture.sql, [
+    {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
-    }),
-  );
+    },
+  ]);
 }
 
 function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
@@ -101,6 +108,113 @@ describe("scheduler SQL plugin storage", () => {
   afterEach(async () => {
     NEON.sql = undefined;
     await disconnectStateAdapter();
+  });
+
+  it("adopts deployed scheduler schema state into its Drizzle journal", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchedulerSchema(fixture);
+      const [migrationTable] = await fixture.sql.query<{ tablename: string }>(`
+SELECT tablename
+FROM pg_tables
+WHERE schemaname = 'drizzle'
+  AND tablename LIKE '__drizzle_scheduler_%'
+`);
+      expect(migrationTable).toBeDefined();
+      await fixture.sql.execute(
+        `DROP TABLE drizzle.${migrationTable!.tablename}`,
+      );
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      await fixture.sql.execute(
+        `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
+        ["plugin:scheduler/0001_scheduler.sql", "legacy-checksum"],
+      );
+
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          {
+            dir: schedulerMigrationsDir(),
+            pluginName: "scheduler",
+          },
+        ]),
+      ).resolves.toEqual({ existing: 1, migrated: 0, scanned: 1 });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps migration state isolated across plugins", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const roots = [
+      { dir: schedulerMigrationsDir(), pluginName: "scheduler" },
+      { dir: memoryMigrationsDir(), pluginName: "memory" },
+    ];
+    const migrationCount = roots.reduce(
+      (count, root) =>
+        count + readMigrationFiles({ migrationsFolder: root.dir }).length,
+      0,
+    );
+
+    try {
+      await expect(migratePluginSchemas(fixture.sql, roots)).resolves.toEqual({
+        existing: 0,
+        migrated: migrationCount,
+        scanned: migrationCount,
+      });
+      const migrationTables = await fixture.sql.query<{ tablename: string }>(`
+SELECT tablename
+FROM pg_tables
+WHERE schemaname = 'drizzle'
+  AND tablename LIKE '__drizzle_%'
+ORDER BY tablename
+`);
+      expect(migrationTables).toHaveLength(2);
+      await expect(
+        migratePluginSchemas(fixture.sql, [...roots].reverse()),
+      ).resolves.toEqual({
+        existing: migrationCount,
+        migrated: 0,
+        scanned: migrationCount,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rejects missing and invalid Drizzle journals", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const missingJournal = mkdtempSync(
+      path.join(tmpdir(), "junior-missing-journal-"),
+    );
+    const invalidJournal = mkdtempSync(
+      path.join(tmpdir(), "junior-invalid-journal-"),
+    );
+    mkdirSync(path.join(invalidJournal, "meta"));
+    writeFileSync(path.join(invalidJournal, "meta", "_journal.json"), "{");
+
+    try {
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          { dir: missingJournal, pluginName: "missing" },
+        ]),
+      ).rejects.toThrow("Can't find meta/_journal.json file");
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          { dir: invalidJournal, pluginName: "invalid" },
+        ]),
+      ).rejects.toThrow("Expected property name");
+    } finally {
+      rmSync(missingJournal, { force: true, recursive: true });
+      rmSync(invalidJournal, { force: true, recursive: true });
+      await fixture.close();
+    }
   });
 
   it("persists and claims scheduled runs through the plugin SQL database", async () => {

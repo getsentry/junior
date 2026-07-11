@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "db:generate": "pnpm dlx drizzle-kit@0.31.10 generate --config drizzle.config.ts",
+    "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit"
@@ -36,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "drizzle-kit": "catalog:",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   }

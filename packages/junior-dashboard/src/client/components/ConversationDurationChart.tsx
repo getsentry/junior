@@ -1,6 +1,8 @@
 import { useMemo, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
+import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   CartesianGrid,
   ResponsiveContainer,
@@ -30,12 +32,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
-import type {
-  Conversation,
-  ConversationSummary,
-  ConversationDetailFeed,
-  VisualStatus,
-} from "../types";
+import type { Conversation, VisualStatus } from "../types";
 import { MetricValue } from "./Metric";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
@@ -50,7 +47,7 @@ import { statusBorderClass } from "./statusStyles";
 
 /** Render recent conversations by activity time and duration. */
 export function ConversationDurationChart(props: {
-  conversationSummaries: ConversationSummary[];
+  conversationSummaries: ConversationSummaryReport[];
   nowMs: number;
   timeZone: string;
 }) {
@@ -168,17 +165,11 @@ function plural(label: string, count: number): string {
 function conversationStatusSummary(conversations: Conversation[]) {
   return conversations.reduce(
     (summary, conversation) => {
-      const turns = conversation.runs;
       return {
-        active:
-          summary.active +
-          (turns.some((turn) => turn.status === "active") ? 1 : 0),
+        active: summary.active + (conversation.status === "active" ? 1 : 0),
         conversations: summary.conversations + 1,
-        failed:
-          summary.failed +
-          (turns.some((turn) => turn.status === "failed") ? 1 : 0),
-        hung:
-          summary.hung + (turns.some((turn) => turn.status === "hung") ? 1 : 0),
+        failed: summary.failed + (conversation.status === "failed" ? 1 : 0),
+        hung: summary.hung + (conversation.status === "hung" ? 1 : 0),
       };
     },
     { active: 0, conversations: 0, failed: 0, hung: 0 },
@@ -357,25 +348,18 @@ function ConversationDurationTooltip(props: {
 
 function chartTooltipRows(
   point: DurationPoint,
-  detail: ConversationDetailFeed | undefined,
+  detail: ConversationDetailReport | undefined,
 ): Array<[string, ReactNode]> {
   const session = point.conversation;
   const actor = conversationActorLabel(point.conversation);
   const location = session
     ? slackLocationLabel(session, { includeId: false })
     : undefined;
-  const tokenSummary = summarizeUsage(
-    (detail?.runs ?? point.conversation?.runs ?? []).map(
-      (turn) => turn.cumulativeUsage,
-    ),
-  );
-  const costSummary = summarizeCost(
-    (detail?.runs ?? point.conversation?.runs ?? []).map(
-      (turn) => turn.cumulativeUsage,
-    ),
-  );
-  const messageSummary = detail ? summarizeMessages(detail.runs) : undefined;
-  const toolSummary = detail ? summarizeToolCalls(detail.runs) : undefined;
+  const usage = detail?.cumulativeUsage ?? point.conversation?.cumulativeUsage;
+  const tokenSummary = summarizeUsage(usage);
+  const costSummary = summarizeCost(usage);
+  const messageSummary = detail ? summarizeMessages(detail) : undefined;
+  const toolSummary = detail ? summarizeToolCalls(detail) : undefined;
   const rows: Array<[string, ReactNode] | null> = [
     [
       "duration",

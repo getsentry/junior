@@ -1,9 +1,10 @@
 import { readConversationStatsFromSql } from "./stats.query";
-import type { ConversationStatsReport } from "./types";
+import { conversationStatsReportSchema } from "./schema";
+import type { ConversationStatsReport } from "./schema";
 
 /** Load aggregate conversation stats directly from durable SQL records. */
 export async function readConversationStats(): Promise<ConversationStatsReport> {
-  return readConversationStatsFromSql();
+  return conversationStatsReportSchema.parse(
+    await readConversationStatsFromSql(),
+  );
 }
-
-export type { ConversationStatsItem, ConversationStatsReport } from "./types";

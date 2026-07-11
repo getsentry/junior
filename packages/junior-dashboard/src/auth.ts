@@ -1,18 +1,12 @@
 import { betterAuth } from "better-auth/minimal";
+import { dashboardIdentitySchema } from "./api/schema";
+import type { DashboardIdentity } from "./api/schema";
 import { resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 
-export interface DashboardUser {
-  email?: string | null;
-  emailVerified?: boolean;
-  hostedDomain?: string | null;
-  name?: string | null;
-}
-
-export interface DashboardSession {
-  user: DashboardUser;
-}
+export type DashboardUser = DashboardIdentity["user"];
+export type DashboardSession = DashboardIdentity;
 
 export interface DashboardAuthConfig {
   baseURL?: string;
@@ -36,14 +30,14 @@ export function sanitizeDashboardSession(
   session: DashboardSession,
 ): DashboardSession {
   const { email, emailVerified, hostedDomain, name } = session.user;
-  return {
+  return dashboardIdentitySchema.parse({
     user: {
       email,
       emailVerified,
       hostedDomain,
       name,
     },
-  };
+  });
 }
 
 function required(value: string | undefined, name: string): string {

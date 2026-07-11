@@ -1,0 +1,10 @@
+---
+editUrl: false
+next: false
+prev: false
+title: "conversationStatsReportSchema"
+---
+
+> `const` **conversationStatsReportSchema**: `ZodObject`\<\{ `active`: `ZodNumber`; `actors`: `ZodArray`\<`ZodObject`\<\{ `active`: `ZodNumber`; `conversations`: `ZodNumber`; `costUsd`: `ZodOptional`\<`ZodNumber`\>; `durationMs`: `ZodNumber`; `failed`: `ZodNumber`; `hung`: `ZodNumber`; `label`: `ZodString`; `tokens`: `ZodOptional`\<`ZodNumber`\>; \}, `$strict`\>\>; `conversations`: `ZodNumber`; `costUsd`: `ZodOptional`\<`ZodNumber`\>; `durationMs`: `ZodNumber`; `failed`: `ZodNumber`; `generatedAt`: `ZodString`; `hung`: `ZodNumber`; `locations`: `ZodArray`\<`ZodObject`\<\{ `active`: `ZodNumber`; `conversations`: `ZodNumber`; `costUsd`: `ZodOptional`\<`ZodNumber`\>; `durationMs`: `ZodNumber`; `failed`: `ZodNumber`; `hung`: `ZodNumber`; `label`: `ZodString`; `tokens`: `ZodOptional`\<`ZodNumber`\>; \}, `$strict`\>\>; `sampleLimit`: `ZodNumber`; `sampleSize`: `ZodNumber`; `source`: `ZodLiteral`\<`"conversation_index"`\>; `tokens`: `ZodOptional`\<`ZodNumber`\>; `truncated`: `ZodBoolean`; `windowEnd`: `ZodString`; `windowStart`: `ZodString`; \}, `$strict`\>
+
+Defined in: junior/src/api/conversations/schema.ts:210
