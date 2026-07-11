@@ -31,6 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - id: request
         run: |
@@ -48,21 +49,14 @@ jobs:
 
           echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
 
-      - id: changes
-        run: |
-          set -euo pipefail
-
-          base_ref="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
-          head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
-
-          if git diff --quiet "$base_ref" "$head_ref" -- \
-            packages/junior-evals/evals \
-            packages/junior-evals/vitest.evals.config.ts \
-            packages/junior/src; then
-            echo "evals_changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "evals_changed=true" >> "$GITHUB_OUTPUT"
-          fi
+      - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        id: changes
+        with:
+          filters: |
+            evals_changed:
+              - packages/junior-evals/evals/**
+              - packages/junior-evals/vitest.evals.config.ts
+              - packages/junior/src/**
 
       - id: secrets
         env:

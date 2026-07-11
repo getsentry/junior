@@ -31,7 +31,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       evals: ${{ steps.filter.outputs.evals }}
       example: ${{ steps.filter.outputs.example }}
-      full: ${{ steps.filter.outputs.full }}
+      full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       lint_config: ${{ steps.filter.outputs.lint_config }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
@@ -40,13 +40,68 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - id: filter
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: .github/scripts/ci-paths.sh
-      - if: github.event_name == 'pull_request' && steps.filter.outputs.ci == 'true'
-        run: .github/scripts/ci-paths.test.sh
+      - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        id: filter
+        with:
+          filters: |
+            ci:
+              - .github/workflows/**
+              - .github/actions/**
+            core:
+              - packages/junior/**
+              - packages/junior-plugin-api/**
+              - packages/junior-scheduler/**
+              - packages/junior-testing/**
+              - specs/**
+              - policies/**
+            dashboard:
+              - packages/junior-dashboard/**
+              - packages/junior/**
+              - packages/junior-plugin-api/**
+            docs:
+              - packages/docs/**
+              - README.md
+              - specs/**
+              - policies/**
+            evals:
+              - packages/junior-evals/**
+            example:
+              - apps/example/**
+              - packages/junior/**
+              - packages/junior-plugin-api/**
+            lint_config:
+              - ast-grep/**
+              - sgconfig.yml
+            plugins:
+              - packages/junior-agent-browser/**
+              - packages/junior-amplitude/**
+              - packages/junior-cloudflare/**
+              - packages/junior-datadog/**
+              - packages/junior-github/**
+              - packages/junior-hex/**
+              - packages/junior-linear/**
+              - packages/junior-maintenance/**
+              - packages/junior-memory/**
+              - packages/junior-notion/**
+              - packages/junior-sentry/**
+              - packages/junior-vercel/**
+            repo:
+              - package.json
+              - pnpm-lock.yaml
+              - pnpm-workspace.yaml
+              - tsconfig*.json
+              - packages/*/package.json
+              - apps/*/package.json
+            release:
+              - .craft.yml
+              - .github/workflows/ci.yml
+              - .github/workflows/release.yml
+              - CONTRIBUTING.md
+              - README.md
+              - scripts/bump-release-versions.mjs
+              - scripts/check-release-config.mjs
+              - packages/*/package.json
+              - packages/docs/**
 
   release-check:
     name: check / release config
