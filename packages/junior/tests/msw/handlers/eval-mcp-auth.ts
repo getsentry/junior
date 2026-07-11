@@ -27,6 +27,7 @@ let challenge: EvalMcpAuthChallenge = "bearer";
 let cloudflareStatus: 302 | 403 = 302;
 const capturedRequests: EvalMcpAuthRequest[] = [];
 
+/** Records assertion-safe request metadata without retaining credentials. */
 function captureRequest(
   kind: EvalMcpAuthRequest["kind"],
   request: Request,
@@ -38,6 +39,7 @@ function captureRequest(
   });
 }
 
+/** Models the configured protected-resource challenge at the MCP boundary. */
 function unauthorizedResponse() {
   if (challenge === "cloudflare-access") {
     return new HttpResponse(null, {

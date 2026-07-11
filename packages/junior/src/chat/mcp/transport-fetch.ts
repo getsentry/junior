@@ -47,13 +47,6 @@ async function followRedirect(
   response: Response,
   baseFetch: typeof fetch,
 ): Promise<Response> {
-  if (request.redirect === "manual") {
-    return response;
-  }
-  if (request.redirect === "error") {
-    throw new TypeError("MCP resource request redirected");
-  }
-
   const location = response.headers.get("location");
   if (!location) {
     return response;
@@ -79,16 +72,8 @@ async function followRedirect(
   }
 
   const redirectInit: RequestInit & { duplex?: "half" } = {
-    cache: request.cache,
-    credentials: request.credentials,
     headers,
-    integrity: request.integrity,
-    keepalive: request.keepalive,
     method: becomesGet ? "GET" : request.method,
-    mode: request.mode,
-    redirect: request.redirect,
-    referrer: request.referrer,
-    referrerPolicy: request.referrerPolicy,
     signal: request.signal,
   };
   if (!becomesGet && request.body) {

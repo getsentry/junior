@@ -30,7 +30,6 @@ describe("createMcpTransportFetch", () => {
     expect(baseFetch.mock.calls[1]?.[0]).toEqual(new URL(redirectedUrl));
     expect(baseFetch.mock.calls[1]?.[1]).toMatchObject({
       method: "GET",
-      redirect: "follow",
     });
   });
 });
