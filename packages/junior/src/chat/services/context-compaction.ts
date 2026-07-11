@@ -4,8 +4,8 @@
  * This module bounds visible Pi history for long conversations. It strips
  * runtime-only turn context before summarizing and opens replacement epochs in
  * the durable step store. Capacity compaction retains recent user intent;
- * handoff writes only its summary plus a profile-bound context epoch marker.
- * Runtime bootstrap context never becomes durable semantic history.
+ * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
+ * may later append the current bootstrap; future replacement strips it again.
  */
 import {
   estimateContextTokens,

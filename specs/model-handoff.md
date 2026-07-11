@@ -86,9 +86,12 @@ The same transaction opens a `context_epoch_started` marker with:
 }
 ```
 
-The in-process continuation also receives the current volatile runtime
-bootstrap as a sibling message. Existing transcript stripping rules keep that
-bootstrap out of completed durable semantic history.
+The in-process continuation also receives the current runtime bootstrap as a
+sibling message. The handoff transaction itself persists only the summary;
+ordinary checkpoints may later append that bootstrap and post-handoff output
+to the same profile-bound epoch. This matches normal completed-turn prompt
+storage: same-projection follow-ups reuse the current bootstrap, while later
+context replacement strips it before injecting a fresh bootstrap.
 
 The current marker's `modelProfile` is runtime authority. Its `modelId` is an
 audit snapshot and never pins runtime selection. Every new conversation opens
@@ -122,7 +125,8 @@ turn. No bespoke handoff event or span is added.
 ## Verification
 
 - Component: configuration validates reserved and custom named profiles.
-- Component: successful handoff writes a summary-only profile-bound epoch;
+- Component: successful handoff writes a summary-only profile-bound epoch at
+  the handoff transaction boundary;
   failure leaves the standard projection unchanged.
 - Integration: default and explicitly selected profiles swap model/context in
   the same turn, remove only `handoff`, and own later turns permanently.
