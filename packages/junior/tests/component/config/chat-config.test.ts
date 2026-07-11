@@ -51,18 +51,58 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("openai/gpt-5.5");
   });
 
-  it("uses the default advanced model when AI_ADVANCED_MODEL is unset", async () => {
-    delete process.env.AI_ADVANCED_MODEL;
+  it("uses gpt-5.6-sol for the default handoff profile", async () => {
+    delete process.env.AI_HANDOFF_MODEL;
+    delete process.env.AI_MODEL_PROFILES;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.advancedModelId).toBe("openai/gpt-5.6-sol");
+    expect(botConfig.modelProfiles).toEqual({
+      handoff: "openai/gpt-5.6-sol",
+    });
   });
 
-  it("uses AI_ADVANCED_MODEL when configured", async () => {
-    process.env.AI_ADVANCED_MODEL = "openai/gpt-5.4";
+  it("uses AI_HANDOFF_MODEL for the default handoff profile", async () => {
+    process.env.AI_HANDOFF_MODEL = "openai/gpt-5.4";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.advancedModelId).toBe("openai/gpt-5.4");
+    expect(botConfig.modelProfiles.handoff).toBe("openai/gpt-5.4");
+  });
+
+  it("adds named profiles from AI_MODEL_PROFILES", async () => {
+    process.env.AI_MODEL_PROFILES = JSON.stringify({
+      coding: "openai/gpt-5.4",
+      research: "anthropic/claude-opus-4.6",
+    });
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.modelProfiles).toEqual({
+      handoff: "openai/gpt-5.6-sol",
+      coding: "openai/gpt-5.4",
+      research: "anthropic/claude-opus-4.6",
+    });
+  });
+
+  it("fails when a durable profile is no longer configured", async () => {
+    delete process.env.AI_MODEL_PROFILES;
+
+    const { botConfig } = await loadConfig();
+    const { modelIdForProfile, ModelProfileNotConfiguredError } =
+      await import("@/chat/model-profile");
+    expect(() => modelIdForProfile(botConfig, "coding")).toThrowError(
+      ModelProfileNotConfiguredError,
+    );
+  });
+
+  it.each([
+    ["[]", "must be a JSON object"],
+    ['{"standard":"openai/gpt-5.4"}', 'profile "standard" is reserved'],
+    ['{"handoff":"openai/gpt-5.4"}', 'profile "handoff" is reserved'],
+    ['{"Coding":"openai/gpt-5.4"}', "must match"],
+    ['{"coding":""}', "must not be empty"],
+  ])("rejects invalid AI_MODEL_PROFILES %s", async (value, message) => {
+    process.env.AI_MODEL_PROFILES = value;
+
+    await expect(loadConfig()).rejects.toThrow(message);
   });
 
   it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", async () => {

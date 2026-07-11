@@ -2,6 +2,11 @@ import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import {
+  DEFAULT_HANDOFF_MODEL_PROFILE,
+  modelProfileSchema,
+  STANDARD_MODEL_PROFILE,
+} from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -30,11 +35,11 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotConfig {
-  advancedModelId: string;
   embeddingModelId: string;
   fastModelId: string;
   loadingMessages: string[];
   modelId: string;
+  modelProfiles: Readonly<Record<string, string>>;
   modelContextWindowTokens?: number;
   visionModelId?: string;
   turnTimeoutMs: number;
@@ -155,7 +160,7 @@ const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.4-mini",
 ).id;
-const DEFAULT_ADVANCED_MODEL_ID = getModel(
+const DEFAULT_HANDOFF_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-sol",
 ).id;
@@ -170,6 +175,51 @@ function validateGatewayModelId(raw: string | undefined): string | undefined {
 
 function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
+}
+
+function parseModelProfiles(
+  rawValue: string | undefined,
+  handoffModelId: string,
+): Readonly<Record<string, string>> {
+  const profiles: Record<string, string> = {
+    [DEFAULT_HANDOFF_MODEL_PROFILE]: handoffModelId,
+  };
+  const trimmed = toOptionalTrimmed(rawValue);
+  if (trimmed === undefined) {
+    return profiles;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error("AI_MODEL_PROFILES must be a JSON object");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI_MODEL_PROFILES must be a JSON object");
+  }
+  for (const [profile, rawModelId] of Object.entries(parsed)) {
+    if (!modelProfileSchema.safeParse(profile).success) {
+      throw new Error(
+        `AI_MODEL_PROFILES profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
+      );
+    }
+    if (
+      profile === STANDARD_MODEL_PROFILE ||
+      profile === DEFAULT_HANDOFF_MODEL_PROFILE
+    ) {
+      throw new Error(`AI_MODEL_PROFILES profile "${profile}" is reserved`);
+    }
+    if (typeof rawModelId !== "string") {
+      throw new Error(`AI_MODEL_PROFILES.${profile} must be a model id string`);
+    }
+    const modelId = validateGatewayModelId(rawModelId);
+    if (!modelId) {
+      throw new Error(`AI_MODEL_PROFILES.${profile} must not be empty`);
+    }
+    profiles[profile] = modelId;
+  }
+  return profiles;
 }
 
 function parseReactionEmoji(
@@ -197,13 +247,13 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const fastModelId =
     validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
     DEFAULT_FAST_MODEL_ID;
+  const handoffModelId =
+    validateGatewayModelId(env.AI_HANDOFF_MODEL) ?? DEFAULT_HANDOFF_MODEL_ID;
 
   return {
-    advancedModelId:
-      validateGatewayModelId(env.AI_ADVANCED_MODEL) ??
-      DEFAULT_ADVANCED_MODEL_ID,
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     modelId,
+    modelProfiles: parseModelProfiles(env.AI_MODEL_PROFILES, handoffModelId),
     modelContextWindowTokens: parseOptionalPositiveInteger(
       "AI_MODEL_CONTEXT_WINDOW_TOKENS",
       env.AI_MODEL_CONTEXT_WINDOW_TOKENS,

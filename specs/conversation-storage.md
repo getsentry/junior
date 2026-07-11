@@ -223,8 +223,9 @@ transaction:
 1. append a `context_epoch_started` marker step carrying `reason`
    (`initial` | `compaction` | `handoff` | `rollback`), authoritative
    `modelProfile`, and audit-only `modelId` that opens the next epoch; initial
-   selects `standard`, handoff selects `advanced`, and compaction/rollback
-   inherit the current profile while resolving its current configured model id,
+   selects `standard`, handoff records its selected configured non-standard
+   profile, and compaction/rollback inherit the current profile while resolving
+   its current configured model id,
    then
 2. append the replacement context as ordinary `pi_message` rows in the new epoch,
    preserving each message's original timestamp so replay is byte-stable.
@@ -232,12 +233,13 @@ transaction:
 The prior epoch remains intact as audit history. "Current context" is therefore a
 single indexed query (highest epoch, `pi_message`, ordered by `seq`) with no
 pointer-chasing and no in-row transcript payloads. Legacy compaction and
-rollback markers without `modelProfile` resolve to `standard`; legacy epoch
-markers may omit `modelId`, and markerless legacy history has no inferred model
-id. New markers require both fields. Runtime always selects through
+rollback markers may omit both model binding fields and resolve to `standard`;
+markerless legacy history has no inferred model id. New markers require both
+fields. Runtime always selects through
 `modelProfile`; the stored `modelId` records configuration drift but never pins
-execution. Handoff requires an explicit `advanced` binding, and `fast` cannot
-own a main projection.
+execution. Handoff requires an explicit valid profile binding. Whether a named
+profile is configured is a runtime configuration concern, not a storage-schema
+concern.
 
 ### Subagent Child Conversations
 

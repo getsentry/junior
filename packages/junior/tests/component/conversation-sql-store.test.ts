@@ -9,6 +9,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 import {
   juniorConversations,
   juniorDestinations,

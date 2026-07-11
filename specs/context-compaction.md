@@ -18,8 +18,8 @@ Define how Junior bounds long-running conversation context by replacing reusable
 ## Non-Goals
 
 - Remote or server-side compaction endpoints. Junior owns all summarization, retained-message selection, replacement construction, persistence, and triggers locally.
-- User-facing compaction commands or slash commands. The argument-free handoff
-  model tool is the one explicit caller owned by `./model-handoff.md`.
+- User-facing compaction commands or slash commands. The handoff model tool is
+  the one explicit caller owned by `./model-handoff.md`.
 - Other manual or forced compaction APIs.
 - Mid-turn compaction while an agent turn is actively generating.
 - Compaction while the conversation log has an unconsumed timeout or auth pause.
@@ -67,8 +67,8 @@ and records the exact currently resolved model id for audit. Later steps
 in the same conversation carry the new epoch, and reducers ignore steps from
 older epochs. Legacy compaction and rollback markers without `modelProfile` or
 `modelId`
-resolve to `standard`; handoff requires an explicit `advanced` binding, and
-`fast` never owns a main-conversation projection. (Earlier storage used a
+resolve to `standard`; handoff requires an explicit valid profile binding.
+Whether that profile is configured is resolved by the runtime. (Earlier storage used a
 `projection_reset` entry embedding the replacement `messages` array and
 advancing a `sessionId` marker.)
 
@@ -95,10 +95,10 @@ The summary must be stored as one model-visible compaction item, not as an accum
 
 Model handoff uses this same summarizer without the automatic threshold. A
 successful handoff writes a summary-only replacement epoch whose marker records
-`reason: "handoff"`, `modelProfile: "advanced"`, and the resolved advanced
+`reason: "handoff"`, the selected named `modelProfile`, and its resolved
 `modelId`. The in-process continuation
 may carry the current volatile runtime bootstrap beside that summary; it must
-not copy raw transcript history into the advanced context.
+not copy raw transcript history into the target context.
 
 When summary input must be bounded before calling the summarizer, Junior must omit older context before newer context. Recent Pi history is the most important source for continuation, so truncation must preserve the tail of the reusable history rather than blindly taking the first bytes of the reduced log projection.
 

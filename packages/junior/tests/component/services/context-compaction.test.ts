@@ -239,7 +239,7 @@ describe("context compaction projection reset", () => {
     });
   });
 
-  it("handoff binds the advanced profile and later projection replacements inherit it", async () => {
+  it("handoff binds its named profile and later projection replacements inherit it", async () => {
     const { compactContextForHandoff, createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { commitMessages, loadConversationProjection, loadProjection } =
@@ -262,8 +262,11 @@ describe("context compaction projection reset", () => {
     const handoffMessages = await compactContextForHandoff(
       {
         conversationId,
-        modelId: "test/advanced",
         piMessages: priorMessages,
+        target: {
+          modelId: botConfig.modelProfiles.handoff,
+          modelProfile: "handoff",
+        },
       },
       {
         completeText: async () =>
@@ -283,7 +286,7 @@ describe("context compaction projection reset", () => {
     );
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
     const marker = (await getAgentStepStore().loadHistory(conversationId))
       .map((step) => step.entry)
       .find(
@@ -293,13 +296,13 @@ describe("context compaction projection reset", () => {
     expect(marker).toEqual({
       type: "context_epoch_started",
       reason: "handoff",
-      modelProfile: "advanced",
-      modelId: "test/advanced",
+      modelProfile: "handoff",
+      modelId: botConfig.modelProfiles.handoff,
     });
 
     const compactor = createContextCompactor({
       completeText: async () =>
-        ({ text: "Continue the advanced implementation." }) as never,
+        ({ text: "Continue the handed-off implementation." }) as never,
       autoCompactionTriggerTokens: 0,
     });
     const compacted = await compactor.maybeCompact({
@@ -310,16 +313,16 @@ describe("context compaction projection reset", () => {
     expect(compacted.compacted).toBe(true);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
 
     await commitMessages({
-      modelId: "test/advanced",
+      modelId: "test/handoff",
       conversationId,
       messages: [user("Replacement safe boundary.", 3)],
     });
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
     const projectionMarkers = (
       await getAgentStepStore().loadHistory(conversationId)
     )
@@ -339,18 +342,18 @@ describe("context compaction projection reset", () => {
       },
       {
         reason: "handoff",
-        modelProfile: "advanced",
-        modelId: "test/advanced",
+        modelProfile: "handoff",
+        modelId: botConfig.modelProfiles.handoff,
       },
       {
         reason: "compaction",
-        modelProfile: "advanced",
-        modelId: botConfig.advancedModelId,
+        modelProfile: "handoff",
+        modelId: botConfig.modelProfiles.handoff,
       },
       {
         reason: "rollback",
-        modelProfile: "advanced",
-        modelId: "test/advanced",
+        modelProfile: "handoff",
+        modelId: "test/handoff",
       },
     ]);
   });
@@ -372,8 +375,11 @@ describe("context compaction projection reset", () => {
       compactContextForHandoff(
         {
           conversationId,
-          modelId: "test/advanced",
           piMessages: priorMessages,
+          target: {
+            modelId: "test/handoff",
+            modelProfile: "handoff",
+          },
         },
         {
           completeText: async () => {
@@ -408,9 +414,12 @@ describe("context compaction projection reset", () => {
       compactContextForHandoff(
         {
           conversationId,
-          modelId: "test/advanced",
           piMessages: priorMessages,
           signal: controller.signal,
+          target: {
+            modelId: "test/handoff",
+            modelProfile: "handoff",
+          },
         },
         {
           completeText: async (params) => {

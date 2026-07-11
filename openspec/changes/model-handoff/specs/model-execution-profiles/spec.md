@@ -2,7 +2,8 @@
 
 ## Requirement: Conversation Model Profiles
 
-Junior SHALL expose validated `standard` and `advanced` conversation profiles.
+Junior SHALL bind every context projection to a validated host-owned model
+profile and record the resolved model id for audit.
 
 #### Scenario: Initial conversation
 
@@ -10,23 +11,16 @@ Junior SHALL expose validated `standard` and `advanced` conversation profiles.
 - **THEN** it opens an `initial` projection bound to `standard`
 - **AND** records the resolved standard model id for audit.
 
-#### Scenario: Legacy markerless conversation
-
-- **WHEN** a legacy conversation has no projection marker
-- **THEN** it resolves to the configured standard model
-- **AND** Junior does not invent a historical exact model id.
-
 #### Scenario: Handoff succeeds
 
-- **WHEN** a handoff projection commits
-- **THEN** it binds `modelProfile: "advanced"`
-- **AND** records the resolved advanced model id for audit
-- **AND** every future turn starts directly on the advanced model.
+- **WHEN** handoff commits with a selected configured profile
+- **THEN** the new projection records that profile and its resolved model id
+- **AND** every future turn starts directly on that profile.
 
 #### Scenario: Projection is replaced
 
 - **WHEN** compaction or rollback creates a replacement projection
-- **THEN** it copies the current projection's authoritative model profile
+- **THEN** it copies the current projection's authoritative profile
 - **AND** records the model id resolved from current configuration.
 
 #### Scenario: Configuration changes after an epoch
@@ -35,27 +29,37 @@ Junior SHALL expose validated `standard` and `advanced` conversation profiles.
 - **THEN** runtime uses the newly configured model
 - **AND** preserves the stored id as audit evidence rather than a pin.
 
-#### Scenario: Legacy marker without audit id
+#### Scenario: Configured profile is removed
 
-- **WHEN** a legacy marker omits `modelId`
-- **THEN** it remains readable with no invented audit value.
+- **WHEN** durable history selects a custom profile that is no longer configured
+- **THEN** runtime fails with a configuration error
+- **AND** does not fall back to the audit id or another profile.
 
-#### Scenario: Legacy replacement marker without profile
+#### Scenario: Legacy history
 
-- **WHEN** a legacy compaction or rollback marker omits `modelProfile`
-- **THEN** it resolves to standard.
-
-#### Scenario: Invalid binding
-
-- **WHEN** handoff omits its advanced binding or any projection selects another
-  profile
-- **THEN** strict durable-history decoding rejects the marker.
+- **WHEN** markerless history or a legacy replacement marker lacks a profile
+- **THEN** it resolves to `standard`
+- **AND** Junior does not invent an exact historical model id.
 
 ## Requirement: Host-Owned Model Catalog
 
-Model-facing controls SHALL select profiles rather than raw provider model ids.
+Model-facing controls SHALL select configured profiles rather than raw provider
+model ids.
 
-#### Scenario: Advanced configuration
+#### Scenario: Default handoff profile
 
-- **WHEN** `AI_ADVANCED_MODEL` is configured
-- **THEN** handoff resolves advanced through that host-owned value.
+- **WHEN** `AI_HANDOFF_MODEL` is unset
+- **THEN** `handoff` resolves to `openai/gpt-5.6-sol`.
+
+#### Scenario: Additional named profiles
+
+- **WHEN** `AI_MODEL_PROFILES` contains valid profile-to-model mappings
+- **THEN** those non-standard profile names are available to handoff
+- **AND** `standard` and `handoff` cannot be overridden.
+
+#### Scenario: Tool schema is exposed
+
+- **WHEN** Junior builds the standard agent's handoff tool
+- **THEN** its optional profile argument contains only configured non-standard
+  profile names
+- **AND** omitting the argument or passing `null` selects `handoff`.

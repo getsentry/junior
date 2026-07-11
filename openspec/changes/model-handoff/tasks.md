@@ -9,9 +9,10 @@
 
 ## Runtime
 
-- [x] Add `AI_ADVANCED_MODEL` and standard/advanced profile resolution.
-- [x] Add standalone argument-free `handoff` and mixed-batch rejection.
-- [x] Write a summary-only advanced projection atomically.
+- [x] Add reserved standard/handoff profiles, custom named profile resolution,
+      and a `gpt-5.6-sol` default handoff target.
+- [x] Add standalone profile-selecting `handoff` and mixed-batch rejection.
+- [x] Write a summary-only profile-bound projection atomically.
 - [x] Swap model/context/tools through Pi `prepareNextTurn` in the same run.
 - [x] Remove `handoff` after success and preserve every normal main-agent tool.
 - [x] Preserve provisional text, usage aggregation, yield, timeout, auth,
@@ -27,5 +28,5 @@
 - [x] Integration: same-turn and future-turn distinct-model execution.
 - [x] Integration: mixed batches, post-handoff yield, and hard-worker recovery.
 - [x] Eval: distinct-model two-turn coding task with one handoff, two replies,
-      advanced follow-up steps, and the same workspace file.
+      selected-model follow-up steps, and the same workspace file.
 - [x] Manual: local CLI calls handoff and answers in the same turn.

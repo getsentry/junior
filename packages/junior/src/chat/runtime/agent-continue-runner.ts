@@ -75,7 +75,10 @@ import {
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
-import { modelIdForProfile } from "@/chat/model-profile";
+import {
+  modelIdForProfile,
+  STANDARD_MODEL_PROFILE,
+} from "@/chat/model-profile";
 import {
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
@@ -587,7 +590,7 @@ async function recoverStrandedRunningSession(args: {
   const modelProfile = recoveryProjection.modelProfile;
   const modelId = modelIdForProfile(botConfig, modelProfile);
   const recoveryMessages =
-    modelProfile === "advanced"
+    modelProfile !== STANDARD_MODEL_PROFILE
       ? [
           ...stripRuntimeTurnContext(recoveryProjection.messages),
           ...retainRuntimeTurnContext(sessionRecord.piMessages),

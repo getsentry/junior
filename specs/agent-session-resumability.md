@@ -200,14 +200,14 @@ happened:
 - `context_epoch_started`: opens the next context epoch, carrying `reason`
   (`initial` | `compaction` | `handoff` | `rollback`), the projection's
   authoritative `modelProfile`, and the exact resolved `modelId` as an audit
-  snapshot. Initial selects `standard`, handoff selects `advanced`, and
-  compaction/rollback inherit the current profile while resolving the model id
+  snapshot. Initial selects `standard`, handoff records its selected configured
+  non-standard profile, and compaction/rollback inherit the current profile while resolving the model id
   at epoch creation. The id never pins runtime execution. It does not embed a
   transcript array; the replacement context is
   written as ordinary `pi_message` rows in the new epoch in the same
-  transaction. Legacy markers may omit the audit id, and legacy compaction and
-  rollback markers without a profile resolve to `standard`; handoff requires
-  `advanced`, and `fast` cannot own a main projection. (Historical name:
+  transaction. Deployed legacy compaction and rollback markers may omit both
+  binding fields and resolve to `standard`; current profile
+  names must satisfy the canonical profile-name schema. (Historical name:
   `projection_reset`, which embedded the
   replacement `messages`.)
 - `mcp_provider_connected`: records that a configured MCP provider was

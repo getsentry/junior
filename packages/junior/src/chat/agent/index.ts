@@ -105,7 +105,13 @@ import {
 import { wireAgentTools } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
-import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
+import {
+  DEFAULT_HANDOFF_MODEL_PROFILE,
+  modelIdForProfile,
+  ModelProfileNotConfiguredError,
+  STANDARD_MODEL_PROFILE,
+  type ModelProfile,
+} from "@/chat/model-profile";
 import { compactContextForHandoff } from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
@@ -206,7 +212,7 @@ async function executeAgentRunInPrivacyContext(
   let turnUsage: AgentTurnUsage | undefined;
   let handoffPhaseUsage: AgentTurnUsage | undefined;
   let thinkingSelection: TurnThinkingSelection | undefined;
-  let activeModelProfile: ModelProfile = "standard";
+  let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRouting(routing);
   const surface = surfaceFromRouting(routing);
@@ -466,48 +472,60 @@ async function executeAgentRunInPrivacyContext(
       | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
+    const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
+      DEFAULT_HANDOFF_MODEL_PROFILE,
+      ...Object.keys(botConfig.modelProfiles)
+        .filter((profile) => profile !== DEFAULT_HANDOFF_MODEL_PROFILE)
+        .sort(),
+    ];
     const requestHandoff =
-      activeModelProfile === "standard" && sessionConversationId
-        ? async (signal?: AbortSignal) => {
-            const sourceMessages = [...agent!.state.messages];
-            const runtimeContext = retainRuntimeTurnContext(sourceMessages);
-            const standardPhaseUsage = extractGenAiUsageSummary(
-              ...sourceMessages
-                .slice(runResume.beforeMessageCount)
-                .filter(isAssistantMessage),
-            );
-            const phaseUsage = hasAgentTurnUsage(standardPhaseUsage)
-              ? standardPhaseUsage
-              : undefined;
-            const advancedModelId = modelIdForProfile(botConfig, "advanced");
-            const advancedModel = resolveGatewayModel(advancedModelId);
-            const advancedThinkingLevel = toAgentThinkingLevel(
-              thinkingSelection!.thinkingLevel,
-            );
-            const handoffMessages = await compactContextForHandoff(
-              {
-                conversationContext: input.conversationContext,
-                conversationId: sessionConversationId,
-                modelId: advancedModelId,
-                piMessages: sourceMessages,
-                signal,
-                metadata: {
-                  threadId: routing.correlation?.threadId,
-                  channelId: routing.correlation?.channelId,
-                  actorId: routing.correlation?.actorId,
-                  runId: routing.correlation?.runId,
+      activeModelProfile === STANDARD_MODEL_PROFILE && sessionConversationId
+        ? {
+            profiles: handoffProfiles,
+            execute: async (profile: ModelProfile, signal?: AbortSignal) => {
+              const sourceMessages = [...agent!.state.messages];
+              const runtimeContext = retainRuntimeTurnContext(sourceMessages);
+              const standardPhaseUsage = extractGenAiUsageSummary(
+                ...sourceMessages
+                  .slice(runResume.beforeMessageCount)
+                  .filter(isAssistantMessage),
+              );
+              const phaseUsage = hasAgentTurnUsage(standardPhaseUsage)
+                ? standardPhaseUsage
+                : undefined;
+              const target = {
+                modelId: modelIdForProfile(botConfig, profile),
+                modelProfile: profile,
+              };
+              const handoffModel = resolveGatewayModel(target.modelId);
+              const handoffThinkingLevel = toAgentThinkingLevel(
+                thinkingSelection!.thinkingLevel,
+              );
+              const handoffMessages = await compactContextForHandoff(
+                {
+                  conversationContext: input.conversationContext,
+                  conversationId: sessionConversationId,
+                  piMessages: sourceMessages,
+                  signal,
+                  target,
+                  metadata: {
+                    threadId: routing.correlation?.threadId,
+                    channelId: routing.correlation?.channelId,
+                    actorId: routing.correlation?.actorId,
+                    runId: routing.correlation?.runId,
+                  },
                 },
-              },
-              { completeText },
-            );
-            handoffPhaseUsage = phaseUsage;
-            pendingHandoff = {
-              messages: [...handoffMessages, ...runtimeContext],
-              model: advancedModel,
-              thinkingLevel: advancedThinkingLevel,
-            };
-            activeModelProfile = "advanced";
-            activeModelId = advancedModelId;
+                { completeText },
+              );
+              handoffPhaseUsage = phaseUsage;
+              pendingHandoff = {
+                messages: [...handoffMessages, ...runtimeContext],
+                model: handoffModel,
+                thinkingLevel: handoffThinkingLevel,
+              };
+              activeModelProfile = profile;
+              activeModelId = target.modelId;
+            },
           }
         : undefined;
 
@@ -597,7 +615,7 @@ async function executeAgentRunInPrivacyContext(
     let hasEmittedText = false;
     let needsSeparator = false;
     // Standard text is provisional until message_end proves the assistant did
-    // not request handoff; advanced output can stream immediately.
+    // not request handoff; post-handoff output can stream immediately.
     let bufferedStandardText = "";
     let bufferedStandardMessageStart = false;
     const startAssistantMessage = () => {
@@ -761,7 +779,7 @@ async function executeAgentRunInPrivacyContext(
           .then(() => undefined);
       }
       if (event.type === "message_start") {
-        if (activeModelProfile === "standard" && requestHandoff) {
+        if (activeModelProfile === STANDARD_MODEL_PROFILE && requestHandoff) {
           bufferedStandardMessageStart = true;
           bufferedStandardText = "";
         } else {
@@ -1087,6 +1105,9 @@ async function executeAgentRunInPrivacyContext(
       }
     }
 
+    if (error instanceof ModelProfileNotConfiguredError) {
+      throw error;
+    }
     if (isProviderRetryError(error)) {
       throw error;
     }

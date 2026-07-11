@@ -4,7 +4,7 @@
  * This module bounds visible Pi history for long conversations. It strips
  * runtime-only turn context before summarizing and opens replacement epochs in
  * the durable step store. Capacity compaction retains recent user intent;
- * handoff writes only its summary plus an advanced-bound context epoch marker.
+ * handoff writes only its summary plus a profile-bound context epoch marker.
  * Runtime bootstrap context never becomes durable semantic history.
  */
 import {
@@ -32,7 +32,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
-import { modelIdForProfile } from "@/chat/model-profile";
+import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_INPUT_CHARS = 80_000;
@@ -41,8 +41,8 @@ const MAX_SUMMARY_CHARS = 6_000;
 const MAX_RENDERED_MESSAGE_CHARS = 4_000;
 const COMPACTION_SUMMARY_PREFIX =
   "Context compaction summary for future Junior turns:";
-// TODO(v0.95.0): Remove support for the legacy "Context handoff summary"
-// prefix after the v0.94 conversation-history retention horizon.
+// TODO(v0.97.0): Remove support for the deployed "Context handoff summary"
+// prefix after pre-rename rows pass the conversation-history retention horizon.
 const LEGACY_COMPACTION_SUMMARY_PREFIX =
   "Context handoff summary for future Junior turns:";
 const MODEL_HANDOFF_SUMMARY_PREFIX =
@@ -82,9 +82,12 @@ interface HandoffContextArgs {
   conversationContext?: string;
   conversationId: string;
   metadata?: CompactContextArgs["metadata"];
-  modelId: string;
   piMessages: PiMessage[];
   signal?: AbortSignal;
+  target: {
+    modelId: string;
+    modelProfile: ModelProfile;
+  };
 }
 
 function textPart(value: unknown): string | undefined {
@@ -506,7 +509,7 @@ export function createContextCompactor(
   };
 }
 
-/** Compact the active conversation and durably upgrade it to the advanced model. */
+/** Compact the active conversation and durably bind its selected handoff profile. */
 export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
@@ -517,8 +520,8 @@ export async function compactContextForHandoff(
   args.signal?.throwIfAborted();
   await getAgentStepStore().startEpoch(args.conversationId, {
     reason: "handoff",
-    modelProfile: "advanced",
-    modelId: args.modelId,
+    modelProfile: args.target.modelProfile,
+    modelId: args.target.modelId,
     messages: [
       {
         message,

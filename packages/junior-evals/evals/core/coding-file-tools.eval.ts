@@ -83,7 +83,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     expect(toolCalls(result.session)[0]).toMatchObject({ name: "handoff" });
   });
 
-  it("hands a coding task to the advanced projection and keeps that model and workspace on the next turn", async ({
+  it("hands a coding task to the handoff projection and keeps that model and workspace on the next turn", async ({
     run,
   }) => {
     const thread = {
@@ -118,18 +118,23 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     });
 
     const calls = toolCalls(result.session);
-    expect(calls[0]).toMatchObject({ name: "handoff" });
+    expect(calls[0]).toMatchObject({
+      name: "handoff",
+      arguments: { profile: "coding" },
+    });
     expect(calls.filter((call) => call.name === "handoff")).toHaveLength(1);
 
     const steps = await agentSteps(result.session);
     const markers = steps.filter(
-      (step) => step.entry.type === "context_epoch_started",
+      (step) =>
+        step.entry.type === "context_epoch_started" &&
+        step.entry.reason === "handoff",
     );
     expect(markers).toHaveLength(1);
     expect(markers[0]?.entry).toMatchObject({
       type: "context_epoch_started",
       reason: "handoff",
-      modelProfile: "advanced",
+      modelProfile: "coding",
     });
 
     const replies = assistantMessages(result.session).filter(
@@ -151,7 +156,7 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ),
     );
     expect(followUp).toBeDefined();
-    const firstAdvancedModels = steps
+    const firstHandoffModels = steps
       .filter(
         (step) =>
           step.seq > markers[0]!.seq &&
@@ -165,9 +170,9 @@ describeEval("Coding File Tools", slackEvals, (it) => {
           ? step.entry.message.model
           : undefined,
       );
-    const advancedModel = firstAdvancedModels.at(-1);
-    expect(advancedModel).toBeDefined();
-    expect(advancedModel).not.toBe(process.env.AI_MODEL);
+    const handoffModel = firstHandoffModels.at(-1);
+    expect(handoffModel).toBeDefined();
+    expect(handoffModel).not.toBe(process.env.AI_MODEL);
     const followUpModels = steps
       .filter(
         (step) =>
@@ -182,6 +187,6 @@ describeEval("Coding File Tools", slackEvals, (it) => {
           : undefined,
       );
     expect(followUpModels.length).toBeGreaterThan(0);
-    expect(followUpModels).toEqual(followUpModels.map(() => advancedModel));
+    expect(followUpModels).toEqual(followUpModels.map(() => handoffModel));
   });
 });

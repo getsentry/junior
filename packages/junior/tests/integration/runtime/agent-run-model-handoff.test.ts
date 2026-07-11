@@ -8,9 +8,20 @@ const observations = vi.hoisted(() => ({
   initialToolNames: [] as string[],
   mixedBatch: false,
   providerCalls: 0,
+  requestedProfile: undefined as string | null | undefined,
   summaryCalls: 0,
   textDeltas: [] as string[],
 }));
+
+vi.mock("@/chat/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/config")>();
+  const config = actual.readChatConfig({
+    ...process.env,
+    AI_HANDOFF_MODEL: "openai/gpt-5.6-sol",
+    AI_MODEL_PROFILES: JSON.stringify({ coding: "openai/gpt-5.4" }),
+  });
+  return { ...actual, botConfig: config.bot };
+});
 
 vi.mock("@/chat/pi/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/pi/client")>();
@@ -51,14 +62,17 @@ vi.mock("@/chat/pi/traced-stream", () => ({
         ? "The standard model started an answer that must be hidden."
         : observations.mixedBatch
           ? "Standard model recovered safely."
-          : "Advanced model completed it.";
+          : "Handoff model completed it.";
     const content: Array<Record<string, unknown>> = [{ type: "text", text }];
     if (call === 1) {
       content.push({
         type: "toolCall",
         id: "handoff-call-1",
         name: "handoff",
-        arguments: {},
+        arguments:
+          observations.requestedProfile === undefined
+            ? {}
+            : { profile: observations.requestedProfile },
       });
       if (observations.mixedBatch) {
         content.push({
@@ -135,6 +149,7 @@ describe("executeAgentRun model handoff", () => {
     observations.initialToolNames = [];
     observations.mixedBatch = false;
     observations.providerCalls = 0;
+    observations.requestedProfile = undefined;
     observations.summaryCalls = 0;
     observations.textDeltas = [];
     await disconnectStateAdapter();
@@ -150,6 +165,7 @@ describe("executeAgentRun model handoff", () => {
   });
 
   it("compacts and upgrades the same conversation before continuing the turn", async () => {
+    observations.requestedProfile = null;
     const conversationId = "local:test:model-handoff";
     const outcome = await executeAgentRun({
       input: { messageText: "Implement the multi-file refactor." },
@@ -171,13 +187,13 @@ describe("executeAgentRun model handoff", () => {
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
-    expect(outcome.result.text).toBe("Advanced model completed it.");
+    expect(outcome.result.text).toBe("Handoff model completed it.");
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(
       (outcome.result.diagnostics.usage?.inputTokens ?? 0) +
         (outcome.result.diagnostics.usage?.outputTokens ?? 0),
     ).toBe(10);
-    expect(observations.textDeltas).toEqual(["Advanced model completed it."]);
+    expect(observations.textDeltas).toEqual(["Handoff model completed it."]);
     expect(observations.initialModelId).not.toBe(
       observations.afterHandoffModelId,
     );
@@ -189,7 +205,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.summaryCalls).toBe(1);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
     const epochMarkers = (await getAgentStepStore().loadHistory(conversationId))
       .map((step) => step.entry)
       .filter((entry) => entry.type === "context_epoch_started");
@@ -203,7 +219,7 @@ describe("executeAgentRun model handoff", () => {
       {
         type: "context_epoch_started",
         reason: "handoff",
-        modelProfile: "advanced",
+        modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
       },
     ]);
@@ -238,6 +254,67 @@ describe("executeAgentRun model handoff", () => {
     expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(observations.providerCalls).toBe(3);
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.afterHandoffToolNames).not.toContain("handoff");
+    expect(observations.summaryCalls).toBe(1);
+  });
+
+  it("hands off to a selected named model profile", async () => {
+    observations.requestedProfile = "coding";
+    const conversationId = "local:test:named-model-handoff";
+    const outcome = await executeAgentRun({
+      input: { messageText: "Implement the focused code change." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        correlation: {
+          conversationId,
+          runId: "run-named-model-handoff",
+          turnId: "turn-named-model-handoff",
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.4");
+    expect(observations.afterHandoffModelId).toBe("openai/gpt-5.4");
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("coding");
+    expect(
+      (await getAgentStepStore().loadHistory(conversationId))
+        .map((step) => step.entry)
+        .filter((entry) => entry.type === "context_epoch_started"),
+    ).toEqual([
+      {
+        type: "context_epoch_started",
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: observations.initialModelId,
+      },
+      {
+        type: "context_epoch_started",
+        reason: "handoff",
+        modelProfile: "coding",
+        modelId: "openai/gpt-5.4",
+      },
+    ]);
+
+    const followUp = await executeAgentRun({
+      input: { messageText: "Verify that change now." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        correlation: {
+          conversationId,
+          runId: "run-named-model-handoff-follow-up",
+          turnId: "turn-named-model-handoff-follow-up",
+        },
+      },
+    });
+    expect(followUp.status).toBe("completed");
+    if (followUp.status !== "completed") return;
+    expect(followUp.result.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
   });
@@ -290,7 +367,7 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
     expect(
       (await getAgentStepStore().loadHistory(conversationId))
         .map((step) => step.entry)
@@ -305,7 +382,7 @@ describe("executeAgentRun model handoff", () => {
       {
         type: "context_epoch_started",
         reason: "handoff",
-        modelProfile: "advanced",
+        modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
       },
     ]);

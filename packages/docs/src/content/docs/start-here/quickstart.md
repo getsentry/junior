@@ -372,7 +372,8 @@ Set these values before running real turns:
 | `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                  |
 | `AI_MODEL`                | No                     | Standard main-agent model override.                           |
 | `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.            |
-| `AI_ADVANCED_MODEL`       | No                     | Model used after an advanced-task handoff.                    |
+| `AI_HANDOFF_MODEL`        | No                     | Model for the default `handoff` profile.                      |
+| `AI_MODEL_PROFILES`       | No                     | JSON map of additional named handoff profiles.                |
 | `AI_EMBEDDING_MODEL`      | No                     | Embedding model override for plugin vector retrieval.         |
 | `AI_VISION_MODEL`         | No                     | Enables image understanding when set.                         |
 | `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                        |

@@ -95,7 +95,7 @@ For chat/agent/Slack execution and response behavior:
 - `specs/harness-tool-context.md` owns context-bound tool targeting and missing-context failure behavior.
 - `specs/agent-session-resumability.md` owns session record schema, Pi session continuation, timeout callbacks, and slice lifecycle.
 - `specs/context-compaction.md` owns reusable Pi history compaction, replacement context epochs, and visible-thread compaction bounds.
-- `specs/model-handoff.md` owns permanent in-place main-model upgrades, handoff context replacement, and durable advanced-profile recovery.
+- `specs/model-handoff.md` owns permanent in-place main-model upgrades, named profile selection, handoff context replacement, and durable recovery.
 - `specs/slack-agent-delivery.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
 - `specs/slack-outbound-contract.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
 - `specs/identity.md` owns current actor, system actor, actor, author, creator, credential subject, service principal, and display identity separation across runtime boundaries.

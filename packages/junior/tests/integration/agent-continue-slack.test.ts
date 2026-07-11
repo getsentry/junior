@@ -1109,7 +1109,7 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
-  it("recovers a post-handoff worker death from the advanced summary epoch", async () => {
+  it("recovers a post-handoff worker death from the replacement summary epoch", async () => {
     const conversationId = "slack:C123:1712345.00081";
     const sessionId = "turn_msg_8_handoff";
     const staleText = "raw standard context must not return";
@@ -1154,7 +1154,7 @@ describe("agent continuation Slack integration", () => {
     await getAgentStepStore().startEpoch(conversationId, {
       modelId: "test/model",
       reason: "handoff",
-      modelProfile: "advanced",
+      modelProfile: "handoff",
       messages: [
         {
           message: summaryMessage,
@@ -1162,7 +1162,7 @@ describe("agent continuation Slack integration", () => {
         },
       ],
     });
-    // A prior recovery can park runtime context in the advanced epoch before
+    // A prior recovery can park runtime context in the handoff epoch before
     // another worker dies; the next recovery must replace rather than copy it.
     await getAgentStepStore().append(conversationId, [
       {
@@ -1214,12 +1214,12 @@ describe("agent continuation Slack integration", () => {
         sessionId,
       );
       return completedAgentRun({
-        text: "Advanced recovery completed.",
+        text: "Handoff recovery completed.",
         piMessages: [
           summaryMessage,
           {
             role: "assistant",
-            content: [{ type: "text", text: "Advanced recovery completed." }],
+            content: [{ type: "text", text: "Handoff recovery completed." }],
             timestamp: 6,
           },
         ] as any,
@@ -1266,12 +1266,10 @@ describe("agent continuation Slack integration", () => {
       await import("@/chat/conversations/projection");
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("advanced");
+    ).toBe("handoff");
     const projection = await loadProjection({ conversationId });
     expect(projection[0]).toEqual(summaryMessage);
-    expect(JSON.stringify(projection)).toContain(
-      "Advanced recovery completed.",
-    );
+    expect(JSON.stringify(projection)).toContain("Handoff recovery completed.");
     expect(JSON.stringify(projection)).not.toContain(staleText);
     expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
     const history = await getAgentStepStore().loadHistory(conversationId);
@@ -1283,7 +1281,7 @@ describe("agent continuation Slack integration", () => {
     expect(rollbacks).toHaveLength(2);
     for (const rollback of rollbacks) {
       expect(rollback.entry).toEqual(
-        expect.objectContaining({ modelProfile: "advanced" }),
+        expect.objectContaining({ modelProfile: "handoff" }),
       );
     }
   });

@@ -15,6 +15,11 @@ import type { ConversationCompaction } from "@/chat/state/conversation";
 import { piMessageProvenanceSchema } from "@/chat/state/session-log";
 import { modelProfileSchema } from "@/chat/model-profile";
 
+const handoffModelProfileSchema = modelProfileSchema.refine(
+  (profile) => profile !== "standard",
+  "handoff profile must not be standard",
+);
+
 const piMessageStepEntrySchema = z.object({
   type: z.literal("pi_message"),
   schemaVersion: z.number().int().optional(),
@@ -24,7 +29,7 @@ const piMessageStepEntrySchema = z.object({
 
 // Replaces the legacy `projection_reset` payload at the SQL layer: a marker plus
 // ordinary pi_message rows in the new epoch, not an embedded transcript array.
-const contextEpochStartedEntrySchema = z.discriminatedUnion("reason", [
+const contextEpochStartedEntrySchema = z.union([
   z
     .object({
       type: z.literal("context_epoch_started"),
@@ -37,22 +42,26 @@ const contextEpochStartedEntrySchema = z.discriminatedUnion("reason", [
     .object({
       type: z.literal("context_epoch_started"),
       reason: z.literal("handoff"),
-      modelProfile: z.literal("advanced"),
-      // TODO(v0.95.0): Require modelId after rows written by the first handoff
-      // implementation pass the conversation-history retention horizon.
-      modelId: z.string().min(1).optional(),
+      modelProfile: handoffModelProfileSchema,
+      modelId: z.string().min(1),
     })
     .strict(),
   z
     .object({
       type: z.literal("context_epoch_started"),
       reason: z.union([z.literal("compaction"), z.literal("rollback")]),
-      // TODO(v0.95.0): Remove support for imported compaction/rollback markers
-      // without modelProfile after the SQL import horizon.
-      modelProfile: modelProfileSchema.optional(),
-      // TODO(v0.95.0): Require modelId after pre-audit SQL rows pass the
-      // conversation-history retention horizon.
-      modelId: z.string().min(1).optional(),
+      // TODO(v0.97.0): Remove support for deployed compaction/rollback markers
+      // without model bindings after those rows pass the retention horizon.
+      modelProfile: z.undefined().optional(),
+      modelId: z.undefined().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
+      reason: z.union([z.literal("compaction"), z.literal("rollback")]),
+      modelProfile: modelProfileSchema,
+      modelId: z.string().min(1),
     })
     .strict(),
 ]);
@@ -78,7 +87,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
   z
     .object({
       reason: z.literal("handoff"),
-      modelProfile: z.literal("advanced"),
+      modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
       messages: z.array(piMessageStepSchema),
     })

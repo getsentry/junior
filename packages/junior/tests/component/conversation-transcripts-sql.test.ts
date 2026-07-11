@@ -27,7 +27,7 @@ import {
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
 
-it("accepts only legacy-compatible projection marker bindings", () => {
+it("accepts legacy markers and validates current profile names", () => {
   expect(
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
@@ -53,14 +53,23 @@ it("accepts only legacy-compatible projection marker bindings", () => {
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
       reason: "handoff",
-      modelProfile: "advanced",
+      modelProfile: "handoff",
     }).success,
-  ).toBe(true);
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "handoff",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(false);
   expect(
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
-      modelProfile: "fast",
+      modelProfile: "Fast!",
+      modelId: "openai/gpt-5.4",
     }).success,
   ).toBe(false);
   expect(
@@ -69,6 +78,28 @@ it("accepts only legacy-compatible projection marker bindings", () => {
       reason: "compaction",
     }).success,
   ).toBe(true);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "compaction",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(true);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "compaction",
+      modelProfile: "coding",
+    }).success,
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "compaction",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(false);
 });
 
 it("rejects epoch markers through the ordinary append boundary", async () => {
@@ -90,7 +121,7 @@ it("rejects incomplete markers through the epoch boundary", async () => {
   await expect(
     getAgentStepStore().startEpoch(conversationId, {
       reason: "handoff",
-      modelProfile: "advanced",
+      modelProfile: "handoff",
       messages: [],
     } as never),
   ).rejects.toThrow("Invalid input");
@@ -394,7 +425,7 @@ INSERT INTO junior_agent_steps (
       );
 
       await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
-        /discriminator/,
+        /Invalid input/,
       );
     } finally {
       await fixture.close();

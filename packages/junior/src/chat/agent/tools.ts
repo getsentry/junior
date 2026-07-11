@@ -82,7 +82,7 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
-  requestHandoff?: (signal?: AbortSignal) => Promise<void>;
+  requestHandoff?: ToolRuntimeContext["handoff"];
   resume: ResumeState;
   routing: AgentRunRouting;
   sessionConversationId?: string;

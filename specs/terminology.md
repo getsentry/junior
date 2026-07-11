@@ -77,9 +77,10 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   conversation. An explicit `initial` marker opens epoch 0; compaction,
   handoff, or rollback opens the next epoch when it rebuilds context. Steps in
   older epochs remain audit history and no longer contribute to model context.
-- **Model profile**: the authoritative host-owned role (`standard` or
-  `advanced`) bound to a context epoch. Runtime resolves the profile through
-  current configuration.
+- **Model profile**: a stable host-owned name bound to a context epoch.
+  `standard` owns initial conversations, `handoff` is the default upgrade
+  target, and hosts may configure additional names. Runtime resolves the name
+  through current configuration; models never select raw provider ids.
 - **Epoch model id**: the exact resolved model recorded when a context epoch
   opens. It is audit evidence for configuration drift, not runtime authority or
   a model pin.

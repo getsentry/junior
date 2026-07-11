@@ -80,8 +80,8 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context.md).
 - A standard main agent may call standalone `handoff`. After its summary epoch
   commits, `prepareNextTurn` replaces the active model/context in the same Pi
-  run and removes `handoff`; it does not terminate the run before advanced can
-  answer. Mixed handoff batches execute no calls.
+  run and removes `handoff`; it does not terminate the run before the selected
+  profile can answer. Mixed handoff batches execute no calls.
 
 ## Failure Model
 
