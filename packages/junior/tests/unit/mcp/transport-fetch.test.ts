@@ -32,4 +32,41 @@ describe("createMcpTransportFetch", () => {
       method: "GET",
     });
   });
+
+  it("preserves standard Bearer insufficient-scope responses", async () => {
+    const serverUrl = new URL("https://mcp.example.test/mcp");
+    const challenge =
+      'Bearer error="insufficient_scope", scope="mcp:write", resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource"';
+    const baseFetch = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, {
+        status: 403,
+        headers: { "www-authenticate": challenge },
+      }),
+    );
+    const transportFetch = createMcpTransportFetch(serverUrl, baseFetch);
+
+    const response = await transportFetch(serverUrl, { method: "POST" });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toBe(challenge);
+    expect(baseFetch).toHaveBeenCalledOnce();
+  });
+
+  it("preserves Bearer scope errors after another challenge", async () => {
+    const serverUrl = new URL("https://mcp.example.test/mcp");
+    const challenge =
+      'Resource-OAuth resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource", Bearer error="insufficient_scope", scope="mcp:write"';
+    const baseFetch = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(null, {
+        status: 403,
+        headers: { "www-authenticate": challenge },
+      }),
+    );
+    const transportFetch = createMcpTransportFetch(serverUrl, baseFetch);
+
+    const response = await transportFetch(serverUrl, { method: "POST" });
+
+    expect(response.status).toBe(403);
+    expect(response.headers.get("www-authenticate")).toBe(challenge);
+  });
 });

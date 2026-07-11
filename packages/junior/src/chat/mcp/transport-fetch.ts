@@ -1,4 +1,5 @@
-const CLOUDFLARE_ACCESS_SCHEME = /^Cloudflare-Access\b/i;
+const AUTH_SCHEME = /^\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+(?=\s)/;
+const BEARER_CHALLENGE = /(?:^|,)\s*Bearer(?:\s|$)/i;
 const RESOURCE_METADATA_PARAMETER = /(?:^|[,\s])resource_metadata\s*=/i;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const BODY_HEADERS = [
@@ -17,23 +18,21 @@ function isRedirect(status: number): boolean {
   return REDIRECT_STATUSES.has(status);
 }
 
-/** Rewrites only Cloudflare Access challenges that identify OAuth metadata. */
-function normalizeCloudflareAccessChallenge(response: Response): Response {
+/** Adapts nonstandard protected-resource challenges without masking scope errors. */
+function normalizeProtectedResourceChallenge(response: Response): Response {
   const challenge = response.headers.get("www-authenticate");
   if (
-    (response.status !== 302 && response.status !== 403) ||
     !challenge ||
-    !CLOUDFLARE_ACCESS_SCHEME.test(challenge) ||
+    !AUTH_SCHEME.test(challenge) ||
+    (response.status !== 302 &&
+      (response.status !== 403 || BEARER_CHALLENGE.test(challenge))) ||
     !RESOURCE_METADATA_PARAMETER.test(challenge)
   ) {
     return response;
   }
 
   const headers = new Headers(response.headers);
-  headers.set(
-    "www-authenticate",
-    challenge.replace(CLOUDFLARE_ACCESS_SCHEME, "Bearer"),
-  );
+  headers.set("www-authenticate", challenge.replace(AUTH_SCHEME, "Bearer"));
   headers.delete("location");
   return new Response(response.body, {
     status: 401,
@@ -84,7 +83,7 @@ async function followRedirect(
   return await baseFetch(redirectUrl, redirectInit);
 }
 
-/** Adapts Cloudflare Access MCP challenges to the OAuth SDK's Bearer contract. */
+/** Adapts protected-resource OAuth challenges to the MCP SDK contract. */
 export function createMcpTransportFetch(
   serverUrl: URL,
   baseFetch: typeof fetch = globalThis.fetch,
@@ -98,7 +97,7 @@ export function createMcpTransportFetch(
     const response = await baseFetch(request.clone(), {
       redirect: "manual",
     });
-    const normalized = normalizeCloudflareAccessChallenge(response);
+    const normalized = normalizeProtectedResourceChallenge(response);
     if (normalized !== response) {
       return normalized;
     }

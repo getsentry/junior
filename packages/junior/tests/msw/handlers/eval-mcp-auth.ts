@@ -7,24 +7,24 @@ export const EVAL_MCP_SERVER_URL = `${EVAL_MCP_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_NO_AUTH_ORIGIN = "https://eval-mcp.example.test";
 const EVAL_MCP_NO_AUTH_SERVER_URL = `${EVAL_MCP_NO_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-protected-resource/mcp`;
-const EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/cloudflare-access-protected-resource/mcp`;
-const EVAL_MCP_CLOUDFLARE_LOGIN_URL = `${EVAL_MCP_AUTH_ORIGIN}/cdn-cgi/access/login`;
+const EVAL_MCP_COMPAT_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-protected-resource/compat/mcp`;
+const EVAL_MCP_AUTH_LOGIN_URL = `${EVAL_MCP_AUTH_ORIGIN}/oauth/login`;
 export const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/authorize`;
 const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
 const EVAL_MCP_REGISTRATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/register`;
 const EVAL_MCP_ACCESS_TOKEN = "eval-auth-access-token";
 const EVAL_MCP_SESSION_ID = "eval-auth-session";
 
-type EvalMcpAuthChallenge = "bearer" | "cloudflare-access";
+type EvalMcpAuthChallenge = "bearer" | "nonstandard";
 
 interface EvalMcpAuthRequest {
   authenticated: boolean;
-  kind: "cloudflare-login" | "cloudflare-resource-metadata" | "mcp";
+  kind: "authorization-login" | "compat-resource-metadata" | "mcp";
   method: string;
 }
 
 let challenge: EvalMcpAuthChallenge = "bearer";
-let cloudflareStatus: 302 | 403 = 302;
+let compatibilityStatus: 302 | 403 = 302;
 const capturedRequests: EvalMcpAuthRequest[] = [];
 
 /** Records assertion-safe request metadata without retaining credentials. */
@@ -41,12 +41,12 @@ function captureRequest(
 
 /** Models the configured protected-resource challenge at the MCP boundary. */
 function unauthorizedResponse() {
-  if (challenge === "cloudflare-access") {
+  if (challenge === "nonstandard") {
     return new HttpResponse(null, {
-      status: cloudflareStatus,
+      status: compatibilityStatus,
       headers: {
-        location: EVAL_MCP_CLOUDFLARE_LOGIN_URL,
-        "WWW-Authenticate": `Cloudflare-Access resource_metadata="${EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL}", scope="mcp:read"`,
+        location: EVAL_MCP_AUTH_LOGIN_URL,
+        "WWW-Authenticate": `Resource-OAuth resource_metadata="${EVAL_MCP_COMPAT_RESOURCE_METADATA_URL}", scope="mcp:read"`,
       },
     });
   }
@@ -74,10 +74,10 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
 /** Enables adversarial protected-resource challenges in OAuth integration tests. */
 export function configureEvalMcpAuthMock(options: {
   challenge: EvalMcpAuthChallenge;
-  cloudflareStatus?: 302 | 403;
+  compatibilityStatus?: 302 | 403;
 }): void {
   challenge = options.challenge;
-  cloudflareStatus = options.cloudflareStatus ?? 302;
+  compatibilityStatus = options.compatibilityStatus ?? 302;
 }
 
 /** Exposes a secret-free outbox for asserting the external OAuth request flow. */
@@ -88,7 +88,7 @@ export function getCapturedEvalMcpAuthRequests(): EvalMcpAuthRequest[] {
 /** Isolates OAuth integration tests that share the stateful protocol fixture. */
 export function resetEvalMcpAuthMockState(): void {
   challenge = "bearer";
-  cloudflareStatus = 302;
+  compatibilityStatus = 302;
   capturedRequests.length = 0;
 }
 
@@ -374,17 +374,17 @@ export const evalMcpAuthHandlers = [
       scopes_supported: ["mcp:read"],
     }),
   ),
-  http.get(EVAL_MCP_CLOUDFLARE_RESOURCE_METADATA_URL, async ({ request }) => {
-    captureRequest("cloudflare-resource-metadata", request);
+  http.get(EVAL_MCP_COMPAT_RESOURCE_METADATA_URL, async ({ request }) => {
+    captureRequest("compat-resource-metadata", request);
     return HttpResponse.json({
       resource: EVAL_MCP_SERVER_URL,
       authorization_servers: [EVAL_MCP_AUTH_ORIGIN],
       scopes_supported: ["mcp:read"],
     });
   }),
-  http.get(EVAL_MCP_CLOUDFLARE_LOGIN_URL, async ({ request }) => {
-    captureRequest("cloudflare-login", request);
-    return new HttpResponse("Cloudflare Access login", {
+  http.get(EVAL_MCP_AUTH_LOGIN_URL, async ({ request }) => {
+    captureRequest("authorization-login", request);
+    return new HttpResponse("OAuth login", {
       status: 200,
       headers: { "content-type": "text/html" },
     });

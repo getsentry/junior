@@ -92,8 +92,8 @@ User: invokes a skill that exposes MCP-backed tools
 Agent: calls an MCP tool from the same plugin
   │
   ├─ MCP server responds with a standard 401 Bearer auth challenge
-  │    • Cloudflare Access 302/403 challenges are accepted only when they carry resource_metadata
-  │    • the transport normalizes that exact compatibility case to the SDK's 401 Bearer contract
+  │    • nonstandard 302 challenges are accepted only when they carry resource_metadata
+  │    • non-Bearer 403 challenges with resource_metadata are normalized without masking Bearer scope errors
   ├─ MCP OAuth provider persists auth session state
   ├─ Runtime privately delivers the authorization link to the requesting user
   ├─ Runtime posts a brief visible thread note that authorization is needed
