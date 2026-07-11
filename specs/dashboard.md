@@ -34,6 +34,7 @@ Dashboard functionality lives outside the core Junior runtime package.
 
 ```txt
 packages/junior/
+  src/api/conversations/stats.ts
   src/api/people/list.ts
   src/api/people/profile.ts
   src/reporting/**
@@ -74,17 +75,20 @@ export function createJuniorReporting(): JuniorReporting;
 
 Every exported reporting function must have a brief JSDoc comment explaining why the data is exposed.
 
-People API endpoints are not part of `JuniorReporting`. They live in route
-modules under `@sentry/junior/api/people/*` and read the SQL schema directly
-with Drizzle:
+Product-owned conversation stats and People API endpoints live outside
+`JuniorReporting` and read the SQL schema directly with Drizzle:
 
 ```ts
+export function readConversationStats(): Promise<ConversationStatsReport>;
 export function readPeopleList(): Promise<ActorDirectoryReport>;
 export function readPeopleProfile(email: string): Promise<ActorProfileReport>;
 ```
 
 These modules are consumed by the dashboard API route wrappers and must not
-depend on plugin reporting hooks or runtime summary state.
+depend on plugin reporting hooks or runtime summary state. The optional
+`JuniorReporting.getConversationStats` surface remains available to other
+reporting consumers and the local mock overlay; it does not back the production
+dashboard stats route.
 
 `@sentry/junior` accepts dashboard configuration in `createApp()` and
 `juniorNitro()`:
@@ -284,11 +288,12 @@ Public health responses must not include runtime discovery data such as cwd, hom
 
 ### Conversation Stats Reports
 
-Conversation list and stats APIs should read durable conversation records
-through the SQL-backed `ConversationStore` defined in
-`./conversation-storage.md`. During the one-time legacy SQL import, the
-state-backed store can read the expiring activity index defined in
-`./task-execution.md`:
+The conversation list may read durable conversation records through the
+SQL-backed `ConversationStore` defined in `./conversation-storage.md`. The
+conversation stats API reads the normalized SQL tables directly with Drizzle,
+matching the People API boundary; it must not depend on `JuniorReporting` or
+runtime summary state. During the one-time legacy SQL import, the state-backed
+store can read the expiring activity index defined in `./task-execution.md`:
 
 ```text
 junior:conversation:by-activity

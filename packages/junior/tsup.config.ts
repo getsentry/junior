@@ -14,6 +14,7 @@ export default defineConfig({
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     "api/people/list": "src/api/people/list.ts",
     "api/people/profile": "src/api/people/profile.ts",
+    "api/conversations/stats": "src/api/conversations/stats.ts",
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",
     reporting: "src/reporting.ts",

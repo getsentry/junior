@@ -79,6 +79,7 @@ export default defineConfig({
   esbuildPlugins: [dashboardAssetsPlugin()],
   external: [
     "@sentry/junior",
+    "@sentry/junior/api/conversations/stats",
     "@sentry/junior/api/people/list",
     "@sentry/junior/api/people/profile",
     "@sentry/junior/instrumentation",

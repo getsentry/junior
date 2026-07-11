@@ -36,6 +36,10 @@
       "types": "./dist/api/people/profile.d.ts",
       "default": "./dist/api/people/profile.js"
     },
+    "./api/conversations/stats": {
+      "types": "./dist/api/conversations/stats.d.ts",
+      "default": "./dist/api/conversations/stats.js"
+    },
     "./reporting": {
       "types": "./dist/reporting.d.ts",
       "default": "./dist/reporting.js"

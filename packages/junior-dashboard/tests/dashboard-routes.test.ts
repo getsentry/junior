@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@sentry/junior";
+import { readConversationStats } from "@sentry/junior/api/conversations/stats";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import type { JuniorReporting } from "@sentry/junior/reporting";
 import { createDashboardApp } from "../src/app";
@@ -11,6 +12,10 @@ import {
 } from "../src/auth";
 import { filterConversations } from "../src/client/format";
 import type { Conversation } from "../src/client/types";
+
+vi.mock("@sentry/junior/api/conversations/stats", () => ({
+  readConversationStats: vi.fn(),
+}));
 
 const dashboardEnvNames = [
   "BETTER_AUTH_SECRET",
@@ -247,6 +252,13 @@ function mockDashboardVirtualConfig() {
 }
 
 describe("dashboard routes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(readConversationStats).mockImplementation(async () =>
+      reporting().getConversationStats!(),
+    );
+  });
+
   afterEach(() => {
     vi.doUnmock("#junior/config");
     for (const name of dashboardEnvNames) {
@@ -614,7 +626,7 @@ describe("dashboard routes", () => {
     });
   });
 
-  it("returns empty conversation stats for legacy reporting providers", async () => {
+  it("reads conversation stats independently of the reporting provider", async () => {
     const { getConversationStats: _getConversationStats, ...legacyReporting } =
       reporting();
     expect(_getConversationStats).toBeTypeOf("function");
@@ -635,22 +647,20 @@ describe("dashboard routes", () => {
 
     expect(conversationStats.status).toBe(200);
     expect(await conversationStats.json()).toMatchObject({
-      conversations: 0,
-      actors: [],
-      sampleLimit: 0,
-      sampleSize: 0,
+      conversations: 1,
+      actors: [{ label: "Unknown", conversations: 1 }],
+      sampleLimit: 1,
+      sampleSize: 1,
       source: "conversation_index",
       truncated: false,
     });
+    expect(readConversationStats).toHaveBeenCalledWith();
   });
 
-  it("returns a failure status when conversation stats reporting throws", async () => {
-    const customReporting = {
-      ...reporting(),
-      async getConversationStats() {
-        throw new Error("conversation stats unavailable");
-      },
-    };
+  it("returns a failure status when the conversation stats API throws", async () => {
+    vi.mocked(readConversationStats).mockRejectedValue(
+      new Error("conversation stats unavailable"),
+    );
     const app = dashboard(
       {
         user: {
@@ -659,7 +669,7 @@ describe("dashboard routes", () => {
           hostedDomain: "sentry.io",
         },
       },
-      customReporting,
+      reporting(),
     );
 
     const conversationStats = await app.fetch(

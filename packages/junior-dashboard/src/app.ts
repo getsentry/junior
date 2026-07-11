@@ -23,6 +23,7 @@ import {
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
 import { createMockConversationReporting } from "./mock-conversations";
+import { conversationStatsResponse } from "./api/conversations/stats";
 import { peopleListResponse } from "./api/people/list";
 import { peopleProfileResponse } from "./api/people/profile";
 
@@ -235,13 +236,20 @@ function emptyConversationStatsReport(): ConversationStatsReport {
   };
 }
 
-async function readConversationStats(
+async function mockConversationStatsResponse(
   reporting: JuniorReporting,
-): Promise<ConversationStatsReport> {
+): Promise<Response> {
   if (!reporting.getConversationStats) {
-    return emptyConversationStatsReport();
+    return Response.json(emptyConversationStatsReport());
   }
-  return await reporting.getConversationStats();
+  try {
+    return Response.json(await reporting.getConversationStats());
+  } catch {
+    return Response.json(
+      { error: "Conversation stats failed to load." },
+      { status: 500 },
+    );
+  }
 }
 
 async function readPluginReports(
@@ -642,14 +650,9 @@ export function createDashboardApp(
     app.all(`${prefix}/*`, handler);
   }
   app.get("/api/conversations/stats", async () => {
-    try {
-      return Response.json(await readConversationStats(reporting));
-    } catch {
-      return Response.json(
-        { error: "Conversation stats failed to load." },
-        { status: 500 },
-      );
-    }
+    return options.mockConversations
+      ? mockConversationStatsResponse(reporting)
+      : conversationStatsResponse();
   });
   app.get("/api/people", () => peopleListResponse());
   app.get("/api/people/:email", async (c) => {
