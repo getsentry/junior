@@ -12,7 +12,8 @@
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
-// TODO(2026-07-24): Remove this module and the lazy legacy-history import hook.
+// TODO(v0.95.0): Remove this module and its advisor-session reader after the
+// legacy Redis-to-SQL import horizon.
 import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -29,9 +30,9 @@ import {
   type SessionLogStore,
 } from "@/chat/state/session-log";
 import {
-  createStateAdvisorSessionStore,
-  type AdvisorSessionStore,
-} from "@/chat/tools/advisor/session-store";
+  createLegacyAdvisorSessionReader,
+  type LegacyAdvisorSessionReader,
+} from "@/chat/conversations/legacy-advisor-session";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import {
@@ -83,7 +84,7 @@ export interface LegacyImportDeps {
   executor: JuniorSqlDatabase;
   messageStore: ConversationMessageStore;
   sessionLogStore?: SessionLogStore;
-  advisorSessionStore?: AdvisorSessionStore;
+  advisorSessionStore?: LegacyAdvisorSessionReader;
   loadVisibleMessages?: (
     conversationId: string,
   ) => Promise<ThreadConversationMessage[]>;
@@ -183,9 +184,9 @@ export async function importConversationFromLegacy(
 
   const hasAdvisor = entries.some((entry) => entry.type === "subagent_started");
   const advisorMessages = hasAdvisor
-    ? await (deps.advisorSessionStore ?? createStateAdvisorSessionStore()).load(
-        conversationId,
-      )
+    ? await (
+        deps.advisorSessionStore ?? createLegacyAdvisorSessionReader()
+      ).load(conversationId)
     : [];
   const intrinsic = intrinsicTimestamps(entries, visible, compactions);
   for (const message of advisorMessages) {

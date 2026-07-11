@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-07-02
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -119,6 +119,11 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 ### Tool and skill policy
 
 - Tool schemas remain the source of truth for tool parameters. The prompt may state when to use tools, not re-document every tool schema.
+- The tool policy owns one compact conditional handoff rule: when `handoff` is
+  available, enumerated advanced work such as coding, debugging, architecture,
+  broad refactors, research-heavy synthesis, or complex planning must upgrade
+  before ordinary inspection/action. Advanced agents do not receive `handoff`,
+  so the same byte-stable source prompt remains valid.
 - The model should load the best-matching skill when relevant and avoid preloading unrelated skills.
 - After loading a plugin-backed skill, the prompt may describe the generic MCP lookup path, but provider-specific tool strategy belongs in the skill, tool description, tool schema, or tool guidance.
 - Skill selection should be explicit: scan available skills, load one clearly matching skill, choose the most specific skill when several match, and avoid loading any skill when none clearly applies.

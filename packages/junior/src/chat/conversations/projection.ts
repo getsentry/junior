@@ -6,8 +6,9 @@
  * The current model context is exactly the highest context epoch's `pi_message`
  * steps in `seq` order; host-only step types (activity, provider connection,
  * authorization requests, epoch markers) never reach `agent.state.messages`.
- * Compaction and rollback open a new epoch instead of rewriting history, so the
- * reducer only walks one epoch and never replays superseded generations.
+ * Compaction, handoff, and rollback open a new epoch instead of rewriting
+ * history, so the context reducer only walks one epoch. The epoch marker binds
+ * the projection's model profile, which later replacements inherit.
  */
 import { isDeepStrictEqual } from "node:util";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -23,6 +24,7 @@ import type {
 } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
 import { ensureLegacyConversationImport } from "@/chat/conversations/legacy-import";
+import type { ModelProfile } from "@/chat/model-profile";
 
 type PiMessageStepEntry = Extract<AgentStepEntry, { type: "pi_message" }>;
 type AuthorizationCompletedEntry = Extract<
@@ -30,8 +32,14 @@ type AuthorizationCompletedEntry = Extract<
   { type: "authorization_completed" }
 >;
 
+/** Current conversation context with its authoritative model binding. */
+export interface ConversationProjection extends SessionProjection {
+  /** Model profile bound to this projection. */
+  modelProfile: ModelProfile;
+}
+
 /** Aligned step projection: `provenance[i]` and `seqs[i]` describe `messages[i]`. */
-export interface StepProjection extends SessionProjection {
+export interface StepProjection extends ConversationProjection {
   /** The `seq` of the step each projected message came from. */
   seqs: number[];
 }
@@ -74,9 +82,14 @@ export function projectSteps(
   const messages: PiMessage[] = [];
   const provenance: PiMessageProvenance[] = [];
   const seqs: number[] = [];
+  let modelProfile: ModelProfile = "standard";
   for (const step of steps) {
     if (opts?.maxSeq !== undefined && step.seq > opts.maxSeq) {
       break;
+    }
+    if (step.entry.type === "context_epoch_started") {
+      modelProfile = step.entry.modelProfile ?? "standard";
+      continue;
     }
     if (step.entry.type === "pi_message") {
       messages.push(step.entry.message);
@@ -92,7 +105,7 @@ export function projectSteps(
       seqs.push(step.seq);
     }
   }
-  return { messages, provenance, seqs };
+  return { messages, provenance, seqs, modelProfile };
 }
 
 /** Distinct MCP providers durably connected in the given steps, sorted. */
@@ -205,13 +218,13 @@ export async function loadProjection(
 }
 
 /** Load the current-epoch Pi projection with aligned per-message provenance. */
-export async function loadProjectionWithProvenance(
+export async function loadConversationProjection(
   args: ScopedConversation,
-): Promise<SessionProjection> {
+): Promise<ConversationProjection> {
   await importLegacyIfNeeded(args);
   const steps = await getAgentStepStore().loadCurrentEpoch(args.conversationId);
-  const { messages, provenance } = projectSteps(steps);
-  return { messages, provenance };
+  const { messages, provenance, modelProfile } = projectSteps(steps);
+  return { messages, provenance, modelProfile };
 }
 
 /**
@@ -319,6 +332,7 @@ export async function commitMessages(args: {
   } else {
     await stepStore.startEpoch(args.conversationId, {
       reason: "rollback",
+      modelProfile: existing.modelProfile,
       messages: args.messages.map((message, index) => ({
         message,
         createdAtMs: messageTimestamp(message),

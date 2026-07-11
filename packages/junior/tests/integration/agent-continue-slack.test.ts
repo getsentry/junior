@@ -1100,6 +1100,144 @@ describe("agent continuation Slack integration", () => {
     });
   });
 
+  it("recovers a post-handoff worker death from the advanced summary epoch", async () => {
+    const conversationId = "slack:C123:1712345.00081";
+    const sessionId = "turn_msg_8_handoff";
+    const staleText = "raw standard context must not return";
+    const summaryText = "Continue the implementation from the handoff summary.";
+    const summaryMessage = {
+      role: "user",
+      content: [{ type: "text", text: summaryText }],
+      timestamp: 5,
+    } as any;
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "running",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.00081"),
+      modelId: "openai/gpt-5.5",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: staleText }],
+          timestamp: 1,
+        },
+      ],
+      actor: {
+        platform: "slack",
+        teamId: SLACK_DESTINATION.teamId,
+        userId: "U123",
+        userName: "testuser",
+        fullName: "Test User",
+        email: "testuser@example.com",
+      },
+    });
+    const { getAgentStepStore } = await import("@/chat/db");
+    await getAgentStepStore().startEpoch(conversationId, {
+      reason: "handoff",
+      modelProfile: "advanced",
+      messages: [
+        {
+          message: summaryMessage,
+          createdAtMs: 5,
+        },
+      ],
+    });
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: { listColumnMap: {} },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.8.handoff",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: { userId: "U123" },
+          },
+        ],
+        processing: { activeTurnId: sessionId },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: { byFileId: {} },
+      },
+    });
+
+    let recoveredRecord:
+      | Awaited<
+          ReturnType<typeof turnSessionStoreModule.getAgentTurnSessionRecord>
+        >
+      | undefined;
+    executeAgentRunMock.mockImplementationOnce(async () => {
+      recoveredRecord = await turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      );
+      return completedAgentRun({
+        text: "Advanced recovery completed.",
+        piMessages: [
+          summaryMessage,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Advanced recovery completed." }],
+            timestamp: 6,
+          },
+        ] as any,
+        diagnostics: {
+          ...makeDiagnostics(),
+          modelId: "openai/gpt-5.6-sol",
+        },
+      });
+    });
+
+    const resumed = await requestDeadlineModule.runWithTurnRequestDeadline(() =>
+      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
+        conversationId,
+        {
+          agentRunner: { run: executeAgentRunMock },
+        },
+      ),
+    );
+
+    expect(resumed).toBe(true);
+    expect(recoveredRecord).toMatchObject({
+      actors: [expect.objectContaining({ userId: "U123" })],
+      modelId: "openai/gpt-5.6-sol",
+      piMessages: [expect.objectContaining({ role: "user" })],
+    });
+    expect(JSON.stringify(recoveredRecord?.piMessages)).toContain(summaryText);
+    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
+      staleText,
+    );
+    const { loadConversationProjection, loadProjection } =
+      await import("@/chat/conversations/projection");
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("advanced");
+    const projection = await loadProjection({ conversationId });
+    expect(projection[0]).toEqual(summaryMessage);
+    expect(JSON.stringify(projection)).toContain(
+      "Advanced recovery completed.",
+    );
+    expect(JSON.stringify(projection)).not.toContain(staleText);
+    const history = await getAgentStepStore().loadHistory(conversationId);
+    expect(
+      history.filter(
+        (step) =>
+          step.entry.type === "context_epoch_started" &&
+          step.entry.reason === "rollback",
+      ),
+    ).toEqual([]);
+  });
+
   it("terminally fails a stranded running session with no resumable boundary", async () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";

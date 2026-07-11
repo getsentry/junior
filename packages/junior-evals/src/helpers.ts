@@ -24,7 +24,6 @@ import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
 import type { AgentStepEntry } from "@/chat/conversations/history";
 import type { ConversationMessage } from "@/chat/conversations/messages";
 import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
-import { advisorChildConversationId } from "@/chat/tools/advisor/tool";
 import {
   slackEventThread,
   slackMentionEvent,
@@ -983,8 +982,7 @@ function toStepRole(entry: AgentStepEntry): string | undefined {
 /**
  * The run's durable execution step rows, in `seq` order across every epoch,
  * read via `AgentStepStore.loadHistory`. Defaults to the run's sole
- * conversation; pass a conversation id to inspect a child (e.g. an advisor
- * child conversation).
+ * conversation; pass a conversation id to inspect a child conversation.
  */
 export async function agentSteps(
   session: NormalizedSession,
@@ -1014,6 +1012,3 @@ export async function conversationMessages(
   const id = conversationIdOverride ?? conversationId(session);
   return await getConversationMessageStore().list(id);
 }
-
-/** Deterministic advisor child conversation id derived from a parent id. */
-export { advisorChildConversationId };

@@ -149,6 +149,20 @@ export function hasRuntimeTurnContext(messages: PiMessage[]): boolean {
   );
 }
 
+/** Keep only volatile bootstrap messages needed by an in-turn context replacement. */
+export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
+  return messages.flatMap((message) => {
+    const content = getUserMessageContent(message);
+    if (!content) {
+      return [];
+    }
+    const runtimeContent = content.filter(isRuntimeTurnContextPart);
+    return runtimeContent.length > 0
+      ? [{ ...message, content: runtimeContent } as PiMessage]
+      : [];
+  });
+}
+
 /**
  * Reduce a runtime user-turn prompt to only the current turn's instruction.
  *

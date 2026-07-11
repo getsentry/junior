@@ -258,7 +258,7 @@ export async function persistCompletedSessionRecord(args: {
     );
   }
   const modelId =
-    latestSessionRecord?.modelId ?? args.modelId ?? args.logContext.modelId;
+    args.modelId ?? latestSessionRecord?.modelId ?? args.logContext.modelId;
   const reasoningLevel =
     args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
   const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {

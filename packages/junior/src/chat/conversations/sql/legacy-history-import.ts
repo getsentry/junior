@@ -7,12 +7,13 @@
  * per-message rows, advisor `transcriptRef` links become `childConversationId`,
  * and legacy v1 provenance normalizes exactly as the legacy reducer does. This
  * whole module is removed with the lazy-import path after the Redis TTL horizon;
- * to stay free of the advisor→projection import cycle it duplicates the advisor
- * child-id formula rather than importing it.
+ * its self-contained child-id formula reproduces historical advisor ids during
+ * that bounded import.
  */
 import { eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { unescapeXml } from "@/chat/xml";
 import type { NewConversationMessage } from "../messages";
 import {
   contextProvenance,
@@ -28,6 +29,10 @@ import {
 } from "@/db/schema";
 
 const INITIAL_SESSION_ID = "session_0";
+const ADVISOR_TASK_OPEN = "<advisor-task>\n";
+const ADVISOR_TASK_CLOSE = "\n</advisor-task>";
+const ADVISOR_CONTEXT_OPEN = "<executor-context>\n";
+const ADVISOR_CONTEXT_CLOSE = "\n</executor-context>";
 
 /** A converted legacy step with its explicit order and epoch pinned. */
 export interface ImportedStep {
@@ -44,13 +49,7 @@ export interface ConvertedLegacyLog {
   advisorChildConversationId?: string;
 }
 
-/**
- * Deterministic advisor child conversation id derived from the parent.
- *
- * Mirrors `advisorChildConversationId` in `tools/advisor/tool.ts`; duplicated
- * here so this one-time import module never imports the advisor tool (which
- * imports the projection this module's caller lives beside).
- */
+/** Reproduce historical advisor child ids inside the bounded import path. */
 function importedAdvisorChildConversationId(
   parentConversationId: string,
 ): string {
@@ -66,6 +65,54 @@ function epochFromSessionId(sessionId: string): number {
 function messageTimestampMs(message: PiMessage): number | undefined {
   const timestamp = (message as { timestamp?: unknown }).timestamp;
   return typeof timestamp === "number" ? timestamp : undefined;
+}
+
+function readAdvisorRequest(text: string): string | undefined {
+  if (
+    !text.startsWith(ADVISOR_TASK_OPEN) ||
+    !text.endsWith(ADVISOR_CONTEXT_CLOSE)
+  ) {
+    return undefined;
+  }
+  const taskEnd = text.indexOf(ADVISOR_TASK_CLOSE, ADVISOR_TASK_OPEN.length);
+  if (taskEnd < 0) {
+    return undefined;
+  }
+  const contextStart = taskEnd + ADVISOR_TASK_CLOSE.length + 2;
+  if (!text.startsWith(ADVISOR_CONTEXT_OPEN, contextStart)) {
+    return undefined;
+  }
+  const task = text.slice(ADVISOR_TASK_OPEN.length, taskEnd);
+  const context = text.slice(
+    contextStart + ADVISOR_CONTEXT_OPEN.length,
+    -ADVISOR_CONTEXT_CLOSE.length,
+  );
+  return `${unescapeXml(task)}\n\nExecutor context:\n${unescapeXml(context)}`;
+}
+
+function normalizeAdvisorMessage(message: PiMessage): PiMessage {
+  const record = message as unknown as Record<string, unknown>;
+  if (record.role !== "user" || !Array.isArray(record.content)) {
+    return message;
+  }
+  let changed = false;
+  const content = record.content.map((part) => {
+    if (
+      !part ||
+      typeof part !== "object" ||
+      (part as { type?: unknown }).type !== "text" ||
+      typeof (part as { text?: unknown }).text !== "string"
+    ) {
+      return part;
+    }
+    const text = readAdvisorRequest((part as { text: string }).text);
+    if (text === undefined) {
+      return part;
+    }
+    changed = true;
+    return { ...part, text };
+  });
+  return changed ? ({ ...record, content } as unknown as PiMessage) : message;
 }
 
 /** Decode a legacy pi_message entry's provenance, tolerating v1 actor shapes. */
@@ -249,17 +296,20 @@ export function convertLegacySessionLog(args: {
   };
 }
 
-/** Convert an advisor session blob into epoch-0 child pi_message rows. */
+/** Import advisor child rows while decoding the historical request envelope. */
 export function convertAdvisorMessages(
   messages: PiMessage[],
   fallbackCreatedAtMs: number,
 ): ImportedStep[] {
-  return messages.map((message, seq) => ({
-    seq,
-    contextEpoch: 0,
-    entry: { type: "pi_message", message, provenance: contextProvenance },
-    createdAtMs: messageTimestampMs(message) ?? fallbackCreatedAtMs,
-  }));
+  return messages.map((sourceMessage, seq) => {
+    const message = normalizeAdvisorMessage(sourceMessage);
+    return {
+      seq,
+      contextEpoch: 0,
+      entry: { type: "pi_message", message, provenance: contextProvenance },
+      createdAtMs: messageTimestampMs(message) ?? fallbackCreatedAtMs,
+    };
+  });
 }
 
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderAdvisorRequest } from "@/chat/advisor-request";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationSubagent as readConversationSubagentTranscriptReport } from "@/api/conversations/subagent";
@@ -533,15 +532,13 @@ describe("dashboard reporting", () => {
     expect(JSON.stringify(report.activity)).not.toContain("private question");
   });
 
-  it("loads advisor subagent transcript history from the child conversation", async () => {
-    const { advisorChildConversationId } =
-      await import("@/chat/tools/advisor/tool");
+  it("loads subagent transcript history from the child conversation", async () => {
     const { getAgentStepStore, getConversationStore } =
       await import("@/chat/db");
 
-    const conversationId = "slack:C1:advisor-slices";
+    const conversationId = "slack:C1:subagent-slices";
     await confirmPublicSlackConversation(conversationId);
-    const childConversationId = advisorChildConversationId(conversationId);
+    const childConversationId = `task:${conversationId}`;
     const conversationStore = getConversationStore();
     const stepStore = getAgentStepStore();
 
@@ -558,10 +555,7 @@ describe("dashboard reporting", () => {
             content: [
               {
                 type: "text",
-                text: renderAdvisorRequest(
-                  "first advisor question",
-                  "first <evidence> packet",
-                ),
+                text: "first subagent question\n\nExecutor context:\nfirst <evidence> packet",
               },
             ],
             timestamp: 10,
@@ -574,7 +568,7 @@ describe("dashboard reporting", () => {
           type: "pi_message",
           message: {
             role: "assistant",
-            content: [{ type: "text", text: "first advisor answer" }],
+            content: [{ type: "text", text: "first subagent answer" }],
             timestamp: 20,
           } as PiMessage,
         },
@@ -585,7 +579,7 @@ describe("dashboard reporting", () => {
           type: "pi_message",
           message: {
             role: "user",
-            content: [{ type: "text", text: "second advisor question" }],
+            content: [{ type: "text", text: "second subagent question" }],
             timestamp: 30,
           } as PiMessage,
         },
@@ -596,7 +590,7 @@ describe("dashboard reporting", () => {
           type: "pi_message",
           message: {
             role: "assistant",
-            content: [{ type: "text", text: "second advisor answer" }],
+            content: [{ type: "text", text: "second subagent answer" }],
             timestamp: 40,
           } as PiMessage,
         },
@@ -604,22 +598,22 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    // Repeated advisor calls share one deterministic child conversation, so both
+    // Repeated subagent calls share one child conversation, so both
     // parent subagent markers name the same child history.
-    for (const subagentId of ["advisor-plan", "advisor-review"]) {
+    for (const subagentId of ["task-plan", "task-review"]) {
       await stepStore.append(conversationId, [
         {
           entry: {
             type: "subagent_started",
             subagentInvocationId: subagentId,
-            subagentKind: "advisor",
+            subagentKind: "task",
             parentToolCallId: subagentId,
             childConversationId,
             historyMode: "shared",
             modelId: "openai/gpt-5.6-sol",
             reasoningLevel: "high",
           },
-          createdAtMs: subagentId === "advisor-plan" ? 3 : 31,
+          createdAtMs: subagentId === "task-plan" ? 3 : 31,
         },
         {
           entry: {
@@ -627,18 +621,18 @@ describe("dashboard reporting", () => {
             subagentInvocationId: subagentId,
             outcome: "success",
           },
-          createdAtMs: subagentId === "advisor-plan" ? 25 : 45,
+          createdAtMs: subagentId === "task-plan" ? 25 : 45,
         },
       ]);
     }
 
     const first = await readConversationSubagentTranscriptReport(
       conversationId,
-      "advisor-plan",
+      "task-plan",
     );
     const second = await readConversationSubagentTranscriptReport(
       conversationId,
-      "advisor-review",
+      "task-review",
     );
 
     expect(first.subagentConversationId).toBe(childConversationId);
@@ -646,30 +640,28 @@ describe("dashboard reporting", () => {
     expect(first.reasoningLevel).toBe("high");
     expect(first.transcriptAvailable).toBe(true);
     expect(JSON.stringify(first.transcript)).toContain(
-      "first advisor question",
+      "first subagent question",
     );
     expect(JSON.stringify(first.transcript)).toContain(
       "first <evidence> packet",
     );
-    expect(JSON.stringify(first.transcript)).not.toContain("<advisor-task>");
-    expect(JSON.stringify(first.transcript)).not.toContain(
-      "<executor-context>",
+    expect(JSON.stringify(first.transcript)).toContain(
+      "second subagent answer",
     );
-    expect(JSON.stringify(first.transcript)).toContain("second advisor answer");
     expect(second.subagentConversationId).toBe(childConversationId);
-    expect(JSON.stringify(second.transcript)).toContain("first advisor answer");
+    expect(JSON.stringify(second.transcript)).toContain(
+      "first subagent answer",
+    );
   });
 
   it("redacts advisor subagent transcript history for private conversations", async () => {
-    const { advisorChildConversationId } =
-      await import("@/chat/tools/advisor/tool");
     const { getAgentStepStore, getConversationStore } =
       await import("@/chat/db");
 
     const conversationId = "slack:D1:advisor-private";
     const toolCallId = "advisor-private";
     const privateAdvisorText = "private advisor question";
-    const childConversationId = advisorChildConversationId(conversationId);
+    const childConversationId = `advisor:${conversationId}`;
     const conversationStore = getConversationStore();
     const stepStore = getAgentStepStore();
 
@@ -1216,6 +1208,7 @@ describe("dashboard reporting", () => {
     // Compaction opens epoch 1 with the rebuilt context.
     await stepStore.startEpoch(conversationId, {
       reason: "compaction",
+      modelProfile: "standard",
       messages: [
         {
           message: {

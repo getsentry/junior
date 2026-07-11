@@ -1,4 +1,3 @@
-import { unwrapAdvisorRequest } from "@/chat/advisor-request";
 import { isRecord } from "@/chat/coerce";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -27,14 +26,13 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
 /** Normalize Pi content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
-  options: { unwrapAdvisorTask?: boolean; unwrapCurrentTask?: boolean } = {},
+  options: { unwrapCurrentTask?: boolean } = {},
 ): TranscriptPart {
   const displayText = (text: string) => {
     if (options.unwrapCurrentTask) {
       const instruction = unwrapCurrentInstruction(text);
       if (instruction !== undefined) return instruction;
     }
-    if (options.unwrapAdvisorTask) return unwrapAdvisorRequest(text) ?? text;
     return text;
   };
 
@@ -113,7 +111,6 @@ function normalizeToolResultMessage(
 /** Normalize one provider transcript message into the reporting contract. */
 export function normalizeTranscriptMessage(
   message: PiMessage,
-  options: { unwrapAdvisorTask?: boolean } = {},
 ): TranscriptMessage {
   const record = message as unknown as Record<string, unknown>;
   const content = record.content;
@@ -129,13 +126,11 @@ export function normalizeTranscriptMessage(
         : Array.isArray(content)
           ? content.map((part) =>
               normalizeTranscriptPart(part, {
-                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             )
           : [
               normalizeTranscriptPart(content, {
-                unwrapAdvisorTask: options.unwrapAdvisorTask && role === "user",
                 unwrapCurrentTask: role === "user",
               }),
             ],

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-11
-- Last Edited: 2026-07-08
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -221,22 +221,27 @@ safe-boundary rollback (including in-process provider retry) each, in one
 transaction:
 
 1. append a `context_epoch_started` marker step carrying `reason`
-   (`compaction` | `rollback`) that opens the next epoch, then
+   (`compaction` | `handoff` | `rollback`) and `modelProfile` that opens the next
+   epoch; handoff selects `advanced`, while compaction and rollback inherit the
+   current projection's binding, then
 2. append the replacement context as ordinary `pi_message` rows in the new epoch,
    preserving each message's original timestamp so replay is byte-stable.
 
 The prior epoch remains intact as audit history. "Current context" is therefore a
 single indexed query (highest epoch, `pi_message`, ordered by `seq`) with no
-pointer-chasing and no in-row transcript payloads.
+pointer-chasing and no in-row transcript payloads. Legacy compaction and
+rollback markers without `modelProfile` resolve to `standard`; handoff requires
+an explicit `advanced` binding, and `fast` cannot own a main projection.
 
 ### Subagent Child Conversations
 
-A subagent (advisor) execution is recorded as its own conversation row with
+A subagent execution is recorded as its own conversation row with
 `parent_conversation_id` set to the parent, and its steps stored in
 `junior_agent_steps` under the child's own `conversation_id`. The parent's
 `subagent_started` step references the child by `childConversationId`. The
 polymorphic `transcriptRef {type, key}` reference and the ad-hoc
-`junior:<id>:advisor_session` Redis key are removed (`./advisor-tool.md`).
+`junior:<id>:advisor_session` Redis key are removed. The generic storage shape
+retains both isolated and shared history modes for future subagent runtimes.
 
 - Reading a subagent transcript uses the same query path as any conversation.
 - Top-level listings filter `parent_conversation_id IS NULL`; children are
@@ -483,9 +488,9 @@ normal runtime tests.
   `pi_message` steps in `seq` order; compaction and rollback each write a new
   epoch (`context_epoch_started` marker plus replacement rows) in one
   transaction while prior epochs remain as audit history.
-- Integration: an advisor invocation creates a child conversation with
-  `parent_conversation_id` set, the parent's `subagent_started` step carries the
-  child id, and top-level listings exclude children.
+- Integration: a child conversation with `parent_conversation_id` set is
+  referenced by the parent's `subagent_started` step and excluded from
+  top-level listings.
 - Integration: private content is purged at 14 days and public at 90 days,
   measured from `last_activity_at`; visibility is resolved through the parent
   chain to the root at purge time; a public→private flip shortens the window on
@@ -510,7 +515,6 @@ normal runtime tests.
 - `./chat-architecture.md`
 - `./agent-session-resumability.md`
 - `./data-redaction-policy.md`
-- `./advisor-tool.md`
 - `./scheduler.md`
 - `./plugin-database.md`
 - `./dashboard.md`

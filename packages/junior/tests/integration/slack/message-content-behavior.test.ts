@@ -412,7 +412,7 @@ describe("Slack behavior: message content", () => {
     ).toBeGreaterThan(compactingStatusIndex);
     expect(calls[0]?.piMessages?.length).toBeLessThan(priorMessages.length + 1);
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
-      "Context handoff summary",
+      "Context compaction summary",
     );
     expect(JSON.stringify(calls[0]?.piMessages)).toContain(
       "old context is still relevant",

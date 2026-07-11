@@ -134,11 +134,11 @@ Events: `agent_message_in`, `agent_message_out`, `agent_turn_timeout`,
 `assistant_reply_generation_failed`
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `ai.invoke_advisor`, `gen_ai.chat`
+`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons`, `app.ai.outcome`,
-`app.ai.reasoning_effort`, `gen_ai.usage.input_tokens`,
+`app.ai.reasoning_effort`, `app.ai.model_profile`, `gen_ai.usage.input_tokens`,
 `gen_ai.usage.output_tokens`, `gen_ai.usage.input_tokens.cached`,
 `gen_ai.usage.input_tokens.cache_write`, `app.ai.reasoning_tokens`,
 `app.ai.cost.input_usd`, `app.ai.cost.output_usd`,

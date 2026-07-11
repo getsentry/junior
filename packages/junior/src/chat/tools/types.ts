@@ -14,7 +14,6 @@ import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
-import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
 import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
 
@@ -66,7 +65,7 @@ export interface ToolHooks {
 }
 
 interface BaseToolRuntimeContext {
-  advisor?: AdvisorToolRuntimeContext;
+  handoff?: (signal?: AbortSignal) => Promise<void>;
   /**
    * Opaque Junior conversation/session identity for this turn.
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.

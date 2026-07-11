@@ -51,6 +51,20 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("openai/gpt-5.5");
   });
 
+  it("uses the default advanced model when AI_ADVANCED_MODEL is unset", async () => {
+    delete process.env.AI_ADVANCED_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.advancedModelId).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("uses AI_ADVANCED_MODEL when configured", async () => {
+    process.env.AI_ADVANCED_MODEL = "openai/gpt-5.4";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.advancedModelId).toBe("openai/gpt-5.4");
+  });
+
   it("uses the default embedding model when AI_EMBEDDING_MODEL is unset", async () => {
     delete process.env.AI_EMBEDDING_MODEL;
 
@@ -173,42 +187,6 @@ describe("chat config", () => {
 
     await expect(loadConfig()).rejects.toThrow(
       "AI_MODEL_CONTEXT_WINDOW_TOKENS must be a positive integer",
-    );
-  });
-
-  it("uses the default advisor config when AI_ADVISOR_MODEL is absent", async () => {
-    delete process.env.AI_ADVISOR_MODEL;
-
-    const { botConfig } = await loadConfig();
-    // Assert structure and thinking-level default without pinning the model string,
-    // which is an intentional product decision tracked in config.ts rather than tests.
-    expect(botConfig.advisor.modelId).toEqual(expect.any(String));
-    expect(botConfig.advisor.thinkingLevel).toBe("xhigh");
-  });
-
-  it("parses advisor config when AI_ADVISOR_MODEL is set", async () => {
-    process.env.AI_ADVISOR_MODEL = "openai/gpt-5.4";
-    process.env.AI_ADVISOR_THINKING_LEVEL = "xhigh";
-
-    const { botConfig } = await loadConfig();
-    expect(botConfig.advisor).toEqual({
-      modelId: "openai/gpt-5.4",
-      thinkingLevel: "xhigh",
-    });
-  });
-
-  it("throws at config load when AI_ADVISOR_MODEL is not registered", async () => {
-    process.env.AI_ADVISOR_MODEL = "openai/gpt-definitely-not-real";
-
-    await expect(loadConfig()).rejects.toThrow(/Unknown AI Gateway model id/);
-  });
-
-  it("throws at config load when AI_ADVISOR_THINKING_LEVEL is invalid", async () => {
-    process.env.AI_ADVISOR_MODEL = "openai/gpt-5.4";
-    process.env.AI_ADVISOR_THINKING_LEVEL = "deeply";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "AI_ADVISOR_THINKING_LEVEL must be one of",
     );
   });
 

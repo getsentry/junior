@@ -109,10 +109,7 @@ vi.mock("@earendil-works/pi-agent-core", () => {
 
 vi.mock("@/chat/config", () => ({
   botConfig: {
-    advisor: {
-      modelId: "test-advisor-model",
-      thinkingLevel: "xhigh",
-    },
+    advancedModelId: "test-advanced-model",
     fastModelId: "test-fast-model",
     modelId: "test-model",
     turnTimeoutMs: 1000,

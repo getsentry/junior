@@ -42,8 +42,8 @@ interface ResumeStateArgs {
   destination: Destination;
   durability: AgentRunDurability;
   getLoadedSkillNames: () => string[];
+  getModelId: () => string;
   logContext: SessionRecordLogContext;
-  modelId: string;
   getReasoningLevel: () => string | undefined;
   recordActiveMcpProviders: () => Promise<void>;
   actor?: Actor;
@@ -94,7 +94,7 @@ export function createResumeState(args: ResumeStateArgs) {
     sessionId: args.sessionId!,
     loadedSkillNames: args.getLoadedSkillNames(),
     logContext: args.logContext,
-    modelId: args.modelId,
+    modelId: args.getModelId(),
     ...(args.getReasoningLevel()
       ? { reasoningLevel: args.getReasoningLevel() }
       : {}),
@@ -120,6 +120,11 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
+    },
+    /** Adopt an already committed epoch replacement as every resume baseline. */
+    adoptCommittedBoundary(messages: PiMessage[]): void {
+      latestSafeBoundaryMessages = [...messages];
+      resumeMessages = [...messages];
     },
     captureResumeSnapshot(messages: PiMessage[]): void {
       resumeMessages = [...messages];

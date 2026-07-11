@@ -370,8 +370,9 @@ Set these values before running real turns:
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox actor context.    |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                      |
 | `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                  |
-| `AI_MODEL`                | No                     | Primary assistant model override.                             |
+| `AI_MODEL`                | No                     | Standard main-agent model override.                           |
 | `AI_FAST_MODEL`           | No                     | Lightweight routing/classification model override.            |
+| `AI_ADVANCED_MODEL`       | No                     | Model used after an advanced-task handoff.                    |
 | `AI_EMBEDDING_MODEL`      | No                     | Embedding model override for plugin vector retrieval.         |
 | `AI_VISION_MODEL`         | No                     | Enables image understanding when set.                         |
 | `AI_WEB_SEARCH_MODEL`     | No                     | Search model override.                                        |

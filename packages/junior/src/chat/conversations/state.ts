@@ -16,8 +16,8 @@ export function createStateConversationStore(
     // Task-execution state has no destination records, so visibility is never
     // source-confirmed here and cross-context reads fail closed to private.
     getDestinationVisibility: async () => undefined,
-    // Subagent child conversations are a SQL-only concept; the advisor always
-    // links its child through the SQL store, never this legacy metadata path.
+    // Child conversations are a SQL-only concept and never use this legacy
+    // metadata path.
     ensureChildConversation: async () => undefined,
     recordActivity: (args) =>
       recordTaskConversationActivity({ ...args, state }),

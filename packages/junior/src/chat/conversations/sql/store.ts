@@ -757,8 +757,8 @@ export class SqlStore implements ConversationStore {
         juniorIdentities,
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
-      // Subagent (advisor) child conversations are excluded from top-level
-      // listings; they purge with their root on the root's visibility window.
+      // Subagent child conversations are excluded from top-level listings and
+      // purge with their root on the root's visibility window.
       .where(isNull(juniorConversations.parentConversationId))
       .orderBy(
         desc(juniorConversations.lastActivityAt),

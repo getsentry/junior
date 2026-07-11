@@ -36,7 +36,7 @@ Context rebuilds SHALL NOT store embedded transcript arrays. Compaction and safe
 #### Scenario: Compaction writes a new epoch
 
 - **WHEN** context compaction runs for a conversation in epoch N
-- **THEN** epoch N+1 contains a `context_epoch_started {reason: "compaction"}` marker followed by the retained messages and the synthetic handoff summary as individual rows, and epoch N remains as audit history
+- **THEN** epoch N+1 contains a `context_epoch_started {reason: "compaction"}` marker followed by the retained messages and the synthetic compaction summary as individual rows, and epoch N remains as audit history
 
 #### Scenario: Provider-retry rollback
 

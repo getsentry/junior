@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-06-09
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -198,7 +198,7 @@ semantic conventions:
 - Every `gen_ai.chat` span MUST carry `gen_ai.input.messages` and `gen_ai.output.messages`.
 - The parent `gen_ai.invoke_agent` MAY also carry `gen_ai.input.messages` / `gen_ai.output.messages` as a high-level rollup; this is optional.
 - A `gen_ai.chat` span MUST have its status set to error (code 2) when the underlying LLM call fails — either because `streamFn` itself throws or because the returned stream rejects.
-- The per-iteration `gen_ai.chat` child span is created in `packages/junior/src/chat/pi/traced-stream.ts` via the `streamFn` injected into `pi-agent-core`'s `Agent`. This applies to both the main agent and the advisor agent.
+- The per-iteration `gen_ai.chat` child span is created in `packages/junior/src/chat/pi/traced-stream.ts` via the `streamFn` injected into `pi-agent-core`'s `Agent`.
 
 ## Acceptance Criteria
 

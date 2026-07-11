@@ -2,7 +2,7 @@ import { getChatConfig } from "@/chat/config";
 import { importConversationFromLegacy } from "@/chat/conversations/legacy-import";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { createStateConversationStore } from "@/chat/conversations/state";
-import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
+import type { LegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import type { SessionLogStore } from "@/chat/state/session-log";
 import { createJuniorSqlExecutor } from "@/db/executor";
@@ -23,7 +23,7 @@ export async function migrateConversationHistoryToSql(
     batchSize?: number;
     executor?: JuniorSqlExecutor;
     sessionLogStore?: SessionLogStore;
-    advisorSessionStore?: AdvisorSessionStore;
+    advisorSessionStore?: LegacyAdvisorSessionReader;
     loadVisibleMessages?: (
       conversationId: string,
     ) => Promise<ThreadConversationMessage[]>;

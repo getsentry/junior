@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-07-10
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -78,6 +78,10 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - The turn is successful when assistant text resolves to a non-empty, non-escape final response.
 - Slack runtimes refine that further: turn completion is only persisted after the final visible reply is delivered.
 - Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context.md).
+- A standard main agent may call standalone `handoff`. After its summary epoch
+  commits, `prepareNextTurn` replaces the active model/context in the same Pi
+  run and removes `handoff`; it does not terminate the run before advanced can
+  answer. Mixed handoff batches execute no calls.
 
 ## Failure Model
 

@@ -53,8 +53,8 @@ export const juniorConversations = pgTable(
     runId: text("run_id"),
     lastCheckpointAt: timestamptz("last_checkpoint_at"),
     lastEnqueuedAt: timestamptz("last_enqueued_at"),
-    // Subagent (advisor) runs are child conversations; top-level listings filter
-    // parent_conversation_id IS NULL.
+    // Subagent runs are child conversations; top-level listings filter
+    // parent_conversation_id IS NULL. Historical advisor children use this too.
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),

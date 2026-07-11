@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-07-07
-- Last Edited: 2026-07-08
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -65,7 +65,10 @@ An actor joins `run.actors` when a message it originated is committed to the run
 as **instruction authority**. This happens at the same commit points that record
 instruction-authority provenance: turn start, batched parked input draining into
 the run, and steering input draining mid-run. Membership is a pure projection of
-per-message provenance, never a separately maintained list.
+per-message provenance. When handoff deliberately replaces those messages with
+an unattributed summary, the turn-session record carries the already-derived
+set across that lossy context boundary; it does not accept new members from the
+summary.
 
 ### Fail-Closed Identity
 
@@ -89,13 +92,13 @@ A reader of a **completed** run record receives the closed, final set. A reader
 observing a run **mid-run** must treat the set as a lower bound: more actors may
 still join before completion.
 
-### Continuation Inherits From Committed Provenance
+### Continuation Preserves Committed Attribution
 
-Because the set is derived from committed per-message provenance, a continuation
-(timeout resume, auth resume, later slice) reproduces the same set from the
-committed provenance prefix. The set is stable across slices and requires no
-separate persistence. This falls out of the derivation rather than being coded
-as a distinct path.
+A continuation (timeout resume, auth resume, later slice) reproduces the same
+set from committed per-message provenance. A summary-only handoff is the one
+lossy boundary: its turn-session record persists the derived actor set before
+the raw messages disappear, and later slices merge it with actors from newly
+committed instruction provenance. The set remains monotonic across slices.
 
 ### Attribution, Not Authority
 
@@ -120,10 +123,11 @@ text is untrusted for this purpose.
 
 ### Exposure
 
-- `AgentTurnSessionRecord.actors` is derived at materialization from
-  `piMessageProvenance` (the `instructionActors` projection). It is a projection
-  and is not persisted separately, so it cannot drift from the provenance it is
-  derived from. `AgentTurnSessionRecord.actor` carries the run actor.
+- `AgentTurnSessionRecord.actors` is derived from `piMessageProvenance` by the
+  `instructionActors` projection. The storage record persists that derived set
+  so summary-only handoff does not erase attribution, then merges it with actors
+  derived from later committed instructions. `AgentTurnSessionRecord.actor`
+  separately carries the run actor.
 - The plugin run context exposes the same fields to plugin tasks:
   `pluginRunContextSchema.actor` (the run actor, absent only for actor-less
   legacy system records) and `pluginRunContextSchema.actors` (the run actors),

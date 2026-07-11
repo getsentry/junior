@@ -3,11 +3,11 @@
 ## Metadata
 
 - Created: 2026-05-28
-- Last Edited: 2026-05-30
+- Last Edited: 2026-07-11
 
 ## Purpose
 
-Define how Junior bounds long-running conversation context by replacing reusable model history with a compacted handoff while preserving enough user-authored context for future turns.
+Define how Junior bounds long-running conversation context by replacing reusable model history with a compaction summary while preserving enough user-authored context for future turns.
 
 ## Scope
 
@@ -18,8 +18,9 @@ Define how Junior bounds long-running conversation context by replacing reusable
 ## Non-Goals
 
 - Remote or server-side compaction endpoints. Junior owns all summarization, retained-message selection, replacement construction, persistence, and triggers locally.
-- User-facing compaction commands, slash commands, or model tools.
-- Manual or forced compaction APIs. Future model-handoff orchestration can add a small internal caller when that flow exists.
+- User-facing compaction commands or slash commands. The argument-free handoff
+  model tool is the one explicit caller owned by `./model-handoff.md`.
+- Other manual or forced compaction APIs.
 - Mid-turn compaction while an agent turn is actively generating.
 - Compaction while the conversation log has an unconsumed timeout or auth pause.
 - Rewriting partially visible Slack assistant output.
@@ -36,7 +37,7 @@ Junior has two different context authorities:
 
 Compaction must treat these as separate surfaces. Shrinking Slack conversation state does not shrink model history once turns are seeded from the agent session log.
 
-The durable Pi history is the agent session log defined in `./agent-session-resumability.md`. Compaction may replace the current Pi projection only by appending a deterministic projection event with a synthetic handoff summary; it must not create a parallel summary log, loaded-skill log, provider log, prompt-history cache, or "last session" pointer. The internal `sessionId` is only a conversation-local marker for filtering old projection events after a reset.
+The durable Pi history is the agent session log defined in `./agent-session-resumability.md`. Compaction may replace the current Pi projection only by appending a deterministic projection event with a synthetic compaction summary; it must not create a parallel summary log, loaded-skill log, provider log, prompt-history cache, or "last session" pointer. The internal `sessionId` is only a conversation-local marker for filtering old projection events after a reset.
 
 ### Pi History Compaction
 
@@ -50,7 +51,7 @@ Pre-turn Pi compaction runs only before appending the next user input and only a
 When compaction is required, Junior creates a replacement Pi history from:
 
 1. recent real user-authored messages up to the retained-message budget
-2. one synthetic user-role handoff summary
+2. one synthetic user-role compaction summary
 
 This matches the proven shape in Pi coding-agent and Codex: the durable log
 remains the source of truth, and compaction changes only the model-visible
@@ -59,15 +60,19 @@ entry; rebuilding context emits the summary plus the retained tail. Codex builds
 replacement model history from selected user messages plus a summary item. Junior
 opens a new context epoch for the same role inside the durable step history
 (`./conversation-storage.md`): in one transaction it appends a
-`context_epoch_started {reason: "compaction"}` marker and writes the replacement
-context as ordinary `pi_message` step rows in the new epoch. Later steps in the
-same conversation carry the new epoch, and reducers ignore steps from older
-epochs. (Historical shape: a `projection_reset` entry embedding the replacement
-`messages` array and advancing a `sessionId` marker.)
+`context_epoch_started {reason: "compaction", modelProfile}` marker and writes
+the replacement context as ordinary `pi_message` step rows in the new epoch.
+The new projection inherits the source projection's model binding. Later steps
+in the same conversation carry the new epoch, and reducers ignore steps from
+older epochs. Legacy compaction and rollback markers without `modelProfile`
+resolve to `standard`; handoff requires an explicit `advanced` binding, and
+`fast` never owns a main-conversation projection. (Earlier storage used a
+`projection_reset` entry embedding the replacement `messages` array and
+advancing a `sessionId` marker.)
 
 Each replacement `pi_message` row carries its own provenance. Retained real user
 messages preserve their original instruction actor from the pre-compaction
-projection; the synthetic handoff summary is unattributed `context`. A
+projection; the synthetic compaction summary is unattributed `context`. A
 replacement row without valid provenance fails closed rather than being zipped
 or truncated.
 
@@ -75,16 +80,22 @@ The replacement history must exclude stale runtime turn context, old capability 
 
 The replacement history must preserve enough session-log evidence to derive required runtime handles, or deliberately omit handles that are no longer valid after compaction. If compaction drops old `loadSkill` results or `mcp_provider_connected` events, the next turn must rediscover/reload those capabilities through normal tools rather than relying on side metadata.
 
-### Handoff Summary
+### Continuation Summary
 
-The summary prompt must produce a concise handoff for another model continuing the same thread. It must ask for:
+The summary prompt must produce a concise continuation checkpoint for an agent continuing the same thread. It must ask for:
 
 - current outstanding asks
 - important decisions, outcomes, and completed work
 - durable context, constraints, preferences, identifiers, URLs, artifacts, canvas links, sandbox references, and auth state
 - clear next steps and unresolved blockers
 
-The summary must be stored as one model-visible handoff item, not as an accumulating log of compaction records.
+The summary must be stored as one model-visible compaction item, not as an accumulating log of compaction records.
+
+Model handoff uses this same summarizer without the automatic threshold. A
+successful handoff writes a summary-only replacement epoch whose marker records
+`reason: "handoff"` and `modelProfile: "advanced"`. The in-process continuation
+may carry the current volatile runtime bootstrap beside that summary; it must
+not copy raw transcript history into the advanced context.
 
 When summary input must be bounded before calling the summarizer, Junior must omit older context before newer context. Recent Pi history is the most important source for continuation, so truncation must preserve the tail of the reusable history rather than blindly taking the first bytes of the reduced log projection.
 
@@ -95,7 +106,7 @@ Retained user messages are selected newest-first until the retained-message toke
 Eligible retained messages must be user-authored semantic input. They must not include:
 
 - synthetic runtime context blocks
-- compaction handoff summaries
+- compaction summaries
 - non-text image bytes or attachment base64
 - tool results
 - assistant messages
@@ -147,7 +158,7 @@ If Junior later adds mid-turn compaction, that path must define a separate inser
 1. If summarization fails during automatic pre-turn compaction, Junior must continue with the prior reusable history unless the model provider has already rejected the prompt as too large.
 2. If replacement projection persistence fails, Junior must continue with the prior reduced log.
 3. If compaction is requested while the conversation log has an awaiting resume pause, Junior must refuse or defer compaction rather than compacting the resumable projection.
-4. If retained-message selection cannot parse a message shape, Junior must omit that message from retained verbatim history and rely on the handoff summary.
+4. If retained-message selection cannot parse a message shape, Junior must omit that message from retained verbatim history and rely on the compaction summary.
 
 ## Observability
 

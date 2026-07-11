@@ -33,7 +33,7 @@ import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-it
 import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createAdvisorTool } from "@/chat/tools/advisor/tool";
+import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type {
   ToolHooks,
@@ -127,8 +127,8 @@ export function createTools(
     );
   }
 
-  if (context.advisor) {
-    tools.advisor = createAdvisorTool(context.advisor);
+  if (context.handoff) {
+    tools.handoff = createHandoffTool(context.handoff);
   }
 
   if (canUseResourceEventSubscriptionTools(context)) {

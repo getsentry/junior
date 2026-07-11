@@ -6,7 +6,7 @@ Evals are end-to-end Slack conversation evaluations. They are the integration-st
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client and the Vercel AI Gateway model `openai/gpt-5.4`.
+- We score outcomes against the normalized `vitest-evals` session surface, backed by Junior's Pi client. The eval runtime pins standard to `openai/gpt-5.4` and handoff continuation to `openai/gpt-5.6-sol`, so handoff cases exercise a real model transition.
 
 ## Layer Boundaries
 

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { agentStepEntrySchema } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
@@ -20,6 +21,28 @@ import {
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
+
+it("accepts only legacy-compatible projection marker bindings", () => {
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "handoff",
+    }).success,
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "compaction",
+      modelProfile: "fast",
+    }).success,
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "compaction",
+    }).success,
+  ).toBe(true);
+});
 
 async function seedConversation(
   fixture: LocalJuniorSqlFixture,
@@ -165,6 +188,7 @@ describe("conversation transcript SQL stores", () => {
       ]);
       await store.startEpoch(CONVERSATION_ID, {
         reason: "compaction",
+        modelProfile: "standard",
         messages: [
           { message: userMessage("epoch1-summary"), createdAtMs: 3_000 },
         ],
@@ -180,6 +204,31 @@ describe("conversation transcript SQL stores", () => {
 
       const history = await store.loadHistory(CONVERSATION_ID);
       expect(history.map((step) => step.contextEpoch)).toEqual([0, 0, 1, 1]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("round trips provider-neutral isolated subagent history", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+      const entry = {
+        type: "subagent_started" as const,
+        subagentInvocationId: "future-subagent-call",
+        subagentKind: "task",
+        childConversationId: "subagent:future-child",
+        historyMode: "isolated" as const,
+      };
+
+      await store.append(CONVERSATION_ID, [{ entry, createdAtMs: 1_000 }]);
+
+      expect((await store.loadHistory(CONVERSATION_ID))[0]?.entry).toEqual(
+        entry,
+      );
     } finally {
       await fixture.close();
     }
@@ -214,6 +263,7 @@ describe("conversation transcript SQL stores", () => {
       await expect(
         failingStore.startEpoch(CONVERSATION_ID, {
           reason: "rollback",
+          modelProfile: "standard",
           messages: [{ message: userMessage("never"), createdAtMs: 2_000 }],
         }),
       ).rejects.toThrow("epoch write failed");

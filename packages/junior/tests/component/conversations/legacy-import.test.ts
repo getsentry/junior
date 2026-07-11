@@ -18,9 +18,8 @@ import { createSqlConversationMessageStore } from "@/chat/conversations/sql/mess
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { advisorChildConversationId } from "@/chat/tools/advisor/tool";
 import { migrateConversationHistoryToSql } from "@/cli/upgrade/migrations/conversations-history-sql";
-import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
+import type { LegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
 import type { Conversation } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import type {
@@ -91,10 +90,9 @@ function staticSessionLogStore(entries: SessionLogEntry[]): SessionLogStore {
   };
 }
 
-function staticAdvisorStore(messages: PiMessage[]): AdvisorSessionStore {
+function staticAdvisorStore(messages: PiMessage[]): LegacyAdvisorSessionReader {
   return {
     load: async () => messages,
-    save: async () => {},
   };
 }
 
@@ -117,7 +115,7 @@ describe("legacy conversation import", () => {
     await migrateSchema(fixture.sql);
     const stepStore = createSqlAgentStepStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
-    const childId = advisorChildConversationId(CONVERSATION_ID);
+    const childId = `advisor:${CONVERSATION_ID}`;
 
     const entries: SessionLogEntry[] = [
       {

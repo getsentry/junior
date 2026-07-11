@@ -1,5 +1,12 @@
-import { describeEval } from "vitest-evals";
-import { mention, rubric, slackEvals } from "../../src/helpers";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { expect } from "vitest";
+import {
+  agentSteps,
+  mention,
+  rubric,
+  slackEvals,
+  threadMessage,
+} from "../../src/helpers";
 
 const codingFixtureOverrides = {
   skill_dirs: ["fixtures/coding-skills"],
@@ -51,5 +58,130 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         ],
       }),
     });
+  });
+
+  it("when a coding request requires architecture reasoning, upgrade before analysis", async ({
+    run,
+  }) => {
+    const result = await run({
+      initialEvents: [
+        mention(
+          "I have a TypeScript worker where config.ts defines emergencyMode, but alerts.ts currently receives a mode argument independently. Before we implement anything, recommend whether alerts should import runtime config directly or keep mode as an explicit dependency, and give me the test strategy. Use only this description; no repository inspection is needed.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The reply makes a concrete recommendation about direct config access versus explicit dependency injection.",
+          "The reply explains the architectural tradeoff and gives a focused test strategy.",
+        ],
+        fail: [
+          "Do not claim repository files were inspected or changed.",
+          "Do not answer with only a promise to analyze later.",
+        ],
+      }),
+    });
+    expect(toolCalls(result.session)[0]).toMatchObject({ name: "handoff" });
+  });
+
+  it("hands a coding task to the advanced projection and keeps that model and workspace on the next turn", async ({
+    run,
+  }) => {
+    const thread = {
+      id: "thread-model-handoff",
+      channel_id: "CMODELHANDOFF",
+      thread_ts: "17000000.5400",
+    };
+    const result = await run({
+      overrides: codingFixtureOverrides,
+      initialEvents: [
+        mention(
+          "In the eval coding fixture, create skills/coding-workspace-fixture/project/handoff-proof.txt containing exactly `projection-cobalt-7319`, read it back, and report its exact contents.",
+          { thread },
+        ),
+      ],
+      events: [
+        threadMessage(
+          "Without rewriting it, run sha256sum on skills/coding-workspace-fixture/project/handoff-proof.txt and report the exact digest.",
+          { thread, is_mention: true },
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant completes both turns; the first reply reports projection-cobalt-7319 and the second reports SHA-256 digest 2613e9a4578bc3a4de57451d7e553efcbce5df5002ca77628a962dc660804082.",
+          "The second turn hashes the file created in the first turn from the same workspace without rewriting it.",
+        ],
+        fail: [
+          "Do not answer with only a plan or promise to inspect the file later.",
+          "Do not report sandbox setup failure text.",
+        ],
+      }),
+    });
+
+    const calls = toolCalls(result.session);
+    expect(calls[0]).toMatchObject({ name: "handoff" });
+    expect(calls.filter((call) => call.name === "handoff")).toHaveLength(1);
+
+    const steps = await agentSteps(result.session);
+    const markers = steps.filter(
+      (step) => step.entry.type === "context_epoch_started",
+    );
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.entry).toMatchObject({
+      type: "context_epoch_started",
+      reason: "handoff",
+      modelProfile: "advanced",
+    });
+
+    const replies = assistantMessages(result.session).filter(
+      (message) => message.metadata?.event_type === "thread_post",
+    );
+    expect(replies).toHaveLength(2);
+    expect(
+      calls.some((call) => {
+        const args = JSON.stringify(call.arguments) ?? "";
+        return args.includes("sha256sum") && args.includes("handoff-proof.txt");
+      }),
+    ).toBe(true);
+    const followUp = steps.find(
+      (step) =>
+        step.entry.type === "pi_message" &&
+        step.role === "user" &&
+        JSON.stringify(step.entry.message).includes(
+          "run sha256sum on skills/coding-workspace-fixture/project/handoff-proof.txt",
+        ),
+    );
+    expect(followUp).toBeDefined();
+    const firstAdvancedModels = steps
+      .filter(
+        (step) =>
+          step.seq > markers[0]!.seq &&
+          step.seq < followUp!.seq &&
+          step.entry.type === "pi_message" &&
+          step.role === "assistant",
+      )
+      .map((step) =>
+        step.entry.type === "pi_message" &&
+        step.entry.message.role === "assistant"
+          ? step.entry.message.model
+          : undefined,
+      );
+    const advancedModel = firstAdvancedModels.at(-1);
+    expect(advancedModel).toBeDefined();
+    expect(advancedModel).not.toBe(process.env.AI_MODEL);
+    const followUpModels = steps
+      .filter(
+        (step) =>
+          step.seq > followUp!.seq &&
+          step.entry.type === "pi_message" &&
+          step.role === "assistant",
+      )
+      .map((step) =>
+        step.entry.type === "pi_message" &&
+        step.entry.message.role === "assistant"
+          ? step.entry.message.model
+          : undefined,
+      );
+    expect(followUpModels.length).toBeGreaterThan(0);
+    expect(followUpModels).toEqual(followUpModels.map(() => advancedModel));
   });
 });

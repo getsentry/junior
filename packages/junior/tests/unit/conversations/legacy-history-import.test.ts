@@ -237,10 +237,14 @@ describe("convertLegacySessionLog", () => {
 });
 
 describe("convertAdvisorMessages", () => {
-  it("maps advisor messages to epoch-0 pi_message rows with message timestamps", () => {
+  it("normalizes advisor requests while mapping messages to child rows", () => {
     const rows = convertAdvisorMessages(
       [
-        userMessage("q", 5),
+        userMessage(
+          "<advisor-task>\nReview &lt;change&gt; &amp; &quot;risk&quot;.\n</advisor-task>\n\n" +
+            "<executor-context>\nUse owner=&apos;dashboard&apos; &amp; preserve &lt;context&gt;.\n</executor-context>",
+          5,
+        ),
         assistantMessage("a", 6),
         assistantMessage("no ts"),
       ],
@@ -254,7 +258,10 @@ describe("convertAdvisorMessages", () => {
         createdAtMs: 5,
         entry: {
           type: "pi_message",
-          message: userMessage("q", 5),
+          message: userMessage(
+            `Review <change> & "risk".\n\nExecutor context:\nUse owner='dashboard' & preserve <context>.`,
+            5,
+          ),
           provenance: { authority: "context" },
         },
       },

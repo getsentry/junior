@@ -171,7 +171,7 @@ describe("context compaction projection reset", () => {
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { commitMessages, loadProjection, loadProjectionWithProvenance } =
+    const { commitMessages, loadConversationProjection, loadProjection } =
       await import("@/chat/conversations/projection");
 
     const priorMessages = [
@@ -213,7 +213,7 @@ describe("context compaction projection reset", () => {
     expect(result).not.toHaveProperty("sessionId");
     const compactedMessages = result.piMessages ?? [];
     expect(compactedMessages.map(textOf).join("\n")).toContain(
-      "Context handoff summary",
+      "Context compaction summary",
     );
     expect(compactedMessages.map(textOf).join("\n")).toContain(
       "migration approval",
@@ -221,7 +221,7 @@ describe("context compaction projection reset", () => {
     await expect(
       loadProjection({ conversationId: "conversation-1" }),
     ).resolves.toEqual(compactedMessages);
-    const projection = await loadProjectionWithProvenance({
+    const projection = await loadConversationProjection({
       conversationId: "conversation-1",
     });
     expect(projection.messages).toEqual(compactedMessages);
@@ -238,12 +238,160 @@ describe("context compaction projection reset", () => {
     });
   });
 
+  it("handoff binds the advanced profile and later projection replacements inherit it", async () => {
+    const { compactContextForHandoff, createContextCompactor } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadConversationProjection, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const { coerceThreadConversationState } =
+      await import("@/chat/state/conversation");
+    const { getAgentStepStore } = await import("@/chat/db");
+    const conversationId = "conversation-handoff";
+    const priorMessages = [
+      user("Implement the multi-file change.", 1),
+      assistant("I found the affected modules.", 2),
+    ];
+    await commitMessages({ conversationId, messages: priorMessages });
+
+    const handoffMessages = await compactContextForHandoff(
+      { conversationId, piMessages: priorMessages },
+      {
+        completeText: async () =>
+          ({ text: "Continue the multi-file implementation." }) as never,
+      },
+    );
+
+    expect(handoffMessages).toHaveLength(1);
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "Continue the outstanding request now",
+    );
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "Continue the multi-file implementation.",
+    );
+    await expect(loadProjection({ conversationId })).resolves.toEqual(
+      handoffMessages,
+    );
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("advanced");
+    const marker = (await getAgentStepStore().loadHistory(conversationId))
+      .map((step) => step.entry)
+      .find(
+        (entry) =>
+          entry.type === "context_epoch_started" && entry.reason === "handoff",
+      );
+    expect(marker).toEqual({
+      type: "context_epoch_started",
+      reason: "handoff",
+      modelProfile: "advanced",
+    });
+
+    const compactor = createContextCompactor({
+      completeText: async () =>
+        ({ text: "Continue the advanced implementation." }) as never,
+      autoCompactionTriggerTokens: 0,
+    });
+    const compacted = await compactor.maybeCompact({
+      conversation: coerceThreadConversationState({}),
+      conversationId,
+      piMessages: handoffMessages,
+    });
+    expect(compacted.compacted).toBe(true);
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("advanced");
+
+    await commitMessages({
+      conversationId,
+      messages: [user("Replacement safe boundary.", 3)],
+    });
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("advanced");
+    const projectionMarkers = (
+      await getAgentStepStore().loadHistory(conversationId)
+    )
+      .map((step) => step.entry)
+      .filter((entry) => entry.type === "context_epoch_started");
+    expect(
+      projectionMarkers.map(({ reason, modelProfile }) => ({
+        reason,
+        modelProfile,
+      })),
+    ).toEqual([
+      { reason: "handoff", modelProfile: "advanced" },
+      { reason: "compaction", modelProfile: "advanced" },
+      { reason: "rollback", modelProfile: "advanced" },
+    ]);
+  });
+
+  it("leaves the standard projection untouched when handoff summarization fails", async () => {
+    const { compactContextForHandoff } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadConversationProjection, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const conversationId = "conversation-failed-handoff";
+    const priorMessages = [user("Implement the change.", 1)];
+    await commitMessages({ conversationId, messages: priorMessages });
+
+    await expect(
+      compactContextForHandoff(
+        { conversationId, piMessages: priorMessages },
+        {
+          completeText: async () => {
+            throw new Error("summary unavailable");
+          },
+        },
+      ),
+    ).rejects.toThrow("summary unavailable");
+    await expect(loadProjection({ conversationId })).resolves.toEqual(
+      priorMessages,
+    );
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("standard");
+  });
+
+  it("does not start handoff persistence when abort is observed after summarization", async () => {
+    const { compactContextForHandoff } =
+      await import("@/chat/services/context-compaction");
+    const { commitMessages, loadConversationProjection, loadProjection } =
+      await import("@/chat/conversations/projection");
+    const conversationId = "conversation-aborted-handoff";
+    const priorMessages = [user("Implement the change.", 1)];
+    const controller = new AbortController();
+    await commitMessages({ conversationId, messages: priorMessages });
+
+    await expect(
+      compactContextForHandoff(
+        {
+          conversationId,
+          piMessages: priorMessages,
+          signal: controller.signal,
+        },
+        {
+          completeText: async (params) => {
+            expect(params.signal).toBe(controller.signal);
+            controller.abort(new Error("turn aborted"));
+            return { text: "This summary must not commit." } as never;
+          },
+        },
+      ),
+    ).rejects.toThrow("turn aborted");
+    await expect(loadProjection({ conversationId })).resolves.toEqual(
+      priorMessages,
+    );
+    expect(
+      (await loadConversationProjection({ conversationId })).modelProfile,
+    ).toBe("standard");
+  });
+
   it("preserves retained user provenance positionally when authors send identical text", async () => {
     const { createContextCompactor } =
       await import("@/chat/services/context-compaction");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { commitMessages, loadProjectionWithProvenance } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
 
     const alice = {
@@ -282,7 +430,7 @@ describe("context compaction projection reset", () => {
     });
 
     expect(result.compacted).toBe(true);
-    const projection = await loadProjectionWithProvenance({
+    const projection = await loadConversationProjection({
       conversationId: "conversation-identical-retained-text",
     });
     expect(projection.messages.slice(0, 2).map(textOf)).toEqual([

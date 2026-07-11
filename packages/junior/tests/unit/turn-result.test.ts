@@ -35,6 +35,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -67,6 +68,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -100,6 +102,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -136,6 +139,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -176,6 +180,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -214,6 +219,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -246,6 +252,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -287,6 +294,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -313,6 +321,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -346,6 +355,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -384,6 +394,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 1,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -428,6 +439,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
     });
 
@@ -454,6 +466,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      modelId: "test-model",
       thinkingSelection,
       usage: {
         inputTokens: 321,

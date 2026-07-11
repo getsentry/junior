@@ -9,7 +9,7 @@ import { acquireActiveLock } from "@/chat/state/locks";
 import { instructionActors } from "@/chat/state/session-log";
 import {
   loadProjection,
-  loadProjectionWithProvenance,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import {
   hydrateConversationMessages,
@@ -1468,7 +1468,7 @@ describe("bot handlers (integration)", () => {
       messageContext: { skipped: [fromAlice], totalSinceLastHandler: 1 },
     });
 
-    const projection = await loadProjectionWithProvenance({ conversationId });
+    const projection = await loadConversationProjection({ conversationId });
     const entries = projection.messages.map((message, index) => ({
       text: JSON.stringify(
         (message as { content?: unknown }).content ?? message,
@@ -1555,7 +1555,7 @@ describe("bot handlers (integration)", () => {
     // The drain commits Bob's batched mention to the session log before the run
     // with his own instruction provenance, so he joins the run's actors instead
     // of being dropped as anonymous context under Alice's turn.
-    const projection = await loadProjectionWithProvenance({ conversationId });
+    const projection = await loadConversationProjection({ conversationId });
     const bobEntry = projection.messages
       .map((message, index) => ({
         text: JSON.stringify(

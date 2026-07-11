@@ -24,6 +24,8 @@ process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
 process.env.JUNIOR_STATE_ADAPTER = "memory";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval:${process.pid}`;
+process.env.AI_MODEL = "openai/gpt-5.4";
+process.env.AI_ADVANCED_MODEL = "openai/gpt-5.6-sol";
 process.env.VITEST_EVALS_REPLAY_MODE ??= "auto";
 
 export default defineConfig({

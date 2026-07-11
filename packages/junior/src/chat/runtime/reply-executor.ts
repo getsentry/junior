@@ -121,7 +121,7 @@ import {
 import {
   commitMessages,
   loadProjection,
-  loadProjectionWithProvenance,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
@@ -664,7 +664,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return false;
           }
           try {
-            const projection = await loadProjectionWithProvenance({
+            const projection = await loadConversationProjection({
               conversationId,
             });
             // Dedupe per message: a partial-overlap redelivery (some messages

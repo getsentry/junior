@@ -233,11 +233,7 @@ export async function buildConversationSubagent(
     });
   }
 
-  const transcript = childMessages.map((message) =>
-    normalizeTranscriptMessage(message, {
-      unwrapAdvisorTask: activity.subagentKind === "advisor",
-    }),
-  );
+  const transcript = childMessages.map(normalizeTranscriptMessage);
   return subagentTranscriptReport(activity, {
     ...conversationFields,
     transcript,

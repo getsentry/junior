@@ -1,4 +1,3 @@
-import { botConfig } from "@/chat/config";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
 import {
@@ -151,6 +150,7 @@ export interface TurnResultInput {
     runId?: string;
   };
   assistantUserName?: string;
+  modelId: string;
 }
 
 function isVerbosePostCanvasReply(text: string): boolean {
@@ -212,6 +212,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     thinkingSelection,
     correlation,
     assistantUserName,
+    modelId,
   } = input;
 
   const toolResults = newMessages.filter(isToolResultMessage);
@@ -269,7 +270,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       slackChannelId: correlation?.channelId,
       runId: correlation?.runId,
       assistantUserName,
-      modelId: botConfig.modelId,
+      modelId,
     };
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
@@ -294,7 +295,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,
-        modelId: botConfig.modelId,
+        modelId,
       },
       {
         "app.ai.no_reply_marker": true,
@@ -313,7 +314,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,
-        modelId: botConfig.modelId,
+        modelId,
       },
       {
         "app.ai.tool_results": toolResults.length,
@@ -375,7 +376,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
     outcome: resolvedOutcome,
-    modelId: botConfig.modelId,
+    modelId,
     assistantMessageCount: assistantMessages.length,
     thinkingLevel: thinkingSelection.thinkingLevel,
     toolCalls,

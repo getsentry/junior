@@ -346,7 +346,7 @@ describe("persistAuthPauseSessionRecord", () => {
       listAgentTurnSessionSummariesForConversation,
       upsertAgentTurnSessionRecord,
     } = await import("@/chat/state/turn-session");
-    const { loadProjectionWithProvenance } =
+    const { loadConversationProjection } =
       await import("@/chat/conversations/projection");
 
     const previousQuestion: PiMessage = {
@@ -394,7 +394,7 @@ describe("persistAuthPauseSessionRecord", () => {
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
-    const projection = await loadProjectionWithProvenance({
+    const projection = await loadConversationProjection({
       conversationId: "conversation-turn-scope",
     });
     expect(projection.messages).toEqual([previousQuestion, currentQuestion]);
@@ -1167,7 +1167,7 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("updates reasoning while keeping the turn model fixed across slices", async () => {
+  it("updates the active model and reasoning across slices", async () => {
     const {
       getAgentTurnSessionRecord,
       listAgentTurnSessionSummaries,
@@ -1181,7 +1181,7 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId,
       sliceId: 1,
       state: "awaiting_resume",
-      modelId: "openai/gpt-5.5",
+      modelId: "openai/gpt-5.6",
       reasoningLevel: "high",
       resumeReason: "timeout",
       piMessages: [userMessage("continue")],
@@ -1199,7 +1199,7 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      modelId: "openai/gpt-5.5",
+      modelId: "openai/gpt-5.6",
       reasoningLevel: "low",
     });
     expect(
@@ -1207,7 +1207,7 @@ describe("persistAuthPauseSessionRecord", () => {
         (summary) => summary.sessionId === sessionId,
       ),
     ).toMatchObject({
-      modelId: "openai/gpt-5.5",
+      modelId: "openai/gpt-5.6",
       reasoningLevel: "low",
     });
   });

@@ -74,9 +74,9 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   and recovery may find the call without its results. Safe resume boundaries
   require the result steps to be durably recorded.
 - **Context epoch**: one generation of the model-visible context for a
-  conversation. The epoch advances when compaction or rollback rebuilds the
-  context. Steps in older epochs remain audit history and no longer contribute
-  to model context.
+  conversation. The epoch advances when compaction, handoff, or rollback
+  rebuilds the context. Steps in older epochs remain audit history and no
+  longer contribute to model context.
 - **Message**: one stored visible conversation message (user, assistant, or
   system) in the conversation record, or one normalized inbound source event.
 - **Transcript**: the reporting read model rendered from stored conversation

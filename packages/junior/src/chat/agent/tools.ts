@@ -4,12 +4,11 @@
  * Builds everything the agent can act through for one run slice: the sandbox
  * executor and lazy workspace, MCP and plugin auth orchestration, MCP
  * provider restoration from durable history, and the Pi-facing tool surfaces
- * (agent tools plus the advisor's tool view). Auth pauses raised while
+ * (main-agent tools plus runtime control tools). Auth pauses raised while
  * restoring providers are thrown here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
-import { botConfig } from "@/chat/config";
 import { listReferenceFiles } from "@/chat/discovery";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -29,7 +28,6 @@ import {
   toActiveMcpCatalogSummaries,
   type ActiveMcpCatalogSummary,
 } from "@/chat/tool-support/skill/mcp-tool-summary";
-import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import {
@@ -39,7 +37,6 @@ import {
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
-import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { LogContext } from "@/chat/logging";
 import { logWarn } from "@/chat/logging";
@@ -85,6 +82,7 @@ interface ToolWiringArgs {
   preAgentPromptMessages: () => PiMessage[];
   priorPiMessages: PiMessage[] | undefined;
   recordConnectedMcpProvider: (provider: string) => Promise<void>;
+  requestHandoff?: (signal?: AbortSignal) => Promise<void>;
   resume: ResumeState;
   routing: AgentRunRouting;
   sessionConversationId?: string;
@@ -230,7 +228,6 @@ export async function wireAgentTools(
       skill.disableModelInvocation !== true ||
       skill.name === args.invokedSkill?.name,
   );
-  let advisorTools: AgentTool[] = [];
   const commonToolRuntimeContext = {
     conversationId: args.sessionConversationId,
     userText: args.userInput,
@@ -258,16 +255,7 @@ export async function wireAgentTools(
     mcpToolManager,
     sandbox,
     surface: args.surface,
-    advisor: {
-      config: botConfig.advisor,
-      conversationId: args.sessionConversationId,
-      conversationPrivacy: args.conversationPrivacy,
-      logContext: args.spanContext,
-      getTools: () => advisorTools,
-      streamFn: createTracedStreamFn({
-        conversationPrivacy: args.conversationPrivacy,
-      }),
-    },
+    ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
   };
   const toolDestination = toolInvocationDestination(args.routing);
   let toolRuntimeContext: ToolRuntimeContext;
@@ -435,18 +423,6 @@ export async function wireAgentTools(
   };
   const agentTools = createPiAgentTools(
     tools,
-    args.skillSandbox,
-    args.spanContext,
-    args.observers.onStatus,
-    sandboxExecutor,
-    pluginAuth,
-    onToolCall,
-    pluginHooks,
-    args.conversationPrivacy,
-    args.observers.onToolResult,
-  );
-  advisorTools = createPiAgentTools(
-    createAdvisorToolDefinitions(tools),
     args.skillSandbox,
     args.spanContext,
     args.observers.onStatus,

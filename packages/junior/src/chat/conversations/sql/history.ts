@@ -2,9 +2,10 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   agentStepEntrySchema,
+  contextEpochStartSchema,
   type AgentStepEntry,
   type AgentStepStore,
-  type EpochReason,
+  type ContextEpochStart,
   type NewAgentStep,
   type PiMessageStep,
   type StoredAgentStep,
@@ -92,18 +93,20 @@ class SqlAgentStepStore implements AgentStepStore {
 
   async startEpoch(
     conversationId: string,
-    opts: { reason: EpochReason; messages: PiMessageStep[] },
+    opts: ContextEpochStart,
   ): Promise<void> {
+    const parsed = contextEpochStartSchema.parse(opts);
     await this.executor.transaction(async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
+      const { messages, ...binding } = parsed;
       const marker: NewAgentStep = {
-        entry: { type: "context_epoch_started", reason: opts.reason },
+        entry: { type: "context_epoch_started", ...binding },
         createdAtMs: Date.now(),
       };
-      const rows = [marker, ...opts.messages.map(piMessageStep)].map((step) =>
+      const rows = [marker, ...messages.map(piMessageStep)].map((step) =>
         insertFromStep(conversationId, seq++, contextEpoch, step),
       );
       await this.executor.db().insert(juniorAgentSteps).values(rows);

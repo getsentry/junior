@@ -9,17 +9,6 @@ const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
 const DEFAULT_COMPLETED_REACTION_EMOJI = "white_check_mark";
-const ADVISOR_THINKING_LEVELS = [
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-] as const;
-
-export type AdvisorThinkingLevel = (typeof ADVISOR_THINKING_LEVELS)[number];
-
-const DEFAULT_ADVISOR_THINKING_LEVEL: AdvisorThinkingLevel = "xhigh";
 /**
  * Buffer between the Vercel function timeout and the agent turn timeout so
  * Junior can abort, persist, and schedule continuation before host teardown.
@@ -41,7 +30,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotConfig {
-  advisor: AdvisorConfig;
+  advancedModelId: string;
   embeddingModelId: string;
   fastModelId: string;
   loadingMessages: string[];
@@ -50,11 +39,6 @@ export interface BotConfig {
   visionModelId?: string;
   turnTimeoutMs: number;
   userName: string;
-}
-
-export interface AdvisorConfig {
-  modelId: string;
-  thinkingLevel: AdvisorThinkingLevel;
 }
 
 export type SqlDriver = "neon" | "postgres";
@@ -138,23 +122,6 @@ function parseLoadingMessages(rawValue: string | undefined): string[] {
   });
 }
 
-function parseAdvisorThinkingLevel(
-  rawValue: string | undefined,
-): AdvisorThinkingLevel {
-  const value = toOptionalTrimmed(rawValue);
-  if (!value) {
-    return DEFAULT_ADVISOR_THINKING_LEVEL;
-  }
-
-  if (ADVISOR_THINKING_LEVELS.includes(value as AdvisorThinkingLevel)) {
-    return value as AdvisorThinkingLevel;
-  }
-
-  throw new Error(
-    `AI_ADVISOR_THINKING_LEVEL must be one of: minimal, low, medium, high, xhigh`,
-  );
-}
-
 function parseOptionalPositiveInteger(
   envName: string,
   rawValue: string | undefined,
@@ -188,7 +155,7 @@ const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.4-mini",
 ).id;
-const DEFAULT_ADVISOR_MODEL_ID = getModel(
+const DEFAULT_ADVANCED_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.6-sol",
 ).id;
@@ -203,14 +170,6 @@ function validateGatewayModelId(raw: string | undefined): string | undefined {
 
 function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
-}
-
-function readAdvisorConfig(env: NodeJS.ProcessEnv): AdvisorConfig {
-  return {
-    modelId:
-      validateGatewayModelId(env.AI_ADVISOR_MODEL) ?? DEFAULT_ADVISOR_MODEL_ID,
-    thinkingLevel: parseAdvisorThinkingLevel(env.AI_ADVISOR_THINKING_LEVEL),
-  };
 }
 
 function parseReactionEmoji(
@@ -240,6 +199,9 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     DEFAULT_FAST_MODEL_ID;
 
   return {
+    advancedModelId:
+      validateGatewayModelId(env.AI_ADVANCED_MODEL) ??
+      DEFAULT_ADVANCED_MODEL_ID,
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
     modelId,
     modelContextWindowTokens: parseOptionalPositiveInteger(
@@ -256,7 +218,6 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
     ),
-    advisor: readAdvisorConfig(env),
   };
 }
 

@@ -72,9 +72,9 @@ export interface AgentTurnSessionRecord {
   piMessageProvenance: PiMessageProvenance[];
   /**
    * All distinct actors annotated on this run's committed instruction-authority
-   * messages, in first-seen order. Derived from `piMessageProvenance` at
-   * materialization — never persisted separately, so it cannot drift from
-   * provenance. Attribution only; never an authority source.
+   * messages, in first-seen order. Persisted as an attribution handle so a
+   * summary-only handoff cannot erase them. It never grants authority or
+   * replaces the singular execution actor.
    */
   actors: Actor[];
   /** The single actor this run executes as (credential binding, auth flows). */
@@ -104,6 +104,7 @@ interface StoredAgentTurnSessionRecord extends Omit<
   AgentTurnSessionRecord,
   "actors" | "piMessages" | "piMessageProvenance" | "turnStartMessageIndex"
 > {
+  actors?: Actor[];
   /**
    * `seq` of the last step in `junior_agent_steps` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
@@ -167,6 +168,7 @@ const agentTurnSessionSummarySchema = z
 
 const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
   .extend({
+    actors: z.array(actorSchema).optional(),
     committedSeq: seqCursorSchema,
     errorMessage: z.string().optional(),
     turnStartSeq: seqCursorSchema.optional(),
@@ -292,7 +294,7 @@ function materializeAgentTurnSessionRecord(
     updatedAtMs: stored.updatedAtMs,
     piMessages: piProjection.messages,
     piMessageProvenance: piProjection.provenance,
-    actors: instructionActors(piProjection.provenance),
+    actors: stored.actors ?? instructionActors(piProjection.provenance),
     cumulativeDurationMs: stored.cumulativeDurationMs,
     ...(stored.destination ? { destination: stored.destination } : {}),
     ...(stored.source ? { source: stored.source } : {}),
@@ -380,6 +382,7 @@ function buildStoredRecord(args: {
   previousVersion?: number;
   reasoningLevel?: string;
   actor?: Actor;
+  actors?: Actor[];
   sessionId: string;
   sliceId: number;
   startedAtMs?: number;
@@ -411,6 +414,7 @@ function buildStoredRecord(args: {
     ...(args.destination ? { destination: args.destination } : {}),
     ...(args.source ? { source: args.source } : {}),
     ...(args.actor ? { actor: args.actor } : {}),
+    ...(args.actors ? { actors: args.actors } : {}),
     ...(args.loadedSkillNames
       ? { loadedSkillNames: args.loadedSkillNames }
       : {}),
@@ -451,6 +455,7 @@ async function setStoredRecord(args: {
     args.ttlMs,
   );
   const {
+    actors: _actors,
     committedSeq: _committedSeq,
     errorMessage: _errorMessage,
     turnStartSeq: _turnStartSeq,
@@ -520,6 +525,7 @@ async function updateAgentTurnSessionState(args: {
         ? { reasoningLevel: args.existing.reasoningLevel }
         : {}),
       ...(args.existing.actor ? { actor: args.existing.actor } : {}),
+      actors: args.existing.actors,
       ...(args.existing.resumeReason
         ? { resumeReason: args.existing.resumeReason }
         : {}),
@@ -557,6 +563,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   /** Provenance for trailing newly committed messages, such as steering. */
   trailingMessageProvenance?: PiMessageProvenance[];
   actor?: Actor;
+  actors?: Actor[];
   resumeReason?: AgentTurnResumeReason;
   reasoningLevel?: string;
   errorMessage?: string;
@@ -637,8 +644,8 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((existingRecord?.modelId ?? args.modelId)
-        ? { modelId: existingRecord?.modelId ?? args.modelId }
+      ...((args.modelId ?? existingRecord?.modelId)
+        ? { modelId: args.modelId ?? existingRecord?.modelId }
         : {}),
       ...((args.reasoningLevel ?? existingRecord?.reasoningLevel)
         ? {
@@ -649,6 +656,11 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...((args.actor ?? existingRecord?.actor)
         ? { actor: args.actor ?? existingRecord?.actor }
         : {}),
+      actors: instructionActors([
+        ...(existingRecord?.actors ?? []).map(instructionProvenanceFor),
+        ...(args.actors ?? []).map(instructionProvenanceFor),
+        ...commit.provenance,
+      ]),
       ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       ...(args.resumedFromSliceId !== undefined
@@ -730,8 +742,8 @@ export async function recordAgentTurnSessionSummary(args: {
       : existing?.loadedSkillNames
         ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),
-    ...((existing?.modelId ?? args.modelId)
-      ? { modelId: existing?.modelId ?? args.modelId }
+    ...((args.modelId ?? existing?.modelId)
+      ? { modelId: args.modelId ?? existing?.modelId }
       : {}),
     ...((args.reasoningLevel ?? existing?.reasoningLevel)
       ? { reasoningLevel: args.reasoningLevel ?? existing?.reasoningLevel }
