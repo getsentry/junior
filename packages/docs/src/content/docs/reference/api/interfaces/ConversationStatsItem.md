@@ -5,7 +5,7 @@ prev: false
 title: "ConversationStatsItem"
 ---
 
-Defined in: junior/src/api/conversations/types.ts:192
+Defined in: junior/src/api/conversations/types.ts:204
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: junior/src/api/conversations/types.ts:192
 
 > **active**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:193
+Defined in: junior/src/api/conversations/types.ts:205
 
 ---
 
@@ -21,7 +21,15 @@ Defined in: junior/src/api/conversations/types.ts:193
 
 > **conversations**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:194
+Defined in: junior/src/api/conversations/types.ts:206
+
+---
+
+### costUsd?
+
+> `optional` **costUsd?**: `number`
+
+Defined in: junior/src/api/conversations/types.ts:211
 
 ---
 
@@ -29,7 +37,7 @@ Defined in: junior/src/api/conversations/types.ts:194
 
 > **durationMs**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:195
+Defined in: junior/src/api/conversations/types.ts:207
 
 ---
 
@@ -37,7 +45,7 @@ Defined in: junior/src/api/conversations/types.ts:195
 
 > **failed**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:196
+Defined in: junior/src/api/conversations/types.ts:208
 
 ---
 
@@ -45,7 +53,7 @@ Defined in: junior/src/api/conversations/types.ts:196
 
 > **hung**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:197
+Defined in: junior/src/api/conversations/types.ts:209
 
 ---
 
@@ -53,7 +61,7 @@ Defined in: junior/src/api/conversations/types.ts:197
 
 > **label**: `string`
 
-Defined in: junior/src/api/conversations/types.ts:198
+Defined in: junior/src/api/conversations/types.ts:210
 
 ---
 
@@ -61,4 +69,4 @@ Defined in: junior/src/api/conversations/types.ts:198
 
 > `optional` **tokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:199
+Defined in: junior/src/api/conversations/types.ts:212

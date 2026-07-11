@@ -7,7 +7,7 @@ export type ConversationReportStatus =
 
 export type ConversationSurface = "api" | "internal" | "scheduler" | "slack";
 
-/** Estimated USD cost breakdown for a conversation run. */
+/** Estimated USD cost breakdown. */
 export interface ConversationCost {
   input?: number;
   output?: number;
@@ -16,7 +16,7 @@ export interface ConversationCost {
   total?: number;
 }
 
-/** Token and estimated USD cost usage for a conversation run. */
+/** Token and estimated USD cost totals. */
 export interface ConversationUsage {
   inputTokens?: number;
   outputTokens?: number;

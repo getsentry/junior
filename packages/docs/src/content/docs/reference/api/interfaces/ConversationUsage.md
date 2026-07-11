@@ -5,7 +5,9 @@ prev: false
 title: "ConversationUsage"
 ---
 
-Defined in: junior/src/api/conversations/types.ts:10
+Defined in: junior/src/api/conversations/types.ts:20
+
+Token and estimated USD cost totals.
 
 ## Properties
 
@@ -13,7 +15,7 @@ Defined in: junior/src/api/conversations/types.ts:10
 
 > `optional` **cacheCreationTokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:14
+Defined in: junior/src/api/conversations/types.ts:24
 
 ---
 
@@ -21,7 +23,15 @@ Defined in: junior/src/api/conversations/types.ts:14
 
 > `optional` **cachedInputTokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:13
+Defined in: junior/src/api/conversations/types.ts:23
+
+---
+
+### cost?
+
+> `optional` **cost?**: [`ConversationCost`](/reference/api/interfaces/conversationcost/)
+
+Defined in: junior/src/api/conversations/types.ts:27
 
 ---
 
@@ -29,7 +39,7 @@ Defined in: junior/src/api/conversations/types.ts:13
 
 > `optional` **inputTokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:11
+Defined in: junior/src/api/conversations/types.ts:21
 
 ---
 
@@ -37,7 +47,15 @@ Defined in: junior/src/api/conversations/types.ts:11
 
 > `optional` **outputTokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:12
+Defined in: junior/src/api/conversations/types.ts:22
+
+---
+
+### reasoningTokens?
+
+> `optional` **reasoningTokens?**: `number`
+
+Defined in: junior/src/api/conversations/types.ts:25
 
 ---
 
@@ -45,4 +63,4 @@ Defined in: junior/src/api/conversations/types.ts:12
 
 > `optional` **totalTokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:15
+Defined in: junior/src/api/conversations/types.ts:26

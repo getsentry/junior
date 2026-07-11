@@ -5,7 +5,7 @@ prev: false
 title: "ConversationStatsReport"
 ---
 
-Defined in: junior/src/api/conversations/types.ts:202
+Defined in: junior/src/api/conversations/types.ts:215
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: junior/src/api/conversations/types.ts:202
 
 > **active**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:203
+Defined in: junior/src/api/conversations/types.ts:216
 
 ---
 
@@ -21,7 +21,7 @@ Defined in: junior/src/api/conversations/types.ts:203
 
 > **actors**: [`ConversationStatsItem`](/reference/api/interfaces/conversationstatsitem/)[]
 
-Defined in: junior/src/api/conversations/types.ts:210
+Defined in: junior/src/api/conversations/types.ts:223
 
 ---
 
@@ -29,7 +29,15 @@ Defined in: junior/src/api/conversations/types.ts:210
 
 > **conversations**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:204
+Defined in: junior/src/api/conversations/types.ts:217
+
+---
+
+### costUsd?
+
+> `optional` **costUsd?**: `number`
+
+Defined in: junior/src/api/conversations/types.ts:227
 
 ---
 
@@ -37,7 +45,7 @@ Defined in: junior/src/api/conversations/types.ts:204
 
 > **durationMs**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:205
+Defined in: junior/src/api/conversations/types.ts:218
 
 ---
 
@@ -45,7 +53,7 @@ Defined in: junior/src/api/conversations/types.ts:205
 
 > **failed**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:206
+Defined in: junior/src/api/conversations/types.ts:219
 
 ---
 
@@ -53,7 +61,7 @@ Defined in: junior/src/api/conversations/types.ts:206
 
 > **generatedAt**: `string`
 
-Defined in: junior/src/api/conversations/types.ts:207
+Defined in: junior/src/api/conversations/types.ts:220
 
 ---
 
@@ -61,7 +69,7 @@ Defined in: junior/src/api/conversations/types.ts:207
 
 > **hung**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:208
+Defined in: junior/src/api/conversations/types.ts:221
 
 ---
 
@@ -69,7 +77,7 @@ Defined in: junior/src/api/conversations/types.ts:208
 
 > **locations**: [`ConversationStatsItem`](/reference/api/interfaces/conversationstatsitem/)[]
 
-Defined in: junior/src/api/conversations/types.ts:209
+Defined in: junior/src/api/conversations/types.ts:222
 
 ---
 
@@ -77,7 +85,7 @@ Defined in: junior/src/api/conversations/types.ts:209
 
 > **sampleLimit**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:211
+Defined in: junior/src/api/conversations/types.ts:224
 
 ---
 
@@ -85,7 +93,7 @@ Defined in: junior/src/api/conversations/types.ts:211
 
 > **sampleSize**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:212
+Defined in: junior/src/api/conversations/types.ts:225
 
 ---
 
@@ -93,7 +101,7 @@ Defined in: junior/src/api/conversations/types.ts:212
 
 > **source**: `"conversation_index"`
 
-Defined in: junior/src/api/conversations/types.ts:213
+Defined in: junior/src/api/conversations/types.ts:226
 
 ---
 
@@ -101,7 +109,7 @@ Defined in: junior/src/api/conversations/types.ts:213
 
 > `optional` **tokens?**: `number`
 
-Defined in: junior/src/api/conversations/types.ts:214
+Defined in: junior/src/api/conversations/types.ts:228
 
 ---
 
@@ -109,7 +117,7 @@ Defined in: junior/src/api/conversations/types.ts:214
 
 > **truncated**: `boolean`
 
-Defined in: junior/src/api/conversations/types.ts:215
+Defined in: junior/src/api/conversations/types.ts:229
 
 ---
 
@@ -117,7 +125,7 @@ Defined in: junior/src/api/conversations/types.ts:215
 
 > **windowEnd**: `string`
 
-Defined in: junior/src/api/conversations/types.ts:216
+Defined in: junior/src/api/conversations/types.ts:230
 
 ---
 
@@ -125,4 +133,4 @@ Defined in: junior/src/api/conversations/types.ts:216
 
 > **windowStart**: `string`
 
-Defined in: junior/src/api/conversations/types.ts:217
+Defined in: junior/src/api/conversations/types.ts:231

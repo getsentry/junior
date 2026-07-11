@@ -8,6 +8,7 @@ title: "@sentry/junior"
 ## Interfaces
 
 - [ActorIdentity](/reference/api/interfaces/actoridentity/)
+- [ConversationCost](/reference/api/interfaces/conversationcost/)
 - [ConversationFeed](/reference/api/interfaces/conversationfeed/)
 - [ConversationReport](/reference/api/interfaces/conversationreport/)
 - [ConversationRunReport](/reference/api/interfaces/conversationrunreport/)
