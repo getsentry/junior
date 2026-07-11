@@ -369,7 +369,8 @@ describe("dashboard reporting", () => {
         {
           role: "assistant",
           content: [
-            { type: "thinking", text: "I should use a tool" },
+            { type: "thinking", thinking: "I should use a tool" },
+            { type: "thinking", thinking: "" },
             {
               type: "toolCall",
               name: "search",

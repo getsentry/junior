@@ -1434,6 +1434,34 @@ describe("dashboard telemetry components", () => {
     expect(summary).toContain("checking the rollout");
   });
 
+  it("does not render empty thinking as JSON", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          parts: [{ type: "thinking" }],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptView conversation={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).not.toContain("{}");
+    expect(html).toContain("thinking");
+  });
+
   it("expands thinking rows during transcript search", () => {
     const turn = {
       conversationId: "conversation-1",

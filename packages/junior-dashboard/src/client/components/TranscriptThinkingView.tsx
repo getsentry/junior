@@ -17,7 +17,7 @@ export function TranscriptThinkingView(props: {
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const rendered = stringifyPartValue(props.value);
-  const expandedText = rendered || "{}";
+  const expandedText = rendered || "thinking";
   const meta = [
     typeof props.timestamp === "number"
       ? formatMessageTimestamp(props.timestamp)

@@ -58,6 +58,18 @@ function recordField(value: Record<string, unknown>, names: string[]): unknown {
   return undefined;
 }
 
+function thinkingOutput(part: Record<string, unknown>): unknown {
+  const output = recordField(part, ["thinking", "text", "content", "output"]);
+  return isRecord(output)
+    ? recordField(output, ["thinking", "text", "content", "output"])
+    : output;
+}
+
+function isDisplayableTranscriptPart(part: TranscriptPart): boolean {
+  if (part.type !== "thinking") return true;
+  return typeof part.output === "string" && part.output.trim().length > 0;
+}
+
 /** Normalize Pi content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
@@ -112,7 +124,7 @@ function normalizeTranscriptPart(
   if (rawType === "thinking") {
     return {
       type: "thinking",
-      output: recordField(part, ["thinking", "text", "content", "output"]),
+      output: thinkingOutput(part),
     };
   }
 
@@ -182,13 +194,15 @@ function normalizeMessage(
       role === "toolResult"
         ? [normalizeToolResultMessage(record)]
         : Array.isArray(content)
-          ? content.map((part) =>
-              normalizeTranscriptPart(part, {
-                unwrapCurrentTask: role === "user",
-                unwrapLegacyAdvisorTask:
-                  options.unwrapLegacyAdvisorTask && role === "user",
-              }),
-            )
+          ? content
+              .map((part) =>
+                normalizeTranscriptPart(part, {
+                  unwrapCurrentTask: role === "user",
+                  unwrapLegacyAdvisorTask:
+                    options.unwrapLegacyAdvisorTask && role === "user",
+                }),
+              )
+              .filter(isDisplayableTranscriptPart)
           : [
               normalizeTranscriptPart(content, {
                 unwrapCurrentTask: role === "user",
