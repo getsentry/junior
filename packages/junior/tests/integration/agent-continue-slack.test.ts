@@ -1104,6 +1104,10 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.00081";
     const sessionId = "turn_msg_8_handoff";
     const staleText = "raw standard context must not return";
+    const runtimeContext =
+      "<runtime-turn-context>\nKeep the active skills and workspace configuration.\n</runtime-turn-context>";
+    const previousRuntimeContext =
+      "<runtime-turn-context>\nOutdated runtime bootstrap.\n</runtime-turn-context>";
     const summaryText = "Continue the implementation from the handoff summary.";
     const summaryMessage = {
       role: "user",
@@ -1121,7 +1125,10 @@ describe("agent continuation Slack integration", () => {
       piMessages: [
         {
           role: "user",
-          content: [{ type: "text", text: staleText }],
+          content: [
+            { type: "text", text: runtimeContext },
+            { type: "text", text: staleText },
+          ],
           timestamp: 1,
         },
       ],
@@ -1145,6 +1152,21 @@ describe("agent continuation Slack integration", () => {
         },
       ],
     });
+    // A prior recovery can park runtime context in the advanced epoch before
+    // another worker dies; the next recovery must replace rather than copy it.
+    await getAgentStepStore().append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: previousRuntimeContext }],
+            timestamp: 1,
+          } as any,
+        },
+        createdAtMs: 1,
+      },
+    ]);
     await threadStateModule.persistThreadStateById(conversationId, {
       artifacts: { listColumnMap: {} },
       conversation: {
@@ -1211,11 +1233,24 @@ describe("agent continuation Slack integration", () => {
     expect(recoveredRecord).toMatchObject({
       actors: [expect.objectContaining({ userId: "U123" })],
       modelId: "openai/gpt-5.6-sol",
-      piMessages: [expect.objectContaining({ role: "user" })],
+      piMessages: expect.arrayContaining([
+        expect.objectContaining({ role: "user" }),
+      ]),
     });
+    expect(recoveredRecord?.piMessages).toHaveLength(2);
     expect(JSON.stringify(recoveredRecord?.piMessages)).toContain(summaryText);
+    expect(recoveredRecord?.piMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          content: [expect.objectContaining({ text: runtimeContext })],
+        }),
+      ]),
+    );
     expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
       staleText,
+    );
+    expect(JSON.stringify(recoveredRecord?.piMessages)).not.toContain(
+      "Outdated runtime bootstrap.",
     );
     const { loadConversationProjection, loadProjection } =
       await import("@/chat/conversations/projection");
@@ -1228,14 +1263,19 @@ describe("agent continuation Slack integration", () => {
       "Advanced recovery completed.",
     );
     expect(JSON.stringify(projection)).not.toContain(staleText);
+    expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
     const history = await getAgentStepStore().loadHistory(conversationId);
-    expect(
-      history.filter(
-        (step) =>
-          step.entry.type === "context_epoch_started" &&
-          step.entry.reason === "rollback",
-      ),
-    ).toEqual([]);
+    const rollbacks = history.filter(
+      (step) =>
+        step.entry.type === "context_epoch_started" &&
+        step.entry.reason === "rollback",
+    );
+    expect(rollbacks).toHaveLength(2);
+    for (const rollback of rollbacks) {
+      expect(rollback.entry).toEqual(
+        expect.objectContaining({ modelProfile: "advanced" }),
+      );
+    }
   });
 
   it("terminally fails a stranded running session with no resumable boundary", async () => {

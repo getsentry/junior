@@ -76,6 +76,10 @@ import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
 import { modelIdForProfile } from "@/chat/model-profile";
+import {
+  retainRuntimeTurnContext,
+  stripRuntimeTurnContext,
+} from "@/chat/pi/transcript";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -584,7 +588,10 @@ async function recoverStrandedRunningSession(args: {
   const modelId = modelIdForProfile(botConfig, modelProfile);
   const recoveryMessages =
     modelProfile === "advanced"
-      ? recoveryProjection.messages
+      ? [
+          ...stripRuntimeTurnContext(recoveryProjection.messages),
+          ...retainRuntimeTurnContext(sessionRecord.piMessages),
+        ]
       : sessionRecord.piMessages;
 
   const parked = await persistYieldSessionRecord({
