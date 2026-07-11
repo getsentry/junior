@@ -69,6 +69,16 @@ function writeTsConfig(targetDir: string): void {
   );
 }
 
+function writePnpmWorkspace(targetDir: string): void {
+  fs.writeFileSync(
+    path.join(targetDir, "pnpm-workspace.yaml"),
+    `minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - "@sentry/*"
+`,
+  );
+}
+
 function writeVercelJson(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "vercel.json"),
@@ -220,6 +230,7 @@ SENTRY_ORG_SLUG=
   writePluginsFile(target);
   writeNitroConfig(target);
   writeTsConfig(target);
+  writePnpmWorkspace(target);
   writeVercelJson(target);
   writeGitHubWorkflow(target);
 

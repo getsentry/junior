@@ -160,6 +160,15 @@ describe("init cli", () => {
     expect(pkg.scripts.preview).toBe("nitro preview");
     expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
 
+    const pnpmWorkspace = fs.readFileSync(
+      path.join(target, "pnpm-workspace.yaml"),
+      "utf8",
+    );
+    expect(pnpmWorkspace).toBe(`minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - "@sentry/*"
+`);
+
     const envExample = fs.readFileSync(
       path.join(target, ".env.example"),
       "utf8",

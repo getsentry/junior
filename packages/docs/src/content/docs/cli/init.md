@@ -26,6 +26,7 @@ The command requires exactly one argument: the target directory.
 The scaffold includes:
 
 - `package.json` with `@sentry/junior`, `@sentry/junior-maintenance`, `@sentry/junior-memory`, `hono`, `nitro`, `typescript`, `jiti`, and `@types/node`
+- `pnpm-workspace.yaml` with a 24-hour dependency release delay and an immediate exception for the `@sentry/*` package scope
 - `plugins.ts` with `@sentry/junior-maintenance` and `createMemoryPlugin()` enabled
 - `server.ts`
 - `nitro.config.ts` pointing at `./plugins`

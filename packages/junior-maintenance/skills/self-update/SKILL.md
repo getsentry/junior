@@ -54,7 +54,7 @@ Save total PR count, breaking PRs (`!` or `BREAKING CHANGE`), and config-relevan
 
 ### 5. Sync `minimumReleaseAgeExclude`
 
-If `pnpm-workspace.yaml` has a `minimumReleaseAgeExclude` list, ensure every Junior package from step 2 is listed. Add missing entries before `pnpm add`. Append at end, preserve existing order.
+If `pnpm-workspace.yaml` has a `minimumReleaseAgeExclude` list, ensure every Junior package from step 2 is covered by an exact entry or an existing package pattern. Add missing entries before `pnpm add`, but do not add exact entries already covered by `@sentry/*`. Append at end and preserve existing order.
 
 ### 6. Update deps (section-preserving)
 
