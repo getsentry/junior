@@ -600,6 +600,24 @@ describe("dashboard reporting", () => {
         },
         createdAtMs: 40,
       },
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  "<advisor-task>\nReview &lt;change&gt;.\n</advisor-task>\n\n" +
+                  "<executor-context>\nUse A &amp; B.\n</executor-context>",
+              },
+            ],
+            timestamp: 50,
+          } as PiMessage,
+        },
+        createdAtMs: 50,
+      },
     ]);
 
     // Repeated subagent calls share one child conversation, so both
@@ -629,6 +647,26 @@ describe("dashboard reporting", () => {
         },
       ]);
     }
+    await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "subagent_started",
+          subagentInvocationId: "legacy-advisor",
+          subagentKind: "advisor",
+          childConversationId,
+          historyMode: "shared",
+        },
+        createdAtMs: 50,
+      },
+      {
+        entry: {
+          type: "subagent_ended",
+          subagentInvocationId: "legacy-advisor",
+          outcome: "success",
+        },
+        createdAtMs: 55,
+      },
+    ]);
 
     const first = await readConversationSubagentTranscriptReport(
       conversationId,
@@ -637,6 +675,10 @@ describe("dashboard reporting", () => {
     const second = await readConversationSubagentTranscriptReport(
       conversationId,
       "task-review",
+    );
+    const legacyAdvisor = await readConversationSubagentTranscriptReport(
+      conversationId,
+      "legacy-advisor",
     );
 
     expect(first.subagentConversationId).toBe(childConversationId);
@@ -656,6 +698,16 @@ describe("dashboard reporting", () => {
     expect(JSON.stringify(second.transcript)).toContain(
       "first subagent answer",
     );
+    expect(first.transcript.at(-1)?.parts[0]).toEqual({
+      type: "text",
+      text:
+        "<advisor-task>\nReview &lt;change&gt;.\n</advisor-task>\n\n" +
+        "<executor-context>\nUse A &amp; B.\n</executor-context>",
+    });
+    expect(legacyAdvisor.transcript.at(-1)?.parts[0]).toEqual({
+      type: "text",
+      text: "Review <change>.\n\nExecutor context:\nUse A & B.",
+    });
   });
 
   it("redacts advisor subagent transcript history for private conversations", async () => {
