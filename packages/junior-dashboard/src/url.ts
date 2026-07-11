@@ -33,10 +33,7 @@ export function normalizeDashboardPath(
 export function resolveDashboardBaseURL(
   config: DashboardBaseURLConfig = {},
 ): string {
-  const explicit =
-    config.baseURL ??
-    process.env.BETTER_AUTH_URL ??
-    process.env.JUNIOR_BASE_URL;
+  const explicit = config.baseURL ?? process.env.JUNIOR_BASE_URL;
   if (explicit?.trim()) {
     return stripTrailingSlashes(withHttps(explicit.trim()));
   }

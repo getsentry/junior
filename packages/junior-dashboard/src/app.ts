@@ -32,6 +32,7 @@ import {
   readMockConversationStats,
   readMockConversationSubagent,
 } from "./mock-conversations";
+import { resolveDashboardBaseURL } from "./url";
 
 const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
@@ -196,9 +197,15 @@ function requestedReturnPath(url: URL, basePath: string): string | undefined {
   return `${returnUrl.pathname}${returnUrl.search}`;
 }
 
-function dashboardLoginUrl(request: Request, basePath: string): string {
+function dashboardLoginUrl(
+  request: Request,
+  basePath: string,
+  canonicalBaseURL?: string,
+): string {
   const requestUrl = new URL(request.url);
-  const url = new URL(request.url);
+  const url = canonicalBaseURL
+    ? new URL(canonicalBaseURL)
+    : new URL(request.url);
   url.pathname = dashboardLoginPath(basePath);
   url.search = "";
   const returnPath = dashboardReturnPath(requestUrl, basePath);
@@ -206,6 +213,25 @@ function dashboardLoginUrl(request: Request, basePath: string): string {
     url.searchParams.set(LOGIN_NEXT_PARAM, returnPath);
   }
   return url.toString();
+}
+
+function canonicalLoginUrl(
+  request: Request,
+  canonicalBaseURL: string | undefined,
+): string | undefined {
+  if (!canonicalBaseURL) {
+    return undefined;
+  }
+
+  const requestUrl = new URL(request.url);
+  const canonicalUrl = new URL(canonicalBaseURL);
+  if (requestUrl.origin === canonicalUrl.origin) {
+    return undefined;
+  }
+
+  canonicalUrl.pathname = requestUrl.pathname;
+  canonicalUrl.search = requestUrl.search;
+  return canonicalUrl.toString();
 }
 
 function dashboardLoginPath(basePath: string): string {
@@ -244,11 +270,18 @@ function isAuthorized(
   );
 }
 
-function unauthorized(request: Request, basePath: string): Response {
+function unauthorized(
+  request: Request,
+  basePath: string,
+  canonicalBaseURL?: string,
+): Response {
   if (isJsonRoute(new URL(request.url).pathname)) {
     return Response.json({ error: "unauthenticated" }, { status: 401 });
   }
-  return Response.redirect(dashboardLoginUrl(request, basePath), 302);
+  return Response.redirect(
+    dashboardLoginUrl(request, basePath, canonicalBaseURL),
+    302,
+  );
 }
 
 function forbidden(request: Request): Response {
@@ -492,6 +525,11 @@ export function createDashboardApp(
   const allowedEmails = normalizeValues(options.allowedEmails);
 
   const authRequired = options.authRequired !== false;
+  const configuredBaseURL = options.baseURL ?? process.env.JUNIOR_BASE_URL;
+  let canonicalBaseURL: string | undefined;
+  if (authRequired && (configuredBaseURL || !options.auth)) {
+    canonicalBaseURL = resolveDashboardBaseURL({ baseURL: configuredBaseURL });
+  }
 
   if (
     authRequired &&
@@ -516,6 +554,10 @@ export function createDashboardApp(
   const app = new Hono<{ Variables: Variables }>();
 
   app.get(dashboardLoginPath(basePath), async (c) => {
+    const canonicalUrl = canonicalLoginUrl(c.req.raw, canonicalBaseURL);
+    if (canonicalUrl) {
+      return Response.redirect(canonicalUrl, 302);
+    }
     const returnUrl = callbackUrl(c.req.raw, basePath);
     if (!auth) {
       return Response.redirect(returnUrl, 302);
@@ -548,11 +590,11 @@ export function createDashboardApp(
     }
 
     if (!auth) {
-      return unauthorized(c.req.raw, basePath);
+      return unauthorized(c.req.raw, basePath, canonicalBaseURL);
     }
     const session = await auth.getSession(c.req.raw);
     if (!session) {
-      return unauthorized(c.req.raw, basePath);
+      return unauthorized(c.req.raw, basePath, canonicalBaseURL);
     }
     if (!isAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw);

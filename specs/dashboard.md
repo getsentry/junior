@@ -209,7 +209,7 @@ Required properties:
 Required environment/config inputs when dashboard auth is enabled:
 
 - `JUNIOR_SECRET`, or optional `BETTER_AUTH_SECRET` override
-- dashboard origin from optional `BETTER_AUTH_URL`, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev
+- dashboard origin from optional dashboard config, `JUNIOR_BASE_URL`, Vercel URL envs, or local dev
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - dashboard origin or trusted origins

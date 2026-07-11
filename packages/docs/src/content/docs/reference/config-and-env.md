@@ -58,12 +58,11 @@ Use one stable value per deployment. Rotating it invalidates pending internal qu
 
 If you mount `@sentry/junior-dashboard`, set these browser-auth variables:
 
-| Variable               | Required | Purpose                                                                                           |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `GOOGLE_CLIENT_ID`     | Yes      | Google OAuth client ID.                                                                           |
-| `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                                                       |
-| `BETTER_AUTH_URL`      | No       | Optional dashboard callback origin. Defaults to `JUNIOR_BASE_URL`, Vercel URL envs, or local dev. |
-| `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`.                             |
+| Variable               | Required | Purpose                                                               |
+| ---------------------- | -------- | --------------------------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`     | Yes      | Google OAuth client ID.                                               |
+| `GOOGLE_CLIENT_SECRET` | Yes      | Google OAuth client secret.                                           |
+| `BETTER_AUTH_SECRET`   | No       | Optional override for dashboard cookies. Defaults to `JUNIOR_SECRET`. |
 
 Configure allowed Google Workspace domains in `createApp({ dashboard })` and `juniorNitro({ dashboard })` for normal deployments. Set these optional policy variables when you prefer environment-managed dashboard authorization:
 

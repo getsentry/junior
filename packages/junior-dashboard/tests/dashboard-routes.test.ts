@@ -71,6 +71,9 @@ function mockDashboardVirtualConfig() {
 describe("dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const name of dashboardEnvNames) {
+      delete process.env[name];
+    }
   });
 
   afterEach(() => {
@@ -120,7 +123,6 @@ describe("dashboard routes", () => {
         callbackURL = value;
       }),
     });
-
     const unauthenticated = await app.fetch(
       new Request("http://localhost/conversations/slack%3AC1%3A123?view=tools"),
     );
@@ -132,6 +134,51 @@ describe("dashboard routes", () => {
     expect(signIn.status).toBe(302);
     expect(callbackURL).toBe(
       "http://localhost/conversations/slack%3AC1%3A123?view=tools",
+    );
+  });
+
+  it("starts OAuth on the JUNIOR_BASE_URL origin", async () => {
+    process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
+    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    let callbackURL: string | undefined;
+    const app = createDashboardApp({
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+    });
+    const canonicalLogin =
+      "https://junior.example.com/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123%3Fview%3Dtools";
+
+    const directLogin = await app.fetch(
+      new Request(
+        "https://junior-prod.vercel.app/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123%3Fview%3Dtools",
+      ),
+    );
+
+    expect(directLogin.status).toBe(302);
+    expect(directLogin.headers.get("location")).toBe(canonicalLogin);
+    expect(callbackURL).toBeUndefined();
+
+    const unauthenticated = await app.fetch(
+      new Request(
+        "https://junior-prod.vercel.app/conversations/slack%3AC1%3A123?view=tools",
+      ),
+    );
+
+    expect(unauthenticated.status).toBe(302);
+    expect(unauthenticated.headers.get("location")).toBe(canonicalLogin);
+
+    const signIn = await app.fetch(
+      new Request(unauthenticated.headers.get("location")!),
+    );
+
+    expect(signIn.status).toBe(302);
+    expect(signIn.headers.get("location")).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(callbackURL).toBe(
+      "https://junior.example.com/conversations/slack%3AC1%3A123?view=tools",
     );
   });
 
@@ -737,7 +784,7 @@ describe("dashboard routes", () => {
     ).toThrow("GOOGLE_CLIENT_ID is required for Junior dashboard auth");
   });
 
-  it("does not require BETTER_AUTH_URL in local development", () => {
+  it("defaults dashboard auth to the local development URL", () => {
     process.env.JUNIOR_SECRET = "junior-secret";
     process.env.GOOGLE_CLIENT_ID = "google-client-id";
     process.env.GOOGLE_CLIENT_SECRET = "google-client-secret";
