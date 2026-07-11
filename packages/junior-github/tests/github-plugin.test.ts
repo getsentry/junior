@@ -1674,7 +1674,11 @@ Conversation: \`local:test:old-conversation\`
     expect(requests[2]).toMatchObject({
       method: "POST",
       body: {
-        permissions: { metadata: "read", pull_requests: "write" },
+        permissions: {
+          contents: "read",
+          metadata: "read",
+          pull_requests: "write",
+        },
         repositories: ["junior"],
       },
     });

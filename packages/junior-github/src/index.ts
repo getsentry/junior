@@ -1759,6 +1759,7 @@ function configuredWritePermission(
   }
   return {
     metadata: "read",
+    ...(permission === "pull_requests" ? { contents: "read" as const } : {}),
     [permission]: "write",
   };
 }
