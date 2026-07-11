@@ -35,7 +35,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   loadConnectedMcpProviders,
-  loadConversationProjection,
+  openConversationProjection,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
@@ -229,7 +229,6 @@ async function executeAgentRunInPrivacyContext(
     runId: routing.correlation?.runId,
     ...credentialActorLogContext,
     assistantUserName: botConfig.userName,
-    modelId: activeModelId,
   };
   const { conversationId: sessionConversationId, sessionId } =
     getSessionIdentifiers(routing);
@@ -262,12 +261,12 @@ async function executeAgentRunInPrivacyContext(
 
   try {
     if (sessionConversationId) {
-      const projection = await loadConversationProjection({
+      const projection = await openConversationProjection({
         conversationId: sessionConversationId,
+        modelId: activeModelId,
       });
       activeModelProfile = projection.modelProfile;
       activeModelId = modelIdForProfile(botConfig, activeModelProfile);
-      sessionRecordLogContext.modelId = activeModelId;
     }
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = {
@@ -489,6 +488,7 @@ async function executeAgentRunInPrivacyContext(
               {
                 conversationContext: input.conversationContext,
                 conversationId: sessionConversationId,
+                modelId: advancedModelId,
                 piMessages: sourceMessages,
                 signal,
                 metadata: {

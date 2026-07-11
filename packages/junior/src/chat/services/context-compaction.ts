@@ -32,6 +32,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
+import { modelIdForProfile } from "@/chat/model-profile";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_INPUT_CHARS = 80_000;
@@ -81,6 +82,7 @@ interface HandoffContextArgs {
   conversationContext?: string;
   conversationId: string;
   metadata?: CompactContextArgs["metadata"];
+  modelId: string;
   piMessages: PiMessage[];
   signal?: AbortSignal;
 }
@@ -470,6 +472,7 @@ async function writeCompactedThreadContext(
   await stepStore.startEpoch(args.conversationId, {
     reason: "compaction",
     modelProfile: sourceProjection.modelProfile,
+    modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
     messages: replacement.map((message, index) => ({
       message,
       createdAtMs: piMessageTimestamp(message),
@@ -515,6 +518,7 @@ export async function compactContextForHandoff(
   await getAgentStepStore().startEpoch(args.conversationId, {
     reason: "handoff",
     modelProfile: "advanced",
+    modelId: args.modelId,
     messages: [
       {
         message,

@@ -179,6 +179,7 @@ describe("context compaction projection reset", () => {
       assistant("The blocker is missing migration approval.", 2),
     ];
     await commitMessages({
+      modelId: "test/model",
       conversationId: "conversation-1",
       messages: priorMessages,
       newMessageProvenance: {
@@ -246,15 +247,24 @@ describe("context compaction projection reset", () => {
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
     const { getAgentStepStore } = await import("@/chat/db");
+    const { botConfig } = await import("@/chat/config");
     const conversationId = "conversation-handoff";
     const priorMessages = [
       user("Implement the multi-file change.", 1),
       assistant("I found the affected modules.", 2),
     ];
-    await commitMessages({ conversationId, messages: priorMessages });
+    await commitMessages({
+      modelId: "test/model",
+      conversationId,
+      messages: priorMessages,
+    });
 
     const handoffMessages = await compactContextForHandoff(
-      { conversationId, piMessages: priorMessages },
+      {
+        conversationId,
+        modelId: "test/advanced",
+        piMessages: priorMessages,
+      },
       {
         completeText: async () =>
           ({ text: "Continue the multi-file implementation." }) as never,
@@ -284,6 +294,7 @@ describe("context compaction projection reset", () => {
       type: "context_epoch_started",
       reason: "handoff",
       modelProfile: "advanced",
+      modelId: "test/advanced",
     });
 
     const compactor = createContextCompactor({
@@ -302,6 +313,7 @@ describe("context compaction projection reset", () => {
     ).toBe("advanced");
 
     await commitMessages({
+      modelId: "test/advanced",
       conversationId,
       messages: [user("Replacement safe boundary.", 3)],
     });
@@ -314,14 +326,32 @@ describe("context compaction projection reset", () => {
       .map((step) => step.entry)
       .filter((entry) => entry.type === "context_epoch_started");
     expect(
-      projectionMarkers.map(({ reason, modelProfile }) => ({
+      projectionMarkers.map(({ reason, modelProfile, modelId }) => ({
         reason,
         modelProfile,
+        modelId,
       })),
     ).toEqual([
-      { reason: "handoff", modelProfile: "advanced" },
-      { reason: "compaction", modelProfile: "advanced" },
-      { reason: "rollback", modelProfile: "advanced" },
+      {
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: "test/model",
+      },
+      {
+        reason: "handoff",
+        modelProfile: "advanced",
+        modelId: "test/advanced",
+      },
+      {
+        reason: "compaction",
+        modelProfile: "advanced",
+        modelId: botConfig.advancedModelId,
+      },
+      {
+        reason: "rollback",
+        modelProfile: "advanced",
+        modelId: "test/advanced",
+      },
     ]);
   });
 
@@ -332,11 +362,19 @@ describe("context compaction projection reset", () => {
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-failed-handoff";
     const priorMessages = [user("Implement the change.", 1)];
-    await commitMessages({ conversationId, messages: priorMessages });
+    await commitMessages({
+      modelId: "test/model",
+      conversationId,
+      messages: priorMessages,
+    });
 
     await expect(
       compactContextForHandoff(
-        { conversationId, piMessages: priorMessages },
+        {
+          conversationId,
+          modelId: "test/advanced",
+          piMessages: priorMessages,
+        },
         {
           completeText: async () => {
             throw new Error("summary unavailable");
@@ -360,12 +398,17 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-aborted-handoff";
     const priorMessages = [user("Implement the change.", 1)];
     const controller = new AbortController();
-    await commitMessages({ conversationId, messages: priorMessages });
+    await commitMessages({
+      modelId: "test/model",
+      conversationId,
+      messages: priorMessages,
+    });
 
     await expect(
       compactContextForHandoff(
         {
           conversationId,
+          modelId: "test/advanced",
           piMessages: priorMessages,
           signal: controller.signal,
         },
@@ -409,6 +452,7 @@ describe("context compaction projection reset", () => {
     const priorMessages = [user("same request", 1), user("same request", 2)];
 
     await commitMessages({
+      modelId: "test/model",
       conversationId: "conversation-identical-retained-text",
       messages: priorMessages,
       provenance: [
@@ -468,6 +512,7 @@ describe("context compaction projection reset", () => {
       user("recent-critical-marker keep the rollback plan"),
     ];
     await commitMessages({
+      modelId: "test/model",
       conversationId: "conversation-large",
       messages: priorMessages,
     });
@@ -537,6 +582,7 @@ describe("context compaction projection reset", () => {
       },
     ] as PiMessage[];
     await commitMessages({
+      modelId: "test/model",
       conversationId: "conversation-tool-context",
       messages: priorMessages,
     });

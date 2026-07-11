@@ -50,6 +50,7 @@ describe("agent continuation runner callbacks", () => {
     const conversationId = "slack:C123:1712345.0005";
     const sessionId = "turn_msg_5";
     const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -158,6 +159,7 @@ describe("agent continuation runner callbacks", () => {
     const conversationId = "slack:C123:1712345.0007";
     const sessionId = "turn_msg_7";
     const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -244,6 +246,7 @@ describe("agent continuation runner callbacks", () => {
     const conversationId = "slack:C123:1712345.0006";
     const sessionId = "turn_msg_6";
     const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

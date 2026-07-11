@@ -68,6 +68,7 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:111",
       sessionId: "turn-1",
       sliceId: 1,
@@ -75,6 +76,7 @@ describe("dashboard reporting", () => {
       piMessages: [],
     });
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:111",
       sessionId: "turn-1",
       sliceId: 2,
@@ -85,6 +87,7 @@ describe("dashboard reporting", () => {
       loadedSkillNames: ["triage"],
     });
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C2:222",
       sessionId: "turn-2",
       sliceId: 1,
@@ -450,6 +453,7 @@ describe("dashboard reporting", () => {
     const { getAgentStepStore } = await import("@/chat/db");
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:G1:activity",
       sessionId: "turn-activity",
       sliceId: 1,
@@ -722,6 +726,7 @@ describe("dashboard reporting", () => {
     const { getAgentStepStore } = await import("@/chat/db");
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:activity-parent-result",
       sessionId: "turn-parent-result",
       sliceId: 1,
@@ -793,6 +798,7 @@ describe("dashboard reporting", () => {
 
     await confirmPublicSlackConversation("slack:C1:steering-transcript");
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:steering-transcript",
       sessionId: "turn-steering",
       sliceId: 1,
@@ -919,6 +925,7 @@ describe("dashboard reporting", () => {
 
     await confirmPublicSlackConversation("slack:C1:333");
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:333",
       destination: {
         platform: "slack",
@@ -949,6 +956,7 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
     });
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:C1:333",
       destination: {
         platform: "slack",
@@ -1033,6 +1041,7 @@ describe("dashboard reporting", () => {
     });
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "slack:D1:222",
       sessionId: "turn-private",
       sliceId: 1,
@@ -1135,6 +1144,7 @@ describe("dashboard reporting", () => {
     const conversationId = "slack:C1:purged";
     await confirmPublicSlackConversation(conversationId);
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId: "turn-purged",
       sliceId: 1,
@@ -1207,6 +1217,7 @@ describe("dashboard reporting", () => {
     ]);
     // Compaction opens epoch 1 with the rebuilt context.
     await stepStore.startEpoch(conversationId, {
+      modelId: "test/model",
       reason: "compaction",
       modelProfile: "standard",
       messages: [
@@ -1223,6 +1234,7 @@ describe("dashboard reporting", () => {
     // A turn-session record pinned to the current epoch drives the run; the
     // identical prompt commits no new rows.
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId: "turn-compacted",
       sliceId: 1,

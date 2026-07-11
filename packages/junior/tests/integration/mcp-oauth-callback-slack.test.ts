@@ -148,6 +148,7 @@ async function createAwaitingMcpTurnRecord(args: {
   threadTs: string;
 }) {
   await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+    modelId: "test/model",
     conversationId: args.conversationId,
     sessionId: args.sessionId,
     sliceId: 2,
@@ -746,6 +747,7 @@ describe("mcp oauth callback slack integration", () => {
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
     const sessionId = "turn_user-4";
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "conversation-4",
       sessionId,
       sliceId: 2,

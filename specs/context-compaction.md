@@ -60,11 +60,13 @@ entry; rebuilding context emits the summary plus the retained tail. Codex builds
 replacement model history from selected user messages plus a summary item. Junior
 opens a new context epoch for the same role inside the durable step history
 (`./conversation-storage.md`): in one transaction it appends a
-`context_epoch_started {reason: "compaction", modelProfile}` marker and writes
+`context_epoch_started {reason: "compaction", modelProfile, modelId}` marker and writes
 the replacement context as ordinary `pi_message` step rows in the new epoch.
-The new projection inherits the source projection's model binding. Later steps
+The new projection inherits the source projection's authoritative model profile
+and records the exact currently resolved model id for audit. Later steps
 in the same conversation carry the new epoch, and reducers ignore steps from
-older epochs. Legacy compaction and rollback markers without `modelProfile`
+older epochs. Legacy compaction and rollback markers without `modelProfile` or
+`modelId`
 resolve to `standard`; handoff requires an explicit `advanced` binding, and
 `fast` never owns a main-conversation projection. (Earlier storage used a
 `projection_reset` entry embedding the replacement `messages` array and
@@ -93,7 +95,8 @@ The summary must be stored as one model-visible compaction item, not as an accum
 
 Model handoff uses this same summarizer without the automatic threshold. A
 successful handoff writes a summary-only replacement epoch whose marker records
-`reason: "handoff"` and `modelProfile: "advanced"`. The in-process continuation
+`reason: "handoff"`, `modelProfile: "advanced"`, and the resolved advanced
+`modelId`. The in-process continuation
 may carry the current volatile runtime bootstrap beside that summary; it must
 not copy raw transcript history into the advanced context.
 

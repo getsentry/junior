@@ -36,7 +36,6 @@ interface SessionRecordLogContext {
   channelId?: string;
   runId?: string;
   assistantUserName?: string;
-  modelId: string;
 }
 
 function logSessionRecordError(
@@ -46,6 +45,7 @@ function logSessionRecordError(
     conversationId: string;
     sessionId: string;
     logContext: SessionRecordLogContext;
+    modelId: string;
   },
   attributes: Record<string, string | number>,
   message: string,
@@ -59,7 +59,7 @@ function logSessionRecordError(
       slackChannelId: args.logContext.channelId,
       runId: args.logContext.runId,
       assistantUserName: args.logContext.assistantUserName,
-      modelId: args.logContext.modelId,
+      modelId: args.modelId,
     },
     {
       "app.ai.resume_conversation_id": args.conversationId,
@@ -139,7 +139,7 @@ export async function persistRunningSessionRecord(args: {
   trailingMessageProvenance?: PiMessageProvenance[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  modelId?: string;
+  modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
@@ -180,7 +180,7 @@ export async function persistRunningSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...(args.modelId ? { modelId: args.modelId } : {}),
+      modelId: args.modelId,
       ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
       ...((args.actor ?? latestSessionRecord?.actor)
         ? { actor: args.actor ?? latestSessionRecord?.actor }
@@ -236,7 +236,7 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
-  modelId?: string;
+  modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
   surface?: AgentTurnSurface;
@@ -257,8 +257,7 @@ export async function persistCompletedSessionRecord(args: {
       "Completed session record requires a slice id from the caller or the latest stored record",
     );
   }
-  const modelId =
-    args.modelId ?? latestSessionRecord?.modelId ?? args.logContext.modelId;
+  const modelId = args.modelId;
   const reasoningLevel =
     args.reasoningLevel ?? latestSessionRecord?.reasoningLevel;
   const target: Parameters<typeof upsertAgentTurnSessionRecord>[0] = {
@@ -296,7 +295,7 @@ export async function persistCompletedSessionRecord(args: {
             args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
         }
       : {}),
-    ...(modelId ? { modelId } : {}),
+    modelId,
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...((args.actor ?? latestSessionRecord?.actor)
       ? { actor: args.actor ?? latestSessionRecord?.actor }
@@ -328,6 +327,7 @@ export async function completeDeliveredTurn(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   messages: PiMessage[];
+  modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
   sessionId: string;
@@ -350,7 +350,7 @@ export async function completeDeliveredTurn(args: {
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     logContext: args.logContext,
-    modelId: args.logContext.modelId,
+    modelId: args.modelId,
     actor: args.actor,
     reasoningLevel: args.reasoningLevel,
     surface: args.surface,
@@ -373,7 +373,7 @@ export async function persistAuthPauseSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
-  modelId?: string;
+  modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
@@ -422,9 +422,7 @@ export async function persistAuthPauseSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.modelId ?? latestSessionRecord?.modelId)
-        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
-        : {}),
+      modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
         ? {
             reasoningLevel:
@@ -471,7 +469,7 @@ export async function persistTimeoutSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
-  modelId?: string;
+  modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
@@ -528,9 +526,7 @@ export async function persistTimeoutSessionRecord(args: {
         ...(args.loadedSkillNames
           ? { loadedSkillNames: args.loadedSkillNames }
           : {}),
-        ...((args.modelId ?? latestSessionRecord?.modelId)
-          ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
-          : {}),
+        modelId: args.modelId,
         ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
           ? {
               reasoningLevel:
@@ -571,9 +567,7 @@ export async function persistTimeoutSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.modelId ?? latestSessionRecord?.modelId)
-        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
-        : {}),
+      modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
         ? {
             reasoningLevel:
@@ -619,7 +613,7 @@ export async function persistYieldSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
-  modelId?: string;
+  modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
   actor?: Actor;
@@ -667,9 +661,7 @@ export async function persistYieldSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.modelId ?? latestSessionRecord?.modelId)
-        ? { modelId: args.modelId ?? latestSessionRecord?.modelId }
-        : {}),
+      modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
         ? {
             reasoningLevel:

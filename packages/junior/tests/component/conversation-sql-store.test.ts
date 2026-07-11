@@ -857,6 +857,57 @@ WHERE conversation_id = $1
     }
   });
 
+  it("keeps fresh SQL progress over stale turn-session state", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+
+    try {
+      vi.useFakeTimers({ now: 600_000 });
+      await disconnectStateAdapter();
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        destination: inboundMessage("hung-target").destination,
+        execution: {
+          runId: "run-hung",
+          status: "running",
+          updatedAtMs: 600_000,
+        },
+        metrics: null,
+        lastActivityAtMs: 600_000,
+        updatedAtMs: 600_000,
+      });
+      await upsertAgentTurnSessionRecord({
+        modelId: "test/model",
+        conversationStore: store,
+        conversationId: CONVERSATION_ID,
+        destination: inboundMessage("hung-target").destination,
+        lastProgressAtMs: 1_000,
+        piMessages: [],
+        sessionId: "turn-hung",
+        sliceId: 1,
+        state: "running",
+        surface: "slack",
+      });
+
+      await expect(readConversationFeedFromSql(1)).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId: CONVERSATION_ID,
+            lastProgressAt: new Date(600_000).toISOString(),
+            lastSeenAt: new Date(600_000).toISOString(),
+            status: "active",
+          }),
+        ],
+      });
+    } finally {
+      vi.useRealTimers();
+      await disconnectStateAdapter();
+      await fixture.close();
+    }
+  });
+
   it("mirrors worker check-ins into SQL execution progress", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

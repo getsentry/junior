@@ -603,7 +603,7 @@ async function recoverStrandedRunningSession(args: {
     source: sessionRecord.source,
     messages: recoveryMessages,
     errorMessage: "Recovered running session after hard worker death",
-    logContext: { modelId },
+    logContext: {},
     modelId,
     actor: sessionRecord.actor,
     surface: sessionRecord.surface,

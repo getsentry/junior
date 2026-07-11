@@ -311,6 +311,7 @@ export async function runLocalAgentTurn(
     if (reply) {
       await commitMessages({
         conversationId: input.conversationId,
+        modelId: reply.diagnostics.modelId,
         messages: piMessagesBeforeRun ?? [],
       });
     }
@@ -347,6 +348,7 @@ export async function runLocalAgentTurn(
       sessionId: turnId,
       sliceId: 1,
       messages: reply.piMessages,
+      modelId: reply.diagnostics.modelId,
       durationMs: reply.diagnostics.durationMs,
       usage: reply.diagnostics.usage,
       reasoningLevel: reply.diagnostics.thinkingLevel,
@@ -354,7 +356,7 @@ export async function runLocalAgentTurn(
       source,
       actor: localActor,
       surface: "internal",
-      logContext: { modelId: reply.diagnostics.modelId },
+      logContext: {},
     });
   }
   if (reply.diagnostics.outcome === "success") {

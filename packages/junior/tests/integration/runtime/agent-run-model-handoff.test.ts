@@ -122,6 +122,7 @@ import {
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { getAgentStepStore } from "@/chat/db";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -189,6 +190,23 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("advanced");
+    const epochMarkers = (await getAgentStepStore().loadHistory(conversationId))
+      .map((step) => step.entry)
+      .filter((entry) => entry.type === "context_epoch_started");
+    expect(epochMarkers).toEqual([
+      {
+        type: "context_epoch_started",
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: observations.initialModelId,
+      },
+      {
+        type: "context_epoch_started",
+        reason: "handoff",
+        modelProfile: "advanced",
+        modelId: "openai/gpt-5.6-sol",
+      },
+    ]);
     const projection = await loadProjection({ conversationId });
     expect(projection).toHaveLength(1);
     expect(JSON.stringify(projection)).toContain(
@@ -273,6 +291,24 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("advanced");
+    expect(
+      (await getAgentStepStore().loadHistory(conversationId))
+        .map((step) => step.entry)
+        .filter((entry) => entry.type === "context_epoch_started"),
+    ).toEqual([
+      {
+        type: "context_epoch_started",
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: observations.initialModelId,
+      },
+      {
+        type: "context_epoch_started",
+        reason: "handoff",
+        modelProfile: "advanced",
+        modelId: "openai/gpt-5.6-sol",
+      },
+    ]);
   });
 
   it("parks an immediate post-handoff yield on the replacement context", async () => {

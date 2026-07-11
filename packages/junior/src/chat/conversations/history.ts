@@ -3,7 +3,8 @@
  *
  * Steps are appended one row at a time under the conversation lease; context
  * rebuilds (compaction, handoff, rollback) open a new context epoch instead of
- * rewriting history. Each new epoch binds the model profile that owns it.
+ * rewriting history. Each new epoch binds the model profile that owns it and
+ * records the exact resolved model id for audit.
  * The step envelope is strictly validated — an unknown type or malformed shape
  * is corrupt state and fails loudly — while `pi_message` content stays
  * permissive because the Pi SDK owns the message shape.
@@ -27,17 +28,31 @@ const contextEpochStartedEntrySchema = z.discriminatedUnion("reason", [
   z
     .object({
       type: z.literal("context_epoch_started"),
+      reason: z.literal("initial"),
+      modelProfile: z.literal("standard"),
+      modelId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
       reason: z.literal("handoff"),
       modelProfile: z.literal("advanced"),
+      // TODO(v0.95.0): Require modelId after rows written by the first handoff
+      // implementation pass the conversation-history retention horizon.
+      modelId: z.string().min(1).optional(),
     })
     .strict(),
   z
     .object({
       type: z.literal("context_epoch_started"),
       reason: z.union([z.literal("compaction"), z.literal("rollback")]),
-      // TODO(v0.95.0): Remove support for legacy compaction/rollback epoch
-      // markers without modelProfile after the SQL import horizon has passed.
+      // TODO(v0.95.0): Remove support for imported compaction/rollback markers
+      // without modelProfile after the SQL import horizon.
       modelProfile: modelProfileSchema.optional(),
+      // TODO(v0.95.0): Require modelId after pre-audit SQL rows pass the
+      // conversation-history retention horizon.
+      modelId: z.string().min(1).optional(),
     })
     .strict(),
 ]);
@@ -50,12 +65,21 @@ const piMessageStepSchema = z
   })
   .strict();
 
-/** Validate one atomically persisted replacement context epoch. */
+/** Validate one atomically persisted context epoch. */
 export const contextEpochStartSchema = z.discriminatedUnion("reason", [
+  z
+    .object({
+      reason: z.literal("initial"),
+      modelProfile: z.literal("standard"),
+      modelId: z.string().min(1),
+      messages: z.array(piMessageStepSchema),
+    })
+    .strict(),
   z
     .object({
       reason: z.literal("handoff"),
       modelProfile: z.literal("advanced"),
+      modelId: z.string().min(1),
       messages: z.array(piMessageStepSchema),
     })
     .strict(),
@@ -63,12 +87,13 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
     .object({
       reason: z.union([z.literal("compaction"), z.literal("rollback")]),
       modelProfile: modelProfileSchema,
+      modelId: z.string().min(1),
       messages: z.array(piMessageStepSchema),
     })
     .strict(),
 ]);
 
-/** One atomically persisted replacement context epoch and its model binding. */
+/** One atomically persisted context epoch and its model binding. */
 export type ContextEpochStart = z.output<typeof contextEpochStartSchema>;
 
 const mcpProviderConnectedEntrySchema = z.object({
@@ -146,10 +171,9 @@ const subagentEndedEntrySchema = z.object({
   errorCode: z.string().min(1).optional(),
 });
 
-/** Strict step envelope reused by the SQL row codec; unknown types fail loudly. */
-export const agentStepEntrySchema = z.union([
+/** Prevent ordinary appends from bypassing context-epoch lifecycle validation. */
+const appendableAgentStepEntrySchema = z.union([
   piMessageStepEntrySchema,
-  contextEpochStartedEntrySchema,
   mcpProviderConnectedEntrySchema,
   authorizationRequestedEntrySchema,
   authorizationCompletedEntrySchema,
@@ -157,6 +181,12 @@ export const agentStepEntrySchema = z.union([
   visibleContextCompactedEntrySchema,
   subagentStartedEntrySchema,
   subagentEndedEntrySchema,
+]);
+
+/** Strict step envelope reused by the SQL row codec; unknown types fail loudly. */
+export const agentStepEntrySchema = z.union([
+  appendableAgentStepEntrySchema,
+  contextEpochStartedEntrySchema,
 ]);
 
 /** One durable execution step's validated payload (sessionId lifted to epoch). */
@@ -170,11 +200,16 @@ export interface StoredAgentStep {
   entry: AgentStepEntry;
 }
 
+/** Validate a current-epoch append without permitting epoch markers. */
+export const newAgentStepSchema = z
+  .object({
+    entry: appendableAgentStepEntrySchema,
+    createdAtMs: z.number().finite(),
+  })
+  .strict();
+
 /** A step to append; the store assigns `seq` and the current `context_epoch`. */
-export interface NewAgentStep {
-  entry: AgentStepEntry;
-  createdAtMs: number;
-}
+export type NewAgentStep = z.output<typeof newAgentStepSchema>;
 
 /** A replacement Pi message written into a freshly opened epoch. */
 export type PiMessageStep = z.output<typeof piMessageStepSchema>;
@@ -184,8 +219,7 @@ export interface AgentStepStore {
   /** Append steps in one transaction, assigning `seq = max+1` under the lease. */
   append(conversationId: string, steps: NewAgentStep[]): Promise<void>;
   /**
-   * Open the next epoch in one transaction: a `context_epoch_started` marker
-   * followed by the replacement messages as ordinary `pi_message` rows.
+   * Open initial epoch 0 or the next replacement epoch in one transaction.
    */
   startEpoch(conversationId: string, opts: ContextEpochStart): Promise<void>;
   /** Steps of the highest epoch in `seq` order (all types; caller filters). */

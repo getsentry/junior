@@ -176,6 +176,7 @@ describe("agent continuation Slack integration", () => {
     });
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -346,6 +347,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_8";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -438,6 +440,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_2";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 5,
@@ -535,6 +538,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_7";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -610,6 +614,7 @@ describe("agent continuation Slack integration", () => {
     const storedSource = slackSource("1712345.0012");
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -699,6 +704,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_10";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -789,6 +795,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_11";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -889,6 +896,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_6";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,
@@ -1000,6 +1008,7 @@ describe("agent continuation Slack integration", () => {
       }),
     );
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1143,6 +1152,7 @@ describe("agent continuation Slack integration", () => {
     });
     const { getAgentStepStore } = await import("@/chat/db");
     await getAgentStepStore().startEpoch(conversationId, {
+      modelId: "test/model",
       reason: "handoff",
       modelProfile: "advanced",
       messages: [
@@ -1282,6 +1292,7 @@ describe("agent continuation Slack integration", () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,
@@ -1388,6 +1399,7 @@ describe("agent continuation Slack integration", () => {
     const sessionId = "turn_msg_3";
     const sessionRecord =
       await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+        modelId: "test/model",
         conversationId,
         sessionId,
         sliceId: 2,

@@ -80,6 +80,7 @@ The same transaction opens a `context_epoch_started` marker with:
   type: "context_epoch_started";
   reason: "handoff";
   modelProfile: "advanced";
+  modelId: "<resolved AI_ADVANCED_MODEL>";
 }
 ```
 
@@ -88,10 +89,15 @@ runtime bootstrap as a sibling message so actionable skill catalogs,
 configuration, and workspace facts remain available. Existing transcript
 stripping rules keep that bootstrap out of completed durable semantic history.
 
-The current projection marker is the profile authority. An initial conversation
-without a marker resolves to standard. Handoff starts an advanced-bound
-projection, and every later compaction or rollback copies that binding into its
-replacement projection, so there is no downgrade path or all-history scan.
+The current projection marker's `modelProfile` is the runtime authority. Its
+`modelId` is an audit snapshot of the exact configured model when that epoch was
+opened; it never pins runtime selection. Every new conversation opens an
+explicit `initial` epoch with the standard profile and its resolved model id.
+Handoff starts an advanced-bound projection, and every later compaction or
+rollback copies that profile while recording its newly resolved model id, so
+configuration drift remains visible without creating a downgrade path or an
+all-history scan. Legacy markerless history still resolves to standard with no
+invented historical model id.
 
 ## Failure Model
 

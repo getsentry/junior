@@ -251,6 +251,7 @@ describe("plugin prompt hooks", () => {
 
   it("runs user prompt hooks when a resumed record has no prompt checkpoint", async () => {
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "conversation-plugin-prompt-resume-before-prompt",
       sessionId: "turn-plugin-prompt-resume-before-prompt",
       sliceId: 1,
@@ -280,6 +281,7 @@ describe("plugin prompt hooks", () => {
 
   it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "conversation-plugin-prompt-resume-after-prompt",
       sessionId: "turn-plugin-prompt-resume-after-prompt",
       sliceId: 1,

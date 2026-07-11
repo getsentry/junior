@@ -64,6 +64,7 @@ async function persistCompletedSessionForFakeReply(
     throw new Error("Local fake reply requires session correlation ids");
   }
   await persistCompletedSessionRecord({
+    modelId: "fake-local-agent",
     conversationId,
     destination: context.destination,
     actor:
@@ -73,7 +74,6 @@ async function persistCompletedSessionForFakeReply(
     sliceId: 1,
     allMessages: piMessages,
     logContext: {
-      modelId: "fake-local-agent",
       runId: context.correlation?.runId,
     },
     surface: context.surface,
@@ -458,6 +458,7 @@ describe("local agent runner", () => {
       content: [{ type: "text", text: "projected history" }],
     } as PiMessage;
     await commitMessages({
+      modelId: "test/model",
       conversationId: conversationId!,
       messages: [projectedMessage],
     });
@@ -645,6 +646,7 @@ describe("local agent runner", () => {
       },
     ] as PiMessage[];
     await commitMessages({
+      modelId: "test/model",
       conversationId: conversationId!,
       messages: projectedMessages,
     });
@@ -694,6 +696,7 @@ describe("local agent runner", () => {
         sandboxId: "sandbox-undelivered",
       });
       await commitMessages({
+        modelId: "test/model",
         conversationId: conversationId!,
         messages: [assistantMessage],
       });

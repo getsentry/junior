@@ -369,6 +369,7 @@ describe("executeAgentRun agent continuation", () => {
       } as PiMessage,
     ];
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
       sliceId: AGENT_CONTINUE_MAX_SLICES,

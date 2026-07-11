@@ -17,6 +17,8 @@
 - [x] Preserve provisional text, usage aggregation, yield, timeout, auth,
       steering, recovery, workspace, and sandbox behavior across the swap.
 - [x] Make compaction and rollback inherit the current projection binding.
+- [x] Record explicit initial epochs and audit-only resolved model ids on every
+      new projection.
 - [x] Remove the all-history handoff scan.
 
 ## Verification

@@ -221,17 +221,23 @@ safe-boundary rollback (including in-process provider retry) each, in one
 transaction:
 
 1. append a `context_epoch_started` marker step carrying `reason`
-   (`compaction` | `handoff` | `rollback`) and `modelProfile` that opens the next
-   epoch; handoff selects `advanced`, while compaction and rollback inherit the
-   current projection's binding, then
+   (`initial` | `compaction` | `handoff` | `rollback`), authoritative
+   `modelProfile`, and audit-only `modelId` that opens the next epoch; initial
+   selects `standard`, handoff selects `advanced`, and compaction/rollback
+   inherit the current profile while resolving its current configured model id,
+   then
 2. append the replacement context as ordinary `pi_message` rows in the new epoch,
    preserving each message's original timestamp so replay is byte-stable.
 
 The prior epoch remains intact as audit history. "Current context" is therefore a
 single indexed query (highest epoch, `pi_message`, ordered by `seq`) with no
 pointer-chasing and no in-row transcript payloads. Legacy compaction and
-rollback markers without `modelProfile` resolve to `standard`; handoff requires
-an explicit `advanced` binding, and `fast` cannot own a main projection.
+rollback markers without `modelProfile` resolve to `standard`; legacy epoch
+markers may omit `modelId`, and markerless legacy history has no inferred model
+id. New markers require both fields. Runtime always selects through
+`modelProfile`; the stored `modelId` records configuration drift but never pins
+execution. Handoff requires an explicit `advanced` binding, and `fast` cannot
+own a main projection.
 
 ### Subagent Child Conversations
 

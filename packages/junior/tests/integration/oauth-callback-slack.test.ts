@@ -263,6 +263,7 @@ describe("oauth callback slack integration", () => {
     });
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -509,6 +510,7 @@ describe("oauth callback slack integration", () => {
     const sessionId = "turn_msg_12";
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -679,6 +681,7 @@ describe("oauth callback slack integration", () => {
     };
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,
@@ -777,6 +780,7 @@ describe("oauth callback slack integration", () => {
     const newSessionId = "turn_msg_new_12";
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId: oldSessionId,
       sliceId: 2,
@@ -794,6 +798,7 @@ describe("oauth callback slack integration", () => {
       },
     });
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId: newSessionId,
       sliceId: 2,
@@ -906,6 +911,7 @@ describe("oauth callback slack integration", () => {
     const sessionId = "turn_msg_10";
 
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 2,

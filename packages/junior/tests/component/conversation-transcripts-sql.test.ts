@@ -18,6 +18,11 @@ import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import {
+  loadConnectedMcpProviders,
+  openConversationProjection,
+  recordMcpProviderConnected,
+} from "@/chat/conversations/projection";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
@@ -26,9 +31,31 @@ it("accepts only legacy-compatible projection marker bindings", () => {
   expect(
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
+      reason: "initial",
+      modelProfile: "standard",
+    }).success,
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "initial",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(true);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
       reason: "handoff",
     }).success,
   ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "handoff",
+      modelProfile: "advanced",
+    }).success,
+  ).toBe(true);
   expect(
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
@@ -42,6 +69,68 @@ it("accepts only legacy-compatible projection marker bindings", () => {
       reason: "compaction",
     }).success,
   ).toBe(true);
+});
+
+it("rejects epoch markers through the ordinary append boundary", async () => {
+  await expect(
+    getAgentStepStore().append("local:test:invalid-marker-append", [
+      {
+        entry: {
+          type: "context_epoch_started",
+          reason: "compaction",
+        },
+        createdAtMs: 1,
+      } as never,
+    ]),
+  ).rejects.toThrow("Invalid input");
+});
+
+it("rejects incomplete markers through the epoch boundary", async () => {
+  const conversationId = "local:test:invalid-marker-start";
+  await expect(
+    getAgentStepStore().startEpoch(conversationId, {
+      reason: "handoff",
+      modelProfile: "advanced",
+      messages: [],
+    } as never),
+  ).rejects.toThrow("Invalid input");
+  await expect(
+    getAgentStepStore().loadHistory(conversationId),
+  ).resolves.toEqual([]);
+});
+
+it("opens an explicit initial epoch without dropping earlier host facts", async () => {
+  const conversationId = "local:test:host-fact-before-model";
+  await recordMcpProviderConnected({ conversationId, provider: "linear" });
+
+  await expect(
+    openConversationProjection({
+      conversationId,
+      modelId: "openai/gpt-5.4",
+    }),
+  ).resolves.toMatchObject({
+    messages: [],
+    modelProfile: "standard",
+    modelId: "openai/gpt-5.4",
+  });
+  await expect(loadConnectedMcpProviders({ conversationId })).resolves.toEqual([
+    "linear",
+  ]);
+  expect(await getAgentStepStore().loadHistory(conversationId)).toEqual([
+    expect.objectContaining({
+      contextEpoch: 0,
+      entry: expect.objectContaining({ type: "mcp_provider_connected" }),
+    }),
+    expect.objectContaining({
+      contextEpoch: 0,
+      entry: {
+        type: "context_epoch_started",
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.4",
+      },
+    }),
+  ]);
 });
 
 async function seedConversation(
@@ -187,6 +276,7 @@ describe("conversation transcript SQL stores", () => {
         },
       ]);
       await store.startEpoch(CONVERSATION_ID, {
+        modelId: "test/model",
         reason: "compaction",
         modelProfile: "standard",
         messages: [
@@ -262,6 +352,7 @@ describe("conversation transcript SQL stores", () => {
 
       await expect(
         failingStore.startEpoch(CONVERSATION_ID, {
+          modelId: "test/model",
           reason: "rollback",
           modelProfile: "standard",
           messages: [{ message: userMessage("never"), createdAtMs: 2_000 }],

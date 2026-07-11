@@ -919,6 +919,7 @@ describe("Slack conversation work execution", () => {
       state,
     });
     const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: CONVERSATION_ID,
       sessionId: "turn-invalid-timeout",
       sliceId: 1,
@@ -1048,6 +1049,7 @@ describe("Slack conversation work execution", () => {
       state,
     });
     const sessionRecord = await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: CONVERSATION_ID,
       sessionId,
       sliceId: 2,

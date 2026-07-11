@@ -495,6 +495,7 @@ export async function resumeSlackTurn(
           conversationId: replyContext.routing.correlation.conversationId,
           sessionId: replyContext.routing.correlation.turnId,
           allMessages: reply.piMessages,
+          modelId: reply.diagnostics.modelId,
           currentDurationMs: reply.diagnostics.durationMs,
           currentUsage: reply.diagnostics.usage,
           destination: replyContext.routing.destination,
@@ -509,7 +510,6 @@ export async function resumeSlackTurn(
             channelId: runArgs.channelId,
             runId: replyContext.routing.correlation.runId,
             assistantUserName: botConfig.userName,
-            modelId: reply.diagnostics.modelId,
           },
         });
       }

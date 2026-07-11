@@ -278,6 +278,7 @@ describe("Slack behavior: message content", () => {
                 context.correlation.turnId
               ) {
                 await upsertAgentTurnSessionRecord({
+                  modelId: "test/model",
                   conversationId: context.correlation.conversationId,
                   sessionId: context.correlation.turnId,
                   sliceId: 1,
@@ -350,6 +351,7 @@ describe("Slack behavior: message content", () => {
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005005.000" });
     await commitMessages({
+      modelId: "test/model",
       conversationId: thread.id,
       messages: priorMessages,
     });
@@ -461,10 +463,12 @@ describe("Slack behavior: message content", () => {
     ] as PiMessage[];
     const thread = createTestThread({ id: "slack:C0BEHAVIOR:1700005006.000" });
     await commitMessages({
+      modelId: "test/model",
       conversationId: thread.id,
       messages: priorMessages,
     });
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: thread.id,
       sessionId: "turn-active-crashed",
       sliceId: 1,

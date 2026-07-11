@@ -153,6 +153,7 @@ describe("oauth resume slack integration", () => {
       await import("@/chat/state/turn-session");
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId: "conversation-1",
       sessionId: "turn-1",
       sliceId: 2,

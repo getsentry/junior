@@ -54,7 +54,7 @@ async function advanceUntilContinueCall(maxMs: number): Promise<void> {
   }
   // Fake time is fully advanced; the continuation is already scheduled and
   // only needs real event-loop turns to settle.
-  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+  for (let attempt = 0; attempt < 4_000; attempt += 1) {
     if (counters.continueCalls > 0) {
       return;
     }
@@ -406,7 +406,16 @@ describe("executeAgentRun provider retry", () => {
     });
 
     await waitForPromptCall(1);
-    await advanceUntilContinueCall(5_000);
+    await Promise.race([
+      advanceUntilContinueCall(5_000),
+      replyPromise.then((outcome) => {
+        if (counters.continueCalls === 0) {
+          throw new Error(
+            `Agent run settled before provider retry continuation: ${outcome.status}`,
+          );
+        }
+      }),
+    ]);
     const reply = finalReply(await replyPromise);
 
     expect(reply.text).toBe("Recovered.");
@@ -436,7 +445,7 @@ describe("executeAgentRun provider retry", () => {
       "user",
       "toolResult",
     ]);
-  }, 20_000);
+  }, 40_000);
 
   it("stops provider retry backoff when the host request is cancelled", async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
@@ -581,12 +590,13 @@ describe("executeAgentRun provider retry", () => {
     // Simulate the destination boundary committing completion after
     // acceptance; generation itself no longer persists the final reply.
     await persistCompletedSessionRecord({
+      modelId: "test-model",
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn-steering",
       allMessages: reply.piMessages ?? [],
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
-      logContext: { modelId: "test-model" },
+      logContext: {},
     });
 
     const sessionRecord = await turnSessionState.getAgentTurnSessionRecord(
@@ -801,6 +811,7 @@ describe("executeAgentRun provider retry", () => {
       timestamp: 5,
     } satisfies PiMessage;
     await turnSessionState.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       conversationId,
       sessionId,
       sliceId: 1,

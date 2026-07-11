@@ -185,6 +185,7 @@ describe("run actors threading", () => {
     const sessionId = "turn-run-actors-batched";
 
     await upsertAgentTurnSessionRecord({
+      modelId: "test/model",
       actor: RUN_ACTOR,
       conversationId,
       sessionId,

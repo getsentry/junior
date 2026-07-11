@@ -103,6 +103,7 @@ context.
 - **WHEN** handoff succeeds
 - **THEN** one transaction opens a context epoch with `reason: "handoff"`
 - **AND** its marker records `modelProfile: "advanced"`
+- **AND** its marker records the resolved advanced `modelId` for audit
 - **AND** writes exactly one synthetic user-role summary prompt.
 
 #### Scenario: Summary input includes completed execution

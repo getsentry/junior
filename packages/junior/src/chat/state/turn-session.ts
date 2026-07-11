@@ -553,7 +553,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  modelId?: string;
+  modelId: string;
   conversationStore?: ConversationStore;
   sessionId: string;
   sliceId: number;
@@ -583,6 +583,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   const instructionActor = args.actor ?? existingRecord?.actor;
   const commit = await commitMessages({
     conversationId: args.conversationId,
+    modelId: args.modelId,
     messages: args.piMessages,
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
@@ -644,9 +645,7 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      ...((args.modelId ?? existingRecord?.modelId)
-        ? { modelId: args.modelId ?? existingRecord?.modelId }
-        : {}),
+      modelId: args.modelId,
       ...((args.reasoningLevel ?? existingRecord?.reasoningLevel)
         ? {
             reasoningLevel:

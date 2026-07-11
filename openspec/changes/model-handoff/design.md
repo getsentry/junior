@@ -2,21 +2,25 @@
 
 ## Invariant
 
-The current conversation projection owns both model-visible Pi messages and the
-model profile that must execute them. A projection is replaced atomically by a
+The current conversation projection owns model-visible Pi messages, the model
+profile that must execute them, and the exact resolved model id recorded when
+the projection opened. A projection is replaced atomically by a
 `context_epoch_started` marker plus ordinary `pi_message` rows.
 
 ```ts
 {
   type: "context_epoch_started";
-  reason: "compaction" | "handoff" | "rollback";
+  reason: "initial" | "compaction" | "handoff" | "rollback";
   modelProfile: "standard" | "advanced";
+  modelId: string;
 }
 ```
 
-Legacy compaction and rollback markers may omit `modelProfile` and resolve to
-standard until the bounded import horizon ends. Handoff always requires an
-explicit advanced binding.
+`modelProfile` is authoritative. Runtime resolves it through current host
+configuration; `modelId` is audit-only and never pins execution. Legacy markers
+may omit `modelId`, and legacy compaction/rollback markers may also omit
+`modelProfile` and resolve to standard until the bounded import horizon ends.
+Handoff always requires an explicit advanced binding.
 
 ## Control Flow
 
@@ -40,10 +44,12 @@ operation; successful return only activates that prepared state.
 
 ## Model Permanence
 
-Initial epoch-zero conversations resolve to standard. Handoff starts an
-advanced projection. Capacity compaction and safe-boundary rollback copy the
-source projection's model binding, so permanence requires no separate table,
-successor pointer, or all-history handoff scan.
+Every new conversation opens an explicit standard `initial` epoch with the
+currently resolved standard model id. Legacy markerless histories still resolve
+to standard without fabricating an old exact id. Handoff starts an advanced
+projection. Capacity compaction and safe-boundary rollback copy the source
+projection's profile and record its currently resolved model id, so permanence
+requires no separate table, successor pointer, or all-history handoff scan.
 
 ## Runtime Continuity
 

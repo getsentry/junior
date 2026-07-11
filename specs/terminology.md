@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-07-08
+- Last Edited: 2026-07-11
 
 ## Purpose
 
@@ -74,9 +74,15 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
   and recovery may find the call without its results. Safe resume boundaries
   require the result steps to be durably recorded.
 - **Context epoch**: one generation of the model-visible context for a
-  conversation. The epoch advances when compaction, handoff, or rollback
-  rebuilds the context. Steps in older epochs remain audit history and no
-  longer contribute to model context.
+  conversation. An explicit `initial` marker opens epoch 0; compaction,
+  handoff, or rollback opens the next epoch when it rebuilds context. Steps in
+  older epochs remain audit history and no longer contribute to model context.
+- **Model profile**: the authoritative host-owned role (`standard` or
+  `advanced`) bound to a context epoch. Runtime resolves the profile through
+  current configuration.
+- **Epoch model id**: the exact resolved model recorded when a context epoch
+  opens. It is audit evidence for configuration drift, not runtime authority or
+  a model pin.
 - **Message**: one stored visible conversation message (user, assistant, or
   system) in the conversation record, or one normalized inbound source event.
 - **Transcript**: the reporting read model rendered from stored conversation
@@ -155,7 +161,8 @@ Prefer comments that clarify the current meaning:
 - Use `slice` for one resumable serverless invocation segment.
 - Use `step` for model/tool/action events inside a turn.
 - Use `context epoch` for one generation of the model-visible context. It is
-  stored as an integer that starts at 0 and advances on each context rebuild.
+  stored as an integer opened by an explicit marker, starts at 0, and advances
+  on each context rebuild.
 - Use `reply` only for destination-visible messages owned by delivery or
   reply-policy layers.
 - Use `message` for source events and stored visible conversation messages.

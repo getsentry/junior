@@ -482,6 +482,7 @@ export async function runAgentDispatchSlice(
         sessionId: turnId,
         sliceId: 1,
         messages: reply.piMessages,
+        modelId: reply.diagnostics.modelId,
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
         reasoningLevel: reply.diagnostics.thinkingLevel,
@@ -494,7 +495,6 @@ export async function runAgentDispatchSlice(
           channelId: dispatch.destination.channelId,
           runId: dispatch.id,
           assistantUserName: botConfig.userName,
-          modelId: reply.diagnostics.modelId,
         },
       });
     }

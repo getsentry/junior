@@ -3,6 +3,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import {
   agentStepEntrySchema,
   contextEpochStartSchema,
+  newAgentStepSchema,
   type AgentStepEntry,
   type AgentStepStore,
   type ContextEpochStart,
@@ -15,6 +16,10 @@ import { juniorAgentSteps } from "@/db/schema";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;
+type PersistedAgentStep = {
+  entry: AgentStepEntry;
+  createdAtMs: number;
+};
 
 function messageRole(entry: AgentStepEntry): string | null {
   if (entry.type !== "pi_message") {
@@ -29,7 +34,7 @@ function insertFromStep(
   conversationId: string,
   seq: number,
   contextEpoch: number,
-  step: NewAgentStep,
+  step: PersistedAgentStep,
 ): AgentStepInsert {
   const { type, ...payload } = agentStepEntrySchema.parse(step.entry);
   return {
@@ -69,11 +74,12 @@ class SqlAgentStepStore implements AgentStepStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
   async append(conversationId: string, steps: NewAgentStep[]): Promise<void> {
-    if (steps.length === 0) {
+    const parsed = steps.map((step) => newAgentStepSchema.parse(step));
+    if (parsed.length === 0) {
       return;
     }
     const newestCreatedAtMs = Math.max(
-      ...steps.map((step) => step.createdAtMs),
+      ...parsed.map((step) => step.createdAtMs),
     );
     await this.executor.transaction(async () => {
       await ensureConversationRow(
@@ -84,7 +90,7 @@ class SqlAgentStepStore implements AgentStepStore {
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
-      const rows = steps.map((step) =>
+      const rows = parsed.map((step) =>
         insertFromStep(conversationId, seq++, contextEpoch, step),
       );
       await this.executor.db().insert(juniorAgentSteps).values(rows);
@@ -99,10 +105,13 @@ class SqlAgentStepStore implements AgentStepStore {
     await this.executor.transaction(async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
       const cursor = await this.readCursor(conversationId);
-      const contextEpoch = (cursor.maxEpoch ?? -1) + 1;
+      const contextEpoch =
+        parsed.reason === "initial"
+          ? (cursor.maxEpoch ?? 0)
+          : (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
       const { messages, ...binding } = parsed;
-      const marker: NewAgentStep = {
+      const marker: PersistedAgentStep = {
         entry: { type: "context_epoch_started", ...binding },
         createdAtMs: Date.now(),
       };
