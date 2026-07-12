@@ -974,6 +974,55 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("keeps SQL detail available when optional execution settings fail", async () => {
+    const { getAgentStepStore, getConversationStore } =
+      await import("@/chat/db");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const conversationId = "slack:C1:settings-unavailable";
+    await getConversationStore().recordActivity({
+      conversationId,
+      destination: {
+        platform: "slack",
+        teamId: "T1",
+        channelId: "C1",
+      },
+      source: "slack",
+      visibility: "public",
+    });
+    await getAgentStepStore().append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "available transcript" }],
+            timestamp: 1,
+          } as PiMessage,
+        },
+        createdAtMs: 1,
+      },
+    ]);
+    vi.spyOn(getStateAdapter(), "getList").mockRejectedValueOnce(
+      new Error("execution settings unavailable"),
+    );
+
+    const report = await readConversationDetailReport(conversationId);
+
+    expect(report).toMatchObject({
+      conversationId,
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "user",
+          timestamp: 1,
+          parts: [{ type: "text", text: "available transcript" }],
+        },
+      ],
+    });
+    expect(report).not.toHaveProperty("modelId");
+    expect(report).not.toHaveProperty("reasoningLevel");
+  });
+
   it("reports multiple message exchanges as one complete SQL transcript", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

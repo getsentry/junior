@@ -1,7 +1,26 @@
-import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
+import { logException } from "@/chat/logging";
+import {
+  listAgentTurnSessionSummariesForConversation,
+  type AgentTurnSessionSummary,
+} from "@/chat/state/turn-session";
 import { buildConversationDetail } from "./detail-projection";
 import { readConversationRecordFromSql } from "./list.query";
 import type { ConversationDetailReport } from "./schema";
+
+async function readLatestRun(
+  conversationId: string,
+): Promise<AgentTurnSessionSummary | undefined> {
+  try {
+    return (
+      await listAgentTurnSessionSummariesForConversation(conversationId)
+    )[0];
+  } catch (error) {
+    logException(error, "conversation_execution_settings_read_failed", {
+      conversationId,
+    });
+    return undefined;
+  }
+}
 
 /** Read one SQL conversation with its latest operational run settings. */
 export async function readConversationDetailFromSql(
@@ -10,13 +29,13 @@ export async function readConversationDetailFromSql(
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
 
-  const latestRun = (
-    await listAgentTurnSessionSummariesForConversation(conversationId)
-  )[0];
-  const report = await buildConversationDetail({
-    ...record,
-    usage: record.usage ?? undefined,
-  });
+  const [report, latestRun] = await Promise.all([
+    buildConversationDetail({
+      ...record,
+      usage: record.usage ?? undefined,
+    }),
+    readLatestRun(conversationId),
+  ]);
   return {
     ...report,
     ...(latestRun?.modelId ? { modelId: latestRun.modelId } : {}),
