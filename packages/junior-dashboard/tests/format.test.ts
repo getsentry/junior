@@ -82,7 +82,8 @@ describe("dashboard token formatting", () => {
       cacheWrite: undefined,
       total: 0.0121,
     });
-    expect(formatCostTotal(usage)).toBe("$0.0121");
+    expect(formatCostTotal(usage)).toBe("$0.01");
+    expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
   });
 
   it("formats cumulative conversation runtime", () => {

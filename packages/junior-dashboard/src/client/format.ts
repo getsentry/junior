@@ -533,7 +533,7 @@ export function summarizeCost(
   return total !== undefined || componentTotal > 0 ? summary : undefined;
 }
 
-/** Format estimated model cost in USD with useful sub-cent precision. */
+/** Format estimated model cost in USD for consistent dashboard display. */
 export function formatCostSummary(
   summary: CostUsageSummary | undefined,
 ): string {
@@ -542,7 +542,7 @@ export function formatCostSummary(
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
+    maximumFractionDigits: 2,
   }).format(summary.total);
 }
 
