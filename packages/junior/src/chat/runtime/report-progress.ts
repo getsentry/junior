@@ -55,7 +55,10 @@ export function latestReportedProgress(
       if (toolCall.type !== "toolCall" || toolCall.name !== "reportProgress") {
         continue;
       }
-      return buildReportedProgressStatus(toolCall.arguments);
+      const status = buildReportedProgressStatus(toolCall.arguments);
+      if (status) {
+        return status;
+      }
     }
   }
   return undefined;
