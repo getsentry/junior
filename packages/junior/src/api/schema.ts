@@ -8,6 +8,7 @@ export type {
   ActorIdentity,
   ConversationActivityReport,
   ConversationActivityStatus,
+  ConversationContextEvent,
   ConversationCost,
   ConversationDetailReport,
   ConversationFeed,

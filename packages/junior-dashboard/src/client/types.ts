@@ -13,6 +13,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import type {
   ConversationActivityStatus,
+  ConversationContextEvent,
   ConversationDetailReport,
   TranscriptMessage,
   TranscriptPart,
@@ -61,8 +62,38 @@ export type TranscriptViewSubagentPart = {
   type: "subagent";
 };
 
+export type TranscriptViewContextEventPart = {
+  bytes?: never;
+  chars?: never;
+  endedAt?: never;
+  event: ConversationContextEvent;
+  id?: never;
+  input?: never;
+  inputKeys?: never;
+  inputSizeBytes?: never;
+  inputSizeChars?: never;
+  inputType?: never;
+  modelId?: never;
+  name?: never;
+  outcome?: never;
+  output?: never;
+  outputKeys?: never;
+  outputSizeBytes?: never;
+  outputSizeChars?: never;
+  outputType?: never;
+  parentToolCallId?: never;
+  reasoningLevel?: never;
+  redacted?: never;
+  status?: never;
+  subagentKind?: never;
+  text?: never;
+  transcriptAvailable?: never;
+  type: "context_event";
+};
+
 export type TranscriptViewPart =
   | TranscriptViewReportingPart
+  | TranscriptViewContextEventPart
   | TranscriptViewSubagentPart
   | TranscriptViewToolCallPart;
 

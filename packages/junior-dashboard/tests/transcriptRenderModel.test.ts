@@ -282,6 +282,56 @@ describe("transcript render model", () => {
     ]);
   });
 
+  it("inserts context changes into the transcript in timestamp order", () => {
+    const turn = conversationTurn({
+      contextEvents: [
+        {
+          type: "context_compacted",
+          createdAt: "2026-01-01T00:00:02.000Z",
+          modelId: "openai/gpt-5.4",
+          summary: "Earlier investigation was summarized.",
+          transcriptIndex: 1,
+        },
+        {
+          type: "model_handoff",
+          createdAt: "2026-01-01T00:00:04.000Z",
+          fromModelId: "openai/gpt-5.4",
+          toModelId: "openai/gpt-5.6-sol",
+          summary: "Continue with the coding fix.",
+          transcriptIndex: 2,
+        },
+      ],
+      transcript: [
+        {
+          role: "user",
+          parts: [{ type: "text", text: "Investigate the release" }],
+        },
+        {
+          role: "assistant",
+          parts: [{ type: "text", text: "The migration is suspect." }],
+        },
+        {
+          role: "assistant",
+          parts: [{ type: "text", text: "I prepared the fix." }],
+        },
+      ],
+    });
+
+    const entries = groupTranscriptMessages(
+      conversationTranscriptMessages(turn),
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual([
+      "message",
+      "context",
+      "message",
+      "context",
+      "message",
+    ]);
+    expect(conversationHasMatch(turn, "gpt-5.6-sol")).toBe(true);
+    expect(conversationHasMatch(turn, "earlier investigation")).toBe(true);
+  });
+
   it("does not duplicate subagents from repeated activity snapshots", () => {
     const turn = conversationTurn({
       activity: [

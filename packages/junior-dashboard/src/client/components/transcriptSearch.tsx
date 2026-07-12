@@ -157,6 +157,18 @@ export function entryMatchesSearch(
     return textContains(stringifyPartValue(entry.part.output), normalizedQuery);
   }
 
+  if (entry.kind === "context") {
+    const event = entry.part.event;
+    return event.type === "model_handoff"
+      ? textContains("model handoff", normalizedQuery) ||
+          textContains(event.fromModelId, normalizedQuery) ||
+          textContains(event.toModelId, normalizedQuery) ||
+          textContains(event.summary, normalizedQuery)
+      : textContains("context compacted", normalizedQuery) ||
+          textContains(event.modelId, normalizedQuery) ||
+          textContains(event.summary, normalizedQuery);
+  }
+
   return false;
 }
 

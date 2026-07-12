@@ -21,6 +21,7 @@ import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
+  TranscriptViewContextEventPart,
   TranscriptViewSubagentPart,
 } from "./types";
 
@@ -140,6 +141,16 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "context") {
+      appendContextEvent(
+        lines,
+        conversationTranscript,
+        entry.part,
+        entry.timestamp,
+      );
+      continue;
+    }
+
     if (redacted) {
       appendRedactedTool(
         lines,
@@ -161,6 +172,29 @@ function appendTranscriptMessages(
       entry.resultTimestamp,
     );
   }
+}
+
+function appendContextEvent(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+  part: TranscriptViewContextEventPart,
+  timestamp: number | undefined,
+): void {
+  const event = part.event;
+  lines.push(
+    "",
+    event.type === "model_handoff"
+      ? "### Model handoff"
+      : "### Context compacted",
+  );
+  addEventMeta(lines, conversationTranscript, timestamp);
+  if (event.type === "model_handoff") {
+    addMetaLine(lines, "From model", event.fromModelId);
+    addMetaLine(lines, "To model", event.toModelId);
+  } else {
+    addMetaLine(lines, "Model", event.modelId);
+  }
+  if (event.summary) lines.push("", event.summary);
 }
 
 function appendMessage(

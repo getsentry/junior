@@ -329,13 +329,27 @@ export function conversationTranscriptMessages(
   const source = conversation.transcriptAvailable
     ? conversation.transcript
     : (conversation.transcriptMetadata ?? []);
+  const messagesWithContext: TranscriptViewMessage[] = [...source];
+  (conversation.contextEvents ?? []).forEach((event, offset) => {
+    messagesWithContext.splice(
+      event.transcriptIndex + offset,
+      0,
+      activityMessage(activityTimestamp(event.createdAt), {
+        type: "context_event",
+        event,
+      }),
+    );
+  });
   const activities = toolActivities(conversation);
   const orphanSubagents = orphanSubagentActivities(conversation);
   if (activities.length === 0 && orphanSubagents.length === 0) {
-    return source;
+    return messagesWithContext;
   }
 
-  const { messages, usedToolCallIds } = upgradeToolCalls(source, activities);
+  const { messages, usedToolCallIds } = upgradeToolCalls(
+    messagesWithContext,
+    activities,
+  );
 
   return mergeMessages(
     messages,

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-05-29
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-12
 
 ## Purpose
 
@@ -180,6 +180,13 @@ system prompt.
 
 Conversation detail responses expose the latest retained turn session's
 `modelId` and `reasoningLevel` when those operational settings are available.
+
+Conversation detail presents one chronological execution history across context
+rebuilds. Messages copied into a replacement context must not be repeated in the
+reported transcript. Compaction and model handoff are exposed as structured
+context events at their original positions so the dashboard can render them
+inline without exposing context-epoch storage terminology. Generated transition
+summaries follow the same public-conversation payload policy as transcript text.
 
 The current public diagnostics surfaces must move behind dashboard auth:
 

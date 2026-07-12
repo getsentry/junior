@@ -57,6 +57,7 @@ export type {
   ActorTotalsReport,
   ConversationActivityReport,
   ConversationActivityStatus,
+  ConversationContextEvent,
   ConversationCost,
   ConversationDetailReport,
   ConversationFeed,

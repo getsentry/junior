@@ -28,6 +28,7 @@ title: "@sentry/junior"
 - [ActorTotalsReport](/reference/api/type-aliases/actortotalsreport/)
 - [ConversationActivityReport](/reference/api/type-aliases/conversationactivityreport/)
 - [ConversationActivityStatus](/reference/api/type-aliases/conversationactivitystatus/)
+- [ConversationContextEvent](/reference/api/type-aliases/conversationcontextevent/)
 - [ConversationCost](/reference/api/type-aliases/conversationcost/)
 - [ConversationDetailReport](/reference/api/type-aliases/conversationdetailreport/)
 - [ConversationFeed](/reference/api/type-aliases/conversationfeed/)

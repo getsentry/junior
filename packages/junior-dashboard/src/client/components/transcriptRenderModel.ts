@@ -6,6 +6,7 @@ import {
 } from "../format";
 import { sameToolInvocation } from "../toolInvocations";
 import type {
+  TranscriptViewContextEventPart,
   TranscriptViewMessage,
   TranscriptViewPart,
   TranscriptViewSubagentPart,
@@ -20,6 +21,7 @@ export type RenderedTranscriptPart =
   | RenderedToolPart;
 
 export type RenderedTranscriptEntry =
+  | RenderedContextEventEntry
   | { kind: "message"; message: TranscriptViewMessage }
   | RenderedSubagentEntry
   | RenderedThinkingEntry
@@ -28,6 +30,12 @@ export type RenderedTranscriptEntry =
 export type RenderedThinkingEntry = {
   kind: "thinking";
   part: TranscriptViewPart;
+  timestamp?: number;
+};
+
+export type RenderedContextEventEntry = {
+  kind: "context";
+  part: TranscriptViewContextEventPart;
   timestamp?: number;
 };
 
@@ -85,6 +93,12 @@ function isSubagent(
   part: TranscriptViewPart,
 ): part is TranscriptViewSubagentPart {
   return part.type === "subagent";
+}
+
+function isContextEvent(
+  part: TranscriptViewPart,
+): part is TranscriptViewContextEventPart {
+  return part.type === "context_event";
 }
 
 function isString(value: string | undefined): value is string {
@@ -225,6 +239,16 @@ export function groupTranscriptMessages(
         continue;
       }
 
+      if (isContextEvent(part)) {
+        flushMessage();
+        entries.push({
+          kind: "context",
+          part,
+          timestamp: message.timestamp,
+        });
+        continue;
+      }
+
       messageParts.push(part);
     }
 
@@ -268,6 +292,16 @@ export function messageRawText(message: TranscriptViewMessage): string {
         ]
           .filter(isString)
           .join("\n");
+      }
+      if (part.type === "context_event") {
+        const event = part.event;
+        return event.type === "model_handoff"
+          ? ["model handoff", event.fromModelId, event.toModelId, event.summary]
+              .filter(isString)
+              .join("\n")
+          : ["context compacted", event.modelId, event.summary]
+              .filter(isString)
+              .join("\n");
       }
       return stringifyPartValue(part.output ?? part.input ?? part.text ?? part);
     })

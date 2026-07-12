@@ -1,9 +1,13 @@
+import { isDeepStrictEqual } from "node:util";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import type {
   ConversationMessage,
   ConversationMessageStore,
 } from "@/chat/conversations/messages";
-import type { AgentStepStore } from "@/chat/conversations/history";
+import type {
+  AgentStepStore,
+  StoredAgentStep,
+} from "@/chat/conversations/history";
 import type { Conversation } from "@/chat/conversations/store";
 import { loadProjection, projectSteps } from "@/chat/conversations/projection";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
@@ -29,21 +33,184 @@ import {
 } from "./transcript";
 import type {
   ConversationActivityReport,
+  ConversationContextEvent,
   ConversationDetailReport,
   ConversationSubagentTranscriptReport,
   TranscriptMessage,
 } from "./schema";
-async function currentRunContent(args: {
+
+const COMPACTION_SUMMARY_PREFIXES = [
+  "Context compaction summary for future Junior turns:",
+  "Context handoff summary for future Junior turns:",
+] as const;
+const MODEL_HANDOFF_SUMMARY_PREFIX =
+  "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:";
+
+type EpochStartedStep = StoredAgentStep & {
+  entry: Extract<StoredAgentStep["entry"], { type: "context_epoch_started" }>;
+};
+
+function messageText(message: PiMessage): string {
+  return normalizeTranscriptMessage(message)
+    .parts.filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+function summaryAfterPrefix(
+  message: PiMessage,
+  prefixes: readonly string[],
+): string | undefined {
+  const text = messageText(message);
+  const prefix = prefixes.find((candidate) => text.startsWith(candidate));
+  if (!prefix) return undefined;
+  return text.slice(prefix.length).trim();
+}
+
+function summaryIndex(
+  messages: PiMessage[],
+  provenance: Array<{ authority: "context" | "instruction" }>,
+  prefixes: readonly string[],
+): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (
+      provenance[index]?.authority === "context" &&
+      summaryAfterPrefix(messages[index]!, prefixes) !== undefined
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function matchingPrefix(left: PiMessage[], right: PiMessage[]): number {
+  const limit = Math.min(left.length, right.length);
+  for (let index = 0; index < limit; index += 1) {
+    if (!isDeepStrictEqual(left[index], right[index])) return index;
+  }
+  return limit;
+}
+
+/**
+ * Rebuild the chronological execution once across context replacements.
+ * Synthetic summaries become context events, while copied replacement
+ * messages are omitted without collapsing later execution messages.
+ */
+function historyContent(args: {
+  canExposePayload: boolean;
+  steps: StoredAgentStep[];
+}): {
+  contextEvents: ConversationContextEvent[];
+  messages: PiMessage[];
+} {
+  const contextEvents: ConversationContextEvent[] = [];
+  const messages: PiMessage[] = [];
+  const epochs = new Map<number, StoredAgentStep[]>();
+  for (const step of args.steps) {
+    const epoch = epochs.get(step.contextEpoch);
+    if (epoch) epoch.push(step);
+    else epochs.set(step.contextEpoch, [step]);
+  }
+
+  let previousModelId: string | undefined;
+  let previousProjection: PiMessage[] = [];
+  for (const steps of epochs.values()) {
+    const marker = steps.find(
+      (step): step is EpochStartedStep =>
+        step.entry.type === "context_epoch_started",
+    );
+    const projection = projectSteps(steps);
+    const projected = projection.messages;
+    const replacementSummaryIndex =
+      marker?.entry.reason === "compaction"
+        ? summaryIndex(
+            projected,
+            projection.provenance,
+            COMPACTION_SUMMARY_PREFIXES,
+          )
+        : marker?.entry.reason === "handoff"
+          ? summaryIndex(projected, projection.provenance, [
+              MODEL_HANDOFF_SUMMARY_PREFIX,
+            ])
+          : -1;
+    const summary =
+      replacementSummaryIndex >= 0
+        ? summaryAfterPrefix(
+            projected[replacementSummaryIndex]!,
+            marker?.entry.reason === "handoff"
+              ? [MODEL_HANDOFF_SUMMARY_PREFIX]
+              : COMPACTION_SUMMARY_PREFIXES,
+          )
+        : undefined;
+
+    if (marker?.entry.reason === "compaction") {
+      contextEvents.push({
+        type: "context_compacted",
+        createdAt: new Date(marker.createdAtMs).toISOString(),
+        ...(marker.entry.modelId ? { modelId: marker.entry.modelId } : {}),
+        ...(args.canExposePayload && summary ? { summary } : {}),
+        transcriptIndex: messages.length,
+      });
+    } else if (marker?.entry.reason === "handoff") {
+      contextEvents.push({
+        type: "model_handoff",
+        createdAt: new Date(marker.createdAtMs).toISOString(),
+        ...(previousModelId ? { fromModelId: previousModelId } : {}),
+        toModelId: marker.entry.modelId,
+        ...(args.canExposePayload && summary ? { summary } : {}),
+        transcriptIndex: messages.length,
+      });
+    }
+
+    if (marker?.entry.reason === "rollback") {
+      messages.push(
+        ...projected.slice(matchingPrefix(previousProjection, projected)),
+      );
+    } else {
+      const copiedMessageIndexes = new Set<number>();
+      projected.forEach((message, index) => {
+        if (index === replacementSummaryIndex) return;
+        let copiedCompactionMessage = false;
+        if (
+          marker?.entry.reason === "compaction" &&
+          replacementSummaryIndex >= 0 &&
+          index < replacementSummaryIndex
+        ) {
+          const copiedIndex = messages.findIndex(
+            (candidate, candidateIndex) =>
+              !copiedMessageIndexes.has(candidateIndex) &&
+              isDeepStrictEqual(candidate, message),
+          );
+          copiedCompactionMessage = copiedIndex >= 0;
+          if (copiedCompactionMessage) copiedMessageIndexes.add(copiedIndex);
+        }
+        if (!copiedCompactionMessage) messages.push(message);
+      });
+    }
+    previousModelId = marker?.entry.modelId ?? previousModelId;
+    previousProjection = projected;
+  }
+
+  return { contextEvents, messages };
+}
+
+async function conversationContent(args: {
   conversationId: string;
   messageStore: ConversationMessageStore;
   stepStore: AgentStepStore;
   canExposePayload: boolean;
 }): Promise<{
   activity: ConversationActivityReport[];
+  contextEvents: ConversationContextEvent[];
   transcript: TranscriptMessage[];
 }> {
-  const steps = await args.stepStore.loadCurrentEpoch(args.conversationId);
-  const messages = projectSteps(steps).messages;
+  const steps = await args.stepStore.loadHistory(args.conversationId);
+  const history = historyContent({
+    canExposePayload: args.canExposePayload,
+    steps,
+  });
+  const messages = history.messages;
   const transcript =
     messages.length > 0
       ? messages.map((message) => normalizeTranscriptMessage(message))
@@ -56,6 +223,7 @@ async function currentRunContent(args: {
       steps,
       messages,
     }),
+    contextEvents: history.contextEvents,
     transcript,
   };
 }
@@ -87,22 +255,22 @@ export async function buildConversationDetail(args: {
       ? new Date(transcriptPurgedAtMs).toISOString()
       : undefined;
 
-  // The activity timeline is the current run's, derived from the current
-  // context epoch's durable steps; older epochs stay audit-only. Purged
-  // conversations have no steps to read.
+  // Reporting reads the complete durable execution history. Context rebuilds
+  // become explicit events while copied replacement messages are de-duplicated.
+  // Purged conversations have no steps to read.
   const canExposeSqlContent = canExposeConversationPayload({
     conversationId,
     visibility: conversation.visibility,
   });
   const currentContent =
     transcriptPurgedAtMs === undefined
-      ? await currentRunContent({
+      ? await conversationContent({
           conversationId,
           messageStore,
           stepStore,
           canExposePayload: canExposeSqlContent,
         })
-      : { activity: [], transcript: [] };
+      : { activity: [], contextEvents: [], transcript: [] };
 
   const currentTranscript = currentContent.transcript;
   const traceId = canExposeSqlContent
@@ -120,6 +288,7 @@ export async function buildConversationDetail(args: {
     ...(traceId ? { traceId } : {}),
     ...(sentryTraceUrl ? { sentryTraceUrl } : {}),
     activity: currentContent.activity,
+    contextEvents: currentContent.contextEvents,
     transcriptAvailable:
       transcriptExpiredAt === undefined &&
       canExposeSqlContent &&

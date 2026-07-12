@@ -241,6 +241,7 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(longConversation.status).toBe(200);
     const longConversationBody = (await longConversation.json()) as {
+      contextEvents?: Array<{ summary?: string; type: string }>;
       transcript: Array<{
         role: string;
         parts: Array<{ id?: string; name?: string; type: string }>;
@@ -269,6 +270,10 @@ describe("dashboard mock conversation routes", () => {
       }),
     );
     expect(systemMessages).toHaveLength(1);
+    expect(longConversationBody.contextEvents).toEqual([
+      expect.objectContaining({ type: "context_compacted" }),
+      expect.objectContaining({ type: "model_handoff" }),
+    ]);
     expect(longConversationBody.transcriptMessageCount).toBe(
       longConversationBody.transcript.length,
     );

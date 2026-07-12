@@ -142,11 +142,34 @@ export const conversationActivityReportSchema = z.discriminatedUnion("type", [
   conversationSubagentActivityReportSchema,
 ]);
 
+export const conversationContextEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("context_compacted"),
+      createdAt: z.string(),
+      modelId: z.string().optional(),
+      summary: z.string().optional(),
+      transcriptIndex: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("model_handoff"),
+      createdAt: z.string(),
+      fromModelId: z.string().optional(),
+      summary: z.string().optional(),
+      toModelId: z.string(),
+      transcriptIndex: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     activity: z.array(conversationActivityReportSchema).optional(),
     modelId: z.string().optional(),
     reasoningLevel: z.string().optional(),
+    contextEvents: z.array(conversationContextEventSchema).optional(),
     transcriptAvailable: z.boolean(),
     transcriptMetadata: z.array(transcriptMessageSchema).optional(),
     transcriptMessageCount: z.number().optional(),
@@ -241,6 +264,9 @@ export type TranscriptPartType = z.infer<typeof transcriptPartTypeSchema>;
 export type TranscriptPart = z.infer<typeof transcriptPartSchema>;
 export type TranscriptRole = z.infer<typeof transcriptRoleSchema>;
 export type TranscriptMessage = z.infer<typeof transcriptMessageSchema>;
+export type ConversationContextEvent = z.infer<
+  typeof conversationContextEventSchema
+>;
 export type ConversationActivityStatus = z.infer<
   typeof conversationActivityStatusSchema
 >;

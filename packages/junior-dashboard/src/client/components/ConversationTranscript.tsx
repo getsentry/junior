@@ -49,6 +49,7 @@ import {
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptThinkingView } from "./TranscriptThinkingView";
 import { TranscriptSubagentView } from "./TranscriptSubagentView";
+import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptToolRun } from "./TranscriptToolRun";
 import { TranscriptToolView } from "./TranscriptToolView";
 import { shouldCopyRawTranscript } from "./transcriptCopy";
@@ -69,6 +70,7 @@ import { previewToolValue } from "./transcriptPreview";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
+type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
@@ -277,6 +279,13 @@ function VisibleTranscriptEntries(props: {
     <TranscriptEntryList
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
+      renderContext={(entry, index) => (
+        <TranscriptContextEventView
+          key={`${props.conversation.conversationId}:context:${index}`}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
+      )}
       renderMessage={(entry, index) => (
         <TranscriptMessageView
           key={`${props.conversation.conversationId}:${index}`}
@@ -322,6 +331,7 @@ function VisibleTranscriptEntries(props: {
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
+  renderContext: (entry: TranscriptContextEntry, index: number) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry, index: number) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry, index: number) => ReactNode;
   renderThinking: (entry: TranscriptThinkingEntry, index: number) => ReactNode;
@@ -369,7 +379,9 @@ function TranscriptEntryList(props: {
         <Fragment key={`${props.keyPrefix}:${entry.kind}:${index}`}>
           {entry.kind === "subagent"
             ? props.renderSubagent(entry, index)
-            : props.renderMessage(entry, index)}
+            : entry.kind === "context"
+              ? props.renderContext(entry, index)
+              : props.renderMessage(entry, index)}
         </Fragment>,
       );
     }
@@ -398,6 +410,13 @@ function RedactedTranscriptView(props: {
         conversationTranscriptMessages(props.conversation),
       )}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
+      renderContext={(entry, index) => (
+        <TranscriptContextEventView
+          key={`${props.conversation.conversationId}:redacted:context:${index}`}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
+      )}
       renderMessage={(entry, index) => (
         <RedactedMessageView
           key={`${props.conversation.conversationId}:redacted:${index}`}

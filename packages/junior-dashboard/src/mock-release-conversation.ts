@@ -533,6 +533,12 @@ export function longReleaseConversation(
   const secondTranscript = releaseConversationTranscriptTwo(
     Date.parse(secondStartedAt),
   );
+  const handoffTranscriptIndex =
+    firstTranscript.length +
+    secondTranscript.findIndex(
+      (message) =>
+        (message.timestamp ?? 0) > Date.parse(secondStartedAt) + 129_000,
+    );
 
   return {
     conversationId: LONG_CONVERSATION_ID,
@@ -560,6 +566,25 @@ export function longReleaseConversation(
     channelName: "proj-release",
     sentryTraceUrl: sentryTraceUrl(traceId),
     traceId,
+    contextEvents: [
+      {
+        type: "context_compacted",
+        createdAt: iso(Date.parse(firstStartedAt), 49_000),
+        modelId: "openai/gpt-5.4",
+        summary:
+          "The @acme/junior 0.63.0 package set was published after release checks passed. The remaining request is to update the junior-demo app, verify every package stays aligned, and open a draft pull request.",
+        transcriptIndex: firstTranscript.length,
+      },
+      {
+        type: "model_handoff",
+        createdAt: iso(Date.parse(secondStartedAt), 129_000),
+        fromModelId: "openai/gpt-5.4",
+        toModelId: "openai/gpt-5.6-sol",
+        summary:
+          "Finish the self-update change after the build failed only because CACHE_URL is unavailable in the sandbox. Check and typecheck passed; commit package.json and pnpm-lock.yaml, push the branch, and open a draft PR that records the build limitation.",
+        transcriptIndex: handoffTranscriptIndex,
+      },
+    ],
     transcriptAvailable: true,
     transcriptMessageCount: firstTranscript.length + secondTranscript.length,
     transcript: [...firstTranscript, ...secondTranscript],

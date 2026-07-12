@@ -67,6 +67,23 @@ describe("dashboard markdown export", () => {
       startedAt,
       status: "completed",
       surface: "slack",
+      contextEvents: [
+        {
+          type: "context_compacted",
+          createdAt: "2026-01-01T00:00:01.500Z",
+          modelId: "openai/gpt-5.4",
+          summary: "Earlier investigation was summarized.",
+          transcriptIndex: 1,
+        },
+        {
+          type: "model_handoff",
+          createdAt: "2026-01-01T00:00:04.000Z",
+          fromModelId: "openai/gpt-5.4",
+          toModelId: "openai/gpt-5.6-sol",
+          summary: "Continue with the implementation evidence.",
+          transcriptIndex: 3,
+        },
+      ],
       transcriptAvailable: true,
       transcript: [
         {
@@ -127,6 +144,16 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("- Actor: Alice");
     expect(markdown).toContain("- Location: #eng (C1)");
     expect(markdown).toContain("## Transcript");
+    expect(markdown).toContain("### Context compacted");
+    expect(markdown).toContain("- Model: openai/gpt-5.4");
+    expect(markdown).toContain("Earlier investigation was summarized.");
+    expect(markdown).toContain("### Model handoff");
+    expect(markdown).toContain("- From model: openai/gpt-5.4");
+    expect(markdown).toContain("- To model: openai/gpt-5.6-sol");
+    expect(markdown).toContain("Continue with the implementation evidence.");
+    expect(markdown.indexOf("### Context compacted")).toBeLessThan(
+      markdown.indexOf("### Model handoff"),
+    );
     expect(markdown).not.toContain("## Turn");
     expect(markdown).not.toContain("- Turns:");
     expect(markdown).not.toContain("- Turn ID:");

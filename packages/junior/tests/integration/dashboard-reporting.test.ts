@@ -516,6 +516,26 @@ describe("dashboard reporting", () => {
         createdAtMs: 5,
       },
     ]);
+    await getAgentStepStore().startEpoch("slack:G1:activity", {
+      reason: "compaction",
+      modelProfile: "standard",
+      modelId: "test/model",
+      messages: [
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nprivate incident details",
+              },
+            ],
+            timestamp: 6,
+          } as PiMessage,
+          createdAtMs: 6,
+        },
+      ],
+    });
 
     const report = await readConversationDetailReport("slack:G1:activity");
 
@@ -542,7 +562,15 @@ describe("dashboard reporting", () => {
         ],
       }),
     ]);
+    expect(report.contextEvents).toEqual([
+      expect.objectContaining({
+        type: "context_compacted",
+        modelId: "test/model",
+      }),
+    ]);
+    expect(report.contextEvents?.[0]).not.toHaveProperty("summary");
     expect(JSON.stringify(report.activity)).not.toContain("private question");
+    expect(JSON.stringify(report)).not.toContain("private incident details");
   });
 
   it("loads subagent transcript history from the child conversation", async () => {
@@ -573,6 +601,7 @@ describe("dashboard reporting", () => {
             ],
             timestamp: 10,
           } as PiMessage,
+          provenance: { authority: "instruction" },
         },
         createdAtMs: 10,
       },
@@ -1294,17 +1323,31 @@ describe("dashboard reporting", () => {
     expect(JSON.stringify(report)).not.toContain("public answer");
   });
 
-  it("reports only current-epoch activity after a compaction rebuild", async () => {
-    const { upsertAgentTurnSessionRecord } =
-      await import("@/chat/state/turn-session");
+  it("reports complete history around a compaction without copied messages", async () => {
     const { getAgentStepStore } = await import("@/chat/db");
 
     const conversationId = "slack:C1:compaction";
     await confirmPublicSlackConversation(conversationId);
     const stepStore = getAgentStepStore();
 
-    // Epoch 0: a tool execution a later compaction supersedes (audit history).
+    // Epoch 0: execution that remains visible after a later context rebuild.
     await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nThis is quoted documentation, not a generated summary.",
+              },
+            ],
+            timestamp: 0,
+          } as PiMessage,
+        },
+        createdAtMs: 0,
+      },
       {
         entry: {
           type: "pi_message",
@@ -1318,14 +1361,38 @@ describe("dashboard reporting", () => {
       },
       {
         entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "current question" }],
+            timestamp: 2,
+          } as PiMessage,
+          provenance: { authority: "instruction" },
+        },
+        createdAtMs: 2,
+      },
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "current question" }],
+            timestamp: 2,
+          } as PiMessage,
+          provenance: { authority: "instruction" },
+        },
+        createdAtMs: 2,
+      },
+      {
+        entry: {
           type: "tool_execution_started",
           toolCallId: "old-tool",
           toolName: "search",
         },
-        createdAtMs: 2,
+        createdAtMs: 3,
       },
     ]);
-    // Compaction opens epoch 1 with the rebuilt context.
+    // Compaction copies the latest user intent and adds a generated summary.
     await stepStore.startEpoch(conversationId, {
       modelId: "test/model",
       reason: "compaction",
@@ -1334,31 +1401,70 @@ describe("dashboard reporting", () => {
         {
           message: {
             role: "user",
-            content: [{ type: "text", text: "current question" }],
-            timestamp: 3,
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nThis is quoted documentation, not a generated summary.",
+              },
+            ],
+            timestamp: 0,
           } as PiMessage,
-          createdAtMs: 3,
+          provenance: { authority: "instruction" },
+          createdAtMs: 0,
+        },
+        {
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "current question" }],
+            timestamp: 2,
+          } as PiMessage,
+          provenance: { authority: "instruction" },
+          createdAtMs: 2,
+        },
+        {
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "current question" }],
+            timestamp: 2,
+          } as PiMessage,
+          provenance: { authority: "instruction" },
+          createdAtMs: 2,
+        },
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nThe earlier search found the relevant deployment.",
+              },
+            ],
+            timestamp: 4,
+          } as PiMessage,
+          provenance: { authority: "context" },
+          createdAtMs: 4,
         },
       ],
     });
-    // A turn-session record pinned to the current epoch drives the run; the
-    // identical prompt commits no new rows.
-    await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
-      conversationId,
-      sessionId: "turn-compacted",
-      sliceId: 1,
-      state: "completed",
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "current question" }],
-          timestamp: 3,
-        },
-      ] as PiMessage[],
-    });
     // A current-epoch tool execution the report should surface.
     await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nPlease explain this marker to the user.",
+              },
+            ],
+            timestamp: 4.5,
+          } as PiMessage,
+          provenance: { authority: "instruction" },
+        },
+        createdAtMs: 4.5,
+      },
       {
         entry: {
           type: "tool_execution_started",
@@ -1366,7 +1472,7 @@ describe("dashboard reporting", () => {
           toolName: "search",
           args: { q: "current question" },
         },
-        createdAtMs: 4,
+        createdAtMs: 5,
       },
     ]);
 
@@ -1376,12 +1482,327 @@ describe("dashboard reporting", () => {
       .filter((row) => row.type === "tool_execution")
       .map((row) => row.toolCallId);
 
-    expect(toolIds).toEqual(["new-tool"]);
-    expect(JSON.stringify(currentRun?.transcript)).toContain(
-      "current question",
+    expect(toolIds).toEqual(["old-tool", "new-tool"]);
+    expect(currentRun.contextEvents).toEqual([
+      expect.objectContaining({
+        type: "context_compacted",
+        modelId: "test/model",
+        summary: "The earlier search found the relevant deployment.",
+      }),
+    ]);
+    expect(JSON.stringify(currentRun.transcript)).toContain("old question");
+    expect(JSON.stringify(currentRun.transcript)).toContain("current question");
+    expect(JSON.stringify(currentRun.transcript)).toContain(
+      "This is quoted documentation, not a generated summary.",
     );
-    expect(JSON.stringify(currentRun?.transcript)).not.toContain(
-      "old question",
+    expect(JSON.stringify(currentRun.transcript)).toContain(
+      "Please explain this marker to the user.",
     );
+    expect(JSON.stringify(currentRun.transcript)).not.toContain(
+      "The earlier search found the relevant deployment.",
+    );
+    expect(
+      currentRun.transcript.filter((message) =>
+        JSON.stringify(message).includes("current question"),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("reports the original execution and continuation around a model handoff", async () => {
+    const { getAgentStepStore } = await import("@/chat/db");
+    const conversationId = "slack:C1:handoff-reporting";
+    await confirmPublicSlackConversation(conversationId);
+    const stepStore = getAgentStepStore();
+
+    await stepStore.startEpoch(conversationId, {
+      reason: "initial",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      messages: [
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nThis is quoted documentation, not a generated checkpoint.",
+              },
+            ],
+            timestamp: 0,
+          } as PiMessage,
+          createdAtMs: 0,
+        },
+        {
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Investigate the release" }],
+            timestamp: 1,
+          } as PiMessage,
+          createdAtMs: 1,
+        },
+        {
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Investigate the release" }],
+            timestamp: 1,
+          } as PiMessage,
+          createdAtMs: 1,
+        },
+        {
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "toolCall",
+                id: "handoff-call",
+                name: "handoff",
+                arguments: { profile: "handoff" },
+              },
+            ],
+            timestamp: 2,
+          } as unknown as PiMessage,
+          createdAtMs: 2,
+        },
+      ],
+    });
+    await stepStore.startEpoch(conversationId, {
+      reason: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      messages: [
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nThe release migration fails because its constraint is created too late.",
+              },
+            ],
+            timestamp: 3,
+          } as PiMessage,
+          createdAtMs: 3,
+        },
+      ],
+    });
+    await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "I prepared the ordering fix." }],
+            timestamp: 4,
+          } as PiMessage,
+        },
+        createdAtMs: 4,
+      },
+    ]);
+
+    const report = await readConversationDetailReport(conversationId);
+
+    expect(report.contextEvents).toEqual([
+      expect.objectContaining({
+        type: "model_handoff",
+        fromModelId: "openai/gpt-5.4",
+        toModelId: "openai/gpt-5.6-sol",
+        summary:
+          "The release migration fails because its constraint is created too late.",
+      }),
+    ]);
+    expect(JSON.stringify(report.transcript)).toContain(
+      "Investigate the release",
+    );
+    expect(JSON.stringify(report.transcript)).toContain(
+      "This is quoted documentation, not a generated checkpoint.",
+    );
+    expect(
+      report.transcript.filter((message) =>
+        JSON.stringify(message).includes("Investigate the release"),
+      ),
+    ).toHaveLength(2);
+    expect(JSON.stringify(report.transcript)).toContain("handoff-call");
+    expect(JSON.stringify(report.transcript)).toContain(
+      "I prepared the ordering fix.",
+    );
+    expect(JSON.stringify(report.transcript)).not.toContain(
+      "The release migration fails because its constraint is created too late.",
+    );
+  });
+
+  it("reports divergent rollback history without repeating the shared prefix", async () => {
+    const { getAgentStepStore } = await import("@/chat/db");
+    const conversationId = "slack:C1:rollback-reporting";
+    await confirmPublicSlackConversation(conversationId);
+    const stepStore = getAgentStepStore();
+    const shared = {
+      role: "user",
+      content: [{ type: "text", text: "Regenerate the answer" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await stepStore.startEpoch(conversationId, {
+      reason: "initial",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      messages: [
+        { message: shared, createdAtMs: 1 },
+        {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Original answer" }],
+            timestamp: 2,
+          } as PiMessage,
+          createdAtMs: 2,
+        },
+      ],
+    });
+    await stepStore.startEpoch(conversationId, {
+      reason: "rollback",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      messages: [
+        { message: shared, createdAtMs: 1 },
+        {
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Regenerated answer" }],
+            timestamp: 3,
+          } as PiMessage,
+          createdAtMs: 3,
+        },
+      ],
+    });
+
+    const report = await readConversationDetailReport(conversationId);
+    const serialized = report.transcript.map((message) =>
+      JSON.stringify(message),
+    );
+
+    expect(report.contextEvents).toEqual([]);
+    expect(
+      serialized.filter((message) => message.includes("Regenerate the answer")),
+    ).toHaveLength(1);
+    expect(
+      serialized.filter((message) => message.includes("Original answer")),
+    ).toHaveLength(1);
+    expect(
+      serialized.filter((message) => message.includes("Regenerated answer")),
+    ).toHaveLength(1);
+  });
+
+  it("reports ordered compaction and handoff events with a once-only transcript", async () => {
+    const { getAgentStepStore } = await import("@/chat/db");
+    const conversationId = "slack:C1:compaction-handoff-reporting";
+    await confirmPublicSlackConversation(conversationId);
+    const stepStore = getAgentStepStore();
+    const original = {
+      role: "user",
+      content: [{ type: "text", text: "Finish the release work" }],
+      timestamp: 1,
+    } as PiMessage;
+
+    await stepStore.startEpoch(conversationId, {
+      reason: "initial",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      messages: [{ message: original, createdAtMs: 1 }],
+    });
+    await stepStore.startEpoch(conversationId, {
+      reason: "compaction",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.4",
+      messages: [
+        { message: original, createdAtMs: 1 },
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nThe release plan is ready for implementation.",
+              },
+            ],
+            timestamp: 2,
+          } as PiMessage,
+          createdAtMs: 2,
+        },
+      ],
+    });
+    await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Compacted continuation" }],
+            timestamp: 3,
+          } as PiMessage,
+        },
+        createdAtMs: 3,
+      },
+    ]);
+    await stepStore.startEpoch(conversationId, {
+      reason: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      messages: [
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nImplement the prepared release plan.",
+              },
+            ],
+            timestamp: 4,
+          } as PiMessage,
+          createdAtMs: 4,
+        },
+      ],
+    });
+    await stepStore.append(conversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "Handoff continuation" }],
+            timestamp: 5,
+          } as PiMessage,
+        },
+        createdAtMs: 5,
+      },
+    ]);
+
+    const report = await readConversationDetailReport(conversationId);
+    const transcript = JSON.stringify(report.transcript);
+
+    expect(report.contextEvents).toEqual([
+      expect.objectContaining({
+        type: "context_compacted",
+        modelId: "openai/gpt-5.4",
+        summary: "The release plan is ready for implementation.",
+      }),
+      expect.objectContaining({
+        type: "model_handoff",
+        fromModelId: "openai/gpt-5.4",
+        toModelId: "openai/gpt-5.6-sol",
+        summary: "Implement the prepared release plan.",
+      }),
+    ]);
+    expect(report.contextEvents?.[0]?.transcriptIndex).toBeLessThanOrEqual(
+      report.contextEvents?.[1]?.transcriptIndex ?? -1,
+    );
+    expect(
+      report.transcript.filter((message) =>
+        JSON.stringify(message).includes("Finish the release work"),
+      ),
+    ).toHaveLength(1);
+    expect(transcript).toContain("Compacted continuation");
+    expect(transcript).toContain("Handoff continuation");
+    expect(transcript).not.toContain("Context compaction summary");
+    expect(transcript).not.toContain("Model handoff checkpoint");
   });
 });
