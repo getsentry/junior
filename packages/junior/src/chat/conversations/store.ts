@@ -70,6 +70,13 @@ export interface ConversationStore {
     /** Source-confirmed visibility from the current event's signal only. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
+  /** Add one idempotent auxiliary model-call contribution to root usage. */
+  recordUsage(args: {
+    conversationId: string;
+    id: string;
+    usage: AgentTurnUsage;
+    createdAtMs?: number;
+  }): Promise<void>;
   /**
    * Establish a subagent child conversation row linked to its parent.
    *

@@ -267,6 +267,7 @@ function renderSummaryInput(
 /** Ask the fast model for a bounded handoff summary of durable thread context. */
 async function summarizeContext(
   args: {
+    conversationId: string;
     conversationContext?: string;
     piMessages: PiMessage[];
     metadata?: CompactContextArgs["metadata"];
@@ -299,6 +300,7 @@ async function summarizeContext(
       },
     ],
     metadata: {
+      conversationId: args.conversationId,
       modelId: botConfig.fastModelId,
       threadId: args.metadata?.threadId ?? "",
       channelId: args.metadata?.channelId ?? "",
@@ -383,6 +385,7 @@ async function maybeCompactWithDeps(
   try {
     summary = await summarizeContext(
       {
+        conversationId: args.conversationId,
         conversationContext: args.conversationContext,
         piMessages: source.messages,
         metadata: args.metadata,

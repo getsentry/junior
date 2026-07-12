@@ -21,6 +21,7 @@ export interface SubscribedDecisionInput {
   hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
+    conversationId?: string;
     threadId?: string;
     actorId?: string;
     channelId?: string;
@@ -467,6 +468,7 @@ export async function decideSubscribedThreadReply(args: {
       system: buildRouterSystemPrompt(args.botUserName),
       prompt: buildRouterPrompt(rawText, signals),
       metadata: {
+        conversationId: args.input.context.conversationId ?? "",
         modelId: args.modelId,
         threadId: args.input.context.threadId ?? "",
         channelId: args.input.context.channelId ?? "",

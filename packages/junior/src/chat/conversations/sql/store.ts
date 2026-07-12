@@ -15,11 +15,16 @@ import type {
   ConversationStore,
 } from "../store";
 import {
+  juniorConversationUsageEvents,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
 } from "@/db/schema";
-import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
+import {
+  addAgentTurnUsage,
+  type AgentTurnCost,
+  type AgentTurnUsage,
+} from "@/chat/usage";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
@@ -521,6 +526,55 @@ export class SqlStore implements ConversationStore {
           ...(args.visibility ? { visibility: args.visibility } : {}),
         },
       });
+    });
+  }
+
+  async recordUsage(args: {
+    conversationId: string;
+    id: string;
+    usage: AgentTurnUsage;
+    createdAtMs?: number;
+  }): Promise<void> {
+    await this.withConversationMutation(args.conversationId, async () => {
+      const atMs = args.createdAtMs ?? now();
+      await this.executor
+        .db()
+        .insert(juniorConversations)
+        .values({
+          conversationId: args.conversationId,
+          schemaVersion: 1,
+          createdAt: dateFromMs(atMs),
+          lastActivityAt: dateFromMs(atMs),
+          updatedAt: dateFromMs(atMs),
+          executionStatus: "idle",
+        })
+        .onConflictDoNothing({ target: juniorConversations.conversationId });
+      const inserted = await this.executor
+        .db()
+        .insert(juniorConversationUsageEvents)
+        .values({
+          id: args.id,
+          conversationId: args.conversationId,
+          usage: args.usage,
+          createdAt: dateFromMs(atMs),
+        })
+        .onConflictDoNothing({ target: juniorConversationUsageEvents.id })
+        .returning({ id: juniorConversationUsageEvents.id });
+      if (inserted.length === 0) {
+        return;
+      }
+      const row = await this.readConversationRow(args.conversationId);
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({
+          usage:
+            addAgentTurnUsage(
+              row?.conversation.usage ?? undefined,
+              args.usage,
+            ) ?? null,
+        })
+        .where(eq(juniorConversations.conversationId, args.conversationId));
     });
   }
 

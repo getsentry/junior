@@ -21,6 +21,8 @@ export function createStateConversationStore(
     ensureChildConversation: async () => undefined,
     recordActivity: (args) =>
       recordTaskConversationActivity({ ...args, state }),
+    // Auxiliary usage is SQL-only and is never written to legacy import state.
+    recordUsage: async () => undefined,
     recordExecution: (args) =>
       recordTaskConversationExecution({ ...args, state }),
     listByActivity: (args) =>

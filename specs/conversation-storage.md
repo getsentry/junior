@@ -27,6 +27,7 @@ terms as defined there.
 - Visible conversation messages (`junior_conversation_messages`).
 - Model execution history as agent steps (`junior_agent_steps`), including context
   epochs, compaction/rollback markers, and subagent child conversations.
+- Idempotent auxiliary model usage (`junior_conversation_usage_events`).
 - Execution status summaries and run/checkpoint timestamps.
 - Conversation display details such as title, channel, source, destination, and
   actor.
@@ -150,6 +151,9 @@ the state-backed task execution store.
   - `(conversation_id, seq)` primary key, `context_epoch` integer, `type`
     discriminant, `role` (nullable, denormalized for `pi_message` rows),
     `payload` jsonb, `created_at`
+- `junior_conversation_usage_events`
+  - `id` primary key, `conversation_id` FK, normalized `usage_json`, and
+    `created_at`; each row contributes once to the root conversation usage
 
 Identities model provider-scoped principals, not just actors. A Slack user turn
 may use the same identity row for multiple roles. Scheduled work uses a system
@@ -241,6 +245,10 @@ polymorphic `transcriptRef {type, key}` reference and the ad-hoc
 - Reading a subagent transcript uses the same query path as any conversation.
 - Top-level listings filter `parent_conversation_id IS NULL`; children are
   excluded from dashboard/reporting lists and purge with their root.
+- Model usage produced by a child or auxiliary model call is added to the root
+  conversation's cumulative usage. `junior_conversation_usage_events` stores a
+  unique call id and usage contribution so persistence retries are idempotent;
+  the conversation row remains the reporting read model.
 
 ### Destination Visibility
 

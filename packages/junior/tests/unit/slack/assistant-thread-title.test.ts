@@ -84,7 +84,9 @@ describe("maybeUpdateAssistantTitle", () => {
         sourceMessageId: USER_MESSAGE_ID,
         title: GENERATED_TITLE,
       });
-      expect(args.generateThreadTitle).toHaveBeenCalledWith(USER_MESSAGE_TEXT);
+      expect(args.generateThreadTitle).toHaveBeenCalledWith(USER_MESSAGE_TEXT, {
+        conversationId: `slack:${CHANNEL_ID}:${THREAD_TS}`,
+      });
     });
 
     it("does NOT call setAssistantTitle for a public channel", async () => {

@@ -314,6 +314,12 @@ usage from durable conversation records. Estimated cost and reasoning-token
 usage, when available, are also cumulative conversation fields rather than
 execution-row joins. Per-execution metrics are not part of the dashboard contract;
 feed, detail, stats, and People views expose persisted per-conversation totals.
+The root conversation's cumulative usage includes model calls made on its
+behalf outside the main agent loop, including advisor children, context and
+visible-history compaction, vision summaries, title generation, image-prompt
+enrichment, and structured reply classification. Child conversations remain
+excluded from top-level aggregates; their model usage is attributed to the root
+instead of counted as a separate conversation.
 
 People list and profile APIs must read durable actor identities from the
 SQL conversation index with Drizzle. They must not use plugin reporting hooks

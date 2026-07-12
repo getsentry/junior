@@ -17,6 +17,7 @@ import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 import type { JuniorToolResult } from "@/chat/tool-support/structured-result";
 import type { LocalActor, Actor, SlackActor } from "@/chat/actor";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -45,6 +46,8 @@ export interface GeneratedArtifactFileRef {
 }
 
 export interface ToolHooks {
+  /** Persist model usage produced inside a tool under the active conversation. */
+  recordUsage?: (usage: AgentTurnUsage) => void | Promise<void>;
   /**
    * Materialize generated files and return sandbox paths that exist before the
    * generating tool reports success.

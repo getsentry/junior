@@ -214,17 +214,21 @@ describe("createImageGenerateTool", () => {
 
   it("forwards enriched prompt to image API when enrichment succeeds", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
+    const usage = { totalTokens: 12, cost: { total: 0.004 } };
     mockCompleteText.mockResolvedValueOnce({
       text: "a dark, high-contrast dog with glowing eyes",
+      usage,
     } as any);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
+    const recordUsage = vi.fn();
     const tool = createImageGenerateTool({
+      recordUsage,
       writeGeneratedArtifacts,
-    } as any);
+    });
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     const body = getRequestBody(fetchMock);
@@ -235,6 +239,7 @@ describe("createImageGenerateTool", () => {
       prompt: "draw a dog",
       enrichedPrompt: "a dark, high-contrast dog with glowing eyes",
     });
+    expect(recordUsage).toHaveBeenCalledWith(usage);
   });
 
   it("falls back to raw prompt when enrichment returns empty text", async () => {

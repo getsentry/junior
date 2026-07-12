@@ -10,6 +10,7 @@ import {
 } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
 
@@ -42,9 +43,12 @@ ${JUNIOR_PERSONALITY}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
-async function enrichImagePrompt(rawPrompt: string): Promise<string> {
+async function enrichImagePrompt(rawPrompt: string): Promise<{
+  prompt: string;
+  usage?: AgentTurnUsage;
+}> {
   try {
-    const { text } = await completeText({
+    const { text, usage } = await completeText({
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
@@ -57,9 +61,9 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
         { "app.image.enriched_prompt_length": text.trim().length },
         "Image prompt enriched with persona",
       );
-      return text.trim();
+      return { prompt: text.trim(), usage };
     }
-    return rawPrompt;
+    return { prompt: rawPrompt, usage };
   } catch (error) {
     logWarn(
       "image_prompt_enrichment_failed",
@@ -67,7 +71,7 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
       { "exception.message": String(error) },
       "Image prompt enrichment failed, using raw prompt",
     );
-    return rawPrompt;
+    return { prompt: rawPrompt };
   }
 }
 
@@ -101,7 +105,8 @@ function parseImageGenerationError(
 
 /** Create the image tool with sandbox artifact guidance matched to file-send capability. */
 export function createImageGenerateTool(
-  hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">>,
+  hooks: Required<Pick<ToolHooks, "writeGeneratedArtifacts">> &
+    Pick<ToolHooks, "recordUsage">,
   options: { canSendFilesToActiveConversation?: boolean } = {},
   deps: ImageGenerateToolDeps = {},
 ) {
@@ -121,7 +126,11 @@ export function createImageGenerateTool(
         throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
-      const enrichedPrompt = await enrichImagePrompt(prompt);
+      const enrichment = await enrichImagePrompt(prompt);
+      if (enrichment.usage) {
+        await hooks.recordUsage?.(enrichment.usage);
+      }
+      const enrichedPrompt = enrichment.prompt;
       const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {

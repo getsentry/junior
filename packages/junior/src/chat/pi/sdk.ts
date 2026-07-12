@@ -13,6 +13,8 @@ export {
   type ThinkingLevel,
 } from "@earendil-works/pi-ai/compat";
 
+export { calculateCost, type Usage as PiUsage } from "@earendil-works/pi-ai";
+
 export {
   stream as streamAnthropic,
   streamSimple as streamSimpleAnthropic,

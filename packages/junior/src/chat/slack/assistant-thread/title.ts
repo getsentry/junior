@@ -59,7 +59,9 @@ export function maybeUpdateAssistantTitle(args: {
   return (async () => {
     let title: string | undefined;
     try {
-      title = await args.generateThreadTitle(titleSourceMessage.text);
+      title = await args.generateThreadTitle(titleSourceMessage.text, {
+        conversationId: args.threadId,
+      });
     } catch (error) {
       logWarn(
         "thread_title_generation_failed",

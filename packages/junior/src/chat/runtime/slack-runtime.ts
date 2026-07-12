@@ -925,6 +925,7 @@ export function createSlackTurnRuntime<
             ),
           };
           const threadContext: TurnContext = {
+            conversationId: threadId ?? runId,
             threadId,
             actorId,
             channelId,

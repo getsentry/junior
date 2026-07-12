@@ -31,13 +31,17 @@ export interface ConversationMemoryService {
   compactConversationIfNeeded: (
     conversation: ThreadConversationState,
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
       runId?: string;
     },
   ) => Promise<void>;
-  generateThreadTitle: (sourceText: string) => Promise<string>;
+  generateThreadTitle: (
+    sourceText: string,
+    context: { conversationId?: string },
+  ) => Promise<string>;
 }
 
 export function generateConversationId(
@@ -258,6 +262,7 @@ async function summarizeConversationChunk(
   messages: ConversationMessage[],
   conversation: ThreadConversationState,
   context: {
+    conversationId?: string;
     threadId?: string;
     channelId?: string;
     actorId?: string;
@@ -293,6 +298,7 @@ async function summarizeConversationChunk(
         },
       ],
       metadata: {
+        conversationId: context.conversationId ?? "",
         modelId: botConfig.fastModelId,
         threadId: context.threadId ?? "",
         channelId: context.channelId ?? "",
@@ -329,6 +335,7 @@ async function summarizeConversationChunk(
 
 async function generateThreadTitleWithDeps(
   sourceText: string,
+  context: { conversationId?: string },
   deps: ConversationMemoryDeps,
 ): Promise<string> {
   const result = await deps.completeText({
@@ -348,6 +355,7 @@ async function generateThreadTitleWithDeps(
       },
     ],
     metadata: {
+      conversationId: context.conversationId ?? "",
       modelId: botConfig.fastModelId,
     },
   });
@@ -455,8 +463,8 @@ export function createConversationMemoryService(
   return {
     compactConversationIfNeeded: async (conversation, context) =>
       await compactConversationIfNeededWithDeps(conversation, context, deps),
-    generateThreadTitle: async (sourceText) =>
-      await generateThreadTitleWithDeps(sourceText, deps),
+    generateThreadTitle: async (sourceText, context) =>
+      await generateThreadTitleWithDeps(sourceText, context, deps),
   };
 }
 

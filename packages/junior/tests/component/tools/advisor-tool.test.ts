@@ -12,7 +12,20 @@ const mocks = vi.hoisted(() => ({
         role: "assistant",
         content: [{ type: "text", text: "private advisor memo" }],
         stopReason: "stop",
-        usage: { input: 5, output: 6, totalTokens: 11 },
+        usage: {
+          input: 5,
+          output: 6,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 11,
+          cost: {
+            input: 0.001,
+            output: 0.002,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0.003,
+          },
+        },
       });
     });
   }),
@@ -51,6 +64,7 @@ vi.mock("@/chat/pi/client", () => ({
 describe("createAdvisorTool", () => {
   it("records privacy-safe advisor invoke-agent attributes", async () => {
     const { createAdvisorTool } = await import("@/chat/tools/advisor/tool");
+    const recordUsage = vi.fn(async () => undefined);
     const advisor = createAdvisorTool({
       config: {
         modelId: "openai/gpt-5.4",
@@ -61,6 +75,7 @@ describe("createAdvisorTool", () => {
       getTools: () => [],
       conversationStore: {
         ensureChildConversation: async () => undefined,
+        recordUsage,
       } as unknown as import("@/chat/conversations/store").ConversationStore,
     });
 
@@ -104,5 +119,12 @@ describe("createAdvisorTool", () => {
     expect(endAttributes["gen_ai.output.messages"]).not.toContain(
       "private advisor memo",
     );
+    expect(recordUsage).toHaveBeenCalledWith({
+      conversationId: "slack:D1:123",
+      id: expect.any(String),
+      usage: expect.objectContaining({
+        cost: expect.objectContaining({ total: 0.003 }),
+      }),
+    });
   }, 20_000);
 });

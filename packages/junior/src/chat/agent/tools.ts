@@ -8,6 +8,7 @@
  * restoring providers are thrown here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { randomUUID } from "node:crypto";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { listReferenceFiles } from "@/chat/discovery";
@@ -61,6 +62,8 @@ import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
+import { getConversationStore } from "@/chat/db";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -297,6 +300,18 @@ export async function wireAgentTools(
   const tools = createTools(
     loadableSkills,
     {
+      recordUsage: args.sessionConversationId
+        ? async (usage) => {
+            const id = randomUUID();
+            await persistWithRetry(async () => {
+              await getConversationStore().recordUsage({
+                conversationId: args.sessionConversationId!,
+                id,
+                usage,
+              });
+            });
+          }
+        : undefined,
       writeGeneratedArtifacts: async (files) => {
         const refs = await writeSandboxGeneratedArtifacts(
           await sandboxExecutor.createSandbox(),

@@ -118,6 +118,7 @@ export function createTools(
   if (hooks.writeGeneratedArtifacts) {
     tools.imageGenerate = createImageGenerateTool(
       {
+        recordUsage: hooks.recordUsage,
         writeGeneratedArtifacts: hooks.writeGeneratedArtifacts,
       },
       {

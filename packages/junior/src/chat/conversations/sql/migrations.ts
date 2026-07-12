@@ -44,8 +44,13 @@ SELECT
   }
 
   const migrations = readMigrationFiles({ migrationsFolder });
-  const [metrics] = await executor.query<{ complete: boolean }>(`
-SELECT count(*) = 4 AS complete
+  const [schemaState] = await executor.query<{
+    metricsComplete: boolean;
+    usageEventsComplete: boolean;
+  }>(`
+SELECT
+  count(*) = 4 AS "metricsComplete",
+  to_regclass('public.junior_conversation_usage_events') IS NOT NULL AS "usageEventsComplete"
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'junior_conversations'
@@ -60,7 +65,7 @@ WHERE table_schema = 'public'
     checksum: string;
     id: string;
   }>("SELECT id, checksum FROM junior_schema_migrations");
-  const expectedIds = metrics?.complete
+  const expectedIds = schemaState?.metricsComplete
     ? [...LEGACY_CORE_MIGRATION_IDS, LEGACY_METRICS_MIGRATION_ID]
     : [...LEGACY_CORE_MIGRATION_IDS];
   const validIds = new Set(
@@ -75,7 +80,11 @@ WHERE table_schema = 'public'
     );
   }
 
-  const migration = metrics?.complete ? migrations.at(-1) : migrations[0];
+  const migration = schemaState?.usageEventsComplete
+    ? migrations.at(-1)
+    : schemaState?.metricsComplete
+      ? migrations[1]
+      : migrations[0];
   if (!migration) {
     throw new Error("No core Drizzle migrations were packaged");
   }

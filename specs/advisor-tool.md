@@ -58,7 +58,9 @@ The tool description is the executor-facing trigger policy. It must say the advi
 6. Assign the loaded messages to `advisorAgent.state.messages`.
 7. Run `advisorAgent.prompt(requestMessage)`.
 8. On success, append the new advisor steps under the child conversation's own `conversation_id`.
-9. Return the advisor's text exactly as produced in the tool result.
+9. Add the advisor run's normalized model usage to the parent conversation
+   under an idempotent auxiliary usage event.
+10. Return the advisor's text exactly as produced in the tool result.
 
 If `conversationId` is unavailable, return `missing_conversation_id`; do not create an orphan advisor conversation.
 
@@ -118,6 +120,10 @@ The advisor runtime emits a nested `ai.invoke_advisor` span with:
 - `gen_ai.request.model`
 - native span status
 - standard usage attributes when provider usage is available
+
+The same normalized usage is persisted against the parent conversation for
+dashboard cost reporting. The child conversation does not carry an independent
+reporting total.
 
 Do not add custom outcome/result attributes when native span status or standard usage attributes already represent the fact.
 

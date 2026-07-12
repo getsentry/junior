@@ -1,6 +1,7 @@
 import type { Message, Thread } from "chat";
 
 export interface TurnContext {
+  conversationId?: string;
   channelId?: string;
   actorId?: string;
   threadId?: string;

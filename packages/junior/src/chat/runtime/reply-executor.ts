@@ -392,6 +392,7 @@ interface ReplyExecutorDeps {
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
     context: {
+      conversationId?: string;
       threadId?: string;
       actorId?: string;
       channelId?: string;
@@ -535,6 +536,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ),
             queuedMessages: options.queuedMessages,
             context: {
+              conversationId,
               threadId,
               actorId: slackActorId,
               channelId,
@@ -623,6 +625,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 userAttachments: await deps.resolveUserAttachments(
                   attachments,
                   {
+                    conversationId,
                     threadId,
                     actorId: isResourceEventMessage(queued.message)
                       ? undefined
@@ -940,6 +943,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const userAttachments = await deps.resolveUserAttachments(
           turnAttachments,
           {
+            conversationId,
             threadId,
             actorId: slackActorId,
             channelId,

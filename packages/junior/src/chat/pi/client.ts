@@ -1,4 +1,5 @@
 import {
+  calculateCost,
   completeSimple,
   getEnvApiKey,
   getModels,
@@ -7,6 +8,7 @@ import {
   streamSimpleAnthropic,
   type Message,
   type Model,
+  type PiUsage,
   type ThinkingLevel,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
@@ -24,8 +26,10 @@ registerApiProvider({
 import type { ZodTypeAny, z } from "zod";
 import {
   extractGenAiUsageAttributes,
+  extractGenAiUsageSummary,
   serializeGenAiAttribute,
 } from "@/chat/logging";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   logException,
   logWarn,
@@ -109,7 +113,11 @@ export async function completeText(params: {
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
-}) {
+}): Promise<{
+  message: Awaited<ReturnType<typeof completeSimple>>;
+  text: string;
+  usage?: AgentTurnUsage;
+}> {
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getPiGatewayApiKey();
   const authMode = toOptionalTrimmed(process.env.AI_GATEWAY_API_KEY)
@@ -246,6 +254,7 @@ export async function completeText(params: {
       return {
         message,
         text: outputText,
+        usage: extractGenAiUsageSummary(message),
       };
     },
     startAttributes,
@@ -278,6 +287,47 @@ function logContextFromMetadata(
   };
 }
 
+function normalizeAiSdkUsage(
+  model: Model<any>,
+  usage: {
+    inputTokens?: number;
+    inputTokenDetails?: {
+      noCacheTokens?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+    };
+    outputTokens?: number;
+    outputTokenDetails?: { reasoningTokens?: number };
+    totalTokens?: number;
+  },
+): AgentTurnUsage {
+  const cacheRead = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+  const cacheWrite = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+  const input =
+    usage.inputTokenDetails?.noCacheTokens ??
+    Math.max(0, (usage.inputTokens ?? 0) - cacheRead - cacheWrite);
+  const output = usage.outputTokens ?? 0;
+  const normalized: PiUsage = {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    ...(usage.outputTokenDetails?.reasoningTokens !== undefined
+      ? { reasoning: usage.outputTokenDetails.reasoningTokens }
+      : {}),
+    totalTokens: usage.totalTokens ?? input + output + cacheRead + cacheWrite,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  };
+  calculateCost(model, normalized);
+  return extractGenAiUsageSummary(normalized);
+}
+
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -289,7 +339,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   maxTokens?: number;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
-}): Promise<{ object: z.infer<TSchema> }> {
+}): Promise<{ object: z.infer<TSchema>; usage?: AgentTurnUsage }> {
+  const model = resolveGatewayModel(params.modelId);
   const apiKey = getGatewayApiKey();
   const provider = createGatewayProvider(apiKey ? { apiKey } : {});
   try {
@@ -325,6 +376,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           : {}),
       },
     );
+    const usage = normalizeAiSdkUsage(model, result.usage);
     setSpanAttributes({
       "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
       "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
@@ -333,9 +385,12 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       "server.address": GEN_AI_SERVER_ADDRESS,
       "server.port": GEN_AI_SERVER_PORT,
       "gen_ai.response.finish_reasons": [result.finishReason],
-      ...extractGenAiUsageAttributes(result.usage),
+      ...extractGenAiUsageAttributes(usage),
     });
-    return { object: result.object as z.infer<TSchema> };
+    return {
+      object: result.object as z.infer<TSchema>,
+      usage,
+    };
   } catch (error) {
     const providerError = createProviderError(error);
     if (isProviderRetryError(providerError)) {

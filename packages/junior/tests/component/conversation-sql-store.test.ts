@@ -672,6 +672,74 @@ WHERE conversation_id = $1
     }
   });
 
+  it("adds auxiliary usage once and preserves it across execution replacement", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-main",
+          status: "running",
+          updatedAtMs: 2_000,
+        },
+        metrics: {
+          durationMs: 100,
+          usage: { totalTokens: 10, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 2_000,
+        updatedAtMs: 2_000,
+      });
+      await store.recordUsage({
+        conversationId: CONVERSATION_ID,
+        id: "aux-call-1",
+        usage: { totalTokens: 5, cost: { total: 0.02 } },
+        createdAtMs: 2_500,
+      });
+      await store.recordUsage({
+        conversationId: CONVERSATION_ID,
+        id: "aux-call-1",
+        usage: { totalTokens: 5, cost: { total: 0.02 } },
+        createdAtMs: 2_500,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-main",
+          status: "idle",
+          updatedAtMs: 3_000,
+        },
+        metrics: {
+          durationMs: 150,
+          usage: { totalTokens: 12, cost: { total: 0.015 } },
+        },
+        lastActivityAtMs: 3_000,
+        updatedAtMs: 3_000,
+      });
+
+      const [metrics] = await fixture.sql.query<{
+        usage: { cost?: { total?: number }; totalTokens?: number } | null;
+      }>(
+        `SELECT usage_json AS usage FROM junior_conversations WHERE conversation_id = $1`,
+        [CONVERSATION_ID],
+      );
+      const [events] = await fixture.sql.query<{ count: number }>(
+        `SELECT count(*)::integer AS count FROM junior_conversation_usage_events`,
+      );
+      expect(metrics?.usage).toEqual({
+        totalTokens: 17,
+        cost: { total: 0.035 },
+      });
+      expect(events?.count).toBe(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("keeps SQL execution timestamps when a fresh summary omits them", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

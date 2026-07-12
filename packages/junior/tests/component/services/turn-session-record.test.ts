@@ -36,6 +36,7 @@ function failingConversationStore(): ConversationStore {
     recordActivity: vi.fn(async () => {
       throw new Error("conversation metadata unavailable");
     }),
+    recordUsage: vi.fn(),
     recordExecution: vi.fn(),
     listByActivity: vi.fn(),
   };

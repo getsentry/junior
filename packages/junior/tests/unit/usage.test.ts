@@ -60,6 +60,17 @@ describe("addAgentTurnUsage", () => {
     expect(hasAgentTurnUsage({ cost: { total: 0.01 } })).toBe(true);
   });
 
+  it("derives missing slice totals from cost components", () => {
+    expect(
+      addAgentTurnUsage(
+        { cost: { total: 0.01 } },
+        { cost: { input: 0.02, output: 0.03 } },
+      ),
+    ).toEqual({
+      cost: { input: 0.02, output: 0.03, total: 0.06 },
+    });
+  });
+
   it("uses provider totals only for slices without component counters", () => {
     expect(
       addAgentTurnUsage(

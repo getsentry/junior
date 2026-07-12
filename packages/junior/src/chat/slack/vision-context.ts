@@ -59,6 +59,7 @@ export interface VisionContextService {
   hydrateConversationVisionContext: (
     conversation: ThreadConversationState,
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -73,6 +74,7 @@ export interface VisionContextService {
 }
 
 interface ResolveUserAttachmentsContext {
+  conversationId?: string;
   threadId?: string;
   actorId?: string;
   channelId?: string;
@@ -280,6 +282,7 @@ async function resolveUserAttachmentsWithDeps(
             "Return plain text only.",
           ].join(" "),
           metadata: {
+            conversationId: context.conversationId ?? "",
             threadId: context.threadId ?? "",
             channelId: context.channelId ?? "",
             actorId: context.actorId ?? "",
@@ -389,6 +392,7 @@ async function summarizeConversationImage(
     mimeType: string;
     fileId: string;
     context: {
+      conversationId?: string;
       threadId?: string;
       channelId?: string;
       actorId?: string;
@@ -415,6 +419,7 @@ async function summarizeConversationImage(
         "Return plain text only.",
       ].join(" "),
       metadata: {
+        conversationId: args.context.conversationId ?? "",
         threadId: args.context.threadId ?? "",
         channelId: args.context.channelId ?? "",
         actorId: args.context.actorId ?? "",

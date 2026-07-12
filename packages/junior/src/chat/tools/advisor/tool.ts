@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   Agent,
   type AgentTool,
@@ -13,6 +14,7 @@ import {
 } from "@/chat/conversation-privacy";
 import {
   extractGenAiUsageAttributes,
+  extractGenAiUsageSummary,
   logWarn,
   serializeGenAiAttribute,
   setSpanAttributes,
@@ -40,6 +42,8 @@ import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { z } from "zod";
+import { hasAgentTurnUsage } from "@/chat/usage";
+import { persistWithRetry } from "@/chat/services/persist-retry";
 
 export type AdvisorErrorCode =
   | "invalid_context"
@@ -305,6 +309,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           });
           advisorAgent.state.messages = advisorMessages;
           const beforeMessageCount = advisorAgent.state.messages.length;
+          const usageId = randomUUID();
 
           try {
             await advisorAgent.prompt(requestMessage);
@@ -321,6 +326,7 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
           const newAdvisorMessages =
             advisorAgent.state.messages.slice(beforeMessageCount);
           const outputMessages = newAdvisorMessages.filter(isAssistantMessage);
+          const usage = extractGenAiUsageSummary(...newAdvisorMessages);
           const outputMessagesAttribute = serializeGenAiAttribute(
             conversationPrivacy !== "public"
               ? outputMessages.map(toGenAiMessageMetadata)
@@ -331,8 +337,27 @@ export function createAdvisorTool(context: AdvisorToolRuntimeContext) {
               ? { "gen_ai.output.messages": outputMessagesAttribute }
               : {}),
             ...toGenAiMessagesTraceAttributes("app.ai.output", outputMessages),
-            ...extractGenAiUsageAttributes(...newAdvisorMessages),
+            ...extractGenAiUsageAttributes(usage),
           });
+
+          if (hasAgentTurnUsage(usage)) {
+            try {
+              await persistWithRetry(async () => {
+                await conversationStore().recordUsage({
+                  conversationId,
+                  id: usageId,
+                  usage,
+                });
+              });
+            } catch {
+              setSpanStatus("error");
+              await endSubagent("error", "session_unavailable");
+              return failure(
+                "session_unavailable",
+                "Advisor guidance is unavailable because advisor usage could not be saved. Retry the advisor call or continue without assuming advisor history.",
+              );
+            }
+          }
 
           if (
             !assistant ||
