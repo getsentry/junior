@@ -1,22 +1,37 @@
 import { expect } from "vitest";
-import { describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+
+type EvalSession = Parameters<typeof assistantMessages>[0];
+
+function textContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function visibleThreadReplies(session: EvalSession) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      textContent(message.content).trim().length > 0,
+  );
+}
 
 describeEval("Skill Infrastructure", slackEvals, (it) => {
   it("when the candidate brief command runs, return one candidate brief reply", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
       initialEvents: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one reply for David Cramer.",
-          "The reply is a candidate brief with role, team, and location-style details.",
+          "The reply is a candidate brief for David Cramer with role, team, and location-style details.",
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const candidateBriefThread = {
@@ -28,7 +43,7 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
   it("when the candidate brief command runs twice in one thread, keep the replies ordered", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
       initialEvents: [
         mention("/candidate-brief Alice Example", {
@@ -43,35 +58,38 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "Across two turns in one thread, the assistant posts exactly two replies in order: Alice first, then Bob.",
+          "Across two turns in one thread, the assistant replies about Alice first, then Bob.",
           "Each reply addresses the requested candidate by name.",
           "Each reply provides a brief with role, team, and location-style details.",
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 
   it("when the working-directory command runs, return one file-list reply", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
       initialEvents: [mention("/list-working-directory")],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one working-directory listing reply.",
-          "That reply includes a file-list section such as 'Working directory files:'.",
+          "The reply includes a file-list section such as 'Working directory files:'.",
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when asked to double-check a source-backed fact, use the source and answer completely", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: { skill_dirs: ["fixtures/skills"] },
       initialEvents: [
         mention(
@@ -80,7 +98,6 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one final answer.",
           "The answer says closed tracking issues alone do not prove capability support.",
           "The answer says implementation evidence, linked PRs, release notes, issue comments, or an equivalent source-backed rationale is needed.",
         ],
@@ -91,6 +108,8 @@ describeEval("Skill Infrastructure", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when an MCP-backed skill handles a lookup, return the provider-backed answer", async ({

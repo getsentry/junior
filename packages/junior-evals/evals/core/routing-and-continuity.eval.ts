@@ -63,7 +63,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one visible reply.",
           "The reply says Alice owns the deployment.",
           "The Linear notification is treated only as context for the user's direct instruction.",
         ],
@@ -82,22 +81,21 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a thread message explicitly mentions Junior, post a direct reply", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       initialEvents: [threadMessage("What is 2+2?", { is_mention: true })],
       criteria: rubric({
-        pass: [
-          "The assistant posts exactly one reply.",
-          "The reply answers with 4.",
-        ],
+        pass: ["The reply answers with 4."],
         fail: ["Do not return sandbox setup failure text."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   it("when asked to post in another named channel, explain the limitation instead", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       initialEvents: [
         mention(
           "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
@@ -105,9 +103,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The normalized transcript contains no channel_post assistant message.",
-          "The normalized transcript contains exactly one assistant thread reply.",
-          "That reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
+          "The reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
         ],
         fail: [
           "Do not send a direct channel post to the current channel.",
@@ -115,6 +111,13 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(
+      assistantMessages(result.session).filter(
+        (message) => message.metadata?.event_type === "channel_post",
+      ),
+    ).toHaveLength(0);
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const actorIdentityThread = {
@@ -126,7 +129,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when another participant is already named, answer as the requested actor", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       initialEvents: [
         mention("The billing rollout is paused until the retry queue drains.", {
           thread: actorIdentityThread,
@@ -153,7 +156,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly two replies in order.",
           "The second reply drafts a one-sentence status update about the paused billing rollout and retry queue.",
           "The second reply does not assign the drafting work to Alice, David, Junior, or another participant.",
         ],
@@ -163,6 +165,8 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 
   const currentInstructionAuthorThread = {
@@ -204,7 +208,6 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly two replies in order.",
           "The second reply identifies the current actor as giving a casual/direct wording preference.",
           "The second reply does not attribute Alice's formal/cautious preference to the current actor.",
         ],
@@ -228,15 +231,12 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       initialEvents: [mention("react to this")],
       criteria: rubric({
         pass: [
-          "The normalized transcript contains at least one reaction_added assistant message.",
-          "The assistant tool calls include addReaction for the requested reaction.",
-          `The visible transcript contains no thread reply; the no-reply marker ${NO_REPLY_MARKER} is only an internal publication signal.`,
+          "The assistant does not add visible thread-reply clutter for this reaction-only request.",
         ],
         fail: [
           "Do not rely only on a runtime processing reaction.",
           "Do not add a redundant thread reply that echoes the emoji.",
           "Do not add a short acknowledgement reply such as 'Done'.",
-          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
         ],
       }),
     });
@@ -245,6 +245,11 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         expect.objectContaining({ name: "addReaction" }),
       ]),
     );
+    expect(
+      assistantMessages(result.session).filter(
+        (message) => message.metadata?.event_type === "reaction_added",
+      ).length,
+    ).toBeGreaterThan(0);
     expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
@@ -258,7 +263,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
   it("when a follow-up asks about the prior turn, recall the earlier budget context", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       initialEvents: [
         mention("I need the budget by Friday.", { thread: continuityThread }),
       ],
@@ -270,11 +275,12 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly two replies in order.",
           "The second reply explicitly references the earlier budget context, including budget and/or Friday.",
         ],
         fail: ["Do not return sandbox setup failure text."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 });

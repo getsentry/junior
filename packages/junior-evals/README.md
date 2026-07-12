@@ -62,7 +62,7 @@ For each `it()` case inside a `describeEval()` suite:
 1. Replay events through the harness via `runEvalScenario()`.
 2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
 3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
-4. Return a standard `vitest-evals` `HarnessRun`; `result.session` is the canonical normalized surface for judge scoring and deterministic assertions.
+4. Return a standard `vitest-evals` `HarnessRun`; `result.session.messages` is the canonical normalized transcript, while tool calls and artifacts remain available for deterministic assertions.
 5. Do not create a second repo-local transcript, event-log, or assertion schema when `vitest-evals` already has `session`, `toolCalls(result.session)`, `artifacts`, or `traces`.
 6. `vitest-evals` scores the normalized session against `criteria` (A–E -> 1.0-0.0).
 
@@ -70,7 +70,7 @@ For each `it()` case inside a `describeEval()` suite:
 
 - Use the Slack eval harness for Slack/runtime behavior: mentions, thread/channel delivery, OAuth privacy, lifecycle/resume behavior, reactions, and Slack-visible side effects.
 - Use an agent-level harness for prompt, skill routing, tool choice, provider/tool calls, and reply quality when Slack transport is not the behavior under test.
-- The Slack eval harness session is an observed Slack output/tool/artifact projection. Do not add a repo-local sequencing layer to make it look like a full ordered conversation transcript.
+- The Slack eval harness preserves inbound messages and direct thread replies in observed order. Slack API-captured side effects may be collected afterward. The rubric judge receives only non-empty user-visible text from normalized user and assistant messages; tool calls, artifacts, logs, metadata, and other runtime observations stay outside its prompt.
 - When the eval boundary is Junior's Pi agent or needs an ordered full-turn transcript, prefer `@vitest-evals/harness-pi-ai` primitives instead of rebuilding transcript capture locally. The Pi harness already owns normalized `session.messages`, `toolCalls(result.session)`, artifacts, traces, replay, and judge context.
 - Do not assert against logs, spans, or status telemetry for product behavior. Use `vitest-evals` session/tool/artifact primitives for behavior contracts; reserve traces/spans for instrumentation tests or diagnostics.
 
@@ -194,11 +194,12 @@ Follow `policies/evals.md` for the repo-wide defaults on invariant-based criteri
 Good conversational evals should:
 
 - Start from realistic user events/messages (mentions, follow-ups, thread lifecycle events).
-- Describe user-visible outcomes first (reply count, reply content, metadata effects visible to Slack users).
+- Describe user-visible outcomes first (what the assistant communicates, what Slack users can observe, and any visible metadata effects).
 - Use concrete real-world scenarios (incident updates, planning follow-ups, capability setup requests), not abstract mechanics like "posted two replies."
 - Use judge criteria written in product language, not implementation language.
 - Use rubric sections that are easy for maintainers to scan in a failure: a short `pass` list and a focused `fail` list only when it describes a real regression.
 - Keep rubric bullets at the behavior level. Prefer "uses the stored repo as the target" over requiring exact wording or incidental reply ordering.
+- Assert reply counts, tool calls, database rows, and other deterministic side effects outside the rubric when they are part of the contract.
 - Omit incidental variation from the rubric unless it affects the behavior contract.
 - Omit `fail` bullets unless they describe a real regression or unsafe side effect.
 - Use fake/nonexistent external targets unless the eval explicitly opts into live provider access.
@@ -215,17 +216,24 @@ Avoid:
 ## Minimal Case
 
 ```typescript
-import { describeEval } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { mention, rubric, slackEvals } from "../../src/helpers";
 
 describeEval("Routing", slackEvals, (it) => {
   it("when explicitly mentioned, post one direct reply", async ({ run }) => {
-    await run({
+    const result = await run({
       initialEvents: [mention("Summarize this")],
       criteria: rubric({
-        pass: ["The assistant posts exactly one reply to the mention."],
+        pass: ["The assistant answers the user's summary request."],
       }),
     });
+
+    expect(
+      assistantMessages(result.session).filter(
+        (message) => message.metadata?.event_type === "thread_post",
+      ),
+    ).toHaveLength(1);
   });
 });
 ```

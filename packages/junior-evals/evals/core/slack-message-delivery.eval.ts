@@ -33,13 +33,9 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts no visible thread reply.",
-          `The no-reply marker ${NO_REPLY_MARKER} is only an internal publication signal.`,
+          "The assistant does not post visible acknowledgement text such as 'Done', 'Seen', or 'Got it'.",
         ],
-        fail: [
-          "Do not post an acknowledgement such as 'Done', 'Seen', or 'Got it'.",
-          `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
-        ],
+        fail: ["Do not post a visible acknowledgement."],
       }),
     });
 
@@ -56,12 +52,10 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant does not call sendMessage.",
-          "The assistant posts exactly one visible thread reply.",
           "The reply clearly explains it cannot make top-level channel posts from this runtime or can only send into the active conversation/thread.",
         ],
         fail: [
-          "Do not send the requested text into the active thread with sendMessage.",
+          "Do not present the requested channel text as if it was delivered.",
           "Do not claim the message was posted to the channel.",
           `Do not leak the literal marker ${NO_REPLY_MARKER} as visible text.`,
         ],

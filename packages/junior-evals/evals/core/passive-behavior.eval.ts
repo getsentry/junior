@@ -1,5 +1,20 @@
-import { describeEval } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
+import { expect } from "vitest";
 import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
+
+type EvalSession = Parameters<typeof assistantMessages>[0];
+
+function textContent(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function visibleThreadReplies(session: EvalSession) {
+  return assistantMessages(session).filter(
+    (message) =>
+      message.metadata?.event_type === "thread_post" &&
+      textContent(message.content).trim().length > 0,
+  );
+}
 
 describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {
@@ -11,7 +26,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when a later question is human-to-human, stay out of the thread", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: [
           "The deploy changed the billing worker and the API auth flow.",
@@ -32,13 +47,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
+          "The assistant's visible reply is the initial helpful answer about the deploy.",
         ],
         fail: [
           "Do not answer the later question addressed to @sam about who should take the rollback.",
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const directedFollowUpThread = {
@@ -50,7 +67,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when a follow-up is clearly directed at Junior's prior answer, reply without another @mention", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: ["You need the budget by Friday."],
       },
@@ -66,11 +83,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly two replies in order.",
           "The second reply plainly restates that the budget is needed by Friday.",
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 
   const casualPronounThread = {
@@ -82,7 +100,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when a casual pronoun question reads like coworker talk, stay out of the thread", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: [
           "The deploy changed the billing worker and the API auth flow.",
@@ -101,13 +119,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
+          "The assistant's visible reply is the initial helpful answer about the deploy.",
         ],
         fail: [
           "Do not reply to the later casual question 'Is that the right approach?'",
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const domainVocabThread = {
@@ -119,7 +139,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when a later question only shares topic vocabulary, do not treat it as directed at Junior", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: [
           "The billing worker handles invoice processing and payment retries.",
@@ -137,13 +157,15 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one reply: the initial answer about the billing worker.",
+          "The assistant's visible reply is the initial answer about the billing worker.",
         ],
         fail: [
           "Do not reply to the later question about the billing worker timeline.",
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const canYouThread = {
@@ -155,7 +177,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when 'can you' is directed at a coworker, stay out of the thread", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: ["Here's the deployment status."],
       },
@@ -167,11 +189,13 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly one reply: the initial answer about deployment status.",
+          "The assistant's visible reply is the initial answer about deployment status.",
         ],
         fail: ["Do not reply to the later 'Can you check on this?' message."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const genuineFollowUpThread = {
@@ -183,7 +207,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when the user explicitly asks Junior to elaborate, post a second reply", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: ["The deploy changed three services."],
       },
@@ -202,11 +226,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly two replies in order.",
           "The second reply provides more detail about the deploy changes.",
         ],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 
   const terseFollowUpThread = {
@@ -218,7 +243,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when a terse clarification comes right after Junior's answer, treat it as directed back to Junior", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: [
           "The deploy changed billing, auth, and the API gateway.",
@@ -236,12 +261,11 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        pass: [
-          "The assistant posts exactly two replies in order.",
-          "The second reply clarifies which services changed.",
-        ],
+        pass: ["The second reply clarifies which services changed."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(2);
   });
 
   const humansTookFloorThread = {
@@ -253,7 +277,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when humans resume the thread, keep ignoring same-topic questions unless they turn back to Junior", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: ["The deploy changed billing, auth, and the API gateway."],
       },
@@ -271,12 +295,12 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         }),
       ],
       criteria: rubric({
-        pass: [
-          "The assistant posts exactly one reply: the initial deploy summary.",
-        ],
+        pass: ["The assistant's visible reply is the initial deploy summary."],
         fail: ["Do not answer the later billing worker timeline question."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(1);
   });
 
   const optOutThread = {
@@ -288,7 +312,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
   it("when the user says to stop participating, stay quiet until re-mentioned", async ({
     run,
   }) => {
-    await run({
+    const result = await run({
       overrides: {
         reply_texts: [
           "I can help in this thread.",
@@ -307,7 +331,6 @@ describeEval("Passive Behavior", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant posts exactly three visible replies in order.",
           "The first reply is a normal helpful reply to the initial mention.",
           "The second reply briefly acknowledges that it will stay out of the thread unless mentioned again.",
           "The third reply appears only after the later direct mention.",
@@ -315,5 +338,7 @@ describeEval("Passive Behavior", slackEvals, (it) => {
         fail: ["Do not treat the stop message like an ordinary help request."],
       }),
     });
+
+    expect(visibleThreadReplies(result.session)).toHaveLength(3);
   });
 });

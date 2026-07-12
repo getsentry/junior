@@ -12,6 +12,7 @@ Evals are integration tests for agent-facing behavior through the real runtime.
 - When an eval fails, first state the general product invariant the failure exposed, then fix the product prompt or implementation at that invariant level.
 - Product prompt examples must be neutral examples that are not reused from eval scenarios.
 - Treat the normalized `vitest-evals` session as the canonical eval surface for judges and assertions.
+- Limit rubric-judge input to user-visible text from normalized user and assistant messages, in session order. Keep tool calls, artifacts, persistence, logs, traces, and runtime metadata out of rubric prompts.
 - Use native `vitest-evals` harness support for ordered full-turn transcripts; do not add repo-local event logs or sequencing layers to simulate them.
 - Use `toolCalls(result.session)` or other `vitest-evals` primitives when tool/provider evidence is part of the behavior.
 - Use evals to prove model-facing choices such as whether the agent calls the

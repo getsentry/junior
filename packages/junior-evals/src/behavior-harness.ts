@@ -17,7 +17,7 @@ import {
   resetTestGitHubHttpFixtures,
 } from "@sentry/junior-testing/http";
 import { executeWithReplay } from "vitest-evals/replay";
-import type { JsonValue } from "vitest-evals/harness";
+import type { JsonValue, NormalizedMessage } from "vitest-evals/harness";
 import {
   createPluginAppFixture,
   type PluginAppFixture,
@@ -362,6 +362,10 @@ export interface EvalResult {
   usage?: AgentTurnUsage;
 }
 
+type CollectedEvalResult = EvalResult & {
+  sessionMessages: NormalizedMessage[];
+};
+
 export interface AuthorizationCompletion {
   credentialStored: true;
   delivery: "direct_message" | "ephemeral";
@@ -425,6 +429,7 @@ interface QueueDelivery {
 interface RuntimeObservations {
   authorizationCompletions: AuthorizationCompletion[];
   modelIds: Set<string>;
+  sessionMessages: NormalizedMessage[];
   toolInvocations: EvalToolInvocation[];
   usage?: AgentTurnUsage;
 }
@@ -953,6 +958,7 @@ async function cleanupHarnessThreadState(
 function createEvalThread(args: {
   fixture: EvalEventThreadFixture;
   channelStateRef?: { value: Record<string, unknown> };
+  observations: RuntimeObservations;
   stateAdapter: HarnessStateAdapter;
 }): TestThread {
   const thread = createTestThread({
@@ -983,7 +989,60 @@ function createEvalThread(args: {
   };
   thread.isSubscribed = async () =>
     await args.stateAdapter.isSubscribed(thread.id);
+  const originalPost = thread.post.bind(thread);
+  thread.post = async (message: Parameters<TestThread["post"]>[0]) => {
+    const sent = await originalPost(message);
+    recordAssistantPost(
+      args.observations,
+      thread,
+      toEvalAssistantPost(thread.posts.at(-1)),
+    );
+    return sent;
+  };
   return thread;
+}
+
+function recordUserMessage(
+  observations: RuntimeObservations,
+  event: MentionEvent | SubscribedMessageEvent,
+): void {
+  const author = event.message.author;
+  const authorName =
+    author?.full_name?.trim() ||
+    author?.user_name?.trim() ||
+    author?.user_id?.trim();
+  observations.sessionMessages.push({
+    role: "user",
+    content: event.message.text ?? "",
+    metadata: {
+      event_type: event.type,
+      ...(authorName ? { author_name: authorName } : {}),
+      ...(event.thread.channel_id ? { channel: event.thread.channel_id } : {}),
+      ...(event.thread.thread_ts ? { thread_ts: event.thread.thread_ts } : {}),
+    },
+  });
+}
+
+function recordAssistantPost(
+  observations: RuntimeObservations,
+  thread: TestThread,
+  post: EvalAssistantPost,
+): void {
+  observations.sessionMessages.push({
+    role: "assistant",
+    content: post.text,
+    metadata: {
+      event_type: post.eventType ?? "thread_post",
+      channel: thread.channelId,
+      ...(thread.threadTs ? { thread_ts: thread.threadTs } : {}),
+      files: post.files.map((file) => ({
+        filename: file.filename,
+        isImage: file.isImage,
+        ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+        ...(file.sizeBytes !== undefined ? { sizeBytes: file.sizeBytes } : {}),
+      })),
+    },
+  });
 }
 
 function buildReactionKey(input: {
@@ -2163,6 +2222,7 @@ async function processEvents(args: {
     events: Array<MentionEvent | SubscribedMessageEvent>,
   ): Promise<void> => {
     for (const [index, event] of events.entries()) {
+      recordUserMessage(args.observations, event);
       const { thread, transcript } = getThreadRecord(event.thread);
       const route =
         (event.message.is_mention ?? event.type === "new_mention")
@@ -2198,6 +2258,7 @@ async function processEvents(args: {
   };
 
   const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
+    recordUserMessage(args.observations, event);
     const { thread, transcript } = getThreadRecord(event.thread);
     const message = toIncomingMessage(event) as unknown as Message;
     upsertThreadTranscriptMessage(transcript, message);
@@ -2481,7 +2542,7 @@ function collectResults(
   slackAdapter: FakeSlackAdapter,
   logRecords: EmittedLogRecord[],
   observations: RuntimeObservations,
-): EvalResult {
+): CollectedEvalResult {
   const threadReplyTargets = new Set(
     [...threadRecordsById.values()]
       .filter((record) => record.thread.threadTs)
@@ -2520,6 +2581,7 @@ function collectResults(
     reactions,
     modelIds: [...observations.modelIds],
     posts: [...threadPosts, ...callbackThreadPosts, ...filePosts],
+    sessionMessages: observations.sessionMessages,
     slackAdapter,
     toolInvocations: observations.toolInvocations,
     ...(observations.usage ? { usage: observations.usage } : {}),
@@ -2559,6 +2621,7 @@ export async function runEvalScenario(
     const observations: RuntimeObservations = {
       authorizationCompletions: [],
       modelIds: new Set(),
+      sessionMessages: [],
       toolInvocations: [],
     };
     const channelStateById = new Map<
@@ -2587,6 +2650,7 @@ export async function runEvalScenario(
       const thread = createEvalThread({
         fixture,
         channelStateRef: getChannelStateRef(fixture.channel_id),
+        observations,
         stateAdapter: env.stateAdapter,
       });
       const transcript: Message[] = [];

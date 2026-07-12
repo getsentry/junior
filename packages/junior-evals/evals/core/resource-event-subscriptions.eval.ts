@@ -142,7 +142,6 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The assistant does not post any visible thread reply.",
           "The assistant treats recovered checks as outside the subscription intent, which only asks for the merge outcome.",
         ],
         fail: [

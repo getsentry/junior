@@ -36,6 +36,11 @@ The normalized `vitest-evals` session is canonical. Do not create repo-local
 transcript, event-log, or tool-call schemas when the harness surface can be
 improved instead.
 
+Rubric judges evaluate only user-visible text from normalized user and
+assistant messages, in session order. Tool calls, artifacts, persistence,
+logs, traces, and other runtime observations remain available to deterministic
+assertions but must not be included in the rubric prompt.
+
 ## Do Not Use For
 
 - Slack payload-shape assertions.
