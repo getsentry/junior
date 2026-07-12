@@ -87,6 +87,10 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationHistory");
+    expect(tools.searchConversationHistory?.exposure).toBe("deferred");
+    expect(tools.searchConversationHistory?.source?.id).toBe(
+      "conversation-history",
+    );
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {

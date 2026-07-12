@@ -43,6 +43,12 @@ export function createSlackConversationSearchTool(
   return zodTool({
     description:
       "Search prior public Junior conversation threads across the current Slack workspace. Use when the user refers to an earlier public discussion, decision, or answer that is not in the current thread. Searches retained visible user and assistant messages only.",
+    exposure: "deferred",
+    source: {
+      id: "conversation-history",
+      description:
+        "Search retained public Junior conversation threads in the current Slack workspace.",
+    },
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: z.object({
       query: z

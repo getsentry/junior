@@ -56,6 +56,12 @@ describeEval("Conversation Storage", slackEvals, (it) => {
     expect(toolCalls(result.session)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          name: "searchTools",
+          arguments: expect.objectContaining({
+            source: "conversation-history",
+          }),
+        }),
+        expect.objectContaining({
           name: "searchConversationHistory",
         }),
       ]),
