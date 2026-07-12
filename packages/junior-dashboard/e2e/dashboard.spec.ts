@@ -46,7 +46,25 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 test.beforeAll(async () => {
   const app = createDashboardApp({
-    authRequired: false,
+    allowedEmails: ["dashboard-user@sentry.io"],
+    auth: {
+      async getSession() {
+        return {
+          user: {
+            email: "dashboard-user@sentry.io",
+            emailVerified: true,
+            hostedDomain: "sentry.io",
+            name: "Dashboard User",
+          },
+        };
+      },
+      async handler() {
+        return Response.json({ ok: true });
+      },
+      async signInWithGoogle() {
+        return Response.redirect("https://accounts.google.com", 302);
+      },
+    },
     mockConversations: true,
   });
 
@@ -113,6 +131,39 @@ test("hydrates the built dashboard client in a real browser", async ({
   ).toBeVisible();
   await expect(page.getByText("0ms runtime")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
+});
+
+test("groups the signed-in profile and session actions in the header", async ({
+  page,
+}) => {
+  await page.goto(baseURL);
+
+  const trigger = page.getByRole("button", {
+    name: "Open profile menu for Dashboard User",
+  });
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
+
+  const popover = page.locator("#profile-popover");
+  await expect(popover.getByText("dashboard-user@sentry.io")).toBeVisible();
+  await expect(
+    popover.getByRole("link", { name: "My profile" }),
+  ).toHaveAttribute("href", "/people/dashboard-user%40sentry.io");
+  await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  const signOutRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/auth/sign-out") &&
+      request.method() === "POST",
+  );
+  await page.getByRole("button", { name: "Log out" }).click();
+  await signOutRequest;
 });
 
 test("inspects and copies an advisor transcript", async ({ context, page }) => {

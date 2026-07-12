@@ -1,10 +1,9 @@
-import { LogOut } from "lucide-react";
 import type { ReactElement } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router";
 
 import { useDashboardCoreData, useDashboardData } from "./api";
-import { Button } from "./components/Button";
 import { LoadingView } from "./components/LoadingView";
+import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
 import { CommandCenter } from "./pages/CommandCenter";
 import { ConversationPage } from "./pages/ConversationPage";
@@ -43,7 +42,7 @@ export function DashboardShell() {
   return (
     <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black font-sans text-white">
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[#050505]/95 backdrop-blur">
-        <div className="mx-auto grid w-full max-w-screen-xl grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 md:px-8 max-md:grid-cols-1">
+        <div className="mx-auto grid w-full max-w-screen-xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:px-8">
           <Link
             className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
             to="/"
@@ -54,32 +53,25 @@ export function DashboardShell() {
               </h1>
             </div>
           </Link>
-          <div className="flex min-w-0 items-center gap-x-6 gap-y-2 max-md:flex-wrap max-md:justify-between">
-            <nav className="flex min-w-0 items-center gap-5">
-              <NavLink className={navLinkClass} end to="/">
-                Command
-              </NavLink>
-              <NavLink className={navLinkClass} to="/conversations">
-                Conversations
-              </NavLink>
-              <NavLink className={navLinkClass} to="/people">
-                People
-              </NavLink>
-              <NavLink className={navLinkClass} to="/plugins">
-                Plugins
-              </NavLink>
-            </nav>
-            {loggedIn ? (
-              <Button
-                aria-label="Log out"
-                onClick={() => void signOut()}
-                size="icon"
-                title="Log out"
-              >
-                <LogOut aria-hidden="true" size={16} strokeWidth={2} />
-              </Button>
-            ) : null}
-          </div>
+          <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-5 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-end md:overflow-visible">
+            <NavLink className={navLinkClass} end to="/">
+              Command
+            </NavLink>
+            <NavLink className={navLinkClass} to="/conversations">
+              Conversations
+            </NavLink>
+            <NavLink className={navLinkClass} to="/people">
+              People
+            </NavLink>
+            <NavLink className={navLinkClass} to="/plugins">
+              Plugins
+            </NavLink>
+          </nav>
+          {loggedIn ? (
+            <div className="col-start-2 row-start-1 justify-self-end md:col-start-3">
+              <ProfileMenu identity={data!.me} onSignOut={signOut} />
+            </div>
+          ) : null}
         </div>
       </header>
 
