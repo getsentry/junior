@@ -96,13 +96,12 @@ describe("dashboard token formatting", () => {
     expect(formatDurationTick(9 * 60_000 + 59_900)).toBe("10m");
   });
 
-  it("formats conversation duration from start to last activity", () => {
+  it("formats transcript duration from cumulative execution time", () => {
     expect(
       formatTranscriptDuration({
-        lastSeenAt: "2026-01-01T00:02:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
+        cumulativeDurationMs: 7_000,
       }),
-    ).toBe("2m 0s");
+    ).toBe("7.0s");
   });
 
   it("counts conversational transcript messages instead of tool events", () => {
@@ -501,11 +500,11 @@ describe("dashboard token formatting", () => {
     ).toEqual([]);
   });
 
-  it("formats conversation spans with the compact conversation duration rules", () => {
+  it("formats cumulative runtime instead of the conversation wall time", () => {
     const [conversation] = buildConversations([
       {
         conversationId: "slack:C1:123",
-        cumulativeDurationMs: 0,
+        cumulativeDurationMs: 7_000,
         displayTitle: "Conversation",
         lastProgressAt: "2026-06-01T10:02:29.000Z",
         lastSeenAt: "2026-06-01T10:02:29.000Z",
@@ -515,10 +514,10 @@ describe("dashboard token formatting", () => {
       },
     ]);
 
-    expect(formatConversationDuration(conversation!)).toBe("2m");
+    expect(formatConversationDuration(conversation!)).toBe("7.0s");
   });
 
-  it("does not invent conversation spans without a valid end time", () => {
+  it("omits conversation runtime when no execution time is recorded", () => {
     const [conversation] = buildConversations([
       {
         conversationId: "slack:C1:123",

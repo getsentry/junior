@@ -551,33 +551,16 @@ export function formatCostTotal(usage: ConversationUsage | undefined): string {
   return formatCostSummary(summarizeCost(usage));
 }
 
-/** Keep conversation duration displays aligned on elapsed transcript time. */
-export function transcriptElapsedDurationMs(
-  conversation: Pick<ConversationTranscript, "lastSeenAt" | "startedAt">,
-): number | undefined {
-  const start = parseTime(conversation.startedAt);
-  const end = parseTime(conversation.lastSeenAt);
-  if (start == null || end == null || end < start) return undefined;
-  return Math.max(0, end - start);
-}
-
-/** Format elapsed conversation time for chart dots and transcript metadata. */
+/** Format the execution time accumulated across a conversation's runs. */
 export function formatTranscriptDuration(
-  conversation: Pick<ConversationTranscript, "lastSeenAt" | "startedAt">,
+  conversation: Pick<ConversationTranscript, "cumulativeDurationMs">,
 ): string {
-  return formatMs(transcriptElapsedDurationMs(conversation));
+  return formatRuntime(conversation.cumulativeDurationMs) || "none";
 }
 
-/** Format a conversation span from its start to latest activity. */
+/** Format the execution time accumulated across a conversation's runs. */
 export function formatConversationDuration(conversation: Conversation): string {
-  const start = parseTime(conversation.startedAt);
-  const end = parseTime(conversation.lastSeenAt);
-  if (start == null || end == null || end < start) return "none";
-  const seconds = Math.max(1, Math.round((end - start) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.round(minutes / 60)}h`;
+  return formatRuntime(conversation.cumulativeDurationMs) || "none";
 }
 
 /** Return the persisted cumulative conversation runtime. */
