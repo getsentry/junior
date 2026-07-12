@@ -2,7 +2,7 @@ import { readConversationDetailFromSql } from "./detail.query";
 import { conversationDetailReportSchema } from "./schema";
 import type { ConversationDetailReport } from "./schema";
 
-/** Load one conversation directly from durable SQL records. */
+/** Load one conversation with durable content and recent run diagnostics. */
 export async function readConversationDetail(
   conversationId: string,
 ): Promise<ConversationDetailReport | undefined> {

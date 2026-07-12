@@ -178,6 +178,9 @@ when the exposed transcript begins at a model run boundary. Follow-up run
 transcripts that are scoped to the current user message must not repeat the
 system prompt.
 
+Conversation detail responses expose the latest retained turn session's
+`modelId` and `reasoningLevel` when those operational settings are available.
+
 The current public diagnostics surfaces must move behind dashboard auth:
 
 - The HTML diagnostics page stays at `/` when the dashboard package is mounted, but requires dashboard auth.

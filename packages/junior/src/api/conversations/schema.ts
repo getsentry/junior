@@ -146,6 +146,8 @@ export const conversationActivityReportSchema = z.discriminatedUnion("type", [
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
     activity: z.array(conversationActivityReportSchema).optional(),
+    modelId: z.string().optional(),
+    reasoningLevel: z.string().optional(),
     transcriptAvailable: z.boolean(),
     transcriptMetadata: z.array(transcriptMessageSchema).optional(),
     transcriptMessageCount: z.number().optional(),

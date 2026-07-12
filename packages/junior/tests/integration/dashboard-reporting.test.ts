@@ -398,6 +398,8 @@ describe("dashboard reporting", () => {
     expect(report).toMatchObject({
       cumulativeDurationMs: 1_200,
       cumulativeUsage: { totalTokens: 120 },
+      modelId: "openai/gpt-5.5",
+      reasoningLevel: "high",
       transcriptMessageCount: 4,
     });
     expect(report?.transcript).toEqual([

@@ -924,7 +924,11 @@ function mockConversations(nowMs: number): ConversationDetailReport[] {
     failedConversation(nowMs),
     hungConversation(nowMs),
     schedulerConversation(nowMs),
-  ];
+  ].map((conversation) => ({
+    modelId: "openai/gpt-5.6-sol",
+    reasoningLevel: "high",
+    ...conversation,
+  }));
 }
 
 function mockConversationMap(

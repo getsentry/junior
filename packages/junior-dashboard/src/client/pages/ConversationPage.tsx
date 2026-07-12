@@ -5,6 +5,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
+import { ExecutionSignature } from "../components/ExecutionSignature";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   buildConversations,
@@ -68,6 +69,10 @@ export function ConversationPage(props: { data?: DashboardData }) {
                 {conversationDisplayTitle(conversation)}
               </h2>
               <StatusBadge status={visualStatus} />
+              <ExecutionSignature
+                modelId={conversationDetail?.modelId}
+                reasoningLevel={conversationDetail?.reasoningLevel}
+              />
             </div>
             <div className="mt-1 break-words text-[0.86rem] leading-snug text-[#b8b8b8]">
               <ConversationIdentity

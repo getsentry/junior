@@ -707,6 +707,36 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("tool call");
   });
 
+  it("shows the conversation model and thinking level in the detail header", () => {
+    const session = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      lastProgressAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      displayTitle: "Conversation",
+    } satisfies ConversationSummaryReport;
+    const detail = {
+      ...session,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      modelId: "openai/gpt-5.6-sol",
+      reasoningLevel: "high",
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
+    client.setQueryData(["conversation", "conversation-1"], detail);
+
+    const html = renderConversationPage(dashboardData([session]));
+
+    expect(html).toContain(
+      'aria-label="Execution settings: openai/gpt-5.6-sol, high"',
+    );
+    expect(html).toContain("gpt-5.6-sol");
+    expect(html).toContain("(high)");
+  });
+
   it("renders execution activity inside the transcript", () => {
     const session = {
       conversationId: "conversation-1",
