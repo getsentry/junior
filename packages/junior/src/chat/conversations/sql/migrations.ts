@@ -75,7 +75,7 @@ WHERE table_schema = 'public'
     );
   }
 
-  const migration = metrics?.complete ? migrations.at(-1) : migrations[0];
+  const migration = metrics?.complete ? migrations[1] : migrations[0];
   if (!migration) {
     throw new Error("No core Drizzle migrations were packaged");
   }

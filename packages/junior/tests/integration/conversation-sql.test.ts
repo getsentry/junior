@@ -70,6 +70,7 @@ ORDER BY indexname ASC
           "junior_conversations_origin_idx",
           "junior_conversations_pkey",
           "junior_conversations_actor_activity_idx",
+          "junior_conversation_messages_search_idx",
           "junior_destinations_pkey",
           "junior_destinations_provider_destination_uidx",
           "junior_identities_kind_provider_idx",
@@ -140,7 +141,7 @@ VALUES ('host-migration', 9999999999999)
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
       expect(host?.count).toBe(1);
-      expect(core?.count).toBe(2);
+      expect(core?.count).toBe(3);
     } finally {
       await fixture.close();
     }
@@ -173,6 +174,9 @@ VALUES
   ('0005_conversation_transcripts', 'legacy-checksum-5')
 `);
         await fixture.sql.execute("DROP TABLE drizzle.__drizzle_junior_core");
+        await fixture.sql.execute(
+          "DROP INDEX junior_conversation_messages_search_idx",
+        );
         await fixture.sql.execute(`
 ALTER TABLE junior_conversations
   DROP COLUMN duration_ms,
@@ -189,7 +193,7 @@ ALTER TABLE junior_conversations
         const [journal] = await fixture.sql.query<{ count: number }>(
           "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
         );
-        expect(journal?.count).toBe(2);
+        expect(journal?.count).toBe(3);
       } finally {
         await second.close();
         await fixture.close();
@@ -257,7 +261,7 @@ WHERE conversation_id = $1
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
 
-      expect(migrationRows?.count).toBe(2);
+      expect(migrationRows?.count).toBe(3);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",
@@ -303,6 +307,9 @@ VALUES
   ('0005_conversation_transcripts', 'legacy-checksum-5')
 `);
       await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
+      await fixture.sql.execute(
+        "DROP INDEX junior_conversation_messages_search_idx",
+      );
       await fixture.sql.execute(`
 ALTER TABLE junior_conversations
   DROP COLUMN duration_ms,
@@ -336,7 +343,7 @@ ORDER BY column_name
         "execution_usage_json",
         "usage_json",
       ]);
-      expect(migrationRows?.count).toBe(2);
+      expect(migrationRows?.count).toBe(3);
     } finally {
       await fixture.close();
     }
@@ -365,12 +372,18 @@ VALUES
   ('0006_conversation_metrics', 'legacy-checksum-6')
 `);
       await fixture.sql.execute("DROP SCHEMA drizzle CASCADE");
+      await fixture.sql.execute(
+        "DROP INDEX junior_conversation_messages_search_idx",
+      );
 
       await migrateSchema(fixture.sql);
 
       const [migrationRows] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
+      const [searchIndex] = await fixture.sql.query<{ exists: boolean }>(`
+SELECT to_regclass('public.junior_conversation_messages_search_idx') IS NOT NULL AS exists
+`);
       const metricColumns = await fixture.sql.query<{ column_name: string }>(`
 SELECT column_name
 FROM information_schema.columns
@@ -384,7 +397,8 @@ WHERE table_schema = 'public'
   )
 ORDER BY column_name
 `);
-      expect(migrationRows?.count).toBe(1);
+      expect(migrationRows?.count).toBe(2);
+      expect(searchIndex?.exists).toBe(true);
       expect(metricColumns.map((row) => row.column_name)).toEqual([
         "duration_ms",
         "execution_duration_ms",
