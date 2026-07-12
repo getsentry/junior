@@ -789,11 +789,11 @@ WHERE conversation_id = $1
     }
   });
 
-  it("reports active SQL execution status", async () => {
+  it("reports stale running SQL execution status as active", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
-      vi.useFakeTimers({ now: 2_000 });
+      vi.useFakeTimers({ now: 302_000 });
       await disconnectStateAdapter();
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);

@@ -115,7 +115,6 @@ export async function buildConversationDetail(args: {
     ...conversationSummaryFromStoredConversation({
       conversation,
       durationMs: args.durationMs,
-      nowMs,
       usage: args.usage,
     }),
     ...(traceId ? { traceId } : {}),

@@ -33,7 +33,6 @@ function directoryItem(accumulator: DirectoryAccumulator): ActorSummaryReport {
     durationMs: accumulator.durationMs,
     failed: accumulator.failed,
     firstSeenAt: new Date(accumulator.firstSeenMs).toISOString(),
-    hung: accumulator.hung,
     lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
     actor: accumulator.actor,
     ...(accumulator.tokens !== undefined ? { tokens: accumulator.tokens } : {}),
@@ -47,7 +46,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const people = new Map<string, DirectoryAccumulator>();
 
   for (const row of rows) {
-    const summary = summaryFromRow(row, nowMs);
+    const summary = summaryFromRow(row);
     const actor = identityWithEmail(summary.actorIdentity);
     if (!actor) continue;
 

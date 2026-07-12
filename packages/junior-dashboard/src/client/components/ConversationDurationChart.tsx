@@ -89,7 +89,6 @@ export function ConversationDurationChart(props: {
         actions={
           <div className="flex flex-wrap items-center justify-end gap-3 text-[0.78rem] font-semibold uppercase leading-none text-[#888]">
             <ChartLegendItem className="bg-[#b8b8b8]" label="Complete" />
-            <ChartLegendItem className="bg-amber-400" label="Hung" />
             <ChartLegendItem className="bg-rose-400" label="Error" />
           </div>
         }
@@ -151,7 +150,7 @@ export function ConversationDurationChart(props: {
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
         {plural("recent conversation", recentFeedStats.conversations)} /{" "}
-        {recentFeedStats.active} active / {recentFeedStats.hung} hung /{" "}
+        {recentFeedStats.active} active /{" "}
         {plural("error", recentFeedStats.failed)}
       </div>
     </Section>
@@ -169,10 +168,9 @@ function conversationStatusSummary(conversations: Conversation[]) {
         active: summary.active + (conversation.status === "active" ? 1 : 0),
         conversations: summary.conversations + 1,
         failed: summary.failed + (conversation.status === "failed" ? 1 : 0),
-        hung: summary.hung + (conversation.status === "hung" ? 1 : 0),
       };
     },
-    { active: 0, conversations: 0, failed: 0, hung: 0 },
+    { active: 0, conversations: 0, failed: 0 },
   );
 }
 
@@ -288,9 +286,6 @@ function durationDotFill(status: PlottedTurnStatus, active: boolean): string {
   if (status === "failed") {
     return active ? "rgba(251, 113, 133, 1)" : "rgba(244, 63, 94, 0.95)";
   }
-  if (status === "hung") {
-    return active ? "rgba(251, 191, 36, 1)" : "rgba(245, 158, 11, 0.94)";
-  }
   return active ? "rgba(250, 250, 250, 0.96)" : "rgba(184, 184, 184, 0.82)";
 }
 
@@ -405,7 +400,6 @@ function chartTooltipStatus(status: PlottedTurnStatus): ReactNode {
       className={cn(
         "shrink-0 text-[0.68rem] font-bold uppercase leading-none",
         status === "failed" && "text-rose-300",
-        status === "hung" && "text-amber-300",
       )}
     >
       {status === "failed" ? "error" : status}

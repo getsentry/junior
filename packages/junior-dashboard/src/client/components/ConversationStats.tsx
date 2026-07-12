@@ -10,19 +10,12 @@ function plural(label: string, count: number): string {
 
 const EMPTY_STATS: Pick<
   ConversationStatsReport,
-  | "active"
-  | "conversations"
-  | "costUsd"
-  | "durationMs"
-  | "failed"
-  | "hung"
-  | "tokens"
+  "active" | "conversations" | "costUsd" | "durationMs" | "failed" | "tokens"
 > = {
   active: 0,
   conversations: 0,
   durationMs: 0,
   failed: 0,
-  hung: 0,
 };
 
 /** Render aggregate conversation stats returned by the REST API. */
@@ -75,8 +68,7 @@ export function ConversationStats(props: {
         />
       </div>
       <div className="border-t border-white/10 px-4 py-3 text-[0.84rem] leading-tight text-[#888]">
-        {stats.active} active / {stats.hung} hung /{" "}
-        {plural("error", stats.failed)}
+        {stats.active} active / {plural("error", stats.failed)}
       </div>
     </Section>
   );

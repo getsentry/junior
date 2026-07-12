@@ -70,7 +70,7 @@ export async function readPeopleProfileFromSql(
   const recentConversations: ConversationSummaryReport[] = [];
 
   for (const row of rows) {
-    const summary = summaryFromRow(row, nowMs);
+    const summary = summaryFromRow(row);
     const identity = identityWithEmail(summary.actorIdentity);
     if (identity) {
       actor = actor ? mergeIdentity(actor, identity) : identity;

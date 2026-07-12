@@ -545,7 +545,6 @@ function LeaderboardSection(props: {
                   {item.failed
                     ? ` / ${formatCompactNumber(item.failed)} errors`
                     : ""}
-                  {item.hung ? ` / ${formatCompactNumber(item.hung)} hung` : ""}
                 </div>
               </div>
               <div className="text-right text-xl font-extrabold leading-none text-white">

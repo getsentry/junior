@@ -20,7 +20,7 @@ describe("people profile API", () => {
           fullName: "Alice Example",
         },
         totals: {
-          active: 0,
+          active: 1,
           activeDays: 2,
           conversations: 2,
           durationMs: 1_500,
@@ -57,7 +57,7 @@ describe("people profile API", () => {
       ).toEqual(["slack:C4:456", "slack:C1:123"]);
       expect(report.recentConversations.map((item) => item.status)).toEqual([
         "failed",
-        "completed",
+        "active",
       ]);
 
       const untrusted = await readPeopleProfileFromSql("untrusted@example.com");

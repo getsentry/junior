@@ -113,14 +113,9 @@ export type DashboardData = {
   skills: SkillReport[];
 };
 
-export type ConversationFilter =
-  | "active"
-  | "recent"
-  | "hung"
-  | "failed"
-  | "all";
+export type ConversationFilter = "active" | "recent" | "failed" | "all";
 
-export type VisualStatus = "active" | "failed" | "hung" | "idle";
+export type VisualStatus = "active" | "failed" | "idle";
 
 export type CodeBlock = {
   code: string;

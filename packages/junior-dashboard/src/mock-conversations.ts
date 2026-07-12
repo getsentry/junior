@@ -28,7 +28,7 @@ import {
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
-const HUNG_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
+const SANDBOX_CONVERSATION_ID = "slack:CQA999:1770010800.000400";
 const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -337,15 +337,15 @@ function redactedPrivateTranscript(startedAtMs: number): TranscriptMessage[] {
   ];
 }
 
-function hungConversation(nowMs: number): ConversationDetailReport {
+function sandboxConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -18 * 60_000);
 
   return {
-    conversationId: HUNG_CONVERSATION_ID,
+    conversationId: SANDBOX_CONVERSATION_ID,
     displayTitle: "Sandbox QA run",
     generatedAt: iso(nowMs),
-    sentryConversationUrl: sentryConversationUrl(HUNG_CONVERSATION_ID),
-    status: "hung",
+    sentryConversationUrl: sentryConversationUrl(SANDBOX_CONVERSATION_ID),
+    status: "active",
     startedAt,
     lastProgressAt: iso(nowMs, -11 * 60_000),
     lastSeenAt: iso(nowMs, -10 * 60_000),
@@ -922,7 +922,7 @@ function mockConversations(nowMs: number): ConversationDetailReport[] {
     publicIncidentConversation(nowMs),
     privateConversation(nowMs),
     failedConversation(nowMs),
-    hungConversation(nowMs),
+    sandboxConversation(nowMs),
     schedulerConversation(nowMs),
   ].map((conversation) => ({
     modelId: "openai/gpt-5.6-sol",
@@ -966,7 +966,6 @@ function conversationStatsReportFromSummaries(
   let tokens: number | undefined;
   let active = 0;
   let failed = 0;
-  let hung = 0;
 
   for (const conversation of conversations) {
     const conversationCostUsd = usageCostTotal(conversation.cumulativeUsage);
@@ -979,7 +978,6 @@ function conversationStatsReportFromSummaries(
     tokens = addTokenTotal(tokens, conversationTokens);
     active += conversation.status === "active" ? 1 : 0;
     failed += conversation.status === "failed" ? 1 : 0;
-    hung += conversation.status === "hung" ? 1 : 0;
 
     const actor = actorLabel(conversation.actorIdentity) ?? "Unknown";
     const actorItem = actors.get(actor) ?? emptyStatsItem(actor);
@@ -998,7 +996,6 @@ function conversationStatsReportFromSummaries(
     durationMs,
     failed,
     generatedAt: iso(nowMs),
-    hung,
     locations: statsItems(locations),
     actors: statsItems(actors),
     sampleLimit: summaries.length,
@@ -1109,7 +1106,6 @@ function emptyStatsItem(label: string): ConversationStatsItem {
     conversations: 0,
     durationMs: 0,
     failed: 0,
-    hung: 0,
     label,
   };
 }
@@ -1140,7 +1136,6 @@ function addConversationStats(
   item.durationMs += conversation.cumulativeDurationMs;
   item.active += conversation.status === "active" ? 1 : 0;
   item.failed += conversation.status === "failed" ? 1 : 0;
-  item.hung += conversation.status === "hung" ? 1 : 0;
   addItemTokens(item, usageTokenTotal(conversation.cumulativeUsage));
   addItemCost(item, usageCostTotal(conversation.cumulativeUsage));
 }

@@ -24,7 +24,7 @@ describe("people list API", () => {
           (person) => person.actor.email === "alice@example.com",
         ),
       ).toMatchObject({
-        active: 0,
+        active: 1,
         activeDays: 2,
         conversations: 2,
         durationMs: 1_500,

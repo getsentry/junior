@@ -33,7 +33,7 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     createdAtMs: Date.parse("2026-06-10T10:03:00.000Z"),
     execution: {
       runId: "turn-1",
-      status: "idle",
+      status: "running",
       updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
     },
     lastActivityAtMs: Date.parse("2026-06-10T10:04:00.000Z"),

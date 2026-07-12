@@ -6,13 +6,7 @@ export function FilterTabs(props: {
   current: ConversationFilter;
   onChange(filter: ConversationFilter): void;
 }) {
-  const filters: ConversationFilter[] = [
-    "recent",
-    "active",
-    "hung",
-    "failed",
-    "all",
-  ];
+  const filters: ConversationFilter[] = ["recent", "active", "failed", "all"];
   return (
     <div
       aria-label="Conversation filter"

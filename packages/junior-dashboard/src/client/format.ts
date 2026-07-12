@@ -42,20 +42,12 @@ export function isFailedConversationSummary(
   return summary.status === "failed";
 }
 
-function isHungSummary(summary: ConversationSummaryReport): boolean {
-  return summary.status === "hung";
-}
-
 function isActiveConversation(conversation: Conversation): boolean {
   return conversation.status === "active";
 }
 
 function isFailedConversation(conversation: Conversation): boolean {
   return conversation.status === "failed";
-}
-
-function isHungConversation(conversation: Conversation): boolean {
-  return conversation.status === "hung";
 }
 
 function parseTime(value: string | undefined): number | null {
@@ -658,7 +650,6 @@ export function slackLocationLabel(
 export function visualStatusForSummary(
   summary: ConversationSummaryReport,
 ): VisualStatus {
-  if (isHungSummary(summary)) return "hung";
   if (isFailedConversationSummary(summary)) return "failed";
   if (isActiveSummary(summary)) return "active";
   return "idle";
@@ -668,7 +659,6 @@ export function visualStatusForSummary(
 export function visualStatusForConversation(
   conversation: Conversation,
 ): VisualStatus {
-  if (isHungConversation(conversation)) return "hung";
   if (isActiveConversation(conversation)) return "active";
   if (isFailedConversation(conversation)) return "failed";
   return "idle";
@@ -684,9 +674,6 @@ export function unavailableTranscriptLabel(
   const status = visualStatusForSummary(conversation);
   if (status === "active") {
     return "Transcript pending while this conversation is active.";
-  }
-  if (status === "hung") {
-    return "Transcript pending while this conversation is hung.";
   }
   return "Transcript unavailable for this conversation.";
 }
@@ -962,7 +949,6 @@ export function filterConversations(
 ): Conversation[] {
   if (filter === "all") return conversations;
   if (filter === "active") return conversations.filter(isActiveConversation);
-  if (filter === "hung") return conversations.filter(isHungConversation);
   if (filter === "failed") return conversations.filter(isFailedConversation);
   return conversations;
 }
@@ -1062,10 +1048,7 @@ export function filterConversationList(
 
 /** Normalize URL filter params to the supported dashboard filter set. */
 export function getFilter(value: string | null): ConversationFilter {
-  return value === "active" ||
-    value === "hung" ||
-    value === "failed" ||
-    value === "all"
+  return value === "active" || value === "failed" || value === "all"
     ? value
     : "recent";
 }

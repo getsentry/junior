@@ -22,7 +22,6 @@ export const actorActivityDayReportSchema = z
     date: z.string(),
     durationMs: z.number(),
     failed: z.number(),
-    hung: z.number(),
     tokens: z.number().optional(),
   })
   .strict();
@@ -34,7 +33,6 @@ export const actorTotalsReportSchema = z
     conversations: z.number(),
     durationMs: z.number(),
     failed: z.number(),
-    hung: z.number(),
     tokens: z.number().optional(),
   })
   .strict();

@@ -90,6 +90,19 @@ describe("conversation stats API", () => {
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
+      await store.recordExecution({
+        conversationId: "scheduler:daily",
+        createdAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
+        execution: {
+          runId: "turn-scheduler",
+          status: "running",
+          updatedAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
+        },
+        metrics: null,
+        lastActivityAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
+        source: "scheduler",
+        updatedAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
+      });
       await store.recordActivity({
         conversationId: "slack:C2:old",
         destination: {
@@ -116,12 +129,11 @@ describe("conversation stats API", () => {
       const report = await readConversationStatsFromSql();
 
       expect(report).toMatchObject({
-        active: 0,
+        active: 1,
         conversations: 3,
         costUsd: 0.0045,
         durationMs: 2_000,
         failed: 1,
-        hung: 0,
         tokens: 150,
         sampleLimit: 5_000,
         sampleSize: 3,

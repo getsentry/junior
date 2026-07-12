@@ -17,7 +17,6 @@ import type {
   ConversationSurface,
   ConversationUsage,
 } from "./schema";
-const HUNG_TURN_PROGRESS_MS = 5 * 60 * 1000;
 const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 
 function privateConversationLabel(
@@ -72,21 +71,12 @@ function actorIdentityReport(
 
 function statusFromConversation(
   conversation: StoredConversation,
-  nowMs: number,
 ): ConversationReportStatus {
   if (conversation.execution.status === "idle") {
     return "completed";
   }
   if (conversation.execution.status === "failed") {
     return "failed";
-  }
-  const updatedAtMs =
-    conversation.execution.updatedAtMs ?? conversation.updatedAtMs;
-  if (
-    conversation.execution.status === "running" &&
-    nowMs - updatedAtMs > HUNG_TURN_PROGRESS_MS
-  ) {
-    return "hung";
   }
   return "active";
 }
@@ -163,10 +153,9 @@ function channelNameRedactedFromConversation(
 export function conversationSummaryFromStoredConversation(args: {
   conversation: StoredConversation;
   durationMs: number;
-  nowMs: number;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
-  const { conversation, durationMs, nowMs, usage } = args;
+  const { conversation, durationMs, usage } = args;
   const surface = surfaceFromSource(
     conversation.source,
     conversation.conversationId,
@@ -184,7 +173,7 @@ export function conversationSummaryFromStoredConversation(args: {
     ).toISOString(),
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
-    status: statusFromConversation(conversation, nowMs),
+    status: statusFromConversation(conversation),
     surface,
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),

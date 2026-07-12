@@ -11,7 +11,6 @@ import type { ConversationStatsItem, ConversationStatsReport } from "./schema";
 
 const SAMPLE_LIMIT = 5_000;
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const HUNG_PROGRESS_MS = 5 * 60 * 1000;
 
 function emptyStatsItem(label: string): ConversationStatsItem {
   return {
@@ -19,7 +18,6 @@ function emptyStatsItem(label: string): ConversationStatsItem {
     conversations: 0,
     durationMs: 0,
     failed: 0,
-    hung: 0,
     label,
   };
 }
@@ -64,18 +62,15 @@ function locationLabel(row: StatsRow): string {
   return name ? `#${name}` : "Public Channel";
 }
 
-/** Running executions become hung after five minutes; other unfinished work is active. */
-function signals(row: StatsRow, nowMs: number) {
+/** Treat every unfinished execution as active regardless of last progress. */
+function signals(row: StatsRow) {
   if (row.executionStatus === "failed") {
-    return { active: false, failed: true, hung: false };
+    return { active: false, failed: true };
   }
   if (row.executionStatus === "idle") {
-    return { active: false, failed: false, hung: false };
+    return { active: false, failed: false };
   }
-  const updatedAt = (row.executionUpdatedAt ?? row.updatedAt).getTime();
-  const hung =
-    row.executionStatus === "running" && nowMs - updatedAt > HUNG_PROGRESS_MS;
-  return { active: !hung, failed: false, hung };
+  return { active: true, failed: false };
 }
 
 function addConversation(
@@ -95,7 +90,6 @@ function addConversation(
   }
   item.active += rowSignals.active ? 1 : 0;
   item.failed += rowSignals.failed ? 1 : 0;
-  item.hung += rowSignals.hung ? 1 : 0;
   map.set(label, item);
 }
 
@@ -117,13 +111,11 @@ async function statsRows(db: JuniorDatabase, start: Date, end: Date) {
       destinationVisibility: juniorDestinations.visibility,
       durationMs: juniorConversations.durationMs,
       executionStatus: juniorConversations.executionStatus,
-      executionUpdatedAt: juniorConversations.executionUpdatedAt,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.emailNormalized,
       identityHandle: juniorIdentities.handle,
       identitySubjectId: juniorIdentities.providerSubjectId,
       source: juniorConversations.source,
-      updatedAt: juniorConversations.updatedAt,
       usage: juniorConversations.usage,
       userDisplayName: juniorUsers.displayName,
       userEmail: juniorUsers.primaryEmailNormalized,
@@ -202,14 +194,12 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
   let costUsd: number | undefined;
   let durationMs = 0;
   let failed = 0;
-  let hung = 0;
   let tokens: number | undefined;
 
   for (const row of rows) {
-    const rowSignals = signals(row, nowMs);
+    const rowSignals = signals(row);
     active += rowSignals.active ? 1 : 0;
     failed += rowSignals.failed ? 1 : 0;
-    hung += rowSignals.hung ? 1 : 0;
     const rowTokens = usageTokens(row.usage);
     const rowCostUsd = usageCostUsd(row.usage);
     const metrics = {
@@ -234,7 +224,6 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     durationMs,
     failed,
     generatedAt: new Date(nowMs).toISOString(),
-    hung,
     locations: statsItems(locations),
     actors: statsItems(actors),
     sampleLimit: SAMPLE_LIMIT,

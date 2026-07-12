@@ -18,9 +18,6 @@ export function CommandRail(props: {
   const activeSummaries = summaries.filter(
     (summary) => visualStatusForSummary(summary) === "active",
   );
-  const hungSummaries = summaries.filter(
-    (summary) => visualStatusForSummary(summary) === "hung",
-  );
   const failedSummaries = summaries.filter(isFailedConversationSummary);
 
   return (
@@ -56,7 +53,6 @@ export function CommandRail(props: {
           <Stat label="plugins" value={props.data?.plugins.length ?? 0} />
           <Stat label="skills" value={props.data?.skills.length ?? 0} />
           <Stat label="active" value={activeSummaries.length} />
-          <Stat label="hung" value={hungSummaries.length} />
           <Stat label="failed" value={failedSummaries.length} />
         </div>
       </Section>

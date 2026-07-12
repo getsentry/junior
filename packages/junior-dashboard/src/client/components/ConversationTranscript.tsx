@@ -109,7 +109,6 @@ function turnMarkerClass(
   return cn(
     "size-2.5 shrink-0 border",
     status === "active" && "border-emerald-300 bg-emerald-300",
-    status === "hung" && "border-amber-300 bg-amber-300",
     status === "failed" && "border-rose-300 bg-rose-300",
     status === "idle" && "border-[#beaaff]/70 bg-[#beaaff]/50",
   );

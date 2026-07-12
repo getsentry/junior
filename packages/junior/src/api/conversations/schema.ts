@@ -5,7 +5,6 @@ export const conversationReportStatusSchema = z.enum([
   "active",
   "completed",
   "failed",
-  "hung",
 ]);
 
 export const conversationSurfaceSchema = z.enum([
@@ -202,7 +201,6 @@ export const conversationStatsItemSchema = z
     conversations: z.number(),
     durationMs: z.number(),
     failed: z.number(),
-    hung: z.number(),
     label: z.string(),
     costUsd: z.number().optional(),
     tokens: z.number().optional(),
@@ -216,7 +214,6 @@ export const conversationStatsReportSchema = z
     durationMs: z.number(),
     failed: z.number(),
     generatedAt: z.string(),
-    hung: z.number(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     sampleLimit: z.number(),

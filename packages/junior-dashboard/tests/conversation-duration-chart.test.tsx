@@ -114,8 +114,6 @@ describe("conversation duration chart", () => {
       durationLabel: "2.5s",
       durationMs: 2_500,
     });
-    expect(html).toContain(
-      "3 recent conversations / 1 active / 0 hung / 0 errors",
-    );
+    expect(html).toContain("3 recent conversations / 1 active / 0 errors");
   });
 });

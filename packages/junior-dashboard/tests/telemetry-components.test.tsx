@@ -63,7 +63,6 @@ function dashboardData(
       durationMs: 0,
       failed: 0,
       generatedAt: "2026-01-01T00:00:00.000Z",
-      hung: 0,
       locations: [],
       actors: [],
       sampleLimit: 0,
@@ -189,7 +188,7 @@ describe("dashboard telemetry components", () => {
     expect(filters).toContain('role="group"');
     expect(filters).toContain('aria-label="Conversation filter"');
     expect(filters.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
-    expect(filters.match(/aria-pressed="false"/g) ?? []).toHaveLength(4);
+    expect(filters.match(/aria-pressed="false"/g) ?? []).toHaveLength(3);
     expect(transcript).toContain('aria-label="Transcript view"');
     expect(transcript).toContain('aria-label="Copy conversation as Markdown"');
     expect(transcript).not.toContain(">Transcript<");
@@ -334,7 +333,6 @@ describe("dashboard telemetry components", () => {
           date: "2026-01-01",
           durationMs: 0,
           failed: 0,
-          hung: 0,
         },
         {
           active: 0,
@@ -342,7 +340,6 @@ describe("dashboard telemetry components", () => {
           date: "2026-01-02",
           durationMs: 1_200,
           failed: 0,
-          hung: 0,
         },
       ],
       generatedAt: "2026-01-02T00:00:00.000Z",
@@ -352,7 +349,6 @@ describe("dashboard telemetry components", () => {
           conversations: 2,
           durationMs: 1_200,
           failed: 0,
-          hung: 0,
           label: "#proj-alpha",
         },
       ],
@@ -386,7 +382,6 @@ describe("dashboard telemetry components", () => {
           conversations: 2,
           durationMs: 1_200,
           failed: 0,
-          hung: 0,
           label: "Conversation",
         },
       ],
@@ -396,7 +391,6 @@ describe("dashboard telemetry components", () => {
         conversations: 2,
         durationMs: 1_200,
         failed: 0,
-        hung: 0,
       },
       truncated: false,
       windowEnd: "2026-01-02T00:00:00.000Z",
@@ -958,14 +952,12 @@ describe("dashboard telemetry components", () => {
       durationMs: 3_000,
       failed: 1,
       generatedAt: "2026-01-05T00:00:00.000Z",
-      hung: 0,
       locations: [
         {
           active: 0,
           conversations: 1,
           durationMs: 1_000,
           failed: 0,
-          hung: 0,
           label: "#proj-alpha",
         },
       ],
@@ -975,7 +967,6 @@ describe("dashboard telemetry components", () => {
           conversations: 2,
           durationMs: 3_000,
           failed: 1,
-          hung: 0,
           label: "Avery",
         },
       ],

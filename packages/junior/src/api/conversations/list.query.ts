@@ -144,7 +144,6 @@ export async function readConversationFeedFromSql(
       conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
-        nowMs,
         usage: row.conversation.usage ?? undefined,
       }),
     ),

@@ -22,7 +22,6 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 export const SAMPLE_LIMIT = 5_000;
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 366;
-const HUNG_PROGRESS_MS = 5 * 60 * 1000;
 
 type Source =
   | "api"
@@ -69,22 +68,12 @@ function surfaceFromRow(row: PeopleConversationRow): ConversationSurface {
   return "internal";
 }
 
-function statusFromRow(
-  row: PeopleConversationRow,
-  nowMs: number,
-): ConversationReportStatus {
+function statusFromRow(row: PeopleConversationRow): ConversationReportStatus {
   if (row.executionStatus === "failed") {
     return "failed";
   }
   if (row.executionStatus === "idle") {
     return "completed";
-  }
-  const updatedAtMs = (row.executionUpdatedAt ?? row.updatedAt).getTime();
-  if (
-    row.executionStatus === "running" &&
-    nowMs - updatedAtMs > HUNG_PROGRESS_MS
-  ) {
-    return "hung";
   }
   return "active";
 }
@@ -147,7 +136,6 @@ function titleFromRow(
 /** Project one SQL conversation row into the people API conversation summary. */
 export function summaryFromRow(
   row: PeopleConversationRow,
-  nowMs: number,
 ): ConversationSummaryReport {
   const surface = surfaceFromRow(row);
   const channel = channelFromConversationId(row.conversationId);
@@ -164,7 +152,7 @@ export function summaryFromRow(
     ).toISOString(),
     lastSeenAt: row.lastActivityAt.toISOString(),
     startedAt: row.createdAt.toISOString(),
-    status: statusFromRow(row, nowMs),
+    status: statusFromRow(row),
     surface,
     actorIdentity: {
       email: row.email,
@@ -202,7 +190,6 @@ export function emptyTotals(): ActorTotalsReport {
     conversations: 0,
     durationMs: 0,
     failed: 0,
-    hung: 0,
   };
 }
 
@@ -213,7 +200,6 @@ export function emptyStatsItem(label: string): ConversationStatsItem {
     conversations: 0,
     durationMs: 0,
     failed: 0,
-    hung: 0,
     label,
   };
 }
@@ -226,7 +212,6 @@ export function emptyActivityDay(date: string): ActorActivityDayReport {
     date,
     durationMs: 0,
     failed: 0,
-    hung: 0,
   };
 }
 
@@ -235,18 +220,16 @@ export function signals(summary: ConversationSummaryReport) {
   return {
     active: summary.status === "active",
     failed: summary.status === "failed",
-    hung: summary.status === "hung",
   };
 }
 
 /** Add status counters into a people API aggregate row. */
 export function addSignals(
-  target: Pick<ActorTotalsReport, "active" | "failed" | "hung">,
+  target: Pick<ActorTotalsReport, "active" | "failed">,
   value: ReturnType<typeof signals>,
 ): void {
   target.active += value.active ? 1 : 0;
   target.failed += value.failed ? 1 : 0;
-  target.hung += value.hung ? 1 : 0;
 }
 
 /** Return only actor identities that can be grouped by normalized email. */
