@@ -322,7 +322,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports the complete SQL conversation transcript", async () => {
-    const { upsertAgentTurnSessionRecord } =
+    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { readConversationDetailFromSql } =
       await import("@/api/conversations/detail.query");
@@ -392,6 +392,12 @@ describe("dashboard reporting", () => {
           timestamp: 6,
         },
       ] as PiMessage[],
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId: "slack:C1:222",
+      sessionId: "turn-running",
+      sliceId: 1,
+      state: "running",
     });
 
     const report = await readConversationDetailFromSql("slack:C1:222");

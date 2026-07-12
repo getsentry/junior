@@ -238,6 +238,22 @@ describe("persistAuthPauseSessionRecord", () => {
     ).resolves.toEqual([]);
   });
 
+  it("reads the bounded conversation summary index without scanning globally", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { listBoundedAgentTurnSessionSummariesForConversation } =
+      await import("@/chat/state/turn-session");
+    const getList = vi.spyOn(getStateAdapter(), "getList");
+
+    await expect(
+      listBoundedAgentTurnSessionSummariesForConversation(
+        "slack:C123:bounded-summary",
+      ),
+    ).resolves.toEqual([]);
+    expect(getList).toHaveBeenCalledExactlyOnceWith(
+      "junior:agent_turn_session:conversation:slack:C123:bounded-summary:index",
+    );
+  });
+
   it("materializes auth completion events appended after the pause record", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");

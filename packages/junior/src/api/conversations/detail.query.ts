@@ -1,6 +1,6 @@
 import { logException } from "@/chat/logging";
 import {
-  listAgentTurnSessionSummariesForConversation,
+  listBoundedAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { buildConversationDetail } from "./detail-projection";
@@ -12,8 +12,8 @@ async function readLatestRun(
 ): Promise<AgentTurnSessionSummary | undefined> {
   try {
     return (
-      await listAgentTurnSessionSummariesForConversation(conversationId)
-    )[0];
+      await listBoundedAgentTurnSessionSummariesForConversation(conversationId)
+    ).find((summary) => summary.modelId || summary.reasoningLevel);
   } catch (error) {
     logException(error, "conversation_execution_settings_read_failed", {
       conversationId,

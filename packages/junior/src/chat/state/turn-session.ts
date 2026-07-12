@@ -802,10 +802,8 @@ export async function listAgentTurnSessionSummariesForConversation(
   conversationId: string,
 ): Promise<AgentTurnSessionSummary[]> {
   const stateAdapter = getStateAdapter();
-  const summaries = await readAgentTurnSessionSummariesFromIndex(
-    agentTurnSessionConversationIndexKey(conversationId),
-    stateAdapter,
-  );
+  const summaries =
+    await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
   if (summaries.length > 0) {
     return summaries;
   }
@@ -816,6 +814,16 @@ export async function listAgentTurnSessionSummariesForConversation(
       stateAdapter,
     )
   ).filter((summary) => summary.conversationId === conversationId);
+}
+
+/** List retained run summaries without falling back to global history. */
+export async function listBoundedAgentTurnSessionSummariesForConversation(
+  conversationId: string,
+): Promise<AgentTurnSessionSummary[]> {
+  return readAgentTurnSessionSummariesFromIndex(
+    agentTurnSessionConversationIndexKey(conversationId),
+    getStateAdapter(),
+  );
 }
 
 /** Read complete per-conversation summary indexes with bounded backend load. */
