@@ -121,7 +121,10 @@ function renderConversationPage(data: DashboardData): string {
   );
 }
 
-function toolRunTurn(toolCount: number): ConversationTranscript {
+function toolRunTurn(
+  toolCount: number,
+  finalMessage = false,
+): ConversationTranscript {
   return {
     conversationId: "conversation-1",
     lastProgressAt: "2026-01-01T00:00:10.000Z",
@@ -130,17 +133,28 @@ function toolRunTurn(toolCount: number): ConversationTranscript {
     status: "completed",
     surface: "slack",
     displayTitle: "Conversation",
-    transcript: Array.from({ length: toolCount }, (_, index) => ({
-      role: "assistant",
-      timestamp: Date.parse("2026-01-01T00:00:10.000Z") + index,
-      parts: [
-        {
-          id: `call-${index}`,
-          name: `tool-${index}`,
-          type: "tool_call",
-        },
-      ],
-    })),
+    transcript: [
+      ...Array.from({ length: toolCount }, (_, index) => ({
+        role: "assistant",
+        timestamp: Date.parse("2026-01-01T00:00:10.000Z") + index,
+        parts: [
+          {
+            id: `call-${index}`,
+            name: `tool-${index}`,
+            type: "tool_call" as const,
+          },
+        ],
+      })),
+      ...(finalMessage
+        ? [
+            {
+              role: "assistant" as const,
+              timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
+              parts: [{ type: "text" as const, text: "done" }],
+            },
+          ]
+        : []),
+    ],
     transcriptAvailable: true,
   } as ConversationTranscript;
 }
@@ -1319,7 +1333,10 @@ describe("dashboard telemetry components", () => {
   it("renders four consecutive tool calls behind a reveal disclosure", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <ConversationTranscriptView conversation={toolRunTurn(4)} view="rich" />
+        <ConversationTranscriptView
+          conversation={toolRunTurn(4, true)}
+          view="rich"
+        />
       </QueryClientProvider>,
     );
 
@@ -1492,6 +1509,11 @@ describe("dashboard telemetry components", () => {
             { type: "thinking", output: "second thought" },
           ],
         },
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
+          parts: [{ type: "text", text: "done" }],
+        },
       ],
       transcriptAvailable: true,
     } as ConversationTranscript;
@@ -1547,6 +1569,43 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("second thought");
   });
 
+  it("keeps a trailing tool-and-thinking run expanded without a final message", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      lastProgressAt: "2026-01-01T00:00:10.000Z",
+      lastSeenAt: "2026-01-01T00:00:10.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "failed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:10.000Z"),
+          parts: [
+            { id: "call-0", name: "tool-0", type: "tool_call" },
+            { type: "thinking", output: "first thought" },
+            { id: "call-1", name: "tool-1", type: "tool_call" },
+            { type: "thinking", output: "second thought" },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptView conversation={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).not.toContain("show 2 tool calls and 2 thinking entries");
+    expect(html).toContain("tool-0");
+    expect(html).toContain("tool-1");
+    expect(html).toContain("first thought");
+    expect(html).toContain("second thought");
+  });
+
   it("shows correct counts in mixed-run reveal label", () => {
     // 5 tool calls + 2 thinking entries
     const toolParts = Array.from({ length: 5 }, (_, i) => ({
@@ -1571,6 +1630,11 @@ describe("dashboard telemetry components", () => {
             { type: "thinking", output: "thought a" },
             { type: "thinking", output: "thought b" },
           ],
+        },
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
+          parts: [{ type: "text", text: "done" }],
         },
       ],
       transcriptAvailable: true,
@@ -1605,6 +1669,11 @@ describe("dashboard telemetry components", () => {
             { type: "thinking", output: "thought 3" },
             { type: "thinking", output: "thought 4" },
           ],
+        },
+        {
+          role: "assistant",
+          timestamp: Date.parse("2026-01-01T00:00:11.000Z"),
+          parts: [{ type: "text", text: "done" }],
         },
       ],
       transcriptAvailable: true,

@@ -11,6 +11,7 @@ const TOOL_RUN_REVEAL_THRESHOLD = 4;
 
 /** Render a consecutive tool-and-thinking run with a one-way reveal for dense middle calls. */
 export function TranscriptToolRun(props: {
+  autoCollapse: boolean;
   entries: RenderedToolRunEntry[];
   keyPrefix: string;
   renderThinking: (entry: RenderedThinkingEntry, index: number) => ReactNode;
@@ -19,7 +20,11 @@ export function TranscriptToolRun(props: {
 }) {
   const { active: searchActive } = useTranscriptSearch();
 
-  if (props.entries.length < TOOL_RUN_REVEAL_THRESHOLD || searchActive) {
+  if (
+    !props.autoCollapse ||
+    props.entries.length < TOOL_RUN_REVEAL_THRESHOLD ||
+    searchActive
+  ) {
     return (
       <>
         {renderRunEntries(

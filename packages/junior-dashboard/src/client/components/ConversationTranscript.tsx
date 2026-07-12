@@ -352,6 +352,7 @@ function TranscriptEntryList(props: {
       if (visibleEntries.length > 0) {
         rows.push(
           <TranscriptToolRun
+            autoCollapse={index < props.entries.length}
             entries={visibleEntries}
             key={`${props.keyPrefix}:tool-run:${startIndex}`}
             keyPrefix={props.keyPrefix}
