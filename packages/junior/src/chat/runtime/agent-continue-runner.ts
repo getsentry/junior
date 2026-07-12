@@ -83,6 +83,7 @@ import {
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
+import { latestReportedProgress } from "@/chat/runtime/report-progress";
 
 const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 
@@ -395,9 +396,17 @@ export async function continueSlackAgentRun(
           return false;
         }
 
+        const turnMessages =
+          activeSessionRecord.turnStartMessageIndex === undefined
+            ? []
+            : activeSessionRecord.piMessages.slice(
+                activeSessionRecord.turnStartMessageIndex,
+              );
+
         return {
           messageText: userMessage.text,
           messageTs: getTurnUserSlackMessageTs(userMessage),
+          initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             input: {
               conversationContext,

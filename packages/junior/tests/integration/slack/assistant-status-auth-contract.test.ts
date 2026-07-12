@@ -115,7 +115,7 @@ describe("Slack contract: assistant status auth", () => {
       }),
     );
 
-    status.start();
+    status.update();
     await flushAsyncWork();
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
@@ -149,7 +149,7 @@ describe("Slack contract: assistant status auth", () => {
       }),
     );
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
     reporter.update(makeAssistantStatus("searching", "sources"));
 

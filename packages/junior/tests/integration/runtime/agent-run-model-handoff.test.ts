@@ -10,6 +10,8 @@ const observations = vi.hoisted(() => ({
   providerCalls: 0,
   requestedProfile: undefined as string | null | undefined,
   summaryCalls: 0,
+  handoffStatusBeforeSummary: false,
+  statuses: [] as string[],
   textDeltas: [] as string[],
 }));
 
@@ -35,6 +37,8 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
       },
     }),
     completeText: async () => {
+      observations.handoffStatusBeforeSummary =
+        observations.statuses.includes("Switching models");
       observations.summaryCalls += 1;
       return { text: "Implement the requested change and verify it." };
     },
@@ -151,6 +155,8 @@ describe("executeAgentRun model handoff", () => {
     observations.providerCalls = 0;
     observations.requestedProfile = undefined;
     observations.summaryCalls = 0;
+    observations.handoffStatusBeforeSummary = false;
+    observations.statuses = [];
     observations.textDeltas = [];
     await disconnectStateAdapter();
   });
@@ -179,6 +185,9 @@ describe("executeAgentRun model handoff", () => {
         },
       },
       observers: {
+        onStatus: ({ text }) => {
+          observations.statuses.push(text);
+        },
         onTextDelta: (text) => {
           observations.textDeltas.push(text);
         },
@@ -203,6 +212,7 @@ describe("executeAgentRun model handoff", () => {
       observations.initialToolNames.filter((name) => name !== "handoff"),
     );
     expect(observations.summaryCalls).toBe(1);
+    expect(observations.handoffStatusBeforeSummary).toBe(true);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
@@ -256,6 +266,31 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
+  });
+
+  it("keeps handoff independent from status observer failures", async () => {
+    observations.requestedProfile = null;
+    const conversationId = "local:test:model-handoff-status-failure";
+    const outcome = await executeAgentRun({
+      input: { messageText: "Implement the multi-file refactor." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        correlation: {
+          conversationId,
+          turnId: "turn-model-handoff-status-failure",
+        },
+      },
+      observers: {
+        onStatus: () => {
+          throw new Error("status unavailable");
+        },
+      },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
   });
 
   it("hands off to a selected named model profile", async () => {

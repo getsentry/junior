@@ -12,9 +12,10 @@ const STATUS_ROTATION_INTERVAL_MS = 30_000;
 export type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface AssistantStatusSession {
-  start: (status?: AssistantStatusSpec) => void;
-  stop: () => Promise<void>;
-  update: (status: AssistantStatusSpec) => void;
+  /** Activate or replace the loading state; omit status to show generic loading. */
+  update: (status?: AssistantStatusSpec) => void;
+  /** Stop refresh scheduling and clear the loading state. */
+  clear: () => Promise<void>;
 }
 
 /**
@@ -59,7 +60,7 @@ export function createAssistantStatusScheduler(args: {
 
   const enqueueStatusUpdate = (task: () => Promise<void>): Promise<void> => {
     // Status writes are best effort, but they still need strict ordering so a
-    // slow "thinking" write cannot land after stop() already cleared the UI.
+    // slow "thinking" write cannot land after clear() already cleared the UI.
     const request = inflightStatusUpdate
       .catch(() => undefined)
       .then(async () => {
@@ -172,17 +173,7 @@ export function createAssistantStatusScheduler(args: {
   };
 
   return {
-    start(status?: AssistantStatusSpec) {
-      active = true;
-      clearPending();
-      if (status) {
-        void postRenderedStatus(status);
-        return;
-      }
-      currentKey = "initial";
-      void postStatus(getInitialStatusText(), loadingMessages);
-    },
-    async stop() {
+    async clear() {
       active = false;
       clearPending();
       if (rotationTimer) {
@@ -192,8 +183,22 @@ export function createAssistantStatusScheduler(args: {
       currentKey = "";
       await postStatus("");
     },
-    update(status: AssistantStatusSpec) {
+    update(status?: AssistantStatusSpec) {
       if (!active) {
+        active = true;
+        clearPending();
+        if (status) {
+          void postRenderedStatus(status);
+          return;
+        }
+        currentKey = "initial";
+        void postStatus(getInitialStatusText(), loadingMessages);
+        return;
+      }
+      if (!status) {
+        clearPending();
+        currentKey = "initial";
+        void postStatus(getInitialStatusText(), loadingMessages);
         return;
       }
       const presentation = renderAssistantStatus({

@@ -501,6 +501,19 @@ async function executeAgentRunInPrivacyContext(
               const handoffThinkingLevel = toAgentThinkingLevel(
                 thinkingSelection!.thinkingLevel,
               );
+              void (async () => {
+                await observers.onStatus?.({ text: "Switching models" });
+              })().catch((error) => {
+                logWarn(
+                  "assistant_status_observer_failed",
+                  {},
+                  {
+                    "exception.message":
+                      error instanceof Error ? error.message : String(error),
+                  },
+                  "Failed to report assistant status",
+                );
+              });
               const handoffMessages = await compactContextForHandoff(
                 {
                   conversationContext: input.conversationContext,

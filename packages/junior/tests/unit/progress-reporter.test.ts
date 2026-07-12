@@ -73,7 +73,7 @@ async function flushAsyncWork(): Promise<void> {
 }
 
 describe("createAssistantStatusScheduler", () => {
-  it("posts the first generic loading message on start", async () => {
+  it("posts the first generic loading message on update", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     const reporter = createAssistantStatusScheduler({
@@ -87,13 +87,13 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     expect(statuses).toEqual([firstGenericStatus]);
   });
 
-  it("clears the assistant status when stopped", async () => {
+  it("clears the assistant status", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     const reporter = createAssistantStatusScheduler({
@@ -107,15 +107,15 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
-    await reporter.stop();
+    await reporter.clear();
 
     expect(statuses).toEqual([firstGenericStatus, ""]);
   });
 
-  it("does not wait for the initial status request before start() returns", async () => {
+  it("does not wait for the initial status request before update() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveThinking: (() => void) | undefined;
     const reporter = createAssistantStatusScheduler({
@@ -134,7 +134,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    const result = reporter.start();
+    const result = reporter.update();
     expect(result).toBeUndefined();
     await flushAsyncWork();
 
@@ -161,7 +161,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     scheduler.advance(1200);
@@ -187,10 +187,10 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
-    await reporter.stop();
+    await reporter.clear();
 
     expect(calls).toEqual([
       {
@@ -218,7 +218,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     reporter.update(makeAssistantStatus("searching"));
@@ -243,7 +243,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     reporter.update(makeAssistantStatus("reading", "source files"));
@@ -270,7 +270,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     reporter.update(makeAssistantStatus("searching", "docs"));
@@ -302,12 +302,12 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
     // Initial playful status is now in flight but blocked
 
-    const endPromise = reporter.stop();
-    // stop() should wait for the inflight status before sending ""
+    const endPromise = reporter.clear();
+    // clear() should wait for the inflight status before sending ""
 
     // Unblock the slow initial status call
     resolveThinking!();
@@ -317,7 +317,7 @@ describe("createAssistantStatusScheduler", () => {
     expect(statuses).toEqual([firstGenericStatus, ""]);
   });
 
-  it("clears after the latest visible status when stopping", async () => {
+  it("clears after the latest visible status", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     const reporter = createAssistantStatusScheduler({
@@ -331,14 +331,14 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     reporter.update(makeAssistantStatus("reviewing"));
     scheduler.advance(1200);
     await flushAsyncWork();
 
-    await reporter.stop();
+    await reporter.clear();
 
     expect(statuses).toEqual([firstGenericStatus, secondReviewingStatus, ""]);
   });
@@ -357,7 +357,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     scheduler.advance(30_000);
@@ -380,7 +380,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     scheduler.advance(1200);
@@ -413,7 +413,7 @@ describe("createAssistantStatusScheduler", () => {
       random: () => 0.9,
     });
 
-    reporter.start();
+    reporter.update();
     await flushAsyncWork();
 
     reporter.update(makeAssistantStatus("reviewing"));

@@ -1018,7 +1018,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   channelId,
                   runId,
                 },
-                onCompactionStart: () => status.start(compactingStatus),
+                onCompactionStart: () => status.update(compactingStatus),
                 piMessages,
               });
             if (compaction.compacted) {
@@ -1077,7 +1077,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
 
-          status.start();
+          status.update();
           const assistantTitleTask = maybeUpdateAssistantTitle({
             assistantThreadContext,
             assistantUserName: botConfig.userName,
@@ -1726,7 +1726,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               );
             }
           }
-          await status.stop();
+          await status.clear();
         }
       },
     );

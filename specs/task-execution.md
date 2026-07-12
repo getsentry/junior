@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-01
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-12
 
 ## Purpose
 
@@ -607,9 +607,9 @@ Slack remains one delivery implementation.
 Rules specific to the mailbox worker:
 
 1. Slack HTTP ingress returns quickly after durable mailbox append and enqueue.
-2. Assistant status should continue across cooperative yields by persisting the
-   latest progress/status state and re-establishing it when a later worker
-   resumes.
+2. Assistant status should continue across cooperative yields by
+   re-establishing the active turn's latest `reportProgress` update from
+   durable Pi history when a later worker resumes.
 3. Routine cooperative yields must not post automatic "continuing in the
    background" thread messages.
 4. `reportProgress` and assistant status are the progress surface for long work.

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-07-11
-- Last Edited: 2026-07-11
+- Last Edited: 2026-07-12
 
 ## Purpose
 
@@ -107,6 +107,10 @@ The target profile and model are resolved before summarization. Summary
 generation and epoch persistence happen before handoff succeeds. If either
 fails, no replacement epoch becomes active and Pi receives a normal tool error.
 The active abort signal is checked again immediately before persistence.
+
+Before summary generation begins, runtime reports `Switching models` through
+the normal assistant progress surface. This is deterministic runtime progress,
+not a model-authored `reportProgress` tool call.
 
 Junior prepares the replacement runtime context, target model, toolset, and
 usage bookkeeping before opening the epoch. The epoch commit is the final

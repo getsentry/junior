@@ -25,6 +25,7 @@ import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
+  type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status";
 import {
   buildSlackReplyFooter,
@@ -136,6 +137,7 @@ interface ResumeSlackTurnArgs {
   replyContext?: ResumeReplyContext;
   lockKey?: string;
   initialText?: string;
+  initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
@@ -406,7 +408,7 @@ export async function resumeSlackTurn(
         runArgs.initialText,
       );
     }
-    status.start();
+    status.update(runArgs.initialStatus);
 
     const replyContext = createResumeReplyContext(runArgs, status);
     const replyPromise = runArgs.agentRunner.run(replyContext);
@@ -431,7 +433,7 @@ export async function resumeSlackTurn(
     if (outcome.status !== "completed") {
       // Expected pauses defer their handlers until the lock is released,
       // mirroring the failure path below.
-      await status.stop();
+      await status.clear();
       const onAuthPause = runArgs.onAuthPause;
       const onTimeoutPause = runArgs.onTimeoutPause;
       if (outcome.status === "awaiting_auth" && onAuthPause) {
@@ -471,7 +473,7 @@ export async function resumeSlackTurn(
         context: getResumeLogContext(runArgs, lockKey),
       });
 
-      await status.stop();
+      await status.clear();
       const footer = buildSlackReplyFooter({
         conversationId: getResumeConversationId(runArgs, lockKey),
       });
@@ -541,7 +543,7 @@ export async function resumeSlackTurn(
       }
     }
   } catch (error) {
-    await status.stop();
+    await status.clear();
 
     if (finalReplyDelivered) {
       postDeliveryCommitError = error;

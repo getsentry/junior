@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-07-01
+- Last Edited: 2026-07-12
 
 ## Purpose
 
@@ -100,6 +100,7 @@ Current contract:
 11. While a turn is active, Junior uses a stable generic `status` string for Slack's assistant loading state and changes the user-visible progress copy through `loading_messages`.
 12. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to finalized reply artifacts and explicit auth-pause acknowledgements.
 13. If automatic pre-turn compaction is needed, Junior must show explicit compaction progress before the compaction LLM call and return to normal turn status before agent execution begins.
+14. A resumed worker should restore the active turn's latest explicit `reportProgress` update instead of replacing it with generic loading copy.
 
 Status is the only in-flight progress surface required by the contract. Visible assistant reply text is posted only after the turn result is finalized and delivery has been planned.
 
