@@ -2,6 +2,7 @@ import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
+import { peoplePath } from "../format";
 import { cn } from "../styles";
 import type { Identity } from "../types";
 
@@ -101,7 +102,7 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
           <Link
             className="mt-1 flex items-center gap-2.5 px-2.5 py-2 text-[0.82rem] font-semibold text-[#d6d6d6] no-underline transition-colors hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white focus-visible:outline-none"
             onClick={() => setOpen(false)}
-            to={`/people/${encodeURIComponent(email)}`}
+            to={peoplePath(email)}
           >
             <UserRound aria-hidden="true" size={16} strokeWidth={2} />
             My profile
