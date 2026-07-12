@@ -80,11 +80,15 @@ are an exposure surface governed by the same visibility classification.
 
 - A conversation's transcript is always readable from that conversation's own
   context.
-- Cross-conversation reads require persisted destination visibility of
-  `public` and the same provider tenant (Slack workspace) as the requesting
-  context.
-- Conversations with missing destinations or non-public visibility are not
-  readable across contexts.
+- Cross-conversation search is available only from a source-confirmed public
+  Slack context. It may read conversations with persisted `public` visibility
+  in the same provider tenant (Slack workspace), including other public
+  channels in that workspace.
+- Private channels, group DMs, and DMs cannot read other conversations,
+  including earlier threads in the same destination. Their current
+  conversation remains readable from its own context.
+- Conversations with missing destinations, missing/unknown visibility, or
+  non-public visibility are not readable across contexts.
 - Local and Slack contexts must not read each other's transcripts.
 
 ## Dashboard Reporting
@@ -161,8 +165,8 @@ aged out. They are distinct and must present distinctly.
 - Unknown conversation ids are treated as private.
 - Conversations Slack reports as private (`channel_type: group` or
   `is_private: true`) are classified private regardless of a `C` id prefix.
-- Cross-context transcript reads are denied unless the destination has
-  persisted public visibility.
+- Cross-context transcript reads are denied unless both the requesting source
+  and stored destination are public and belong to the same provider tenant.
 
 ## Related Specs
 

@@ -1,0 +1,1 @@
+CREATE INDEX "junior_conversation_messages_search_idx" ON "junior_conversation_messages" USING gin (to_tsvector('english', "text"));

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
@@ -30,6 +31,10 @@ export const juniorConversationMessages = pgTable(
     index("junior_conversation_messages_activity_idx").on(
       table.conversationId,
       table.createdAt,
+    ),
+    index("junior_conversation_messages_search_idx").using(
+      "gin",
+      sql`to_tsvector('english', ${table.text})`,
     ),
   ],
 );

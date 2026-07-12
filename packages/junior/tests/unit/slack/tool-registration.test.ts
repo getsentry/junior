@@ -17,8 +17,12 @@ const noopEgress = {
 function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
 function ctx(
   channelId: string,
+  sourceType?: "priv" | "pub",
 ): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
-function ctx(channelId?: string): ToolRuntimeContext {
+function ctx(
+  channelId?: string,
+  sourceType?: "priv" | "pub",
+): ToolRuntimeContext {
   if (!channelId) {
     return {
       destination: {
@@ -32,6 +36,7 @@ function ctx(channelId?: string): ToolRuntimeContext {
   }
 
   return {
+    conversationId: `slack:${channelId}:1700000000.100000`,
     destination: {
       platform: "slack" as const,
       teamId: "T123",
@@ -40,8 +45,7 @@ function ctx(channelId?: string): ToolRuntimeContext {
     source: createSlackSource({
       teamId: "T123",
       channelId,
-
-      type: "priv",
+      type: sourceType ?? (channelId.startsWith("C") ? "pub" : "priv"),
     }),
     egress: noopEgress,
     sandbox: noopSandbox,
@@ -71,6 +75,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).not.toHaveProperty("searchConversationHistory");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -81,6 +86,13 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).toHaveProperty("searchConversationHistory");
+  });
+
+  it("does not register conversation search for a source-confirmed private C channel", () => {
+    const tools = createTools([], {}, ctx("C12345", "priv"));
+
+    expect(tools).not.toHaveProperty("searchConversationHistory");
   });
 
   it("registers tools when runtime channel ids are Junior Slack references", () => {

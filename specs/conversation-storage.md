@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-11
-- Last Edited: 2026-07-11
+- Last Edited: 2026-07-12
 
 ## Purpose
 
@@ -109,6 +109,9 @@ The feature ports are:
   reads (children excluded).
 - `ConversationMessageStore` — record and read visible messages; set the
   `replied_at` delivery mark.
+- `ConversationSearchStore` — search retained public visible messages within
+  one runtime-authorized provider tenant, excluding the active conversation;
+  results are bounded to one relevant excerpt per prior conversation.
 - `AgentStepStore` — append agent steps under the conversation lease, read a
   conversation's steps in `seq` order, and read the current context-epoch Pi
   projection.
@@ -185,6 +188,11 @@ conversation key and `message_id` is the source-scoped message identity (Slack
 - Reply policy, channel-context assembly, and reporting read visible messages
   through `ConversationMessageStore`; no transcript data is read from
   `thread-state`.
+- Model-facing prior-conversation search reads only visible messages through
+  `ConversationSearchStore`. It uses PostgreSQL full-text search, accepts one
+  runtime-derived public provider-tenant scope instead of caller-supplied
+  destination selectors, requires persisted public visibility, searches only
+  user and assistant roles, and never searches raw agent-step/tool payloads.
 
 ### Agent Step History
 

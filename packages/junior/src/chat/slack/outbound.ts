@@ -56,7 +56,8 @@ function requireSlackMessageText(text: string, action: string): string {
   return text;
 }
 
-async function getPermalinkBestEffort(args: {
+/** Resolve a Slack message permalink without making read-only workflows fail on lookup errors. */
+export async function getSlackMessagePermalink(args: {
   channelId: SlackChannelId;
   messageTs: SlackMessageTs;
 }): Promise<string | undefined> {
@@ -134,7 +135,7 @@ export async function postSlackMessage(input: {
     ts: messageTs,
     ...(input.includePermalink
       ? {
-          permalink: await getPermalinkBestEffort({
+          permalink: await getSlackMessagePermalink({
             channelId,
             messageTs,
           }),
