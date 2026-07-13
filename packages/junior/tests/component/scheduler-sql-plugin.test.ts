@@ -181,6 +181,23 @@ INSERT INTO junior_scheduler_tasks (
           },
         ]),
       ).resolves.toEqual({ existing: 1, migrated: 1, scanned: 2 });
+      const migrations = readMigrationFiles({
+        migrationsFolder: schedulerMigrationsDir(),
+      });
+      const migrationRows = await fixture.sql.query<{
+        createdAt: string;
+        hash: string;
+      }>(`
+SELECT hash, created_at::text AS "createdAt"
+FROM drizzle.${migrationTable!.tablename}
+ORDER BY created_at
+`);
+      expect(migrationRows).toEqual(
+        migrations.map((migration) => ({
+          createdAt: String(migration.folderMillis),
+          hash: migration.hash,
+        })),
+      );
       const [migratedTask] = await fixture.sql.query<{ record: unknown }>(
         `SELECT record FROM junior_scheduler_tasks WHERE id = $1`,
         [legacyTask.id],
@@ -189,6 +206,24 @@ INSERT INTO junior_scheduler_tasks (
         credentialMode: "system",
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          {
+            dir: schedulerMigrationsDir(),
+            pluginName: "scheduler",
+          },
+        ]),
+      ).resolves.toEqual({ existing: 2, migrated: 0, scanned: 2 });
+      await expect(
+        fixture.sql.query<{
+          createdAt: string;
+          hash: string;
+        }>(`
+SELECT hash, created_at::text AS "createdAt"
+FROM drizzle.${migrationTable!.tablename}
+ORDER BY created_at
+`),
+      ).resolves.toEqual(migrationRows);
     } finally {
       await fixture.close();
     }
