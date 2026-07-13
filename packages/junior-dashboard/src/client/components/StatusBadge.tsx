@@ -38,7 +38,7 @@ function statusLabel(status: VisualStatus): string {
 
 function statusBadgeClass(status: VisualStatus): string {
   return cn(
-    "border px-1.5 py-0.5 text-[0.68rem] font-bold uppercase leading-none",
+    "rounded border px-1.5 py-0.5 text-[0.68rem] font-bold uppercase leading-none",
     status === "active" &&
       "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
     status === "failed" && "border-rose-400/25 bg-rose-400/10 text-rose-300",

@@ -56,16 +56,16 @@ export function Transcript(props: {
           value={view}
           onChange={setView}
         />
-        <div className="relative mb-4 mt-2">
+        <div className="relative mb-5 mt-3">
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555]"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/25"
             size={13}
             strokeWidth={2.5}
           />
           <input
             aria-label="Search transcript"
-            className="h-8 w-full rounded-md border border-[#beaaff]/20 bg-white/[0.04] pl-8 pr-3 text-[0.82rem] text-[#d6d6d6] outline-none placeholder:text-[#555] focus:border-[#beaaff]/40 focus:ring-1 focus:ring-[#beaaff]/20"
+            className="h-10 w-full rounded-lg border border-white/[0.08] bg-black/20 pl-9 pr-3 font-mono text-[0.74rem] text-white/75 outline-none transition-colors placeholder:text-white/20 hover:border-white/15 focus:border-cyan-300/35 focus:ring-2 focus:ring-cyan-300/10"
             placeholder="Search transcript…"
             type="search"
             value={search}
@@ -107,7 +107,7 @@ function JumpToLatestButton(props: {
     <div className="fixed bottom-4 right-4 z-20 md:bottom-6 md:right-8">
       <Button
         aria-label={label}
-        className="relative border-[#beaaff]/45 bg-[#111] shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:border-[#d8ccff]/70"
+        className="relative rounded-lg border-cyan-300/30 bg-[#0b181a] shadow-[0_6px_24px_rgba(0,0,0,0.36)] hover:border-cyan-200/60"
         onClick={props.onClick}
         size="icon"
         title={label}

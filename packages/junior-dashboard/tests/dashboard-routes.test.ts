@@ -431,6 +431,27 @@ describe("dashboard routes", () => {
     expect(await response.text()).not.toMatch(/\bfrom\s*["']lucide-react["']/);
   });
 
+  it("serves the official dashboard avatar with revalidation", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/avatar.png"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=0, must-revalidate",
+    );
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
+  });
+
   it("serves the dashboard favicon without auth noise", async () => {
     const app = dashboard(null);
 

@@ -48,6 +48,7 @@ export type {
   ActorProfileReport,
   ActorSummaryReport,
   ActorTotalsReport,
+  PeopleActivityDayReport,
 } from "./people/schema";
 export {
   healthReportSchema,

@@ -60,17 +60,20 @@ export function ConversationPage(props: {
     : undefined;
 
   return (
-    <div className="w-full min-w-0 px-4 py-4 md:px-6">
+    <div className="w-full min-w-0 px-4 py-5 md:px-7 md:py-6">
       <section className="min-w-0">
-        <header className="mb-3 grid gap-2 border-l-4 border-[#beaaff]/70 pl-4 md:grid-cols-[minmax(0,1fr)_auto]">
+        <header className="relative mb-5 grid gap-3 overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.025] p-5 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
+            <div className="mb-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+              Conversation
+            </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h2 className="m-0 text-2xl font-bold leading-tight tracking-normal">
+              <h2 className="m-0 font-display text-2xl font-medium leading-tight tracking-[-0.03em] md:text-[1.75rem]">
                 {conversationDisplayTitle(conversation)}
               </h2>
               <StatusBadge status={visualStatus} />
             </div>
-            <div className="mt-1 break-words text-[0.86rem] leading-snug text-[#b8b8b8]">
+            <div className="mt-2 break-words font-mono text-[0.68rem] leading-snug text-white/40">
               <ConversationIdentity
                 conversation={conversation}
                 conversationId={conversationId}
@@ -78,7 +81,7 @@ export function ConversationPage(props: {
               />
             </div>
           </div>
-          <div className="flex min-w-0 flex-col items-start gap-2 self-start text-[0.8rem] leading-snug text-[#b8b8b8] md:items-end md:text-right">
+          <div className="flex min-w-0 flex-col items-start gap-2 self-start font-mono text-[0.65rem] leading-snug text-white/35 md:items-end md:text-right">
             <div className="break-words">
               updated{" "}
               {formatRelativeTime(
@@ -92,7 +95,7 @@ export function ConversationPage(props: {
         {detail.isPending ? (
           <TranscriptLoading />
         ) : detail.error ? (
-          <div className="border border-white/10 bg-[#050505] p-4 text-[0.9rem] leading-relaxed text-[#b8b8b8]">
+          <div className="rounded-lg border border-white/[0.07] bg-white/[0.025] p-4 font-mono text-[0.76rem] leading-relaxed text-white/45">
             {detail.error.message}
           </div>
         ) : (
@@ -255,7 +258,7 @@ function ConversationStats(props: {
 
   return (
     <MetricList
-      className="col-span-full break-words text-[0.76rem] leading-[1.45] text-[#888]"
+      className="col-span-full mt-1 break-words border-t border-white/[0.07] pt-3 text-[0.72rem] leading-[1.5] text-white/45"
       items={stats}
     />
   );

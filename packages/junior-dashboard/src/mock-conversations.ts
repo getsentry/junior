@@ -3,10 +3,15 @@ import type {
   ConversationStatsReport,
 } from "@sentry/junior/api/schema";
 import type {
+  ActorActivityDayReport,
+  ActorDirectoryReport,
   ActorIdentity,
+  ActorProfileReport,
+  ActorSummaryReport,
   ConversationFeed,
   ConversationSummaryReport,
   ConversationUsage,
+  PeopleActivityDayReport,
 } from "@sentry/junior/api/schema";
 import type {
   ConversationDetailReport,
@@ -41,6 +46,8 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const PEOPLE_ACTIVITY_DAYS = 90;
+const PEOPLE_PROFILE_ACTIVITY_DAYS = 366;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
   "CQA123",
   "CQA456",
@@ -649,7 +656,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             id: editFileToolId,
             name: "editFile",
             input: {
-              path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+              path: "packages/junior-dashboard/src/client/pages/people/PeoplePage.tsx",
               operations: [
                 {
                   action: "insert",
@@ -696,7 +703,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             output: {
               filesChanged: [
                 {
-                  path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+                  path: "packages/junior-dashboard/src/client/pages/people/PeoplePage.tsx",
                   added: 216,
                   removed: 0,
                 },
@@ -814,7 +821,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         createdAt: iso(nowMs, -7 * 60_000 + 20_000),
         status: "completed",
         args: {
-          path: "packages/junior-dashboard/src/client/pages/PeoplePage.tsx",
+          path: "packages/junior-dashboard/src/client/pages/people/PeoplePage.tsx",
         },
       }),
       mockToolActivity({
@@ -965,6 +972,213 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
     source: "conversation_index",
     generatedAt: iso(nowMs),
     conversations: mockConversations(nowMs).map(summaryFromConversation),
+  };
+}
+
+function mockPeopleActivityDays(
+  nowMs: number,
+  conversations: ConversationSummaryReport[],
+): PeopleActivityDayReport[] {
+  const sparse = new Map<
+    string,
+    { actors: Set<string>; conversations: number }
+  >();
+  for (const conversation of conversations) {
+    const email = conversation.actorIdentity?.email?.trim().toLowerCase();
+    if (!email) continue;
+    const date = conversation.lastSeenAt.slice(0, 10);
+    const day = sparse.get(date) ?? { actors: new Set(), conversations: 0 };
+    day.actors.add(email);
+    day.conversations += 1;
+    sparse.set(date, day);
+  }
+
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (PEOPLE_ACTIVITY_DAYS - 1));
+  const days: PeopleActivityDayReport[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    const day = sparse.get(date);
+    days.push({
+      activePeople: day?.actors.size ?? 0,
+      conversations: day?.conversations ?? 0,
+      date,
+    });
+  }
+  return days;
+}
+
+/** Build mock People analytics from the explicit visual-QA conversation feed. */
+export function readMockPeopleDirectory(): ActorDirectoryReport {
+  const nowMs = Date.now();
+  const conversations = mockConversationFeed(nowMs).conversations;
+  const people = new Map<string, ActorSummaryReport & { dates: Set<string> }>();
+  for (const conversation of conversations) {
+    const actor = conversation.actorIdentity;
+    const email = actor?.email?.trim().toLowerCase();
+    if (!actor || !email) continue;
+    const existing = people.get(email) ?? {
+      active: 0,
+      activeDays: 0,
+      conversations: 0,
+      dates: new Set<string>(),
+      durationMs: 0,
+      failed: 0,
+      firstSeenAt: conversation.startedAt,
+      lastSeenAt: conversation.lastSeenAt,
+      actor: { ...actor, email },
+    };
+    existing.active += conversation.status === "active" ? 1 : 0;
+    existing.conversations += 1;
+    existing.dates.add(conversation.lastSeenAt.slice(0, 10));
+    existing.activeDays = existing.dates.size;
+    existing.durationMs += conversation.cumulativeDurationMs;
+    existing.failed += conversation.status === "failed" ? 1 : 0;
+    existing.firstSeenAt =
+      Date.parse(conversation.startedAt) < Date.parse(existing.firstSeenAt)
+        ? conversation.startedAt
+        : existing.firstSeenAt;
+    existing.lastSeenAt =
+      Date.parse(conversation.lastSeenAt) > Date.parse(existing.lastSeenAt)
+        ? conversation.lastSeenAt
+        : existing.lastSeenAt;
+    const tokens = usageTokenTotal(conversation.cumulativeUsage);
+    if (tokens !== undefined) {
+      existing.tokens = (existing.tokens ?? 0) + tokens;
+    }
+    people.set(email, existing);
+  }
+  const activityDays = mockPeopleActivityDays(nowMs, conversations);
+  return {
+    activityDays,
+    generatedAt: iso(nowMs),
+    people: [...people.values()]
+      .map(({ dates: _dates, ...person }) => person)
+      .sort(
+        (left, right) =>
+          Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),
+      ),
+    source: "conversation_index",
+    windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
+    windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
+  };
+}
+
+/** Build one mock People profile from the explicit visual-QA conversation feed. */
+export function readMockPeopleProfile(
+  email: string,
+): ActorProfileReport | undefined {
+  const nowMs = Date.now();
+  const normalizedEmail = email.trim().toLowerCase();
+  const conversations = mockConversationFeed(nowMs).conversations.filter(
+    (conversation) =>
+      conversation.actorIdentity?.email?.trim().toLowerCase() ===
+      normalizedEmail,
+  );
+  const actor = conversations[0]?.actorIdentity;
+  if (!actor?.email) return undefined;
+
+  const totals: ActorProfileReport["totals"] = {
+    active: 0,
+    activeDays: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+  };
+  const activeDates = new Set<string>();
+  const sparseDays = new Map<string, ActorActivityDayReport>();
+  const locations = new Map<string, ConversationStatsItem>();
+  const surfaces = new Map<string, ConversationStatsItem>();
+
+  for (const conversation of conversations) {
+    totals.active += conversation.status === "active" ? 1 : 0;
+    totals.conversations += 1;
+    totals.durationMs += conversation.cumulativeDurationMs;
+    totals.failed += conversation.status === "failed" ? 1 : 0;
+    const tokens = usageTokenTotal(conversation.cumulativeUsage);
+    if (tokens !== undefined) totals.tokens = (totals.tokens ?? 0) + tokens;
+
+    const date = conversation.lastSeenAt.slice(0, 10);
+    activeDates.add(date);
+    const day = sparseDays.get(date) ?? {
+      active: 0,
+      conversations: 0,
+      date,
+      durationMs: 0,
+      failed: 0,
+    };
+    day.active += conversation.status === "active" ? 1 : 0;
+    day.conversations += 1;
+    day.durationMs += conversation.cumulativeDurationMs;
+    day.failed += conversation.status === "failed" ? 1 : 0;
+    if (tokens !== undefined) day.tokens = (day.tokens ?? 0) + tokens;
+    sparseDays.set(date, day);
+
+    const place = locationLabel(conversation);
+    const location = locations.get(place) ?? emptyStatsItem(place);
+    addConversationStats(location, conversation);
+    locations.set(place, location);
+
+    const surfaceLabel =
+      conversation.surface === "api"
+        ? "API"
+        : `${conversation.surface.charAt(0).toUpperCase()}${conversation.surface.slice(1)}`;
+    const surface = surfaces.get(surfaceLabel) ?? emptyStatsItem(surfaceLabel);
+    addConversationStats(surface, conversation);
+    surfaces.set(surfaceLabel, surface);
+  }
+  totals.activeDays = activeDates.size;
+
+  const activityDays: ActorActivityDayReport[] = [];
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  for (
+    let offset = PEOPLE_PROFILE_ACTIVITY_DAYS - 1;
+    offset >= 0;
+    offset -= 1
+  ) {
+    const cursor = new Date(end);
+    cursor.setUTCDate(cursor.getUTCDate() - offset);
+    const date = cursor.toISOString().slice(0, 10);
+    activityDays.push(
+      sparseDays.get(date) ?? {
+        active: 0,
+        conversations: 0,
+        date,
+        durationMs: 0,
+        failed: 0,
+      },
+    );
+  }
+
+  return {
+    activityDays,
+    generatedAt: iso(nowMs),
+    locations: statsItems(locations).map(
+      ({ costUsd: _costUsd, ...item }) => item,
+    ),
+    recentConversations: conversations.map(
+      ({
+        cumulativeUsage: _usage,
+        sentryTraceUrl: _url,
+        traceId: _trace,
+        ...item
+      }) => item,
+    ),
+    actor: { ...actor, email: normalizedEmail },
+    source: "conversation_index",
+    surfaces: statsItems(surfaces).map(
+      ({ costUsd: _costUsd, ...item }) => item,
+    ),
+    totals,
+    windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
+    windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
   };
 }
 

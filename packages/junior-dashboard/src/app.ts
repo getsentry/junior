@@ -12,6 +12,9 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
+  personParamsSchema,
+  actorDirectoryReportSchema,
+  actorProfileReportSchema,
   subagentParamsSchema,
 } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -21,7 +24,11 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { pluginApiRouteRequestContextSchema } from "@sentry/junior-plugin-api";
 import { dashboardConfigSchema, dashboardIdentitySchema } from "./api/schema";
-import { dashboardClientAsset, dashboardTailwindAsset } from "./assets";
+import {
+  dashboardAvatarHeaderAsset,
+  dashboardClientAsset,
+  dashboardTailwindAsset,
+} from "./assets";
 import {
   createDashboardAuth,
   resolveGoogleHostedDomainHint,
@@ -37,6 +44,8 @@ import {
   readMockConversationSubagent,
   readMockLocationDetail,
   readMockLocationDirectory,
+  readMockPeopleDirectory,
+  readMockPeopleProfile,
 } from "./mock-conversations";
 import { resolveDashboardBaseURL } from "./url";
 
@@ -44,6 +53,7 @@ const DEFAULT_BASE_PATH = "/";
 const DEFAULT_AUTH_PATH = "/api/auth";
 const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
+const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 const LOGIN_NEXT_PARAM = "next";
 
 export interface JuniorDashboardOptions {
@@ -382,6 +392,19 @@ function readDashboardTailwind(): string {
   );
 }
 
+function readDashboardAvatarHeader(): ArrayBuffer {
+  if (dashboardAvatarHeaderAsset) {
+    return Uint8Array.from(Buffer.from(dashboardAvatarHeaderAsset, "base64"))
+      .buffer;
+  }
+
+  const assetUrl = new URL("./assets/junior-avatar-line.png", import.meta.url);
+  if (!existsSync(assetUrl)) {
+    throw new Error("Junior dashboard avatar asset was not found");
+  }
+  return Uint8Array.from(readFileSync(assetUrl)).buffer;
+}
+
 function dashboardPagePaths(
   basePath: string,
 ): Array<{ nested?: boolean; path: string }> {
@@ -648,6 +671,18 @@ export function createDashboardApp(
     app.all(`${prefix}/*`, handler);
   }
   if (options.mockConversations) {
+    app.get("/api/people", () => {
+      return Response.json(
+        actorDirectoryReportSchema.parse(readMockPeopleDirectory()),
+      );
+    });
+    app.get("/api/people/:email", (c) => {
+      const { email } = personParamsSchema.parse(c.req.param());
+      const report = readMockPeopleProfile(email);
+      return report
+        ? Response.json(actorProfileReportSchema.parse(report))
+        : Response.json({ error: "Person not found." }, { status: 404 });
+    });
     app.get("/api/locations", () => {
       return Response.json(
         locationDirectoryReportSchema.parse(readMockLocationDirectory()),
@@ -719,6 +754,14 @@ export function createDashboardApp(
       headers: {
         "cache-control": "no-store",
         "content-type": "application/javascript; charset=utf-8",
+      },
+    });
+  });
+  app.get(DASHBOARD_AVATAR_HEADER_PATH, () => {
+    return new Response(readDashboardAvatarHeader(), {
+      headers: {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "image/png",
       },
     });
   });

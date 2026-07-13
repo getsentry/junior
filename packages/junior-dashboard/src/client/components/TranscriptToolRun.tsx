@@ -90,7 +90,7 @@ function formatRunRevealLabel(entries: RenderedToolRunEntry[]): string {
 
 function ToolRunReveal(props: { entries: RenderedToolRunEntry[] }) {
   return (
-    <summary className="group flex w-full cursor-pointer list-none items-center gap-2 py-1.5 text-left font-mono text-[0.78rem] leading-tight text-[#888] transition-colors hover:text-[#d6d6d6] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55 [&::-webkit-details-marker]:hidden">
+    <summary className="group flex w-full cursor-pointer list-none items-center gap-2 py-1.5 text-left font-mono text-[0.78rem] leading-tight text-white/40 transition-colors hover:text-white/80 focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 [&::-webkit-details-marker]:hidden">
       <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />
       <span className="shrink-0">{formatRunRevealLabel(props.entries)}</span>
       <span className="h-px min-w-4 flex-1 bg-white/10 transition-colors group-hover:bg-white/20" />

@@ -48,13 +48,13 @@ export function TranscriptMarkdown(props: { text: string }) {
 
   if (!highlighted.data) {
     return (
-      <HighlightedCodeFallback>
+      <HighlightedCodeFallback variant="prose">
         {renderMarkdownInline(props.text, links)}
       </HighlightedCodeFallback>
     );
   }
 
-  return <HighlightedCodeHtml html={highlighted.data} />;
+  return <HighlightedCodeHtml html={highlighted.data} variant="prose" />;
 }
 
 function renderMarkdownInline(

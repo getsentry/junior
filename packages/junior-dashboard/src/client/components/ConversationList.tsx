@@ -10,7 +10,6 @@ import type { Conversation, VisualStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
-import { statusBorderClass } from "./statusStyles";
 
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {
@@ -32,7 +31,7 @@ export function ConversationList(props: {
   return (
     <div className="min-w-0" role="table">
       <div
-        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/10 bg-[#050505] px-3 py-2 text-[0.76rem] font-semibold uppercase leading-none text-[#888] max-md:hidden"
+        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/30 max-md:hidden"
         role="row"
       >
         <div>Conversation</div>
@@ -89,9 +88,8 @@ function conversationRecordClass(
   selected: boolean | undefined,
 ): string {
   return cn(
-    "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-l-4 border-b-white/10 bg-[#0b0b0b] px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-[#151515] max-md:grid-cols-1 max-md:px-4 max-md:py-4",
-    statusBorderClass(status),
+    "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-white/[0.035] max-md:grid-cols-1 max-md:px-4 max-md:py-4",
     status === "idle" && "saturate-50",
-    selected && "border-l-white bg-[#111]",
+    selected && "bg-cyan-400/[0.045]",
   );
 }

@@ -56,7 +56,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     <div
       className={cn(
         dashboardContainerClass,
-        "grid h-full min-h-0 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)] xl:border-x xl:border-white/10",
+        "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
       )}
     >
       <div
@@ -79,15 +79,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         aria-label="Selected conversation"
         className={
           selectedId
-            ? "grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
-            : "hidden min-h-0 overflow-hidden md:grid"
+            ? "grid min-h-0 grid-rows-[auto_1fr] overflow-hidden bg-white/[0.012]"
+            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid"
         }
       >
         {selectedId ? (
           <>
-            <div className="border-b border-white/10 bg-[#050505] px-3 py-2 md:hidden">
+            <div className="border-b border-white/[0.07] bg-white/[0.025] px-4 py-3 md:hidden">
               <Link
-                className="inline-flex items-center gap-2 text-[0.82rem] font-semibold text-[#b8b8b8] no-underline hover:text-white"
+                className="inline-flex items-center gap-2 font-mono text-[0.7rem] text-white/45 no-underline hover:text-white"
                 to="/"
               >
                 <ArrowLeft aria-hidden="true" size={15} />
@@ -114,10 +114,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         ) : (
           <div className="grid min-h-0 place-items-center px-6 text-center">
             <div>
-              <div className="text-lg font-semibold text-white">
+              <div className="font-display text-lg font-medium text-white">
                 Select a conversation
               </div>
-              <div className="mt-1 text-[0.86rem] text-[#888]">
+              <div className="mt-1 font-mono text-[0.7rem] text-white/30">
                 Choose one of your conversations to view its history.
               </div>
             </div>

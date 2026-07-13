@@ -99,11 +99,37 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/people", async (route) => {
+    const activityDays = Array.from({ length: 90 }, (_, index) => {
+      const date = new Date("2026-03-15T00:00:00.000Z");
+      date.setUTCDate(date.getUTCDate() + index);
+      return {
+        activePeople: (index % 4) + 1,
+        conversations: (index % 6) + 2,
+        date: date.toISOString().slice(0, 10),
+      };
+    });
     await route.fulfill({
       json: {
+        activityDays,
         generatedAt: "2026-06-12T00:00:00.000Z",
-        people: [],
+        people: [
+          {
+            active: 0,
+            activeDays: 90,
+            conversations: 180,
+            durationMs: 60_000,
+            failed: 0,
+            firstSeenAt: "2026-03-15T00:00:00.000Z",
+            lastSeenAt: "2026-06-12T00:00:00.000Z",
+            actor: {
+              email: "avery@example.com",
+              fullName: "Avery Example",
+            },
+          },
+        ],
         source: "conversation_index",
+        windowEnd: "2026-06-12T00:00:00.000Z",
+        windowStart: "2026-03-15T00:00:00.000Z",
       },
     });
   });
@@ -136,7 +162,7 @@ test("hydrates the built dashboard client in a real browser", async ({
 
   await expect(page.getByRole("heading", { name: "Junior" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
   await expect(page).toHaveURL(
     `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
@@ -164,7 +190,7 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   await page.getByRole("link", { name: "System", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/system`);
-  await expect(page.getByText(/Seven-day conversation activity/)).toBeVisible();
+  await expect(page.getByText("Runtime health")).toBeVisible();
   await expect(page.getByText("Plugins", { exact: true })).toBeVisible();
   await expect(page.getByText("estimated cost")).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
@@ -174,6 +200,19 @@ test("hydrates the built dashboard client in a real browser", async ({
     page.locator("main > div").getByText("People", { exact: true }),
   ).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
+
+  const activityPoints = page
+    .getByRole("img", { name: "Active people per day" })
+    .locator("circle");
+  await expect(activityPoints).toHaveCount(30);
+  await page.getByRole("button", { name: "7d" }).click();
+  await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(activityPoints).toHaveCount(7);
+  await page.getByRole("button", { name: "90d" }).click();
+  await expect(activityPoints).toHaveCount(90);
 
   await page.goto(`${baseURL}/locations`);
   await expect(
@@ -190,7 +229,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await page.goto(`${baseURL}/conversations`);
   await expect(page).toHaveURL(`${baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
   await page.getByRole("link", { name: /Checkout latency triage/ }).click();
@@ -204,7 +243,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await page.getByRole("link", { name: "Your conversations" }).click();
   await expect(page).toHaveURL(`${baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
 
   await page.goto(`${baseURL}/system`);

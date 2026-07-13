@@ -85,14 +85,14 @@ export function ToolFrame(props: {
 
 /** Provide the shared transcript tool-frame shell for nonstandard part views. */
 export function toolFrameClass(): string {
-  return "min-w-0 max-w-full overflow-hidden";
+  return "min-w-0 max-w-full overflow-hidden rounded-lg border border-white/[0.055] bg-black/15 px-3";
 }
 
 function toolHeaderClass(interactive: boolean): string {
   return cn(
     "block py-1.5 font-mono text-[0.82rem] leading-tight text-[#b8b8b8]",
     interactive
-      ? "cursor-pointer list-none transition-colors hover:text-white hover:[&_*]:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55 focus-visible:text-white focus-visible:[&_*]:text-white [&::-webkit-details-marker]:hidden"
+      ? "cursor-pointer list-none transition-colors hover:text-white hover:[&_*]:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 focus-visible:text-white focus-visible:[&_*]:text-white [&::-webkit-details-marker]:hidden"
       : "cursor-default",
   );
 }

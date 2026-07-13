@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { MessageSquareText, Search } from "lucide-react";
 import { Link } from "react-router";
 
 import {
@@ -11,7 +11,6 @@ import {
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { EmptyTelemetry } from "./EmptyTelemetry";
-import { statusBorderClass } from "./statusStyles";
 
 /** Render the compact personal conversation picker used by the home workspace. */
 export function ConversationSidebar(props: {
@@ -23,27 +22,31 @@ export function ConversationSidebar(props: {
   onQueryChange(value: string): void;
 }) {
   return (
-    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/10 bg-[#050505]">
-      <div className="border-b border-white/10 px-4 py-4">
-        <h2 className="m-0 text-lg font-bold leading-tight text-white">
-          Your conversations
-        </h2>
-        <div className="mt-1 text-[0.8rem] leading-relaxed text-[#888]">
-          {props.loading
-            ? "Loading conversations…"
-            : `${props.conversations.length} conversation${props.conversations.length === 1 ? "" : "s"}`}
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
+      <div className="px-5 pb-3 pt-5">
+        <div className="mb-2 flex items-center gap-2 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
+          <MessageSquareText aria-hidden="true" size={13} />
+          Your trail
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="m-0 font-display text-xl font-medium leading-tight text-white">
+            Conversations
+          </h2>
+          <div className="rounded border border-white/[0.08] bg-black/20 px-2.5 py-1 font-mono text-[0.62rem] text-white/40">
+            {props.loading ? "…" : props.conversations.length}
+          </div>
         </div>
       </div>
-      <div className="border-b border-white/10 p-3">
+      <div className="px-3 pb-3">
         <div className="relative">
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#666]"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/25"
             size={14}
           />
           <input
             aria-label="Search your conversations"
-            className="h-9 w-full rounded-md border border-white/10 bg-white/[0.04] pl-9 pr-3 text-[0.84rem] text-white outline-none placeholder:text-[#666] focus:border-[#beaaff]/50 focus:ring-1 focus:ring-[#beaaff]/20"
+            className="h-10 w-full rounded-lg border border-white/[0.08] bg-black/20 pl-9 pr-3 font-mono text-[0.74rem] text-white/80 outline-none transition-colors placeholder:text-white/20 hover:border-white/15 focus:border-cyan-300/35 focus:ring-2 focus:ring-cyan-300/10"
             onChange={(event) => props.onQueryChange(event.currentTarget.value)}
             placeholder="Search conversations…"
             type="search"
@@ -51,7 +54,7 @@ export function ConversationSidebar(props: {
           />
         </div>
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain">
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-2 pb-2">
         {props.error ? (
           <div className="p-3">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -61,7 +64,7 @@ export function ConversationSidebar(props: {
             <EmptyTelemetry>No conversations match this view.</EmptyTelemetry>
           </div>
         ) : (
-          <nav aria-label="Your conversations">
+          <nav aria-label="Your conversations" className="grid gap-1">
             {props.conversations.map((conversation) => (
               <ConversationSidebarRow
                 conversation={conversation}
@@ -88,16 +91,27 @@ function ConversationSidebarRow(props: {
     <Link
       aria-current={props.selected ? "page" : undefined}
       className={cn(
-        "block min-w-0 border-b border-l-4 border-b-white/10 px-4 py-3 text-inherit no-underline transition-colors hover:bg-white/[0.06]",
-        statusBorderClass(status),
-        props.selected && "bg-[#151515]",
+        "relative block min-w-0 rounded-lg border border-transparent px-3 py-3 text-inherit no-underline transition-all hover:border-white/[0.07] hover:bg-white/[0.035]",
+        props.selected && "border-cyan-300/20 bg-cyan-300/[0.07]",
       )}
       to={conversationPath(props.conversation.id)}
     >
-      <div className="truncate text-[0.92rem] font-semibold leading-tight text-white">
-        {conversationDisplayTitle(props.conversation)}
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            status === "active" &&
+              "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.55)]",
+            status === "failed" && "bg-rose-300",
+            status === "idle" && "bg-white/25",
+          )}
+        />
+        <div className="truncate font-display text-[0.92rem] font-medium leading-tight text-white/90">
+          {conversationDisplayTitle(props.conversation)}
+        </div>
       </div>
-      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[0.76rem] leading-tight text-[#888]">
+      <div className="ml-3.5 mt-1.5 flex min-w-0 items-center gap-1.5 font-mono text-[0.62rem] leading-tight text-white/30">
         <span className="shrink-0">
           {formatRelativeTime(props.conversation.lastSeenAt)}
         </span>

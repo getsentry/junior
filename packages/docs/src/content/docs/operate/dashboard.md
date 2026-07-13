@@ -74,19 +74,20 @@ You can also provide the same authorization policy through deployment environmen
 
 The dashboard package owns these routes:
 
-| Route                          | Purpose                                 |
-| ------------------------------ | --------------------------------------- |
-| `/`                            | Personal conversation workspace.        |
-| `/conversations`               | Redirect to the personal workspace.     |
-| `/conversations/:conversation` | Workspace with a selected transcript.   |
-| `/locations`                   | Public location activity directory.     |
-| `/locations/:location`         | Public location activity detail.        |
-| `/people`                      | Actor directory.                        |
-| `/people/:email`               | Actor activity profile.                 |
-| `/system`                      | Aggregate metrics and plugin reporting. |
-| `/_junior/dashboard/client.js` | Authenticated dashboard browser bundle. |
-| `/auth/login`                  | Dashboard Google login starter.         |
-| `/api/auth/*`                  | Better Auth Google login and callbacks. |
+| Route                           | Purpose                                 |
+| ------------------------------- | --------------------------------------- |
+| `/`                             | Personal conversation workspace.        |
+| `/conversations`                | Redirect to the personal workspace.     |
+| `/conversations/:conversation`  | Workspace with a selected transcript.   |
+| `/locations`                    | Public location activity directory.     |
+| `/locations/:location`          | Public location activity detail.        |
+| `/people`                       | Actor directory.                        |
+| `/people/:email`                | Actor activity profile.                 |
+| `/system`                       | Aggregate metrics and plugin reporting. |
+| `/_junior/dashboard/client.js`  | Authenticated dashboard browser bundle. |
+| `/_junior/dashboard/avatar.png` | Authenticated Junior header avatar.     |
+| `/auth/login`                   | Dashboard Google login starter.         |
+| `/api/auth/*`                   | Better Auth Google login and callbacks. |
 
 `/health` remains the public minimal Junior runtime health response.
 

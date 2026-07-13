@@ -62,7 +62,7 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
         aria-expanded={open}
         aria-label={`Open profile menu for ${name}`}
         className={cn(
-          "flex h-9 cursor-pointer items-center gap-2 border border-white/15 bg-[#0b0b0b] px-1.5 text-[#d6d6d6] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
+          "flex h-9 cursor-pointer items-center gap-2 rounded border border-white/15 bg-[#0b0b0b] px-1.5 text-[#d6d6d6] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
           open && "border-white/30 bg-[#151515] text-white",
         )}
         onClick={() => setOpen((value) => !value)}
@@ -88,7 +88,7 @@ export function ProfileMenu({ identity, onSignOut }: ProfileMenuProps) {
 
       {open ? (
         <div
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 border border-white/15 bg-[#0b0b0b] p-1.5 shadow-2xl shadow-black/60"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-64 rounded-lg border border-white/15 bg-[#0b0b0b] p-1.5 shadow-2xl shadow-black/60"
           id="profile-popover"
         >
           <div className="border-b border-white/10 px-2.5 py-2.5">

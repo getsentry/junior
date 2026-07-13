@@ -25,6 +25,12 @@ interface EsbuildPlugin {
 
 const packageRoot = import.meta.dirname;
 const dashboardAssetsPath = path.join(packageRoot, "src", "assets.ts");
+const dashboardAvatarHeaderPath = path.join(
+  packageRoot,
+  "src",
+  "assets",
+  "junior-avatar-line.png",
+);
 
 /** Read client build output that must be embedded in dashboard routes. */
 function readBuiltAsset(fileName: string): string {
@@ -54,6 +60,7 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           contents: [
             `export const dashboardClientAsset = ${JSON.stringify(readBuiltAsset("client.js"))};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
+            `export const dashboardAvatarHeaderAsset = ${JSON.stringify(readFileSync(dashboardAvatarHeaderPath).toString("base64"))};`,
           ].join("\n"),
           loader: "ts",
         };

@@ -26,6 +26,14 @@ export const actorActivityDayReportSchema = z
   })
   .strict();
 
+export const peopleActivityDayReportSchema = z
+  .object({
+    activePeople: z.number(),
+    conversations: z.number(),
+    date: z.string(),
+  })
+  .strict();
+
 export const actorTotalsReportSchema = z
   .object({
     active: z.number(),
@@ -51,9 +59,12 @@ export const actorSummaryReportSchema = actorTotalsReportSchema
 
 export const actorDirectoryReportSchema = z
   .object({
+    activityDays: z.array(peopleActivityDayReportSchema),
     generatedAt: z.string(),
     people: z.array(actorSummaryReportSchema),
     source: z.literal("conversation_index"),
+    windowEnd: z.string(),
+    windowStart: z.string(),
   })
   .strict();
 
@@ -81,6 +92,9 @@ export type ConversationStatsItem = z.infer<
 >;
 export type ActorActivityDayReport = z.infer<
   typeof actorActivityDayReportSchema
+>;
+export type PeopleActivityDayReport = z.infer<
+  typeof peopleActivityDayReportSchema
 >;
 export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;

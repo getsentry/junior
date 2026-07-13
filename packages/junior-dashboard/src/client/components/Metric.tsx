@@ -91,7 +91,7 @@ export function MetricValue(props: {
       </span>
       {position ? (
         <span
-          className="pointer-events-none fixed z-30 border border-white/15 bg-[#050505] px-3 py-2 text-left text-[0.76rem] font-normal leading-relaxed text-[#b8b8b8] shadow-xl shadow-black/35"
+          className="pointer-events-none fixed z-30 rounded-lg border border-white/15 bg-[#050505] px-3 py-2 text-left text-[0.76rem] font-normal leading-relaxed text-[#b8b8b8] shadow-xl shadow-black/35"
           id={tooltipId}
           role="tooltip"
           style={tooltipStyle}

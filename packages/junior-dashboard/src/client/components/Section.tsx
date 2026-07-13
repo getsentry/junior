@@ -7,7 +7,7 @@ export function Section(props: { children: ReactNode; className?: string }) {
   return (
     <section
       className={cn(
-        "mb-4 min-w-0 border border-white/10 bg-[#0b0b0b]",
+        "mb-4 min-w-0 overflow-hidden rounded-lg border border-white/[0.06] bg-white/[0.025] shadow-[0_24px_80px_rgba(0,0,0,0.18)]",
         props.className,
       )}
     >

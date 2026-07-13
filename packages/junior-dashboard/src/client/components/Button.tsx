@@ -25,7 +25,7 @@ export function Button({
     <button
       {...props}
       className={cn(
-        "border border-white/15 bg-[#0b0b0b] text-[#d6d6d6] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-[#0b0b0b] disabled:hover:text-[#d6d6d6]",
+        "rounded border border-white/15 bg-[#0b0b0b] font-mono text-[#d6d6d6] transition-colors hover:border-white/30 hover:bg-[#151515] hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-white/15 disabled:hover:bg-[#0b0b0b] disabled:hover:text-[#d6d6d6]",
         size === "icon"
           ? "grid size-9 place-items-center p-0"
           : "inline-flex h-9 max-w-full items-center gap-2 px-3 text-[0.82rem] font-semibold leading-none",
@@ -60,8 +60,8 @@ export function ToggleButton({
 }
 
 const toggleButtonBase: Record<ToggleButtonVariant, string> = {
-  pill: "cursor-pointer border px-2 py-1 text-[0.78rem] font-semibold uppercase leading-tight transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55",
-  text: "cursor-pointer border-0 bg-transparent px-1.5 py-1 uppercase tracking-normal underline-offset-4 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55",
+  pill: "cursor-pointer rounded border px-2 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-tight transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
+  text: "cursor-pointer border-0 bg-transparent px-1.5 py-1 font-mono uppercase tracking-normal underline-offset-4 transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55",
 };
 
 const toggleButtonPressed: Record<ToggleButtonVariant, string> = {

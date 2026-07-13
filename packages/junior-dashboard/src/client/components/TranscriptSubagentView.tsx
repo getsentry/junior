@@ -1,5 +1,3 @@
-import { Bot } from "lucide-react";
-
 import { formatMessageTimestamp, formatMs } from "../format";
 import type { TranscriptViewSubagentPart } from "../types";
 import { ToolFrame } from "./ToolFrame";
@@ -38,12 +36,6 @@ export function TranscriptSubagentView(props: {
       raw
       signature={
         <>
-          <Bot
-            aria-hidden="true"
-            className="mt-px shrink-0 text-cyan-300"
-            size={14}
-            strokeWidth={2.25}
-          />
           <strong className="min-w-0 break-words font-bold text-cyan-100">
             <HighlightText text={label} />
           </strong>
@@ -65,7 +57,7 @@ export function TranscriptSubagentView(props: {
   return (
     <button
       aria-label={`Open ${props.part.subagentKind} transcript`}
-      className="block w-full min-w-0 cursor-pointer text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55"
+      className="block w-full min-w-0 cursor-pointer text-left transition-colors hover:bg-white/[0.035] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55"
       onClick={() => props.onOpenTranscript?.(props.part)}
       type="button"
     >

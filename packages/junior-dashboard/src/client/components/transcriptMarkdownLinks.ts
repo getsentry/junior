@@ -1,7 +1,7 @@
 import type { DecorationItem } from "shiki/bundle/web";
 
 export const TRANSCRIPT_ANCHOR_CLASS =
-  "font-medium text-[#d8ccff] underline decoration-[#beaaff]/45 underline-offset-2 transition-colors hover:text-white hover:decoration-white";
+  "font-medium text-cyan-100 underline decoration-cyan-300/35 underline-offset-2 transition-colors hover:text-white hover:decoration-white";
 
 export type TranscriptMarkdownLink = {
   end: number;

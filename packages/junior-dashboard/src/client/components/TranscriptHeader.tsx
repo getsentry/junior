@@ -11,7 +11,7 @@ export function TranscriptHeader(props: {
   value: TranscriptViewMode;
 }) {
   return (
-    <div className="mb-1 flex min-w-0 items-start justify-between gap-3 border-b border-[#beaaff]/20 pb-2 leading-none max-md:flex-col max-md:items-start">
+    <div className="mb-1 flex min-w-0 items-center justify-between gap-3 leading-none max-md:flex-col max-md:items-start">
       {props.redacted ? (
         <div className="min-w-0 break-words text-[0.88rem] leading-relaxed text-[#b8b8b8]">
           Hidden because this conversation is not public.
@@ -33,7 +33,7 @@ function TranscriptViewToggle(props: {
   return (
     <div
       aria-label="Transcript view"
-      className="inline-flex items-center gap-1 text-[0.82rem] font-semibold text-[#888]"
+      className="inline-flex items-center gap-1 rounded-lg border border-white/[0.07] bg-black/20 p-1 text-[0.72rem] font-semibold text-white/40"
       role="group"
     >
       {options.map((option) => (

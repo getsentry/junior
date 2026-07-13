@@ -39,7 +39,7 @@ function KeyValueRows(props: {
   return (
     <div
       className={cn(
-        "grid min-w-0 overflow-hidden border border-white/10",
+        "grid min-w-0 overflow-hidden rounded-lg border border-white/10",
         props.depth === 0 ? "bg-white/[0.015]" : "bg-black/15",
       )}
     >
@@ -159,7 +159,7 @@ function ArrayValue(props: { depth: number; name?: string; value: unknown[] }) {
       <div className="flex min-w-0 flex-wrap gap-1.5">
         {value.map((item, index) => (
           <span
-            className="max-w-full break-words border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[0.78rem] text-white"
+            className="max-w-full break-words rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[0.78rem] text-white"
             key={index}
           >
             <HighlightText text={String(item)} />
@@ -233,7 +233,7 @@ function NestedDetails(props: {
       open={search.active || open}
     >
       <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 font-mono text-[0.8rem] text-[#b8b8b8] transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
-        <span className="border border-white/10 bg-black/20 px-1.5 py-0.5 text-[#d6d6d6]">
+        <span className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[#d6d6d6]">
           <HighlightText text={props.count} />
         </span>
         {props.label ? (
@@ -245,7 +245,7 @@ function NestedDetails(props: {
       <div
         className={cn(
           "mt-2 min-w-0",
-          props.depth > 0 && "ml-1 border-l border-[#beaaff]/18 pl-3",
+          props.depth > 0 && "ml-1 border-l border-white/10 pl-3",
         )}
       >
         {props.children}
@@ -258,7 +258,7 @@ function ObjectTable(props: { rows: Array<Record<string, unknown>> }) {
   const keys = tableKeys(props.rows);
 
   return (
-    <div className="min-w-0 overflow-auto border border-white/10 bg-black/20">
+    <div className="min-w-0 overflow-auto rounded-lg border border-white/10 bg-black/20">
       <table className="w-full min-w-[32rem] border-collapse text-left font-mono text-[0.78rem] leading-snug">
         <thead className="bg-[#121118] text-[#9a8fd0]">
           <tr>

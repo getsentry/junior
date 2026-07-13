@@ -4,6 +4,7 @@ import {
   type ClipboardEventHandler,
   type ReactNode,
 } from "react";
+import { Bot, Minimize2, Send, type LucideIcon } from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -89,10 +90,10 @@ export function ConversationTranscriptView(props: {
   const status = visualStatusForSummary(props.conversation);
 
   return (
-    <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 border-t border-white/10 py-4 first:border-t-0">
+    <section className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)] gap-3 py-3">
       <div className="flex flex-col items-center pt-1.5" aria-hidden="true">
         <span className={turnMarkerClass(status)} />
-        <span className="mt-2 w-px flex-1 bg-[#beaaff]/20" />
+        <span className="mt-2 w-px flex-1 bg-cyan-300/15" />
       </div>
       <div className="min-w-0">
         <SegmentHeader conversation={props.conversation} />
@@ -110,10 +111,10 @@ function turnMarkerClass(
   status: ReturnType<typeof visualStatusForSummary>,
 ): string {
   return cn(
-    "size-2.5 shrink-0 border",
+    "size-2.5 shrink-0 rounded-full border",
     status === "active" && "border-emerald-300 bg-emerald-300",
     status === "failed" && "border-rose-300 bg-rose-300",
-    status === "idle" && "border-[#beaaff]/70 bg-[#beaaff]/50",
+    status === "idle" && "border-cyan-300/60 bg-cyan-300/40",
   );
 }
 
@@ -133,14 +134,16 @@ function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-l-4 py-2 pl-3",
+    "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-lg border px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.12)]",
     kind === "assistant" &&
-      "border-l-violet-300 bg-[rgba(190,170,255,0.14)] pr-3 text-white",
-    kind === "user" && "border-l-white/70 bg-white/[0.08] pr-3 text-[#f4f4f4]",
+      "mr-6 border-cyan-300/15 bg-cyan-300/[0.055] text-white",
+    kind === "user" &&
+      "ml-6 border-white/[0.09] bg-white/[0.055] text-[#f4f4f4]",
     kind === "system" &&
-      "border-l-amber-300 bg-amber-300/[0.06] pr-3 text-[#f4f4f4]",
-    kind === "tool" && "border-l-[#888] text-[#b8b8b8]",
-    kind === "other" && "border-l-white/35 text-[#f4f4f4]",
+      "border-amber-300/15 bg-amber-300/[0.045] text-[#f4f4f4]",
+    kind === "tool" &&
+      "border-white/[0.06] bg-black/15 text-[#b8b8b8] shadow-none",
+    kind === "other" && "border-white/[0.08] bg-white/[0.03] text-[#f4f4f4]",
   );
 }
 
@@ -149,7 +152,7 @@ function transcriptRoleClass(role: string): string {
 
   return cn(
     "text-[0.88rem] leading-snug",
-    kind === "assistant" && "text-[#d8ccff]",
+    kind === "assistant" && "text-cyan-100/75",
     kind === "user" && "text-white",
     kind === "system" && "text-amber-200",
     kind === "tool" && "text-[#b8b8b8]",
@@ -161,8 +164,8 @@ function transcriptRoleLabelClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
-    "inline-block max-w-full break-all text-[0.98rem] font-extrabold leading-tight",
-    kind === "assistant" && "text-violet-200",
+    "inline-block max-w-full break-all font-display text-[0.95rem] font-semibold leading-tight",
+    kind === "assistant" && "text-cyan-100",
     kind === "user" && "text-white",
     kind === "system" && "text-amber-200",
     kind === "tool" && "text-[#b8b8b8]",
@@ -281,11 +284,17 @@ function VisibleTranscriptEntries(props: {
       entries={groupTranscriptMessages(props.transcript)}
       keyPrefix={props.conversation.conversationId}
       renderContext={(entry, index) => (
-        <TranscriptContextEventView
+        <TranscriptRailEvent
           key={`${props.conversation.conversationId}:context:${index}`}
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+          kind={
+            entry.part.event.type === "model_handoff" ? "handoff" : "compaction"
+          }
+        >
+          <TranscriptContextEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderMessage={(entry, index) => (
         <TranscriptMessageView
@@ -296,17 +305,21 @@ function VisibleTranscriptEntries(props: {
         />
       )}
       renderSubagent={(entry, index) => (
-        <TranscriptSubagentView
+        <TranscriptRailEvent
           key={`${props.conversation.conversationId}:subagent:${index}`}
-          onOpenTranscript={(part) =>
-            props.onOpenSubagentTranscript?.({
-              part,
-              conversation: props.conversation,
-            })
-          }
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+          kind="subagent"
+        >
+          <TranscriptSubagentView
+            onOpenTranscript={(part) =>
+              props.onOpenSubagentTranscript?.({
+                part,
+                conversation: props.conversation,
+              })
+            }
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderThinking={(entry, index) => (
         <TranscriptThinkingView
@@ -398,6 +411,54 @@ function TranscriptEntryList(props: {
   return <>{rows}</>;
 }
 
+type TranscriptRailEventKind = "compaction" | "handoff" | "subagent";
+
+/** Anchor noteworthy transcript events to the same visual rail as turn markers. */
+function TranscriptRailEvent(props: {
+  children: ReactNode;
+  kind: TranscriptRailEventKind;
+}) {
+  const marker = transcriptRailMarker(props.kind);
+  const Icon = marker.icon;
+
+  return (
+    <div className="relative min-w-0" data-transcript-rail-event={props.kind}>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute -left-[1.95rem] top-1 z-[1] grid size-6 place-items-center rounded border bg-[#071012] shadow-[0_0_0_3px_#050507,0_8px_20px_rgba(0,0,0,0.3)]",
+          marker.className,
+        )}
+      >
+        <Icon size={12} strokeWidth={2.2} />
+      </span>
+      {props.children}
+    </div>
+  );
+}
+
+function transcriptRailMarker(kind: TranscriptRailEventKind): {
+  className: string;
+  icon: LucideIcon;
+} {
+  if (kind === "subagent") {
+    return {
+      className: "border-cyan-300/35 text-cyan-200",
+      icon: Bot,
+    };
+  }
+  if (kind === "handoff") {
+    return {
+      className: "border-sky-300/35 text-sky-200",
+      icon: Send,
+    };
+  }
+  return {
+    className: "border-amber-300/35 text-amber-200",
+    icon: Minimize2,
+  };
+}
+
 function RedactedTranscriptView(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
@@ -412,11 +473,17 @@ function RedactedTranscriptView(props: {
       )}
       keyPrefix={`${props.conversation.conversationId}:redacted`}
       renderContext={(entry, index) => (
-        <TranscriptContextEventView
+        <TranscriptRailEvent
           key={`${props.conversation.conversationId}:redacted:context:${index}`}
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+          kind={
+            entry.part.event.type === "model_handoff" ? "handoff" : "compaction"
+          }
+        >
+          <TranscriptContextEventView
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderMessage={(entry, index) => (
         <RedactedMessageView
@@ -426,17 +493,21 @@ function RedactedTranscriptView(props: {
         />
       )}
       renderSubagent={(entry, index) => (
-        <TranscriptSubagentView
+        <TranscriptRailEvent
           key={`${props.conversation.conversationId}:redacted:subagent:${index}`}
-          onOpenTranscript={(part) =>
-            props.onOpenSubagentTranscript?.({
-              part,
-              conversation: props.conversation,
-            })
-          }
-          part={entry.part}
-          timestamp={entry.timestamp}
-        />
+          kind="subagent"
+        >
+          <TranscriptSubagentView
+            onOpenTranscript={(part) =>
+              props.onOpenSubagentTranscript?.({
+                part,
+                conversation: props.conversation,
+              })
+            }
+            part={entry.part}
+            timestamp={entry.timestamp}
+          />
+        </TranscriptRailEvent>
       )}
       renderThinking={(entry, index) => (
         <RedactedThinkingView
@@ -622,7 +693,7 @@ function transcriptMeta(
       ? {
           content: (
             <ExecutionSignature
-              className="text-violet-200"
+              className="text-cyan-200"
               modelId={conversation.modelId}
               reasoningLevel={conversation.reasoningLevel}
             />

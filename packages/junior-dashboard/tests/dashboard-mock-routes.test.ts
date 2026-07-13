@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  actorDirectoryReportSchema,
   conversationSubagentTranscriptReportSchema,
   type ConversationSubagentTranscriptReport,
 } from "@sentry/junior/api/schema";
@@ -115,6 +116,22 @@ describe("dashboard mock conversation routes", () => {
     await expect(locationDetail.json()).resolves.toMatchObject({
       visibility: "public",
       activityDays: expect.any(Array),
+      recentConversations: expect.any(Array),
+    });
+
+    const people = await app.fetch(new Request("http://localhost/api/people"));
+    expect(people.status).toBe(200);
+    const peopleBody = actorDirectoryReportSchema.parse(await people.json());
+    const actorEmail = peopleBody.people[0]!.actor.email;
+    const personProfile = await app.fetch(
+      new Request(
+        `http://localhost/api/people/${encodeURIComponent(actorEmail)}`,
+      ),
+    );
+    expect(personProfile.status).toBe(200);
+    await expect(personProfile.json()).resolves.toMatchObject({
+      activityDays: expect.any(Array),
+      actor: { email: actorEmail },
       recentConversations: expect.any(Array),
     });
 

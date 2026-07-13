@@ -7,6 +7,7 @@ import {
 } from "shiki/bundle/web";
 
 import { canRenderStructuredMarkup, parseMarkupNodes } from "./format";
+import { cn } from "./styles";
 import type { CodeBlock, MarkupNode } from "./types";
 import {
   buildSearchDecorations,
@@ -172,19 +173,37 @@ export function HighlightedCode(props: {
 }
 
 /** Render unhighlighted code in the same responsive frame as Shiki output. */
-export function HighlightedCodeFallback(props: { children: ReactNode }) {
+export function HighlightedCodeFallback(props: {
+  children: ReactNode;
+  variant?: "code" | "prose";
+}) {
   return (
-    <pre className="m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-[0.86rem] leading-relaxed text-white">
+    <pre
+      className={cn(
+        "m-0 min-w-0 whitespace-pre-wrap break-words bg-transparent p-0 text-white",
+        props.variant === "prose"
+          ? "font-display text-[0.94rem] leading-7"
+          : "font-mono text-[0.86rem] leading-relaxed",
+      )}
+    >
       <code>{props.children}</code>
     </pre>
   );
 }
 
 /** Render trusted Shiki HTML with transcript-safe responsive wrapping. */
-export function HighlightedCodeHtml(props: { html: ShikiHtml }) {
+export function HighlightedCodeHtml(props: {
+  html: ShikiHtml;
+  variant?: "code" | "prose";
+}) {
   return (
     <div
-      className="min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:font-mono [&_pre]:text-[0.86rem] [&_pre]:leading-relaxed [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic"
+      className={cn(
+        "min-w-0 overflow-hidden [&_.line]:block [&_.line]:max-w-full [&_.line]:whitespace-pre-wrap [&_.line]:break-words [&_.line]:[overflow-wrap:anywhere] [&_code]:block [&_code]:max-w-full [&_code]:whitespace-normal [&_code]:break-words [&_code]:[overflow-wrap:anywhere] [&_pre]:!m-0 [&_pre]:!max-w-full [&_pre]:!overflow-hidden [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:whitespace-normal [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_span]:whitespace-pre-wrap [&_span]:break-words [&_span]:[overflow-wrap:anywhere] [&_mark.search-match]:bg-amber-400/20 [&_mark.search-match]:rounded-[2px] [&_mark.search-match]:text-inherit [&_mark.search-match]:not-italic",
+        props.variant === "prose"
+          ? "[&_pre]:font-display [&_pre]:text-[0.94rem] [&_pre]:leading-7"
+          : "[&_pre]:font-mono [&_pre]:text-[0.86rem] [&_pre]:leading-relaxed",
+      )}
       dangerouslySetInnerHTML={{ __html: props.html }}
     />
   );

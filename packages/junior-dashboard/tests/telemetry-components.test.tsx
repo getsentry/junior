@@ -7,7 +7,10 @@ import type {
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type {
+  ActorDirectoryReport,
+  ActorProfileReport,
+} from "@sentry/junior/api/schema";
 import type { LocationDirectoryReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 
@@ -30,13 +33,14 @@ import { client } from "../src/client/api";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
-import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
+import { PeoplePageContent } from "../src/client/pages/people/PeoplePage";
+import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import {
   LocationDetailPage,
   LocationDetailPageContent,
-  LocationsPageContent,
-} from "../src/client/pages/LocationsPage";
-import { SystemPage } from "../src/client/pages/SystemPage";
+} from "../src/client/pages/locations/LocationDetailPage";
+import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
 afterEach(() => {
@@ -204,6 +208,62 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("advisor");
     expect(html).not.toContain("advisor subagent");
     expect(html).toContain('aria-label="Open advisor transcript"');
+  });
+
+  it("places subagent and context-change icons on the transcript rail", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 3_000,
+      displayTitle: "Conversation",
+      lastProgressAt: "2026-01-01T00:00:03.000Z",
+      lastSeenAt: "2026-01-01T00:00:03.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      transcript: [
+        {
+          role: "assistant",
+          parts: [
+            {
+              id: "advisor-call",
+              status: "success",
+              subagentKind: "advisor",
+              type: "subagent",
+            },
+            {
+              type: "context_event",
+              event: {
+                createdAt: "2026-01-01T00:00:02.000Z",
+                transcriptIndex: 0,
+                type: "context_compacted",
+              },
+            },
+            {
+              type: "context_event",
+              event: {
+                createdAt: "2026-01-01T00:00:03.000Z",
+                fromModelId: "openai/gpt-5.4",
+                toModelId: "openai/gpt-5.6-sol",
+                transcriptIndex: 0,
+                type: "model_handoff",
+              },
+            },
+          ],
+        },
+      ],
+      transcriptAvailable: true,
+    } as unknown as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <ConversationTranscriptView conversation={turn} view="rich" />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('data-transcript-rail-event="subagent"');
+    expect(html).toContain('data-transcript-rail-event="compaction"');
+    expect(html).toContain('data-transcript-rail-event="handoff"');
+    expect(html.match(/-left-\[1\.95rem\]/g) ?? []).toHaveLength(3);
   });
 
   it("renders advisor drawer headers with conversation identity", () => {
@@ -429,6 +489,48 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("People failed to load");
     expect(html).toContain("People telemetry is unavailable");
     expect(html).not.toContain("No actor telemetry with trusted email");
+  });
+
+  it("renders people analytics with range controls and daily activity", () => {
+    const data: ActorDirectoryReport = {
+      activityDays: [
+        { activePeople: 1, conversations: 2, date: "2026-01-01" },
+        { activePeople: 2, conversations: 3, date: "2026-01-02" },
+      ],
+      generatedAt: "2026-01-02T12:00:00.000Z",
+      people: [
+        {
+          active: 0,
+          activeDays: 2,
+          conversations: 3,
+          durationMs: 1_200,
+          failed: 0,
+          firstSeenAt: "2026-01-01T00:00:00.000Z",
+          lastSeenAt: "2026-01-02T00:00:00.000Z",
+          actor: {
+            email: "avery@example.com",
+            fullName: "Avery Example",
+          },
+        },
+      ],
+      source: "conversation_index",
+      windowEnd: "2026-01-02T00:00:00.000Z",
+      windowStart: "2025-10-05T00:00:00.000Z",
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PeoplePageContent data={data} error={undefined} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Who&#x27;s been around");
+    expect(html).toContain("Active people per day");
+    expect(html).toContain('aria-label="Reporting period"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain(">30d</button>");
+    expect(html).toContain("Peak daily active");
+    expect(html).toContain("Avery Example");
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {
@@ -1020,7 +1122,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("#proj-alpha");
     expect(html).not.toContain("#other");
     expect(html).not.toContain("C1");
-    expect(html).toContain("13k tokens");
+    expect(html).toContain(">13k<");
     expect(html).not.toContain(">Errors<");
     expect(html).not.toContain(">Active<");
     expect(html).toContain("Private activity");
@@ -1193,7 +1295,26 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(
       "Conversation metrics refresh failed. Showing cached data.",
     );
-    expect(html).toContain("Seven-day conversation activity");
+    expect(html).toContain("Seven-day pulse");
+  });
+
+  it("does not report a completion rate before any conversation finishes", () => {
+    const data = dashboardData([]);
+    data.conversationStats = {
+      ...data.conversationStats!,
+      active: 2,
+      conversations: 2,
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("No terminal outcomes");
+    expect(html).not.toContain("100% healthy completion");
+    expect(html).not.toContain("undefined%");
   });
 
   it("renders system page when plugin reports are absent", () => {
