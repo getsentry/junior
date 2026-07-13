@@ -107,6 +107,7 @@ export interface AgentTurnDiagnostics {
   durationMs?: number;
   errorMessage?: string;
   providerError?: unknown;
+  startingModelId?: string;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
   reasoningLevel?: TurnReasoningSelection["reasoningLevel"];
@@ -150,6 +151,7 @@ export interface TurnResultInput {
     runId?: string;
   };
   assistantUserName?: string;
+  startingModelId?: string;
   modelId: string;
 }
 
@@ -212,8 +214,10 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     reasoningSelection,
     correlation,
     assistantUserName,
+    startingModelId,
     modelId,
   } = input;
+  const resolvedStartingModelId = startingModelId ?? modelId;
 
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
@@ -376,6 +380,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
     outcome: resolvedOutcome,
+    startingModelId: resolvedStartingModelId,
     modelId,
     assistantMessageCount: assistantMessages.length,
     reasoningLevel: reasoningSelection.reasoningLevel,

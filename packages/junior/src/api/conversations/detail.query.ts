@@ -36,9 +36,10 @@ export async function readConversationDetailFromSql(
     }),
     readLatestRun(conversationId),
   ]);
+  const modelId = latestRun?.startingModelId ?? latestRun?.modelId;
   return {
     ...report,
-    ...(latestRun?.modelId ? { modelId: latestRun.modelId } : {}),
+    ...(modelId ? { modelId } : {}),
     ...(latestRun?.reasoningLevel
       ? { reasoningLevel: latestRun.reasoningLevel }
       : {}),

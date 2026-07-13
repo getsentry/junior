@@ -335,7 +335,8 @@ describe("dashboard reporting", () => {
       state: "completed",
       cumulativeDurationMs: 1_200,
       cumulativeUsage: { inputTokens: 100, outputTokens: 20 },
-      modelId: "openai/gpt-5.5",
+      startingModelId: "openai/gpt-5.5",
+      modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "high",
       piMessages: [
         {

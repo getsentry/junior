@@ -1208,7 +1208,8 @@ describe("persistAuthPauseSessionRecord", () => {
       sessionId,
       sliceId: 2,
       state: "running",
-      modelId: "openai/gpt-5.6",
+      startingModelId: "openai/gpt-5.6-sol",
+      modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
       piMessages: [userMessage("continue")],
     });
@@ -1216,7 +1217,8 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      modelId: "openai/gpt-5.6",
+      startingModelId: "openai/gpt-5.6",
+      modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
     });
     expect(
@@ -1224,7 +1226,8 @@ describe("persistAuthPauseSessionRecord", () => {
         (summary) => summary.sessionId === sessionId,
       ),
     ).toMatchObject({
-      modelId: "openai/gpt-5.6",
+      startingModelId: "openai/gpt-5.6",
+      modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
     });
   });

@@ -497,6 +497,7 @@ export async function resumeSlackTurn(
           conversationId: replyContext.routing.correlation.conversationId,
           sessionId: replyContext.routing.correlation.turnId,
           allMessages: reply.piMessages,
+          startingModelId: reply.diagnostics.startingModelId,
           modelId: reply.diagnostics.modelId,
           currentDurationMs: reply.diagnostics.durationMs,
           currentUsage: reply.diagnostics.usage,

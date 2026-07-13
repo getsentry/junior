@@ -139,6 +139,7 @@ export async function persistRunningSessionRecord(args: {
   trailingMessageProvenance?: PiMessageProvenance[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  startingModelId?: string;
   modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
@@ -179,6 +180,9 @@ export async function persistRunningSessionRecord(args: {
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...(args.startingModelId
+        ? { startingModelId: args.startingModelId }
         : {}),
       modelId: args.modelId,
       ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
@@ -236,6 +240,7 @@ export async function persistCompletedSessionRecord(args: {
   allMessages: PiMessage[];
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
+  startingModelId?: string;
   modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
@@ -295,6 +300,7 @@ export async function persistCompletedSessionRecord(args: {
             args.loadedSkillNames ?? latestSessionRecord?.loadedSkillNames,
         }
       : {}),
+    ...(args.startingModelId ? { startingModelId: args.startingModelId } : {}),
     modelId,
     ...(reasoningLevel ? { reasoningLevel } : {}),
     ...((args.actor ?? latestSessionRecord?.actor)
@@ -327,6 +333,7 @@ export async function completeDeliveredTurn(args: {
   loadedSkillNames?: string[];
   logContext: SessionRecordLogContext;
   messages: PiMessage[];
+  startingModelId?: string;
   modelId: string;
   actor?: Actor;
   reasoningLevel?: string;
@@ -350,6 +357,7 @@ export async function completeDeliveredTurn(args: {
     allMessages: args.messages,
     loadedSkillNames: args.loadedSkillNames,
     logContext: args.logContext,
+    startingModelId: args.startingModelId,
     modelId: args.modelId,
     actor: args.actor,
     reasoningLevel: args.reasoningLevel,
@@ -373,6 +381,7 @@ export async function persistAuthPauseSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  startingModelId?: string;
   modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
@@ -422,6 +431,9 @@ export async function persistAuthPauseSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
+      ...(args.startingModelId
+        ? { startingModelId: args.startingModelId }
+        : {}),
       modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
         ? {
@@ -469,6 +481,7 @@ export async function persistTimeoutSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  startingModelId?: string;
   modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
@@ -526,6 +539,9 @@ export async function persistTimeoutSessionRecord(args: {
         ...(args.loadedSkillNames
           ? { loadedSkillNames: args.loadedSkillNames }
           : {}),
+        ...(args.startingModelId
+          ? { startingModelId: args.startingModelId }
+          : {}),
         modelId: args.modelId,
         ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
           ? {
@@ -566,6 +582,9 @@ export async function persistTimeoutSessionRecord(args: {
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...(args.startingModelId
+        ? { startingModelId: args.startingModelId }
         : {}),
       modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)
@@ -613,6 +632,7 @@ export async function persistYieldSessionRecord(args: {
   source?: Source;
   messages: PiMessage[];
   loadedSkillNames?: string[];
+  startingModelId?: string;
   modelId: string;
   errorMessage: string;
   logContext: SessionRecordLogContext;
@@ -660,6 +680,9 @@ export async function persistYieldSessionRecord(args: {
         : {}),
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
+        : {}),
+      ...(args.startingModelId
+        ? { startingModelId: args.startingModelId }
         : {}),
       modelId: args.modelId,
       ...((args.reasoningLevel ?? latestSessionRecord?.reasoningLevel)

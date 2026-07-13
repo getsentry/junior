@@ -216,6 +216,9 @@ describe("executeAgentRun model handoff", () => {
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
     expect(outcome.result.text).toBe("Handoff model completed it.");
+    expect(outcome.result.diagnostics.startingModelId).toBe(
+      observations.initialModelId,
+    );
     expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
     expect(
       (outcome.result.diagnostics.usage?.inputTokens ?? 0) +
@@ -503,6 +506,7 @@ describe("executeAgentRun model handoff", () => {
     expect(outcome.status).toBe("suspended");
     const record = await getAgentTurnSessionRecord(conversationId, sessionId);
     expect(record).toMatchObject({
+      startingModelId: observations.initialModelId,
       modelId: "openai/gpt-5.6-sol",
       state: "awaiting_resume",
     });
@@ -512,5 +516,24 @@ describe("executeAgentRun model handoff", () => {
     expect(JSON.stringify(record?.piMessages)).not.toContain(
       "Implement the risky refactor.",
     );
+
+    const resumed = await executeAgentRun({
+      input: { messageText: "" },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        correlation: {
+          conversationId,
+          runId: "run-model-handoff-yield-resume",
+          turnId: sessionId,
+        },
+      },
+    });
+    expect(resumed.status).toBe("completed");
+    if (resumed.status !== "completed") return;
+    expect(resumed.result.diagnostics.startingModelId).toBe(
+      observations.initialModelId,
+    );
+    expect(resumed.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
   });
 });

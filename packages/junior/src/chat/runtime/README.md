@@ -37,6 +37,8 @@ this directory owns product orchestration around it.
   reasoning, additional instructions, and tool restrictions.
 - Profile tool policy can narrow host authority but cannot grant tools,
   credentials, destinations, or other capabilities.
+- Turn-session metadata keeps the starting model separate from the latest
+  active model so reporting does not rewrite the start after a handoff.
 - Durable context epochs remain authoritative after model handoff; loading the
   execution profile must not roll the conversation back to its initial model.
 

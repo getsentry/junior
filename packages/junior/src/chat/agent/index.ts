@@ -232,6 +232,7 @@ async function executeAgentRunInPrivacyContext(
   let activeModelProfile: ModelProfile =
     policy.modelProfile ?? STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
+  let startingModelId = activeModelId;
   const actor = actorFromRouting(routing);
   const surface = surfaceFromRouting(routing);
   const runSource = routing.source;
@@ -293,6 +294,7 @@ async function executeAgentRunInPrivacyContext(
       activeModelProfile = projection.modelProfile;
       activeModelId = modelIdForProfile(botConfig, activeModelProfile);
     }
+    startingModelId = activeModelId;
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = {
       conversationId: sessionConversationId,
@@ -347,6 +349,11 @@ async function executeAgentRunInPrivacyContext(
       currentSliceId,
       existingSessionRecord,
     } = await restoreSessionRecord(routing);
+    if (existingSessionRecord?.startingModelId) {
+      startingModelId = existingSessionRecord.startingModelId;
+    } else if (existingSessionRecord?.modelId) {
+      startingModelId = existingSessionRecord.modelId;
+    }
     const fixedReasoningConfigured =
       policy.reasoningPolicy?.mode === "fixed" ||
       (!policy.reasoningPolicy && Boolean(botConfig.reasoningLevel));
@@ -387,6 +394,7 @@ async function executeAgentRunInPrivacyContext(
       sessionConversationId,
       sessionId,
       sessionRecordState,
+      startingModelId,
       startedAtMs: replyStartedAtMs,
       surface,
     });
@@ -1130,6 +1138,7 @@ async function executeAgentRunInPrivacyContext(
         reasoningSelection,
         correlation: routing.correlation,
         assistantUserName: botConfig.userName,
+        startingModelId,
         modelId: activeModelId,
       }),
     };
@@ -1186,6 +1195,7 @@ async function executeAgentRunInPrivacyContext(
         ...getSandboxMetadata(),
         diagnostics: {
           outcome: "provider_error",
+          startingModelId,
           modelId: activeModelId,
           assistantMessageCount: 0,
           ...(reasoningSelection

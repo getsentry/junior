@@ -1484,6 +1484,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: turnId,
                 sliceId: 1,
                 messages: reply.piMessages,
+                startingModelId: reply.diagnostics.startingModelId,
                 modelId: reply.diagnostics.modelId,
                 logContext: {
                   threadId,

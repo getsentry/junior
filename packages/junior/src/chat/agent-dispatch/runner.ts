@@ -482,6 +482,7 @@ export async function runAgentDispatchSlice(
         sessionId: turnId,
         sliceId: 1,
         messages: reply.piMessages,
+        startingModelId: reply.diagnostics.startingModelId,
         modelId: reply.diagnostics.modelId,
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
