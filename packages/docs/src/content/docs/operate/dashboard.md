@@ -76,8 +76,11 @@ The dashboard package owns these routes:
 
 | Route                          | Purpose                                 |
 | ------------------------------ | --------------------------------------- |
-| `/`                            | Authenticated command-center UI.        |
-| `/conversations`               | Authenticated conversation-history UI.  |
+| `/`                            | Personal conversation workspace.        |
+| `/conversations`               | Conversation reporting and history UI.  |
+| `/conversations/:conversation` | Workspace with a selected transcript.   |
+| `/people`                      | Actor directory.                        |
+| `/people/:email`               | Actor activity profile.                 |
 | `/plugins`                     | Authenticated plugin reporting UI.      |
 | `/_junior/dashboard/client.js` | Authenticated dashboard browser bundle. |
 | `/auth/login`                  | Dashboard Google login starter.         |
@@ -87,21 +90,22 @@ The dashboard package owns these routes:
 
 The current authenticated product API slices are:
 
-| Endpoint                           | Purpose                                                                                                    |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `/api/health`                      | Health status for the command center pulse.                                                                |
-| `/api/runtime`                     | Runtime paths, providers, skills, and packages.                                                            |
-| `/api/plugins`                     | Loaded plugin list.                                                                                        |
-| `/api/plugins/:plugin/*`           | Authenticated, namespaced API routes contributed by enabled plugins.                                       |
-| `/api/skills`                      | Discovered skill list.                                                                                     |
-| `/api/conversations`               | Recent conversation feed from SQL conversation records.                                                    |
-| `/api/conversations/stats`         | Aggregate conversation stats, people/place leaderboards, and sampling metadata.                            |
-| `/api/plugin-reports`              | Sanitized plugin operational summaries.                                                                    |
-| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private conversations return redacted metadata only. |
-| `/api/config`                      | Safe dashboard config signals and feature readiness.                                                       |
-| `/api/me`                          | Signed-in dashboard identity.                                                                              |
+| Endpoint                           | Purpose                                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `/api/health`                      | Dashboard-safe health metadata.                                                                             |
+| `/api/runtime`                     | Runtime paths, providers, skills, and packages.                                                             |
+| `/api/plugins`                     | Loaded plugin list.                                                                                         |
+| `/api/plugins/:plugin/*`           | Authenticated, namespaced API routes contributed by enabled plugins.                                        |
+| `/api/skills`                      | Discovered skill list.                                                                                      |
+| `/api/conversations`               | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization. |
+| `/api/conversations/stats`         | Aggregate conversation stats, people/place leaderboards, and sampling metadata.                             |
+| `/api/plugin-reports`              | Sanitized plugin operational summaries.                                                                     |
+| `/api/conversations/:conversation` | Conversation header metadata and expiring transcript; private conversations return redacted metadata only.  |
+| `/api/config`                      | Safe dashboard config signals and feature readiness.                                                        |
+| `/api/me`                          | Signed-in dashboard identity.                                                                               |
 
-The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` shows command-center health, aggregate conversation stats, and recent run durations; `/conversations` shows conversation history; `/conversations/:conversation` shows the transcript and run/tool-call detail for one conversation; `/plugins` shows loaded plugin inventory and plugin operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+The dashboard UI is a React client using React Router for browser views and TanStack Query for authenticated product API state. `/` is a focused workspace listing the signed-in actor's conversations in a sidebar; `/conversations/:conversation` selects a transcript in that workspace. `/conversations` shows the duration chart and global conversation history, while `/plugins` shows loaded plugin inventory and operational summaries. The dashboard does not wrap Slack webhooks, provider OAuth callbacks, sandbox egress, or `/api/internal/*`.
+When dashboard auth is explicitly disabled for local or demo use, the workspace shows the global feed because there is no authenticated actor to filter by.
 The conversation feed is backed by SQL `ConversationStore` records. Conversation detail joins header metadata, run metadata, and transcript data from expiring session stores, so old transcripts disappear when session state expires. Conversation detail pages source their header and Sentry conversation link from `/api/conversations/:conversation`, not from the recent feed. When `SENTRY_DSN` initializes the runtime and `SENTRY_ORG_SLUG` is set, conversation detail includes a Sentry conversation link; when the runtime captures a trace ID, conversation detail shows it with the run metadata.
 The conversation stats endpoint is separate from the recent feed and includes `sampleLimit`, `sampleSize`, and `truncated` fields so the UI can mark bounded aggregates. Stats are built from durable conversation-index records for fast SQL-backed counts, locations, actors, and latest status. Run duration and token totals appear on feed and detail responses until Junior stores durable SQL run summaries.
 Dashboard dates use `JUNIOR_TIMEZONE`, defaulting to `America/Los_Angeles`.

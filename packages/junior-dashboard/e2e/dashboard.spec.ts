@@ -46,12 +46,12 @@ async function writeResponse(res: ServerResponse, response: Response) {
 
 test.beforeAll(async () => {
   const app = createDashboardApp({
-    allowedEmails: ["dashboard-user@sentry.io"],
+    allowedEmails: ["morgan@sentry.io"],
     auth: {
       async getSession() {
         return {
           user: {
-            email: "dashboard-user@sentry.io",
+            email: "morgan@sentry.io",
             emailVerified: true,
             hostedDomain: "sentry.io",
             name: "Dashboard User",
@@ -125,12 +125,43 @@ test("hydrates the built dashboard client in a real browser", async ({
   await page.goto(baseURL);
 
   await expect(page.getByRole("heading", { name: "Junior" })).toBeVisible();
-  await expect(page.getByText("Latest Conversations")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(
+    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Checkout latency triage" }),
+  ).toBeVisible();
+
+  await page.goto(`${baseURL}/conversations`);
   await expect(
     page.getByLabel("conversations by duration over the last 7 days"),
   ).toBeVisible();
   await expect(page.getByText("0ms runtime")).toHaveCount(0);
   expect(browserErrors).toEqual([]);
+});
+
+test("opens and closes a conversation in the mobile workspace", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(baseURL);
+
+  await page.getByRole("link", { name: /Checkout latency triage/ }).click();
+  await expect(page).toHaveURL(
+    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Checkout latency triage" }),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Your conversations" }).click();
+  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
+  ).toBeVisible();
 });
 
 test("groups the signed-in profile and session actions in the header", async ({
@@ -146,10 +177,10 @@ test("groups the signed-in profile and session actions in the header", async ({
   await trigger.click();
 
   const popover = page.locator("#profile-popover");
-  await expect(popover.getByText("dashboard-user@sentry.io")).toBeVisible();
+  await expect(popover.getByText("morgan@sentry.io")).toBeVisible();
   await expect(
     popover.getByRole("link", { name: "My profile" }),
-  ).toHaveAttribute("href", "/people/dashboard-user%40sentry.io");
+  ).toHaveAttribute("href", "/people/morgan%40sentry.io");
   await expect(popover.getByRole("button", { name: "Log out" })).toBeVisible();
 
   await page.keyboard.press("Escape");

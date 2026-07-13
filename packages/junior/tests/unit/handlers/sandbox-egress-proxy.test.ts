@@ -941,17 +941,17 @@ describe("sandbox egress proxy", () => {
           grantForEgress(ctx) {
             if (ctx.request.url.includes("/issues/780")) {
               return {
-                name: "installation-issues-write",
+                name: "installation-write",
                 access: "write",
                 leaseScope: "repository:getsentry/junior",
-                reason: "github.issues-write",
+                reason: "github.installation-write",
               };
             }
             return {
-              name: "installation-pr-branch-write",
+              name: "installation-write",
               access: "write",
               leaseScope: "repository:getsentry/sentry-mcp",
-              reason: "github.git-write",
+              reason: "github.installation-write",
             };
           },
           issueCredential,
@@ -1008,7 +1008,7 @@ describe("sandbox egress proxy", () => {
         expect.objectContaining({
           actor: { platform: "system", name: "resource-event" },
           grant: expect.objectContaining({
-            name: "installation-pr-branch-write",
+            name: "installation-write",
             leaseScope: "repository:getsentry/sentry-mcp",
           }),
           tokens: {},
@@ -1022,13 +1022,13 @@ describe("sandbox egress proxy", () => {
       ).resolves.toMatchObject({
         provider: "github",
         grant: {
-          name: "installation-pr-branch-write",
+          name: "installation-write",
           access: "write",
           leaseScope: "repository:getsentry/sentry-mcp",
-          reason: "github.git-write",
+          reason: "github.installation-write",
         },
         message:
-          "github returned HTTP 403 after Junior injected the installation-pr-branch-write grant. Junior forwarded the request; this is not a local runtime block.",
+          "github returned HTTP 403 after Junior injected the installation-write grant. Junior forwarded the request; this is not a local runtime block.",
         source: "upstream",
         status: 403,
         upstreamHost: "github.com",

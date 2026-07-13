@@ -2,6 +2,7 @@ import { useSearchParams } from "react-router";
 
 import { ConversationListToolbar } from "../components/ConversationListControls";
 import { ConversationList } from "../components/ConversationList";
+import { ConversationDurationChart } from "../components/ConversationDurationChart";
 import { FilterTabs } from "../components/FilterTabs";
 import { Section } from "../components/Section";
 import { SectionHeader } from "../components/SectionHeader";
@@ -15,10 +16,10 @@ import {
   formatTime,
   getFilter,
 } from "../format";
-import type { ConversationFilter, DashboardData } from "../types";
+import type { ConversationFilter, ConversationHistoryData } from "../types";
 
 /** Render the searchable conversation index returned by the REST API. */
-export function ConversationsPage(props: { data?: DashboardData }) {
+export function ConversationsPage(props: { data?: ConversationHistoryData }) {
   const [params, setParams] = useSearchParams();
   const filter = getFilter(params.get("filter"));
   const query = params.get("q") ?? "";
@@ -67,6 +68,11 @@ export function ConversationsPage(props: { data?: DashboardData }) {
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
       <section className="min-w-0">
+        <ConversationDurationChart
+          conversationSummaries={summaries}
+          nowMs={Date.now()}
+          timeZone={props.data?.config.timeZone ?? "America/Los_Angeles"}
+        />
         <Section>
           <SectionHeader
             actions={<FilterTabs current={filter} onChange={updateFilter} />}

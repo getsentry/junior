@@ -21,7 +21,9 @@ function assistant(text: string, timestamp = 1): PiMessage {
 
 function textOf(message: PiMessage): string {
   return (
-    (message as { content?: Array<{ text?: string }> }).content?.[0]?.text ?? ""
+    (message as { content?: Array<{ text?: string }> }).content
+      ?.map((part) => part.text ?? "")
+      .join("\n") ?? ""
   );
 }
 
@@ -259,10 +261,17 @@ describe("context compaction projection reset", () => {
       messages: priorMessages,
     });
 
+    const runtimeContext = [
+      user(
+        "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+        3,
+      ),
+    ];
     const handoffMessages = await compactContextForHandoff(
       {
         conversationId,
         piMessages: priorMessages,
+        runtimeContext,
         target: {
           modelId: botConfig.modelProfiles.handoff,
           modelProfile: "handoff",
@@ -275,6 +284,12 @@ describe("context compaction projection reset", () => {
     );
 
     expect(handoffMessages).toHaveLength(1);
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+    );
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "<current-instruction>\nModel handoff checkpoint.",
+    );
     expect(textOf(handoffMessages[0]!)).toContain(
       "Continue the outstanding request now",
     );
@@ -376,6 +391,11 @@ describe("context compaction projection reset", () => {
         {
           conversationId,
           piMessages: priorMessages,
+          runtimeContext: [
+            user(
+              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+            ),
+          ],
           target: {
             modelId: "test/handoff",
             modelProfile: "handoff",
@@ -394,6 +414,47 @@ describe("context compaction projection reset", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("standard");
+  });
+
+  it("uses the latest runtime context and rejects a missing bootstrap", async () => {
+    const { compactContextForHandoff } =
+      await import("@/chat/services/context-compaction");
+    const completeText = async () => ({ text: "Continue safely." }) as never;
+    const target = {
+      modelId: "test/handoff",
+      modelProfile: "handoff" as const,
+    };
+
+    const messages = await compactContextForHandoff(
+      {
+        conversationId: "conversation-latest-runtime-context",
+        piMessages: [user("Implement the change.")],
+        runtimeContext: [
+          user(
+            "<runtime-turn-context>\nStale runtime context\n</runtime-turn-context>",
+          ),
+          user(
+            "<runtime-turn-context>\nCurrent runtime context\n</runtime-turn-context>",
+          ),
+        ],
+        target,
+      },
+      { completeText },
+    );
+
+    expect(textOf(messages[0]!)).toContain("Current runtime context");
+    expect(textOf(messages[0]!)).not.toContain("Stale runtime context");
+    await expect(
+      compactContextForHandoff(
+        {
+          conversationId: "conversation-missing-runtime-context",
+          piMessages: [user("Implement the change.")],
+          runtimeContext: [],
+          target,
+        },
+        { completeText },
+      ),
+    ).rejects.toThrow("Handoff requires the current runtime turn context");
   });
 
   it("does not start handoff persistence when abort is observed after summarization", async () => {
@@ -415,6 +476,11 @@ describe("context compaction projection reset", () => {
         {
           conversationId,
           piMessages: priorMessages,
+          runtimeContext: [
+            user(
+              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+            ),
+          ],
           signal: controller.signal,
           target: {
             modelId: "test/handoff",

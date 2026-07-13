@@ -56,7 +56,7 @@ function parseTime(value: string | undefined): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
-/** Return the recent reporting window shared by command-center aggregates. */
+/** Return the recent reporting window used by the duration chart. */
 export function recentConversationRange(nowMs = Date.now()) {
   return {
     endMs: nowMs,
@@ -64,7 +64,7 @@ export function recentConversationRange(nowMs = Date.now()) {
   };
 }
 
-/** Keep command-center conversations inside the shared recent activity window. */
+/** Keep chart conversations inside the shared recent activity window. */
 export function filterRecentConversations(
   conversations: Conversation[],
   nowMs = Date.now(),
@@ -678,7 +678,7 @@ export function unavailableTranscriptLabel(
   return "Transcript unavailable for this conversation.";
 }
 
-/** Build the canonical permalink route for a conversation id. */
+/** Build the canonical workspace route for a conversation id. */
 export function conversationPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}`;
 }

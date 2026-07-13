@@ -815,6 +815,7 @@ describe("createApp plugin config", () => {
       "/api/plugins/*",
       "/api/conversations/*",
       "/api/people/*",
+      "/conversations/*",
       "/people/*",
       "/*",
       "/api/*",

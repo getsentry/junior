@@ -2,6 +2,7 @@ import { ArrowRight, Minimize2, Send } from "lucide-react";
 
 import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewContextEventPart } from "../types";
+import { TranscriptMarkdown } from "./TranscriptMarkdown";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function modelLabel(modelId: string): string {
@@ -75,7 +76,11 @@ export function TranscriptContextEventView(props: {
               View summary
             </summary>
             <div className="mt-2 border-l-2 border-[#beaaff]/25 pl-3 text-[#c8c8c8]">
-              <HighlightText text={summary} />
+              {searchActive ? (
+                <HighlightText text={summary} />
+              ) : (
+                <TranscriptMarkdown text={summary} />
+              )}
             </div>
           </details>
         ) : null}

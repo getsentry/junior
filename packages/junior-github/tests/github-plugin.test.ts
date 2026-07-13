@@ -533,10 +533,10 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/issues",
       }),
     ).toMatchObject({
-      name: "installation-issues-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.issue-create",
+      reason: "github.installation-write",
     });
     expect(
       await grantForEgress({
@@ -545,17 +545,19 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/pulls",
       }),
     ).toMatchObject({
-      name: "installation-pull-requests-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.pull-create",
+      reason: "github.installation-write",
     });
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
-    ).rejects.toThrow("github.fork-create is not enabled");
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
   });
 
   it("maintains the workflow dispatch permission boundary", async () => {
@@ -565,11 +567,10 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/actions/workflows/release.yml/dispatches",
       }),
     ).toMatchObject({
-      name: "installation-actions-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.actions-workflow-dispatch",
-      requirements: ["GitHub App Actions: write on the target repository"],
+      reason: "github.installation-write",
     });
     await expect(
       grantForEgress({
@@ -1312,10 +1313,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-receive-pack?service=git-upload-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.git-write",
+      reason: "github.installation-write",
     });
     expect(
       await grantForEgress({
@@ -1323,10 +1324,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-upload-pack?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.git-write",
+      reason: "github.installation-write",
     });
   });
 
@@ -1337,10 +1338,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.git-write",
+      reason: "github.installation-write",
     });
   });
 
@@ -1544,27 +1545,26 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("must use the github_createPullRequest tool");
   });
 
-  it("adds provider requirements to scoped GitHub resource grants", async () => {
+  it("keeps unsupported repository writes outside the allowlist", async () => {
     await expect(
       grantForEgress({
         method: "PATCH",
         url: "https://api.github.com/repos/getsentry/junior/issues/780",
       }),
     ).resolves.toMatchObject({
-      name: "installation-issues-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.issues-write",
-      requirements: expect.arrayContaining([
-        "GitHub App Issues: write on the target repository",
-      ]),
+      reason: "github.installation-write",
     });
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/git/blobs",
       }),
-    ).rejects.toThrow("github.contents-write is not enabled");
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
   });
 
   it("separates pull request lifecycle writes from human review identity", async () => {
@@ -1574,10 +1574,10 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).resolves.toMatchObject({
-      name: "installation-pull-requests-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.pull-requests-write",
+      reason: "github.installation-write",
     });
     await expect(
       grantForEgress({
@@ -1588,10 +1588,10 @@ Conversation: \`local:test:old-conversation\`
       name: "user-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
-      reason: "github.pull-review-write",
-      requirements: expect.arrayContaining([
-        "requesting GitHub user permission to review the pull request",
-      ]),
+      reason: "github.user-write",
+      requirements: [
+        "requesting GitHub user permission to perform this operation",
+      ],
     });
   });
 
@@ -1606,18 +1606,20 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       appPermissions: {
         actions: "write",
+        contents: "write",
         issues: "write",
         pull_requests: "write",
+        workflows: "write",
       },
     });
 
     const actionsResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-actions-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
-        reason: "github.actions-workflow-dispatch",
+        reason: "github.installation-write",
       },
       db,
       log: pluginLog,
@@ -1628,10 +1630,10 @@ Conversation: \`local:test:old-conversation\`
     const issueResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-issues-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
-        reason: "github.issue-create",
+        reason: "github.installation-write",
       },
       db,
       log: pluginLog,
@@ -1642,10 +1644,10 @@ Conversation: \`local:test:old-conversation\`
     const pullResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-pull-requests-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
-        reason: "github.pull-create",
+        reason: "github.installation-write",
       },
       db,
       log: pluginLog,
@@ -1657,31 +1659,22 @@ Conversation: \`local:test:old-conversation\`
     expect(issueResult?.type).toBe("lease");
     expect(pullResult?.type).toBe("lease");
     expect(requests).toHaveLength(3);
-    expect(requests[0]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: { actions: "write", metadata: "read" },
-        repositories: ["junior"],
-      },
-    });
-    expect(requests[1]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: { issues: "write", metadata: "read" },
-        repositories: ["junior"],
-      },
-    });
-    expect(requests[2]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: {
-          contents: "read",
-          metadata: "read",
-          pull_requests: "write",
+    for (const request of requests) {
+      expect(request).toMatchObject({
+        method: "POST",
+        body: {
+          permissions: {
+            actions: "write",
+            contents: "write",
+            issues: "write",
+            metadata: "read",
+            pull_requests: "write",
+            workflows: "write",
+          },
+          repositories: ["junior"],
         },
-        repositories: ["junior"],
-      },
-    });
+      });
+    }
   });
 
   it("issues repository-scoped push credentials for headless resource events", async () => {
@@ -1695,6 +1688,8 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       appPermissions: {
         contents: "write",
+        issues: "write",
+        pull_requests: "write",
         workflows: "write",
       },
     });
@@ -1702,10 +1697,10 @@ Conversation: \`local:test:old-conversation\`
     const result = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "resource-event" },
       grant: {
-        name: "installation-pr-branch-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
-        reason: "github.git-write",
+        reason: "github.installation-write",
       },
       db,
       log: pluginLog,
@@ -1720,7 +1715,9 @@ Conversation: \`local:test:old-conversation\`
       body: {
         permissions: {
           contents: "write",
+          issues: "write",
           metadata: "read",
+          pull_requests: "write",
           workflows: "write",
         },
         repositories: ["junior"],
@@ -1883,7 +1880,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.pull-review-write",
+          reason: "github.user-write",
         },
         currentUserToken: {
           accessToken: "user-token",
@@ -1963,7 +1960,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.pull-review-write",
+            reason: "github.user-write",
           },
           currentUserToken: {
             accessToken: "user-token",
@@ -1984,7 +1981,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.pull-review-write",
+          reason: "github.user-write",
         },
         credentialSubjectToken: {
           account: {
@@ -2029,7 +2026,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.pull-review-write",
+          reason: "github.user-write",
         },
         currentUserToken: {
           accessToken: "stale-token",
@@ -2066,7 +2063,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.pull-review-write",
+          reason: "github.user-write",
         },
         currentUserToken: staleToken,
         currentUserTokenReads: [
@@ -2146,7 +2143,7 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "user-write",
         access: "write" as const,
-        reason: "github.pull-review-write",
+        reason: "github.user-write",
       },
       db,
       log: pluginLog,
@@ -2228,7 +2225,7 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "user-write",
         access: "write",
-        reason: "github.pull-review-write",
+        reason: "github.user-write",
       },
       db,
       log: pluginLog,
@@ -2256,7 +2253,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.pull-review-write",
+            reason: "github.user-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2289,7 +2286,7 @@ Conversation: \`local:test:old-conversation\`
         grant: {
           name: "user-write",
           access: "write",
-          reason: "github.pull-review-write",
+          reason: "github.user-write",
         },
         currentUserToken: {
           accessToken: "stale-token",
@@ -2322,7 +2319,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.pull-review-write",
+            reason: "github.user-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2347,7 +2344,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.pull-review-write",
+            reason: "github.user-write",
           },
           currentUserToken: {
             accessToken: "stale-token",
@@ -2372,7 +2369,7 @@ Conversation: \`local:test:old-conversation\`
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.pull-review-write",
+            reason: "github.user-write",
           },
           currentUserToken: {
             accessToken: "stale-token",

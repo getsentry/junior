@@ -72,7 +72,6 @@ import {
   configuredTurnReasoningLevel,
   selectTurnReasoningLevel,
   toPiReasoningLevel,
-  type TurnReasoningSelection,
 } from "@/chat/services/turn-reasoning-level";
 import {
   addAgentTurnUsage,
@@ -212,7 +211,14 @@ async function executeAgentRunInPrivacyContext(
   let canRecordMcpProviders = false;
   let turnUsage: AgentTurnUsage | undefined;
   let handoffPhaseUsage: AgentTurnUsage | undefined;
-  let reasoningSelection: TurnReasoningSelection | undefined;
+  const configuredReasoningLevel =
+    policy.reasoningLevel ?? botConfig.reasoningLevel;
+  let reasoningSelection = configuredReasoningLevel
+    ? configuredTurnReasoningLevel(
+        configuredReasoningLevel,
+        policy.reasoningLevel ? "agent_config" : "default",
+      )
+    : undefined;
   let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRouting(routing);
@@ -433,26 +439,19 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    const configuredReasoningLevel =
-      policy.reasoningLevel ?? botConfig.reasoningLevel;
-    reasoningSelection = configuredReasoningLevel
-      ? configuredTurnReasoningLevel(
-          configuredReasoningLevel,
-          policy.reasoningLevel ? "agent_config" : "default",
-        )
-      : await selectTurnReasoningLevel({
-          completeObject,
-          conversationContext: input.conversationContext,
-          context: {
-            threadId: routing.correlation?.threadId,
-            channelId: routing.correlation?.channelId,
-            actorId: routing.correlation?.actorId,
-            runId: routing.correlation?.runId,
-          },
-          currentTurnBlocks: routerBlocks,
-          fastModelId: botConfig.fastModelId,
-          messageText: userInput,
-        });
+    reasoningSelection ??= await selectTurnReasoningLevel({
+      completeObject,
+      conversationContext: input.conversationContext,
+      context: {
+        threadId: routing.correlation?.threadId,
+        channelId: routing.correlation?.channelId,
+        actorId: routing.correlation?.actorId,
+        runId: routing.correlation?.runId,
+      },
+      currentTurnBlocks: routerBlocks,
+      fastModelId: botConfig.fastModelId,
+      messageText: userInput,
+    });
     setSpanAttributes({
       "gen_ai.request.model": activeModelId,
       "gen_ai.request.reasoning.level": reasoningSelection.reasoningLevel,
@@ -527,6 +526,7 @@ async function executeAgentRunInPrivacyContext(
                   conversationContext: input.conversationContext,
                   conversationId: sessionConversationId,
                   piMessages: sourceMessages,
+                  runtimeContext,
                   signal,
                   target,
                   metadata: {
@@ -540,7 +540,7 @@ async function executeAgentRunInPrivacyContext(
               );
               handoffPhaseUsage = phaseUsage;
               pendingHandoff = {
-                messages: [...handoffMessages, ...runtimeContext],
+                messages: handoffMessages,
                 model: handoffModel,
                 thinkingLevel: handoffThinkingLevel,
               };

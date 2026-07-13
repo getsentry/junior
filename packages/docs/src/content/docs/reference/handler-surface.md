@@ -21,7 +21,7 @@ Handled `GET` routes:
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
-When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/plugins`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth.
+When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/people`, `/people/*`, `/plugins`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth.
 
 Handled `POST` routes:
 

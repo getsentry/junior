@@ -24,8 +24,8 @@ import { ConversationTranscriptView } from "../src/client/components/Conversatio
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
-import { CommandCenter } from "../src/client/pages/CommandCenter";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
+import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
@@ -52,29 +52,7 @@ function dashboardData(
       sentryConversationLinks: false,
       timeZone: "UTC",
     },
-    health: {
-      service: "junior",
-      status: "ok",
-      timestamp: "2026-01-01T00:00:00.000Z",
-    },
-    conversationStats: {
-      active: 0,
-      conversations: 0,
-      durationMs: 0,
-      failed: 0,
-      generatedAt: "2026-01-01T00:00:00.000Z",
-      locations: [],
-      actors: [],
-      sampleLimit: 0,
-      sampleSize: 0,
-      source: "conversation_index",
-      truncated: false,
-      windowEnd: "2026-01-01T00:00:00.000Z",
-      windowStart: "2025-12-25T00:00:00.000Z",
-    },
-    conversationStatsError: false,
-    conversationStatsLoading: false,
-    me: { user: {} },
+    me: { user: { email: "viewer@example.com" } },
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -83,19 +61,6 @@ function dashboardData(
     pluginReportsError: false,
     pluginReportsLoading: false,
     plugins: [],
-    runtime: {
-      cwd: "/repo",
-      homeDir: "/home",
-      packagedContent: {
-        packageNames: [],
-        packages: [],
-        manifestRoots: [],
-        skillRoots: [],
-        tracingIncludes: [],
-      },
-      providers: [],
-      skills: [],
-    },
     conversations: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       conversations: conversationSummaries,
@@ -111,7 +76,9 @@ function renderConversationPage(data: DashboardData): string {
       <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
         <Routes>
           <Route
-            element={<ConversationPage data={data} />}
+            element={
+              <ConversationPage conversationId="conversation-1" data={data} />
+            }
             path="/conversations/:conversationId"
           />
         </Routes>
@@ -659,8 +626,7 @@ describe("dashboard telemetry components", () => {
       </QueryClientProvider>,
     );
 
-    expect(html).not.toContain("Durations");
-    expect(html).toContain("Conversations");
+    expect(html).toContain("Conversation duration");
     expect(html).not.toContain("Turns");
     expect(html).not.toContain('aria-label="Duration chart mode"');
     expect(html).toContain(
@@ -829,15 +795,9 @@ describe("dashboard telemetry components", () => {
     } satisfies ConversationSummaryReport;
 
     const data = dashboardData([session]);
-    const conversation = renderConversationPage(data);
     const conversations = renderToStaticMarkup(
       <MemoryRouter>
         <ConversationsPage data={data} />
-      </MemoryRouter>,
-    );
-    const command = renderToStaticMarkup(
-      <MemoryRouter>
-        <CommandCenter data={data} queryError={null} />
       </MemoryRouter>,
     );
     const plugins = renderToStaticMarkup(
@@ -846,10 +806,123 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(conversation).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
     expect(conversations).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
-    expect(command).toContain("mx-auto grid w-full min-w-0 max-w-screen-xl");
     expect(plugins).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
+  });
+
+  it("renders the selected personal conversation in the home workspace", () => {
+    const summary = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Personal conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:02.000Z",
+      actorIdentity: { email: "morgan@example.com", fullName: "Morgan" },
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+    } satisfies ConversationSummaryReport;
+    const data = dashboardData([summary]);
+    data.config.authRequired = true;
+    data.me = { user: { email: "morgan@example.com" } };
+    client.setQueryData(
+      ["dashboard", "conversations", "morgan@example.com"],
+      data.conversations,
+    );
+    client.setQueryData(["conversation", "conversation-1"], {
+      ...summary,
+      generatedAt: "2026-01-01T00:00:02.000Z",
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport);
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
+          <Routes>
+            <Route
+              element={<ConversationWorkspace data={data} />}
+              path="/conversations/:conversationId"
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("Your conversations");
+    expect(html).toContain('aria-label="Search your conversations"');
+    expect(html).toContain('href="/conversations/conversation-1"');
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain("Personal conversation");
+  });
+
+  it("uses React Router's decoded conversation id without decoding it again", () => {
+    const summary = {
+      conversationId: "conversation%one",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Percent conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+    } satisfies ConversationSummaryReport;
+    const data = dashboardData([summary]);
+    data.config.authRequired = true;
+    client.setQueryData(
+      ["dashboard", "conversations", "viewer@example.com"],
+      data.conversations,
+    );
+    client.setQueryData(["conversation", "conversation%one"], {
+      ...summary,
+      generatedAt: "2026-01-01T00:00:01.000Z",
+      transcript: [],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport);
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/conversations/conversation%25one"]}>
+          <Routes>
+            <Route
+              element={<ConversationWorkspace data={data} />}
+              path="/conversations/:conversationId"
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("Percent conversation");
+  });
+
+  it("shows the global feed when dashboard auth is disabled", () => {
+    const summary = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Local conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      actorIdentity: { email: "actor@example.com" },
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+    } satisfies ConversationSummaryReport;
+    const data = dashboardData([summary]);
+    client.setQueryData(
+      ["dashboard", "conversations", "all"],
+      data.conversations,
+    );
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ConversationWorkspace data={data} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("Local conversation");
   });
 
   it("filters the conversation list with search and facets", () => {
@@ -901,7 +974,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("Memory cleanup");
   });
 
-  it("renders aggregate stats and plugin reports", () => {
+  it("renders conversation history and plugin reports", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
 
@@ -946,37 +1019,6 @@ describe("dashboard telemetry components", () => {
       },
     ];
     const data = dashboardData(conversationSummaries);
-    data.conversationStats = {
-      active: 0,
-      conversations: 2,
-      durationMs: 3_000,
-      failed: 1,
-      generatedAt: "2026-01-05T00:00:00.000Z",
-      locations: [
-        {
-          active: 0,
-          conversations: 1,
-          durationMs: 1_000,
-          failed: 0,
-          label: "#proj-alpha",
-        },
-      ],
-      actors: [
-        {
-          active: 0,
-          conversations: 2,
-          durationMs: 3_000,
-          failed: 1,
-          label: "Avery",
-        },
-      ],
-      sampleLimit: 2,
-      sampleSize: 2,
-      source: "conversation_index",
-      truncated: false,
-      windowEnd: "2026-01-05T00:00:00.000Z",
-      windowStart: "2025-12-29T00:00:00.000Z",
-    };
     data.plugins = [{ name: "github" }];
     data.pluginReports!.reports = [
       {
@@ -994,9 +1036,9 @@ describe("dashboard telemetry components", () => {
     ];
     data.skills = [{ name: "triage", pluginProvider: "github" }];
 
-    const commandHtml = renderToStaticMarkup(
+    const conversationsHtml = renderToStaticMarkup(
       <MemoryRouter>
-        <CommandCenter data={data} queryError={null} />
+        <ConversationsPage data={data} />
       </MemoryRouter>,
     );
     const pluginHtml = renderToStaticMarkup(
@@ -1005,11 +1047,11 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(commandHtml).toContain(">Stats<");
-    expect(commandHtml).not.toContain(">People<");
-    expect(commandHtml).not.toContain(">Places<");
-    expect(commandHtml).not.toContain("Casey");
-    expect(commandHtml).not.toContain("Old thread");
+    expect(conversationsHtml).toContain(">Conversations<");
+    expect(conversationsHtml).toContain(
+      'aria-label="conversations by duration over the last 7 days"',
+    );
+    expect(conversationsHtml).toContain("Old thread");
     expect(pluginHtml).toContain(">Plugins<");
     expect(pluginHtml).toContain(">Scheduler<");
     expect(pluginHtml).toContain("github");
@@ -1107,34 +1149,6 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("Plugin stats failed to load.");
     expect(html).toContain(">Scheduler<");
-  });
-
-  it("shows conversation stats failures without hiding the command center", () => {
-    const data = dashboardData([]);
-    data.conversationStatsError = true;
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <CommandCenter data={data} queryError={null} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain(">Stats<");
-    expect(html).toContain(">degraded<");
-    expect(html).toContain(">Conversations<");
-  });
-
-  it("marks sampled conversation stats as limited", () => {
-    const data = dashboardData([]);
-    data.conversationStats!.truncated = true;
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <CommandCenter data={data} queryError={null} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain(">limited sample<");
   });
 
   it("renders transcript copy as an icon-only control", () => {

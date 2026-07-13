@@ -35,6 +35,25 @@ describe("dashboard mock conversation routes", () => {
     expect(conversationBody.conversations[0]?.conversationId).toBe(
       "slack:CQA123:1770003600.000200",
     );
+    const personalConversations = await app.fetch(
+      new Request(
+        "http://localhost/api/conversations?actorEmail=morgan%40sentry.io",
+      ),
+    );
+    expect(personalConversations.status).toBe(200);
+    const personalBody = (await personalConversations.json()) as {
+      conversations: Array<{
+        actorIdentity?: { email?: string };
+        conversationId: string;
+      }>;
+    };
+    expect(personalBody.conversations.length).toBeGreaterThan(0);
+    expect(
+      personalBody.conversations.every(
+        (conversation) =>
+          conversation.actorIdentity?.email === "morgan@sentry.io",
+      ),
+    ).toBe(true);
     expect(
       conversationBody.conversations.map(
         (conversation) => conversation.conversationId,

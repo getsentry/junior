@@ -98,7 +98,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 ## 3) Runtime behavior
 
 - When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
-- The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Workflow dispatches use the repository-scoped `installation-actions-write` grant. Allowlisted issue and pull request mutations use their own repository-scoped installation grants. Git smart-HTTP pushes use `installation-pr-branch-write`. Unknown REST writes and GraphQL mutations are denied.
+- The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Allowlisted App-owned mutations and Git smart-HTTP pushes share the repository-scoped `installation-write` grant. Unknown REST writes and GraphQL mutations are denied.
 - `user-read` and the remaining explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, and branch operations do not fall back to user OAuth.
 - Headless resource-event turns use the `resource-event` system actor and may receive the same repository-scoped installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
 - Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers.
@@ -133,14 +133,14 @@ The plugin uses installation credentials for read-only GitHub traffic, workflow 
 Committing and pushing code uses more than one GitHub surface:
 
 - Creating the local Git commit does not call GitHub. Junior sets the GitHub App bot as author and committer and credits resolvable human actors with `Co-Authored-By` trailers.
-- Pushing a branch with Git smart HTTP (`git push`) uses the repository-scoped `installation-pr-branch-write` grant and requires `Contents: write`. If `Workflows: write` is configured, it is included so workflow-file changes can be pushed.
+- Pushing a branch with Git smart HTTP (`git push`) uses the repository-scoped `installation-write` grant and requires `Contents: write`. If `Workflows: write` is configured, it is included so workflow-file changes can be pushed.
 - The smart-HTTP classifier does not distinguish Junior-managed branches or independently detect force updates or ref deletion. Use GitHub branch protection and limit the App installation to repositories where Junior may push.
 - REST Git database and ref writes are denied by the current write allowlist. Use Git smart HTTP (`git push`) for branch updates instead.
 - Opening the PR after the branch exists is separate: `github_createPullRequest` needs pull-request write permission, but it should not create or push commits itself.
 
 Fork creation is not part of the default PR path and is denied by the current write allowlist. Do not grant `Administration: write` for routine PR creation; push a branch explicitly and create the PR with `github_createPullRequest` instead.
 
-GitHub App permission scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is provider-domain scoped for sandbox traffic to `api.github.com` and `github.com` during turns with a signed credential context. Keep repo context explicit, and let the plugin choose the required grant for the outbound request.
+Repository scoping and the egress allowlist are the write boundaries. Credential injection is provider-domain scoped for sandbox traffic to `api.github.com` and `github.com` during turns with a signed credential context. Keep repo context explicit, and let the plugin choose the grant for the outbound request.
 
 Be careful with mixed-surface PR commands. Use the allowlisted REST endpoints
 rather than GraphQL-backed `gh pr` mutation commands. PR-native title, body,

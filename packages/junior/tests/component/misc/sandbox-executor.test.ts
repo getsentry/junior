@@ -1085,7 +1085,7 @@ describe("createSandboxExecutor", () => {
           grant: {
             name: "user-write",
             access: "write",
-            reason: "github.git-write",
+            reason: "github.installation-write",
           },
           message:
             "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
@@ -1128,7 +1128,7 @@ describe("createSandboxExecutor", () => {
       grant: {
         name: "user-write",
         access: "write",
-        reason: "github.git-write",
+        reason: "github.installation-write",
       },
       message:
         "github returned HTTP 403 after Junior injected the user-write grant. Junior forwarded the request; this is not a local runtime block.",
