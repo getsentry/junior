@@ -741,14 +741,15 @@ describe("executeAgentRun progressive MCP loading", () => {
       toolName: "loadSkill",
     });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
-    expect(pendingAuthRecords).toEqual([
+    expect(pendingAuthRecords).toHaveLength(2);
+    expect(pendingAuthRecords.at(-1)).toEqual(
       expect.objectContaining({
         kind: "mcp",
         provider: "demo",
         actorId: "U123",
         sessionId: "turn-1",
       }),
-    ]);
+    );
     expect(loadSkillExecutionErrorCount.value).toBe(0);
 
     const reply = finalReply(await executeAgentRun(context));

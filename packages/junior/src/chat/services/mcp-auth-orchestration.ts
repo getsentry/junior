@@ -16,7 +16,10 @@ import {
 } from "@/chat/mcp/auth-store";
 import { formatOAuthAuthorizationMessage } from "@/chat/oauth-authorization-message";
 import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
-import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
+import {
+  canReusePendingAuthLink,
+  type PendingAuthUpdateOptions,
+} from "@/chat/services/pending-auth";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -54,6 +57,7 @@ export interface McpAuthOrchestrationInput {
   getMergedArtifactState: () => ThreadArtifactsState;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
+    options?: PendingAuthUpdateOptions,
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
 }
@@ -181,7 +185,7 @@ export function createMcpAuthOrchestration(
     };
 
     if (!reusingPendingLink) {
-      await recordPendingAuth(nextPendingAuth);
+      await recordPendingAuth(nextPendingAuth, { skipAbandonment: true });
       const delivery = await deliverPrivateMessage({
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
@@ -195,11 +199,14 @@ export function createMcpAuthOrchestration(
       });
       if (!delivery) {
         await deleteMcpAuthSession(authSessionId);
-        await recordPendingAuth(undefined);
+        await recordPendingAuth(input.pendingAuth, { skipAbandonment: true });
         throw new Error(
           `Unable to deliver MCP authorization link for plugin "${provider}"`,
         );
       }
+      await recordPendingAuth(nextPendingAuth, {
+        replacedPendingAuth: input.pendingAuth,
+      });
     } else {
       await deleteMcpAuthSession(authSessionId);
     }

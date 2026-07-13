@@ -441,12 +441,13 @@ export async function continueSlackAgentRun(
               sandbox,
             },
             durability: {
-              recordPendingAuth: async (nextPendingAuth) => {
+              recordPendingAuth: async (nextPendingAuth, options) => {
                 if (nextPendingAuth) {
                   await applyPendingAuthUpdate({
                     conversation,
                     conversationId: payload.conversationId,
                     nextPendingAuth,
+                    options,
                   });
                 } else {
                   clearPendingAuth(conversation);

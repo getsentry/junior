@@ -1,5 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const { abandonAgentTurnSessionRecord } = vi.hoisted(() => ({
+  abandonAgentTurnSessionRecord: vi.fn(),
+}));
+
+vi.mock("@/chat/state/turn-session", () => ({
+  abandonAgentTurnSessionRecord,
+}));
+
 import {
+  applyPendingAuthUpdate,
   canReusePendingAuthLink,
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
@@ -10,6 +19,10 @@ import type {
 
 const NOW = 1_700_000_000_000;
 const REUSE_WINDOW_MS = 10 * 60 * 1000;
+
+beforeEach(() => {
+  abandonAgentTurnSessionRecord.mockReset();
+});
 
 function pendingAuth(
   overrides: Partial<{
@@ -166,6 +179,45 @@ describe("canReusePendingAuthLink", () => {
         nowMs: NOW,
       }),
     ).toBe(false);
+  });
+});
+
+describe("applyPendingAuthUpdate", () => {
+  it("stages a replacement without abandoning the current session", async () => {
+    const conversation = conversationWithMessages([]);
+    conversation.processing.pendingAuth = pendingAuthState("run_old");
+    const nextPendingAuth = pendingAuthState("run_new");
+
+    await applyPendingAuthUpdate({
+      conversation,
+      conversationId: "conversation-1",
+      nextPendingAuth,
+      options: { skipAbandonment: true },
+    });
+
+    expect(conversation.processing.pendingAuth).toBe(nextPendingAuth);
+    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
+  });
+
+  it("abandons the explicitly replaced session after staging succeeds", async () => {
+    const conversation = conversationWithMessages([]);
+    const previousPendingAuth = pendingAuthState("run_old");
+    const nextPendingAuth = pendingAuthState("run_new");
+    conversation.processing.pendingAuth = nextPendingAuth;
+
+    await applyPendingAuthUpdate({
+      conversation,
+      conversationId: "conversation-1",
+      nextPendingAuth,
+      options: { replacedPendingAuth: previousPendingAuth },
+    });
+
+    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+      conversationId: "conversation-1",
+      sessionId: "run_old",
+      errorMessage:
+        "Abandoned by a newer auth-blocked request in the same conversation.",
+    });
   });
 });
 

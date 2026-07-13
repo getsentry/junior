@@ -404,12 +404,13 @@ async function resumeAuthorizedMcpTurn(args: {
             sandbox: getPersistedSandboxState(lockedState),
           },
           durability: {
-            recordPendingAuth: async (nextPendingAuth) => {
+            recordPendingAuth: async (nextPendingAuth, options) => {
               if (nextPendingAuth) {
                 await applyPendingAuthUpdate({
                   conversation: lockedConversation,
                   conversationId: authSession.conversationId,
                   nextPendingAuth,
+                  options,
                 });
               } else {
                 clearPendingAuth(lockedConversation);

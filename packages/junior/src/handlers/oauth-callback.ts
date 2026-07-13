@@ -434,12 +434,13 @@ async function resumeOAuthSessionRecordTurn(
             sandbox: getPersistedSandboxState(lockedState),
           },
           durability: {
-            recordPendingAuth: async (nextPendingAuth) => {
+            recordPendingAuth: async (nextPendingAuth, options) => {
               if (nextPendingAuth) {
                 await applyPendingAuthUpdate({
                   conversation: lockedConversation,
                   conversationId: stored.resumeConversationId!,
                   nextPendingAuth,
+                  options,
                 });
               } else {
                 clearPendingAuth(lockedConversation);

@@ -19,6 +19,7 @@ import { createActor, isUserActor, type Actor } from "@/chat/actor";
 import type { SandboxAcquiredState } from "@/chat/sandbox/sandbox";
 import type { SandboxEgressTracePropagationConfig } from "@/chat/sandbox/egress/tracing";
 import type { AuthorizationFlowMode } from "@/chat/services/auth-pause";
+import type { PendingAuthUpdateOptions } from "@/chat/services/pending-auth";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
@@ -155,6 +156,7 @@ export interface AgentRunDurability {
   ) => Promise<AgentRunSteeringMessage[]>;
   recordPendingAuth?: (
     pendingAuth: ConversationPendingAuthState | undefined,
+    options?: PendingAuthUpdateOptions,
   ) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   onArtifactStateUpdated?: (

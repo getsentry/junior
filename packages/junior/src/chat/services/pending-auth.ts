@@ -6,6 +6,11 @@ import type {
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { abandonAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
+export interface PendingAuthUpdateOptions {
+  replacedPendingAuth?: ConversationPendingAuthState;
+  skipAbandonment?: boolean;
+}
+
 // A fresh private auth link is worth reissuing after ~10 minutes: long enough
 // to cover normal back-and-forth (read the prompt, check a password manager),
 // short enough that a link the user has clearly abandoned doesn't keep
@@ -111,8 +116,12 @@ export async function applyPendingAuthUpdate(args: {
   conversation: ThreadConversationState;
   conversationId: string | undefined;
   nextPendingAuth: ConversationPendingAuthState;
+  options?: PendingAuthUpdateOptions;
 }): Promise<void> {
-  const previousPendingAuth = args.conversation.processing.pendingAuth;
+  const currentPendingAuth = args.conversation.processing.pendingAuth;
+  const previousPendingAuth = args.options?.skipAbandonment
+    ? undefined
+    : (args.options?.replacedPendingAuth ?? currentPendingAuth);
   args.conversation.processing.pendingAuth = args.nextPendingAuth;
   if (
     previousPendingAuth &&

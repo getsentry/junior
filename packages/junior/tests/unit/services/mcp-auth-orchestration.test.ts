@@ -177,20 +177,45 @@ describe("createMcpAuthOrchestration", () => {
       }),
     );
     expect(deleteMcpAuthSession).not.toHaveBeenCalled();
-    expect(recordPendingAuth).toHaveBeenCalledWith(
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         kind: "mcp",
         provider: "github",
         actorId: "U123",
         sessionId: "run_new",
       }),
+      { skipAbandonment: true },
+    );
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        kind: "mcp",
+        provider: "github",
+        actorId: "U123",
+        sessionId: "run_new",
+      }),
+      {
+        replacedPendingAuth: expect.objectContaining({
+          authSessionId: "github-auth-session",
+          sessionId: "run_old",
+        }),
+      },
     );
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
-  it("clears the pending attempt when private link delivery fails", async () => {
+  it("restores the prior pending attempt when private link delivery fails", async () => {
     const abortAgent = vi.fn();
     const recordPendingAuth = vi.fn();
+    const previousPendingAuth = {
+      authSessionId: "auth_old",
+      kind: "mcp" as const,
+      provider: "github",
+      actorId: "U123",
+      sessionId: "run_old",
+      linkSentAtMs: 1,
+    };
     getMcpAuthSession.mockResolvedValue({
       authorizationUrl: "https://mcp.example/authorize",
       channelId: "C123",
@@ -207,6 +232,7 @@ describe("createMcpAuthOrchestration", () => {
       channelId: "C123",
       threadTs: "1700000000.000000",
       userMessage: "use MCP",
+      pendingAuth: previousPendingAuth,
       getConfiguration: () => ({}),
       getArtifactState: () => undefined,
       getMergedArtifactState: () => ({}),
@@ -224,9 +250,12 @@ describe("createMcpAuthOrchestration", () => {
     expect(recordPendingAuth).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ authSessionId: "auth_1" }),
+      { skipAbandonment: true },
     );
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
-    expect(recordPendingAuth).toHaveBeenNthCalledWith(2, undefined);
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(2, previousPendingAuth, {
+      skipAbandonment: true,
+    });
     expect(abortAgent).not.toHaveBeenCalled();
   });
 });

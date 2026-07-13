@@ -37,7 +37,8 @@ sandbox.
 - Every authorization start creates a fresh v2 attempt id. Its PKCE verifier
   and authorization URL are persisted independently and remain write-once.
 - Thread-local MCP pending auth includes the exact attempt id before the private
-  link is delivered. Failed delivery deletes the new attempt and clears it.
+  link is delivered. Failed delivery deletes the new attempt and restores the
+  prior pending authorization without abandoning its blocked turn.
 - Before each shared user/provider credential mutation, the callback acquires
   the thread lock and verifies that the attempt still owns pending auth.
 - Pre-v2 attempts and legacy MCP pending-auth records without an attempt id are

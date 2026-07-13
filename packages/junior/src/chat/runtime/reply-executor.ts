@@ -1260,12 +1260,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   artifacts: latestArtifacts,
                 });
               },
-              recordPendingAuth: async (pendingAuth) => {
+              recordPendingAuth: async (pendingAuth, options) => {
                 if (pendingAuth) {
                   await applyPendingAuthUpdate({
                     conversation: preparedState.conversation,
                     conversationId,
                     nextPendingAuth: pendingAuth,
+                    options,
                   });
                 } else {
                   clearPendingAuth(preparedState.conversation);
