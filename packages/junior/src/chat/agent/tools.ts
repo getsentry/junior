@@ -59,6 +59,8 @@ import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
 import type { ConversationToolPolicy } from "@/chat/conversations/execution-profile";
+import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
+import { SEARCH_TOOLS_NAME } from "@/chat/tools/search-tools";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -354,6 +356,9 @@ export async function wireAgentTools(
     ),
   ) as Record<string, AnyToolDefinition>;
   const plannedToolExposure = planToolExposure(allowedTools);
+  const hasDeferredTools = Object.keys(plannedToolExposure.catalogTools).some(
+    (name) => !plannedToolExposure.directTools[name],
+  );
   const toolGuidance = Object.entries(plannedToolExposure.directTools).map(
     ([name, definition]) => ({
       name,
@@ -446,7 +451,14 @@ export async function wireAgentTools(
     pluginHooks,
     args.conversationPrivacy,
     args.observers.onToolResult,
-  ).filter((tool) => toolAllowed(args.policy.toolPolicy, tool.name));
+  ).filter((tool) => {
+    const isCatalogDispatcher =
+      tool.name === SEARCH_TOOLS_NAME || tool.name === EXECUTE_TOOL_NAME;
+    if (isCatalogDispatcher && hasDeferredTools) {
+      return true;
+    }
+    return toolAllowed(args.policy.toolPolicy, tool.name);
+  });
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
