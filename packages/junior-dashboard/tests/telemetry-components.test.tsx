@@ -653,7 +653,7 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("tool call");
   });
 
-  it("shows the conversation model and thinking level in the detail header", () => {
+  it("shows the conversation model and thinking level in the transcript header", () => {
     const session = {
       conversationId: "conversation-1",
       cumulativeDurationMs: 0,
@@ -675,12 +675,17 @@ describe("dashboard telemetry components", () => {
     client.setQueryData(["conversation", "conversation-1"], detail);
 
     const html = renderConversationPage(dashboardData([session]));
+    const transcriptStart = html.indexOf('aria-label="Transcript view"');
+    const detailHeader = html.slice(0, transcriptStart);
+    const transcript = html.slice(transcriptStart);
 
-    expect(html).toContain(
+    expect(detailHeader).not.toContain("gpt-5.6-sol");
+    expect(transcript).toContain(
       'aria-label="Execution settings: openai/gpt-5.6-sol, high"',
     );
-    expect(html).toContain("gpt-5.6-sol");
-    expect(html).toContain("(high)");
+    expect(transcript).toContain("break-all font-mono");
+    expect(transcript).toContain("gpt-5.6-sol");
+    expect(transcript).toContain("(high)");
   });
 
   it("renders execution activity inside the transcript", () => {

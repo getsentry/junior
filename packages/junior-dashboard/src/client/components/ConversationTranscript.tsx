@@ -31,6 +31,7 @@ import type {
   TranscriptViewPart,
   TranscriptViewSubagentPart,
 } from "../types";
+import { ExecutionSignature } from "./ExecutionSignature";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
 import {
@@ -617,6 +618,18 @@ function transcriptMeta(
   const toolSummary = summarizeToolCalls(conversation);
   const messageSummary = transcriptMessageSummary(conversation);
   const items: Array<MetricListItem | undefined> = [
+    conversation.modelId || conversation.reasoningLevel
+      ? {
+          content: (
+            <ExecutionSignature
+              className="text-violet-200"
+              modelId={conversation.modelId}
+              reasoningLevel={conversation.reasoningLevel}
+            />
+          ),
+          key: "execution",
+        }
+      : undefined,
     duration !== "none"
       ? {
           content: (

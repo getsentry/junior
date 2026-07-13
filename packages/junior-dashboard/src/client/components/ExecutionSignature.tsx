@@ -19,7 +19,7 @@ export function ExecutionSignature(props: {
           : `Execution reasoning: ${reasoningLevel}`
       }
       className={cn(
-        "font-mono text-[0.76rem] leading-snug text-[#aaa]",
+        "break-all font-mono text-[0.76rem] leading-snug text-[#aaa]",
         props.className,
       )}
       title={modelId}
