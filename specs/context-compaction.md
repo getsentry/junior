@@ -96,11 +96,11 @@ The summary must be stored as one model-visible compaction item, not as an accum
 Model handoff uses this same summarizer without the automatic threshold. A
 successful handoff writes a summary-only replacement epoch whose marker records
 `reason: "handoff"`, the selected named `modelProfile`, and its resolved
-`modelId`. The in-process continuation
-may carry the current runtime bootstrap beside that summary. Ordinary
-checkpoints may append the bootstrap and post-handoff output to the active
-epoch; later context replacement strips the prior bootstrap. Handoff must not
-copy raw pre-handoff transcript history into the target context.
+`modelId`. The in-process continuation carries one synthetic user turn containing the
+current runtime bootstrap and the summary as its `<current-instruction>`.
+Ordinary checkpoints may append that combined turn and post-handoff output to
+the active epoch; later context replacement strips the prior bootstrap. Handoff
+must not copy raw pre-handoff transcript history into the target context.
 
 When summary input must be bounded before calling the summarizer, Junior must omit older context before newer context. Recent Pi history is the most important source for continuation, so truncation must preserve the tail of the reusable history rather than blindly taking the first bytes of the reduced log projection.
 

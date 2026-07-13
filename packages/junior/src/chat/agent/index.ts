@@ -114,6 +114,7 @@ import {
 } from "@/chat/model-profile";
 import { compactContextForHandoff } from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+import { renderCurrentInstruction } from "@/chat/current-instruction";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -530,9 +531,33 @@ async function executeAgentRunInPrivacyContext(
                 },
                 { completeText },
               );
+              const summaryMessage = handoffMessages[0] as {
+                content: Array<{ type?: unknown; text?: unknown }>;
+              };
+              const summaryText = summaryMessage.content.find(
+                (part) => part.type === "text" && typeof part.text === "string",
+              )?.text;
+              if (typeof summaryText !== "string") {
+                throw new Error("handoff summary did not contain text");
+              }
+              const runtimeMessage = runtimeContext[0] as {
+                content: unknown[];
+              };
+              const replacement = [
+                {
+                  ...runtimeMessage,
+                  content: [
+                    ...runtimeMessage.content,
+                    {
+                      type: "text",
+                      text: renderCurrentInstruction(summaryText),
+                    },
+                  ],
+                } as PiMessage,
+              ];
               handoffPhaseUsage = phaseUsage;
               pendingHandoff = {
-                messages: [...handoffMessages, ...runtimeContext],
+                messages: replacement,
                 model: handoffModel,
                 thinkingLevel: handoffThinkingLevel,
               };

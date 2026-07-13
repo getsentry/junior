@@ -3,6 +3,10 @@ import { createLocalSource } from "@sentry/junior-plugin-api";
 
 const observations = vi.hoisted(() => ({
   afterHandoffModelId: "",
+  afterHandoffMessages: [] as Array<{
+    role?: unknown;
+    content?: Array<{ type?: unknown; text?: unknown }>;
+  }>,
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
   initialToolNames: [] as string[],
@@ -56,6 +60,7 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       );
     } else {
       observations.afterHandoffModelId = model.id;
+      observations.afterHandoffMessages = context.messages ?? [];
       observations.afterHandoffToolNames = (context.tools ?? []).map(
         (tool: { name: string }) => tool.name,
       );
@@ -148,6 +153,7 @@ describe("executeAgentRun model handoff", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     observations.afterHandoffModelId = "";
+    observations.afterHandoffMessages = [];
     observations.afterHandoffToolNames = [];
     observations.initialModelId = "";
     observations.initialToolNames = [];
@@ -240,12 +246,22 @@ describe("executeAgentRun model handoff", () => {
     );
     expect(outcome.result.piMessages?.map((message) => message.role)).toEqual([
       "user",
-      "user",
       "assistant",
     ]);
-    expect(JSON.stringify(outcome.result.piMessages)).toContain(
-      "<runtime-turn-context>",
-    );
+    expect(observations.afterHandoffMessages).toHaveLength(1);
+    expect(observations.afterHandoffMessages[0]?.role).toBe("user");
+    expect(observations.afterHandoffMessages[0]?.content).toEqual([
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("<runtime-turn-context>"),
+      }),
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining(
+          "<current-instruction>\nModel handoff checkpoint.",
+        ),
+      }),
+    ]);
 
     const followUp = await executeAgentRun({
       input: { messageText: "Now explain the verification result." },
