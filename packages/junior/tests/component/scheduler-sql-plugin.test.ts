@@ -77,6 +77,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     id: "sched_sql_1",
     createdAtMs: TEST_RUN_AT_MS,
     createdBy: { slackUserId: "U123" },
+    credentialMode: "system",
     destination: {
       platform: "slack",
       teamId: "T123",
@@ -135,7 +136,40 @@ CREATE TABLE junior_schema_migrations (
 `);
       await fixture.sql.execute(
         `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
-        ["plugin:scheduler/0001_scheduler.sql", "legacy-checksum"],
+        [
+          "plugin:scheduler/0001_scheduler.sql",
+          readMigrationFiles({ migrationsFolder: schedulerMigrationsDir() })[0]!
+            .hash,
+        ],
+      );
+      const currentTask = createTask({ id: "sched_legacy_credential_subject" });
+      const { credentialMode: _credentialMode, ...legacyTask } = currentTask;
+      await fixture.sql.execute(
+        `
+INSERT INTO junior_scheduler_tasks (
+  id,
+  team_id,
+  status,
+  next_run_at_ms,
+  created_at_ms,
+  record
+) VALUES ($1, $2, $3, $4, $5, $6)
+`,
+        [
+          legacyTask.id,
+          legacyTask.destination.teamId,
+          legacyTask.status,
+          legacyTask.nextRunAtMs,
+          legacyTask.createdAtMs,
+          JSON.stringify({
+            ...legacyTask,
+            credentialSubject: {
+              type: "user",
+              userId: "slack:T123:U123",
+              allowedWhen: "private-direct-conversation",
+            },
+          }),
+        ],
       );
 
       await expect(
@@ -145,7 +179,15 @@ CREATE TABLE junior_schema_migrations (
             pluginName: "scheduler",
           },
         ]),
-      ).resolves.toEqual({ existing: 1, migrated: 0, scanned: 1 });
+      ).resolves.toEqual({ existing: 1, migrated: 1, scanned: 2 });
+      const [migratedTask] = await fixture.sql.query<{ record: unknown }>(
+        `SELECT record FROM junior_scheduler_tasks WHERE id = $1`,
+        [legacyTask.id],
+      );
+      expect(migratedTask?.record).toMatchObject({
+        credentialMode: "system",
+      });
+      expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
     } finally {
       await fixture.close();
     }
@@ -480,13 +522,24 @@ ORDER BY tablename
       await migrateSchedulerSchema(fixture);
       const db = fixture.sql.db() as unknown as SchedulerDb;
       const state = createPluginState("scheduler", stateAdapter);
-      const stateStore = createSchedulerStore(state);
       const task = createTask({ id: "sched_state_sql_valid_after_bad" });
+      const { credentialMode: _credentialMode, ...legacyTask } = task;
       const badRunId = `${task.id}:${TEST_RUN_AT_MS}`;
-      await stateStore.saveTask(task);
       await state.set(
         "junior:scheduler:tasks",
         ["sched_state_sql_bad", task.id],
+        5 * 60 * 1000,
+      );
+      await state.set(
+        `junior:scheduler:task:${task.id}`,
+        {
+          ...legacyTask,
+          credentialSubject: {
+            type: "user",
+            userId: "U123",
+            allowedWhen: "private-direct-conversation",
+          },
+        },
         5 * 60 * 1000,
       );
       await state.set(
@@ -529,6 +582,7 @@ ORDER BY tablename
 
       const sqlStore = createSchedulerSqlStore(db);
       await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
+        credentialMode: "system",
         id: task.id,
       });
       await expect(sqlStore.getTask("sched_state_sql_bad")).resolves.toBe(
@@ -620,9 +674,9 @@ ORDER BY tablename
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 1,
+        migrated: 2,
         missing: 0,
-        scanned: 1,
+        scanned: 2,
       });
 
       const db = fixture.sql.db() as unknown as SchedulerDb;
@@ -656,9 +710,9 @@ ORDER BY tablename
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 1,
+        migrated: 2,
         missing: 0,
-        scanned: 1,
+        scanned: 2,
       });
     } finally {
       await stateAdapter.disconnect();

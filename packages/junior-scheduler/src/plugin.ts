@@ -118,7 +118,6 @@ function createSchedulerToolContext(
   ctx: ToolRegistrationHookContext,
 ): SchedulerToolContext {
   return {
-    credentialSubject: ctx.slack?.credentialSubject,
     source: ctx.source.platform === "slack" ? ctx.source : undefined,
     actor: ctx.actor?.platform === "slack" ? ctx.actor : undefined,
     store: schedulerStore(ctx),
@@ -426,6 +425,16 @@ export function createSchedulerPlugin() {
     },
     packageName: "@sentry/junior-scheduler",
     hooks: {
+      systemPrompt(ctx) {
+        if (ctx.platform !== "slack") {
+          return [];
+        }
+        return [
+          {
+            text: "Scheduled tasks use system credentials by default. Use the task creator's connected credentials only when they explicitly authorize future scheduled use. Requests such as 'use my account if needed' are ambiguous, not authorization; ask before creating or enabling creator credentials for the task.",
+          },
+        ];
+      },
       tools(ctx) {
         if (
           ctx.source.platform !== "slack" ||
@@ -522,11 +531,18 @@ export function createSchedulerPlugin() {
           }
           let dispatch: Awaited<ReturnType<typeof ctx.agent.dispatch>>;
           try {
+            const credentialSubject =
+              task.credentialMode === "creator"
+                ? {
+                    type: "user" as const,
+                    userId: task.createdBy.slackUserId,
+                    allowedWhen: "scheduled-task" as const,
+                    taskId: task.id,
+                  }
+                : undefined;
             dispatch = await ctx.agent.dispatch({
               idempotencyKey: run.id,
-              ...(task.credentialSubject
-                ? { credentialSubject: task.credentialSubject }
-                : {}),
+              ...(credentialSubject ? { credentialSubject } : {}),
               destination: task.destination,
               input: task.task.text,
               metadata: dispatchMetadata,

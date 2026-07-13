@@ -2,6 +2,7 @@ import {
   pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
+  slackActorSchema,
   type PluginReadState,
   type PluginState,
 } from "@sentry/junior-plugin-api";
@@ -22,7 +23,11 @@ import { z } from "zod";
 import { getNextRunAtMs } from "./cadence";
 import * as schedulerSqlSchema from "./db/schema";
 import { juniorSchedulerRuns, juniorSchedulerTasks } from "./db/schema";
-import type { ScheduledRun, ScheduledTask } from "./types";
+import {
+  scheduledTaskCredentialModeSchema,
+  type ScheduledRun,
+  type ScheduledTask,
+} from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const SCHEDULER_RECORD_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -39,7 +44,7 @@ export type SchedulerDb = PgDatabase<
 const slackDestinationSchema = destinationSchema.refine(isSlackDestination);
 const taskPrincipalSchema = z
   .object({
-    slackUserId: z.string(),
+    slackUserId: slackActorSchema.shape.userId,
     fullName: z.string().optional(),
     userName: z.string().optional(),
   })
@@ -73,37 +78,47 @@ const taskSpecSchema = z
     text: z.string(),
   })
   .strict();
+const taskRecordFields = {
+  id: z.string(),
+  conversationAccess: z
+    .object({
+      audience: z.enum(["direct", "group", "channel"]),
+      visibility: z.enum(["private", "public", "unknown"]),
+    })
+    .strict()
+    .optional(),
+  createdAtMs: z.number(),
+  createdBy: taskPrincipalSchema,
+  destination: slackDestinationSchema,
+  executionActor: z
+    .object({
+      platform: z.literal("system"),
+      name: z.string(),
+    })
+    .strict()
+    .optional(),
+  lastRunAtMs: z.number().optional(),
+  nextRunAtMs: z.number().optional(),
+  originalRequest: z.string().optional(),
+  runNowAtMs: z.number().optional(),
+  schedule: taskScheduleSchema,
+  status: z.enum(["active", "paused", "blocked", "deleted"]),
+  statusReason: z.string().optional(),
+  task: taskSpecSchema,
+  updatedAtMs: z.number(),
+  version: z.number().optional(),
+};
 const taskRecordSchema = z
   .object({
-    id: z.string(),
-    conversationAccess: z
-      .object({
-        audience: z.enum(["direct", "group", "channel"]),
-        visibility: z.enum(["private", "public", "unknown"]),
-      })
-      .strict()
-      .optional(),
-    createdAtMs: z.number(),
-    createdBy: taskPrincipalSchema,
+    ...taskRecordFields,
+    credentialMode: scheduledTaskCredentialModeSchema,
+  })
+  .strict();
+// TODO(v0.101.0): Remove parsing for scheduler task records without credentialMode.
+const legacyTaskRecordSchema = z
+  .object({
+    ...taskRecordFields,
     credentialSubject: pluginCredentialSubjectSchema.optional(),
-    destination: slackDestinationSchema,
-    executionActor: z
-      .object({
-        platform: z.literal("system"),
-        name: z.string(),
-      })
-      .strict()
-      .optional(),
-    lastRunAtMs: z.number().optional(),
-    nextRunAtMs: z.number().optional(),
-    originalRequest: z.string().optional(),
-    runNowAtMs: z.number().optional(),
-    schedule: taskScheduleSchema,
-    status: z.enum(["active", "paused", "blocked", "deleted"]),
-    statusReason: z.string().optional(),
-    task: taskSpecSchema,
-    updatedAtMs: z.number(),
-    version: z.number().optional(),
   })
   .strict();
 const runRecordSchema = z
@@ -431,6 +446,9 @@ function normalizedText(value: string | undefined): string {
 
 function taskDedupeFingerprint(task: ScheduledTask): string {
   return JSON.stringify({
+    credentialMode: task.credentialMode,
+    credentialUserId:
+      task.credentialMode === "creator" ? task.createdBy.slackUserId : null,
     destination: task.destination,
     schedule: {
       kind: task.schedule.kind,
@@ -473,6 +491,25 @@ function canFinishRun(
 function parseStoredTask(value: unknown): ScheduledTask | undefined {
   const parsed = taskRecordSchema.safeParse(parseJsonRecord(value));
   return parsed.success ? stripLegacyTaskFields(parsed.data) : undefined;
+}
+
+/** Decode pre-credential-mode tasks only for the state-to-SQL migration. */
+function parseLegacyStoredTaskForMigration(
+  value: unknown,
+): ScheduledTask | undefined {
+  const parsed = legacyTaskRecordSchema.safeParse(parseJsonRecord(value));
+  if (!parsed.success) {
+    return undefined;
+  }
+  const {
+    credentialSubject: _credentialSubject,
+    version: _version,
+    ...task
+  } = parsed.data;
+  return {
+    ...task,
+    credentialMode: "system",
+  };
 }
 
 /** Decode retained scheduler run state, skipping invalid legacy records. */
@@ -1674,7 +1711,9 @@ export async function migrateSchedulerStateToSql(args: {
   const migratedTasks: ScheduledTask[] = [];
 
   for (const id of ids) {
-    const task = await getTaskFromState(args.state, id);
+    const rawTask = await args.state.get(taskKey(id));
+    const task =
+      parseStoredTask(rawTask) ?? parseLegacyStoredTaskForMigration(rawTask);
     if (!task) {
       missing += 1;
       continue;

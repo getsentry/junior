@@ -6,7 +6,8 @@ Junior's durable agent runtime.
 ## Task Model
 
 - A scheduled task records its creator, execution actor, Slack destination,
-  prompt text, timezone-aware schedule, recurrence, status, and next-run state.
+  prompt text, timezone-aware schedule, recurrence, credential mode, status, and
+  next-run state.
 - SQL schemas and migrations are authoritative for persistence.
 - Schedule parsing normalizes calendar intent before storage; execution does not
   reinterpret the original natural-language request.
@@ -28,10 +29,16 @@ Junior's durable agent runtime.
 ## Authority
 
 - Creation requires the active Slack actor and destination.
-- Stored creator attribution does not automatically authorize use of another
-  user's provider credentials.
-- Execution uses the sanitized principal and explicit credential subject carried
-  by the scheduled task contract.
+- Tasks use system credentials by default. Creator credentials require explicit
+  authorization from the verified task creator and work in DMs or channels.
+- Only the creator may enable or re-enable creator credential mode. Any
+  conversation manager may disable it, and another user's executable task edit
+  clears it; schedule, status, and run-now changes preserve it.
+- Scheduled execution remains a system actor. At dispatch, creator mode derives
+  a user credential subject bound to the exact scheduler task; interactive OAuth
+  remains disabled.
+- Stored creator attribution grants no broader task-management or execution
+  authority.
 - User-visible schedule management remains scoped to the active Slack context.
 
 ## Operations

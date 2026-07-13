@@ -1,10 +1,11 @@
-import type {
-  PluginCredentialSubject,
-  SlackDestination,
-  SystemActor,
-} from "@sentry/junior-plugin-api";
+import type { SlackDestination, SystemActor } from "@sentry/junior-plugin-api";
+import { z } from "zod";
 
 export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
+export const scheduledTaskCredentialModeSchema = z.enum(["system", "creator"]);
+export type ScheduledTaskCredentialMode = z.infer<
+  typeof scheduledTaskCredentialModeSchema
+>;
 
 export type ScheduledRunStatus =
   | "pending"
@@ -69,7 +70,8 @@ export interface ScheduledTask {
   createdAtMs: number;
   createdBy: ScheduledTaskPrincipal;
   conversationAccess?: ScheduledTaskConversationAccess;
-  credentialSubject?: PluginCredentialSubject;
+  /** Selects system credentials or explicitly delegated creator credentials. */
+  credentialMode: ScheduledTaskCredentialMode;
   destination: SlackDestination;
   executionActor?: ScheduledTaskExecutionActor;
   lastRunAtMs?: number;

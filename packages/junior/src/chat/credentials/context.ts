@@ -4,8 +4,12 @@ import { parseActorUserId } from "@/chat/actor";
 const exactActorIdSchema = z
   .string()
   .refine((value) => parseActorUserId(value) === value);
+const exactNonBlankStringSchema = z
+  .string()
+  .min(1)
+  .refine((value) => value === value.trim());
 
-const credentialSubjectBindingSchema = z
+const slackDirectCredentialSubjectBindingSchema = z
   .object({
     type: z.literal("slack-direct-conversation"),
     teamId: z.string().min(1),
@@ -13,6 +17,20 @@ const credentialSubjectBindingSchema = z
     signature: z.string().min(1),
   })
   .strict();
+
+const scheduledTaskCredentialSubjectBindingSchema = z
+  .object({
+    type: z.literal("scheduled-task"),
+    plugin: z.string().min(1),
+    taskId: exactNonBlankStringSchema,
+    signature: z.string().min(1),
+  })
+  .strict();
+
+const credentialSubjectBindingSchema = z.discriminatedUnion("type", [
+  slackDirectCredentialSubjectBindingSchema,
+  scheduledTaskCredentialSubjectBindingSchema,
+]);
 
 const credentialUserActorSchema = z
   .object({
@@ -28,14 +46,29 @@ const credentialSystemActorSchema = z
   })
   .strict();
 
-export const credentialSubjectSchema = z
-  .object({
-    type: z.literal("user"),
-    userId: exactActorIdSchema,
-    allowedWhen: z.literal("private-direct-conversation"),
-    binding: credentialSubjectBindingSchema,
-  })
-  .strict();
+export const credentialSubjectSchema = z.discriminatedUnion("allowedWhen", [
+  z
+    .object({
+      type: z.literal("user"),
+      userId: exactActorIdSchema,
+      allowedWhen: z.literal("private-direct-conversation"),
+      binding: slackDirectCredentialSubjectBindingSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("user"),
+      userId: exactActorIdSchema,
+      allowedWhen: z.literal("scheduled-task"),
+      taskId: exactNonBlankStringSchema,
+      binding: scheduledTaskCredentialSubjectBindingSchema,
+    })
+    .strict()
+    .refine((subject) => subject.binding.taskId === subject.taskId, {
+      message: "Scheduled task credential subject requires task binding",
+      path: ["binding"],
+    }),
+]);
 
 export const credentialContextSchema = z.union([
   z

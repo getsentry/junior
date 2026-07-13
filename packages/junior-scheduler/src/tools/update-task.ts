@@ -8,6 +8,7 @@ import {
   isValidTimeZone,
   normalizeStatus,
   parseNextRunAtMs,
+  requireActor,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
   schedulerStore,
@@ -23,7 +24,7 @@ export function createSlackScheduleUpdateTaskTool(
 ) {
   return definePluginTool({
     description:
-      "Edit, pause, resume, or reschedule an existing Junior scheduled task in the active Slack conversation. Use only task IDs returned for this conversation. Do not move scheduled tasks across conversations.",
+      "Edit, pause, resume, reschedule, or change credential use for an existing Junior scheduled task in the active Slack conversation. Use only task IDs returned for this conversation. Do not move scheduled tasks across conversations. Set credential_mode to creator only when the task creator explicitly authorizes future scheduled use of their connected credentials. If creator credential use is requested but authorization is ambiguous, ask before enabling it. If another user changes the executable task text, creator credential use is cleared automatically.",
     executionMode: "sequential",
     inputSchema: z.object({
       task_id: z
@@ -53,6 +54,13 @@ export function createSlackScheduleUpdateTaskTool(
           "Set to active, paused, or blocked to resume, pause, or block the task.",
         )
         .optional(),
+      credential_mode: z
+        .enum(["system", "creator"])
+        .nullable()
+        .describe(
+          "Set creator only when the current actor is the task creator and explicitly authorizes future scheduled credential use. Set system to disable delegation.",
+        )
+        .optional(),
     }),
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input) => {
@@ -60,6 +68,13 @@ export function createSlackScheduleUpdateTaskTool(
         context,
         taskId: input.task_id,
       });
+      const actor = requireActor(context, lookup.destination);
+      const isCreator = actor.slackUserId === lookup.createdBy.slackUserId;
+      if (input.credential_mode === "creator" && !isCreator) {
+        throwToolInputError(
+          "Only the scheduled task creator can enable creator credential use.",
+        );
+      }
 
       const timezone = input.timezone ?? lookup.schedule.timezone;
       validateRecurringFrequencyLimit(input);
@@ -92,9 +107,17 @@ export function createSlackScheduleUpdateTaskTool(
           })
         : lookup.schedule.recurrence;
       const nextStatus = status ?? lookup.status;
+      // Another actor changing executable text revokes creator delegation.
+      const credentialMode =
+        input.task !== undefined &&
+        input.task !== lookup.task.text &&
+        !isCreator
+          ? "system"
+          : (input.credential_mode ?? lookup.credentialMode);
 
       const next: ScheduledTask = {
         ...lookup,
+        credentialMode,
         updatedAtMs: Date.now(),
         nextRunAtMs,
         runNowAtMs: nextStatus === "active" ? lookup.runNowAtMs : undefined,

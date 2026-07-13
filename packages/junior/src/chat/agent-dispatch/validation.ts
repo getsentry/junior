@@ -3,7 +3,10 @@ import {
   isSlackDestination,
 } from "@sentry/junior-plugin-api";
 import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
-import { verifySlackDirectCredentialSubject } from "@/chat/credentials/subject";
+import {
+  verifyScheduledTaskCredentialSubject,
+  verifySlackDirectCredentialSubject,
+} from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
 
 function hasIssueAtPath(
@@ -103,7 +106,7 @@ function dispatchOptionsErrorMessage(
     return "Dispatch credentialSubject userId is required";
   }
   if (hasIssueUnderPath(issues, ["credentialSubject", "allowedWhen"])) {
-    return "Dispatch credentialSubject allowedWhen must be private-direct-conversation";
+    return "Dispatch credentialSubject allowedWhen is invalid";
   }
   if (hasIssueUnderPath(issues, ["credentialSubject"])) {
     return "Dispatch credentialSubject type must be user";
@@ -142,7 +145,10 @@ export function validateDispatchOptions(
     throw new Error("Dispatch destination platform must be slack");
   }
   if (credentialSubject !== undefined) {
-    if (!isDmChannel(destination.channelId)) {
+    if (
+      credentialSubject.allowedWhen === "private-direct-conversation" &&
+      !isDmChannel(destination.channelId)
+    ) {
       throw new Error(
         "Dispatch credentialSubject requires a private direct Slack destination",
       );
@@ -153,19 +159,24 @@ export function validateDispatchOptions(
 /** Verify runtime-owned access requirements for delegated dispatch credentials. */
 export async function verifyDispatchCredentialSubjectAccess(
   options: BoundDispatchOptions,
+  plugin: string,
 ): Promise<void> {
   if (!options.credentialSubject) {
     return;
   }
 
-  const verified = verifySlackDirectCredentialSubject({
-    channelId: options.destination.channelId,
-    teamId: options.destination.teamId,
-    subject: options.credentialSubject,
-  });
+  const verified =
+    options.credentialSubject.allowedWhen === "scheduled-task"
+      ? verifyScheduledTaskCredentialSubject({
+          plugin,
+          subject: options.credentialSubject,
+        })
+      : verifySlackDirectCredentialSubject({
+          channelId: options.destination.channelId,
+          teamId: options.destination.teamId,
+          subject: options.credentialSubject,
+        });
   if (!verified) {
-    throw new Error(
-      "Dispatch credentialSubject must match the private direct Slack destination",
-    );
+    throw new Error("Dispatch credentialSubject is not valid for this action");
   }
 }

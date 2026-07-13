@@ -2300,6 +2300,7 @@ async function processEvents(args: {
       id: taskId,
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
+      credentialMode: "system",
       destination: createEvalDestination(
         thread,
       ) as ScheduledTask["destination"],

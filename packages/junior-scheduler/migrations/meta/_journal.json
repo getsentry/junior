@@ -8,6 +8,13 @@
       "when": 1783781619505,
       "tag": "0000_scheduler",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783964295816,
+      "tag": "0001_explicit_credential_mode",
+      "breakpoints": true
     }
   ]
 }

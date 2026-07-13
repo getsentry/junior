@@ -53,7 +53,8 @@ the production singleton.
 
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
-subject.
+subject. Scheduled-task creator identity may authorize task-scoped credential
+delegation without becoming the execution actor or a general task owner.
 
 ## Invariants
 

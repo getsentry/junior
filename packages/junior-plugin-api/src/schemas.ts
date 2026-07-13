@@ -15,6 +15,9 @@ const exactActorUserIdSchema = z
 export const nonBlankStringSchema = z
   .string()
   .refine((value) => value.trim().length > 0);
+const exactNonBlankStringSchema = nonBlankStringSchema.refine(
+  (value) => value === value.trim(),
+);
 
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);
@@ -72,13 +75,26 @@ export const sourceSchema = z.discriminatedUnion("platform", [
 ]);
 
 /** Stable user credential subject shape accepted from plugins. */
-export const pluginCredentialSubjectSchema = z
-  .object({
-    type: z.literal("user"),
-    userId: exactActorUserIdSchema,
-    allowedWhen: z.literal("private-direct-conversation"),
-  })
-  .strict();
+export const pluginCredentialSubjectSchema = z.discriminatedUnion(
+  "allowedWhen",
+  [
+    z
+      .object({
+        type: z.literal("user"),
+        userId: exactActorUserIdSchema,
+        allowedWhen: z.literal("private-direct-conversation"),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("user"),
+        userId: exactActorUserIdSchema,
+        allowedWhen: z.literal("scheduled-task"),
+        taskId: exactNonBlankStringSchema,
+      })
+      .strict(),
+  ],
+);
 
 /** Shared exact actor profile fields for platform-scoped actors. */
 const actorProfileSchema = {

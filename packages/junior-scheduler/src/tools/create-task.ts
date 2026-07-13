@@ -7,7 +7,6 @@ import {
   buildTaskId,
   compactTask,
   getConversationAccess,
-  getCredentialSubject,
   getDefaultScheduleTimezone,
   isValidTimeZone,
   parseNextRunAtMs,
@@ -28,7 +27,7 @@ export function createSlackScheduleCreateTaskTool(
 ) {
   return definePluginTool({
     description:
-      "Create a one-time or recurring Junior task in the active Slack conversation. For one-time reminders or one-time scheduled work, omit recurrence entirely; never choose a default recurrence. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Do not create scheduled polling tasks to watch provider resources when a subscribable tool result can deliver the requested events. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. When the task, schedule, and destination are clear, create it without asking for confirmation; ask only when one of those is ambiguous.",
+      "Create a one-time or recurring Junior task in the active Slack conversation. For one-time reminders or one-time scheduled work, omit recurrence entirely; never choose a default recurrence. Use only when the user explicitly asks Junior to do work later or on a recurring cadence. Do not create scheduled polling tasks to watch provider resources when a subscribable tool result can deliver the requested events. Only manage tasks for the active Slack DM or channel; never target threads, other channels, or another user's DM. Set credential_mode to creator only when the current user explicitly authorizes future scheduled use of their connected credentials. If connected-credential use is needed but authorization is ambiguous, ask before creating the task. Otherwise omit credential_mode and use system credentials. When the task, schedule, destination, and credential mode are clear, create it without another confirmation.",
     executionMode: "sequential",
     inputSchema: z.object({
       task: z.string().min(1).max(4000),
@@ -60,11 +59,18 @@ export function createSlackScheduleCreateTaskTool(
           "Required when schedule_kind is recurring. Omit when schedule_kind is one_off. Recurring tasks run at most once per day: use daily, weekly, monthly, or yearly only.",
         )
         .optional(),
+      credential_mode: z
+        .enum(["system", "creator"])
+        .nullable()
+        .describe(
+          "Use creator only when the current user explicitly authorizes future scheduled use of their connected credentials. Omit or use system otherwise.",
+        )
+        .optional(),
     }),
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input) => {
       const destination = requireActiveConversation(context);
-      const actor = requireActor(context);
+      const actor = requireActor(context, destination);
 
       const nowMs = Date.now();
       const timezone = input.timezone ?? getDefaultScheduleTimezone();
@@ -83,10 +89,6 @@ export function createSlackScheduleCreateTaskTool(
         timezone,
       });
       const conversationAccess = getConversationAccess(destination);
-      const credentialSubject = getCredentialSubject({
-        access: conversationAccess,
-        subject: context.credentialSubject,
-      });
 
       const task: ScheduledTask = {
         id: buildTaskId(),
@@ -94,7 +96,7 @@ export function createSlackScheduleCreateTaskTool(
         updatedAtMs: nowMs,
         createdBy: actor,
         conversationAccess,
-        ...(credentialSubject ? { credentialSubject } : {}),
+        credentialMode: input.credential_mode ?? "system",
         destination,
         executionActor: SCHEDULED_TASK_SYSTEM_ACTOR,
         nextRunAtMs,

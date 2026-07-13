@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
-  pluginCredentialSubjectSchema,
   destinationSchema,
   isSlackDestination,
   sourceSchema,
   type SlackDestination,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
+import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { destinationKey } from "@/chat/destination";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
@@ -45,25 +45,12 @@ const dispatchActorSchema = z
     name: nonEmptyExactStringSchema,
   })
   .strict();
-const credentialSubjectBindingSchema = z
-  .object({
-    type: z.literal("slack-direct-conversation"),
-    teamId: z.string().min(1),
-    channelId: z.string().min(1),
-    signature: z.string().min(1),
-  })
-  .strict();
-const boundCredentialSubjectSchema = pluginCredentialSubjectSchema
-  .extend({
-    binding: credentialSubjectBindingSchema,
-  })
-  .strict();
 const dispatchRecordSchema = z
   .object({
     actor: dispatchActorSchema,
     attempt: z.number().int().nonnegative(),
     createdAtMs: z.number().finite(),
-    credentialSubject: boundCredentialSubjectSchema.optional(),
+    credentialSubject: credentialSubjectSchema.optional(),
     destination: destinationSchema,
     errorMessage: z.string().optional(),
     id: nonEmptyExactStringSchema,
@@ -94,22 +81,37 @@ const dispatchRecordSchema = z
     if (!subject) {
       return;
     }
-    if (!record.destination.channelId.startsWith("D")) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "Dispatch credentialSubject requires a private direct Slack destination",
-        path: ["credentialSubject"],
-      });
+    if (subject.allowedWhen === "private-direct-conversation") {
+      if (!record.destination.channelId.startsWith("D")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Dispatch credentialSubject requires a private direct Slack destination",
+          path: ["credentialSubject"],
+        });
+        return;
+      }
+      if (
+        subject.binding.type !== "slack-direct-conversation" ||
+        subject.binding.teamId !== record.destination.teamId ||
+        subject.binding.channelId !== record.destination.channelId
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Dispatch credentialSubject binding must match destination",
+          path: ["credentialSubject", "binding"],
+        });
+      }
       return;
     }
     if (
-      subject.binding.teamId !== record.destination.teamId ||
-      subject.binding.channelId !== record.destination.channelId
+      subject.binding.type !== "scheduled-task" ||
+      subject.binding.plugin !== record.plugin ||
+      subject.binding.taskId !== subject.taskId
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Dispatch credentialSubject binding must match destination",
+        message: "Dispatch credentialSubject binding must match task",
         path: ["credentialSubject", "binding"],
       });
     }

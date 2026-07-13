@@ -17,7 +17,6 @@ import {
   type SchedulerDb,
   type SchedulerToolContext,
 } from "@sentry/junior-scheduler";
-import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
@@ -85,17 +84,7 @@ function createContext(
     store: schedulerStore(),
     ...contextOverrides,
   };
-  const credentialSubject =
-    context.credentialSubject ??
-    createSlackDirectCredentialSubject({
-      channelId: context.source?.channelId,
-      teamId: context.source?.teamId,
-      userId: context.actor?.userId,
-    });
-  return {
-    ...context,
-    ...(credentialSubject ? { credentialSubject } : {}),
-  };
+  return context;
 }
 
 async function executeTool<TInput, TOutput extends PluginToolResult>(
@@ -215,7 +204,7 @@ describe("Slack schedule tools", () => {
           audience: "channel",
           visibility: "unknown",
         },
-        credential_subject: null,
+        credential_mode: "system",
         status: "active",
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         recurrence: {
@@ -374,33 +363,6 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("rejects invalid Slack credential subject context before creating a task", async () => {
-    const rejected = createTask(
-      createContext({
-        channelId: "D123",
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-          binding: {
-            type: "slack-direct-conversation",
-            teamId: TEST_TEAM_ID,
-            channelId: "D123",
-            signature: "v1=test",
-          },
-        } as SchedulerToolContext["credentialSubject"],
-      }),
-    );
-
-    await expect(rejected).rejects.toThrow(PluginToolInputError);
-    await expect(rejected).rejects.toThrow(
-      "Active Slack credential subject is invalid.",
-    );
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
-  });
-
   it("rejects invalid scheduled task routing context at the store boundary", async () => {
     await createTask();
     const task = (await schedulerStore().listTasks()).at(0);
@@ -426,28 +388,24 @@ describe("Slack schedule tools", () => {
     await expect(
       schedulerStore().saveTask({
         ...task,
-        id: "sched_bad_credential_subject",
-        destination: {
-          platform: "slack",
-          teamId: TEST_TEAM_ID,
-          channelId: "D123",
-        },
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-          binding: {
-            type: "slack-direct-conversation",
-            teamId: TEST_TEAM_ID,
-            channelId: "D123",
-            signature: "v1=test",
-          },
-        } as ScheduledTask["credentialSubject"],
+        id: "sched_bad_credential_mode",
+        credentialMode: "invalid" as ScheduledTask["credentialMode"],
       }),
     ).rejects.toThrow("Scheduled task routing context is invalid.");
     await expect(
-      schedulerStore().getTask("sched_bad_credential_subject"),
+      schedulerStore().getTask("sched_bad_credential_mode"),
     ).resolves.toBe(undefined);
+
+    await expect(
+      schedulerStore().saveTask({
+        ...task,
+        id: "sched_bad_creator",
+        createdBy: { slackUserId: "unknown" },
+      }),
+    ).rejects.toThrow("Scheduled task routing context is invalid.");
+    await expect(schedulerStore().getTask("sched_bad_creator")).resolves.toBe(
+      undefined,
+    );
   });
 
   it("creates explicit one-off reminders without a second confirmation", async () => {
@@ -466,6 +424,7 @@ describe("Slack schedule tools", () => {
         schedule: "In 1 minute",
         schedule_kind: "one_off",
         next_run_at: "2026-05-27T00:25:23.000Z",
+        credential_mode: null,
       },
     );
 
@@ -486,11 +445,7 @@ describe("Slack schedule tools", () => {
           audience: "direct",
           visibility: "private",
         },
-        credentialSubject: {
-          type: "user",
-          userId: "U123",
-          allowedWhen: "private-direct-conversation",
-        },
+        credentialMode: "system",
         destination: { channelId: "D123" },
         nextRunAtMs: Date.parse("2026-05-27T00:25:23.000Z"),
         status: "active",
@@ -938,7 +893,116 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("does not delegate user credentials in private group conversations", async () => {
+  it("stores explicit creator credential mode in channels", async () => {
+    const created = await createTask(createContext(), {
+      credential_mode: "creator",
+    });
+
+    expect(created).toMatchObject({
+      task: { credential_mode: "creator" },
+    });
+    await expect(
+      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+    ).resolves.toMatchObject([
+      {
+        createdBy: { slackUserId: "U123" },
+        credentialMode: "creator",
+        destination: { channelId: "C123" },
+      },
+    ]);
+  });
+
+  it("clears creator credentials when another user changes task text", async () => {
+    const context = createContext();
+    const created = (await createTask(context, {
+      credential_mode: "creator",
+    })) as { task: { id: string } };
+    const otherActor = createContext({
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+      },
+    });
+
+    await executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+      task_id: created.task.id,
+      schedule: "Every Tuesday at 9am",
+      credential_mode: null,
+    });
+    await expect(
+      schedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({ credentialMode: "creator" });
+
+    await executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+      task_id: created.task.id,
+      task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+    });
+    await expect(
+      schedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({ credentialMode: "creator" });
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(otherActor),
+      {
+        task_id: created.task.id,
+        task: "Team-owned digest: Summarize open scheduler issues.",
+      },
+    );
+    expect(updated).toMatchObject({
+      task: { credential_mode: "system" },
+    });
+    await expect(
+      schedulerStore().getTask(created.task.id),
+    ).resolves.toMatchObject({ credentialMode: "system" });
+  });
+
+  it("allows only the creator to enable creator credentials", async () => {
+    const context = createContext();
+    const created = (await createTask(context)) as { task: { id: string } };
+    const otherActor = createContext({
+      actor: {
+        platform: "slack",
+        teamId: TEST_TEAM_ID,
+        userId: "U999",
+      },
+    });
+
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+        task_id: created.task.id,
+        credential_mode: "creator",
+      }),
+    ).rejects.toThrow(
+      "Only the scheduled task creator can enable creator credential use.",
+    );
+
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(context), {
+        task_id: created.task.id,
+        credential_mode: "creator",
+      }),
+    ).resolves.toMatchObject({
+      task: { credential_mode: "creator" },
+    });
+  });
+
+  it("rejects creator identity from another Slack workspace", async () => {
+    await expect(
+      createTask(
+        createContext({
+          actor: {
+            platform: "slack",
+            teamId: "TOTHER",
+            userId: "U123",
+          },
+        }),
+        { credential_mode: "creator" },
+      ),
+    ).rejects.toThrow("No active Slack actor context is available.");
+  });
+
+  it("defaults private group conversations to system credentials", async () => {
     const result = await createTask(createContext({ channelId: "G123" }));
 
     expect(result).toMatchObject({
@@ -948,7 +1012,7 @@ describe("Slack schedule tools", () => {
           audience: "group",
           visibility: "private",
         },
-        credential_subject: null,
+        credential_mode: "system",
       },
     });
     const tasks = await schedulerStore().listTasksForTeam(TEST_TEAM_ID);
@@ -961,7 +1025,7 @@ describe("Slack schedule tools", () => {
         destination: { channelId: "G123" },
       },
     ]);
-    expect(tasks[0]?.credentialSubject).toBeUndefined();
+    expect(tasks[0]?.credentialMode).toBe("system");
   });
 
   it("rejects non-canonical Slack sources before storing tasks", async () => {
@@ -1355,12 +1419,7 @@ describe("Slack schedule tool wiring via getPluginTools", () => {
         destination: { channelId: "DDM", teamId: TEAM_ID },
         conversationAccess: { audience: "direct", visibility: "private" },
       });
-      // DM-based task gets a credential subject (private-direct exception).
-      expect(stored?.credentialSubject).toMatchObject({
-        type: "user",
-        userId: "U123",
-        allowedWhen: "private-direct-conversation",
-      });
+      expect(stored?.credentialMode).toBe("system");
     } finally {
       await fixture.close();
       vi.restoreAllMocks();

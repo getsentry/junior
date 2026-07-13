@@ -75,6 +75,7 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nextRunAtMs,
     createdBy: { slackUserId: "U123" },
+    credentialMode: "system",
     destination: SLACK_DESTINATION,
     nextRunAtMs,
     schedule: {
@@ -937,20 +938,6 @@ describe("plugin heartbeat", () => {
         updatedAtMs: TEST_NOW_MS,
       }),
     );
-    await store.saveTask(
-      createTask({
-        createdBy: {
-          slackUserId: "unknown",
-        },
-        id: "sched_plugin_corrupt_creator",
-        status: "blocked",
-        task: {
-          text: "Corrupt creator metadata task",
-        },
-        updatedAtMs: TEST_NOW_MS + 1,
-      }),
-    );
-
     const { readPluginOperationalReportFeed } = await import("@/reporting");
     const feed = await readPluginOperationalReportFeed();
     const scheduler = feed.reports.find(
@@ -965,7 +952,7 @@ describe("plugin heartbeat", () => {
     expect(scheduler?.metrics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: "active", value: "1" }),
-        expect.objectContaining({ label: "blocked", value: "2" }),
+        expect.objectContaining({ label: "blocked", value: "1" }),
         expect.objectContaining({ label: "due now", value: "1" }),
       ]),
     );
@@ -990,13 +977,6 @@ describe("plugin heartbeat", () => {
         ?.values ?? {},
     ).toMatchObject({
       author: "Slack User U456",
-    });
-    expect(
-      blockedRecords.find(
-        (record) => record.id === "sched_plugin_corrupt_creator",
-      )?.values ?? {},
-    ).toMatchObject({
-      author: "Invalid Slack creator metadata",
     });
     expect(JSON.stringify(feed)).not.toContain("Secret");
   }, 30_000);
@@ -1035,54 +1015,70 @@ describe("plugin heartbeat", () => {
     expect(runningSection?.records).toHaveLength(5);
   }, 30_000);
 
-  it("carries scheduled task credential subjects into dispatch records", async () => {
-    mockDispatchCallbackFetch(originalFetch);
-    setPlugins([schedulerPlugin()]);
-    const store = await useSchedulerSqlStore();
-    await store.saveTask(
-      createTask({
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "D123",
-        },
+  it.each([
+    {
+      conversationAccess: {
+        audience: "channel",
+        visibility: "public",
+      } as const,
+      destination: SLACK_DESTINATION,
+      label: "channel",
+    },
+    {
+      conversationAccess: {
+        audience: "direct",
+        visibility: "private",
+      } as const,
+      destination: { ...SLACK_DESTINATION, channelId: "D123" },
+      label: "DM",
+    },
+  ])(
+    "binds creator credentials to the scheduled task dispatch in a $label",
+    async ({ conversationAccess, destination }) => {
+      mockDispatchCallbackFetch(originalFetch);
+      setPlugins([schedulerPlugin()]);
+      const store = await useSchedulerSqlStore();
+      await store.saveTask(
+        createTask({
+          conversationAccess,
+          credentialMode: "creator",
+          destination,
+        }),
+      );
+
+      const waitUntil = createWaitUntilCollector();
+      const response = await heartbeat(
+        new Request("https://example.invalid/api/internal/heartbeat", {
+          headers: { authorization: "Bearer heartbeat-secret" },
+        }),
+        waitUntil.fn,
+      );
+      expect(response.status).toBe(202);
+      await waitUntil.flush();
+
+      const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
+      expect(running?.dispatchId).toEqual(expect.any(String));
+      await expect(
+        getDispatchRecord(running!.dispatchId!),
+      ).resolves.toMatchObject({
         credentialSubject: {
           type: "user",
           userId: "U123",
-          allowedWhen: "private-direct-conversation",
+          allowedWhen: "scheduled-task",
+          taskId: "sched_plugin_1",
+          binding: {
+            type: "scheduled-task",
+            plugin: "scheduler",
+            taskId: "sched_plugin_1",
+            signature: expect.any(String),
+          },
         },
-      }),
-    );
-
-    const waitUntil = createWaitUntilCollector();
-    const response = await heartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
-        headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
-    );
-    expect(response.status).toBe(202);
-    await waitUntil.flush();
-
-    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
-    expect(running?.dispatchId).toEqual(expect.any(String));
-    await expect(
-      getDispatchRecord(running!.dispatchId!),
-    ).resolves.toMatchObject({
-      credentialSubject: {
-        type: "user",
-        userId: "U123",
-        allowedWhen: "private-direct-conversation",
-        binding: {
-          type: "slack-direct-conversation",
-          teamId: "T123",
-          channelId: "D123",
-          signature: expect.any(String),
-        },
-      },
-    });
-    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
-  }, 30_000);
+        destination,
+      });
+      expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    },
+    30_000,
+  );
 
   it("fails scheduled runs when their dispatch record disappeared", async () => {
     const fetchMock = vi.fn(async () => {

@@ -9,6 +9,10 @@ sandbox.
 - The current actor is the default credential subject.
 - A different subject requires explicit delegation carried through the durable
   execution context.
+- Runtime binds Slack DM delegation to the exact destination and scheduler
+  delegation to the exact scheduler plugin and task id before persistence.
+- A scheduled run with a delegated creator subject remains system-acted and
+  cannot start an interactive OAuth flow.
 - Run attribution and conversation membership do not grant provider authority.
 - Missing actor or subject context fails closed.
 

@@ -22,6 +22,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
+  bindScheduledTaskCredentialSubject,
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
@@ -133,6 +134,22 @@ function createCredentialSubject() {
     throw new Error("Expected test credential subject to be bound");
   }
   return boundSubject;
+}
+
+function createScheduledTaskCredentialSubject() {
+  const subject = bindScheduledTaskCredentialSubject({
+    plugin: "scheduler",
+    subject: {
+      type: "user",
+      userId: "U123",
+      allowedWhen: "scheduled-task",
+      taskId: "sched_runner_1",
+    },
+  });
+  if (!subject) {
+    throw new Error("Expected scheduled task credential subject to be bound");
+  }
+  return subject;
 }
 
 function slackAddress(channelId = "C123") {
@@ -414,21 +431,42 @@ describe("agent dispatch runner", () => {
     );
   });
 
-  it("persists agent continuation state before scheduling the next slice", async () => {
+  it("preserves task-scoped creator credentials across dispatch slices", async () => {
     const created = await createOrGetDispatch({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-timeout",
+        credentialSubject: createScheduledTaskCredentialSubject(),
         destination: slackAddress(),
         input: "Run the scheduled task.",
         source: slackSource(),
       },
     });
     const scheduleCallback = vi.fn(async () => undefined);
-    const executeAgentRun = vi.fn(async () => {
-      return { status: "suspended" as const, resumeVersion: 7 };
-    });
+    const executeAgentRun = vi
+      .fn<AgentRunner["run"]>()
+      .mockResolvedValueOnce({ status: "suspended", resumeVersion: 7 })
+      .mockImplementationOnce(async (request) => {
+        expect(
+          flattenAgentRunRequestForTest(request).credentialContext,
+        ).toEqual({
+          actor: { platform: "system", name: "scheduler" },
+          subject: {
+            type: "user",
+            userId: "U123",
+            allowedWhen: "scheduled-task",
+            taskId: "sched_runner_1",
+            binding: {
+              type: "scheduled-task",
+              plugin: "scheduler",
+              taskId: "sched_runner_1",
+              signature: expect.any(String),
+            },
+          },
+        });
+        return completedAgentRun(createReply());
+      });
 
     await runAgentDispatchSlice(
       {
@@ -438,12 +476,29 @@ describe("agent dispatch runner", () => {
       { agentRunner: { run: executeAgentRun }, scheduleCallback },
     );
 
-    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+    const awaitingResume = await getDispatchRecord(created.record.id);
+    expect(awaitingResume).toMatchObject({
       status: "awaiting_resume",
     });
     expect(scheduleCallback).toHaveBeenCalledWith({
       id: created.record.id,
       expectedVersion: expect.any(Number),
+    });
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000001",
+      }),
+    });
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: awaitingResume!.version,
+      },
+      { agentRunner: { run: executeAgentRun } },
+    );
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
     });
   });
 
@@ -497,6 +552,59 @@ describe("agent dispatch runner", () => {
     await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
       status: "completed",
       resultMessageTs: "1700000000.000002",
+    });
+  });
+
+  it("passes task-scoped creator credentials in channels without enabling OAuth", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        channel: "C123",
+        ts: "1700000000.000003",
+      }),
+    });
+    const created = await createOrGetDispatch({
+      plugin: "scheduler",
+      nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
+      options: {
+        idempotencyKey: "run-scheduled-task-delegated",
+        credentialSubject: createScheduledTaskCredentialSubject(),
+        destination: slackAddress(),
+        input: "Run the scheduled task.",
+        source: slackSource(),
+      },
+    });
+    const executeAgentRun = vi.fn<AgentRunner["run"]>(async (request) => {
+      const context = flattenAgentRunRequestForTest(request);
+      expect(context.credentialContext).toEqual({
+        actor: { platform: "system", name: "scheduler" },
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "scheduled-task",
+          taskId: "sched_runner_1",
+          binding: {
+            type: "scheduled-task",
+            plugin: "scheduler",
+            taskId: "sched_runner_1",
+            signature: expect.any(String),
+          },
+        },
+      });
+      expect(context.authorizationFlowMode).toBe("disabled");
+      return completedAgentRun(createReply());
+    });
+
+    await runAgentDispatchSlice(
+      {
+        id: created.record.id,
+        expectedVersion: created.record.version,
+      },
+      { agentRunner: { run: executeAgentRun } },
+    );
+
+    await expect(getDispatchRecord(created.record.id)).resolves.toMatchObject({
+      status: "completed",
+      resultMessageTs: "1700000000.000003",
     });
   });
 

@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-dispatch/validation";
 import { parseDispatchRecord } from "@/chat/agent-dispatch/store";
 import {
+  bindScheduledTaskCredentialSubject,
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
@@ -62,6 +63,23 @@ function createBoundCredentialSubject(
     throw new Error("Expected test credential subject to be bound");
   }
   return boundSubject;
+}
+
+function createBoundScheduledTaskCredentialSubject(taskId = "sched_1") {
+  process.env.JUNIOR_SECRET = "dispatch-validation-secret";
+  const subject = bindScheduledTaskCredentialSubject({
+    plugin: "scheduler",
+    subject: {
+      type: "user",
+      userId: "U123",
+      allowedWhen: "scheduled-task",
+      taskId,
+    },
+  });
+  if (!subject) {
+    throw new Error("Expected scheduled task credential subject to be bound");
+  }
+  return subject;
 }
 
 describe("agent dispatch validation", () => {
@@ -314,45 +332,56 @@ describe("agent dispatch validation", () => {
     ).toThrow("Dispatch credentialSubject userId is required");
 
     await expect(
-      verifyDispatchCredentialSubjectAccess({
-        ...validOptions,
-        destination: {
-          ...validOptions.destination,
-          channelId: "D123",
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          destination: {
+            ...validOptions.destination,
+            channelId: "D123",
+          },
+          credentialSubject: {
+            ...createBoundCredentialSubject(),
+            userId: "unknown",
+          },
         },
-        credentialSubject: {
-          ...createBoundCredentialSubject(),
-          userId: "unknown",
-        },
-      }),
+        "scheduler",
+      ),
     ).rejects.toThrow(
-      "Dispatch credentialSubject must match the private direct Slack destination",
+      "Dispatch credentialSubject is not valid for this action",
     );
   });
 
   it("verifies delegated credential subject bindings locally", async () => {
     await expect(
-      verifyDispatchCredentialSubjectAccess({
-        ...validOptions,
-        destination: {
-          ...validOptions.destination,
-          channelId: "D123",
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          destination: {
+            ...validOptions.destination,
+            channelId: "D123",
+          },
+          credentialSubject: createBoundCredentialSubject(),
         },
-        credentialSubject: createBoundCredentialSubject(),
-      }),
+        "scheduler",
+      ),
     ).resolves.toBeUndefined();
 
     await expect(
-      verifyDispatchCredentialSubjectAccess({
-        ...validOptions,
-        destination: {
-          ...validOptions.destination,
-          channelId: "D123",
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          destination: {
+            ...validOptions.destination,
+            channelId: "D123",
+          },
+          credentialSubject: createBoundCredentialSubject({
+            channelId: "D999",
+          }),
         },
-        credentialSubject: createBoundCredentialSubject({ channelId: "D999" }),
-      }),
+        "scheduler",
+      ),
     ).rejects.toThrow(
-      "Dispatch credentialSubject must match the private direct Slack destination",
+      "Dispatch credentialSubject is not valid for this action",
     );
 
     const unboundRuntimeSubject = {
@@ -366,16 +395,55 @@ describe("agent dispatch validation", () => {
     >;
 
     await expect(
-      verifyDispatchCredentialSubjectAccess({
-        ...validOptions,
-        destination: {
-          ...validOptions.destination,
-          channelId: "D123",
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          destination: {
+            ...validOptions.destination,
+            channelId: "D123",
+          },
+          credentialSubject: unboundRuntimeSubject,
         },
-        credentialSubject: unboundRuntimeSubject,
-      }),
+        "scheduler",
+      ),
     ).rejects.toThrow(
-      "Dispatch credentialSubject must match the private direct Slack destination",
+      "Dispatch credentialSubject is not valid for this action",
+    );
+  });
+
+  it("verifies scheduled task credential bindings locally", async () => {
+    expect(
+      bindScheduledTaskCredentialSubject({
+        plugin: "scheduler",
+        subject: {
+          type: "user",
+          userId: "U123",
+          allowedWhen: "scheduled-task",
+          taskId: " sched_1 ",
+        },
+      }),
+    ).toBeUndefined();
+
+    await expect(
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          credentialSubject: createBoundScheduledTaskCredentialSubject(),
+        },
+        "scheduler",
+      ),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      verifyDispatchCredentialSubjectAccess(
+        {
+          ...validOptions,
+          credentialSubject: createBoundScheduledTaskCredentialSubject(),
+        },
+        "other-plugin",
+      ),
+    ).rejects.toThrow(
+      "Dispatch credentialSubject is not valid for this action",
     );
   });
 });

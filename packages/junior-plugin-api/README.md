@@ -48,6 +48,9 @@ reports, migrations, and other typed hook surfaces exported by this package.
   execute through the host queue/callback lifecycle.
 - `ctx.agent.dispatch` creates durable agent work with an explicit actor,
   destination, source, metadata, and idempotency identity.
+- Delegated credential subjects declare the narrow action that authorized them.
+  Core owns runtime bindings; scheduler task subjects are accepted only from the
+  scheduler plugin and are bound to the exact task id.
 - Completed dispatch and task projections are durable plugin inputs, not an
   invitation to inspect unrestricted conversation state.
 

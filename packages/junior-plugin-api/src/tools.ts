@@ -277,7 +277,10 @@ export interface SlackToolRegistrationHookContext {
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
-  credentialSubject?: PluginCredentialSubject;
+  credentialSubject?: Extract<
+    PluginCredentialSubject,
+    { allowedWhen: "private-direct-conversation" }
+  >;
 }
 
 interface BaseToolRegistrationHookContext extends PluginContext {

@@ -2,9 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   PluginToolInputError,
   pluginToolResultSchema,
-  pluginCredentialSubjectSchema,
   sourceSchema,
-  type PluginCredentialSubject,
   type SlackDestination,
   type SlackActor,
   type SlackSource,
@@ -23,7 +21,6 @@ import type {
 } from "./types";
 
 export interface SchedulerToolContext {
-  credentialSubject?: PluginCredentialSubject;
   actor?: SlackActor;
   source?: SlackSource;
   store: SchedulerStore;
@@ -44,7 +41,7 @@ const compactTaskResultSchema = z
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
     conversation_access: z.unknown().nullable(),
-    credential_subject: z.unknown().nullable(),
+    credential_mode: z.enum(["system", "creator"]),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
   })
@@ -132,8 +129,12 @@ export function requireActiveConversation(
 /** Require a concrete Slack actor before creating scheduler ownership state. */
 export function requireActor(
   context: SchedulerToolContext,
+  destination: SlackDestination,
 ): ScheduledTaskPrincipal {
-  if (context.actor?.platform !== "slack") {
+  if (
+    context.actor?.platform !== "slack" ||
+    context.actor.teamId !== destination.teamId
+  ) {
     throwToolInputError("No active Slack actor context is available.");
   }
   const userId = context.actor?.userId?.trim();
@@ -166,31 +167,6 @@ export function getConversationAccess(
     return { audience: "channel", visibility: "unknown" };
   }
   return { audience: "channel", visibility: "unknown" };
-}
-
-/** Carry private-DM credential authority only when scheduled work is allowed to reuse it. */
-export function getCredentialSubject(args: {
-  access: ScheduledTaskConversationAccess;
-  subject: PluginCredentialSubject | undefined;
-}): PluginCredentialSubject | undefined {
-  if (
-    args.access.audience !== "direct" ||
-    args.access.visibility !== "private"
-  ) {
-    return undefined;
-  }
-  if (!args.subject) {
-    return undefined;
-  }
-  const subject = pluginCredentialSubjectSchema.safeParse(args.subject);
-  if (!subject.success) {
-    throwToolInputError("Active Slack credential subject is invalid.");
-  }
-  return {
-    type: subject.data.type,
-    userId: subject.data.userId,
-    allowedWhen: subject.data.allowedWhen,
-  };
 }
 
 /** Keep scheduler management operations bound to the task's original Slack destination. */
@@ -251,12 +227,7 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     conversation_access: task.conversationAccess ?? null,
-    credential_subject: task.credentialSubject
-      ? {
-          type: task.credentialSubject.type,
-          allowed_when: task.credentialSubject.allowedWhen,
-        }
-      : null,
+    credential_mode: task.credentialMode,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,
