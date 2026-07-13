@@ -259,10 +259,17 @@ describe("context compaction projection reset", () => {
       messages: priorMessages,
     });
 
+    const runtimeContext = [
+      user(
+        "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+        3,
+      ),
+    ];
     const handoffMessages = await compactContextForHandoff(
       {
         conversationId,
         piMessages: priorMessages,
+        runtimeContext,
         target: {
           modelId: botConfig.modelProfiles.handoff,
           modelProfile: "handoff",
@@ -275,6 +282,12 @@ describe("context compaction projection reset", () => {
     );
 
     expect(handoffMessages).toHaveLength(1);
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+    );
+    expect(textOf(handoffMessages[0]!)).toContain(
+      "<current-instruction>\nModel handoff checkpoint.",
+    );
     expect(textOf(handoffMessages[0]!)).toContain(
       "Continue the outstanding request now",
     );
@@ -376,6 +389,11 @@ describe("context compaction projection reset", () => {
         {
           conversationId,
           piMessages: priorMessages,
+          runtimeContext: [
+            user(
+              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+            ),
+          ],
           target: {
             modelId: "test/handoff",
             modelProfile: "handoff",
@@ -415,6 +433,11 @@ describe("context compaction projection reset", () => {
         {
           conversationId,
           piMessages: priorMessages,
+          runtimeContext: [
+            user(
+              "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
+            ),
+          ],
           signal: controller.signal,
           target: {
             modelId: "test/handoff",
