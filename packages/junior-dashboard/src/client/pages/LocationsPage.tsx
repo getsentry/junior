@@ -324,7 +324,14 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
           <SectionTitle>People</SectionTitle>
         </SectionHeader>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3">
-          {detail.actors.slice(0, 9).map((item) => {
+          {detail.actors.slice(0, 9).map((item, index) => {
+            const key = [
+              item.actor.email,
+              item.actor.slackUserId,
+              item.actor.slackUserName,
+              item.actor.fullName,
+              index,
+            ].join(":");
             const content = (
               <>
                 <div className="truncate font-semibold text-white">
@@ -339,7 +346,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             return item.actor.email ? (
               <Link
                 className="min-w-0 border-b border-r border-white/10 px-4 py-3 text-inherit no-underline hover:bg-white/5"
-                key={item.label}
+                key={key}
                 to={peoplePath(item.actor.email)}
               >
                 {content}
@@ -347,7 +354,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
             ) : (
               <div
                 className="min-w-0 border-b border-r border-white/10 px-4 py-3"
-                key={item.label}
+                key={key}
               >
                 {content}
               </div>

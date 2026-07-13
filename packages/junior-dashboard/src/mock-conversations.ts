@@ -1156,14 +1156,13 @@ export function readMockLocationDetail(
   );
   const actors = new Map<string, LocationActorSummaryReport>();
   for (const conversation of conversations) {
-    const label = actorLabel(conversation.actorIdentity) ?? "Unknown";
-    const key =
-      conversation.actorIdentity?.email ??
-      conversation.actorIdentity?.slackUserId ??
-      "unknown";
+    const actor = conversation.actorIdentity;
+    const key = actor?.email ?? actor?.slackUserId;
+    if (!actor || !key) continue;
+    const label = actorLabel(actor) ?? "Unknown";
     const item = actors.get(key) ?? {
       ...emptyStatsItem(label),
-      actor: conversation.actorIdentity ?? {},
+      actor,
     };
     addConversationStats(item, conversation);
     actors.set(key, item);
