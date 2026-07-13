@@ -11,6 +11,7 @@ import { pluginStorageMigration } from "./upgrade/migrations/plugin-storage";
 import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
 import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
+import { agentTurnSessionActorMigration } from "./upgrade/migrations/agent-turn-session-actor";
 import type {
   MigrationContext,
   MigrationResult,
@@ -25,6 +26,7 @@ const DEFAULT_IO: UpgradeIo = {
 const localPluginLoader = createJiti(import.meta.url, { moduleCache: false });
 
 const MIGRATIONS: UpgradeMigration[] = [
+  agentTurnSessionActorMigration,
   redisConversationStateMigration,
   coreSqlSchemaMigration,
   sqlConversationMigration,
