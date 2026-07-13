@@ -1,29 +1,28 @@
 # Policies
 
-Policies are short repo-wide defaults.
+Policies are durable repo-wide engineering rules and defaults. They are the
+highest-authority repository documentation below executable configuration and
+must remain consistent with code-enforced constraints.
 
-Use a policy doc when we want to say "this is how we normally do this here"
-without turning it into a full architecture document or feature spec.
+Use a policy when the repository needs to say "this is how we do this here"
+across multiple packages or features. Examples include testing, comments,
+security, privacy, error handling, provider boundaries, interface design, and
+serverless work.
 
-Good policy topics:
+Do not use policies for:
 
-- code comments and docstrings
-- frontend component styling
-- testing expectations
-- test adapters and harnesses
-- naming conventions
-- interface design
-- correctness and complexity tradeoffs
-- runtime boundary schemas
-- model-facing tool schema design
-- migration hygiene
-- automation safety boundaries
-- serverless background work
+- one feature's architecture or lifecycle;
+- implementation plans, status, TODOs, or rollout tracking;
+- copied schemas, commands, or test inventories;
+- public product documentation.
 
-Keep policy docs small:
+Feature architecture and non-obvious invariants belong in the owning package or
+module `README.md`. Code, runtime schemas, exported types, and tests define the
+implemented contract. Temporary implementation plans live under
+`../openspec/changes/` and cannot override policy.
 
-- explain the intent briefly
-- state the default rule clearly
-- call out only the meaningful exceptions
+Keep policies short: explain the intent, state the default, and name only
+meaningful exceptions. Update the policy directly when the repo intends to
+change the default; silence elsewhere never creates an exception.
 
-Use `policies/policy-template.md` for new policies.
+Use `policy-template.md` for new policies.

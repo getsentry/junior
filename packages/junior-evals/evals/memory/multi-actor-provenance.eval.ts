@@ -11,7 +11,7 @@ import { mention, rubric, slackEvals, threadMessage } from "../../src/helpers";
 /**
  * Multi-actor provenance evals for passive memory extraction.
  *
- * Contract under test (specs/memory-plugin/policy.md, issue #773): a
+ * Contract under test (packages/junior-memory/README.md, issue #773): a
  * personal-scope memory may only be created from statements authored by the
  * actor who will own it. Another participant's first-person statements in
  * a shared thread are evidence for conversation-scoped knowledge at most,

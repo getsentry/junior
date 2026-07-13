@@ -34,7 +34,7 @@ Interfaces should expose the smallest useful capability while keeping ownership,
 - Keep exported interfaces role-shaped and small. `SessionLogStore` with `read` and `append` is clearer than a broad adapter that exposes unrelated state, Redis, or queue details.
 - Prefer import-site readability over globally unique names. If a name is only clear because it includes five qualifiers, the module boundary is probably doing too little work.
 - When a term is overloaded in the product or platform, define it once in the
-  owning spec and avoid using it for nearby concepts.
+  owning module documentation and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable boundary.
 - Avoid one-hop wrappers, renamed aliases, and helper layers that only forward
   arguments, options, or dependencies. Call the owning capability directly

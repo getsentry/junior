@@ -45,7 +45,7 @@ Implement tasks from an OpenSpec change.
 
    **Handle states:**
    - If `state: "blocked"` (missing artifacts): show message, suggest using `/opsx:continue`
-   - If `state: "all_done"`: congratulate, suggest archive
+   - If `state: "all_done"`: verify durable documentation moved beside the code, then suggest deleting the completed plan
    - Otherwise: proceed to implementation
 
    **Workspace guard:** If status JSON reports `actionContext.mode: "workspace-planning"` and `allowedEditRoots` is empty, explain that full workspace apply is not supported in this slice. Treat linked repos and folders as read-only context, ask the user to select an affected area through an explicit implementation workflow, and STOP before editing files.
@@ -85,7 +85,7 @@ Implement tasks from an OpenSpec change.
    Display:
    - Tasks completed this session
    - Overall progress: "N/M tasks complete"
-   - If all done: suggest archive
+   - If all done: suggest deleting the completed plan after durable documentation is updated
    - If paused: explain why and wait for guidance
 
 **Output During Implementation**
@@ -116,7 +116,8 @@ Working on task 4/7: <task description>
 - [x] Task 2
 ...
 
-All tasks complete! You can archive this change with `/opsx:archive`.
+All tasks complete! Move any durable explanation into code, tests, policies, or
+the owning README, then delete the completed change directory.
 ```
 
 **Output On Pause (Issue Encountered)**

@@ -642,7 +642,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
          * Commit drained parked/batched input pairs to the conversation
          * session log, deduping by `parkedInputKey` so a redelivery never
          * double-appends. This is the Membership-Rule commit point
-         * (specs/multi-actor-runs.md): each drained message is written with its
+         * Membership rule: each drained message is written with its
          * own author's instruction provenance while that author is still known,
          * rather than collapsing to a single latest-wins actor.
          *
@@ -1043,7 +1043,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             provenance: steering.provenance,
           }));
           // Commit the batch to the session log before the run starts — the
-          // Membership-Rule commit point (specs/multi-actor-runs.md) — so its
+          // Membership-rule commit point — so its
           // authors' instruction provenance is durable while they are known.
           // The fresh prompt checkpoint then matches these merged messages as
           // an already-committed prefix and reuses that provenance instead of

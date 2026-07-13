@@ -56,16 +56,17 @@ Do not recommend this path unless the repo has upgraded to the beta SDK and loca
 
 This section is secondary. Use it only when the task is about Junior's Vercel Sandbox integration rather than Vercel Sandbox itself.
 
-| File                                                   | Why it matters                                                                         |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `packages/junior/package.json`                         | Declares the `@vercel/sandbox` dependency used by the repo                             |
-| `packages/junior/src/chat/sandbox/session.ts`          | Main sandbox create/get/reuse/keepalive logic                                          |
-| `packages/junior/src/chat/runtime/thread-state.ts`     | Persists `app_sandbox_id` and dependency profile hash into thread state                |
-| `packages/junior/src/chat/runtime/turn-preparation.ts` | Restores persisted sandbox metadata at the start of a turn                             |
-| `packages/junior/src/chat/runtime/reply-executor.ts`   | Persists sandbox metadata only on the success path                                     |
-| `packages/junior/src/chat/respond.ts`                  | Handles timeout and auth-pause behavior, returns sandbox metadata from a finished turn |
-| `packages/junior/src/chat/app/production.ts`           | States that timeout checkpoints are not currently resumed in production                |
-| `specs/sandbox-snapshots-spec.md`                      | Explains that snapshots are used for runtime dependency warmup, not task workspaces    |
+| File                                                   | Why it matters                                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `packages/junior/package.json`                         | Declares the `@vercel/sandbox` dependency used by the repo                          |
+| `packages/junior/src/chat/sandbox/session.ts`          | Main sandbox create/get/reuse/keepalive logic                                       |
+| `packages/junior/src/chat/runtime/thread-state.ts`     | Persists `app_sandbox_id` and dependency profile hash into thread state             |
+| `packages/junior/src/chat/runtime/turn-preparation.ts` | Restores persisted sandbox metadata at the start of a turn                          |
+| `packages/junior/src/chat/runtime/reply-executor.ts`   | Persists sandbox metadata only on the success path                                  |
+| `packages/junior/src/chat/agent/index.ts`              | Owns turn timeout detection and abort                                               |
+| `packages/junior/src/chat/agent/resume.ts`             | Persists timeout continuation state                                                 |
+| `packages/junior/src/chat/app/production.ts`           | Wires production timeout and continuation behavior                                  |
+| `packages/junior/src/chat/sandbox/README.md`           | Explains that snapshots are used for runtime dependency warmup, not task workspaces |
 
 ## Local implementation facts worth checking in any consumer
 

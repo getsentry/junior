@@ -57,8 +57,15 @@ contradictory or unsafe requests.
   same split locally. Files under any `tools` directory must be concrete tool
   definitions or tool executors, not shared helper modules.
 - Keep runtime authority, destination, actor, credential, and durable context
-  out of model-facing arguments unless the owning spec explicitly allows them;
+  out of model-facing arguments unless the owning module explicitly allows them;
   see `policies/runtime-boundary-schemas.md`.
+- Model-repairable execution failures must use the Pi tool-error channel so the
+  agent receives a failed tool result and can correct its call. Throw
+  `ToolInputError` or another expected tool error for invalid arguments,
+  missing active context, unsupported values, or absent target state.
+- Do not return sentinel success payloads such as `{ ok: false, error }` for a
+  failed model-facing tool execution. Structured result unions remain valid in
+  private helpers and non-agent HTTP handlers.
 
 ## Exceptions
 

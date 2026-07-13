@@ -49,6 +49,18 @@ pnpm docs:check
 pnpm release:check
 ```
 
+## Internal Documentation
+
+- `policies/` contains durable repo-wide engineering rules.
+- Package and module `README.md` files explain implemented architecture and
+  non-obvious invariants near the code they describe.
+- Code, schemas, exported types, and tests are the implementation authority.
+- `openspec/changes/` contains temporary implementation plans. Move durable
+  explanation beside the code and delete a plan when its work is complete.
+
+Plans cannot override policies. Change the policy explicitly when the repository
+intends to adopt a new default or exception.
+
 ## Worktree Helpers
 
 Worktrees are development-only contributor tooling. Use the repo helper when
@@ -156,7 +168,8 @@ pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts
 
 Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting, tools, and expected outputs). Evals do not test live Slack transport.
 
-See `packages/junior-evals/README.md` and `specs/eval-testing.md` for authoring details.
+See `policies/testing.md`, `packages/junior/tests/README.md`, and
+`packages/junior-evals/README.md` for authoring details.
 
 ## Slack Tunnel (Cloudflare)
 

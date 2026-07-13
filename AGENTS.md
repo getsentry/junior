@@ -1,174 +1,60 @@
 # Agent Instructions
 
-## Package Manager
+Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`.
 
-Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
+## Commands
+
+| Task                       | Command                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------ |
+| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
+| Eval file                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
+| Eval case                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
+| Generate package schema    | `pnpm --filter <package> db:generate`                                          |
+| Release package alignment  | `pnpm release:check`                                                           |
+
+## Required Workflows
+
+- Use `/commit` for commits, `/pr-writer` for pull requests, and `/skill-writer` for skill changes.
+- For tests, read `policies/testing.md`; harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.
+- Use evals for model interpretation, continuity, tool choice, routing, or reply quality.
+- Prefer integration tests for product/runtime behavior; use unit tests for local deterministic logic.
+- Validate non-Slack agent behavior with `pnpm cli -- chat ...`; see `packages/docs/src/content/docs/contribute/local-agent-validation.md`.
+
+## Architecture Boundaries
+
+- `packages/junior/src/chat/app/*` is composition-root only.
+- `packages/junior/src/chat/ingress/*` owns inbound parsing, classification, and routing.
+- `runtime/` orchestrates turns; `services/` owns domain decisions; `state/` persists by concern.
+- Queue and worker code depends on injected runtime interfaces, not `@/chat/app/production`.
+- Slack modules must not import runtime modules; shared modules must not expose provider SDK types.
+- Group files by feature and import feature files directly; do not add feature-directory barrels.
+- Do not add mutable runtime globals or test-only singleton mutation APIs.
+
+## Engineering Defaults
+
+- Prefer obvious code, small public interfaces, standards, and library-native behavior.
+- Use hard cutovers for internal renames unless compatibility is explicitly required.
+- Let unexpected failures reach the owning boundary; retry only expected transient failures.
+- Exported functions need brief intent-focused JSDoc; follow `policies/code-comments.md`.
+- Follow `policies/observability.md`; telemetry is not a product behavior assertion.
+
+## Documentation Routing
+
+- `policies/README.md`: durable repo-wide engineering rules.
+- Owning package or module `README.md`: implemented architecture and non-obvious invariants.
+- Code, schemas, exported types, and tests: authoritative implementation contracts.
+- `openspec/changes/<slug>/`: temporary implementation plans; delete completed plans.
+- `TELEMETRY.md`: production investigation recipes.
+
+- Read the owning module README before changing a shared runtime boundary.
+- Plans cannot override policies; update a policy explicitly for an exception.
+
+## Completion
+
+- Search every consumer before changing a shared signature, error contract, or name.
+- For non-trivial changes: discover, implement the smallest vertical slice, verify, summarize.
+- Run applicable checks, move durable explanation beside code, and delete completed plans.
 
 ## Commit Attribution
 
-AI commits MUST include:
-
-```
-Co-Authored-By: (agent model name) <email>
-```
-
-## File-Scoped Commands
-
-| Task                  | Command                                                                               |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                   |
-| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                   |
-| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                       |
-| Eval case filter      | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"`        |
-| Generate SQL schema   | `pnpm --filter @sentry/junior db:generate` (drizzle-kit; no-diff = schema/DDL parity) |
-
-## Key Conventions
-
-- Use `/commit` skill for any commit operation.
-- Use `/pr-writer` skill for any PR creation operation.
-- Use `/skill-writer` skill when creating or updating skills.
-- Prefer integration tests for most product/runtime changes that need real wiring.
-- Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
-- In evals, use the normalized `vitest-evals` session and `toolCalls(result.session)` as the primary assertion surfaces; do not invent local transcript/tool-call schemas.
-- Eval cases should pair semantic `criteria: rubric({ pass, fail })` with deterministic assertions when a concrete boundary matters:
-  ```ts
-  const result = await run({
-    events,
-    criteria: rubric({ pass: ["User-visible behavior happens."] }),
-  });
-  expect(toolCalls(result.session)).toEqual(
-    expect.arrayContaining([expect.objectContaining({ name: "searchTools" })]),
-  );
-  ```
-- For any non-Slack-specific product/runtime/prompt/tool/plugin behavior change, use the local agent as the first manual behavior check. Follow `packages/docs/src/content/docs/contribute/local-agent-validation.md`; from this monorepo, run it with `pnpm cli -- chat ...`, which uses `apps/example` as the canonical local validation app.
-- Run evals through the package scripts only: `pnpm evals` for the full suite or `pnpm --filter @sentry/junior-evals evals ...` for focused runs. Do not use `pnpm exec vitest` directly for evals.
-- Pass eval file paths and `-t` filters directly after `evals`; do not insert `--` before eval args.
-- Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access.
-- If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
-- Use instrumentation conventions from `specs/instrumentation.md`.
-- Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
-- Plugin SQL schema migrations must start from the package `db:generate`
-  script. For constraint-safe data rewrites, follow `specs/plugin-database.md`
-  and verify the migration artifact directly rather than adding feature tests.
-- Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.
-- Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
-- Prefer minimal interfaces and simple components across the codebase.
-- Keep public surfaces small: fewer exported types/functions, fewer integration points, explicit contracts.
-- Prefer composition over abstractions that add indirection without clear reuse.
-- Prefer standards/library-native patterns before custom infrastructure.
-- Prefer standards-based streaming surfaces over custom transport loops.
-- Chat SDK streaming standard: pass `AsyncIterable<string>` to `thread.post(...)`.
-- Pi SDK streaming standard: consume `Agent` events (`message_update`/`text_delta`) and bridge deltas into the `AsyncIterable` shim.
-- Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
-- Prefer hard cutover for command or skill renames and behavior migrations unless backward compatibility is explicitly requested.
-- Prefer integration tests over unit tests when real runtime wiring is needed and the contract is not model interpretation itself.
-- Use evals when the contract is agent-facing behavior, prompt interpretation, natural-language routing, continuity, or reply quality.
-- Use unit tests only for small local deterministic logic and algorithms.
-- If a test needs multiple mocks to prove a user-visible workflow, it is probably in the wrong layer.
-- Logs, spans, status telemetry, and other monitoring output are not behavior contracts. Do not add assertions for them, and do not mock logging/monitoring modules unless the test is explicitly about instrumentation.
-
-## Engineering Principles
-
-- Optimize for obvious code over flexible-but-indirect abstractions.
-- Keep public interfaces small and intention-revealing.
-- Let file/module structure carry context so names do not have to.
-- Keep exported names role-specific; keep local helper names short.
-- Prefer domain language over mechanism language.
-- Every exported function must have a brief JSDoc comment explaining its intent (the _why_, not the _what_).
-
-## Policies
-
-- `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
-- `policies/agentic-semantics.md` (agentic semantic decisions vs deterministic boundary checks)
-- `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
-- `policies/correctness-complexity.md` (balancing correctness fixes against simplicity, understandability, and maintainability)
-- `policies/context-bound-systems.md` (explicit actor/destination/context propagation across runtime boundaries)
-- `policies/evals.md` (evals as behavior integration tests and rubric authoring boundaries)
-- `policies/error-handling.md` (when to catch locally vs let top-level handlers own failures)
-- `policies/frontend-components.md` (Tailwind colocation and component-owned frontend styling)
-- `policies/interface-design.md` (domain naming, module paths, and minimal interface boundaries)
-- `policies/policy-template.md` (template for adding new policy docs)
-- `policies/provider-boundaries.md` (keep provider SDKs and primitives inside provider-owned modules)
-- `policies/runtime-boundary-schemas.md` (strict runtime schemas and inferred types for boundary contracts)
-- `policies/serverless-background-work.md` (serverless background work, queues, and continuation boundaries)
-- `policies/test-adapters.md` (Django-inspired shared test adapters, outboxes, and isolation rules)
-- `policies/testing.md` (integration/eval-first testing policy and unit-test churn guardrails)
-- `policies/tool-design.md` (model-facing tool schema and executor alignment)
-
-## Investigation-First Development
-
-- Before implementing anything that depends on an external system (Vercel, Slack, bundler, framework), read the relevant documentation or source code first. State the constraint being relied on before writing code.
-- Before removing an architectural layer, prove the replacement handles all known edge cases in a working proof-of-concept. Do not remove the incumbent until the replacement is verified end-to-end.
-- When changing a function signature, error contract, or shared pattern, grep for all consumers and verify each one still works. Do not assume fixing one call site is sufficient.
-- If a fix attempt fails, stop. Re-read the error, trace the full system from input to output, and identify the root cause before trying another fix. Do not commit progressive patches that address symptoms layer-by-layer.
-- When implementing message handling or Slack interactions, explicitly verify both DM and channel paths, and both first-delivery and retry paths.
-- Slack-specific runtime and contract rules live in `specs/slack-agent-delivery.md`, `specs/slack-outbound-contract.md`, and `.agents/skills/slack-development/SKILL.md`. Keep `AGENTS.md` as a pointer, not a duplicate.
-
-## Architecture Discipline
-
-- `packages/junior/src/chat/app/*` is composition-root only: wire concrete services there, not in runtime/service modules.
-- `packages/junior/src/chat/ingress/*` is the canonical home for inbound routing logic; do not add new patch-style ingress modules.
-- Do not add mutable runtime behavior globals or test-only singleton mutation APIs (`set*ForTests`, `reset*ForTests`, observer globals for core behavior).
-- Prefer small consumer-owned service interfaces over broad deps bags or service locators.
-- Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
-- Service modules must depend on small injected ports for Slack behavior, not import Slack infrastructure directly.
-- Slack modules must not import runtime modules.
-- `runtime/` orchestrates agent runs and response-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only parses, classifies, and routes source events.
-- **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
-- Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
-- Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/app/production`.
-- Do not use prototype patching or import-side-effect modules as the intended long-term ingress architecture.
-- Prefer domain-role names over mechanism names: avoid `patch`, vague `behavior`, and ambiguous `runtime` labels for non-runtime modules.
-- Tests and evals should create local runtimes via factories/fixtures and spy at real boundaries instead of patching the production singleton.
-
-## Codex Execution Checklist
-
-- Read local contracts first: `AGENTS.md`, relevant `specs/*`, and required `SKILL.md` files.
-- For any test addition/update, you MUST read `specs/testing.md` first, then choose the layer with this rule: integration by default for product/runtime changes, evals for agent-facing/model-dependent behavior, unit only for local deterministic logic.
-- Derive explicit invariants before editing and keep them stable through implementation.
-- Use an explicit sequence for non-trivial tasks: discover -> minimal vertical slice -> verify -> summarize.
-- Falsify risky assumptions early using the narrowest deterministic check.
-- Reuse existing repository patterns before introducing new abstractions.
-- Treat completion as gated: typecheck/build checks, targeted tests, and contract/spec updates when behavior changes.
-
-## Known Specs
-
-- `TELEMETRY.md` (root telemetry diagnostic map: query surfaces, pivots, and recipes)
-- `TELEMETRY.spec.md` (format contract for repository-root telemetry maps)
-- `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
-- `specs/security-policy.md` (global runtime/container/token security policy)
-- `specs/data-redaction-policy.md` (conversation privacy classification and raw payload redaction policy)
-- `specs/chat-architecture.md` (chat composition, service, and test-seam architecture contract)
-- `specs/terminology.md` (canonical execution vocabulary)
-- `specs/task-execution.md` (durable conversation mailbox, queue wake-up, lease, and heartbeat execution contract)
-- `specs/conversation-storage.md` (SQL-backed conversation records, visible messages, agent step history, visibility-tiered retention, and deploy-safe migration contract)
-- `specs/local-agent.md` (local CLI/local adapter user flows, identity, state, and delivery contract)
-- `specs/agent-turn-handling.md` (agent user-message response policy: reply/silence, tool use, Slack side effects, resumed runs, and completion)
-- `specs/slack-agent-delivery.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
-- `specs/slack-outbound-contract.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
-- `specs/identity.md` (current actor, system actor, author, creator, credential subject, service principal, and display identity contract)
-- `specs/multi-actor-runs.md` (run-level actor attribution — `run.actor` and `run.actors` — membership semantics, and the attribution-not-authority naming contract)
-- `specs/credential-injection.md` (actor-bound credential injection contract)
-- `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
-- `specs/agent-prompt.md` (core prompt ownership, execution-bias, and bloat-control contract)
-- `specs/context-compaction.md` (reusable Pi history compaction, replacement context epochs, and visible-thread compaction bounds)
-- `specs/model-handoff.md` (safe permanent in-place model upgrade contract)
-- `specs/scheduler.md` (scheduled Junior task contract)
-- `specs/plugin-heartbeat.md` (plugin heartbeat and tool hook contract)
-- `specs/plugin-dispatch.md` (durable plugin agent dispatch contract)
-- `specs/plugin-prompt-hooks.md` (plugin prompt contribution contract)
-- `specs/plugin-tasks.md` (plugin-owned durable background task registration, queue dispatch, and completed-session projections)
-- `specs/plugin-database.md` (plugin packaged SQL migrations and ctx.db contract)
-- `specs/plugin-cli.md` (future plugin-contributed host CLI command contract)
-- `specs/memory-plugin/index.md` (long-term memory plugin storage, recall, passive learning, tools, visibility, and lifecycle contract)
-- `specs/harness-agent.md` (agent loop and output contract)
-- `specs/agent-session-resumability.md` (multi-slice agent-run resumability and timeout recovery contract)
-- `specs/agent-execution.md` (agent execution rubric and completion gates)
-- `specs/instrumentation.md` (logging/tracing spec index)
-- `specs/plugin.md` (plugin architecture for self-contained provider integrations)
-- `specs/plugin-manifest.md` (plugin manifest fields and validation contract)
-- `specs/plugin-runtime.md` (plugin discovery, loading, skills, and MCP runtime contract)
-- `specs/dashboard.md` (authenticated dashboard, stateless Better Auth, and reporting boundary contract)
-- `specs/testing.md` (testing taxonomy and layer boundaries: unit/integration/eval)
-- `specs/postgres-test-harness.md` (real Postgres test database lifecycle, migrated templates, fixture isolation, and rollback semantics)
-- Historical evaluations and superseded trackers live under `specs/archive/`.
+AI commits MUST include `Co-Authored-By: (agent model name) <email>`.

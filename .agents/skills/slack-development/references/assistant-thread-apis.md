@@ -112,7 +112,7 @@ This file intentionally separates:
 
 5. Current delivery contract:
 
-- `specs/slack-agent-delivery-spec.md`
+- `packages/junior/src/chat/slack/README.md`
 
 ## Audit Checklist
 

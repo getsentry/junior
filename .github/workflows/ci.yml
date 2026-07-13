@@ -52,7 +52,6 @@ jobs:
               - packages/junior-plugin-api/**
               - packages/junior-scheduler/**
               - packages/junior-testing/**
-              - specs/**
               - policies/**
             dashboard:
               - packages/junior-dashboard/**
@@ -61,7 +60,6 @@ jobs:
             docs:
               - packages/docs/**
               - README.md
-              - specs/**
               - policies/**
             evals:
               - packages/junior-evals/**

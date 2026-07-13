@@ -7,8 +7,8 @@ Use the local Junior CLI to exercise behavior the test suite does not prove well
 The goal is to run the same app-facing path a developer or operator would use
 from `apps/example`, inspect the result, and report concrete evidence.
 
-Start by reading `specs/local-agent.md`. Read the relevant feature spec too when
-the changed behavior is owned by one.
+Start by reading `packages/junior/src/chat/local/README.md`. Read the owning
+package or module README when the changed behavior belongs elsewhere.
 
 ## Running the Local CLI
 

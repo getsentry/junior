@@ -1,7 +1,3 @@
----
-spec: ./TELEMETRY.spec.md
----
-
 # Telemetry
 
 ## Goal

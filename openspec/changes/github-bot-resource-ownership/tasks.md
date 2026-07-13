@@ -83,9 +83,9 @@
 
 ## 7. Specifications And Documentation
 
-- [x] Update `specs/identity.md` with service-principal preference for
+- [x] Update chat ownership documentation with service-principal preference for
       Junior-owned provider operations.
-- [x] Update `specs/credential-injection.md` with scoped installation write
+- [x] Update credential documentation with scoped installation write
       grants, cache isolation, request-aware issuance, and failure behavior.
 - [x] Update GitHub setup and public plugin documentation with required App
       permissions and the bot-owned operation allowlist.

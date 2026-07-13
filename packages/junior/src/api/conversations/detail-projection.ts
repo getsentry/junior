@@ -341,7 +341,7 @@ export async function buildConversationSubagent(
   const parentSteps = await stepStore.loadHistory(conversationId);
 
   // Retention purge deletes the parent tree's steps wholesale; present the
-  // subagent as expired rather than "not found" (data-redaction-policy.md).
+  // subagent as expired rather than "not found" (data-redaction.md).
   if (conversation?.transcriptPurgedAtMs !== undefined) {
     return {
       type: "subagent",

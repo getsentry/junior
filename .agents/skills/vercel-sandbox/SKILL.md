@@ -64,12 +64,13 @@ For repo-local debugging in Junior, inspect:
    - `packages/junior/src/chat/runtime/turn-preparation.ts`
    - `packages/junior/src/chat/sandbox/session.ts`
 3. whether timeout paths actually resume:
-   - `packages/junior/src/chat/respond.ts`
-   - `packages/junior/src/chat/runtime/turn.ts`
-4. whether sandbox metadata is only persisted on the success path:
+   - `packages/junior/src/chat/agent/index.ts`
+   - `packages/junior/src/chat/agent/resume.ts`
+   - `packages/junior/src/chat/runtime/agent-continue-runner.ts`
+4. where sandbox metadata is persisted:
    - `packages/junior/src/chat/runtime/reply-executor.ts`
 5. whether consumer-specific snapshots are being confused with Vercel product persistence:
-   - `specs/sandbox-snapshots-spec.md`
+   - `packages/junior/src/chat/sandbox/README.md`
 
 ## Step 6: Recommend the smallest correct fix
 

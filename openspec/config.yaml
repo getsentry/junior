@@ -1,5 +1,8 @@
 schema: spec-driven
 
+# OpenSpec artifacts are temporary implementation plans. Current behavior is
+# documented by code, policies, tests, and owning module/package READMEs.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.

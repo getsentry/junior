@@ -19,7 +19,7 @@ Out:
 
 - ordinary provider workflows
 - non-Junior skill authoring
-- core runtime contract changes without specs/tests
+- core runtime contract changes without owning docs/tests
 - secrets
 
 ## Trigger
@@ -38,9 +38,9 @@ Do not use for: existing provider usage, generic code review, docs-only edits.
 
 Authoritative:
 
-- `PLUGIN.md`
-- `specs/plugin.md`
-- `specs/credential-injection.md`
+- `packages/junior-plugin-api/README.md`
+- `packages/junior/src/chat/plugins/README.md`
+- `packages/junior/src/chat/credentials/README.md`
 - `packages/docs/src/content/docs/extend/index.md`
 - `packages/docs/src/content/docs/cli/check.md`
 - `packages/junior/src/chat/skills.ts`

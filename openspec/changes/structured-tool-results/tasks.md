@@ -61,4 +61,4 @@
 - [x] Run `pnpm typecheck`.
 - [x] Run local-agent validation for at least one workflow that requires reading
       a truncated file or following a continuation.
-- [x] Update canonical specs or docs if the public tool behavior changes.
+- [x] Update the owning module docs if the public tool behavior changes.

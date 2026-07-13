@@ -10,7 +10,7 @@ related:
   - /contribute/releasing/
 ---
 
-Junior public docs should help readers choose the right setup path, copy a working configuration, and verify behavior without reading internal specs first.
+Junior public docs should help readers choose the right setup path, copy a working configuration, and verify behavior without reading internal implementation docs first.
 
 ## Page contract
 

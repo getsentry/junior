@@ -50,8 +50,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { makeStructuredToolResult } from "@/chat/tool-support/structured-result";
 
-// Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
-// Spec: specs/tracing.md (required sandbox span semantics)
+// Policies: policies/security.md and policies/observability.md.
 interface SandboxExecutionInput {
   toolName: string;
   input: unknown;

@@ -50,6 +50,6 @@
 
 ## 6. Documentation
 
-- [ ] Update canonical specs after the implementation contract is accepted.
-- [ ] Link the accepted contract from plugin runtime and agent/tool specs where
-      appropriate.
+- [ ] Update the owning plugin/tool README after the implementation contract is
+      accepted.
+- [ ] Delete this plan after durable documentation and verification land.
