@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-07-13
+- Last Edited: 2026-07-10
 
 ## Related
 
@@ -93,8 +93,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - GitHub App user-to-server tokens are not OAuth-scope-authorized. GitHub returns `scope: ""` for these token responses. Their effective access is the intersection of the GitHub App permissions, the app installation's repository access, and the requesting user's own GitHub access.
 - Any configured GitHub user OAuth scope string is a Junior-local reauthorization contract only. It must not be treated as provider-verified proof that GitHub granted those scopes or as a mechanism for expanding GitHub App permissions.
 - Installation read tokens receive an explicit read-only permission body.
-  Installation write tokens are restricted to the target repository and carry
-  the configured App permission envelope; the egress allowlist remains the operation boundary.
+  Installation write tokens are restricted to the target repository and the
+  minimum permission family selected by the grant.
 - Repo context is required for installation writes because the canonical
   repository identity is carried in the plugin-owned lease scope.
 
@@ -113,7 +113,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
   pushes require `Workflows: write` when that permission is configured.
 - Raw sandbox GitHub issue and pull request creation is rejected before credential issuance. `POST /repos/:owner/:repo/issues`, `POST /repos/:owner/:repo/pulls`, GraphQL `createIssue` mutations, and GraphQL `createPullRequest` mutations must use the typed host/plugin tools `github_createIssue` and `github_createPullRequest`, which call the host/plugin operations `github.issue.create` and `github.pull.create` and own idempotency and the runtime-generated conversation footer. Rejected raw creation returns HTTP 403, records no auth-required signal, and does not contact GitHub.
 - Raw sandbox GitHub GraphQL `POST` bodies that exceed the inspection cap are rejected before credential issuance because Junior cannot prove they are not issue or pull request creation requests.
-- When a GitHub App installation lease is issued, the GitHub plugin sends an explicit permission body instead of inheriting the installation's default permissions. Read leases downscope the configured envelope to read. Repository-scoped write leases carry the configured App permission envelope so one standard bot workflow can push a branch and then perform the allowlisted pull-request operation without receiving an artificially incomplete token.
+- When a GitHub App installation lease is issued, the GitHub plugin sends an explicit permission body instead of inheriting the installation's default permissions.
 - If the plugin declares GitHub App permissions, each read-capable configured
   permission is requested at `read` level for installation-read leases.
 - If no GitHub App permissions are declared, the plugin reads the installation
@@ -146,7 +146,7 @@ A GitHub write surface is not supported until all of these contracts land in
 the same change:
 
 - the request classifier recognizes only the intended HTTP method and path;
-- credential issuance scopes write tokens to the target repository and requests the configured App permission envelope;
+- credential issuance requests the minimum repository-scoped App permission;
 - the relevant GitHub skill documents both the supported command and adjacent
   unsupported mutations;
 - `packages/junior-github/tests/github-plugin.test.ts` covers grant selection,

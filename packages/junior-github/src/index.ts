@@ -148,7 +148,7 @@ interface InstallationCredentialOptions {
   appIdEnv: string;
   installationIdEnv: string;
   loadPermissions?: LoadInstallationReadPermissions;
-  permissions?: GitHubAppPermissions;
+  permissions?: Record<string, "read" | "write">;
   privateKeyEnv: string;
   repositories?: string[];
 }
@@ -1747,10 +1747,10 @@ async function githubGrantForEgress(
   return grantForAccess(access, "github.api-read", "installation-read");
 }
 
-function configuredWritePermissions(
+function configuredWritePermission(
   appPermissions: GitHubAppPermissions | undefined,
   permission: "actions" | "issues" | "pull_requests",
-): GitHubAppPermissions {
+): Record<string, "read" | "write"> {
   const level = appPermissions?.[permission];
   if (level !== undefined && level !== "write" && level !== "admin") {
     throw new GitHubPluginSetupError(
@@ -1758,18 +1758,15 @@ function configuredWritePermissions(
     );
   }
   return {
-    ...appPermissions,
     metadata: "read",
-    ...(permission === "pull_requests" && appPermissions?.contents === undefined
-      ? { contents: "read" as const }
-      : {}),
+    ...(permission === "pull_requests" ? { contents: "read" as const } : {}),
     [permission]: "write",
   };
 }
 
 function configuredBranchWritePermissions(
   appPermissions: GitHubAppPermissions | undefined,
-): GitHubAppPermissions {
+): Record<string, "read" | "write"> {
   const contents = appPermissions?.contents;
   if (contents !== undefined && contents !== "write" && contents !== "admin") {
     throw new GitHubPluginSetupError(
@@ -1787,9 +1784,11 @@ function configuredBranchWritePermissions(
     );
   }
   return {
-    ...appPermissions,
     contents: "write",
     metadata: "read",
+    ...(workflows === "write" || workflows === "admin"
+      ? { workflows: "write" as const }
+      : {}),
   };
 }
 
@@ -1951,7 +1950,7 @@ export function githubPlugin(
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              permissions: configuredWritePermissions(
+              permissions: configuredWritePermission(
                 appPermissions,
                 permission,
               ),
