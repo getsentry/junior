@@ -944,14 +944,14 @@ describe("sandbox egress proxy", () => {
                 name: "installation-write",
                 access: "write",
                 leaseScope: "repository:getsentry/junior",
-                reason: "github.issues-write",
+                reason: "github.installation-write",
               };
             }
             return {
               name: "installation-write",
               access: "write",
               leaseScope: "repository:getsentry/sentry-mcp",
-              reason: "github.git-write",
+              reason: "github.installation-write",
             };
           },
           issueCredential,
@@ -1025,7 +1025,7 @@ describe("sandbox egress proxy", () => {
           name: "installation-write",
           access: "write",
           leaseScope: "repository:getsentry/sentry-mcp",
-          reason: "github.git-write",
+          reason: "github.installation-write",
         },
         message:
           "github returned HTTP 403 after Junior injected the installation-write grant. Junior forwarded the request; this is not a local runtime block.",

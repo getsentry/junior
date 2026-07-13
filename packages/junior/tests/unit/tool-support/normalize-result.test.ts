@@ -154,7 +154,7 @@ describe("normalizeToolResult", () => {
         grant: {
           access: "write",
           name: "user-write",
-          reason: "github.git-write",
+          reason: "github.installation-write",
           requirements: ["GitHub App Contents: write on the target repository"],
         },
         message:
@@ -210,7 +210,7 @@ describe("normalizeToolResult", () => {
         grant: {
           access: "write",
           name: "user-write",
-          reason: "github.git-write",
+          reason: "github.installation-write",
           requirements: ["GitHub App Contents: write on the target repository"],
         },
         message:
