@@ -5,6 +5,7 @@ const {
   agentMode,
   createSandboxCallCount,
   activeSandboxVersion,
+  botReasoningLevel,
   sessionRecordPiMessages,
   sessionRecordReasoningLevel,
   selectedThinkingLevels,
@@ -17,6 +18,9 @@ const {
   },
   activeSandboxVersion: {
     value: 1,
+  },
+  botReasoningLevel: {
+    value: undefined as string | undefined,
   },
   sessionRecordPiMessages: {
     value: [] as unknown[],
@@ -116,6 +120,9 @@ vi.mock("@/chat/config", () => ({
     fastModelId: "test-fast-model",
     modelId: "test-model",
     modelProfiles: { handoff: "test-handoff-model" },
+    get reasoningLevel() {
+      return botReasoningLevel.value;
+    },
     turnTimeoutMs: 1000,
     userName: "junior",
   },
@@ -401,6 +408,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     agentMode.value = "plain";
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
+    botReasoningLevel.value = undefined;
     sessionRecordPiMessages.value = [];
     sessionRecordReasoningLevel.value = undefined;
     selectedThinkingLevels.value = [];
@@ -446,6 +454,22 @@ describe("executeAgentRun lazy sandbox boot", () => {
     await generateLocalReply("hello", {
       policy: { reasoningPolicy: { mode: "fixed", level: "low" } },
     });
+
+    expect(selectedThinkingLevels.value).toEqual(["low"]);
+  });
+
+  it("keeps fixed host reasoning authoritative when a session resumes", async () => {
+    botReasoningLevel.value = "low";
+    sessionRecordPiMessages.value = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "continue" }],
+        timestamp: 1,
+      },
+    ];
+    sessionRecordReasoningLevel.value = "high";
+
+    await generateLocalReply("hello");
 
     expect(selectedThinkingLevels.value).toEqual(["low"]);
   });

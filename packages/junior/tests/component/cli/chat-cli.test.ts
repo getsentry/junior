@@ -17,6 +17,9 @@ const testDb = vi.hoisted(() => ({
 }));
 const db = vi.hoisted(() => ({
   getDb: vi.fn(() => testDb),
+  getConversationExecutionProfileStore: vi.fn(() => ({
+    getOrCreateExecutionProfile: vi.fn(),
+  })),
 }));
 
 vi.mock("@/chat/local/runner", () => ({
@@ -25,6 +28,7 @@ vi.mock("@/chat/local/runner", () => ({
 
 vi.mock("@/chat/db", () => ({
   getDb: db.getDb,
+  getConversationExecutionProfileStore: db.getConversationExecutionProfileStore,
 }));
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;

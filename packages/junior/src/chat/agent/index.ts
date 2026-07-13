@@ -343,7 +343,8 @@ async function executeAgentRunInPrivacyContext(
     } = await restoreSessionRecord(routing);
     if (
       existingSessionRecord?.reasoningLevel &&
-      policy.reasoningPolicy?.mode !== "fixed"
+      policy.reasoningPolicy?.mode !== "fixed" &&
+      (policy.reasoningPolicy || !botConfig.reasoningLevel)
     ) {
       reasoningSelection = configuredTurnReasoningLevel(
         parseTurnReasoningLevel(existingSessionRecord.reasoningLevel),

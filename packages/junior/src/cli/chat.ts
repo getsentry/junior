@@ -20,12 +20,6 @@ import type {
   LocalAgentTurnDeps,
   LocalToolResult,
 } from "@/chat/local/runner";
-import { executeAgentRun } from "@/chat/agent";
-import { createAgentRunner } from "@/chat/runtime/agent-runner";
-import { createConversationRuntime } from "@/chat/runtime/conversation-runtime";
-import { defaultConversationExecutionProfile } from "@/chat/conversations/execution-profile";
-import { getConversationExecutionProfileStore } from "@/chat/db";
-import { botConfig } from "@/chat/config";
 import type { JuniorPluginSet } from "@/plugins";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
@@ -236,7 +230,23 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { runLocalAgentTurn } = await import("@/chat/local/runner");
+  const [
+    { executeAgentRun },
+    { botConfig },
+    { defaultConversationExecutionProfile },
+    { getConversationExecutionProfileStore },
+    { runLocalAgentTurn },
+    { createAgentRunner },
+    { createConversationRuntime },
+  ] = await Promise.all([
+    import("@/chat/agent"),
+    import("@/chat/config"),
+    import("@/chat/conversations/execution-profile"),
+    import("@/chat/db"),
+    import("@/chat/local/runner"),
+    import("@/chat/runtime/agent-runner"),
+    import("@/chat/runtime/conversation-runtime"),
+  ]);
   const deps: LocalAgentTurnDeps = {
     agentRunner: createConversationRuntime({
       agentRunner: createAgentRunner(executeAgentRun),
