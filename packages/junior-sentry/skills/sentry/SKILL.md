@@ -51,8 +51,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 
 ## Guardrails
 
-- Default to read-only operations. The only supported mutations are explicitly requested alert or monitor operations using the documented API surface.
-- Do not modify or delete alerting resources unless the user explicitly requests that exact action.
+- Default to read-only operations. Only create, edit, or delete alerting resources when the user explicitly requests that exact action and a documented first-class CLI command supports it. Use API fallback only for explicitly requested alert behavior that live CLI help confirms is unsupported.
 - Avoid speculative Sentry CLI subcommands. Use bundled references plus live `sentry --help` output to verify current commands.
 - Do not print credential values.
 - If org is missing and needed, ask the user.
