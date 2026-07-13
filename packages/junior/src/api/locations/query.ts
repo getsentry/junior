@@ -113,6 +113,7 @@ async function locationRows(db: JuniorDatabase, destinationId?: string) {
       fullName: juniorUsers.displayName,
       handle: juniorIdentities.handle,
       identityEmail: juniorIdentities.email,
+      identityProvider: juniorIdentities.provider,
       lastActivityAt: juniorConversations.lastActivityAt,
       providerSubjectId: juniorIdentities.providerSubjectId,
       source: juniorConversations.source,
@@ -171,7 +172,8 @@ function rowMetrics(row: LocationRow) {
   const reportingRow = {
     ...row,
     email: row.email ?? row.identityEmail ?? "",
-    providerSubjectId: row.providerSubjectId ?? "",
+    providerSubjectId:
+      row.identityProvider === "slack" ? (row.providerSubjectId ?? "") : "",
   };
   const baseSummary = summaryFromRow(reportingRow);
   const summary =
@@ -307,7 +309,10 @@ export async function readLocationDetailFromSql(
       days.set(date, day);
     }
 
-    if (row.actorIdentityId) {
+    if (
+      row.actorIdentityId &&
+      (summary.actorIdentity?.email || summary.actorIdentity?.slackUserId)
+    ) {
       const actor = summary.actorIdentity ?? {};
       const actorItem = actors.get(row.actorIdentityId) ?? emptyActor(actor);
       addMetrics(actorItem, metrics);

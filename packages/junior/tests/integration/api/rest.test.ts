@@ -212,6 +212,20 @@ describe("Junior REST API", () => {
       ),
     ).not.toHaveProperty("locationId");
 
+    await store.recordActivity({
+      channelName: "product",
+      conversationId: "scheduler:C1:rest-api",
+      destination: {
+        channelId: "C1",
+        platform: "slack",
+        teamId: "T1",
+      },
+      nowMs: Date.parse("2026-06-15T11:55:00.000Z"),
+      source: "scheduler",
+      title: "Scheduled public conversation",
+      visibility: "public",
+    });
+
     const location = await app.request(
       `http://localhost/api/locations/${locationReport.locations[0]?.id}`,
     );
@@ -224,7 +238,7 @@ describe("Junior REST API", () => {
           conversations: 1,
         },
       ],
-      conversations: 2,
+      conversations: 3,
       label: "#product",
       recentConversations: expect.arrayContaining([
         expect.objectContaining({ conversationId }),
