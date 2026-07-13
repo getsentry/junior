@@ -139,6 +139,7 @@ export async function actorRows(email?: string) {
       channelName: juniorConversations.channelName,
       conversationId: juniorConversations.conversationId,
       createdAt: juniorConversations.createdAt,
+      destinationId: juniorDestinations.id,
       destinationVisibility: juniorDestinations.visibility,
       durationMs: juniorConversations.durationMs,
       email: juniorUsers.primaryEmailNormalized,

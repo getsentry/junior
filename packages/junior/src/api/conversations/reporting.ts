@@ -12,6 +12,7 @@ export type ReportingConversationRow = {
   channelName: string | null;
   conversationId: string;
   createdAt: Date;
+  destinationId: string | null;
   destinationVisibility:
     | (typeof juniorDestinations.$inferSelect)["visibility"]
     | null;
@@ -160,6 +161,9 @@ export function summaryFromRow(
     ...(channel ? { channel } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
+    ...(row.destinationVisibility === "public" && row.destinationId
+      ? { locationId: row.destinationId }
+      : {}),
   };
 }
 

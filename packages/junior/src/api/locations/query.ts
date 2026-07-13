@@ -175,11 +175,7 @@ function rowMetrics(row: LocationRow) {
     providerSubjectId:
       row.identityProvider === "slack" ? (row.providerSubjectId ?? "") : "",
   };
-  const baseSummary = summaryFromRow(reportingRow);
-  const summary =
-    row.destinationVisibility === "public" && row.destinationId
-      ? { ...baseSummary, locationId: row.destinationId }
-      : baseSummary;
+  const summary = summaryFromRow(reportingRow);
   return {
     summary,
     metrics: {
