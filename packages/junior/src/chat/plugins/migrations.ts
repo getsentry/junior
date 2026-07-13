@@ -80,7 +80,10 @@ function adoptedMigration(
     }
     adopted = migration;
   }
-  if (!adopted && migrations.length === 1 && legacyHashes.size > 0) {
+  // A Drizzle baseline may re-express the deployed legacy schema without
+  // preserving its SQL checksum. Legacy state still adopts only the baseline;
+  // later Drizzle migrations must run normally.
+  if (!adopted && legacyHashes.size > 0) {
     return migrations[0];
   }
   return adopted;

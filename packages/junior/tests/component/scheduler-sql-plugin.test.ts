@@ -52,6 +52,8 @@ vi.mock("@/db/executor", () => ({
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
+const LEGACY_SCHEDULER_MIGRATION_CHECKSUM =
+  "d1d2f712181dd3a0557808f0fc67fd0722691d25f4c8cfb816b77c71d19e1e42";
 
 function schedulerMigrationsDir(): string {
   return path.resolve(process.cwd(), "../junior-scheduler/migrations");
@@ -138,8 +140,7 @@ CREATE TABLE junior_schema_migrations (
         `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
         [
           "plugin:scheduler/0001_scheduler.sql",
-          readMigrationFiles({ migrationsFolder: schedulerMigrationsDir() })[0]!
-            .hash,
+          LEGACY_SCHEDULER_MIGRATION_CHECKSUM,
         ],
       );
       const currentTask = createTask({ id: "sched_legacy_credential_subject" });
