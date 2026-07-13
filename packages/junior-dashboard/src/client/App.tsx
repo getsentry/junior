@@ -61,7 +61,11 @@ export function DashboardShell() {
         <div
           className={cn(
             dashboardContainerClass,
-            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:px-8",
+            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-4",
+            loggedIn
+              ? "md:grid-cols-[auto_minmax(0,1fr)_auto]"
+              : "md:grid-cols-[auto_minmax(0,1fr)]",
+            workspace ? "md:px-4" : "md:px-8",
           )}
         >
           <Link
