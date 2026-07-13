@@ -1173,7 +1173,7 @@ async function executeAgentRunInPrivacyContext(
           assistantMessageCount: 0,
           ...(reasoningSelection
             ? {
-                thinkingLevel: reasoningSelection.reasoningLevel,
+                reasoningLevel: reasoningSelection.reasoningLevel,
               }
             : {}),
           toolCalls: [],

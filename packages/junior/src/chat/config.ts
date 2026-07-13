@@ -249,6 +249,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
+  const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
   const fastModelId =
     validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
     DEFAULT_FAST_MODEL_ID;
@@ -264,9 +265,9 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       env.AI_MODEL_CONTEXT_WINDOW_TOKENS,
     ),
     reasoningLevel:
-      toOptionalTrimmed(env.AI_REASONING_LEVEL) === undefined
+      reasoningLevel === undefined
         ? undefined
-        : parseTurnReasoningLevel(env.AI_REASONING_LEVEL),
+        : parseTurnReasoningLevel(reasoningLevel),
     fastModelId,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??

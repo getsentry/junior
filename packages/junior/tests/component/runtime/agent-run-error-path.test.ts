@@ -69,6 +69,19 @@ describe("executeAgentRun error path", () => {
     expect(reply!.diagnostics.reasoningLevel).toBeUndefined();
   });
 
+  it("preserves configured reasoning in failure diagnostics", async () => {
+    const outcome = await executeAgentRun({
+      input: { messageText: "hello" },
+      policy: { reasoningLevel: "high" },
+      routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
+    });
+    const reply = outcome.status === "completed" ? outcome.result : undefined;
+
+    expect(reply).toBeDefined();
+    expect(reply!.diagnostics.outcome).toBe("provider_error");
+    expect(reply!.diagnostics.reasoningLevel).toBe("high");
+  });
+
   it("propagates pre-commit failures when durable input commit is required", async () => {
     await expect(
       executeAgentRun({

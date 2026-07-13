@@ -65,6 +65,13 @@ describe("chat config", () => {
     expect(botConfig.reasoningLevel).toBe("xhigh");
   });
 
+  it("trims an explicitly configured reasoning level", async () => {
+    process.env.AI_REASONING_LEVEL = "  xhigh  ";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.reasoningLevel).toBe("xhigh");
+  });
+
   it("rejects an invalid configured reasoning level", async () => {
     process.env.AI_REASONING_LEVEL = "adaptive";
 
