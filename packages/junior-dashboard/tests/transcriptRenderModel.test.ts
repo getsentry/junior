@@ -5,7 +5,7 @@ import {
   groupTranscriptMessages,
   groupTranscriptParts,
 } from "../src/client/components/transcriptRenderModel";
-import { conversationHasMatch } from "../src/client/components/transcriptSearch";
+import { entryMatchesSearch } from "../src/client/components/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/transcriptActivity";
 import type { ConversationTranscript } from "../src/client/types";
 
@@ -328,8 +328,14 @@ describe("transcript render model", () => {
       "context",
       "message",
     ]);
-    expect(conversationHasMatch(turn, "gpt-5.6-sol")).toBe(true);
-    expect(conversationHasMatch(turn, "earlier investigation")).toBe(true);
+    expect(
+      entries.some((entry) => entryMatchesSearch(entry, "gpt-5.6-sol")),
+    ).toBe(true);
+    expect(
+      entries.some((entry) =>
+        entryMatchesSearch(entry, "earlier investigation"),
+      ),
+    ).toBe(true);
   });
 
   it("does not duplicate subagents from repeated activity snapshots", () => {
@@ -641,9 +647,19 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(conversationHasMatch(turn, "advisor")).toBe(true);
-    expect(conversationHasMatch(turn, "running")).toBe(true);
-    expect(conversationHasMatch(turn, "not-present")).toBe(false);
+    const entries = groupTranscriptMessages(
+      conversationTranscriptMessages(turn),
+    );
+
+    expect(entries.some((entry) => entryMatchesSearch(entry, "advisor"))).toBe(
+      true,
+    );
+    expect(entries.some((entry) => entryMatchesSearch(entry, "running"))).toBe(
+      true,
+    );
+    expect(
+      entries.some((entry) => entryMatchesSearch(entry, "not-present")),
+    ).toBe(false);
   });
 
   it("matches tool activity status in transcript search", () => {
@@ -663,6 +679,12 @@ describe("transcript render model", () => {
       transcriptAvailable: true,
     });
 
-    expect(conversationHasMatch(turn, "running")).toBe(true);
+    const entries = groupTranscriptMessages(
+      conversationTranscriptMessages(turn),
+    );
+
+    expect(entries.some((entry) => entryMatchesSearch(entry, "running"))).toBe(
+      true,
+    );
   });
 });

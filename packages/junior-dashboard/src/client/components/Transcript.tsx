@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowDownToLine, Search } from "lucide-react";
 
 import type {
@@ -15,10 +15,7 @@ import {
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
-import {
-  TranscriptSearchProvider,
-  conversationHasMatch,
-} from "./transcriptSearch";
+import { TranscriptSearchProvider } from "./transcriptSearch";
 
 /** Render one conversation transcript as ordered message and tool events. */
 export function Transcript(props: {
@@ -33,22 +30,11 @@ export function Transcript(props: {
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
 
-  const normalizedSearch = search.trim().toLowerCase();
   const redacted = Boolean(props.transcript?.transcriptRedacted);
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
     version: transcriptBottomVersion(props.transcript),
   });
-
-  const visibleTurn = useMemo(
-    () =>
-      normalizedSearch && props.transcript
-        ? conversationHasMatch(props.transcript, normalizedSearch)
-          ? props.transcript
-          : undefined
-        : props.transcript,
-    [props.transcript, normalizedSearch],
-  );
 
   if (!props.transcript) {
     return (
@@ -86,17 +72,11 @@ export function Transcript(props: {
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
         </div>
-        {visibleTurn ? (
-          <ConversationTranscriptView
-            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-            conversation={visibleTurn}
-            view={view}
-          />
-        ) : normalizedSearch ? (
-          <div className={transcriptEmptyClass()}>
-            No events match your search.
-          </div>
-        ) : null}
+        <ConversationTranscriptView
+          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+          conversation={props.transcript}
+          view={view}
+        />
         <div
           aria-hidden="true"
           className="h-px"

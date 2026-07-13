@@ -2,10 +2,7 @@ import { type ReactNode, createContext, useContext } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
 import { stringifyPartValue } from "../format";
-import { conversationTranscriptMessages } from "../transcriptActivity";
-import type { ConversationTranscript } from "../types";
 import {
-  groupTranscriptMessages,
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
@@ -170,17 +167,6 @@ export function entryMatchesSearch(
   }
 
   return false;
-}
-
-/** Returns true if the conversation has at least one entry matching the normalised query. */
-export function conversationHasMatch(
-  conversation: ConversationTranscript,
-  normalizedQuery: string,
-): boolean {
-  if (!normalizedQuery) return true;
-  return groupTranscriptMessages(
-    conversationTranscriptMessages(conversation),
-  ).some((entry) => entryMatchesSearch(entry, normalizedQuery));
 }
 
 function textContains(text: string | undefined, query: string): boolean {
