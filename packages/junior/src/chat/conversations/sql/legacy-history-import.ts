@@ -12,6 +12,7 @@
  */
 import { eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { PiMessage } from "@/chat/pi/messages";
 import { unescapeXml } from "@/chat/xml";
 import type { NewConversationMessage } from "../messages";
@@ -333,7 +334,7 @@ function insertRow(
     contextEpoch: step.contextEpoch,
     type,
     role: messageRole(step.entry),
-    payload,
+    payload: sanitizePostgresJson(payload),
     createdAt: new Date(step.createdAtMs),
   };
 }

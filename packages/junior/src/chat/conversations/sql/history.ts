@@ -13,6 +13,7 @@ import {
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
 import { juniorAgentSteps } from "@/db/schema";
+import { sanitizePostgresJson } from "@/db/postgres-json";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
 type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;
@@ -43,7 +44,7 @@ function insertFromStep(
     contextEpoch,
     type,
     role: messageRole(step.entry),
-    payload,
+    payload: sanitizePostgresJson(payload),
     createdAt: new Date(step.createdAtMs),
   };
 }

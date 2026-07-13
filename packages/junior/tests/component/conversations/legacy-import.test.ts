@@ -680,6 +680,44 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
+  it("replaces NUL characters in imported agent steps", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const messageStore = createSqlConversationMessageStore(fixture.sql);
+
+    try {
+      await importConversationFromLegacy(CONVERSATION_ID, {
+        executor: fixture.sql,
+        messageStore,
+        conversationRecord: conversationRecord(),
+        sessionLogStore: staticSessionLogStore([
+          {
+            schemaVersion: 2,
+            type: "pi_message",
+            sessionId: "session_0",
+            message: assistantMessage(
+              "before\u0000after and literal \\u0000",
+              10,
+            ),
+          } as SessionLogEntry,
+        ]),
+        loadVisibleMessages: async () => [],
+      });
+
+      expect(
+        (await stepStore.loadHistory(CONVERSATION_ID))[0]?.entry,
+      ).toMatchObject({
+        type: "pi_message",
+        message: {
+          content: [{ text: "before after and literal \\u0000", type: "text" }],
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 20_000);
+
   it("reads legacy visible messages from a real thread-state payload", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);

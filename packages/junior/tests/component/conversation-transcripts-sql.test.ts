@@ -288,6 +288,37 @@ describe("conversation transcript SQL stores", () => {
     }
   });
 
+  it("replaces NUL characters before persisting agent steps", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlAgentStepStore(fixture.sql);
+
+      await store.append(CONVERSATION_ID, [
+        {
+          entry: {
+            type: "pi_message",
+            message: userMessage("before\u0000after and literal \\u0000"),
+          },
+          createdAtMs: 1_000,
+        },
+      ]);
+
+      expect(
+        (await store.loadHistory(CONVERSATION_ID))[0]?.entry,
+      ).toMatchObject({
+        type: "pi_message",
+        message: {
+          content: [{ text: "before after and literal \\u0000", type: "text" }],
+        },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("returns only the highest epoch from loadCurrentEpoch", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
