@@ -519,6 +519,7 @@ async function executeAgentRunInPrivacyContext(
                   conversationContext: input.conversationContext,
                   conversationId: sessionConversationId,
                   piMessages: sourceMessages,
+                  runtimeContext,
                   signal,
                   target,
                   metadata: {
@@ -532,7 +533,7 @@ async function executeAgentRunInPrivacyContext(
               );
               handoffPhaseUsage = phaseUsage;
               pendingHandoff = {
-                messages: [...handoffMessages, ...runtimeContext],
+                messages: handoffMessages,
                 model: handoffModel,
                 thinkingLevel: handoffThinkingLevel,
               };

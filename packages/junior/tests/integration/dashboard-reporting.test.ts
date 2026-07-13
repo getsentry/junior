@@ -1583,6 +1583,19 @@ describe("dashboard reporting", () => {
           } as PiMessage,
           createdAtMs: 3,
         },
+        {
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<runtime-turn-context>\nBootstrap metadata\n</runtime-turn-context>",
+              },
+            ],
+            timestamp: 3,
+          } as PiMessage,
+          createdAtMs: 3,
+        },
       ],
     });
     await stepStore.append(conversationId, [
@@ -1627,6 +1640,9 @@ describe("dashboard reporting", () => {
     );
     expect(JSON.stringify(report.transcript)).not.toContain(
       "The release migration fails because its constraint is created too late.",
+    );
+    expect(JSON.stringify(report.transcript)).not.toContain(
+      "runtime-turn-context",
     );
   });
 

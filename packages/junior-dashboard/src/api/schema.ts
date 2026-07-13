@@ -4,7 +4,7 @@ export const dashboardIdentitySchema = z
   .object({
     user: z
       .object({
-        email: z.string().nullable().optional(),
+        email: z.string().trim().email(),
         emailVerified: z.boolean().optional(),
         hostedDomain: z.string().nullable().optional(),
         name: z.string().nullable().optional(),

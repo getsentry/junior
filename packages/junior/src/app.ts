@@ -355,18 +355,18 @@ function normalizeDashboardPath(
 function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
   const basePath = normalizeDashboardPath(dashboard.basePath, "/");
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
-  const pagePaths =
-    basePath === "/"
-      ? [
-          "/",
-          "/conversations",
-          "/conversations/*",
-          "/people",
-          "/people/*",
-          "/plugins",
-          "/plugins/*",
-        ]
-      : [basePath, `${basePath}/*`];
+  const pagePath = (suffix: string) =>
+    basePath === "/" ? `/${suffix}` : `${basePath}/${suffix}`;
+  const conversationsPath = pagePath("conversations");
+  const peoplePath = pagePath("people");
+  const pagePaths = [
+    basePath,
+    conversationsPath,
+    `${conversationsPath}/*`,
+    peoplePath,
+    `${peoplePath}/*`,
+    pagePath("plugins"),
+  ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 
   return [

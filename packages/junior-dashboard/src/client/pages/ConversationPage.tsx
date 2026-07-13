@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { useConversationData } from "../api";
@@ -37,16 +37,16 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "../components/SubagentTranscriptDrawer";
-import type { Conversation, DashboardData } from "../types";
+import type { Conversation, ConversationHistoryData } from "../types";
 
-/** Render one permalinkable conversation transcript route. */
-export function ConversationPage(props: { data?: DashboardData }) {
+/** Render the selected conversation transcript inside the workspace. */
+export function ConversationPage(props: {
+  conversationId: string;
+  data?: Pick<ConversationHistoryData, "conversations">;
+}) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();
-  const routeParams = useParams();
-  const conversationId = routeParams.conversationId
-    ? decodeURIComponent(routeParams.conversationId)
-    : undefined;
+  const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
@@ -60,7 +60,7 @@ export function ConversationPage(props: { data?: DashboardData }) {
     : undefined;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
+    <div className="w-full min-w-0 px-4 py-4 md:px-6">
       <section className="min-w-0">
         <header className="mb-3 grid gap-2 border-l-4 border-[#beaaff]/70 pl-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">

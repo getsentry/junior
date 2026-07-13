@@ -13,6 +13,7 @@ read-only dashboard data boundaries.
 ## Scope
 
 - Dashboard route ownership for human-facing diagnostics.
+- Personal conversation workspace and read-only transcript navigation.
 - Better Auth configuration for browser sessions.
 - Google domain and email authorization policy.
 - Concrete, schema-validated report functions exported by `@sentry/junior`.
@@ -71,7 +72,9 @@ directly with Drizzle:
 
 ```ts
 export function readConversationStats(): Promise<ConversationStatsReport>;
-export function readConversationFeed(): Promise<ConversationFeed>;
+export function readConversationFeed(options?: {
+  actorEmail?: string;
+}): Promise<ConversationFeed>;
 export function readConversationDetail(
   conversationId: string,
 ): Promise<ConversationDetailReport | undefined>;
@@ -140,38 +143,38 @@ Junior health routes are machine-facing health checks:
 
 The dashboard package owns browser-facing routes:
 
-| Route                              | Auth                                                   | Contract                            |
-| ---------------------------------- | ------------------------------------------------------ | ----------------------------------- |
-| `GET /`                            | Better Auth session unless auth is explicitly disabled | React command-center UI.            |
-| `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.      |
-| `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React conversation-detail UI.       |
-| `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.           |
-| `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.             |
-| `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.          |
-| `GET /_junior/dashboard/client.js` | Better Auth session unless auth is explicitly disabled | Dashboard browser bundle.           |
-| `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks. |
-| `/auth/login`                      | Public entrypoint                                      | Starts the dashboard login flow.    |
+| Route                              | Auth                                                   | Contract                                             |
+| ---------------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| `GET /`                            | Better Auth session unless auth is explicitly disabled | React personal conversation workspace.               |
+| `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.                       |
+| `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React personal workspace with a selected transcript. |
+| `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.                            |
+| `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.                              |
+| `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.                           |
+| `GET /_junior/dashboard/client.js` | Better Auth session unless auth is explicitly disabled | Dashboard browser bundle.                            |
+| `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks.                  |
+| `/auth/login`                      | Public entrypoint                                      | Starts the dashboard login flow.                     |
 
 Junior core owns the product REST API. The dashboard app authenticates requests
 before mounting the core router. Only the auth callback/login paths and explicit
 public health route bypass dashboard auth.
 
-| Route                                                      | Contract                                                              |
-| ---------------------------------------------------------- | --------------------------------------------------------------------- |
-| `GET /api/health`                                          | Command-center health pulse.                                          |
-| `GET /api/runtime`                                         | Sanitized runtime paths, packages, and providers.                     |
-| `GET /api/plugins`                                         | Loaded plugin inventory.                                              |
-| `GET /api/skills`                                          | Discovered skill inventory.                                           |
-| `GET /api/conversations`                                   | Conversation feed queried directly from SQL records.                  |
-| `GET /api/conversations/stats`                             | Aggregate conversation stats, leaderboards, and sampling metadata.    |
-| `GET /api/people`                                          | Actor directory derived from trusted actor emails.                    |
-| `GET /api/people/:email`                                   | Actor profile activity, stats, and recent conversation summaries.     |
-| `GET /api/plugin-reports`                                  | Sanitized plugin operational summaries.                               |
-| `/api/plugins/:plugin/**`                                  | Authenticated plugin-contributed APIs.                                |
-| `GET /api/conversations/:conversation`                     | Conversation header metadata and transcript from durable SQL history. |
-| `GET /api/conversations/:conversation/subagents/:subagent` | Child-agent transcript loaded on demand from the parent activity.     |
-| `GET /api/config`                                          | Safe config counts, timezone, and feature signals.                    |
-| `GET /api/me`                                              | Signed-in dashboard identity.                                         |
+| Route                                                      | Contract                                                                                                                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/health`                                          | Dashboard-safe health metadata.                                                                                                                               |
+| `GET /api/runtime`                                         | Sanitized runtime paths, packages, and providers.                                                                                                             |
+| `GET /api/plugins`                                         | Loaded plugin inventory.                                                                                                                                      |
+| `GET /api/skills`                                          | Discovered skill inventory.                                                                                                                                   |
+| `GET /api/conversations`                                   | Conversation feed queried directly from SQL records; optional `actorEmail` presentation filter matches verified normalized actor email before the feed limit. |
+| `GET /api/conversations/stats`                             | Aggregate conversation stats, leaderboards, and sampling metadata.                                                                                            |
+| `GET /api/people`                                          | Actor directory derived from trusted actor emails.                                                                                                            |
+| `GET /api/people/:email`                                   | Actor profile activity, stats, and recent conversation summaries.                                                                                             |
+| `GET /api/plugin-reports`                                  | Sanitized plugin operational summaries.                                                                                                                       |
+| `/api/plugins/:plugin/**`                                  | Authenticated plugin-contributed APIs.                                                                                                                        |
+| `GET /api/conversations/:conversation`                     | Conversation header metadata and transcript from durable SQL history.                                                                                         |
+| `GET /api/conversations/:conversation/subagents/:subagent` | Child-agent transcript loaded on demand from the parent activity.                                                                                             |
+| `GET /api/config`                                          | Safe config counts, timezone, and feature signals.                                                                                                            |
+| `GET /api/me`                                              | Signed-in dashboard identity.                                                                                                                                 |
 
 Conversation transcript responses may synthesize the static system prompt only
 when the exposed transcript begins at a model run boundary. Follow-up run
@@ -289,6 +292,16 @@ Conversation summaries and aggregates must not include conversation text, Pi
 messages, tool results, raw durable-history payloads, or agent-run error
 messages.
 
+The personal workspace uses the authenticated dashboard email as the
+`actorEmail` feed filter. This is presentation scope, not an authorization boundary. In the
+first version, a conversation belongs to the actor stored on its normalized
+and verified conversation identity; run contributors and transcript authors do
+not imply conversation ownership.
+
+When dashboard auth is explicitly disabled for a local or demo deployment,
+there is no authenticated actor. The personal workspace uses the unfiltered
+conversation feed instead of filtering by the synthetic local dashboard email.
+
 Conversation detail routes must source their header title, owner, location,
 status, runtime, transcript metrics, and Sentry conversation link from
 `GET /api/conversations/:conversation`. They must not require the recent
@@ -304,6 +317,8 @@ The conversation list, conversation stats, and People APIs read the normalized
 SQL tables directly with Drizzle. They must not depend on runtime summary state.
 The dashboard conversation feed is ordered by the durable SQL conversation
 activity columns and must not read the legacy expiring Redis activity index.
+Actor-filtered feeds apply the normalized identity filter before the bounded
+feed limit so a busy global feed cannot hide a user's own conversations.
 The React client must not reconstruct conversation records by grouping execution
 rows. Conversation identity, title, source, location, actor, latest activity,
 cumulative runtime, and cumulative usage all come from the conversation record.

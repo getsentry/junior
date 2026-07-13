@@ -1,4 +1,4 @@
-import { asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -12,7 +12,11 @@ import type { ConversationFeed } from "./schema";
 
 const CONVERSATION_FEED_LIMIT = 50;
 
-async function conversationRows(db: JuniorDatabase, limit: number) {
+async function conversationRows(
+  db: JuniorDatabase,
+  limit: number,
+  actorEmail?: string,
+) {
   return db
     .select({
       conversation: juniorConversations,
@@ -33,7 +37,17 @@ async function conversationRows(db: JuniorDatabase, limit: number) {
       juniorIdentities,
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
-    .where(isNull(juniorConversations.parentConversationId))
+    .where(
+      and(
+        isNull(juniorConversations.parentConversationId),
+        actorEmail
+          ? and(
+              eq(juniorIdentities.emailNormalized, actorEmail),
+              eq(juniorIdentities.emailVerified, true),
+            )
+          : undefined,
+      ),
+    )
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
@@ -133,12 +147,19 @@ export async function readConversationRecordFromSql(
     : undefined;
 }
 
-/** Build the dashboard conversation feed directly from durable SQL rows. */
+/**
+ * Build a bounded dashboard feed, applying a normalized actor-email filter
+ * before the limit when one is provided.
+ */
 export async function readConversationFeedFromSql(
-  limit = CONVERSATION_FEED_LIMIT,
+  options: { actorEmail?: string; limit?: number } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
-  const rows = await conversationRows(getDb(), limit);
+  const rows = await conversationRows(
+    getDb(),
+    options.limit ?? CONVERSATION_FEED_LIMIT,
+    options.actorEmail,
+  );
   return {
     conversations: rows.map((row) =>
       conversationSummaryFromStoredConversation({

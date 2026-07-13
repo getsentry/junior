@@ -96,7 +96,7 @@ describe("dashboard routes", () => {
 
   it("protects sub-routes at root basePath from unauthenticated access", async () => {
     // app.use("/", ...) only matches the exact root in Hono; sub-routes like
-    // /conversations and /plugins must be covered by a wildcard middleware.
+    // /conversations and /plugins must be covered by wildcard middleware.
     const app = dashboard(null);
 
     for (const path of [
@@ -289,9 +289,9 @@ describe("dashboard routes", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({
       user: {
-        email: "local-dashboard@localhost",
+        email: "local-dashboard@localhost.test",
         emailVerified: true,
-        hostedDomain: "localhost",
+        hostedDomain: "localhost.test",
       },
     });
   });
@@ -377,6 +377,7 @@ describe("dashboard routes", () => {
 
     for (const path of [
       "/conversations",
+      "/conversations/slack%3AC1%3A123",
       "/people",
       "/people/person%40sentry.io",
       "/plugins",
@@ -388,6 +389,22 @@ describe("dashboard routes", () => {
       const html = await response.text();
       expect(html).toContain("<title>Junior</title>");
     }
+  });
+
+  it("does not serve a separate chat terminology route", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: true,
+        hostedDomain: "sentry.io",
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/chat/legacy-id"),
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("serves the dashboard client bundle without browser caching", async () => {
@@ -571,6 +588,11 @@ describe("dashboard routes", () => {
 
     const oldInfo = await app.fetch(new Request("http://localhost/api/info"));
     expect(oldInfo.status).toBe(404);
+
+    const chatRoute = await app.fetch(
+      new Request("http://localhost/chat/legacy-id"),
+    );
+    expect(chatRoute.status).toBe(404);
   });
 
   it("mounts plugin API route apps under the authenticated namespace", async () => {

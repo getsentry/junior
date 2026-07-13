@@ -12,6 +12,7 @@ import type { Conversation } from "@/chat/conversations/store";
 import { loadProjection, projectSteps } from "@/chat/conversations/projection";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
+import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import {
   buildSentryConversationUrl,
   buildSentryTraceUrl,
@@ -121,16 +122,23 @@ function historyContent(args: {
         step.entry.type === "context_epoch_started",
     );
     const projection = projectSteps(steps);
-    const projected = projection.messages;
+    const projected: PiMessage[] = [];
+    const projectedProvenance: typeof projection.provenance = [];
+    projection.messages.forEach((message, index) => {
+      for (const retained of stripRuntimeTurnContext([message])) {
+        projected.push(retained);
+        projectedProvenance.push(projection.provenance[index]!);
+      }
+    });
     const replacementSummaryIndex =
       marker?.entry.reason === "compaction"
         ? summaryIndex(
             projected,
-            projection.provenance,
+            projectedProvenance,
             COMPACTION_SUMMARY_PREFIXES,
           )
         : marker?.entry.reason === "handoff"
-          ? summaryIndex(projected, projection.provenance, [
+          ? summaryIndex(projected, projectedProvenance, [
               MODEL_HANDOFF_SUMMARY_PREFIX,
             ])
           : -1;

@@ -6,7 +6,6 @@ import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
-  conversationStatsReportSchema,
   conversationSubagentTranscriptReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -14,29 +13,20 @@ import {
   actorProfileReportSchema,
 } from "@sentry/junior/api/schema";
 import {
-  healthReportSchema,
   pluginOperationalReportFeedSchema,
   pluginReportsSchema,
-  runtimeInfoReportSchema,
   skillReportsSchema,
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
-import type { DashboardData } from "./types";
+import type {
+  ConversationHistoryData,
+  DashboardCoreData,
+  PluginData,
+} from "./types";
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
-type DashboardCoreData = Omit<
-  DashboardData,
-  | "conversations"
-  | "conversationStats"
-  | "conversationStatsError"
-  | "conversationStatsLoading"
-  | "pluginReports"
-  | "pluginReportsError"
-  | "pluginReportsLoading"
->;
-
 class DashboardApiError extends Error {
   readonly status: number;
 
@@ -83,20 +73,12 @@ export function useDashboardCoreData() {
   return useQuery({
     queryKey: ["dashboard", "core"],
     queryFn: async (): Promise<DashboardCoreData> => {
-      const [health, runtime, plugins, skills, me, config] = await Promise.all([
-        read(healthReportSchema, "/api/health"),
-        read(runtimeInfoReportSchema, "/api/runtime"),
-        read(pluginReportsSchema, "/api/plugins"),
-        read(skillReportsSchema, "/api/skills"),
+      const [me, config] = await Promise.all([
         read(dashboardIdentitySchema, "/api/me"),
         read(dashboardConfigSchema, "/api/config"),
       ]);
       return {
         config,
-        health,
-        runtime,
-        plugins,
-        skills,
         me,
       };
     },
@@ -105,10 +87,17 @@ export function useDashboardCoreData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData() {
+export function useConversationsData(actorEmail?: string) {
+  const query = new URLSearchParams();
+  if (actorEmail) query.set("actorEmail", actorEmail);
+  const search = query.toString();
   return useQuery({
-    queryKey: ["dashboard", "conversations"],
-    queryFn: () => read(conversationFeedSchema, "/api/conversations"),
+    queryKey: ["dashboard", "conversations", actorEmail ?? "all"],
+    queryFn: () =>
+      read(
+        conversationFeedSchema,
+        `/api/conversations${search ? `?${search}` : ""}`,
+      ),
     retry: false,
   });
 }
@@ -136,14 +125,35 @@ export function useActorProfileData(email: string | undefined) {
   });
 }
 
-/** Fetch dashboard data needed by command center and list-oriented routes. */
-export function useDashboardData() {
+/** Fetch the core identity/config and global feed used by conversation history. */
+export function useConversationHistoryData() {
   const coreQuery = useDashboardCoreData();
   const conversationsQuery = useConversationsData();
-  const conversationStatsQuery = useQuery({
-    queryKey: ["dashboard", "conversation-stats"],
-    queryFn: () =>
-      read(conversationStatsReportSchema, "/api/conversations/stats"),
+  const dataReady = coreQuery.data && conversationsQuery.data;
+  return {
+    ...coreQuery,
+    data: dataReady
+      ? ({
+          ...coreQuery.data,
+          conversations: conversationsQuery.data,
+        } satisfies ConversationHistoryData)
+      : undefined,
+    error: coreQuery.error ?? conversationsQuery.error,
+    isPending: coreQuery.isPending || conversationsQuery.isPending,
+  };
+}
+
+/** Fetch plugin inventory and operational reports for the plugin route. */
+export function usePluginData() {
+  const coreQuery = useDashboardCoreData();
+  const pluginsQuery = useQuery({
+    queryKey: ["dashboard", "plugins"],
+    queryFn: () => read(pluginReportsSchema, "/api/plugins"),
+    retry: false,
+  });
+  const skillsQuery = useQuery({
+    queryKey: ["dashboard", "skills"],
+    queryFn: () => read(skillReportsSchema, "/api/skills"),
     retry: false,
   });
   const pluginReportsQuery = useQuery({
@@ -152,27 +162,24 @@ export function useDashboardData() {
       read(pluginOperationalReportFeedSchema, "/api/plugin-reports"),
     retry: false,
   });
-  const dataReady = coreQuery.data && conversationsQuery.data;
+  const dataReady = coreQuery.data && pluginsQuery.data && skillsQuery.data;
   return {
     ...coreQuery,
     data: dataReady
-      ? {
+      ? ({
           ...coreQuery.data,
-          ...(conversationStatsQuery.data
-            ? { conversationStats: conversationStatsQuery.data }
-            : {}),
-          conversationStatsError: Boolean(conversationStatsQuery.error),
-          conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
             : {}),
           pluginReportsLoading: pluginReportsQuery.isPending,
-          conversations: conversationsQuery.data,
-        }
+          plugins: pluginsQuery.data,
+          skills: skillsQuery.data,
+        } satisfies PluginData)
       : undefined,
-    error: coreQuery.error ?? conversationsQuery.error,
-    isPending: coreQuery.isPending || conversationsQuery.isPending,
+    error: coreQuery.error ?? pluginsQuery.error ?? skillsQuery.error,
+    isPending:
+      coreQuery.isPending || pluginsQuery.isPending || skillsQuery.isPending,
   };
 }
 

@@ -775,7 +775,9 @@ WHERE conversation_id = $1
         updatedAtMs: 1_200,
       });
 
-      await expect(readConversationFeedFromSql(1)).resolves.toMatchObject({
+      await expect(
+        readConversationFeedFromSql({ limit: 1 }),
+      ).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
@@ -807,7 +809,9 @@ WHERE conversation_id = $1
         updatedAtMs: 1_500,
       });
 
-      await expect(readConversationFeedFromSql(1)).resolves.toMatchObject({
+      await expect(
+        readConversationFeedFromSql({ limit: 1 }),
+      ).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
@@ -843,7 +847,9 @@ WHERE conversation_id = $1
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
       });
-      await expect(readConversationFeedFromSql(1)).resolves.toMatchObject({
+      await expect(
+        readConversationFeedFromSql({ limit: 1 }),
+      ).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
@@ -892,7 +898,9 @@ WHERE conversation_id = $1
         surface: "slack",
       });
 
-      await expect(readConversationFeedFromSql(1)).resolves.toMatchObject({
+      await expect(
+        readConversationFeedFromSql({ limit: 1 }),
+      ).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,

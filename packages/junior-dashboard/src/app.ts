@@ -4,6 +4,7 @@ import path from "node:path";
 import { createJuniorApi } from "@sentry/junior/api";
 import {
   conversationDetailReportSchema,
+  conversationFeedQuerySchema,
   conversationFeedSchema,
   conversationParamsSchema,
   conversationStatsReportSchema,
@@ -159,11 +160,8 @@ function isJsonRoute(pathname: string): boolean {
 }
 
 function isDashboardPagePath(pathname: string, basePath: string): boolean {
-  for (const path of dashboardPagePaths(basePath)) {
-    if (
-      pathname === path ||
-      (path !== "/" && pathname.startsWith(`${path}/`))
-    ) {
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
+    if (pathname === path || (nested && pathname.startsWith(`${path}/`))) {
       return true;
     }
   }
@@ -258,7 +256,7 @@ function isAuthorized(
   allowedDomains: string[],
   allowedEmails: string[],
 ): boolean {
-  const email = session.user.email?.toLowerCase();
+  const email = session.user.email.toLowerCase();
   const domain = session.user.hostedDomain?.toLowerCase();
 
   if (session.user.emailVerified && email && allowedEmails.includes(email)) {
@@ -318,12 +316,16 @@ function forbidden(request: Request): Response {
   return Response.json({ error: "forbidden" }, { status: 403 });
 }
 
-function localAuthBypassSession(): DashboardSession {
+function localAuthBypassSession(
+  email = "local-dashboard@localhost.test",
+): DashboardSession {
   return {
     user: {
-      email: "local-dashboard@localhost",
+      email,
       emailVerified: true,
-      hostedDomain: "localhost",
+      hostedDomain: email.endsWith("@sentry.io")
+        ? "sentry.io"
+        : "localhost.test",
     },
   };
 }
@@ -375,12 +377,20 @@ function readDashboardTailwind(): string {
   );
 }
 
-function dashboardPagePaths(basePath: string): string[] {
+function dashboardPagePaths(
+  basePath: string,
+): Array<{ nested?: boolean; path: string }> {
   return [
-    basePath,
-    basePath === "/" ? "/conversations" : `${basePath}/conversations`,
-    basePath === "/" ? "/people" : `${basePath}/people`,
-    basePath === "/" ? "/plugins" : `${basePath}/plugins`,
+    { path: basePath },
+    {
+      nested: true,
+      path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/people" : `${basePath}/people`,
+    },
+    { path: basePath === "/" ? "/plugins" : `${basePath}/plugins` },
   ];
 }
 
@@ -584,7 +594,12 @@ export function createDashboardApp(
     next: Next,
   ) => {
     if (!authRequired) {
-      c.set("authSession", localAuthBypassSession());
+      c.set(
+        "authSession",
+        localAuthBypassSession(
+          options.mockConversations ? "morgan@sentry.io" : undefined,
+        ),
+      );
       await next();
       return;
     }
@@ -605,9 +620,9 @@ export function createDashboardApp(
 
   app.use("*", requireAuth);
 
-  for (const path of dashboardPagePaths(basePath)) {
+  for (const { nested, path } of dashboardPagePaths(basePath)) {
     app.get(path, () => renderDashboard(basePath));
-    if (path !== "/") {
+    if (nested) {
       app.get(`${path}/*`, () => renderDashboard(basePath));
     }
   }
@@ -624,9 +639,17 @@ export function createDashboardApp(
     app.all(`${prefix}/*`, handler);
   }
   if (options.mockConversations) {
-    app.get("/api/conversations", () => {
+    app.get("/api/conversations", (c) => {
+      const query = conversationFeedQuerySchema.safeParse(c.req.query());
+      if (!query.success) {
+        return Response.json(
+          { error: "Invalid query parameters." },
+          { status: 400 },
+        );
+      }
+      const { actorEmail } = query.data;
       return Response.json(
-        conversationFeedSchema.parse(readMockConversationFeed()),
+        conversationFeedSchema.parse(readMockConversationFeed(actorEmail)),
       );
     });
     app.get("/api/conversations/stats", () => {

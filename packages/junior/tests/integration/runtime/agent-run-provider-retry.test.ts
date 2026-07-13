@@ -49,16 +49,8 @@ async function advanceUntilContinueCall(maxMs: number): Promise<void> {
     if (counters.continueCalls > 0) {
       return;
     }
-    await vi.advanceTimersByTimeAsync(100);
-    await realSleep(1);
-  }
-  // Fake time is fully advanced; the continuation is already scheduled and
-  // only needs real event-loop turns to settle.
-  for (let attempt = 0; attempt < 4_000; attempt += 1) {
-    if (counters.continueCalls > 0) {
-      return;
-    }
     await realSleep(5);
+    await vi.advanceTimersByTimeAsync(100);
   }
   throw new Error("Expected provider retry continuation to start");
 }

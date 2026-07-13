@@ -32,6 +32,7 @@ export {
   actorProfileReportSchema,
   conversationDetailReportSchema,
   conversationFeedSchema,
+  conversationFeedQuerySchema,
   conversationParamsSchema,
   conversationStatsReportSchema,
   conversationSubagentTranscriptReportSchema,

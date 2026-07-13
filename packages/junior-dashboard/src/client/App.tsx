@@ -1,17 +1,18 @@
-import type { ReactElement } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router";
 
-import { useDashboardCoreData, useDashboardData } from "./api";
+import {
+  useConversationHistoryData,
+  useDashboardCoreData,
+  usePluginData,
+} from "./api";
 import { LoadingView } from "./components/LoadingView";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
-import { CommandCenter } from "./pages/CommandCenter";
-import { ConversationPage } from "./pages/ConversationPage";
+import { ConversationWorkspace } from "./pages/ConversationWorkspace";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PeoplePage, PersonProfilePage } from "./pages/PeoplePage";
 import { PluginsPage } from "./pages/PluginsPage";
 import { cn } from "./styles";
-import type { DashboardData } from "./types";
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
@@ -54,9 +55,6 @@ export function DashboardShell() {
             </div>
           </Link>
           <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-5 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-end md:overflow-visible">
-            <NavLink className={navLinkClass} end to="/">
-              Command
-            </NavLink>
             <NavLink className={navLinkClass} to="/conversations">
               Conversations
             </NavLink>
@@ -79,13 +77,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading command center" />
+              <LoadingView label="Loading your conversations" />
+            ) : data ? (
+              <ConversationWorkspace data={data} />
             ) : (
-              <DashboardDataRoute
-                label="Loading command center"
-                render={(dashboardData, error) => (
-                  <CommandCenter data={dashboardData} queryError={error} />
-                )}
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
               />
             )
           }
@@ -94,28 +91,30 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
+              <LoadingView label="Loading your conversations" />
+            ) : data ? (
+              <ConversationWorkspace data={data} />
+            ) : (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            )
+          }
+          path="/conversations/:conversationId"
+        />
+        <Route
+          element={
+            loading ? (
               <LoadingView label="Loading conversations" />
             ) : (
-              <DashboardDataRoute
-                label="Loading conversations"
-                render={(dashboardData) => (
-                  <ConversationsPage data={dashboardData} />
-                )}
-              />
+              <ConversationHistoryRoute />
             )
           }
           path="/conversations"
         />
         <Route
           element={
-            loading ? (
-              <LoadingView label="Loading plugins" />
-            ) : (
-              <DashboardDataRoute
-                label="Loading plugins"
-                render={(dashboardData) => <PluginsPage data={dashboardData} />}
-              />
-            )
+            loading ? <LoadingView label="Loading plugins" /> : <PluginsRoute />
           }
           path="/plugins"
         />
@@ -135,32 +134,32 @@ export function DashboardShell() {
           }
           path="/people/:email"
         />
-        <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading conversation" />
-            ) : (
-              <ConversationPage />
-            )
-          }
-          path="/conversations/:conversationId"
-        />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
     </main>
   );
 }
 
-function DashboardDataRoute(props: {
-  label: string;
-  render: (
-    data: DashboardData | undefined,
-    error: Error | null,
-  ) => ReactElement;
-}) {
-  const query = useDashboardData();
+function ConversationHistoryRoute() {
+  const query = useConversationHistoryData();
   if (!query.data && !query.error) {
-    return <LoadingView label={props.label} />;
+    return <LoadingView label="Loading conversations" />;
   }
-  return props.render(query.data, query.error);
+  return query.data ? (
+    <ConversationsPage data={query.data} />
+  ) : (
+    <LoadingView label={query.error?.message ?? "Conversations unavailable"} />
+  );
+}
+
+function PluginsRoute() {
+  const query = usePluginData();
+  if (!query.data && !query.error) {
+    return <LoadingView label="Loading plugins" />;
+  }
+  return query.data ? (
+    <PluginsPage data={query.data} />
+  ) : (
+    <LoadingView label={query.error?.message ?? "Plugins unavailable"} />
+  );
 }

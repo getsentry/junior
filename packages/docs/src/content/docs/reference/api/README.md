@@ -71,6 +71,7 @@ title: "@sentry/junior"
 - [actorDirectoryReportSchema](/reference/api/variables/actordirectoryreportschema/)
 - [actorProfileReportSchema](/reference/api/variables/actorprofilereportschema/)
 - [conversationDetailReportSchema](/reference/api/variables/conversationdetailreportschema/)
+- [conversationFeedQuerySchema](/reference/api/variables/conversationfeedqueryschema/)
 - [conversationFeedSchema](/reference/api/variables/conversationfeedschema/)
 - [conversationParamsSchema](/reference/api/variables/conversationparamsschema/)
 - [conversationStatsReportSchema](/reference/api/variables/conversationstatsreportschema/)

@@ -12,7 +12,10 @@ import {
   estimateTokens,
 } from "@earendil-works/pi-agent-core";
 import { botConfig } from "@/chat/config";
-import { unwrapCurrentInstruction } from "@/chat/current-instruction";
+import {
+  renderCurrentInstruction,
+  unwrapCurrentInstruction,
+} from "@/chat/current-instruction";
 import type { completeText } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -83,6 +86,7 @@ interface HandoffContextArgs {
   conversationId: string;
   metadata?: CompactContextArgs["metadata"];
   piMessages: PiMessage[];
+  runtimeContext: PiMessage[];
   signal?: AbortSignal;
   target: {
     modelId: string;
@@ -514,8 +518,20 @@ export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
-  const summary = await summarizeContext(args, deps);
-  const message = userMessage(`${MODEL_HANDOFF_SUMMARY_PREFIX}\n${summary}`);
+  const runtimeMessage = args.runtimeContext.at(-1) as
+    | { content: unknown[] }
+    | undefined;
+  if (!runtimeMessage) {
+    throw new Error("Handoff requires the current runtime turn context");
+  }
+  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${await summarizeContext(args, deps)}`;
+  const message = {
+    ...runtimeMessage,
+    content: [
+      ...runtimeMessage.content,
+      { type: "text", text: renderCurrentInstruction(summary) },
+    ],
+  } as PiMessage;
   const messages = [message];
   args.signal?.throwIfAborted();
   await getAgentStepStore().startEpoch(args.conversationId, {
