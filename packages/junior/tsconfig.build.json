@@ -9,7 +9,6 @@
   },
   "include": [
     "src/api.ts",
-    "src/api-reference.ts",
     "src/api/**/*.ts",
     "src/app.ts",
     "src/handlers/**/*.ts",

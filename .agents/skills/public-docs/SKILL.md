@@ -42,7 +42,7 @@ Select one primary path:
 1. Read `packages/docs/src/content/docs/contribute/documentation-guidelines.md`.
 2. Read neighboring docs in the same section (`start-here`, `concepts`, `extend`, `operate`, `reference`, `contribute`).
 3. If navigation is involved, read `packages/docs/astro.config.mjs` (`sidebar` and `redirects`).
-4. If API docs are involved, confirm generated reference surface under `packages/docs/src/content/docs/reference/api`.
+4. If public interfaces are involved, verify the exported TypeScript surface and its code comments directly.
 
 ### 3. Author or edit with the right page shape
 
@@ -60,7 +60,7 @@ Run the narrowest meaningful checks:
 pnpm docs:check
 ```
 
-When structure, sidebar, redirects, or generated reference behavior changes, also run:
+When structure, sidebar, or redirects change, also run:
 
 ```bash
 pnpm docs:build

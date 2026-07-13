@@ -50,4 +50,3 @@ Canonical docs: **https://junior.sentry.dev/**
 - Slack app setup: https://junior.sentry.dev/start-here/slack-app-setup/
 - Deployment: https://junior.sentry.dev/start-here/deploy-to-vercel/
 - Plugin setup: https://junior.sentry.dev/extend/
-- API reference: https://junior.sentry.dev/reference/api/

@@ -4,10 +4,6 @@ import sentryStarlightTheme, {
   monochromeCodeTheme,
 } from "@sentry/starlight-theme";
 import { sentryAgentMarkdown } from "@sentry/starlight-theme/agent-markdown";
-import starlightTypedoc from "starlight-typedoc";
-
-const juniorEntryPoints = ["../junior/src/api-reference.ts"];
-
 export default defineConfig({
   site: "https://junior.sentry.dev",
   redirects: {
@@ -176,7 +172,6 @@ export default defineConfig({
               label: "Plugin Auth & Context",
               link: "/reference/runtime-commands/",
             },
-            { label: "API Reference Guide", link: "/reference/api/" },
           ],
         },
         {
@@ -199,21 +194,6 @@ export default defineConfig({
       plugins: [
         sentryStarlightTheme(),
         sentryAgentMarkdown(),
-        starlightTypedoc({
-          entryPoints: juniorEntryPoints,
-          tsconfig: "../junior/tsconfig.build.json",
-          output: "reference/api",
-          sidebar: {
-            label: "API Reference",
-          },
-          typeDoc: {
-            excludePrivate: true,
-            excludeProtected: true,
-            hideBreadcrumbs: true,
-            readme: "none",
-            gitRevision: "main",
-          },
-        }),
       ],
     }),
   ],

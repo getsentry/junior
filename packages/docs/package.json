@@ -14,9 +14,6 @@
     "@astrojs/starlight": "^0.39.2",
     "@sentry/starlight-theme": "catalog:",
     "astro": "^6.3.7",
-    "starlight-typedoc": "^0.23.0",
-    "typedoc": "^0.28.19",
-    "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "^6.0.3"
   }
 }

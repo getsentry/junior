@@ -49,4 +49,3 @@ Junior runs as a Hono app, receives Slack events, processes turns through queue-
 - Config & Environment: https://junior.sentry.dev/reference/config-and-env/
 - Route & Handler Surface: https://junior.sentry.dev/reference/handler-surface/
 - Plugin Auth & Context: https://junior.sentry.dev/reference/runtime-commands/
-- API Reference: https://junior.sentry.dev/reference/api/

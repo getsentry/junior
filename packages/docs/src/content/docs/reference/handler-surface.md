@@ -5,7 +5,6 @@ type: reference
 prerequisites:
   - /start-here/quickstart/
 related:
-  - /reference/api/
   - /start-here/verify-and-troubleshoot/
 ---
 
@@ -39,4 +38,4 @@ Handled `POST` routes:
 
 ## Next step
 
-Use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) to validate these routes in your deployment, then inspect generated signatures in [API Reference Guide](/reference/api/).
+Use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) to validate these routes in your deployment. Inspect the exported TypeScript interfaces and their code comments when integrating with the runtime.

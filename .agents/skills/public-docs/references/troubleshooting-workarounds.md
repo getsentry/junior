@@ -72,18 +72,18 @@ Checks:
 Fix:
 - Reorder to reference-first structure and keep conceptual detail short.
 
-## 7) Generated API docs seem outdated
+## 7) Public interface docs seem outdated
 
 Symptom:
-- Links or expected functions do not match current package surface.
+- Narrative docs do not match the current package surface.
 
 Checks:
-1. Review `starlightTypedoc` entry points in `astro.config.mjs`.
-2. Confirm source exports under `packages/junior/src`.
-3. Run `pnpm docs:build`.
+1. Confirm source exports under the relevant package.
+2. Read the exported TypeScript interfaces and their code comments.
+3. Run `pnpm docs:build` when narrative docs link to the interface.
 
 Fix:
-- Update entry points or exported symbols, then rebuild docs.
+- Update the narrative guidance or source comments; do not add generated API reference pages.
 
 ## 8) Docs checks pass locally but page quality is still weak
 

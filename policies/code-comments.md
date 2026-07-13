@@ -12,6 +12,7 @@ They are not there to narrate obvious code.
 - Major entry-point modules need a short design comment: ownership, boundary,
   and key invariants.
 - Exported functions need a brief JSDoc comment explaining intent.
+- Public TypeScript interfaces and their code comments are the canonical API documentation; do not maintain generated API reference docs.
 - Private functions also need JSDoc when they define an internal interface:
   handlers/factories, wire or storage formats, signing, durable state changes,
   reply gates, or retry/resume/compaction/session policy.

@@ -47,14 +47,11 @@ Sidebar and section ordering are configured in `astro.config.mjs` via `starlight
 
 Use redirects in `astro.config.mjs` when moving pages or replacing old routes.
 
-## Generated API reference
+## Public API documentation
 
-`starlight-typedoc` builds API reference docs under `reference/api` from `packages/junior/src/*` entry points in `astro.config.mjs`.
-
-When changing API reference expectations:
-
-1. Confirm entry points are still correct.
-2. Ensure narrative docs link to stable generated routes.
+Public TypeScript interfaces and their code comments are the canonical API
+documentation. Inspect package exports and source directly; do not add generated
+API reference pages or link narrative docs to generated symbol routes.
 
 ## Validation commands
 
@@ -65,4 +62,4 @@ pnpm docs:check
 pnpm docs:build
 ```
 
-Use `docs:check` for routine edits and `docs:build` when navigation, redirects, or generated output may change.
+Use `docs:check` for routine edits and `docs:build` when navigation or redirects may change.

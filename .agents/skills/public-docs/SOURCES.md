@@ -4,7 +4,7 @@
 
 - `AGENTS.md` (repo-level agent conventions and skill usage requirements)
 - `packages/docs/src/content/docs/contribute/documentation-guidelines.md` (page types, depth targets, cross-page standards)
-- `packages/docs/astro.config.mjs` (sidebar, redirects, Typedoc integration, docs app structure)
+- `packages/docs/astro.config.mjs` (sidebar, redirects, docs app structure)
 - `packages/docs/src/content/docs/contribute/development.md` (docs/dev checks and commands)
 - `packages/docs/src/content/docs/contribute/testing.md` (test command patterns)
 - `packages/docs/src/content/docs/contribute/releasing.md` (docs preflight expectations)
