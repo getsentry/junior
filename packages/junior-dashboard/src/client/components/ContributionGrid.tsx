@@ -116,7 +116,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
   );
 }
 
-function activityRuntime(day: DailyConversationActivity): string {
+function activityRuntime(day: ContributionDay): string {
   if (day.durationMs <= 0 && day.conversations > 0) return "unknown";
   return formatMs(day.durationMs);
 }
