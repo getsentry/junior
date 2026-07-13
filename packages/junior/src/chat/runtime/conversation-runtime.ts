@@ -46,6 +46,17 @@ function conversationIdForProfile(request: AgentRunRequest): string {
   if (!conversationId) {
     throw new TypeError("Conversation runtime requires a conversationId");
   }
+  if (request.routing.dispatch) {
+    if (
+      correlation.threadId !== undefined &&
+      correlation.threadId !== conversationId
+    ) {
+      throw new TypeError(
+        "Dispatch conversation routing identity does not match",
+      );
+    }
+    return conversationId;
+  }
   if (destination.platform === "local") {
     if (
       source.platform !== "local" ||

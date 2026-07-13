@@ -261,4 +261,59 @@ WHERE conversation_id = $1
     ).rejects.toThrow("Local conversation routing identity does not match");
     expect(run).not.toHaveBeenCalled();
   });
+
+  it("accepts an internal dispatch id with a Slack destination", async () => {
+    const run = vi.fn<AgentRunner["run"]>(async () =>
+      completedAgentRun({
+        text: "done",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "fake-model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      }),
+    );
+    const getOrCreateExecutionProfile = vi.fn(async () => PROFILE);
+    const runtime = createConversationRuntime({
+      agentRunner: { run },
+      defaultProfile: PROFILE,
+      profileStore: { getOrCreateExecutionProfile },
+    });
+    const conversationId = "agent-dispatch:scheduled-task-1";
+
+    await runtime.run({
+      input: { messageText: "Run the scheduled task" },
+      routing: {
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        source: {
+          platform: "slack",
+          type: "pub",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "123.456",
+        },
+        dispatch: {},
+        correlation: {
+          conversationId,
+          threadId: conversationId,
+          teamId: "T123",
+          channelId: "C123",
+        },
+      },
+    });
+
+    expect(getOrCreateExecutionProfile).toHaveBeenCalledWith({
+      conversationId,
+      profile: PROFILE,
+    });
+    expect(run).toHaveBeenCalledOnce();
+  });
 });
