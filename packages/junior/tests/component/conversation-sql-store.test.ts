@@ -590,6 +590,83 @@ INSERT INTO junior_conversations (
     }
   });
 
+  it("replaces the matching run metrics after execution cursor changes", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "running",
+          updatedAtMs: 2_000,
+        },
+        metrics: {
+          durationMs: 1_000,
+          usage: { totalTokens: 10, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 2_000,
+        updatedAtMs: 2_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-2",
+          status: "running",
+          updatedAtMs: 3_000,
+        },
+        metrics: null,
+        lastActivityAtMs: 3_000,
+        updatedAtMs: 3_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "idle",
+          updatedAtMs: 4_000,
+        },
+        metrics: {
+          durationMs: 1_500,
+          usage: { totalTokens: 15, cost: { total: 0.015 } },
+        },
+        lastActivityAtMs: 4_000,
+        updatedAtMs: 4_000,
+      });
+
+      const [metrics] = await fixture.sql.query<{
+        durationMs: number;
+        executionDurationMs: number;
+        metricRunId: string | null;
+        usage: { cost?: { total?: number }; totalTokens?: number } | null;
+      }>(
+        `
+SELECT
+  duration_ms AS "durationMs",
+  execution_duration_ms AS "executionDurationMs",
+  metric_run_id AS "metricRunId",
+  usage_json AS usage
+FROM junior_conversations
+WHERE conversation_id = $1
+`,
+        [CONVERSATION_ID],
+      );
+      expect(metrics).toMatchObject({
+        durationMs: 1_500,
+        executionDurationMs: 1_500,
+        metricRunId: "run-1",
+        usage: { cost: { total: 0.015 }, totalTokens: 15 },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("backfills totals without replacing a newer execution cursor", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

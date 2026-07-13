@@ -551,9 +551,9 @@ export class SqlStore implements ConversationStore {
       const existingExecutionAt =
         existing?.execution.updatedAtMs ?? existing?.updatedAtMs ?? 0;
       const incomingIsFresh = incomingExecutionAt >= existingExecutionAt;
+      const metricRunId = existingRow?.conversation.metricRunId;
       const sameRun =
-        Boolean(existing?.execution.runId) &&
-        existing?.execution.runId === args.execution.runId;
+        Boolean(metricRunId) && metricRunId === args.execution.runId;
       const execution = incomingIsFresh
         ? args.execution
         : (existing?.execution ?? args.execution);
@@ -593,6 +593,7 @@ export class SqlStore implements ConversationStore {
               (sameRun ? (row?.executionDurationMs ?? 0) : 0) +
               args.metrics.durationMs,
             usage: usage ?? null,
+            metricRunId: args.execution.runId ?? null,
             executionDurationMs: args.metrics.durationMs,
             executionUsage:
               args.metrics.usage ??
@@ -604,6 +605,7 @@ export class SqlStore implements ConversationStore {
           .db()
           .update(juniorConversations)
           .set({
+            metricRunId: null,
             executionDurationMs: 0,
             executionUsage: null,
           })
@@ -715,6 +717,7 @@ export class SqlStore implements ConversationStore {
               usage: metrics.usage ?? null,
               ...(refreshExecutionFromSource
                 ? {
+                    metricRunId: conversation.execution.runId ?? null,
                     executionDurationMs: metrics.executionDurationMs,
                     executionUsage: metrics.executionUsage ?? null,
                   }

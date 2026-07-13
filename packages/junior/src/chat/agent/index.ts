@@ -851,7 +851,6 @@ async function executeAgentRunInPrivacyContext(
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
-          let promptResult: unknown;
           const freshPromptMessage: PiMessage = {
             role: "user",
             content: promptContentParts,
@@ -976,7 +975,7 @@ async function executeAgentRunInPrivacyContext(
             : agent!.continue();
           let retryUsage: AgentTurnUsage | undefined;
           for (let attempt = 0; ; attempt += 1) {
-            promptResult = await runAgentStep(run);
+            await runAgentStep(run);
             signal?.throwIfAborted();
             if (runResume.cooperativeYieldError) {
               throw runResume.cooperativeYieldError;
@@ -991,11 +990,7 @@ async function executeAgentRunInPrivacyContext(
                 ? outputMessages.map(toGenAiMessageMetadata)
                 : outputMessages.map(toCanonicalOutputMessage),
             );
-            const usageSummary = extractGenAiUsageSummary(
-              promptResult,
-              agent!.state,
-              ...outputMessages,
-            );
+            const usageSummary = extractGenAiUsageSummary(...outputMessages);
             const currentUsage = hasAgentTurnUsage(usageSummary)
               ? usageSummary
               : undefined;
