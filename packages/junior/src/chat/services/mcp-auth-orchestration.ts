@@ -144,8 +144,20 @@ export function createMcpAuthOrchestration(
       );
     }
 
+    const reusingPendingLink = canReusePendingAuthLink({
+      pendingAuth: input.pendingAuth,
+      kind: "mcp",
+      provider,
+      actorId,
+      sessionId,
+    });
+    const reusedAuthSessionId =
+      reusingPendingLink && input.pendingAuth?.kind === "mcp"
+        ? input.pendingAuth.authSessionId
+        : undefined;
+    const activeAuthSessionId = reusedAuthSessionId ?? authSessionId;
     const latestArtifactState = input.getMergedArtifactState();
-    await patchMcpAuthSession(authSessionId, {
+    await patchMcpAuthSession(activeAuthSessionId, {
       configuration: { ...input.getConfiguration() },
       artifactState: latestArtifactState,
       toolChannelId:
@@ -154,26 +166,10 @@ export function createMcpAuthOrchestration(
         input.channelId,
     });
 
-    const authSession = await getMcpAuthSession(authSessionId);
-    if (!authSession?.authorizationUrl) {
-      throw new Error(`Missing MCP authorization URL for plugin "${provider}"`);
-    }
-
-    const reusingPendingLink = canReusePendingAuthLink({
-      pendingAuth: input.pendingAuth,
-      kind: "mcp",
-      provider,
-      actorId,
-      sessionId,
-    });
     const providerLabel = formatProviderLabel(provider);
-    const reusedAuthSessionId =
-      reusingPendingLink && input.pendingAuth?.kind === "mcp"
-        ? input.pendingAuth.authSessionId
-        : undefined;
 
     const nextPendingAuth: ConversationPendingAuthState = {
-      authSessionId: reusedAuthSessionId ?? authSessionId,
+      authSessionId: activeAuthSessionId,
       kind: "mcp",
       provider,
       actorId,
@@ -184,6 +180,12 @@ export function createMcpAuthOrchestration(
     };
 
     if (!reusingPendingLink) {
+      const authSession = await getMcpAuthSession(authSessionId);
+      if (!authSession?.authorizationUrl) {
+        throw new Error(
+          `Missing MCP authorization URL for plugin "${provider}"`,
+        );
+      }
       await recordPendingAuth(nextPendingAuth);
       const delivery = await deliverPrivateMessage({
         channelId: authSession.channelId,

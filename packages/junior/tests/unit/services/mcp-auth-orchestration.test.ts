@@ -183,6 +183,12 @@ describe("createMcpAuthOrchestration", () => {
         userId: "U123",
       }),
     );
+    expect(patchMcpAuthSession).toHaveBeenCalledWith("auth_1", {
+      configuration: {},
+      artifactState: {},
+      toolChannelId: "C123",
+    });
+    expect(getMcpAuthSession).toHaveBeenCalledWith("auth_1");
     expect(deleteMcpAuthSession).not.toHaveBeenCalled();
     expect(recordPendingAuth).toHaveBeenNthCalledWith(
       1,
@@ -203,9 +209,63 @@ describe("createMcpAuthOrchestration", () => {
     expect(recordPendingAuth.mock.invocationCallOrder[0]).toBeLessThan(
       deliverPrivateMessage.mock.invocationCallOrder[0]!,
     );
+    expect(patchMcpAuthSession.mock.invocationCallOrder[0]).toBeLessThan(
+      getMcpAuthSession.mock.invocationCallOrder[0]!,
+    );
+    expect(getMcpAuthSession.mock.invocationCallOrder[0]).toBeLessThan(
+      recordPendingAuth.mock.invocationCallOrder[0]!,
+    );
     expect(deliverPrivateMessage.mock.invocationCallOrder[0]).toBeLessThan(
       abandonAgentTurnSessionRecord.mock.invocationCallOrder[0]!,
     );
+    expect(abortAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates the surviving attempt when reusing a pending link", async () => {
+    const abortAgent = vi.fn();
+    const recordPendingAuth = vi.fn();
+    const pendingAuth = {
+      authSessionId: "auth_existing",
+      kind: "mcp" as const,
+      provider: "github",
+      actorId: "U123",
+      sessionId: "run_1",
+      linkSentAtMs: Date.now(),
+    };
+
+    const orchestration = createMcpAuthOrchestration({
+      abortAgent,
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_1",
+      actorId: "U123",
+      channelId: "C123",
+      threadTs: "1700000000.000000",
+      userMessage: "use MCP",
+      pendingAuth,
+      getConfiguration: () => ({ region: "us" }),
+      getArtifactState: () => undefined,
+      getMergedArtifactState: () => ({
+        assistantContextChannelId: "C-tools",
+      }),
+      recordPendingAuth,
+    });
+
+    await orchestration.authProviderFactory(plugin("github"));
+
+    await expect(orchestration.onAuthorizationRequired("github")).resolves.toBe(
+      true,
+    );
+
+    expect(patchMcpAuthSession).toHaveBeenCalledWith("auth_existing", {
+      configuration: { region: "us" },
+      artifactState: { assistantContextChannelId: "C-tools" },
+      toolChannelId: "C-tools",
+    });
+    expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
+    expect(getMcpAuthSession).not.toHaveBeenCalled();
+    expect(deliverPrivateMessage).not.toHaveBeenCalled();
+    expect(recordPendingAuth).toHaveBeenCalledWith(pendingAuth);
+    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
 
