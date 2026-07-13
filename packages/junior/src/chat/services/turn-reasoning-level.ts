@@ -148,7 +148,7 @@ function buildClassifierPrompt(args: {
 /** Preserve an explicitly configured reasoning level without invoking the router. */
 export function configuredTurnReasoningLevel(
   reasoningLevel: TurnReasoningLevel,
-  source: "agent_config" | "default",
+  source: "agent_config" | "default" | "resume",
 ): TurnReasoningSelection {
   return {
     reasoningLevel,

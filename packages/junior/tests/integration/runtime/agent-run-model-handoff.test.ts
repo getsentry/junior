@@ -9,6 +9,7 @@ const observations = vi.hoisted(() => ({
   }>,
   afterHandoffToolNames: [] as string[],
   initialModelId: "",
+  initialSystemPrompt: "",
   initialToolNames: [] as string[],
   mixedBatch: false,
   providerCalls: 0,
@@ -59,6 +60,7 @@ vi.mock("@/chat/pi/traced-stream", () => ({
       const call = observations.providerCalls;
       if (call === 1) {
         observations.initialModelId = model.id;
+        observations.initialSystemPrompt = context.systemPrompt ?? "";
         observations.initialToolNames = (context.tools ?? []).map(
           (tool: { name: string }) => tool.name,
         );
@@ -160,6 +162,7 @@ describe("executeAgentRun model handoff", () => {
     observations.afterHandoffMessages = [];
     observations.afterHandoffToolNames = [];
     observations.initialModelId = "";
+    observations.initialSystemPrompt = "";
     observations.initialToolNames = [];
     observations.mixedBatch = false;
     observations.providerCalls = 0;
@@ -204,6 +207,10 @@ describe("executeAgentRun model handoff", () => {
           observations.textDeltas.push(text);
         },
       },
+      policy: {
+        instructions: ["Only report verified implementation evidence."],
+        toolPolicy: { mode: "allowlist", toolNames: ["handoff"] },
+      },
     });
 
     expect(outcome.status).toBe("completed");
@@ -218,6 +225,10 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.initialModelId).not.toBe(
       observations.afterHandoffModelId,
     );
+    expect(observations.initialSystemPrompt).toContain(
+      "Only report verified implementation evidence.",
+    );
+    expect(observations.initialToolNames).toEqual(["handoff"]);
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "high"]);
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
@@ -281,6 +292,7 @@ describe("executeAgentRun model handoff", () => {
           turnId: "turn-model-handoff-follow-up",
         },
       },
+      policy: { modelProfile: "coding" },
     });
     expect(followUp.status).toBe("completed");
     if (followUp.status !== "completed") return;
@@ -305,7 +317,7 @@ describe("executeAgentRun model handoff", () => {
           turnId: "turn-model-handoff-explicit-reasoning",
         },
       },
-      policy: { reasoningLevel: "xhigh" },
+      policy: { reasoningPolicy: { mode: "fixed", level: "xhigh" } },
     });
 
     expect(outcome.status).toBe("completed");

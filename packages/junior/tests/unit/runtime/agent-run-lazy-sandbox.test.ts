@@ -6,6 +6,7 @@ const {
   createSandboxCallCount,
   activeSandboxVersion,
   sessionRecordPiMessages,
+  sessionRecordReasoningLevel,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
@@ -19,6 +20,9 @@ const {
   },
   sessionRecordPiMessages: {
     value: [] as unknown[],
+  },
+  sessionRecordReasoningLevel: {
+    value: undefined as string | undefined,
   },
   selectedThinkingLevels: {
     value: [] as unknown[],
@@ -212,6 +216,7 @@ vi.mock("@/chat/services/turn-session-record", () => ({
       sessionRecordPiMessages.value.length > 0
         ? {
             piMessages: [...sessionRecordPiMessages.value],
+            reasoningLevel: sessionRecordReasoningLevel.value,
           }
         : undefined,
     canUseTurnSession: false,
@@ -397,6 +402,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
     sessionRecordPiMessages.value = [];
+    sessionRecordReasoningLevel.value = undefined;
     selectedThinkingLevels.value = [];
   });
 
@@ -408,6 +414,40 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
     expect(selectedThinkingLevels.value).toEqual(["off"]);
+  });
+
+  it("reuses the durable reasoning level when adaptive reasoning resumes", async () => {
+    sessionRecordPiMessages.value = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "continue" }],
+        timestamp: 1,
+      },
+    ];
+    sessionRecordReasoningLevel.value = "high";
+
+    await generateLocalReply("hello", {
+      policy: { reasoningPolicy: { mode: "adaptive" } },
+    });
+
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
+  });
+
+  it("keeps fixed reasoning authoritative when a session resumes", async () => {
+    sessionRecordPiMessages.value = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "continue" }],
+        timestamp: 1,
+      },
+    ];
+    sessionRecordReasoningLevel.value = "high";
+
+    await generateLocalReply("hello", {
+      policy: { reasoningPolicy: { mode: "fixed", level: "low" } },
+    });
+
+    expect(selectedThinkingLevels.value).toEqual(["low"]);
   });
 
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {

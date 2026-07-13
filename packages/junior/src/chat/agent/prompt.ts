@@ -352,6 +352,7 @@ export async function assemblePrompt(args: {
   existingSessionPiMessages?: PiMessage[];
   existingTurnStartMessageIndex?: number;
   invocation: SkillInvocation | null;
+  instructions?: string[];
   priorPiMessages?: PiMessage[];
   resumedFromSessionRecord: boolean;
   routing: AgentRunRouting;
@@ -387,7 +388,11 @@ export async function assemblePrompt(args: {
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt({ source }), pluginSystemPrompt]
+  const baseInstructions = [
+    buildSystemPrompt({ source }),
+    pluginSystemPrompt,
+    ...(args.instructions ?? []),
+  ]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions = !shouldPromptAgent

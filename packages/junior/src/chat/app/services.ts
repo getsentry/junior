@@ -31,6 +31,10 @@ import {
   type VisionContextService,
 } from "@/chat/slack/vision-context";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import { createConversationRuntime } from "@/chat/runtime/conversation-runtime";
+import { defaultConversationExecutionProfile } from "@/chat/conversations/execution-profile";
+import { getConversationExecutionProfileStore } from "@/chat/db";
+import { botConfig } from "@/chat/config";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
@@ -78,8 +82,12 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
       agentRunner:
         overrides.replyExecutor?.agentRunner ??
-        createAgentRunner(executeAgentRunImpl, {
-          tracePropagation: overrides.sandbox?.tracePropagation,
+        createConversationRuntime({
+          agentRunner: createAgentRunner(executeAgentRunImpl, {
+            tracePropagation: overrides.sandbox?.tracePropagation,
+          }),
+          defaultProfile: defaultConversationExecutionProfile(botConfig),
+          profileStore: getConversationExecutionProfileStore(),
         }),
       getAwaitingAgentContinueRequest:
         overrides.replyExecutor?.getAwaitingAgentContinueRequest ??

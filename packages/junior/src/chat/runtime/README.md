@@ -27,6 +27,19 @@ this directory owns product orchestration around it.
   callbacks append new work and start a later run.
 - Completion and delivery markers make retries idempotent.
 
+## Conversation Runtime
+
+- Every production agent entry point runs through the shared conversation
+  runtime before entering the common `AgentRunner` and Pi kernel.
+- A canonical `conversationId` loads or atomically materializes the immutable
+  execution profile used by every slice of that conversation.
+- The profile owns the baseline model role, adaptive or fixed reasoning,
+  additional system instructions, and a restriction over host-provided tools.
+- Profile tool policy can narrow host authority but cannot grant tools,
+  credentials, destinations, or other capabilities.
+- Durable context epochs remain authoritative after model handoff; loading the
+  baseline profile must not roll the conversation back to its initial model.
+
 ## Prompt Ownership
 
 - Core prompt text contains stable Junior behavior, not provider-specific setup.

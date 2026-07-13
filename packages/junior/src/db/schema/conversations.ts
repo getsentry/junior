@@ -17,6 +17,7 @@ import type {
   ConversationSource,
   ConversationStatus,
 } from "@/chat/conversations/store";
+import type { ConversationExecutionProfile } from "@/chat/conversations/execution-profile";
 
 export const juniorConversations = pgTable(
   "junior_conversations",
@@ -64,6 +65,9 @@ export const juniorConversations = pgTable(
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
+    executionProfile: jsonb(
+      "execution_profile_json",
+    ).$type<ConversationExecutionProfile>(),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(

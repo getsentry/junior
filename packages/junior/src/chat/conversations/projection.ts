@@ -232,9 +232,9 @@ export async function loadConversationProjection(
   return { messages, provenance, modelProfile, modelId };
 }
 
-/** Open a standard initial epoch before a conversation's first model request. */
+/** Open the configured initial epoch before a conversation's first model request. */
 export async function openConversationProjection(
-  args: ScopedConversation & { modelId: string },
+  args: ScopedConversation & { modelId: string; modelProfile: ModelProfile },
 ): Promise<ConversationProjection> {
   await importLegacyIfNeeded(args);
   const stepStore = getAgentStepStore();
@@ -253,14 +253,14 @@ export async function openConversationProjection(
   // make that formerly implicit epoch explicit before model execution.
   await stepStore.startEpoch(args.conversationId, {
     reason: "initial",
-    modelProfile: "standard",
+    modelProfile: args.modelProfile,
     modelId: args.modelId,
     messages: [],
   });
   return {
     messages: projection.messages,
     provenance: projection.provenance,
-    modelProfile: "standard",
+    modelProfile: args.modelProfile,
     modelId: args.modelId,
   };
 }
@@ -322,7 +322,7 @@ function messageTimestamp(message: PiMessage): number {
  * provider-retry trim regenerated trailing assistant output). Returns the
  * resolved provenance, the per-message step seqs, and the `seq` boundary that
  * reproduces exactly the committed messages. A first commit atomically opens
- * the standard initial epoch; the run boundary opens it earlier when a model
+ * the baseline initial epoch; the run boundary opens it earlier when a model
  * may act before any session checkpoint, such as recordless handoff.
  */
 export async function commitMessages(args: {

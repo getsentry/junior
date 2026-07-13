@@ -7,6 +7,8 @@ agent steps, compaction boundaries, search, retention, and legacy import.
 
 - Conversation rows identify the source, destination, participants, visibility,
   and lifecycle metadata.
+- Conversation rows may carry a strict, versioned `execution_profile_json`
+  value containing provider-neutral behavior shared by every execution slice.
 - Visible messages are the destination-facing user and assistant history.
 - Agent steps are append-only execution history used to restore Pi state.
 - Context epochs identify replacement boundaries created by compaction or model
@@ -15,6 +17,17 @@ agent steps, compaction boundaries, search, retention, and legacy import.
   canonical product records.
 
 The schemas and migrations under `sql/` are authoritative.
+
+## Execution Profiles
+
+- `ConversationExecutionProfileStore` atomically materializes or loads one
+  immutable profile for a conversation.
+- The first call persists current host defaults when the profile is absent;
+  later calls return the stored value rather than replacing it.
+- Model profile roles remain stable durable values while exact provider model
+  IDs continue to resolve through the current host model catalog.
+- Initial context epochs use the stored baseline model role. Handoff,
+  compaction, and rollback epochs retain their own durable model binding.
 
 ## Write Rules
 

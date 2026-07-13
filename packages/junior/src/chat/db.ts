@@ -1,6 +1,7 @@
 import { getChatConfig, type SqlDriver } from "@/chat/config";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
+import type { ConversationExecutionProfileStore } from "@/chat/conversations/execution-profile";
 import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import type { AgentStepStore } from "@/chat/conversations/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
@@ -15,7 +16,7 @@ let current:
       databaseUrl: string;
       db: JuniorSqlExecutor;
       driver: SqlDriver;
-      store: ConversationStore;
+      store: ConversationStore & ConversationExecutionProfileStore;
       stepStore: AgentStepStore;
       messageStore: ConversationMessageStore;
       searchStore: ConversationSearchStore;
@@ -71,6 +72,12 @@ export function getDb(): JuniorDatabase {
 
 /** Return the SQL-backed conversation store. */
 export function getConversationStore(): ConversationStore {
+  getSqlExecutor();
+  return current!.store;
+}
+
+/** Return the SQL-backed durable execution-profile store. */
+export function getConversationExecutionProfileStore(): ConversationExecutionProfileStore {
   getSqlExecutor();
   return current!.store;
 }

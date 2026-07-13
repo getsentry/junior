@@ -29,6 +29,13 @@
       "when": 1783915376595,
       "tag": "0003_peaceful_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783963297979,
+      "tag": "0004_massive_the_stranger",
+      "breakpoints": true
     }
   ]
 }

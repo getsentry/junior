@@ -15,6 +15,12 @@ import type {
   ConversationStore,
 } from "../store";
 import {
+  conversationExecutionProfileSchema,
+  type ConversationExecutionProfile,
+  type ConversationExecutionProfileStore,
+} from "../execution-profile";
+import { ensureConversationRow } from "./conversation-row";
+import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -456,7 +462,9 @@ function updateConversationUsage(args: {
   return usage;
 }
 
-export class SqlStore implements ConversationStore {
+export class SqlStore
+  implements ConversationStore, ConversationExecutionProfileStore
+{
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
   async get(args: {
@@ -467,6 +475,41 @@ export class SqlStore implements ConversationStore {
       return undefined;
     }
     return conversationFromRow(row);
+  }
+
+  async getOrCreateExecutionProfile(args: {
+    conversationId: string;
+    profile: ConversationExecutionProfile;
+    nowMs?: number;
+  }): Promise<ConversationExecutionProfile> {
+    const profile = conversationExecutionProfileSchema.parse(args.profile);
+    return await this.withConversationMutation(
+      args.conversationId,
+      async () => {
+        const rows = await this.executor
+          .db()
+          .select({ executionProfile: juniorConversations.executionProfile })
+          .from(juniorConversations)
+          .where(eq(juniorConversations.conversationId, args.conversationId));
+        const existing = rows[0]?.executionProfile;
+        if (existing !== null && existing !== undefined) {
+          return conversationExecutionProfileSchema.parse(existing);
+        }
+        if (rows.length === 0) {
+          await ensureConversationRow(
+            this.executor,
+            args.conversationId,
+            args.nowMs ?? now(),
+          );
+        }
+        await this.executor
+          .db()
+          .update(juniorConversations)
+          .set({ executionProfile: profile })
+          .where(eq(juniorConversations.conversationId, args.conversationId));
+        return profile;
+      },
+    );
   }
 
   async recordActivity(args: {

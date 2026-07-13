@@ -34,7 +34,7 @@ const contextEpochStartedEntrySchema = z.union([
     .object({
       type: z.literal("context_epoch_started"),
       reason: z.literal("initial"),
-      modelProfile: z.literal("standard"),
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
     })
     .strict(),
@@ -79,7 +79,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
   z
     .object({
       reason: z.literal("initial"),
-      modelProfile: z.literal("standard"),
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       messages: z.array(piMessageStepSchema),
     })

@@ -39,6 +39,14 @@ it("accepts legacy markers and validates current profile names", () => {
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
       reason: "initial",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(true);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "initial",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
     }).success,
@@ -138,6 +146,7 @@ it("opens an explicit initial epoch without dropping earlier host facts", async 
     openConversationProjection({
       conversationId,
       modelId: "openai/gpt-5.4",
+      modelProfile: "standard",
     }),
   ).resolves.toMatchObject({
     messages: [],
@@ -229,7 +238,7 @@ describe("conversation transcript SQL stores", () => {
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
-      expect(applied?.count).toBe(4);
+      expect(applied?.count).toBe(5);
     } finally {
       await fixture.close();
     }

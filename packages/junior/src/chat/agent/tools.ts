@@ -58,6 +58,7 @@ import { createLazySandboxWorkspace } from "@/chat/agent/sandbox";
 import { upsertActiveSkill } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import { writeSandboxGeneratedArtifacts } from "@/chat/runtime/generated-artifacts";
+import type { ConversationToolPolicy } from "@/chat/conversations/execution-profile";
 
 interface ToolWiringArgs {
   abortAgent: () => void;
@@ -109,6 +110,13 @@ export interface ToolWiring {
     promptSnippet: AnyToolDefinition["promptSnippet"];
   }>;
   toolRuntimeContext: ToolRuntimeContext;
+}
+
+function toolAllowed(
+  policy: ConversationToolPolicy | undefined,
+  name: string,
+): boolean {
+  return policy?.mode !== "allowlist" || policy.toolNames.includes(name);
 }
 
 /** Wire sandbox, auth orchestration, MCP restoration, and Pi tool surfaces for one slice. */
@@ -340,9 +348,12 @@ export async function wireAgentTools(
     toolRuntimeContext,
   );
 
-  const plannedToolExposure = planToolExposure(
-    tools as Record<string, AnyToolDefinition>,
-  );
+  const allowedTools = Object.fromEntries(
+    Object.entries(tools).filter(([name]) =>
+      toolAllowed(args.policy.toolPolicy, name),
+    ),
+  ) as Record<string, AnyToolDefinition>;
+  const plannedToolExposure = planToolExposure(allowedTools);
   const toolGuidance = Object.entries(plannedToolExposure.directTools).map(
     ([name, definition]) => ({
       name,
@@ -398,9 +409,12 @@ export async function wireAgentTools(
     }
   }
 
-  const activeMcpCatalogs = toActiveMcpCatalogSummaries(
-    mcpToolManager.getActiveToolCatalog(),
-  );
+  const activeMcpCatalogs = toolAllowed(
+    args.policy.toolPolicy,
+    "searchMcpTools",
+  )
+    ? toActiveMcpCatalogSummaries(mcpToolManager.getActiveToolCatalog())
+    : [];
   const onToolCall = async (
     toolName: string,
     params: Record<string, unknown>,
@@ -422,7 +436,7 @@ export async function wireAgentTools(
     }
   };
   const agentTools = createPiAgentTools(
-    tools,
+    allowedTools,
     args.skillSandbox,
     args.spanContext,
     args.observers.onStatus,
@@ -432,7 +446,7 @@ export async function wireAgentTools(
     pluginHooks,
     args.conversationPrivacy,
     args.observers.onToolResult,
-  );
+  ).filter((tool) => toolAllowed(args.policy.toolPolicy, tool.name));
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
@@ -447,7 +461,9 @@ export async function wireAgentTools(
     mcpToolManager,
     pluginHooks,
     sandboxExecutor,
-    toolGuidance,
+    toolGuidance: toolGuidance.filter((tool) =>
+      toolAllowed(args.policy.toolPolicy, tool.name),
+    ),
     toolRuntimeContext,
   };
 }

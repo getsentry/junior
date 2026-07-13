@@ -8,10 +8,16 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
-import { getSlackReactionConfig, setSlackReactionConfig } from "@/chat/config";
-import { getDb } from "@/chat/db";
+import {
+  botConfig,
+  getSlackReactionConfig,
+  setSlackReactionConfig,
+} from "@/chat/config";
+import { getConversationExecutionProfileStore, getDb } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
+import { createConversationRuntime } from "@/chat/runtime/conversation-runtime";
+import { defaultConversationExecutionProfile } from "@/chat/conversations/execution-profile";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
@@ -587,8 +593,12 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
   const tracePropagation = { domains: sandboxEgressTracePropagationDomains };
-  const agentRunner = createAgentRunner(executeAgentRun, {
-    tracePropagation,
+  const agentRunner = createConversationRuntime({
+    agentRunner: createAgentRunner(executeAgentRun, {
+      tracePropagation,
+    }),
+    defaultProfile: defaultConversationExecutionProfile(botConfig),
+    profileStore: getConversationExecutionProfileStore(),
   });
   const runtimeServiceOverrides = {
     replyExecutor: { agentRunner },

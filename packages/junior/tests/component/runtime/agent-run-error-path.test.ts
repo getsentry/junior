@@ -72,7 +72,7 @@ describe("executeAgentRun error path", () => {
   it("preserves configured reasoning in failure diagnostics", async () => {
     const outcome = await executeAgentRun({
       input: { messageText: "hello" },
-      policy: { reasoningLevel: "high" },
+      policy: { reasoningPolicy: { mode: "fixed", level: "high" } },
       routing: { destination: LOCAL_DESTINATION, source: LOCAL_SOURCE },
     });
     const reply = outcome.status === "completed" ? outcome.result : undefined;

@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "execution_profile_json" jsonb;

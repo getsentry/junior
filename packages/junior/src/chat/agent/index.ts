@@ -114,6 +114,7 @@ import {
 } from "@/chat/model-profile";
 import { compactContextForHandoff } from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+import { parseTurnReasoningLevel } from "@/chat/reasoning-level";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -211,15 +212,19 @@ async function executeAgentRunInPrivacyContext(
   let canRecordMcpProviders = false;
   let turnUsage: AgentTurnUsage | undefined;
   let handoffPhaseUsage: AgentTurnUsage | undefined;
-  const configuredReasoningLevel =
-    policy.reasoningLevel ?? botConfig.reasoningLevel;
+  const configuredReasoningLevel = policy.reasoningPolicy
+    ? policy.reasoningPolicy.mode === "fixed"
+      ? policy.reasoningPolicy.level
+      : undefined
+    : botConfig.reasoningLevel;
   let reasoningSelection = configuredReasoningLevel
     ? configuredTurnReasoningLevel(
         configuredReasoningLevel,
-        policy.reasoningLevel ? "agent_config" : "default",
+        policy.reasoningPolicy ? "agent_config" : "default",
       )
     : undefined;
-  let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
+  let activeModelProfile: ModelProfile =
+    policy.modelProfile ?? STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRouting(routing);
   const surface = surfaceFromRouting(routing);
@@ -277,6 +282,7 @@ async function executeAgentRunInPrivacyContext(
       const projection = await openConversationProjection({
         conversationId: sessionConversationId,
         modelId: activeModelId,
+        modelProfile: activeModelProfile,
       });
       activeModelProfile = projection.modelProfile;
       activeModelId = modelIdForProfile(botConfig, activeModelProfile);
@@ -335,6 +341,15 @@ async function executeAgentRunInPrivacyContext(
       currentSliceId,
       existingSessionRecord,
     } = await restoreSessionRecord(routing);
+    if (
+      existingSessionRecord?.reasoningLevel &&
+      policy.reasoningPolicy?.mode !== "fixed"
+    ) {
+      reasoningSelection = configuredTurnReasoningLevel(
+        parseTurnReasoningLevel(existingSessionRecord.reasoningLevel),
+        "resume",
+      );
+    }
     // Mirror the committed provenance prefix the turn session record owns. A
     // fresh run may already include batched parked input committed before the
     // agent starts, then adds the current actor's turn-start instruction.
@@ -624,6 +639,7 @@ async function executeAgentRunInPrivacyContext(
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
       invocation: skillInvocation,
+      instructions: policy.instructions,
       priorPiMessages,
       resumedFromSessionRecord,
       routing,

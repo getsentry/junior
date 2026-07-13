@@ -22,6 +22,10 @@ import type {
 } from "@/chat/local/runner";
 import { executeAgentRun } from "@/chat/agent";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import { createConversationRuntime } from "@/chat/runtime/conversation-runtime";
+import { defaultConversationExecutionProfile } from "@/chat/conversations/execution-profile";
+import { getConversationExecutionProfileStore } from "@/chat/db";
+import { botConfig } from "@/chat/config";
 import type { JuniorPluginSet } from "@/plugins";
 
 export const CHAT_USAGE = "usage: junior chat\n       junior chat -p <message>";
@@ -234,7 +238,11 @@ async function prepareLocalChatRun(
   await configureLocalChatPlugins(pluginSet);
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const deps: LocalAgentTurnDeps = {
-    agentRunner: createAgentRunner(executeAgentRun),
+    agentRunner: createConversationRuntime({
+      agentRunner: createAgentRunner(executeAgentRun),
+      defaultProfile: defaultConversationExecutionProfile(botConfig),
+      profileStore: getConversationExecutionProfileStore(),
+    }),
     deliverReply: async (reply) => {
       await deliverReply(io, reply);
     },

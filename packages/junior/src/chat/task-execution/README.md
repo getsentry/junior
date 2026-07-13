@@ -13,6 +13,8 @@ source of truth.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
 - Delivery state prevents a completed turn from being posted twice.
+- The immutable conversation execution profile is stored with conversation
+  metadata, not in mailbox, lease, queue, or session-log state.
 
 `state.ts`, `store.ts`, and their runtime schemas define the persisted shapes.
 
