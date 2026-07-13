@@ -27,12 +27,19 @@ export function LocationPulse(props: {
     <Section>
       <SectionHeader
         actions={
-          <Link
-            className="text-[0.76rem] font-semibold uppercase text-[#beaaff] no-underline hover:text-white"
-            to="/locations"
-          >
-            View all
-          </Link>
+          <div className="flex items-center gap-3">
+            {props.error ? (
+              <div className="text-[0.76rem] font-semibold uppercase text-[#888]">
+                degraded
+              </div>
+            ) : null}
+            <Link
+              className="text-[0.76rem] font-semibold uppercase text-[#beaaff] no-underline hover:text-white"
+              to="/locations"
+            >
+              View all
+            </Link>
+          </div>
         }
       >
         <SectionTitle>Locations</SectionTitle>

@@ -41,6 +41,25 @@ export async function seedPeople(fixture: LocalJuniorSqlFixture) {
     source: "slack",
     updatedAtMs: Date.parse("2026-06-10T10:04:00.000Z"),
   });
+  await store.recordActivity({
+    actor: {
+      email: "alice@example.com",
+      fullName: "Provider Specific Alice",
+      platform: "slack",
+      slackUserId: "U1B",
+      teamId: "T1",
+    },
+    channelName: "private-project",
+    conversationId: "slack:C4:456",
+    destination: {
+      platform: "slack",
+      teamId: "T1",
+      channelId: "C4",
+    },
+    nowMs: Date.parse("2026-06-12T11:00:00.000Z"),
+    source: "slack",
+    title: "Private project plan",
+  });
   await store.recordExecution({
     conversationId: "slack:C4:456",
     createdAtMs: Date.parse("2026-06-12T11:00:00.000Z"),

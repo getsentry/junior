@@ -100,7 +100,7 @@ export function slackLocationLabel(args: {
 }
 
 function channelNameFromRow(row: ReportingConversationRow): string | undefined {
-  if (row.destinationVisibility && row.destinationVisibility !== "public") {
+  if (row.destinationVisibility !== "public") {
     return PRIVATE_CONVERSATION_LABEL;
   }
   return row.channelName ?? undefined;
@@ -110,7 +110,7 @@ function titleFromRow(
   row: ReportingConversationRow,
   surface: ConversationSurface,
 ): string {
-  if (row.destinationVisibility && row.destinationVisibility !== "public") {
+  if (row.destinationVisibility !== "public") {
     return PRIVATE_CONVERSATION_LABEL;
   }
   const channel = channelFromConversationId(row.conversationId);
@@ -143,9 +143,7 @@ export function summaryFromRow(
   const surface = surfaceFromRow(row);
   const channel = channelFromConversationId(row.conversationId);
   const channelName = channelNameFromRow(row);
-  const channelNameRedacted =
-    Boolean(row.destinationVisibility) &&
-    row.destinationVisibility !== "public";
+  const channelNameRedacted = row.destinationVisibility !== "public";
   const actorIdentity = actorFromRow(row);
   return {
     conversationId: row.conversationId,
