@@ -88,11 +88,11 @@ The same transaction opens a `context_epoch_started` marker with:
 
 The in-process continuation receives one synthetic user turn containing the
 current runtime bootstrap followed by the handoff summary as its
-`<current-instruction>`. The handoff transaction itself persists only the
-summary; ordinary checkpoints may later append that combined turn and
-post-handoff output to the same profile-bound epoch. This matches the normal
-prompt shape while avoiding a detached bootstrap or summary message. Later
-context replacement strips the prior bootstrap before injecting a fresh one.
+`<current-instruction>`. The handoff transaction persists that same combined
+turn, so ordinary checkpoints share its prefix and append post-handoff output
+to the same profile-bound epoch. This matches the normal prompt shape while
+avoiding a detached bootstrap or summary message. Later context replacement
+strips the prior bootstrap before injecting a fresh one.
 
 The current marker's `modelProfile` is runtime authority. Its `modelId` is an
 audit snapshot and never pins runtime selection. Every new conversation opens

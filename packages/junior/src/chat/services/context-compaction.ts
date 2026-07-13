@@ -518,10 +518,13 @@ export async function compactContextForHandoff(
   args: HandoffContextArgs,
   deps: Pick<ContextCompactorDeps, "completeText">,
 ): Promise<PiMessage[]> {
+  const runtimeMessage = args.runtimeContext.at(-1) as
+    | { content: unknown[] }
+    | undefined;
+  if (!runtimeMessage) {
+    throw new Error("Handoff requires the current runtime turn context");
+  }
   const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${await summarizeContext(args, deps)}`;
-  const runtimeMessage = args.runtimeContext[0] as {
-    content: unknown[];
-  };
   const message = {
     ...runtimeMessage,
     content: [

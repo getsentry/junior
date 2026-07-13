@@ -21,7 +21,9 @@ function assistant(text: string, timestamp = 1): PiMessage {
 
 function textOf(message: PiMessage): string {
   return (
-    (message as { content?: Array<{ text?: string }> }).content?.[0]?.text ?? ""
+    (message as { content?: Array<{ text?: string }> }).content
+      ?.map((part) => part.text ?? "")
+      .join("\n") ?? ""
   );
 }
 
@@ -412,6 +414,47 @@ describe("context compaction projection reset", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("standard");
+  });
+
+  it("uses the latest runtime context and rejects a missing bootstrap", async () => {
+    const { compactContextForHandoff } =
+      await import("@/chat/services/context-compaction");
+    const completeText = async () => ({ text: "Continue safely." }) as never;
+    const target = {
+      modelId: "test/handoff",
+      modelProfile: "handoff" as const,
+    };
+
+    const messages = await compactContextForHandoff(
+      {
+        conversationId: "conversation-latest-runtime-context",
+        piMessages: [user("Implement the change.")],
+        runtimeContext: [
+          user(
+            "<runtime-turn-context>\nStale runtime context\n</runtime-turn-context>",
+          ),
+          user(
+            "<runtime-turn-context>\nCurrent runtime context\n</runtime-turn-context>",
+          ),
+        ],
+        target,
+      },
+      { completeText },
+    );
+
+    expect(textOf(messages[0]!)).toContain("Current runtime context");
+    expect(textOf(messages[0]!)).not.toContain("Stale runtime context");
+    await expect(
+      compactContextForHandoff(
+        {
+          conversationId: "conversation-missing-runtime-context",
+          piMessages: [user("Implement the change.")],
+          runtimeContext: [],
+          target,
+        },
+        { completeText },
+      ),
+    ).rejects.toThrow("Handoff requires the current runtime turn context");
   });
 
   it("does not start handoff persistence when abort is observed after summarization", async () => {
