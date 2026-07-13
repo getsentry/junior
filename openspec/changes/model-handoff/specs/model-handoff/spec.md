@@ -109,7 +109,9 @@ conversation's operational environment.
 - **THEN** the selected profile receives the same system prompt, workspace,
   sandbox id, artifacts, configuration, actors, credentials, source,
   destination, correlation, skills, plugins, MCP availability, and normal tools
-- **AND** only handoff is removed from its toolset.
+- **AND** only handoff is removed from its toolset
+- **AND** the exact active reasoning level is preserved without rerunning the
+  reasoning router.
 
 #### Scenario: Later user turn arrives
 

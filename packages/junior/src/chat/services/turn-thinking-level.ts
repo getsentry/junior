@@ -1,6 +1,10 @@
 import type { ThinkingLevel as AgentThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel as ProviderThinkingLevel } from "@earendil-works/pi-ai";
 import { z } from "zod";
+import {
+  TURN_THINKING_LEVELS,
+  type TurnThinkingLevel,
+} from "@/chat/reasoning-level";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 
@@ -9,14 +13,6 @@ const MAX_ROUTER_CONTEXT_CHARS = 8_000;
 const ROUTER_CONTEXT_HEAD_CHARS = 3_000;
 const ROUTER_CONTEXT_TAIL_CHARS = 5_000;
 const TRUNCATION_MARKER = "\n…[truncated]…\n";
-const TURN_THINKING_LEVELS = [
-  "none",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-] as const;
-
 const CONFIDENCE_LABELS: Record<string, number> = {
   low: 0.5,
   medium: CLASSIFIER_CONFIDENCE_THRESHOLD,
@@ -50,15 +46,14 @@ const turnExecutionProfileSchema = z.object({
   reason: z.string().min(1),
 });
 
-type TurnThinkingLevel = (typeof TURN_THINKING_LEVELS)[number];
-
 export interface TurnThinkingSelection {
   confidence?: number;
   thinkingLevel: TurnThinkingLevel;
   reason: string;
 }
 
-const DEFAULT_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] = "medium";
+const CLASSIFIER_FALLBACK_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] =
+  "medium";
 const THINKING_LEVEL_RANK: Record<TurnThinkingLevel, number> = {
   none: 0,
   low: 1,
@@ -150,7 +145,18 @@ function buildClassifierPrompt(args: {
   return sections.join("\n");
 }
 
-/** Choose the thinking level for the upcoming assistant turn. */
+/** Preserve an explicitly configured thinking level without invoking the router. */
+export function configuredTurnThinkingLevel(
+  thinkingLevel: TurnThinkingLevel,
+  source: "agent_config" | "default",
+): TurnThinkingSelection {
+  return {
+    thinkingLevel,
+    reason: `configured:${source}`,
+  };
+}
+
+/** Choose the thinking level for the upcoming assistant turn when none is configured. */
 export async function selectTurnThinkingLevel(args: {
   completeObject: (args: {
     modelId: string;
@@ -284,7 +290,7 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        thinkingLevel: DEFAULT_THINKING_LEVEL,
+        thinkingLevel: CLASSIFIER_FALLBACK_THINKING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
       };
     }
@@ -296,7 +302,7 @@ async function classifyTurn(args: {
     };
   } catch {
     return {
-      thinkingLevel: DEFAULT_THINKING_LEVEL,
+      thinkingLevel: CLASSIFIER_FALLBACK_THINKING_LEVEL,
       reason: "classifier_error_default",
     };
   }

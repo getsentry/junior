@@ -69,6 +69,7 @@ import {
   nextProviderRetry,
 } from "@/chat/services/provider-retry";
 import {
+  configuredTurnThinkingLevel,
   selectTurnThinkingLevel,
   toAgentThinkingLevel,
   type TurnThinkingSelection,
@@ -432,19 +433,26 @@ async function executeAgentRunInPrivacyContext(
     const preAgentPromptMessages = (): PiMessage[] =>
       existingSessionRecord?.piMessages ?? [...(input.piMessages ?? [])];
 
-    thinkingSelection = await selectTurnThinkingLevel({
-      completeObject,
-      conversationContext: input.conversationContext,
-      context: {
-        threadId: routing.correlation?.threadId,
-        channelId: routing.correlation?.channelId,
-        actorId: routing.correlation?.actorId,
-        runId: routing.correlation?.runId,
-      },
-      currentTurnBlocks: routerBlocks,
-      fastModelId: botConfig.fastModelId,
-      messageText: userInput,
-    });
+    const configuredReasoningLevel =
+      policy.reasoningLevel ?? botConfig.reasoningLevel;
+    thinkingSelection = configuredReasoningLevel
+      ? configuredTurnThinkingLevel(
+          configuredReasoningLevel,
+          policy.reasoningLevel ? "agent_config" : "default",
+        )
+      : await selectTurnThinkingLevel({
+          completeObject,
+          conversationContext: input.conversationContext,
+          context: {
+            threadId: routing.correlation?.threadId,
+            channelId: routing.correlation?.channelId,
+            actorId: routing.correlation?.actorId,
+            runId: routing.correlation?.runId,
+          },
+          currentTurnBlocks: routerBlocks,
+          fastModelId: botConfig.fastModelId,
+          messageText: userInput,
+        });
     setSpanAttributes({
       "gen_ai.request.model": activeModelId,
       "gen_ai.request.reasoning.level": thinkingSelection.thinkingLevel,

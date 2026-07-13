@@ -27,6 +27,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
+import type { TurnThinkingLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
   WebFetchToolDeps,
@@ -104,6 +105,8 @@ export interface AgentRunPolicy {
   /** Cancels provider work when the owning host request is abandoned. */
   signal?: AbortSignal;
   authorizationFlowMode?: AuthorizationFlowMode;
+  /** Explicit per-agent reasoning level. When set, adaptive routing is disabled. */
+  reasoningLevel?: TurnThinkingLevel;
   configuration?: Record<string, unknown>;
   channelConfiguration?: ChannelConfigurationService;
   skillDirs?: string[];

@@ -51,6 +51,26 @@ describe("chat config", () => {
     expect(botConfig.modelId).toBe("openai/gpt-5.5");
   });
 
+  it("leaves reasoning unset by default", async () => {
+    delete process.env.AI_REASONING_LEVEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.reasoningLevel).toBeUndefined();
+  });
+
+  it("uses an explicitly configured reasoning level", async () => {
+    process.env.AI_REASONING_LEVEL = "xhigh";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.reasoningLevel).toBe("xhigh");
+  });
+
+  it("rejects an invalid configured reasoning level", async () => {
+    process.env.AI_REASONING_LEVEL = "adaptive";
+
+    await expect(loadConfig()).rejects.toThrow();
+  });
+
   it("uses gpt-5.6-sol for the default handoff profile", async () => {
     delete process.env.AI_HANDOFF_MODEL;
     delete process.env.AI_MODEL_PROFILES;

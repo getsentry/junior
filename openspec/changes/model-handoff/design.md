@@ -50,6 +50,7 @@ configuration error, not a fallback to the stored audit id.
 ## Runtime Continuity
 
 Handoff preserves conversation id, Pi run, workspace, exact sandbox id,
+active reasoning level,
 artifacts, configuration, actors, credentials, source, destination, auth,
 steering, delivery, timeout, and recovery behavior. The selected profile
 receives every normal main-agent tool except `handoff`. Standard text remains

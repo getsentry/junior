@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-07-11
-- Last Edited: 2026-07-12
+- Last Edited: 2026-07-13
 
 ## Purpose
 
@@ -20,7 +20,8 @@ model to a host-configured named model profile.
 - Downgrading or handing off an already handed-off conversation again.
 - Letting a model select arbitrary provider model ids.
 - Creating a successor conversation, workspace, sandbox, or user-visible task.
-- Changing thinking-level selection, tool authority, or delivery behavior.
+- Selecting a new thinking level during handoff, changing tool authority, or
+  changing delivery behavior.
 - Designing an advisor, delegate, or generic subagent runtime. Generic
   child-conversation and subagent history storage remains for future work.
 
@@ -38,7 +39,10 @@ Model profiles are stable, host-owned names matching
 `AI_MODEL_PROFILES` may add other non-standard profiles as a JSON object from
 profile name to provider model id. It cannot override `standard` or `handoff`.
 Model-facing controls select only configured profile names, never raw model
-ids. Thinking-level selection remains independent of profile selection.
+ids. Thinking-level selection remains independent of profile selection. The
+reasoning level active when handoff starts is immutable across the switch:
+handoff neither invokes the reasoning router nor substitutes a target-model
+preference.
 
 ### Tool Policy
 
@@ -66,7 +70,8 @@ new user-visible session. It keeps the same:
 - timeout, steering, auth, delivery, persistence, and recovery behavior
 
 After the handoff transaction commits, `prepareNextTurn` replaces the current
-Pi model and context before the next provider request.
+Pi model and context before the next provider request while carrying forward
+the exact active reasoning level.
 
 ### Context Replacement And Durability
 
@@ -133,7 +138,8 @@ turn. No bespoke handoff event or span is added.
   the handoff transaction boundary;
   failure leaves the standard projection unchanged.
 - Integration: default and explicitly selected profiles swap model/context in
-  the same turn, remove only `handoff`, and own later turns permanently.
+  the same turn, preserve explicit and router-selected reasoning levels, remove
+  only `handoff`, and own later turns permanently.
 - Integration: mixed batches, yield, and worker recovery preserve the boundary.
 - Eval: a distinct-model two-turn coding task performs one handoff, reuses the
   same workspace file, and executes the follow-up on the handed-off model.

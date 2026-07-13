@@ -9,6 +9,8 @@ const observations = vi.hoisted(() => ({
   mixedBatch: false,
   providerCalls: 0,
   requestedProfile: undefined as string | null | undefined,
+  routedThinkingLevel: "high",
+  thinkingLevels: [] as string[],
   summaryCalls: 0,
   handoffStatusBeforeSummary: false,
   statuses: [] as string[],
@@ -31,7 +33,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
     ...actual,
     completeObject: async () => ({
       object: {
-        thinking_level: "high",
+        thinking_level: observations.routedThinkingLevel,
         confidence: 0.99,
         reason: "complex implementation",
       },
@@ -48,6 +50,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
 vi.mock("@/chat/pi/traced-stream", () => ({
   createTracedStreamFn: () => async (model: any, context: any) => {
     observations.providerCalls += 1;
+    observations.thinkingLevels.push(context.reasoning ?? "unset");
     const call = observations.providerCalls;
     if (call === 1) {
       observations.initialModelId = model.id;
@@ -154,6 +157,8 @@ describe("executeAgentRun model handoff", () => {
     observations.mixedBatch = false;
     observations.providerCalls = 0;
     observations.requestedProfile = undefined;
+    observations.routedThinkingLevel = "high";
+    observations.thinkingLevels = [];
     observations.summaryCalls = 0;
     observations.handoffStatusBeforeSummary = false;
     observations.statuses = [];
@@ -207,6 +212,7 @@ describe("executeAgentRun model handoff", () => {
       observations.afterHandoffModelId,
     );
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.thinkingLevels.slice(0, 2)).toEqual(["high", "high"]);
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames.filter((name) => name !== "handoff"),
@@ -266,6 +272,29 @@ describe("executeAgentRun model handoff", () => {
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(observations.summaryCalls).toBe(1);
+  });
+
+  it("preserves explicit agent reasoning across handoff without routing", async () => {
+    observations.requestedProfile = null;
+    observations.routedThinkingLevel = "low";
+    const conversationId = "local:test:model-handoff-explicit-reasoning";
+    const outcome = await executeAgentRun({
+      input: { messageText: "Implement the multi-file refactor." },
+      routing: {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        correlation: {
+          conversationId,
+          turnId: "turn-model-handoff-explicit-reasoning",
+        },
+      },
+      policy: { reasoningLevel: "xhigh" },
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(outcome.result.diagnostics.thinkingLevel).toBe("xhigh");
+    expect(observations.thinkingLevels).toEqual(["xhigh", "xhigh"]);
   });
 
   it("keeps handoff independent from status observer failures", async () => {

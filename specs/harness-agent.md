@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-07-11
+- Last Edited: 2026-07-13
 
 ## Purpose
 
@@ -33,9 +33,10 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 
 ### Thinking-level routing
 
-- Route each main assistant turn through the fast thinking classifier before creating the Pi `Agent`.
+- Main-agent reasoning defaults to unset. Only an unset reasoning level runs the fast thinking classifier before creating the Pi `Agent`.
+- An explicit level from agent policy or `AI_REASONING_LEVEL` is authoritative. Runtime uses it directly and does not invoke the classifier.
 - The classifier may run with low thinking because it is a bounded routing task; the selected main-turn level is independent.
-- The default and failure fallback for substantive work is medium effort, which is the normal assistant reasoning level.
+- Low-confidence and failure fallback inside an active classifier run is medium effort.
 - Use `none` only for greetings, acknowledgments, and turns that need no substantive assistant work.
 - Use `low` rarely, only for deterministic one-step answers or transformations with no tools, no current or external facts, no prior thread-context interpretation, and no source verification.
 - Use `medium` for ordinary assistant work, including explanations, source-backed checks, thread follow-ups, likely tool use, ambiguity, or multi-step analysis.
@@ -80,8 +81,10 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context.md).
 - A standard main agent may call standalone `handoff`. After its summary epoch
   commits, `prepareNextTurn` replaces the active model/context in the same Pi
-  run and removes `handoff`; it does not terminate the run before the selected
-  profile can answer. Mixed handoff batches execute no calls.
+  run, preserves the exact selected reasoning level, and removes `handoff`;
+  it does not terminate the run before the selected profile can answer. Mixed
+  handoff batches execute no calls. Handoff never reruns adaptive reasoning
+  selection or changes an explicit reasoning assignment.
 
 ## Failure Model
 
