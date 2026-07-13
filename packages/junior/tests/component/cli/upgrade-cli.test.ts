@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getChatConfig } from "@/chat/config";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   appendInboundMessage,
@@ -238,17 +239,24 @@ export const plugins = {
       60_000,
     );
 
+    const statePrefix = getChatConfig().state.keyPrefix;
+    const redisConversationIndexKey = [
+      "chat-sdk:list",
+      ...(statePrefix ? [statePrefix] : []),
+      `junior:agent_turn_session:conversation:${conversationId}:index`,
+    ].join(":");
     const redisStateAdapter = {
       getClient: () => ({
         sendCommand: async (args: readonly string[]) => {
-          const match = args[3];
-          if (!match) {
-            throw new Error("Expected Redis SCAN match pattern");
-          }
-          return [
+          expect(args).toEqual([
+            "SCAN",
             "0",
-            [match.replace("*", "chat-sdk").replace("*", conversationId)],
-          ];
+            "MATCH",
+            `*:list:${statePrefix ? `${statePrefix}:` : ""}junior:agent_turn_session:conversation:*:index`,
+            "COUNT",
+            "500",
+          ]);
+          return ["0", [redisConversationIndexKey]];
         },
       }),
     } as unknown as RedisStateAdapter;
