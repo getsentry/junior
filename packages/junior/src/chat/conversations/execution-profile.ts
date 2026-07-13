@@ -26,7 +26,7 @@ export const conversationReasoningPolicySchema = z.discriminatedUnion("mode", [
     .strict(),
 ]);
 
-/** Durable, provider-neutral behavior selected for every run in a conversation. */
+/** Immutable conversation configuration used for each execution slice. */
 export const conversationExecutionProfileSchema = z
   .object({
     modelProfile: modelProfileSchema,

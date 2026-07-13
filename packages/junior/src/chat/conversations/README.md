@@ -30,7 +30,7 @@ The schemas and migrations under `sql/` are authoritative.
   `execution_instructions` stores the durable instruction list.
 - Model profile roles remain stable durable values while exact provider model
   IDs continue to resolve through the current host model catalog.
-- Initial context epochs use the stored baseline model role. Handoff,
+- Initial context epochs use the stored model profile. Handoff,
   compaction, and rollback epochs retain their own durable model binding.
 
 ## Write Rules
