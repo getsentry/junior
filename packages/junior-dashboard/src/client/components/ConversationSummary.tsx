@@ -3,7 +3,9 @@ import { Link } from "react-router";
 import {
   conversationDisplayTitle,
   conversationActorLabel,
+  locationPath,
   peoplePath,
+  slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
 import type { Conversation } from "../types";
@@ -32,11 +34,30 @@ function ConversationIdentity(props: { conversation: Conversation }) {
   const email = props.conversation.actorIdentity?.email?.trim();
   const owner = conversationActorLabel(props.conversation);
   const id = props.conversation.id;
-
-  if (!owner) return id;
+  const location = slackLocationLabel(props.conversation, {
+    includeId: false,
+  });
 
   return (
     <>
+      {location && props.conversation.locationId ? (
+        <>
+          <Link
+            className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+            to={locationPath(props.conversation.locationId)}
+          >
+            {location}
+          </Link>
+          {" · "}
+        </>
+      ) : location ? (
+        <>
+          {location}
+          {" · "}
+        </>
+      ) : null}
       {email ? (
         <Link
           className="font-semibold text-[#d6d6d6] underline decoration-white/20 underline-offset-2 transition-colors hover:text-white hover:decoration-white/60"
@@ -46,10 +67,10 @@ function ConversationIdentity(props: { conversation: Conversation }) {
         >
           {owner}
         </Link>
-      ) : (
+      ) : owner ? (
         owner
-      )}
-      {" · "}
+      ) : null}
+      {owner ? " · " : null}
       {id}
     </>
   );

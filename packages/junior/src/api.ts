@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   conversationFeedQuerySchema,
   conversationParamsSchema,
+  locationParamsSchema,
   personParamsSchema,
   subagentParamsSchema,
 } from "./api/schema";
@@ -112,6 +113,19 @@ export function createJuniorApi(): Hono {
     const { email } = parseParams(personParamsSchema, c.req.param());
     const { readPeopleProfile } = await import("./api/people/profile");
     return Response.json(await readPeopleProfile(email));
+  });
+
+  app.get("/api/locations", async () => {
+    const { readLocationDirectory } = await import("./api/locations/list");
+    return Response.json(await readLocationDirectory());
+  });
+  app.get("/api/locations/:locationId", async (c) => {
+    const { locationId } = parseParams(locationParamsSchema, c.req.param());
+    const { readLocationDetail } = await import("./api/locations/detail");
+    const report = await readLocationDetail(locationId);
+    return report
+      ? Response.json(report)
+      : Response.json({ error: "Location not found." }, { status: 404 });
   });
 
   return app;

@@ -6,6 +6,15 @@ import type {
   ActorProfileReport,
 } from "./schema";
 import {
+  conversationSignals,
+  reportDate,
+  reportTime,
+  slackLocationLabel,
+  summaryFromRow,
+  surfaceLabel,
+  usageTokens,
+} from "../conversations/reporting";
+import {
   ACTIVITY_DAYS,
   activityDays,
   addSignals,
@@ -16,16 +25,9 @@ import {
   mergeIdentity,
   normalizeEmail,
   RECENT_LIMIT,
-  reportDate,
-  reportTime,
   actorRows,
   SAMPLE_LIMIT,
-  signals,
-  slackLocationLabel,
   statsItems,
-  summaryFromRow,
-  usageTokens,
-  surfaceLabel,
 } from "./shared";
 
 function emptyProfile(email: string, nowMs: number): ActorProfileReport {
@@ -77,7 +79,7 @@ export async function readPeopleProfileFromSql(
     }
     recentConversations.push(summary);
 
-    const value = signals(summary);
+    const value = conversationSignals(summary);
     const date = reportDate(summary.lastSeenAt);
     totals.conversations += 1;
     totals.durationMs += summary.cumulativeDurationMs;

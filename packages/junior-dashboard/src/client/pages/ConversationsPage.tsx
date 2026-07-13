@@ -10,6 +10,7 @@ import { SectionTitle } from "../components/SectionTitle";
 import {
   buildConversations,
   conversationActorOptions,
+  conversationLocationOptions,
   conversationSourceOptions,
   filterConversationList,
   filterConversations,
@@ -24,15 +25,18 @@ export function ConversationsPage(props: { data?: ConversationHistoryData }) {
   const filter = getFilter(params.get("filter"));
   const query = params.get("q") ?? "";
   const actor = params.get("actor") ?? "";
+  const location = params.get("location") ?? "";
   const source = params.get("source") ?? "";
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const sourceOptions = conversationSourceOptions(conversations);
   const actorOptions = conversationActorOptions(conversations);
+  const locationOptions = conversationLocationOptions(conversations);
   const statusConversations = filterConversations(conversations, filter);
   const visibleConversations = filterConversationList(statusConversations, {
     query,
     actor,
+    location,
     source,
   });
   const search = params.toString();
@@ -46,7 +50,10 @@ export function ConversationsPage(props: { data?: ConversationHistoryData }) {
     setParams(next);
   }
 
-  function updateParam(name: "q" | "actor" | "source", value: string) {
+  function updateParam(
+    name: "q" | "actor" | "location" | "source",
+    value: string,
+  ) {
     const next = new URLSearchParams(params);
     const nextValue = name === "q" ? value : value.trim();
     if (nextValue.trim()) {
@@ -61,6 +68,7 @@ export function ConversationsPage(props: { data?: ConversationHistoryData }) {
     const next = new URLSearchParams(params);
     next.delete("q");
     next.delete("actor");
+    next.delete("location");
     next.delete("source");
     setParams(next, { replace: true });
   }
@@ -88,10 +96,13 @@ export function ConversationsPage(props: { data?: ConversationHistoryData }) {
             query={query}
             actor={actor}
             actorOptions={actorOptions}
+            location={location}
+            locationOptions={locationOptions}
             source={source}
             sourceOptions={sourceOptions}
             onQueryChange={(value) => updateParam("q", value)}
             onActorChange={(value) => updateParam("actor", value)}
+            onLocationChange={(value) => updateParam("location", value)}
             onSourceChange={(value) => updateParam("source", value)}
             onClear={clearListFilters}
           />

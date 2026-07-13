@@ -108,12 +108,14 @@ export type ConversationTranscript = Omit<
 export type Conversation = {
   channel?: string;
   channelName?: string;
+  channelNameRedacted?: boolean;
   cumulativeDurationMs: number;
   cumulativeUsage?: ConversationSummaryReport["cumulativeUsage"];
   displayTitle: string;
   id: string;
   lastProgressAt: string;
   lastSeenAt: string;
+  locationId?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
   startedAt: string;

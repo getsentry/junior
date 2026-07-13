@@ -3,6 +3,7 @@ import type { ZodType } from "zod";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
@@ -11,6 +12,8 @@ import {
 import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  locationDetailReportSchema,
+  locationDirectoryReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -120,6 +123,29 @@ export function useActorProfileData(email: string | undefined) {
       read(
         actorProfileReportSchema,
         `/api/people/${encodeURIComponent(email!)}`,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch the public location directory and private activity aggregate. */
+export function useLocationDirectoryData() {
+  return useQuery({
+    queryKey: ["dashboard", "locations"],
+    queryFn: () => read(locationDirectoryReportSchema, "/api/locations"),
+    retry: false,
+  });
+}
+
+/** Fetch operational detail for one persisted public location. */
+export function useLocationDetailData(locationId: string | undefined) {
+  return useQuery({
+    enabled: Boolean(locationId),
+    queryKey: ["dashboard", "locations", locationId],
+    queryFn: async (): Promise<LocationDetailReport> =>
+      read(
+        locationDetailReportSchema,
+        `/api/locations/${encodeURIComponent(locationId!)}`,
       ),
     retry: false,
   });

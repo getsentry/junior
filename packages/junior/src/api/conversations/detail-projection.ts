@@ -250,6 +250,7 @@ function visibleMessageTranscript(
 export async function buildConversationDetail(args: {
   conversation: Conversation;
   durationMs: number;
+  locationId?: string;
   usage: ConversationDetailReport["cumulativeUsage"];
 }): Promise<ConversationDetailReport> {
   const { conversation } = args;
@@ -291,6 +292,7 @@ export async function buildConversationDetail(args: {
     ...conversationSummaryFromStoredConversation({
       conversation,
       durationMs: args.durationMs,
+      ...(args.locationId ? { locationId: args.locationId } : {}),
       usage: args.usage,
     }),
     ...(traceId ? { traceId } : {}),

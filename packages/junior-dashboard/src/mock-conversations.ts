@@ -12,6 +12,13 @@ import type {
   ConversationDetailReport,
   TranscriptMessage,
 } from "@sentry/junior/api/schema";
+import type {
+  DailyConversationActivity,
+  LocationActorSummaryReport,
+  LocationDetailReport,
+  LocationDirectoryReport,
+  LocationSummaryReport,
+} from "@sentry/junior/api/schema";
 import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 
 import { longReleaseConversation } from "./mock-release-conversation";
@@ -34,6 +41,12 @@ const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
 const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const PUBLIC_MOCK_CHANNEL_IDS = new Set([
+  "CQA123",
+  "CQA456",
+  "CQA777",
+  "CQA999",
+]);
 
 function iso(nowMs: number, offsetMs = 0): string {
   return new Date(nowMs + offsetMs).toISOString();
@@ -71,6 +84,10 @@ function summaryFromConversation(
       : {}),
     ...(conversation.channelNameRedacted !== undefined
       ? { channelNameRedacted: conversation.channelNameRedacted }
+      : {}),
+    ...(conversation.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(conversation.channel)
+      ? { locationId: mockLocationId(conversation.channel) }
       : {}),
     ...(conversation.sentryTraceUrl
       ? { sentryTraceUrl: conversation.sentryTraceUrl }
@@ -265,6 +282,7 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     },
     channel: "DQA123",
     channelName: "Direct Message",
+    channelNameRedacted: true,
     transcriptAvailable: false,
     transcriptMessageCount: 4,
     transcriptMetadata: redactedPrivateTranscript(Date.parse(startedAt)),
@@ -1015,6 +1033,161 @@ export function readMockConversationStats(): ConversationStatsReport {
   return conversationStatsReportFromSummaries(Date.now(), feed.conversations);
 }
 
+function mockLocationId(channel: string): string {
+  return `mock:${channel}`;
+}
+
+/** Admit only explicitly public mock destinations as named locations. */
+function publicMockLocation(
+  conversation: ConversationSummaryReport,
+): LocationSummaryReport | undefined {
+  const channel = conversation.channel;
+  if (!channel || !PUBLIC_MOCK_CHANNEL_IDS.has(channel)) return undefined;
+  return {
+    ...emptyStatsItem(locationLabel(conversation)),
+    firstSeenAt: conversation.startedAt,
+    id: mockLocationId(channel),
+    kind: "channel",
+    lastSeenAt: conversation.lastSeenAt,
+    provider: "slack",
+    providerDestinationId: channel,
+    visibility: "public",
+  };
+}
+
+/** Aggregate the typed mock feed into the location directory wire report. */
+function mockLocationDirectory(nowMs: number): LocationDirectoryReport {
+  const summaries = mockConversationFeed(nowMs).conversations;
+  const locations = new Map<string, LocationSummaryReport>();
+  const privateActivity = emptyStatsItem("Private activity");
+
+  for (const conversation of summaries) {
+    const initial = publicMockLocation(conversation);
+    if (!initial) {
+      addConversationStats(privateActivity, conversation);
+      continue;
+    }
+    const location = locations.get(initial.id) ?? initial;
+    addConversationStats(location, conversation);
+    if (Date.parse(conversation.startedAt) < Date.parse(location.firstSeenAt)) {
+      location.firstSeenAt = conversation.startedAt;
+    }
+    if (Date.parse(conversation.lastSeenAt) > Date.parse(location.lastSeenAt)) {
+      location.lastSeenAt = conversation.lastSeenAt;
+    }
+    locations.set(location.id, location);
+  }
+
+  return {
+    generatedAt: iso(nowMs),
+    locations: [...locations.values()].sort(
+      (left, right) =>
+        Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),
+    ),
+    privateActivity,
+    sampleLimit: summaries.length,
+    sampleSize: summaries.length,
+    source: "conversation_index",
+    truncated: false,
+  };
+}
+
+/** Fill the fixed 30-day activity series used by mock location detail. */
+function mockLocationActivityDays(
+  nowMs: number,
+  conversations: ConversationSummaryReport[],
+): DailyConversationActivity[] {
+  const days = new Map<string, DailyConversationActivity>();
+  for (const conversation of conversations) {
+    const date = conversation.lastSeenAt.slice(0, 10);
+    const day = days.get(date) ?? {
+      active: 0,
+      conversations: 0,
+      date,
+      durationMs: 0,
+      failed: 0,
+    };
+    day.conversations += 1;
+    day.durationMs += conversation.cumulativeDurationMs;
+    day.active += conversation.status === "active" ? 1 : 0;
+    day.failed += conversation.status === "failed" ? 1 : 0;
+    const tokens = usageTokenTotal(conversation.cumulativeUsage);
+    if (tokens !== undefined) day.tokens = (day.tokens ?? 0) + tokens;
+    days.set(date, day);
+  }
+  const result: DailyConversationActivity[] = [];
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  for (let offset = 29; offset >= 0; offset -= 1) {
+    const cursor = new Date(end);
+    cursor.setUTCDate(cursor.getUTCDate() - offset);
+    const date = cursor.toISOString().slice(0, 10);
+    result.push(
+      days.get(date) ?? {
+        active: 0,
+        conversations: 0,
+        date,
+        durationMs: 0,
+        failed: 0,
+      },
+    );
+  }
+  return result;
+}
+
+/** Build the typed mock location directory used by dashboard visual QA. */
+export function readMockLocationDirectory(): LocationDirectoryReport {
+  return mockLocationDirectory(Date.now());
+}
+
+/** Build one typed public-location detail report for dashboard visual QA. */
+export function readMockLocationDetail(
+  locationId: string,
+): LocationDetailReport | undefined {
+  const nowMs = Date.now();
+  const location = mockLocationDirectory(nowMs).locations.find(
+    (item) => item.id === locationId,
+  );
+  if (!location) return undefined;
+  const conversations = mockConversationFeed(nowMs).conversations.filter(
+    (conversation) =>
+      conversation.channel === location.providerDestinationId &&
+      PUBLIC_MOCK_CHANNEL_IDS.has(conversation.channel ?? ""),
+  );
+  const actors = new Map<string, LocationActorSummaryReport>();
+  for (const conversation of conversations) {
+    const label = actorLabel(conversation.actorIdentity) ?? "Unknown";
+    const key =
+      conversation.actorIdentity?.email ??
+      conversation.actorIdentity?.slackUserId ??
+      "unknown";
+    const item = actors.get(key) ?? {
+      ...emptyStatsItem(label),
+      actor: conversation.actorIdentity ?? {},
+    };
+    addConversationStats(item, conversation);
+    actors.set(key, item);
+  }
+  const activityDays = mockLocationActivityDays(nowMs, conversations);
+  return {
+    ...location,
+    activityDays,
+    actors: [...actors.values()].sort(
+      (left, right) =>
+        right.conversations - left.conversations ||
+        left.label.localeCompare(right.label),
+    ),
+    generatedAt: iso(nowMs),
+    recentConversations: conversations,
+    sampleLimit: conversations.length,
+    sampleSize: conversations.length,
+    source: "conversation_index",
+    truncated: false,
+    windowEnd: `${activityDays.at(-1)?.date}T00:00:00.000Z`,
+    windowStart: `${activityDays[0]?.date}T00:00:00.000Z`,
+  };
+}
+
 function usageTokenTotal(usage: ConversationUsage | undefined) {
   if (!usage) return undefined;
   const components = [
@@ -1168,7 +1341,12 @@ export function readMockConversationFeed(
 export function readMockConversationDetail(
   conversationId: string,
 ): ConversationDetailReport | undefined {
-  return mockConversationMap(Date.now()).get(conversationId);
+  const conversation = mockConversationMap(Date.now()).get(conversationId);
+  if (!conversation) return undefined;
+  return conversation.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(conversation.channel)
+    ? { ...conversation, locationId: mockLocationId(conversation.channel) }
+    : conversation;
 }
 
 /** Return one explicit visual-QA subagent transcript fixture. */

@@ -9,6 +9,9 @@ import {
   conversationParamsSchema,
   conversationStatsReportSchema,
   conversationSubagentTranscriptReportSchema,
+  locationDetailReportSchema,
+  locationDirectoryReportSchema,
+  locationParamsSchema,
   subagentParamsSchema,
 } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -32,6 +35,8 @@ import {
   readMockConversationFeed,
   readMockConversationStats,
   readMockConversationSubagent,
+  readMockLocationDetail,
+  readMockLocationDirectory,
 } from "./mock-conversations";
 import { resolveDashboardBaseURL } from "./url";
 
@@ -390,6 +395,10 @@ function dashboardPagePaths(
       nested: true,
       path: basePath === "/" ? "/people" : `${basePath}/people`,
     },
+    {
+      nested: true,
+      path: basePath === "/" ? "/locations" : `${basePath}/locations`,
+    },
     { path: basePath === "/" ? "/plugins" : `${basePath}/plugins` },
   ];
 }
@@ -639,6 +648,18 @@ export function createDashboardApp(
     app.all(`${prefix}/*`, handler);
   }
   if (options.mockConversations) {
+    app.get("/api/locations", () => {
+      return Response.json(
+        locationDirectoryReportSchema.parse(readMockLocationDirectory()),
+      );
+    });
+    app.get("/api/locations/:locationId", (c) => {
+      const { locationId } = locationParamsSchema.parse(c.req.param());
+      const report = readMockLocationDetail(locationId);
+      return report
+        ? Response.json(locationDetailReportSchema.parse(report))
+        : Response.json({ error: "Location not found." }, { status: 404 });
+    });
     app.get("/api/conversations", (c) => {
       const query = conversationFeedQuerySchema.safeParse(c.req.query());
       if (!query.success) {

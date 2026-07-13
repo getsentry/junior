@@ -17,6 +17,13 @@ export default defineConfig({
         replacement: path.resolve(import.meta.dirname, "../junior/src/app.ts"),
       },
       {
+        find: /^@sentry\/junior\/api\/schema$/,
+        replacement: path.resolve(
+          import.meta.dirname,
+          "../junior/src/api/schema.ts",
+        ),
+      },
+      {
         find: /^@sentry\/junior\/api\/people\/list$/,
         replacement: path.resolve(
           import.meta.dirname,

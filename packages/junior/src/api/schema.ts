@@ -1,3 +1,5 @@
+export { dailyConversationActivitySchema } from "./activity";
+export type { DailyConversationActivity } from "./activity";
 export {
   conversationDetailReportSchema,
   conversationFeedSchema,
@@ -30,6 +32,16 @@ export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
 } from "./people/schema";
+export {
+  locationDetailReportSchema,
+  locationDirectoryReportSchema,
+} from "./locations/schema";
+export type {
+  LocationActorSummaryReport,
+  LocationDetailReport,
+  LocationDirectoryReport,
+  LocationSummaryReport,
+} from "./locations/schema";
 export type {
   ActorActivityDayReport,
   ActorDirectoryReport,
@@ -82,7 +94,11 @@ export const subagentParamsSchema = conversationParamsSchema
 export const personParamsSchema = z
   .object({ email: z.string().trim().min(1) })
   .strict();
+export const locationParamsSchema = z
+  .object({ locationId: z.string().min(1) })
+  .strict();
 
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
 export type SubagentParams = z.infer<typeof subagentParamsSchema>;
 export type PersonParams = z.infer<typeof personParamsSchema>;
+export type LocationParams = z.infer<typeof locationParamsSchema>;

@@ -7,179 +7,21 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import type {
-  ConversationStatsItem,
-  ConversationSummaryReport,
   ActorActivityDayReport,
+  ConversationStatsItem,
   ActorIdentity,
   ActorTotalsReport,
 } from "./schema";
-import type {
-  ConversationReportStatus,
-  ConversationSurface,
-} from "../conversations/schema";
+import { conversationSignals } from "../conversations/reporting";
 
-const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 export const SAMPLE_LIMIT = 5_000;
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 366;
-
-type Source =
-  | "api"
-  | "internal"
-  | "local"
-  | "plugin"
-  | "resource_event"
-  | "scheduler"
-  | "slack";
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {
   const normalized = email?.trim().toLowerCase();
   return normalized || undefined;
-}
-
-/** Parse report timestamps without throwing on malformed legacy values. */
-export function reportTime(value: string): number | undefined {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : undefined;
-}
-
-/** Convert a report timestamp into the UTC day used for people activity. */
-export function reportDate(value: string): string | undefined {
-  const time = reportTime(value);
-  return time === undefined
-    ? undefined
-    : new Date(time).toISOString().slice(0, 10);
-}
-
-function channelFromConversationId(conversationId: string): string | undefined {
-  const [provider, channel] = conversationId.split(":");
-  return provider === "slack" && channel ? channel : undefined;
-}
-
-function surfaceFromRow(row: PeopleConversationRow): ConversationSurface {
-  const source = row.source as Source | null;
-  if (source === "api" || source === "scheduler" || source === "slack") {
-    return source;
-  }
-  if (row.conversationId.startsWith("slack:")) return "slack";
-  if (row.conversationId.startsWith("scheduler:")) return "scheduler";
-  if (row.conversationId.startsWith("api:")) return "api";
-  return "internal";
-}
-
-function statusFromRow(row: PeopleConversationRow): ConversationReportStatus {
-  if (row.executionStatus === "failed") {
-    return "failed";
-  }
-  if (row.executionStatus === "idle") {
-    return "completed";
-  }
-  return "active";
-}
-
-/** Return the dashboard label for a conversation surface. */
-export function surfaceLabel(surface: ConversationSurface): string {
-  if (surface === "scheduler") return "Scheduler";
-  if (surface === "api") return "API";
-  if (surface === "internal") return "Internal";
-  return "Conversation";
-}
-
-/** Return the dashboard-safe Slack location label for a conversation. */
-export function slackLocationLabel(args: {
-  channel?: string;
-  channelName?: string;
-  channelNameRedacted?: boolean;
-}): string | undefined {
-  const channelId = args.channel;
-  if (!channelId) return undefined;
-  if (args.channelNameRedacted && args.channelName) {
-    return args.channelName;
-  }
-
-  const name = args.channelName?.replace(/^#/, "");
-  if (channelId.startsWith("D")) return "Direct Message";
-  if (channelId.startsWith("C")) return name ? `#${name}` : "Public Channel";
-  if (channelId.startsWith("G")) {
-    if (name?.startsWith("mpdm-")) return "Group DM";
-    return "Private Channel";
-  }
-  return name || channelId;
-}
-
-function channelNameFromRow(row: PeopleConversationRow): string | undefined {
-  if (row.destinationVisibility && row.destinationVisibility !== "public") {
-    return PRIVATE_CONVERSATION_LABEL;
-  }
-  return row.channelName ?? undefined;
-}
-
-function titleFromRow(
-  row: PeopleConversationRow,
-  surface: ConversationSurface,
-): string {
-  if (row.destinationVisibility && row.destinationVisibility !== "public") {
-    return PRIVATE_CONVERSATION_LABEL;
-  }
-  const channel = channelFromConversationId(row.conversationId);
-  return (
-    row.title ??
-    slackLocationLabel({
-      channel,
-      channelName: row.channelName ?? undefined,
-    }) ??
-    surfaceLabel(surface)
-  );
-}
-
-/** Project one SQL conversation row into the people API conversation summary. */
-export function summaryFromRow(
-  row: PeopleConversationRow,
-): ConversationSummaryReport {
-  const surface = surfaceFromRow(row);
-  const channel = channelFromConversationId(row.conversationId);
-  const channelName = channelNameFromRow(row);
-  const channelNameRedacted =
-    Boolean(row.destinationVisibility) &&
-    row.destinationVisibility !== "public";
-  return {
-    conversationId: row.conversationId,
-    cumulativeDurationMs: row.durationMs,
-    displayTitle: titleFromRow(row, surface),
-    lastProgressAt: new Date(
-      row.executionUpdatedAt ?? row.updatedAt,
-    ).toISOString(),
-    lastSeenAt: row.lastActivityAt.toISOString(),
-    startedAt: row.createdAt.toISOString(),
-    status: statusFromRow(row),
-    surface,
-    actorIdentity: {
-      email: row.email,
-      ...(row.fullName ? { fullName: row.fullName } : {}),
-      slackUserId: row.providerSubjectId,
-      ...(row.handle ? { slackUserName: row.handle } : {}),
-    },
-    ...(channel ? { channel } : {}),
-    ...(channelName ? { channelName } : {}),
-    ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
-  };
-}
-
-/** Collapse stored conversation usage into the dashboard token total. */
-export function usageTokens(row: PeopleConversationRow): number | undefined {
-  const usage = row.usage;
-  if (!usage) return undefined;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  const values = [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].filter((value): value is number => value !== undefined);
-  return values.length > 0
-    ? values.reduce((sum, value) => sum + value, 0)
-    : undefined;
 }
 
 /** Build a zeroed totals object for people API aggregations. */
@@ -215,18 +57,10 @@ export function emptyActivityDay(date: string): ActorActivityDayReport {
   };
 }
 
-/** Collapse a conversation summary status into aggregate counters. */
-export function signals(summary: ConversationSummaryReport) {
-  return {
-    active: summary.status === "active",
-    failed: summary.status === "failed",
-  };
-}
-
 /** Add status counters into a people API aggregate row. */
 export function addSignals(
   target: Pick<ActorTotalsReport, "active" | "failed">,
-  value: ReturnType<typeof signals>,
+  value: ReturnType<typeof conversationSignals>,
 ): void {
   target.active += value.active ? 1 : 0;
   target.failed += value.failed ? 1 : 0;

@@ -108,6 +108,11 @@ For private conversations:
   - `Private Channel`
 - Public Slack channel titles may use `#channel`.
 
+Dashboard location directories may name and link only destinations with
+persisted `public` visibility. Non-public and unknown destinations may
+contribute to a generic private-activity aggregate, but their destination ids,
+names, and generated conversation titles must not be returned.
+
 The dashboard UI must render private transcript metadata as redacted content,
 not as approximated raw content.
 

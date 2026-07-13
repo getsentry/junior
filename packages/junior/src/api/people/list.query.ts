@@ -5,17 +5,19 @@ import type {
   ActorTotalsReport,
 } from "./schema";
 import {
+  conversationSignals,
+  reportDate,
+  reportTime,
+  summaryFromRow,
+  usageTokens,
+} from "../conversations/reporting";
+import {
   addSignals,
   emptyTotals,
   identityWithEmail,
   mergeIdentity,
-  reportDate,
-  reportTime,
   actorRows,
   SAMPLE_LIMIT,
-  signals,
-  summaryFromRow,
-  usageTokens,
 } from "./shared";
 
 type DirectoryAccumulator = ActorTotalsReport & {
@@ -72,7 +74,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     if (tokens !== undefined) {
       accumulator.tokens = (accumulator.tokens ?? 0) + tokens;
     }
-    addSignals(accumulator, signals(summary));
+    addSignals(accumulator, conversationSignals(summary));
     accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
     accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);
     if (date) accumulator.activeDates.add(date);

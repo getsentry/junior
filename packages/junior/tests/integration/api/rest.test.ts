@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { closeDb, getConversationStore } from "@/chat/db";
+import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { juniorDestinations } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 describe("Junior REST API", () => {
   afterEach(async () => {
@@ -49,19 +51,41 @@ describe("Junior REST API", () => {
       source: "slack",
       updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
     });
+    await store.recordActivity({
+      channelName: "secret-plans",
+      conversationId: "slack:C2:private-rest-api",
+      destination: {
+        channelId: "C2",
+        platform: "slack",
+        teamId: "T1",
+      },
+      nowMs: Date.parse("2026-06-15T11:40:00.000Z"),
+      source: "slack",
+      title: "Private title",
+      visibility: "private",
+    });
+    await store.recordActivity({
+      conversationId: "internal:historical-rest-api",
+      nowMs: Date.parse("2026-06-15T11:30:00.000Z"),
+      source: "internal",
+      title: "Historical internal title",
+    });
 
     const app = createJuniorApi();
 
     const feed = await app.request("http://localhost/api/conversations");
     expect(feed.status).toBe(200);
-    await expect(feed.json()).resolves.toMatchObject({
-      conversations: [
-        {
+    const feedReport = (await feed.json()) as {
+      conversations: Array<{ conversationId: string; locationId?: string }>;
+    };
+    expect(feedReport).toMatchObject({
+      conversations: expect.arrayContaining([
+        expect.objectContaining({
           conversationId,
           cumulativeDurationMs: 1_500,
           cumulativeUsage: { totalTokens: 120 },
-        },
-      ],
+        }),
+      ]),
       source: "conversation_index",
     });
 
@@ -86,7 +110,7 @@ describe("Junior REST API", () => {
     const stats = await app.request("http://localhost/api/conversations/stats");
     expect(stats.status).toBe(200);
     await expect(stats.json()).resolves.toMatchObject({
-      conversations: 1,
+      conversations: 3,
       durationMs: 1_500,
       tokens: 120,
     });
@@ -95,7 +119,12 @@ describe("Junior REST API", () => {
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
     );
     expect(detail.status).toBe(200);
-    await expect(detail.json()).resolves.toMatchObject({
+    const detailReport = (await detail.json()) as {
+      actorIdentity?: { email?: string };
+      conversationId: string;
+      locationId?: string;
+    };
+    expect(detailReport).toMatchObject({
       actorIdentity: { email: "Person@Example.com" },
       conversationId,
     });
@@ -121,6 +150,71 @@ describe("Junior REST API", () => {
       actor: { email: "person@example.com" },
       totals: { conversations: 1, durationMs: 1_500, tokens: 120 },
     });
+
+    const locations = await app.request("http://localhost/api/locations");
+    expect(locations.status).toBe(200);
+    const locationReport = (await locations.json()) as {
+      locations: Array<{
+        id: string;
+        label: string;
+        providerDestinationId: string;
+      }>;
+      privateActivity: { conversations: number; label: string };
+    };
+    expect(locationReport).toMatchObject({
+      locations: [
+        {
+          label: "#product",
+          providerDestinationId: "C1",
+        },
+      ],
+      privateActivity: {
+        conversations: 2,
+        label: "Private activity",
+      },
+    });
+    expect(JSON.stringify(locationReport)).not.toContain("secret-plans");
+    expect(JSON.stringify(locationReport)).not.toContain("Private title");
+    expect(JSON.stringify(locationReport)).not.toContain(
+      "Historical internal title",
+    );
+    const publicLocationId = locationReport.locations[0]?.id;
+    expect(
+      feedReport.conversations.find(
+        (conversation) => conversation.conversationId === conversationId,
+      )?.locationId,
+    ).toBe(publicLocationId);
+    expect(detailReport.locationId).toBe(publicLocationId);
+    expect(
+      feedReport.conversations.find(
+        (conversation) =>
+          conversation.conversationId === "slack:C2:private-rest-api",
+      ),
+    ).not.toHaveProperty("locationId");
+    expect(
+      feedReport.conversations.find(
+        (conversation) =>
+          conversation.conversationId === "internal:historical-rest-api",
+      ),
+    ).not.toHaveProperty("locationId");
+
+    const location = await app.request(
+      `http://localhost/api/locations/${locationReport.locations[0]?.id}`,
+    );
+    expect(location.status).toBe(200);
+    await expect(location.json()).resolves.toMatchObject({
+      label: "#product",
+      recentConversations: [{ conversationId }],
+    });
+
+    const [privateDestination] = await getDb()
+      .select({ id: juniorDestinations.id })
+      .from(juniorDestinations)
+      .where(eq(juniorDestinations.providerDestinationId, "C2"));
+    const privateLocation = await app.request(
+      `http://localhost/api/locations/${privateDestination?.id}`,
+    );
+    expect(privateLocation.status).toBe(404);
 
     const missing = await app.request(
       "http://localhost/api/conversations/missing",

@@ -814,8 +814,10 @@ describe("createApp plugin config", () => {
     for (const path of [
       "/api/plugins/*",
       "/api/conversations/*",
+      "/api/locations/*",
       "/api/people/*",
       "/conversations/*",
+      "/locations/*",
       "/people/*",
       "/*",
       "/api/*",

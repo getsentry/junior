@@ -40,6 +40,8 @@ packages/junior/
   src/api/conversations/list.ts
   src/api/conversations/stats.ts
   src/api/conversations/subagent.ts
+  src/api/locations/detail.ts
+  src/api/locations/list.ts
   src/api/people/list.ts
   src/api/people/profile.ts
   src/reporting/**
@@ -82,6 +84,10 @@ export function readConversationSubagent(
   conversationId: string,
   subagentId: string,
 ): Promise<ConversationSubagentTranscriptReport>;
+export function readLocationDirectory(): Promise<LocationDirectoryReport>;
+export function readLocationDetail(
+  locationId: string,
+): Promise<LocationDetailReport | undefined>;
 export function readPeopleList(): Promise<ActorDirectoryReport>;
 export function readPeopleProfile(email: string): Promise<ActorProfileReport>;
 ```
@@ -148,6 +154,8 @@ The dashboard package owns browser-facing routes:
 | `GET /`                            | Better Auth session unless auth is explicitly disabled | React personal conversation workspace.               |
 | `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.                       |
 | `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React personal workspace with a selected transcript. |
+| `GET /locations`                   | Better Auth session unless auth is explicitly disabled | React public-location directory UI.                  |
+| `GET /locations/**`                | Better Auth session unless auth is explicitly disabled | React public-location detail UI.                     |
 | `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.                            |
 | `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.                              |
 | `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.                           |
@@ -167,6 +175,8 @@ public health route bypass dashboard auth.
 | `GET /api/skills`                                          | Discovered skill inventory.                                                                                                                                   |
 | `GET /api/conversations`                                   | Conversation feed queried directly from SQL records; optional `actorEmail` presentation filter matches verified normalized actor email before the feed limit. |
 | `GET /api/conversations/stats`                             | Aggregate conversation stats, leaderboards, and sampling metadata.                                                                                            |
+| `GET /api/locations`                                       | Public destination directory plus generic private activity totals.                                                                                            |
+| `GET /api/locations/:location`                             | Activity, actors, and recent conversations for one public destination.                                                                                        |
 | `GET /api/people`                                          | Actor directory derived from trusted actor emails.                                                                                                            |
 | `GET /api/people/:email`                                   | Actor profile activity, stats, and recent conversation summaries.                                                                                             |
 | `GET /api/plugin-reports`                                  | Sanitized plugin operational summaries.                                                                                                                       |
@@ -343,6 +353,23 @@ feed, detail, stats, and People views expose persisted per-conversation totals.
 People list and profile APIs must read durable actor identities from the
 SQL conversation index with Drizzle. They must not use plugin reporting hooks
 or expiring runtime-session summary state.
+
+Location list and detail APIs must use normalized destination identity rather
+than channel labels as keys. Only destinations with persisted `public`
+visibility may appear as named, linkable locations. Direct messages, private
+destinations, unknown visibility, and historical destinations without a public
+signal must be combined into a generic private-activity aggregate. Location
+responses must not expose their destination ids, names, or generated titles.
+
+Location reports sample the latest 5,000 top-level conversations. `sampleSize`
+is the number included, `sampleLimit` is the cap, and `truncated` is true when
+the query found more rows than the cap. Directory totals and detail actor
+rankings describe that bounded sample. Location detail returns at most 25 recent
+conversation summaries and a fixed 30-day daily activity projection;
+`windowStart` and `windowEnd` describe only that activity projection.
+Location directory and command-center summaries prioritize usage signals such
+as conversation volume, tokens, runtime, and recency; execution health belongs
+to conversation-level operational views rather than location ranking.
 
 ### Plugin Operational Reports
 

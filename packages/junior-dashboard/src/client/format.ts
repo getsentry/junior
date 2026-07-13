@@ -688,6 +688,11 @@ export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;
 }
 
+/** Build the canonical detail route for a persisted public location. */
+export function locationPath(locationId: string): string {
+  return `/locations/${encodeURIComponent(locationId)}`;
+}
+
 function normalizeLanguage(language: string | undefined): BundledLanguage {
   const normalized = language?.trim().toLowerCase();
   if (!normalized) return "markdown";
@@ -915,12 +920,14 @@ export function buildConversations(
     .map((summary) => ({
       channel: summary.channel,
       channelName: summary.channelName,
+      channelNameRedacted: summary.channelNameRedacted,
       cumulativeDurationMs: summary.cumulativeDurationMs,
       cumulativeUsage: summary.cumulativeUsage,
       displayTitle: summary.displayTitle,
       id: summary.conversationId,
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
+      locationId: summary.locationId,
       actorIdentity: summary.actorIdentity,
       sentryTraceUrl: summary.sentryTraceUrl,
       startedAt: summary.startedAt,
@@ -956,6 +963,7 @@ export function filterConversations(
 export type ConversationListFilters = {
   query?: string;
   actor?: string;
+  location?: string;
   source?: string;
 };
 
@@ -1025,6 +1033,18 @@ export function conversationActorOptions(
   );
 }
 
+/** Return location filter options present in the loaded conversation rows. */
+export function conversationLocationOptions(
+  conversations: Conversation[],
+): ConversationListFilterOption[] {
+  return uniqueConversationOptions(
+    conversations,
+    (conversation) => conversation.locationId,
+    (conversation, value) =>
+      slackLocationLabel(conversation, { includeId: false }) ?? value,
+  );
+}
+
 /** Apply lightweight client-side search and facet filters to conversations. */
 export function filterConversationList(
   conversations: Conversation[],
@@ -1033,9 +1053,11 @@ export function filterConversationList(
   const query = filters.query?.trim().toLowerCase();
   const source = filters.source?.trim();
   const actor = filters.actor?.trim();
+  const location = filters.location?.trim();
 
   return conversations.filter((conversation) => {
     if (source && conversation.surface !== source) return false;
+    if (location && conversation.locationId !== location) return false;
     if (actor && conversationActorKey(conversation) !== actor) {
       return false;
     }

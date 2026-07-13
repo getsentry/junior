@@ -95,14 +95,16 @@ describe("dashboard routes", () => {
   });
 
   it("protects sub-routes at root basePath from unauthenticated access", async () => {
-    // app.use("/", ...) only matches the exact root in Hono; sub-routes like
-    // /conversations and /plugins must be covered by wildcard middleware.
+    // app.use("/", ...) only matches the exact root in Hono; detail routes
+    // must be covered by the dashboard wildcard middleware.
     const app = dashboard(null);
 
     for (const path of [
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/conversations/slack%3AC1%3A123?view=tools",
+      "/locations",
+      "/locations/destination-1",
       "/plugins",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
@@ -308,6 +310,8 @@ describe("dashboard routes", () => {
       "/api/conversations/stats",
       "/api/people",
       "/api/people/person%40sentry.io",
+      "/api/locations",
+      "/api/locations/destination-1",
       "/api/plugin-reports",
       "/api/conversations/slack%3AC1%3A123",
       "/api/conversations/slack%3AC1%3A123/subagents/advisor-call",
@@ -378,6 +382,8 @@ describe("dashboard routes", () => {
     for (const path of [
       "/conversations",
       "/conversations/slack%3AC1%3A123",
+      "/locations",
+      "/locations/destination-1",
       "/people",
       "/people/person%40sentry.io",
       "/plugins",

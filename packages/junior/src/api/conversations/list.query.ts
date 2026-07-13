@@ -20,6 +20,7 @@ async function conversationRows(
   return db
     .select({
       conversation: juniorConversations,
+      destinationId: juniorDestinations.id,
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -110,6 +111,7 @@ export async function readConversationRecordFromSql(
   | {
       conversation: Conversation;
       durationMs: number;
+      locationId?: string;
       usage: ConversationRow["conversation"]["usage"];
     }
   | undefined
@@ -118,6 +120,7 @@ export async function readConversationRecordFromSql(
   const rows = await db
     .select({
       conversation: juniorConversations,
+      destinationId: juniorDestinations.id,
       destinationVisibility: juniorDestinations.visibility,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -142,6 +145,9 @@ export async function readConversationRecordFromSql(
     ? {
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
+        ...(row.destinationVisibility === "public" && row.destinationId
+          ? { locationId: row.destinationId }
+          : {}),
         usage: row.conversation.usage,
       }
     : undefined;
@@ -165,6 +171,9 @@ export async function readConversationFeedFromSql(
       conversationSummaryFromStoredConversation({
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
+        ...(row.destinationVisibility === "public" && row.destinationId
+          ? { locationId: row.destinationId }
+          : {}),
         usage: row.conversation.usage ?? undefined,
       }),
     ),

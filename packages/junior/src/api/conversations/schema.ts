@@ -42,6 +42,7 @@ export const conversationSummaryReportSchema = z
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),
+    locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
     traceId: z.string().optional(),
   })

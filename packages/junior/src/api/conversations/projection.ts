@@ -153,6 +153,7 @@ function channelNameRedactedFromConversation(
 export function conversationSummaryFromStoredConversation(args: {
   conversation: StoredConversation;
   durationMs: number;
+  locationId?: string;
   usage?: ConversationUsage;
 }): ConversationSummaryReport {
   const { conversation, durationMs, usage } = args;
@@ -180,5 +181,8 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),
+    ...(args.locationId && !channelNameRedacted
+      ? { locationId: args.locationId }
+      : {}),
   };
 }

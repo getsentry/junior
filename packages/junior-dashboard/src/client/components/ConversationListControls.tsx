@@ -67,17 +67,22 @@ export function ConversationListToolbar(props: {
   query: string;
   actor: string;
   actorOptions: ConversationListFilterOption[];
+  location: string;
+  locationOptions: ConversationListFilterOption[];
   source: string;
   sourceOptions: ConversationListFilterOption[];
   onQueryChange(value: string): void;
   onActorChange(value: string): void;
+  onLocationChange(value: string): void;
   onSourceChange(value: string): void;
   onClear?(): void;
 }) {
-  const filtered = Boolean(props.query.trim() || props.actor || props.source);
+  const filtered = Boolean(
+    props.query.trim() || props.actor || props.location || props.source,
+  );
   return (
     <div className="border-b border-white/10 bg-[#050505] px-3 py-3">
-      <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(14rem,1fr)_minmax(9rem,13rem)_minmax(11rem,16rem)_auto]">
+      <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(13rem,1fr)_minmax(9rem,12rem)_minmax(11rem,15rem)_minmax(11rem,15rem)_auto]">
         <ConversationSearchInput
           label="Search conversations"
           placeholder="Search title, email, channel, id..."
@@ -90,6 +95,13 @@ export function ConversationListToolbar(props: {
           options={props.sourceOptions}
           value={props.source}
           onChange={props.onSourceChange}
+        />
+        <ConversationFilterSelect
+          allLabel="All locations"
+          label="Location"
+          options={props.locationOptions}
+          value={props.location}
+          onChange={props.onLocationChange}
         />
         <ConversationFilterSelect
           allLabel="All actors"

@@ -97,6 +97,31 @@ describe("dashboard mock conversation routes", () => {
     expect(statsBody.durationMs).toBe(rawDurationMs);
     expect(statsBody.costUsd).toBeGreaterThan(0);
 
+    const locations = await app.fetch(
+      new Request("http://localhost/api/locations"),
+    );
+    expect(locations.status).toBe(200);
+    const locationBody = (await locations.json()) as {
+      locations: Array<{ id: string; label: string }>;
+      privateActivity: { conversations: number };
+    };
+    expect(locationBody.locations.length).toBeGreaterThan(0);
+    expect(locationBody.locations.map((location) => location.label)).toContain(
+      "#proj-checkout",
+    );
+    expect(locationBody.privateActivity.conversations).toBeGreaterThan(0);
+    const locationDetail = await app.fetch(
+      new Request(
+        `http://localhost/api/locations/${encodeURIComponent(locationBody.locations[0]!.id)}`,
+      ),
+    );
+    expect(locationDetail.status).toBe(200);
+    await expect(locationDetail.json()).resolves.toMatchObject({
+      visibility: "public",
+      activityDays: expect.any(Array),
+      recentConversations: expect.any(Array),
+    });
+
     const activeConversation = await app.fetch(
       new Request(
         "http://localhost/api/conversations/slack%3ACQA123%3A1770003600.000200",

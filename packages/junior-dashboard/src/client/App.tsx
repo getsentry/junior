@@ -11,6 +11,7 @@ import { setDashboardTimeZone } from "./format";
 import { ConversationWorkspace } from "./pages/ConversationWorkspace";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { PeoplePage, PersonProfilePage } from "./pages/PeoplePage";
+import { LocationDetailPage, LocationsPage } from "./pages/LocationsPage";
 import { PluginsPage } from "./pages/PluginsPage";
 import { cn } from "./styles";
 
@@ -58,6 +59,9 @@ export function DashboardShell() {
             <NavLink className={navLinkClass} to="/conversations">
               Conversations
             </NavLink>
+            <NavLink className={navLinkClass} to="/locations">
+              Locations
+            </NavLink>
             <NavLink className={navLinkClass} to="/people">
               People
             </NavLink>
@@ -74,6 +78,26 @@ export function DashboardShell() {
       </header>
 
       <Routes>
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading locations" />
+            ) : (
+              <LocationsPage />
+            )
+          }
+          path="/locations"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading location" />
+            ) : (
+              <LocationDetailPage />
+            )
+          }
+          path="/locations/:locationId"
+        />
         <Route
           element={
             loading ? (

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
+import type { LocationDirectoryReport } from "@sentry/junior/api/schema";
+import type { LocationDetailReport } from "@sentry/junior/api/schema";
 
 import { HighlightedCode } from "../src/client/code";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
@@ -28,6 +30,10 @@ import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
+import {
+  LocationDetailPage,
+  LocationsPageContent,
+} from "../src/client/pages/LocationsPage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
 import type {
   ConversationTranscript,
@@ -930,6 +936,7 @@ describe("dashboard telemetry components", () => {
       {
         channel: "C1",
         channelName: "proj-checkout",
+        locationId: "destination-1",
         conversationId: "slack:C1:100",
         cumulativeDurationMs: 1_000,
         displayTitle: "Checkout latency triage",
@@ -959,7 +966,7 @@ describe("dashboard telemetry components", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter
         initialEntries={[
-          "/conversations?q=checkout&source=slack&actor=morgan%40example.com",
+          "/conversations?q=checkout&source=slack&location=destination-1&actor=morgan%40example.com",
         ]}
       >
         <ConversationsPage data={data} />
@@ -968,10 +975,51 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain('aria-label="Search conversations"');
     expect(html).toContain('aria-label="Source"');
+    expect(html).toContain('aria-label="Location"');
     expect(html).toContain('aria-label="Actor"');
     expect(html).toContain("Checkout latency triage");
     expect(html).toContain("1 of 2 conversations");
     expect(html).not.toContain("Memory cleanup");
+  });
+
+  it("links public conversation locations without linking private identities", () => {
+    const data = dashboardData([
+      {
+        channel: "C1",
+        channelName: "proj-alpha",
+        conversationId: "slack:C1:100",
+        cumulativeDurationMs: 1_000,
+        displayTitle: "Public conversation",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:02.000Z",
+        locationId: "destination-1",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+      {
+        channel: "D1",
+        channelName: "Direct Message",
+        channelNameRedacted: true,
+        conversationId: "slack:D1:200",
+        cumulativeDurationMs: 1_000,
+        displayTitle: "Direct Message",
+        lastProgressAt: "2026-01-01T00:00:01.000Z",
+        lastSeenAt: "2026-01-01T00:00:02.000Z",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        status: "completed",
+        surface: "slack",
+      },
+    ]);
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/conversations?filter=all"]}>
+        <ConversationsPage data={data} />
+      </MemoryRouter>,
+    );
+    expect(html).toContain('href="/locations/destination-1"');
+    expect(html).toContain("Direct Message");
+    expect(html).not.toContain('href="/locations/D1"');
+    expect(html).not.toContain('value="D1"');
   });
 
   it("renders conversation history and plugin reports", () => {
@@ -1058,6 +1106,135 @@ describe("dashboard telemetry components", () => {
     expect(pluginHtml).toContain("triage");
     expect(pluginHtml).toContain("scheduler");
     expect(pluginHtml).toContain("sched_1");
+  });
+
+  it("renders public locations as primary rows and collapses private activity", () => {
+    const data: LocationDirectoryReport = {
+      generatedAt: "2026-01-05T00:00:00.000Z",
+      locations: [
+        {
+          active: 1,
+          conversations: 4,
+          durationMs: 12_000,
+          failed: 1,
+          firstSeenAt: "2026-01-01T00:00:00.000Z",
+          id: "destination-1",
+          kind: "channel",
+          label: "#proj-alpha",
+          lastSeenAt: "2026-01-05T00:00:00.000Z",
+          provider: "slack",
+          providerDestinationId: "C1",
+          tokens: 12_500,
+          visibility: "public",
+        },
+        {
+          active: 0,
+          conversations: 2,
+          durationMs: 4_000,
+          failed: 0,
+          firstSeenAt: "2026-01-02T00:00:00.000Z",
+          id: "destination-2",
+          kind: "channel",
+          label: "#other",
+          lastSeenAt: "2026-01-04T00:00:00.000Z",
+          provider: "slack",
+          providerDestinationId: "C2",
+          visibility: "public",
+        },
+      ],
+      privateActivity: {
+        active: 0,
+        conversations: 3,
+        durationMs: 2_000,
+        failed: 0,
+        label: "Private activity",
+      },
+      sampleLimit: 9,
+      sampleSize: 9,
+      source: "conversation_index",
+      truncated: false,
+    };
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/locations?q=proj-alpha"]}>
+        <LocationsPageContent data={data} error={null} />
+      </MemoryRouter>,
+    );
+    expect(html).toContain("1 of 2 public locations");
+    expect(html).toContain("#proj-alpha");
+    expect(html).not.toContain("#other");
+    expect(html).not.toContain("C1");
+    expect(html).toContain("13k tokens");
+    expect(html).not.toContain(">Errors<");
+    expect(html).not.toContain(">Active<");
+    expect(html).toContain("Private activity");
+    expect(html).toContain("DMs, private channels, and unknown visibility");
+  });
+
+  it("renders public location detail with people and recent conversations", () => {
+    const detail: LocationDetailReport = {
+      active: 0,
+      activityDays: [],
+      actors: [
+        {
+          active: 0,
+          actor: { email: "avery@example.com", fullName: "Avery" },
+          conversations: 1,
+          durationMs: 1_000,
+          failed: 0,
+          label: "avery@example.com",
+        },
+      ],
+      conversations: 1,
+      durationMs: 1_000,
+      failed: 0,
+      firstSeenAt: "2026-01-01T00:00:00.000Z",
+      generatedAt: "2026-01-05T00:00:00.000Z",
+      id: "destination-1",
+      kind: "channel",
+      label: "#proj-alpha",
+      lastSeenAt: "2026-01-05T00:00:00.000Z",
+      provider: "slack",
+      providerDestinationId: "C1",
+      recentConversations: [
+        {
+          channel: "C1",
+          channelName: "proj-alpha",
+          conversationId: "slack:C1:100",
+          cumulativeDurationMs: 1_000,
+          displayTitle: "Investigate checkout",
+          lastProgressAt: "2026-01-05T00:00:00.000Z",
+          lastSeenAt: "2026-01-05T00:00:00.000Z",
+          locationId: "destination-1",
+          startedAt: "2026-01-05T00:00:00.000Z",
+          status: "completed",
+          surface: "slack",
+        },
+      ],
+      sampleLimit: 1,
+      sampleSize: 1,
+      source: "conversation_index",
+      truncated: false,
+      visibility: "public",
+      windowEnd: "2026-01-05T00:00:00.000Z",
+      windowStart: "2025-12-07T00:00:00.000Z",
+    };
+    client.setQueryData(["dashboard", "locations", "destination-1"], detail);
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/locations/destination-1"]}>
+          <Routes>
+            <Route
+              element={<LocationDetailPage />}
+              path="/locations/:locationId"
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(html).toContain("#proj-alpha");
+    expect(html).toContain("Investigate checkout");
+    expect(html).toContain('href="/people/avery%40example.com"');
+    expect(html).toContain("Recent conversations");
   });
 
   it("renders a clear fallback for plugin records without fields", () => {

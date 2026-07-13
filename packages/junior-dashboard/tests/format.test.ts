@@ -10,6 +10,7 @@ import {
   conversationIdentityMeta,
   conversationActorLabel,
   conversationActorOptions,
+  conversationLocationOptions,
   conversationSourceOptions,
   filterConversationList,
   formatConversationDuration,
@@ -451,6 +452,7 @@ describe("dashboard token formatting", () => {
       {
         channel: "C1",
         channelName: "proj-checkout",
+        locationId: "destination-1",
         conversationId: "slack:C1:123",
         cumulativeDurationMs: 0,
         displayTitle: "Checkout latency triage",
@@ -485,10 +487,14 @@ describe("dashboard token formatting", () => {
       { label: "Casey", value: "Casey" },
       { label: "Morgan Lee", value: "morgan@example.com" },
     ]);
+    expect(conversationLocationOptions(conversations)).toEqual([
+      { label: "#proj-checkout", value: "destination-1" },
+    ]);
     expect(
       filterConversationList(conversations, {
         query: "checkout",
         actor: "morgan@example.com",
+        location: "destination-1",
         source: "slack",
       }).map((conversation) => conversation.id),
     ).toEqual(["slack:C1:123"]);
@@ -496,6 +502,7 @@ describe("dashboard token formatting", () => {
       filterConversationList(conversations, {
         query: "checkout",
         actor: "Casey",
+        location: "destination-1",
         source: "slack",
       }),
     ).toEqual([]);
