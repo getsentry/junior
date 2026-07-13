@@ -41,7 +41,6 @@ import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeAuthorizedRequest } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
-  applyPendingAuthUpdate,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -404,17 +403,8 @@ async function resumeAuthorizedMcpTurn(args: {
             sandbox: getPersistedSandboxState(lockedState),
           },
           durability: {
-            recordPendingAuth: async (nextPendingAuth, options) => {
-              if (nextPendingAuth) {
-                await applyPendingAuthUpdate({
-                  conversation: lockedConversation,
-                  conversationId: authSession.conversationId,
-                  nextPendingAuth,
-                  options,
-                });
-              } else {
-                clearPendingAuth(lockedConversation);
-              }
+            recordPendingAuth: async (nextPendingAuth) => {
+              lockedConversation.processing.pendingAuth = nextPendingAuth;
               await persistThreadStateById(threadId, {
                 conversation: lockedConversation,
               });

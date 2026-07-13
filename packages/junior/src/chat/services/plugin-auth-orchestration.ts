@@ -14,7 +14,10 @@ import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
-import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
+import {
+  abandonReplacedPendingAuth,
+  canReusePendingAuthLink,
+} from "@/chat/services/pending-auth";
 import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
@@ -189,7 +192,7 @@ export function createPluginAuthOrchestration(
     }
 
     if (input.sessionId && recordPendingAuth) {
-      await recordPendingAuth({
+      const nextPendingAuth: ConversationPendingAuthState = {
         kind: "plugin",
         provider,
         actorId: input.actorId,
@@ -198,6 +201,12 @@ export function createPluginAuthOrchestration(
         linkSentAtMs: reusingPendingLink
           ? input.pendingAuth!.linkSentAtMs
           : Date.now(),
+      };
+      await recordPendingAuth(nextPendingAuth);
+      await abandonReplacedPendingAuth({
+        conversationId: input.conversationId,
+        previousPendingAuth: input.pendingAuth,
+        nextPendingAuth,
       });
     }
     if (input.conversationId && input.sessionId) {

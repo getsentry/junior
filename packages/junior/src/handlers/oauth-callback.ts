@@ -57,7 +57,6 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import {
-  applyPendingAuthUpdate,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -434,17 +433,8 @@ async function resumeOAuthSessionRecordTurn(
             sandbox: getPersistedSandboxState(lockedState),
           },
           durability: {
-            recordPendingAuth: async (nextPendingAuth, options) => {
-              if (nextPendingAuth) {
-                await applyPendingAuthUpdate({
-                  conversation: lockedConversation,
-                  conversationId: stored.resumeConversationId!,
-                  nextPendingAuth,
-                  options,
-                });
-              } else {
-                clearPendingAuth(lockedConversation);
-              }
+            recordPendingAuth: async (nextPendingAuth) => {
+              lockedConversation.processing.pendingAuth = nextPendingAuth;
               await persistThreadStateById(stored.resumeConversationId!, {
                 conversation: lockedConversation,
               });

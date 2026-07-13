@@ -8,7 +8,7 @@ vi.mock("@/chat/state/turn-session", () => ({
 }));
 
 import {
-  applyPendingAuthUpdate,
+  abandonReplacedPendingAuth,
   canReusePendingAuthLink,
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
@@ -182,34 +182,15 @@ describe("canReusePendingAuthLink", () => {
   });
 });
 
-describe("applyPendingAuthUpdate", () => {
-  it("stages a replacement without abandoning the current session", async () => {
-    const conversation = conversationWithMessages([]);
-    conversation.processing.pendingAuth = pendingAuthState("run_old");
-    const nextPendingAuth = pendingAuthState("run_new");
-
-    await applyPendingAuthUpdate({
-      conversation,
-      conversationId: "conversation-1",
-      nextPendingAuth,
-      options: { skipAbandonment: true },
-    });
-
-    expect(conversation.processing.pendingAuth).toBe(nextPendingAuth);
-    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
-  });
-
-  it("abandons the explicitly replaced session after staging succeeds", async () => {
-    const conversation = conversationWithMessages([]);
+describe("abandonReplacedPendingAuth", () => {
+  it("abandons a prior blocked session after replacement succeeds", async () => {
     const previousPendingAuth = pendingAuthState("run_old");
     const nextPendingAuth = pendingAuthState("run_new");
-    conversation.processing.pendingAuth = nextPendingAuth;
 
-    await applyPendingAuthUpdate({
-      conversation,
+    await abandonReplacedPendingAuth({
       conversationId: "conversation-1",
+      previousPendingAuth,
       nextPendingAuth,
-      options: { replacedPendingAuth: previousPendingAuth },
     });
 
     expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({

@@ -13,11 +13,13 @@ const {
   getOAuthConfigMock,
   startOAuthFlow,
   unlinkProvider,
+  abandonAgentTurnSessionRecord,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
   getOAuthConfigMock: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
+  abandonAgentTurnSessionRecord: vi.fn(),
 }));
 
 vi.mock("@/chat/oauth-flow", () => ({
@@ -33,6 +35,10 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 
 vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,
+}));
+
+vi.mock("@/chat/state/turn-session", () => ({
+  abandonAgentTurnSessionRecord,
 }));
 
 function tokenStore(): UserTokenStore {
@@ -75,6 +81,7 @@ describe("createPluginAuthOrchestration", () => {
     );
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
+    abandonAgentTurnSessionRecord.mockReset();
   });
 
   async function expectPluginCredentialFailure(
@@ -328,6 +335,12 @@ describe("createPluginAuthOrchestration", () => {
         sessionId: "run_new",
       }),
     );
+    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_old",
+      errorMessage:
+        "Abandoned by a newer auth-blocked request in the same conversation.",
+    });
   });
 
   it("throws PluginCredentialFailureError for signals without oauth authorization", async () => {

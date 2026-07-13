@@ -66,10 +66,6 @@ import {
 } from "@/chat/services/conversation-memory";
 import type { ContextCompactor } from "@/chat/services/context-compaction";
 import {
-  applyPendingAuthUpdate,
-  clearPendingAuth,
-} from "@/chat/services/pending-auth";
-import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
   isVisionEnabled,
@@ -1260,17 +1256,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   artifacts: latestArtifacts,
                 });
               },
-              recordPendingAuth: async (pendingAuth, options) => {
-                if (pendingAuth) {
-                  await applyPendingAuthUpdate({
-                    conversation: preparedState.conversation,
-                    conversationId,
-                    nextPendingAuth: pendingAuth,
-                    options,
-                  });
-                } else {
-                  clearPendingAuth(preparedState.conversation);
-                }
+              recordPendingAuth: async (pendingAuth) => {
+                preparedState.conversation.processing.pendingAuth = pendingAuth;
                 await persistThreadState(thread, {
                   conversation: preparedState.conversation,
                 });

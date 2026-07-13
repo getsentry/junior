@@ -11,6 +11,7 @@ const {
   formatProviderLabel,
   getMcpAuthSession,
   patchMcpAuthSession,
+  abandonAgentTurnSessionRecord,
 } = vi.hoisted(() => ({
   createMcpOAuthClientProvider: vi.fn(),
   deleteMcpAuthSession: vi.fn(),
@@ -18,6 +19,7 @@ const {
   formatProviderLabel: vi.fn((provider: string) => provider),
   getMcpAuthSession: vi.fn(),
   patchMcpAuthSession: vi.fn(),
+  abandonAgentTurnSessionRecord: vi.fn(),
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({
@@ -33,6 +35,10 @@ vi.mock("@/chat/mcp/auth-store", () => ({
 vi.mock("@/chat/oauth-flow", () => ({
   deliverPrivateMessage,
   formatProviderLabel,
+}));
+
+vi.mock("@/chat/state/turn-session", () => ({
+  abandonAgentTurnSessionRecord,
 }));
 
 function plugin(name: string): PluginDefinition {
@@ -67,6 +73,7 @@ describe("createMcpAuthOrchestration", () => {
     formatProviderLabel.mockClear();
     getMcpAuthSession.mockReset();
     patchMcpAuthSession.mockReset();
+    abandonAgentTurnSessionRecord.mockReset();
   });
 
   it("returns a deterministic error instead of delivering auth links when authorization is disabled", async () => {
@@ -185,22 +192,19 @@ describe("createMcpAuthOrchestration", () => {
         actorId: "U123",
         sessionId: "run_new",
       }),
-      { skipAbandonment: true },
     );
-    expect(recordPendingAuth).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        kind: "mcp",
-        provider: "github",
-        actorId: "U123",
-        sessionId: "run_new",
-      }),
-      {
-        replacedPendingAuth: expect.objectContaining({
-          authSessionId: "github-auth-session",
-          sessionId: "run_old",
-        }),
-      },
+    expect(recordPendingAuth).toHaveBeenCalledTimes(1);
+    expect(abandonAgentTurnSessionRecord).toHaveBeenCalledWith({
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_old",
+      errorMessage:
+        "Abandoned by a newer auth-blocked request in the same conversation.",
+    });
+    expect(recordPendingAuth.mock.invocationCallOrder[0]).toBeLessThan(
+      deliverPrivateMessage.mock.invocationCallOrder[0]!,
+    );
+    expect(deliverPrivateMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      abandonAgentTurnSessionRecord.mock.invocationCallOrder[0]!,
     );
     expect(abortAgent).toHaveBeenCalledTimes(1);
   });
@@ -250,12 +254,10 @@ describe("createMcpAuthOrchestration", () => {
     expect(recordPendingAuth).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ authSessionId: "auth_1" }),
-      { skipAbandonment: true },
     );
     expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
-    expect(recordPendingAuth).toHaveBeenNthCalledWith(2, previousPendingAuth, {
-      skipAbandonment: true,
-    });
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(2, previousPendingAuth);
+    expect(abandonAgentTurnSessionRecord).not.toHaveBeenCalled();
     expect(abortAgent).not.toHaveBeenCalled();
   });
 });

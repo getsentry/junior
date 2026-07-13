@@ -68,10 +68,7 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import {
-  applyPendingAuthUpdate,
-  clearPendingAuth,
-} from "@/chat/services/pending-auth";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
@@ -441,17 +438,8 @@ export async function continueSlackAgentRun(
               sandbox,
             },
             durability: {
-              recordPendingAuth: async (nextPendingAuth, options) => {
-                if (nextPendingAuth) {
-                  await applyPendingAuthUpdate({
-                    conversation,
-                    conversationId: payload.conversationId,
-                    nextPendingAuth,
-                    options,
-                  });
-                } else {
-                  clearPendingAuth(conversation);
-                }
+              recordPendingAuth: async (nextPendingAuth) => {
+                conversation.processing.pendingAuth = nextPendingAuth;
                 await persistThreadStateById(payload.conversationId, {
                   conversation,
                 });

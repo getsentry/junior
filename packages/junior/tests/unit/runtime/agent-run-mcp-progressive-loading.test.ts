@@ -741,7 +741,7 @@ describe("executeAgentRun progressive MCP loading", () => {
       toolName: "loadSkill",
     });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
-    expect(pendingAuthRecords).toHaveLength(2);
+    expect(pendingAuthRecords).toHaveLength(1);
     expect(pendingAuthRecords.at(-1)).toEqual(
       expect.objectContaining({
         kind: "mcp",
