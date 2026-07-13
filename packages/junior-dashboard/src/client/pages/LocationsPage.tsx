@@ -260,20 +260,31 @@ export function LocationDetailPage() {
   const params = useParams();
   const locationId = params.locationId;
   const query = useLocationDetailData(locationId);
-  if (!query.data && !query.error) {
+  return <LocationDetailPageContent data={query.data} error={query.error} />;
+}
+
+/** Render loaded, stale, failed, and loading public-location detail states. */
+export function LocationDetailPageContent(props: {
+  data: LocationDetailReport | undefined;
+  error: unknown;
+}) {
+  if (!props.data && !props.error) {
     return <LoadingView label="Loading location" />;
   }
   return (
     <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
-      {query.data ? (
-        <LocationDetail detail={query.data} />
-      ) : (
+      {props.error ? (
         <Section>
           <div className="p-3">
-            <EmptyTelemetry>Location failed to load.</EmptyTelemetry>
+            <EmptyTelemetry>
+              {props.data
+                ? "Location telemetry refresh failed. Showing cached data."
+                : "Location failed to load."}
+            </EmptyTelemetry>
           </div>
         </Section>
-      )}
+      ) : null}
+      {props.data ? <LocationDetail detail={props.data} /> : null}
     </div>
   );
 }

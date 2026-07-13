@@ -33,6 +33,7 @@ import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
 import {
   LocationDetailPage,
+  LocationDetailPageContent,
   LocationsPageContent,
 } from "../src/client/pages/LocationsPage";
 import { PluginsPage } from "../src/client/pages/PluginsPage";
@@ -1278,6 +1279,17 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Investigate checkout");
     expect(html).toContain('href="/people/avery%40example.com"');
     expect(html).toContain("Recent conversations");
+
+    const staleHtml = renderToStaticMarkup(
+      <MemoryRouter>
+        <LocationDetailPageContent
+          data={detail}
+          error={new Error("refresh failed")}
+        />
+      </MemoryRouter>,
+    );
+    expect(staleHtml).toContain("Location telemetry refresh failed");
+    expect(staleHtml).toContain("#proj-alpha");
   });
 
   it("renders a clear fallback for plugin records without fields", () => {
