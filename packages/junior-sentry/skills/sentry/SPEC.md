@@ -12,7 +12,7 @@ In scope:
 - Listing and viewing Sentry issues, issue events, logs, traces, organizations, and related read-only data.
 - Investigating Sentry's own product telemetry and product feature usage through Sentry CLI/API data surfaces.
 - Using `sentry api <endpoint>` for authenticated requests when no high-level command exists.
-- Creating explicitly requested monitors and alert workflows through the current public API after duplicate checks and dry-run validation.
+- Creating explicitly requested metric alerts through `sentry alert metrics` after duplicate checks and dry-run validation, with API fallback only for unsupported alert behavior.
 - Generating Sentry deep links for user-scoped or entity-specific views.
 - Diagnosing auth, scope, and access failures without guessing missing scopes.
 
@@ -37,13 +37,13 @@ Out of scope:
 
 ## Current CLI Data
 
-- Verified date: 2026-04-30.
-- Verified npm package: `sentry@0.30.0`, installed from the plugin `runtime-dependencies` entry.
+- Verified date: 2026-07-13.
+- Verified npm package: `sentry@0.38.0`, installed from the plugin `runtime-dependencies` entry.
 - Auth model: Junior injects `SENTRY_AUTH_TOKEN` for authenticated Sentry commands during the requesting user's turn.
-- Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, and `sentry api`.
+- Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, `sentry alert metrics`, and `sentry api`.
 - Required migration rule: prefer singular command groups such as `sentry org list`; do not teach stale plural command forms such as `sentry organizations list`.
 - Required fallback rule: use `sentry api <endpoint>` when no high-level CLI command covers the requested surface.
-- Alerting write rule: use the current public monitor (`detectors`) and alert (`workflows`) endpoints; legacy metric `alert-rules` creation is deprecated.
+- Alerting write rule: prefer `sentry alert metrics`; use the API fallback only when live CLI help confirms the requested behavior is unsupported.
 
 ## Source And Evidence Model
 

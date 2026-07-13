@@ -32,8 +32,8 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
 - Prefer `--json` when parsing or summarizing results.
 - If no high-level CLI command covers the request, use `sentry api <endpoint>` before claiming the workflow is blocked.
-- Create alerts or monitors only when the user explicitly asks. Before writing, resolve the exact org and project, inspect existing alerts or monitors for duplicates, validate the endpoint and payload with `--dry-run`, then execute once and report the created resource URL.
-- For metric alerting, use the current monitor and alert workflow endpoints documented in `references/cli-commands.md`; do not use the deprecated alert-rule creation endpoints.
+- Create alerts only when the user explicitly asks. Prefer `sentry alert metrics` for metric-alert list/view/create/edit/delete; before writing, resolve the exact target, check duplicates, run the complete command with `--dry-run`, then execute once and report the created rule URL.
+- Use `sentry api` only when live CLI help confirms the first-class command cannot express the requested alert behavior, such as dynamic anomaly detection.
 - If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.

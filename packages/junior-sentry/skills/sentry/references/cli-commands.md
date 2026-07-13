@@ -78,103 +78,53 @@ sentry trace list [ORG/PROJECT|PROJECT] [--query QUERY] [--period PERIOD] [--sor
 Use `sentry trace view [ORG/PROJECT/]TRACE_ID` for trace details.
 Use `sentry trace logs [ORG/]TRACE_ID` when the user asks for logs associated with a trace.
 
+## Metric alert commands
+
+Use the first-class CLI surface for metric alerts:
+
+```bash
+sentry alert metrics list ORG/ [--query NAME] [--fresh] [--json]
+sentry alert metrics view ORG/RULE_ID_OR_NAME [--json]
+sentry alert metrics create ORG --name NAME --query QUERY --aggregate AGGREGATE \
+  --dataset DATASET --time-window MINUTES --trigger TRIGGER_JSON \
+  [--project PROJECT]... [--environment ENVIRONMENT] [--owner OWNER] [--dry-run] [--json]
+sentry alert metrics edit ORG/RULE_ID_OR_NAME [OPTIONS]
+sentry alert metrics delete ORG/RULE_ID_OR_NAME [--dry-run]
+```
+
+Before creating a rule:
+
+- Run `sentry alert metrics create --help` and treat live help as authoritative.
+- Resolve the exact org, project, owner, integration, and notification target IDs.
+- List existing rules and stop on a likely duplicate unless the user explicitly asks for another.
+- Run the complete create command with `--dry-run`, then execute it once without `--dry-run`.
+- Pass each trigger as JSON with `--trigger`; do not guess action IDs or target identifiers.
+
+Example static error-volume rule:
+
+```bash
+sentry alert metrics create ORG \
+  --name 'Non-Zod error spike' \
+  --query '!error.type:ZodError' \
+  --aggregate 'count()' \
+  --dataset errors \
+  --time-window 60 \
+  --project PROJECT \
+  --environment production \
+  --owner 'team:TEAM_ID' \
+  --trigger '{"alertThreshold":50,"actions":[...]}' \
+  --dry-run
+```
+
+The current CLI create command exposes threshold triggers but no dynamic/anomaly detection flags. If the user explicitly needs anomaly detection, verify live CLI help first; when still unsupported, use `sentry api` with the current public monitor/alert API rather than inventing CLI flags.
+
 ## API fallback
 
 ```bash
 sentry api ENDPOINT [--method METHOD] [--field KEY=VALUE] [--data JSON] [--json]
 ```
 
-- `ENDPOINT` is relative to `/api/0/`, for example `organizations/` or `issues/123456789/`.
-- Use read-only `GET` requests by default.
-- The supported write surface is explicitly requested alert or monitor operations. Do not mutate unrelated Sentry resources.
-- Use `--dry-run` before every write to verify the endpoint, method, and JSON body.
-
-## Alert and monitor API
-
-Sentry's current alerting model separates detection from notification:
-
-1. A **monitor** detects a condition for one project.
-2. An **alert** (workflow) connects one or more monitors to notification actions.
-
-Use the current public endpoints:
-
-```text
-GET  organizations/ORG/detectors/
-POST organizations/ORG/projects/PROJECT/detectors/
-GET  organizations/ORG/workflows/
-POST organizations/ORG/workflows/
-```
-
-These are labeled **Monitors** and **Alerts** in Sentry's public API docs even though their paths use `detectors` and `workflows`. Do not use `POST .../alert-rules/`; legacy metric alert-rule creation is deprecated.
-
-Before creating anything:
-
-- Resolve the exact org and project.
-- List existing monitors and alerts and stop on a likely duplicate unless the user explicitly asks for another.
-- Resolve IDs for owners, integrations, notification targets, and existing workflows instead of guessing them.
-- Validate each write with `--dry-run`, then execute it once.
-- A monitor without a connected alert does not notify. Create or connect the alert workflow when notification is part of the request.
-
-### Metric monitor body
-
-The current monitor payload uses this shape:
-
-```json
-{
-  "name": "Non-Zod error spike",
-  "type": "metric_issue",
-  "projectId": "PROJECT_ID",
-  "owner": "team:TEAM_ID",
-  "workflowIds": [],
-  "conditionGroup": {
-    "logicType": "any",
-    "conditions": [
-      {"type": "gt", "comparison": 50, "conditionResult": 75},
-      {"type": "lte", "comparison": 50, "conditionResult": 0}
-    ]
-  },
-  "config": {"detectionType": "static"},
-  "dataSources": [
-    {
-      "aggregate": "count()",
-      "dataset": "events",
-      "eventTypes": ["error"],
-      "query": "!error.type:ZodError",
-      "queryType": 0,
-      "timeWindow": 3600,
-      "environment": "production"
-    }
-  ]
-}
-```
-
-For dynamic detection, replace the conditions and config with:
-
-```json
-{
-  "conditionGroup": {
-    "logicType": "any",
-    "conditions": [
-      {
-        "type": "anomaly_detection",
-        "comparison": {
-          "sensitivity": "low",
-          "seasonality": "auto",
-          "thresholdType": 0
-        },
-        "conditionResult": 75
-      }
-    ]
-  },
-  "config": {"detectionType": "dynamic"}
-}
-```
-
-Preserve the rest of the monitor body. `timeWindow` is seconds. Verify current dataset, event type, query type, threshold direction, and action payloads against live API docs or an existing comparable resource before writing; these contracts can vary by deployment and alert type.
-
-### Alert workflow body
-
-Create notification behavior through the organization alert endpoint after resolving the monitor ID and notification action configuration. The payload contains `name`, `detectorIds`, trigger conditions, action filters/actions, environment, frequency config, owner, and enabled state. Because integration/action shapes vary, inspect an existing comparable alert or the current API schema and copy only verified IDs and fields; do not invent Slack integration or channel identifiers.
+Use `sentry api` only when no first-class CLI command covers the requested operation. Default to read-only `GET` requests. For an explicitly requested alerting write, validate with `--dry-run` and verify the current API schema before executing. Do not mutate unrelated Sentry resources.
 
 ## Common flags
 
@@ -196,8 +146,8 @@ Create notification behavior through the organization alert endpoint after resol
 | "Inspect a trace"                                     | `sentry trace view ORG/PROJECT/TRACE_ID --json`                     |
 | "Show logs for a trace"                               | `sentry trace logs ORG/TRACE_ID --json`                             |
 | "Call an endpoint not covered by high-level commands" | `sentry api organizations/ --json`                                  |
-| "Create a metric monitor"                            | Resolve target and duplicates, dry-run monitor POST, then execute   |
-| "Notify Slack when a monitor fires"                  | Create/connect an alert workflow after resolving action IDs         |
+| "Create a static metric alert"                       | `sentry alert metrics create ... --dry-run`, then execute           |
+| "Create a dynamic anomaly alert"                     | Verify CLI help; use API fallback only if still unsupported         |
 
 ## Troubleshooting
 
@@ -214,7 +164,7 @@ Create notification behavior through the organization alert endpoint after resol
 | API returns explicit missing scope text                             | OAuth grant lacks a named scope            | Rerun the real command once so the runtime can trigger reconnect.                             |
 | API returns generic `403` or permission denied                      | Connected account lacks org/project access | Stop and tell the user the current connection cannot access the requested data.               |
 | Alert write returns an explicit missing-scope error                  | OAuth grant predates alert writes         | Rerun once to trigger reconnect; the connection needs `alerts:write`.                          |
-| Monitor exists but no notification is sent                          | No connected alert workflow/action        | Create or connect an alert workflow with verified notification target IDs.                    |
-| `POST .../alert-rules/` is deprecated                               | Legacy metric-alert endpoint              | Use the current monitor endpoint plus an alert workflow for notification.                      |
+| Static metric alert requested                                       | First-class CLI command is available       | Use `sentry alert metrics create`; do not drop directly to `sentry api`.                        |
+| Dynamic/anomaly alert flags are unavailable                         | CLI coverage gap                          | Verify live help, then use the current API fallback if needed.                                 |
 
 Use these command shapes during normal skill execution, but treat live CLI help as the final source when this reference and the installed CLI disagree.

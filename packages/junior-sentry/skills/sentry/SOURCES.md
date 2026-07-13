@@ -13,8 +13,8 @@ Last updated: 2026-07-13
 | `https://cli.sentry.dev/commands/trace/`                        | canonical  | high       | Current `sentry trace list`, `view`, and `logs` commands.                                                                                          | Verify live help when runtime CLI differs.                          |
 | `https://cli.sentry.dev/commands/api/`                          | canonical  | high       | Authenticated `sentry api <endpoint>` fallback and request flags.                                                                                  | Use read-only requests unless the user asks for mutation.           |
 | `https://cli.sentry.dev/configuration/`                         | canonical  | high       | `SENTRY_AUTH_TOKEN`, JSON/global flags, cache controls, and runtime configuration behavior.                                                        | Junior injects credentials; do not persist or print tokens.         |
-| `pnpm view sentry version dist-tags description bin repository` | canonical  | high       | Confirmed npm package `sentry` latest is `0.30.0` and exposes `sentry` binary.                                                                     | Package metadata only; command behavior still comes from help/docs. |
-| `pnpm dlx sentry@latest --help` and subcommand help             | canonical  | high       | Confirmed executable help lists org list/view, issue list/events/view, log list/view, trace list/view/logs, and api.                               | Re-run when updating for a newer CLI.                               |
+| `pnpm view sentry version dist-tags description bin repository` | canonical  | high       | Confirmed npm package `sentry` latest is `0.38.0` and exposes the `sentry` binary.                                                                   | Package metadata only; command behavior still comes from help/docs. |
+| `pnpm dlx sentry@latest --help` and subcommand help             | canonical  | high       | Confirmed `alert metrics list|view|create|edit|delete`, including triggers and dry-run, plus the existing investigation commands.                   | Re-run when updating for a newer CLI.                               |
 | `packages/junior-sentry/plugin.yaml`                            | canonical  | high       | Confirms runtime dependency is the npm `sentry` package and auth token env is `SENTRY_AUTH_TOKEN`.                                                 | Local repo contract.                                                |
 | `https://github.com/getsentry/junior/issues/615`                | canonical  | high       | Regression report: Sentry product feature usage routed to Hex, then an explicit "use Sentry telemetry" redirect was ignored after Hex auth paused. | Use as routing evidence, not as command reference.                  |
 | `https://docs.sentry.io/api/monitors/create-a-monitor-for-a-project/` | canonical | high | Current public monitor creation endpoint, payload fields, and metric monitor examples. | Alerting API may evolve; verify live docs before writes. |
@@ -33,13 +33,14 @@ Last updated: 2026-07-13
 | Preserve stale plural subcommands as recommended forms.                                              | rejected | `organizations list` was the root failure; aliases should not be taught as canonical command shapes.          |
 | Create a broad new troubleshooting reference.                                                        | deferred | Current failure modes fit in the focused CLI reference without crowding `SKILL.md`.                           |
 | Permit explicitly requested alert/monitor writes only.                                               | adopted  | `alerts:write` is intentionally narrow; unrelated Sentry mutations remain out of scope.                       |
-| Use monitor and alert workflow endpoints instead of metric `alert-rules` creation.                    | adopted  | Public API and current source mark legacy alert-rule creation deprecated.                                     |
+| Prefer first-class `sentry alert metrics` commands.                                                    | adopted  | CLI `0.38.0` supports list, view, create, edit, delete, triggers, and dry-run.                                 |
+| Keep API fallback for dynamic anomaly detection.                                                       | adopted  | The current CLI create flags expose threshold triggers but no dynamic/anomaly configuration.                  |
 
 ## Coverage matrix
 
 | Dimension                          | Coverage status | Evidence                                                                                                                                                                                                 |
 | ---------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API surface and behavior contracts | complete        | `cli-commands.md` covers issue, org, log, trace, API command shapes, and current monitor/alert workflow creation plus live help verification.                                                            |
+| API surface and behavior contracts | complete        | `cli-commands.md` covers issue, org, log, trace, first-class metric-alert commands, and API fallback plus live help verification.                                                                        |
 | Config/runtime options             | complete        | `sandbox-runtime.md`, `plugin.yaml`, and CLI configuration docs cover injected auth and runtime package installation.                                                                                    |
 | Common use cases                   | complete        | `cli-commands.md` maps org listing, issue search/view/events, logs, traces, trace logs, and API fallback.                                                                                                |
 | Product telemetry routing          | documented      | `SKILL.md` and `SPEC.md` cover Sentry product feature usage and explicit "Sentry telemetry" redirects after an unrelated auth pause. A dedicated eval should wait for the eval harness boundary cleanup. |
@@ -48,10 +49,10 @@ Last updated: 2026-07-13
 
 ## Open gaps
 
-- Review the Sentry CLI docs and rerun `pnpm dlx sentry@latest --help` when the plugin pins or upgrades beyond npm `sentry@0.30.0`.
+- Review the Sentry CLI docs and rerun `pnpm dlx sentry@latest --help` when the plugin pins or upgrades beyond npm `sentry@0.38.0`.
 
 ## Changelog
 
-- 2026-07-13: Added the current monitor and alert workflow API contract, explicit-write and duplicate safeguards, anomaly/static payload examples, and `alerts:write` scope behavior.
+- 2026-07-13: Added CLI-first `sentry alert metrics` guidance, explicit-write and duplicate safeguards, API fallback for unsupported anomaly configuration, and `alerts:write` scope behavior.
 - 2026-06-18: Expanded trigger language for Sentry product telemetry and feature usage, and recorded issue 615 routing evidence.
 - 2026-04-30: Reconciled skill guidance with Sentry CLI `0.30.0`, replaced stale plural command forms, added live-help verification, expanded log/trace/API guidance, updated eval smoke artifacts, and added an org-list command-selection eval.
