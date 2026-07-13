@@ -52,9 +52,8 @@ describe("createMcpOAuthClientProvider", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("persists and reuses the pending auth session for the same turn", async () => {
-    const { getMcpAuthSession, patchMcpAuthSession } =
-      await import("@/chat/mcp/auth-store");
+  it("creates isolated lazy authorization attempts for the same turn", async () => {
+    const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
     const { createMcpOAuthClientProvider } = await import("@/chat/mcp/oauth");
 
     const firstProvider = await createMcpOAuthClientProvider({
@@ -69,8 +68,37 @@ describe("createMcpOAuthClientProvider", () => {
       configuration: { region: "us" },
     });
 
-    const initialSession = await getMcpAuthSession(firstProvider.authSessionId);
-    expect(initialSession).toMatchObject({
+    const secondProvider = await createMcpOAuthClientProvider({
+      provider: "demo",
+      conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
+      sessionId: "turn-1",
+      userId: "U123",
+      userMessage: "use /demo",
+      channelId: "C123",
+      threadTs: "1712345.0001",
+      toolChannelId: "C999",
+      configuration: { region: "eu" },
+      artifactState: { assistantContextChannelId: "C999" },
+    });
+
+    expect(secondProvider.authSessionId).not.toBe(firstProvider.authSessionId);
+    await expect(
+      getMcpAuthSession(firstProvider.authSessionId),
+    ).resolves.toBeUndefined();
+    await expect(
+      getMcpAuthSession(secondProvider.authSessionId),
+    ).resolves.toBeUndefined();
+
+    await firstProvider.saveCodeVerifier("code-verifier");
+    await firstProvider.redirectToAuthorization(
+      new URL("https://auth.example.com/start"),
+    );
+
+    await expect(
+      getMcpAuthSession(firstProvider.authSessionId),
+    ).resolves.toMatchObject({
+      schemaVersion: 2,
       authSessionId: firstProvider.authSessionId,
       provider: "demo",
       userId: "U123",
@@ -81,49 +109,11 @@ describe("createMcpOAuthClientProvider", () => {
       channelId: "C123",
       threadTs: "1712345.0001",
       configuration: { region: "us" },
-    });
-
-    await patchMcpAuthSession(firstProvider.authSessionId, {
       authorizationUrl: "https://auth.example.com/start",
       codeVerifier: "code-verifier",
     });
-
-    const reusedProvider = await createMcpOAuthClientProvider({
-      provider: "demo",
-      conversationId: "conversation-1",
-      destination: SLACK_DESTINATION,
-      sessionId: "turn-1",
-      userId: "U123",
-      userMessage: "use /demo",
-      channelId: "C123",
-      threadTs: "1712345.0001",
-      toolChannelId: "C999",
-      configuration: { region: "eu" },
-      artifactState: { assistantContextChannelId: "C999" },
-    });
-
-    expect(reusedProvider.authSessionId).toBe(firstProvider.authSessionId);
-
-    const reusedSession = await getMcpAuthSession(reusedProvider.authSessionId);
-    expect(reusedSession).toMatchObject({
-      authSessionId: firstProvider.authSessionId,
-      provider: "demo",
-      userId: "U123",
-      conversationId: "conversation-1",
-      destination: SLACK_DESTINATION,
-      sessionId: "turn-1",
-      userMessage: "use /demo",
-      channelId: "C123",
-      threadTs: "1712345.0001",
-      toolChannelId: "C999",
-      configuration: { region: "eu" },
-      artifactState: { assistantContextChannelId: "C999" },
-      authorizationUrl: "https://auth.example.com/start",
-      codeVerifier: "code-verifier",
-    });
-    expect(reusedSession?.createdAtMs).toBe(initialSession?.createdAtMs);
-    expect(reusedSession?.updatedAtMs).toBeGreaterThanOrEqual(
-      initialSession?.updatedAtMs ?? 0,
-    );
+    await expect(
+      getMcpAuthSession(secondProvider.authSessionId),
+    ).resolves.toBeUndefined();
   });
 });

@@ -154,6 +154,29 @@ describe("PluginMcpClient", () => {
     transportOptions.length = 0;
   });
 
+  it("shares one connection across concurrent operations", async () => {
+    const authProvider = buildAuthProvider();
+    authProvider.getMcpServerSessionId.mockResolvedValue(undefined);
+    authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
+    let finishConnect: (() => void) | undefined;
+    connectMock.mockImplementation(
+      async () =>
+        await new Promise<void>((resolve) => {
+          finishConnect = resolve;
+        }),
+    );
+    listToolsMock.mockResolvedValue({ tools: [], nextCursor: undefined });
+
+    const client = new PluginMcpClient(buildPlugin(), { authProvider });
+    const first = client.listTools();
+    const second = client.listTools();
+
+    await vi.waitFor(() => expect(connectMock).toHaveBeenCalledTimes(1));
+    finishConnect?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([[], []]);
+    expect(transportOptions).toHaveLength(1);
+  });
+
   it("reuses and refreshes host-managed MCP server session ids", async () => {
     const authProvider = buildAuthProvider();
     authProvider.getMcpServerSessionId.mockResolvedValue("stored-session");

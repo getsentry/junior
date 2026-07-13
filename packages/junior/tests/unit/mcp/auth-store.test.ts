@@ -19,6 +19,7 @@ function buildSession(
   }> = {},
 ) {
   return {
+    schemaVersion: 2 as const,
     authSessionId,
     provider: overrides.provider ?? "notion",
     userId: overrides.userId ?? "U123",
@@ -71,6 +72,22 @@ describe("MCP auth session store", () => {
     await expect(getMcpAuthSession("auth-4")).resolves.toEqual(
       expect.objectContaining({ authSessionId: "auth-4" }),
     );
+  });
+
+  it("ignores legacy attempt payloads stored under the v2 key", async () => {
+    const { getMcpAuthSession } = await import("@/chat/mcp/auth-store");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const state = getStateAdapter();
+    await state.connect();
+    await state.set(
+      "junior:mcp_oauth_attempt:v2:legacy-auth",
+      JSON.stringify({
+        ...buildSession("legacy-auth"),
+        schemaVersion: 1,
+      }),
+    );
+
+    await expect(getMcpAuthSession("legacy-auth")).resolves.toBeUndefined();
   });
 
   it("keeps bulk deletion working after one sibling session is removed directly", async () => {

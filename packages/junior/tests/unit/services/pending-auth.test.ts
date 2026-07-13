@@ -19,15 +19,18 @@ function pendingAuth(
     sessionId: string;
     linkSentAtMs: number;
   }> = {},
-) {
-  return {
-    kind: "mcp" as const,
+): ConversationPendingAuthState {
+  const { kind = "mcp", ...rest } = overrides;
+  const value = {
     provider: "eval-auth",
     actorId: "U123",
     sessionId: "run_1",
     linkSentAtMs: NOW - 60_000,
-    ...overrides,
+    ...rest,
   };
+  return kind === "mcp"
+    ? { ...value, authSessionId: "auth-session-1", kind }
+    : { ...value, kind };
 }
 
 function conversationWithMessages(

@@ -103,6 +103,26 @@ let stateAdapterModule: StateAdapterModule;
 let turnSessionStoreModule: TurnSessionStoreModule;
 let pluginApp: PluginAppFixture | undefined;
 
+async function bindPendingAuthAttempt(args: {
+  authSessionId: string;
+  channelId: string;
+  threadTs: string;
+}) {
+  const key = `thread-state:slack:${args.channelId}:${args.threadTs}`;
+  const state = await stateAdapterModule
+    .getStateAdapter()
+    .get<Record<string, unknown>>(key);
+  const conversation = state?.conversation as
+    | { processing?: { pendingAuth?: Record<string, unknown> } }
+    | undefined;
+  const pendingAuth = conversation?.processing?.pendingAuth;
+  if (!state || !pendingAuth) {
+    return;
+  }
+  pendingAuth.authSessionId = args.authSessionId;
+  await stateAdapterModule.getStateAdapter().set(key, state);
+}
+
 async function createPendingAuthSession(args: {
   conversationId: string;
   sessionId: string;
@@ -134,6 +154,11 @@ async function createPendingAuthSession(args: {
     mcpClientModule.McpAuthorizationRequiredError,
   );
   await client.close();
+  await bindPendingAuthAttempt({
+    authSessionId: authProvider.authSessionId,
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+  });
 
   return authProvider;
 }
@@ -343,6 +368,11 @@ describe("mcp oauth callback slack integration", () => {
       mcpClientModule.McpAuthorizationRequiredError,
     );
     await client.close();
+    await bindPendingAuthAttempt({
+      authSessionId: authProvider.authSessionId,
+      channelId: "C123",
+      threadTs: "1700000000.001",
+    });
 
     const pendingSession = await mcpAuthStoreModule.getMcpAuthSession(
       authProvider.authSessionId,
@@ -371,6 +401,36 @@ describe("mcp oauth callback slack integration", () => {
       ),
       codeVerifier: expect.any(String),
     });
+
+    const repeatedProvider = await mcpOauthModule.createMcpOAuthClientProvider({
+      provider: EVAL_MCP_AUTH_PROVIDER,
+      conversationId: "conversation-1",
+      destination: SLACK_DESTINATION,
+      sessionId,
+      userId: "U123",
+      userMessage: "what did i say about the budget?",
+      channelId: "C123",
+      threadTs: "1700000000.001",
+      source: storedSource,
+    });
+    const repeatedClient = new mcpClientModule.PluginMcpClient(plugin!, {
+      authProvider: repeatedProvider,
+    });
+    await expect(repeatedClient.listTools()).rejects.toBeInstanceOf(
+      mcpClientModule.McpAuthorizationRequiredError,
+    );
+    await repeatedClient.close();
+
+    expect(repeatedProvider.authSessionId).not.toBe(authProvider.authSessionId);
+    await expect(
+      mcpAuthStoreModule.getMcpAuthSession(authProvider.authSessionId),
+    ).resolves.toMatchObject({
+      codeVerifier: pendingSession?.codeVerifier,
+      authorizationUrl: pendingSession?.authorizationUrl,
+    });
+    await mcpAuthStoreModule.deleteMcpAuthSession(
+      repeatedProvider.authSessionId,
+    );
 
     const response =
       await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
@@ -602,6 +662,7 @@ describe("mcp oauth callback slack integration", () => {
         processing: {
           activeTurnId: undefined,
           pendingAuth: {
+            authSessionId: "pending-auth-session",
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
             actorId: "U123",
@@ -644,6 +705,7 @@ describe("mcp oauth callback slack integration", () => {
         processing: {
           activeTurnId: undefined,
           pendingAuth: {
+            authSessionId: "pending-auth-session",
             kind: "mcp",
             provider: EVAL_MCP_AUTH_PROVIDER,
             actorId: "U123",
@@ -664,6 +726,10 @@ describe("mcp oauth callback slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.005",
     });
+    staleState.conversation.processing.pendingAuth.authSessionId =
+      authProvider.authSessionId;
+    freshState.conversation.processing.pendingAuth.authSessionId =
+      authProvider.authSessionId;
     await createAwaitingMcpTurnRecord({
       conversationId: threadId,
       sessionId,

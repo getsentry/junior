@@ -5,12 +5,7 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import {
-  getLatestMcpAuthSessionForUserProvider,
-  getMcpAuthSession,
-  putMcpAuthSession,
-  type McpAuthSessionState,
-} from "./auth-store";
+import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
@@ -25,6 +20,7 @@ function requirePluginWithMcp(provider: string): PluginDefinition {
   return plugin;
 }
 
+/** Create one immutable provider authorization attempt for the active turn. */
 export async function createMcpOAuthClientProvider(input: {
   provider: string;
   conversationId: string;
@@ -48,42 +44,7 @@ export async function createMcpOAuthClientProvider(input: {
     );
   }
 
-  const existingSession = await getLatestMcpAuthSessionForUserProvider(
-    input.userId,
-    input.provider,
-  );
-  const reusableSession =
-    existingSession &&
-    existingSession.conversationId === input.conversationId &&
-    existingSession.sessionId === input.sessionId
-      ? existingSession
-      : undefined;
-  const now = Date.now();
-  const authSessionId = reusableSession?.authSessionId ?? randomUUID();
-
-  await putMcpAuthSession({
-    authSessionId,
-    provider: input.provider,
-    userId: input.userId,
-    conversationId: input.conversationId,
-    ...(input.destination ? { destination: input.destination } : {}),
-    ...(input.source ? { source: input.source } : {}),
-    sessionId: input.sessionId,
-    userMessage: input.userMessage,
-    ...(input.channelId ? { channelId: input.channelId } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-    ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-    ...(input.configuration ? { configuration: input.configuration } : {}),
-    ...(input.artifactState ? { artifactState: input.artifactState } : {}),
-    ...(reusableSession?.authorizationUrl
-      ? { authorizationUrl: reusableSession.authorizationUrl }
-      : {}),
-    ...(reusableSession?.codeVerifier
-      ? { codeVerifier: reusableSession.codeVerifier }
-      : {}),
-    createdAtMs: reusableSession?.createdAtMs ?? now,
-    updatedAtMs: now,
-  });
+  const authSessionId = randomUUID();
 
   return new StateBackedMcpOAuthClientProvider(
     authSessionId,
@@ -93,6 +54,7 @@ export async function createMcpOAuthClientProvider(input: {
       userId: input.userId,
       conversationId: input.conversationId,
       ...(input.destination ? { destination: input.destination } : {}),
+      ...(input.source ? { source: input.source } : {}),
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : {}),
@@ -104,10 +66,12 @@ export async function createMcpOAuthClientProvider(input: {
   );
 }
 
+/** Exchange a callback code while guarding every shared credential mutation. */
 export async function finalizeMcpAuthorization(
   provider: string,
   authSessionId: string,
   authorizationCode: string,
+  runCredentialMutation?: <T>(mutation: () => Promise<T>) => Promise<T>,
 ): Promise<McpAuthSessionState> {
   const plugin = requirePluginWithMcp(provider);
   const mcp = plugin.manifest.mcp;
@@ -135,6 +99,8 @@ export async function finalizeMcpAuthorization(
   const authProvider = new StateBackedMcpOAuthClientProvider(
     authSessionId,
     callbackUrl,
+    undefined,
+    runCredentialMutation,
   );
   const requestInit: RequestInit = {};
   if (mcp.headers && Object.keys(mcp.headers).length > 0) {

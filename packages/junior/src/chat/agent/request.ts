@@ -154,7 +154,7 @@ export interface AgentRunDurability {
     accept: (messages: AgentRunSteeringMessage[]) => Promise<void>,
   ) => Promise<AgentRunSteeringMessage[]>;
   recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState,
+    pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   onArtifactStateUpdated?: (

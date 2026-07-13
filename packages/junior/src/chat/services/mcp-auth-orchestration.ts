@@ -53,7 +53,7 @@ export interface McpAuthOrchestrationInput {
   getArtifactState: () => ThreadArtifactsState | undefined;
   getMergedArtifactState: () => ThreadArtifactsState;
   recordPendingAuth?: (
-    pendingAuth: ConversationPendingAuthState,
+    pendingAuth: ConversationPendingAuthState | undefined,
   ) => void | Promise<void>;
   authorizationFlowMode?: AuthorizationFlowMode;
 }
@@ -164,8 +164,24 @@ export function createMcpAuthOrchestration(
       sessionId,
     });
     const providerLabel = formatProviderLabel(provider);
+    const reusedAuthSessionId =
+      reusingPendingLink && input.pendingAuth?.kind === "mcp"
+        ? input.pendingAuth.authSessionId
+        : undefined;
+
+    const nextPendingAuth: ConversationPendingAuthState = {
+      authSessionId: reusedAuthSessionId ?? authSessionId,
+      kind: "mcp",
+      provider,
+      actorId,
+      sessionId,
+      linkSentAtMs: reusingPendingLink
+        ? input.pendingAuth!.linkSentAtMs
+        : Date.now(),
+    };
 
     if (!reusingPendingLink) {
+      await recordPendingAuth(nextPendingAuth);
       const delivery = await deliverPrivateMessage({
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
@@ -178,6 +194,8 @@ export function createMcpAuthOrchestration(
         }),
       });
       if (!delivery) {
+        await deleteMcpAuthSession(authSessionId);
+        await recordPendingAuth(undefined);
         throw new Error(
           `Unable to deliver MCP authorization link for plugin "${provider}"`,
         );
@@ -186,15 +204,9 @@ export function createMcpAuthOrchestration(
       await deleteMcpAuthSession(authSessionId);
     }
 
-    await recordPendingAuth({
-      kind: "mcp",
-      provider,
-      actorId,
-      sessionId,
-      linkSentAtMs: reusingPendingLink
-        ? input.pendingAuth!.linkSentAtMs
-        : Date.now(),
-    });
+    if (reusingPendingLink) {
+      await recordPendingAuth(nextPendingAuth);
+    }
     await recordAuthorizationRequested({
       conversationId,
       kind: "mcp",

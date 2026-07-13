@@ -49,12 +49,16 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     private readonly callbackUrl: string,
     private readonly sessionContext?: Omit<
       McpAuthSessionState,
+      | "schemaVersion"
       | "authSessionId"
       | "authorizationUrl"
       | "codeVerifier"
       | "createdAtMs"
       | "updatedAtMs"
     >,
+    private readonly runCredentialMutation?: <T>(
+      mutation: () => Promise<T>,
+    ) => Promise<T>,
   ) {
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
@@ -86,13 +90,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async saveClientInformation(
     clientInformation: OAuthClientInformationMixed,
   ): Promise<void> {
-    const session = await this.getCredentialContext();
-    const credentials =
-      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
-      {};
-    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-      ...credentials,
-      clientInformation,
+    await this.mutateCredentials(async () => {
+      const session = await this.getCredentialContext();
+      const credentials =
+        (await getMcpStoredOAuthCredentials(
+          session.userId,
+          session.provider,
+        )) ?? {};
+      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+        ...credentials,
+        clientInformation,
+      });
     });
   }
 
@@ -106,23 +114,38 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    const session = await this.getCredentialContext();
-    const credentials =
-      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
-      {};
-    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-      ...credentials,
-      tokens,
+    await this.mutateCredentials(async () => {
+      const session = await this.getCredentialContext();
+      const credentials =
+        (await getMcpStoredOAuthCredentials(
+          session.userId,
+          session.provider,
+        )) ?? {};
+      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+        ...credentials,
+        tokens,
+      });
     });
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    const existing = await getMcpAuthSession(this.authSessionId);
+    if (
+      existing?.authorizationUrl &&
+      existing.authorizationUrl !== authorizationUrl.toString()
+    ) {
+      throw new Error("MCP OAuth authorization attempt is already initialized");
+    }
     await this.ensureSession({
       authorizationUrl: authorizationUrl.toString(),
     });
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    const existing = await getMcpAuthSession(this.authSessionId);
+    if (existing?.codeVerifier && existing.codeVerifier !== codeVerifier) {
+      throw new Error("MCP OAuth authorization attempt is already initialized");
+    }
     await this.ensureSession({ codeVerifier });
   }
 
@@ -135,13 +158,17 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
-    const session = await this.getCredentialContext();
-    const credentials =
-      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
-      {};
-    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-      ...credentials,
-      discoveryState: state,
+    await this.mutateCredentials(async () => {
+      const session = await this.getCredentialContext();
+      const credentials =
+        (await getMcpStoredOAuthCredentials(
+          session.userId,
+          session.provider,
+        )) ?? {};
+      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+        ...credentials,
+        discoveryState: state,
+      });
     });
   }
 
@@ -157,38 +184,32 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async invalidateCredentials(
     scope: "all" | "client" | "tokens" | "verifier" | "discovery",
   ): Promise<void> {
-    const session = await this.getCredentialContext();
-    const credentials =
-      (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
-      {};
+    await this.mutateCredentials(async () => {
+      const session = await this.getCredentialContext();
+      const credentials =
+        (await getMcpStoredOAuthCredentials(
+          session.userId,
+          session.provider,
+        )) ?? {};
 
-    await putMcpStoredOAuthCredentials(session.userId, session.provider, {
-      ...(scope === "tokens" || scope === "all"
-        ? {}
-        : credentials.tokens
-          ? { tokens: credentials.tokens }
-          : {}),
-      ...(scope === "client" || scope === "all"
-        ? {}
-        : credentials.clientInformation
-          ? { clientInformation: credentials.clientInformation }
-          : {}),
-      ...(scope === "discovery" || scope === "all"
-        ? {}
-        : credentials.discoveryState
-          ? { discoveryState: credentials.discoveryState }
-          : {}),
+      await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+        ...(scope === "tokens" || scope === "all"
+          ? {}
+          : credentials.tokens
+            ? { tokens: credentials.tokens }
+            : {}),
+        ...(scope === "client" || scope === "all"
+          ? {}
+          : credentials.clientInformation
+            ? { clientInformation: credentials.clientInformation }
+            : {}),
+        ...(scope === "discovery" || scope === "all"
+          ? {}
+          : credentials.discoveryState
+            ? { discoveryState: credentials.discoveryState }
+            : {}),
+      });
     });
-
-    if (scope === "verifier" || scope === "all") {
-      const authSession = await getMcpAuthSession(this.authSessionId);
-      if (authSession) {
-        await patchMcpAuthSession(this.authSessionId, {
-          codeVerifier: undefined,
-          ...(scope === "all" ? { authorizationUrl: undefined } : {}),
-        });
-      }
-    }
   }
 
   async getMcpServerSessionId(): Promise<string | undefined> {
@@ -197,13 +218,22 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveMcpServerSessionId(sessionId: string | undefined): Promise<void> {
-    const session = await this.getCredentialContext();
-    if (!sessionId) {
-      await deleteMcpServerSessionId(session.userId, session.provider);
-      return;
-    }
+    await this.mutateCredentials(async () => {
+      const session = await this.getCredentialContext();
+      if (!sessionId) {
+        await deleteMcpServerSessionId(session.userId, session.provider);
+        return;
+      }
 
-    await putMcpServerSessionId(session.userId, session.provider, sessionId);
+      await putMcpServerSessionId(session.userId, session.provider, sessionId);
+    });
+  }
+
+  /** Route shared credential writes through callback-owned freshness control. */
+  private async mutateCredentials<T>(mutation: () => Promise<T>): Promise<T> {
+    return this.runCredentialMutation
+      ? await this.runCredentialMutation(mutation)
+      : await mutation();
   }
 
   private async getCredentialContext() {
@@ -221,6 +251,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
 
     const now = Date.now();
     const nextSession: McpAuthSessionState = {
+      schemaVersion: 2,
       authSessionId: this.authSessionId,
       ...this.sessionContext,
       ...patch,

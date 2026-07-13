@@ -435,11 +435,15 @@ async function resumeOAuthSessionRecordTurn(
           },
           durability: {
             recordPendingAuth: async (nextPendingAuth) => {
-              await applyPendingAuthUpdate({
-                conversation: lockedConversation,
-                conversationId: stored.resumeConversationId!,
-                nextPendingAuth,
-              });
+              if (nextPendingAuth) {
+                await applyPendingAuthUpdate({
+                  conversation: lockedConversation,
+                  conversationId: stored.resumeConversationId!,
+                  nextPendingAuth,
+                });
+              } else {
+                clearPendingAuth(lockedConversation);
+              }
               await persistThreadStateById(stored.resumeConversationId!, {
                 conversation: lockedConversation,
               });

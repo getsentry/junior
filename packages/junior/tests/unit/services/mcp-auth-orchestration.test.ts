@@ -152,6 +152,7 @@ describe("createMcpAuthOrchestration", () => {
       threadTs: "1700000000.000000",
       userMessage: "use MCP",
       pendingAuth: {
+        authSessionId: "github-auth-session",
         kind: "mcp",
         provider: "github",
         actorId: "U123",
@@ -185,5 +186,47 @@ describe("createMcpAuthOrchestration", () => {
       }),
     );
     expect(abortAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the pending attempt when private link delivery fails", async () => {
+    const abortAgent = vi.fn();
+    const recordPendingAuth = vi.fn();
+    getMcpAuthSession.mockResolvedValue({
+      authorizationUrl: "https://mcp.example/authorize",
+      channelId: "C123",
+      threadTs: "1700000000.000000",
+      userId: "U123",
+    });
+    deliverPrivateMessage.mockResolvedValue(false);
+
+    const orchestration = createMcpAuthOrchestration({
+      abortAgent,
+      conversationId: "slack:C123:1700000000.000000",
+      sessionId: "run_new",
+      actorId: "U123",
+      channelId: "C123",
+      threadTs: "1700000000.000000",
+      userMessage: "use MCP",
+      getConfiguration: () => ({}),
+      getArtifactState: () => undefined,
+      getMergedArtifactState: () => ({}),
+      recordPendingAuth,
+    });
+
+    await orchestration.authProviderFactory(plugin("github"));
+
+    await expect(
+      orchestration.onAuthorizationRequired("github"),
+    ).rejects.toThrow(
+      'Unable to deliver MCP authorization link for plugin "github"',
+    );
+
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ authSessionId: "auth_1" }),
+    );
+    expect(deleteMcpAuthSession).toHaveBeenCalledWith("auth_1");
+    expect(recordPendingAuth).toHaveBeenNthCalledWith(2, undefined);
+    expect(abortAgent).not.toHaveBeenCalled();
   });
 });

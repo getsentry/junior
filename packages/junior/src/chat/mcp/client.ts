@@ -65,6 +65,7 @@ type HostManagedSessionProvider = OAuthClientProvider & {
 
 export class PluginMcpClient {
   private client?: Client;
+  private clientPromise?: Promise<Client>;
   private lastAttemptedTransportSessionId?: string;
   private transport?: StreamableHTTPClientTransport;
   private listedTools?: ListedTool[];
@@ -164,7 +165,22 @@ export class PluginMcpClient {
     if (this.client) {
       return this.client;
     }
+    if (this.clientPromise) {
+      return await this.clientPromise;
+    }
 
+    const clientPromise = this.connectClient();
+    this.clientPromise = clientPromise;
+    try {
+      return await clientPromise;
+    } finally {
+      if (this.clientPromise === clientPromise) {
+        this.clientPromise = undefined;
+      }
+    }
+  }
+
+  private async connectClient(): Promise<Client> {
     const mcp = this.plugin.manifest.mcp;
     if (!mcp) {
       throw new Error(
@@ -244,6 +260,7 @@ export class PluginMcpClient {
     this.listedTools = undefined;
     this.transport = undefined;
     this.client = undefined;
+    this.clientPromise = undefined;
 
     if (transport) {
       await transport.close();

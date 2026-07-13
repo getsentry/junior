@@ -559,21 +559,15 @@ describe("mcp auth runtime slack integration", () => {
     expect(agentProbe.continueCallCount).toBe(1);
     expect(agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
 
-    const latestReusableSession =
-      await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(
+    await expect(
+      mcpAuthStoreModule.getMcpAuthSession(parkedAuthSessionId),
+    ).resolves.toBeUndefined();
+    await expect(
+      mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(
         "U123",
         EVAL_MCP_AUTH_PROVIDER,
-      );
-    expect(latestReusableSession).toMatchObject({
-      provider: EVAL_MCP_AUTH_PROVIDER,
-      conversationId: threadId,
-      sessionId: turnId,
-      userId: "U123",
-      userMessage: "what did i say about the budget?",
-    });
-    expect(latestReusableSession?.authSessionId).not.toBe(parkedAuthSessionId);
-    expect(latestReusableSession?.authorizationUrl).toBeUndefined();
-    expect(latestReusableSession?.codeVerifier).toBeUndefined();
+      ),
+    ).resolves.toBeUndefined();
     expect(
       await mcpAuthStoreModule.getMcpStoredOAuthCredentials(
         "U123",

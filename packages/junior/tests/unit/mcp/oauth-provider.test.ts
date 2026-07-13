@@ -72,7 +72,7 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
     patchMcpAuthSessionMock.mockResolvedValue(undefined);
   });
 
-  it("preserves the authorization URL when only clearing the verifier", async () => {
+  it("preserves immutable attempt state when invalidating the verifier", async () => {
     const provider = new StateBackedMcpOAuthClientProvider(
       "auth-session-1",
       "https://junior.example.com/callback",
@@ -92,12 +92,10 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
         },
       },
     );
-    expect(patchMcpAuthSessionMock).toHaveBeenCalledWith("auth-session-1", {
-      codeVerifier: undefined,
-    });
+    expect(patchMcpAuthSessionMock).not.toHaveBeenCalled();
   });
 
-  it("clears the authorization URL when invalidating all credentials", async () => {
+  it("preserves immutable attempt state when invalidating credentials", async () => {
     const provider = new StateBackedMcpOAuthClientProvider(
       "auth-session-1",
       "https://junior.example.com/callback",
@@ -110,10 +108,7 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
       "demo",
       {},
     );
-    expect(patchMcpAuthSessionMock).toHaveBeenCalledWith("auth-session-1", {
-      codeVerifier: undefined,
-      authorizationUrl: undefined,
-    });
+    expect(patchMcpAuthSessionMock).not.toHaveBeenCalled();
   });
 
   it("reads stored credentials without requiring a persisted auth session", async () => {
@@ -174,6 +169,48 @@ describe("StateBackedMcpOAuthClientProvider.invalidateCredentials", () => {
       }),
     );
     expect(patchMcpAuthSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects replacing the verifier for an initialized attempt", async () => {
+    getMcpAuthSessionMock.mockResolvedValue({
+      schemaVersion: 2,
+      authSessionId: "auth-session-1",
+      provider: "demo",
+      userId: "U123",
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      userMessage: "/demo",
+      codeVerifier: "original-verifier",
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    });
+    const provider = new StateBackedMcpOAuthClientProvider(
+      "auth-session-1",
+      "https://junior.example.com/callback",
+    );
+
+    await expect(
+      provider.saveCodeVerifier("replacement-verifier"),
+    ).rejects.toThrow("MCP OAuth authorization attempt is already initialized");
+    expect(patchMcpAuthSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("guards shared credential mutations before writing", async () => {
+    const runCredentialMutation = vi
+      .fn()
+      .mockRejectedValue(new Error("expired"));
+    const provider = new StateBackedMcpOAuthClientProvider(
+      "auth-session-1",
+      "https://junior.example.com/callback",
+      undefined,
+      runCredentialMutation,
+    );
+
+    await expect(
+      provider.saveDiscoveryState({ authorizationServerUrl: "https://auth" }),
+    ).rejects.toThrow("expired");
+    expect(runCredentialMutation).toHaveBeenCalledTimes(1);
+    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
   });
 
   it("stores the opaque MCP server session outside agent-visible state", async () => {

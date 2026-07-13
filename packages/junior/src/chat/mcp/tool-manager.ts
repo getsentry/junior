@@ -292,6 +292,10 @@ export class McpToolManager {
   private readonly activeProviders = new Set<string>();
   private readonly authorizationPendingProviders = new Set<string>();
   private readonly clientsByProvider = new Map<string, PluginMcpClient>();
+  private readonly clientPromisesByProvider = new Map<
+    string,
+    Promise<PluginMcpClient>
+  >();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
   constructor(
@@ -426,6 +430,28 @@ export class McpToolManager {
       return existing;
     }
 
+    const pending = this.clientPromisesByProvider.get(plugin.manifest.name);
+    if (pending) {
+      return await pending;
+    }
+
+    const clientPromise = this.createClient(plugin);
+    this.clientPromisesByProvider.set(plugin.manifest.name, clientPromise);
+    try {
+      return await clientPromise;
+    } finally {
+      if (
+        this.clientPromisesByProvider.get(plugin.manifest.name) ===
+        clientPromise
+      ) {
+        this.clientPromisesByProvider.delete(plugin.manifest.name);
+      }
+    }
+  }
+
+  private async createClient(
+    plugin: PluginDefinition,
+  ): Promise<PluginMcpClient> {
     const authProvider = this.options.authProviderFactory
       ? await this.options.authProviderFactory(plugin)
       : undefined;

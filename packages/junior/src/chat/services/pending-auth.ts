@@ -49,6 +49,21 @@ export function canReusePendingAuthLink(args: {
   );
 }
 
+/** Return the exact pending authorization target for one actor and provider. */
+export function getConversationPendingAuth(args: {
+  conversation: ThreadConversationState;
+  kind: "mcp";
+  provider: string;
+  actorId: string;
+  scope?: string;
+}): Extract<ConversationPendingAuthState, { kind: "mcp" }> | undefined;
+export function getConversationPendingAuth(args: {
+  conversation: ThreadConversationState;
+  kind: "plugin";
+  provider: string;
+  actorId: string;
+  scope?: string;
+}): Extract<ConversationPendingAuthState, { kind: "plugin" }> | undefined;
 export function getConversationPendingAuth(args: {
   conversation: ThreadConversationState;
   kind: AuthorizationPauseKind;

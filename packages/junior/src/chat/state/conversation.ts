@@ -1,5 +1,4 @@
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
-import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -48,14 +47,22 @@ export interface ConversationProcessingState {
   pendingAuth?: ConversationPendingAuthState;
 }
 
-export interface ConversationPendingAuthState {
-  kind: AuthorizationPauseKind;
+interface ConversationPendingAuthBase {
   linkSentAtMs: number;
   provider: string;
   actorId: string;
   scope?: string;
   sessionId: string;
 }
+
+export type ConversationPendingAuthState =
+  | (ConversationPendingAuthBase & {
+      authSessionId: string;
+      kind: "mcp";
+    })
+  | (ConversationPendingAuthBase & {
+      kind: "plugin";
+    });
 
 export interface ConversationStats {
   compactedMessageCount: number;
@@ -114,6 +121,7 @@ function coercePendingAuthState(
   const kind = value.kind;
   const provider = toOptionalString(value.provider);
   const actorId = toOptionalString(value.actorId);
+  const authSessionId = toOptionalString(value.authSessionId);
   const scope = toOptionalString(value.scope);
   const sessionId = toOptionalString(value.sessionId);
   const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
@@ -121,20 +129,23 @@ function coercePendingAuthState(
     (kind !== "mcp" && kind !== "plugin") ||
     !provider ||
     !actorId ||
+    (kind === "mcp" && !authSessionId) ||
     !sessionId ||
     typeof linkSentAtMs !== "number"
   ) {
     return undefined;
   }
 
-  return {
-    kind,
+  const base = {
     provider,
     actorId,
     ...(scope ? { scope } : {}),
     sessionId,
     linkSentAtMs,
   };
+  return kind === "mcp"
+    ? { ...base, authSessionId: authSessionId!, kind }
+    : { ...base, kind };
 }
 
 /** Safely coerce an unknown persisted value into a ThreadConversationState. */

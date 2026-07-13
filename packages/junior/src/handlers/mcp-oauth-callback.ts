@@ -6,10 +6,13 @@
  * must not resume newer thread work after another user message has superseded
  * the paused request.
  */
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import {
   deleteMcpAuthSession,
+  getMcpAuthSession,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -75,6 +78,12 @@ const CALLBACK_PAGES = {
     message: "Missing code parameter.",
     status: 400,
   },
+  expired: {
+    title: "Authorization expired",
+    message:
+      "This authorization link is no longer active. Return to Slack and retry the original request.",
+    status: 400,
+  },
   success: {
     title: "Authorization complete",
     message:
@@ -91,6 +100,13 @@ const CALLBACK_PAGES = {
 
 interface McpOAuthCallbackOptions {
   agentRunner: AgentRunner;
+}
+
+class McpOAuthAttemptExpiredError extends Error {
+  constructor() {
+    super("MCP OAuth authorization attempt is no longer current");
+    this.name = "McpOAuthAttemptExpiredError";
+  }
 }
 
 function mcpAuthorizationId(args: {
@@ -217,21 +233,20 @@ async function resumeAuthorizedMcpTurn(args: {
     provider,
     actorId: authSession.userId,
   });
-  const resolvedSessionId = pendingAuth?.sessionId ?? authSession.sessionId;
+  if (pendingAuth?.authSessionId !== authSession.authSessionId) {
+    return;
+  }
+  const resolvedSessionId = pendingAuth.sessionId;
   const userMessage = getTurnUserMessage(conversation, resolvedSessionId);
-  if (pendingAuth) {
-    if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
-      clearPendingAuth(conversation, pendingAuth.sessionId);
-      await persistThreadStateById(threadId, { conversation });
-      await abandonAgentTurnSessionRecord({
-        conversationId: authSession.conversationId,
-        sessionId: pendingAuth.sessionId,
-        errorMessage:
-          "Auth completed after a newer thread message abandoned this blocked request.",
-      });
-      return;
-    }
-  } else if (conversation.processing.activeTurnId !== authSession.sessionId) {
+  if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
+    clearPendingAuth(conversation, pendingAuth.sessionId);
+    await persistThreadStateById(threadId, { conversation });
+    await abandonAgentTurnSessionRecord({
+      conversationId: authSession.conversationId,
+      sessionId: pendingAuth.sessionId,
+      errorMessage:
+        "Auth completed after a newer thread message abandoned this blocked request.",
+    });
     return;
   }
   if (!userMessage) {
@@ -260,30 +275,24 @@ async function resumeAuthorizedMcpTurn(args: {
         provider,
         actorId: authSession.userId,
       });
-      const lockedSessionId =
-        lockedPendingAuth?.sessionId ?? authSession.sessionId;
+      if (lockedPendingAuth?.authSessionId !== authSession.authSessionId) {
+        return false;
+      }
+      const lockedSessionId = lockedPendingAuth.sessionId;
       if (lockedSessionId !== resolvedSessionId) {
         return false;
       }
-      if (lockedPendingAuth) {
-        if (
-          !isPendingAuthLatestRequest(lockedConversation, lockedPendingAuth)
-        ) {
-          clearPendingAuth(lockedConversation, lockedPendingAuth.sessionId);
-          await persistThreadStateById(threadId, {
-            conversation: lockedConversation,
-          });
-          await abandonAgentTurnSessionRecord({
-            conversationId: authSession.conversationId,
-            sessionId: lockedPendingAuth.sessionId,
-            errorMessage:
-              "Auth completed after a newer thread message abandoned this blocked request.",
-          });
-          return false;
-        }
-      } else if (
-        lockedConversation.processing.activeTurnId !== authSession.sessionId
-      ) {
+      if (!isPendingAuthLatestRequest(lockedConversation, lockedPendingAuth)) {
+        clearPendingAuth(lockedConversation, lockedPendingAuth.sessionId);
+        await persistThreadStateById(threadId, {
+          conversation: lockedConversation,
+        });
+        await abandonAgentTurnSessionRecord({
+          conversationId: authSession.conversationId,
+          sessionId: lockedPendingAuth.sessionId,
+          errorMessage:
+            "Auth completed after a newer thread message abandoned this blocked request.",
+        });
         return false;
       }
 
@@ -396,11 +405,15 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           durability: {
             recordPendingAuth: async (nextPendingAuth) => {
-              await applyPendingAuthUpdate({
-                conversation: lockedConversation,
-                conversationId: authSession.conversationId,
-                nextPendingAuth,
-              });
+              if (nextPendingAuth) {
+                await applyPendingAuthUpdate({
+                  conversation: lockedConversation,
+                  conversationId: authSession.conversationId,
+                  nextPendingAuth,
+                });
+              } else {
+                clearPendingAuth(lockedConversation);
+              }
               await persistThreadStateById(threadId, {
                 conversation: lockedConversation,
               });
@@ -467,6 +480,59 @@ async function resumeAuthorizedMcpTurn(args: {
   });
 }
 
+async function isCurrentMcpAuthorizationAttempt(
+  authSession: McpAuthSessionState,
+  provider: string,
+): Promise<boolean> {
+  if (!authSession.channelId || !authSession.threadTs) {
+    return false;
+  }
+
+  const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
+  const currentState = await getPersistedThreadState(threadId);
+  const conversation = coerceThreadConversationState(currentState);
+  const pendingAuth = getConversationPendingAuth({
+    conversation,
+    kind: "mcp",
+    provider,
+    actorId: authSession.userId,
+  });
+
+  return (
+    pendingAuth?.authSessionId === authSession.authSessionId &&
+    pendingAuth.sessionId === authSession.sessionId
+  );
+}
+
+/** Commit one shared credential mutation only while this attempt owns the thread. */
+async function runCurrentMcpCredentialMutation<T>(
+  authSession: McpAuthSessionState,
+  provider: string,
+  mutation: () => Promise<T>,
+): Promise<T> {
+  if (!authSession.channelId || !authSession.threadTs) {
+    throw new McpOAuthAttemptExpiredError();
+  }
+
+  const threadId = `slack:${authSession.channelId}:${authSession.threadTs}`;
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const lock = await acquireActiveLock(stateAdapter, threadId);
+  if (!lock) {
+    throw new Error(
+      `Could not acquire MCP OAuth callback lock for ${threadId}`,
+    );
+  }
+  try {
+    if (!(await isCurrentMcpAuthorizationAttempt(authSession, provider))) {
+      throw new McpOAuthAttemptExpiredError();
+    }
+    return await mutation();
+  } finally {
+    await stateAdapter.releaseLock(lock);
+  }
+}
+
 export async function GET(
   request: Request,
   provider: string,
@@ -489,7 +555,29 @@ export async function GET(
   }
 
   try {
-    const authSession = await finalizeMcpAuthorization(provider, state, code);
+    const pendingSession = await getMcpAuthSession(state);
+    if (
+      !pendingSession ||
+      pendingSession.provider !== provider ||
+      !(await isCurrentMcpAuthorizationAttempt(pendingSession, provider))
+    ) {
+      if (pendingSession) {
+        await deleteMcpAuthSession(pendingSession.authSessionId);
+      }
+      return htmlResponse("expired");
+    }
+
+    const authSession = await finalizeMcpAuthorization(
+      provider,
+      state,
+      code,
+      async (mutation) =>
+        await runCurrentMcpCredentialMutation(
+          pendingSession,
+          provider,
+          mutation,
+        ),
+    );
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {
@@ -512,6 +600,10 @@ export async function GET(
 
     return htmlResponse("success");
   } catch (callbackError) {
+    if (callbackError instanceof McpOAuthAttemptExpiredError) {
+      await deleteMcpAuthSession(state);
+      return htmlResponse("expired");
+    }
     logException(
       callbackError,
       "mcp_oauth_callback_failed",

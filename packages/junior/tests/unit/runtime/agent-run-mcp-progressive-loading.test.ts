@@ -337,6 +337,7 @@ vi.mock("@/chat/mcp/oauth", () => ({
       await import("@/chat/mcp/auth-store");
     const authSessionId = `${input.provider}-auth-session`;
     await putMcpAuthSession({
+      schemaVersion: 2,
       authSessionId,
       provider: input.provider,
       userId: input.userId,
@@ -626,8 +627,10 @@ function makeAgentRunRequest(
     ...(overrides.state ? { state: overrides.state } : {}),
     ...(overrides.observers ? { observers: overrides.observers } : {}),
     durability: {
-      recordPendingAuth: async (pendingAuth: ConversationPendingAuthState) => {
-        pendingAuthRecords.push(pendingAuth);
+      recordPendingAuth: async (pendingAuth) => {
+        if (pendingAuth) {
+          pendingAuthRecords.push(pendingAuth);
+        }
       },
       ...(overrides.durability ?? {}),
     },

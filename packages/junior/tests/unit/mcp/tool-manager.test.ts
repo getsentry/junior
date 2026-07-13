@@ -155,6 +155,29 @@ describe("McpToolManager", () => {
     expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
+  it("creates one provider client across concurrent activations", async () => {
+    let finishProvider: (() => void) | undefined;
+    const authProviderFactory = vi.fn(
+      async () =>
+        await new Promise<undefined>((resolve) => {
+          finishProvider = () => resolve(undefined);
+        }),
+    );
+    const manager = new McpToolManager([buildPlugin()], {
+      authProviderFactory,
+    });
+
+    const first = manager.activateProvider("demo");
+    const second = manager.activateProvider("demo");
+
+    await vi.waitFor(() =>
+      expect(authProviderFactory).toHaveBeenCalledTimes(1),
+    );
+    finishProvider?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(clientOptions).toHaveLength(1);
+  });
+
   it("throws expected MCP tool errors", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);

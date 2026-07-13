@@ -55,6 +55,62 @@ describe("conversation state", () => {
     });
   });
 
+  it("ignores legacy MCP pending auth without an attempt id", () => {
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        processing: {
+          pendingAuth: {
+            kind: "mcp",
+            provider: "notion",
+            actorId: "U123",
+            sessionId: "turn-1",
+            linkSentAtMs: 1,
+          },
+        },
+      },
+    });
+
+    expect(conversation.processing.pendingAuth).toBeUndefined();
+  });
+
+  it("coerces message image file ids and vision summaries", () => {
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        messages: [
+          {
+            id: "1700000000.100",
+            role: "user",
+            text: "candidate info",
+            createdAtMs: 1700000000100,
+            meta: { slackTs: "1700000000.100" },
+          },
+        ],
+        vision: {
+          byFileId: {
+            F123: {
+              summary: "Candidate name appears as Jane Doe.",
+              analyzedAtMs: 1700000000500,
+            },
+            bad: {
+              summary: "",
+              analyzedAtMs: 10,
+            },
+          },
+        },
+      },
+    });
+
+    // The visible transcript lives in SQL now; a legacy transcript mirror in a
+    // persisted payload is dropped on read.
+    expect(conversation.messages).toEqual([]);
+    expect(conversation.vision.byFileId).toEqual({
+      F123: {
+        summary: "Candidate name appears as Jane Doe.",
+        analyzedAtMs: 1700000000500,
+      },
+    });
+  });
+
   it("includes vision cache in state patch payload", () => {
     const state: ThreadConversationState = coerceThreadConversationState({
       conversation: {

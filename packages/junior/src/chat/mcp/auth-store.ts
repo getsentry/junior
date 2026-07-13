@@ -13,15 +13,16 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-const MCP_AUTH_SESSION_PREFIX = "junior:mcp_auth_session";
+const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
-const MCP_AUTH_SESSION_INDEX_PREFIX = "junior:mcp_auth_session_index";
+const MCP_AUTH_SESSION_INDEX_PREFIX = "junior:mcp_oauth_attempt_index:v2";
 const MCP_SERVER_SESSION_PREFIX = "junior:mcp_server_session";
 const MCP_AUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MCP_AUTH_CREDENTIALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MCP_SERVER_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface McpAuthSessionState {
+  schemaVersion: 2;
   authSessionId: string;
   provider: string;
   userId: string;
@@ -98,6 +99,7 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
     }
 
     if (
+      parsed.schemaVersion !== 2 ||
       typeof parsed.authSessionId !== "string" ||
       typeof parsed.provider !== "string" ||
       typeof parsed.userId !== "string" ||
@@ -126,6 +128,7 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
     }
 
     return {
+      schemaVersion: 2,
       authSessionId: parsed.authSessionId,
       provider: parsed.provider,
       userId: parsed.userId,
@@ -270,6 +273,7 @@ export async function patchMcpAuthSession(
   const next: McpAuthSessionState = {
     ...current,
     ...patch,
+    schemaVersion: 2,
     authSessionId: current.authSessionId,
     provider: current.provider,
     userId: current.userId,
