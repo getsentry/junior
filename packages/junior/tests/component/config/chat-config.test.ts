@@ -68,7 +68,7 @@ describe("chat config", () => {
   it("rejects an invalid configured reasoning level", async () => {
     process.env.AI_REASONING_LEVEL = "adaptive";
 
-    await expect(loadConfig()).rejects.toThrow();
+    await expect(loadConfig()).rejects.toThrow("Invalid option");
   });
 
   it("uses gpt-5.6-sol for the default handoff profile", async () => {

@@ -17,14 +17,14 @@ import {
 import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
-vi.mock("@/chat/services/turn-thinking-level", async () => {
+vi.mock("@/chat/services/turn-reasoning-level", async () => {
   const actual = await vi.importActual<
-    typeof import("@/chat/services/turn-thinking-level")
-  >("@/chat/services/turn-thinking-level");
+    typeof import("@/chat/services/turn-reasoning-level")
+  >("@/chat/services/turn-reasoning-level");
   return {
     ...actual,
-    selectTurnThinkingLevel: async () => ({
-      thinkingLevel: "medium" as const,
+    selectTurnReasoningLevel: async () => ({
+      reasoningLevel: "medium" as const,
       reason: "test_default",
     }),
   };

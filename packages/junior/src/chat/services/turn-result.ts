@@ -6,7 +6,7 @@ import {
   stripNoReplyMarker,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
+import type { TurnReasoningSelection } from "@/chat/services/turn-reasoning-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type { ReplyDeliveryPlan } from "@/chat/services/reply-delivery-plan";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -109,7 +109,7 @@ export interface AgentTurnDiagnostics {
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
-  thinkingLevel?: TurnThinkingSelection["thinkingLevel"];
+  reasoningLevel?: TurnReasoningSelection["reasoningLevel"];
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -142,7 +142,7 @@ export interface TurnResultInput {
   shouldTrace: boolean;
   spanContext: LogContext;
   usage?: AgentTurnUsage;
-  thinkingSelection: TurnThinkingSelection;
+  reasoningSelection: TurnReasoningSelection;
   correlation?: {
     threadId?: string;
     actorId?: string;
@@ -209,7 +209,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     shouldTrace,
     spanContext,
     usage,
-    thinkingSelection,
+    reasoningSelection,
     correlation,
     assistantUserName,
     modelId,
@@ -378,7 +378,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     outcome: resolvedOutcome,
     modelId,
     assistantMessageCount: assistantMessages.length,
-    thinkingLevel: thinkingSelection.thinkingLevel,
+    reasoningLevel: reasoningSelection.reasoningLevel,
     toolCalls,
     toolResultCount: toolResults.length,
     toolErrorCount,

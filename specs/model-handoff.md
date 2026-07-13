@@ -20,7 +20,7 @@ model to a host-configured named model profile.
 - Downgrading or handing off an already handed-off conversation again.
 - Letting a model select arbitrary provider model ids.
 - Creating a successor conversation, workspace, sandbox, or user-visible task.
-- Selecting a new thinking level during handoff, changing tool authority, or
+- Selecting a new reasoning level during handoff, changing tool authority, or
   changing delivery behavior.
 - Designing an advisor, delegate, or generic subagent runtime. Generic
   child-conversation and subagent history storage remains for future work.
@@ -39,7 +39,7 @@ Model profiles are stable, host-owned names matching
 `AI_MODEL_PROFILES` may add other non-standard profiles as a JSON object from
 profile name to provider model id. It cannot override `standard` or `handoff`.
 Model-facing controls select only configured profile names, never raw model
-ids. Thinking-level selection remains independent of profile selection. The
+ids. Reasoning-level selection remains independent of profile selection. The
 reasoning level active when handoff starts is immutable across the switch:
 handoff neither invokes the reasoning router nor substitutes a target-model
 preference.

@@ -1,4 +1,7 @@
-import { getCapturedSlackApiCalls, type CapturedSlackApiCall } from "./handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  type CapturedSlackApiCall,
+} from "./handlers/slack-api";
 
 export function readCapturedSlackApiCalls(): CapturedSlackApiCall[] {
   return getCapturedSlackApiCalls();

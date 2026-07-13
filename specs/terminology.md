@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-06-12
-- Last Edited: 2026-07-11
+- Last Edited: 2026-07-13
 
 ## Purpose
 
@@ -94,6 +94,11 @@ units with explicit nouns (`slice`, `step`) so that ambiguity cannot return.
 - **Conversation execution**: the mutable operational state for one
   conversation, including mailbox state, worker lease, checkpoint timestamps,
   and whether the conversation is idle or active.
+- **Reasoning level**: the configured or adaptively selected amount of model
+  reasoning for a turn (`none`, `low`, `medium`, `high`, or `xhigh`). Junior
+  uses `reasoning` in domain names, specs, configuration, storage, diagnostics,
+  and telemetry. `thinkingLevel` and `ThinkingLevel` are allowed only at Pi SDK
+  boundaries where they are upstream API names; translate at that boundary.
 
 ### `turn`
 

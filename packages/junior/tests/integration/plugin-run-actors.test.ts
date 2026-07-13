@@ -86,7 +86,7 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_SERVER_PORT: 443,
   completeObject: async () => ({
     object: {
-      thinking_level: "medium",
+      reasoning_level: "medium",
       confidence: 1,
       reason: "test-router",
     },

@@ -31,11 +31,11 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Use bounded execution with `AGENT_TURN_TIMEOUT_MS` and explicit `agent.abort()` on timeout.
 - Completion is based on assistant text output; there is no classifier-driven continuation loop.
 
-### Thinking-level routing
+### Reasoning-level routing
 
-- Main-agent reasoning defaults to unset. Only an unset reasoning level runs the fast thinking classifier before creating the Pi `Agent`.
+- Main-agent reasoning defaults to unset. Only an unset reasoning level runs the fast reasoning classifier before creating the Pi `Agent`.
 - An explicit level from agent policy or `AI_REASONING_LEVEL` is authoritative. Runtime uses it directly and does not invoke the classifier.
-- The classifier may run with low thinking because it is a bounded routing task; the selected main-turn level is independent.
+- The classifier may run with low reasoning because it is a bounded routing task; the selected main-turn level is independent.
 - Low-confidence and failure fallback inside an active classifier run is medium effort.
 - Use `none` only for greetings, acknowledgments, and turns that need no substantive assistant work.
 - Use `low` rarely, only for deterministic one-step answers or transformations with no tools, no current or external facts, no prior thread-context interpretation, and no source verification.

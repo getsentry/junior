@@ -4,7 +4,9 @@ import type { SlackEventsApiEnvelope } from "../../fixtures/slack/factories/even
 // No default webhook interception is registered yet.
 export const slackWebhookHandlers = [];
 
-export function isSlackEventsApiEnvelope(value: unknown): value is SlackEventsApiEnvelope {
+export function isSlackEventsApiEnvelope(
+  value: unknown,
+): value is SlackEventsApiEnvelope {
   if (!value || typeof value !== "object") {
     return false;
   }

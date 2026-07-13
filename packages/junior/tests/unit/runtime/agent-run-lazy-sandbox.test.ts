@@ -131,7 +131,7 @@ vi.mock("@/chat/pi/client", () => ({
     if (prompt.includes("TypeError: x is undefined")) {
       return {
         object: {
-          thinking_level: "high",
+          reasoning_level: "high",
           confidence: 1,
           reason: "attachment stack trace",
         },
@@ -140,7 +140,7 @@ vi.mock("@/chat/pi/client", () => ({
     if (instruction === "hello") {
       return {
         object: {
-          thinking_level: "none",
+          reasoning_level: "none",
           confidence: 1,
           reason: "ack",
         },
@@ -149,7 +149,7 @@ vi.mock("@/chat/pi/client", () => ({
     if (instruction === "fix the failing test in chat") {
       return {
         object: {
-          thinking_level: "high",
+          reasoning_level: "high",
           confidence: 1,
           reason: "code change request",
         },
@@ -157,7 +157,7 @@ vi.mock("@/chat/pi/client", () => ({
     }
     return {
       object: {
-        thinking_level: "medium",
+        reasoning_level: "medium",
         confidence: 1,
         reason: "test-router",
       },

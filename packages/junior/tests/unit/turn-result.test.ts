@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { buildTurnResult } from "@/chat/services/turn-result";
 
-const thinkingSelection = {
-  thinkingLevel: "medium" as const,
+const reasoningSelection = {
+  reasoningLevel: "medium" as const,
   reason: "test",
 };
 
@@ -36,7 +36,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -69,7 +69,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -103,7 +103,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -140,7 +140,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe(
@@ -181,7 +181,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe(
@@ -220,7 +220,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -253,7 +253,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("Handled it.");
@@ -295,7 +295,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -322,7 +322,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -356,7 +356,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("");
@@ -395,7 +395,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe("Here's the image.");
@@ -440,7 +440,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
     });
 
     expect(reply.text).toBe(
@@ -467,7 +467,7 @@ describe("buildTurnResult", () => {
       shouldTrace: false,
       spanContext: {},
       modelId: "test-model",
-      thinkingSelection,
+      reasoningSelection,
       usage: {
         inputTokens: 321,
         outputTokens: 144,

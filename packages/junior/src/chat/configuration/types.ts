@@ -32,5 +32,8 @@ export interface ChannelConfigurationService {
   unset: (key: string) => Promise<boolean>;
   list: (options?: { prefix?: string }) => Promise<ConfigEntry[]>;
   resolve: (key: string) => Promise<unknown | undefined>;
-  resolveValues: (options?: { keys?: string[]; prefix?: string }) => Promise<Record<string, unknown>>;
+  resolveValues: (options?: {
+    keys?: string[];
+    prefix?: string;
+  }) => Promise<Record<string, unknown>>;
 }

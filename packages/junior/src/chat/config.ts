@@ -3,8 +3,8 @@ import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import {
-  parseTurnThinkingLevel,
-  type TurnThinkingLevel,
+  parseTurnReasoningLevel,
+  type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
   DEFAULT_HANDOFF_MODEL_PROFILE,
@@ -44,7 +44,7 @@ export interface BotConfig {
   loadingMessages: string[];
   modelId: string;
   modelProfiles: Readonly<Record<string, string>>;
-  reasoningLevel?: TurnThinkingLevel;
+  reasoningLevel?: TurnReasoningLevel;
   modelContextWindowTokens?: number;
   visionModelId?: string;
   turnTimeoutMs: number;
@@ -266,7 +266,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     reasoningLevel:
       toOptionalTrimmed(env.AI_REASONING_LEVEL) === undefined
         ? undefined
-        : parseTurnThinkingLevel(env.AI_REASONING_LEVEL),
+        : parseTurnReasoningLevel(env.AI_REASONING_LEVEL),
     fastModelId,
     embeddingModelId:
       validateEmbeddingModelId(env.AI_EMBEDDING_MODEL) ??

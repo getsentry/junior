@@ -351,7 +351,7 @@ export async function runLocalAgentTurn(
       modelId: reply.diagnostics.modelId,
       durationMs: reply.diagnostics.durationMs,
       usage: reply.diagnostics.usage,
-      reasoningLevel: reply.diagnostics.thinkingLevel,
+      reasoningLevel: reply.diagnostics.reasoningLevel,
       destination,
       source,
       actor: localActor,

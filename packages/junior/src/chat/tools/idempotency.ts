@@ -4,7 +4,9 @@ function stableSerialize(value: unknown): string {
   }
 
   if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort((a, b) => a[0].localeCompare(b[0]));
+    const entries = Object.entries(value as Record<string, unknown>).sort(
+      (a, b) => a[0].localeCompare(b[0]),
+    );
     return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`;
   }
 
@@ -12,6 +14,9 @@ function stableSerialize(value: unknown): string {
   return serialized === undefined ? String(value) : serialized;
 }
 
-export function createOperationKey(toolName: string, input: Record<string, unknown>): string {
+export function createOperationKey(
+  toolName: string,
+  input: Record<string, unknown>,
+): string {
   return `${toolName}:${stableSerialize(input)}`;
 }

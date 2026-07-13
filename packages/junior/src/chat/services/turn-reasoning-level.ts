@@ -2,8 +2,8 @@ import type { ThinkingLevel as AgentThinkingLevel } from "@earendil-works/pi-age
 import type { ThinkingLevel as ProviderThinkingLevel } from "@earendil-works/pi-ai";
 import { z } from "zod";
 import {
-  TURN_THINKING_LEVELS,
-  type TurnThinkingLevel,
+  TURN_REASONING_LEVELS,
+  type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
@@ -38,7 +38,7 @@ function coerceClassifierConfidence(value: unknown): unknown {
 }
 
 const turnExecutionProfileSchema = z.object({
-  thinking_level: z.enum(TURN_THINKING_LEVELS),
+  reasoning_level: z.enum(TURN_REASONING_LEVELS),
   confidence: z.preprocess(
     coerceClassifierConfidence,
     z.number().min(0).max(1),
@@ -46,15 +46,15 @@ const turnExecutionProfileSchema = z.object({
   reason: z.string().min(1),
 });
 
-export interface TurnThinkingSelection {
+export interface TurnReasoningSelection {
   confidence?: number;
-  thinkingLevel: TurnThinkingLevel;
+  reasoningLevel: TurnReasoningLevel;
   reason: string;
 }
 
-const CLASSIFIER_FALLBACK_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] =
+const CLASSIFIER_FALLBACK_REASONING_LEVEL: TurnReasoningSelection["reasoningLevel"] =
   "medium";
-const THINKING_LEVEL_RANK: Record<TurnThinkingLevel, number> = {
+const REASONING_LEVEL_RANK: Record<TurnReasoningLevel, number> = {
   none: 0,
   low: 1,
   medium: 2,
@@ -94,7 +94,7 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 
 function buildClassifierSystemPrompt(): string {
   return [
-    "You route assistant turns to the thinking level most likely to produce a complete, source-grounded answer.",
+    "You route assistant turns to the reasoning level most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
     "",
     "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
@@ -106,7 +106,7 @@ function buildClassifierSystemPrompt(): string {
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
-    "Return JSON only with thinking_level, confidence, and reason.",
+    "Return JSON only with reasoning_level, confidence, and reason.",
     "confidence must be a number from 0 to 1, not a word label.",
   ].join("\n");
 }
@@ -145,19 +145,19 @@ function buildClassifierPrompt(args: {
   return sections.join("\n");
 }
 
-/** Preserve an explicitly configured thinking level without invoking the router. */
-export function configuredTurnThinkingLevel(
-  thinkingLevel: TurnThinkingLevel,
+/** Preserve an explicitly configured reasoning level without invoking the router. */
+export function configuredTurnReasoningLevel(
+  reasoningLevel: TurnReasoningLevel,
   source: "agent_config" | "default",
-): TurnThinkingSelection {
+): TurnReasoningSelection {
   return {
-    thinkingLevel,
+    reasoningLevel,
     reason: `configured:${source}`,
   };
 }
 
-/** Choose the thinking level for the upcoming assistant turn when none is configured. */
-export async function selectTurnThinkingLevel(args: {
+/** Choose the reasoning level for the upcoming assistant turn when none is configured. */
+export async function selectTurnReasoningLevel(args: {
   completeObject: (args: {
     modelId: string;
     schema: typeof turnExecutionProfileSchema;
@@ -178,7 +178,7 @@ export async function selectTurnThinkingLevel(args: {
   currentTurnBlocks?: string[];
   fastModelId: string;
   messageText: string;
-}): Promise<TurnThinkingSelection> {
+}): Promise<TurnReasoningSelection> {
   const trimmedContext = trimContextForRouter(args.conversationContext);
   const instructionLength = args.messageText.trim().length;
   const turnBlockCount = (args.currentTurnBlocks ?? []).filter(
@@ -199,8 +199,8 @@ export async function selectTurnThinkingLevel(args: {
   };
 
   return withSpan(
-    "chat.route_thinking",
-    "chat.route_thinking",
+    "chat.route_reasoning",
+    "chat.route_reasoning",
     logContext,
     async () => {
       setSpanAttributes({
@@ -224,16 +224,16 @@ export async function selectTurnThinkingLevel(args: {
         },
         prompt,
       });
-      const normalizedSelection = applyThinkingFloor(selection, {
+      const normalizedSelection = applyReasoningFloor(selection, {
         minimum: trimmedContext || turnBlockCount > 0 ? "medium" : undefined,
       });
 
       setSpanAttributes({
-        "app.ai.thinking_level": normalizedSelection.thinkingLevel,
-        "app.ai.thinking_level_reason": normalizedSelection.reason,
+        "app.ai.reasoning_level": normalizedSelection.reasoningLevel,
+        "app.ai.reasoning_level_reason": normalizedSelection.reason,
         ...(normalizedSelection.confidence !== undefined
           ? {
-              "app.ai.thinking_level_confidence":
+              "app.ai.reasoning_level_confidence":
                 normalizedSelection.confidence,
             }
           : {}),
@@ -244,34 +244,35 @@ export async function selectTurnThinkingLevel(args: {
   );
 }
 
-function applyThinkingFloor(
-  selection: TurnThinkingSelection,
-  args: { minimum?: TurnThinkingLevel },
-): TurnThinkingSelection {
+function applyReasoningFloor(
+  selection: TurnReasoningSelection,
+  args: { minimum?: TurnReasoningLevel },
+): TurnReasoningSelection {
   const minimum = args.minimum;
   if (
     !minimum ||
-    selection.thinkingLevel === "none" ||
-    THINKING_LEVEL_RANK[selection.thinkingLevel] >= THINKING_LEVEL_RANK[minimum]
+    selection.reasoningLevel === "none" ||
+    REASONING_LEVEL_RANK[selection.reasoningLevel] >=
+      REASONING_LEVEL_RANK[minimum]
   ) {
     return selection;
   }
 
   return {
     ...selection,
-    thinkingLevel: minimum,
-    reason: `thinking_floor:${minimum}:${selection.reason}`,
+    reasoningLevel: minimum,
+    reason: `reasoning_floor:${minimum}:${selection.reason}`,
   };
 }
 
 async function classifyTurn(args: {
   completeObject: Parameters<
-    typeof selectTurnThinkingLevel
+    typeof selectTurnReasoningLevel
   >[0]["completeObject"];
   fastModelId: string;
   metadata: Record<string, string>;
   prompt: string;
-}): Promise<TurnThinkingSelection> {
+}): Promise<TurnReasoningSelection> {
   try {
     const result = await args.completeObject({
       modelId: args.fastModelId,
@@ -290,27 +291,27 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        thinkingLevel: CLASSIFIER_FALLBACK_THINKING_LEVEL,
+        reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
       };
     }
 
     return {
       confidence: parsed.confidence,
-      thinkingLevel: parsed.thinking_level,
+      reasoningLevel: parsed.reasoning_level,
       reason,
     };
   } catch {
     return {
-      thinkingLevel: CLASSIFIER_FALLBACK_THINKING_LEVEL,
+      reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
       reason: "classifier_error_default",
     };
   }
 }
 
-/** Convert a routing bucket into the Pi Agent thinking level for a main turn. */
-export function toAgentThinkingLevel(
-  level: TurnThinkingSelection["thinkingLevel"],
+/** Convert a routing bucket into the Pi Agent reasoning setting for a main turn. */
+export function toPiReasoningLevel(
+  level: TurnReasoningSelection["reasoningLevel"],
 ): AgentThinkingLevel | "off" {
   switch (level) {
     case "none":

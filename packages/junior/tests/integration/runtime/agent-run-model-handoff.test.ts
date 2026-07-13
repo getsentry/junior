@@ -9,8 +9,8 @@ const observations = vi.hoisted(() => ({
   mixedBatch: false,
   providerCalls: 0,
   requestedProfile: undefined as string | null | undefined,
-  routedThinkingLevel: "high",
-  thinkingLevels: [] as string[],
+  routedReasoningLevel: "high",
+  reasoningLevels: [] as string[],
   summaryCalls: 0,
   handoffStatusBeforeSummary: false,
   statuses: [] as string[],
@@ -33,7 +33,7 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
     ...actual,
     completeObject: async () => ({
       object: {
-        thinking_level: observations.routedThinkingLevel,
+        reasoning_level: observations.routedReasoningLevel,
         confidence: 0.99,
         reason: "complex implementation",
       },
@@ -48,85 +48,86 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
 });
 
 vi.mock("@/chat/pi/traced-stream", () => ({
-  createTracedStreamFn: () => async (model: any, context: any) => {
-    observations.providerCalls += 1;
-    observations.thinkingLevels.push(context.reasoning ?? "unset");
-    const call = observations.providerCalls;
-    if (call === 1) {
-      observations.initialModelId = model.id;
-      observations.initialToolNames = (context.tools ?? []).map(
-        (tool: { name: string }) => tool.name,
-      );
-    } else {
-      observations.afterHandoffModelId = model.id;
-      observations.afterHandoffToolNames = (context.tools ?? []).map(
-        (tool: { name: string }) => tool.name,
-      );
-    }
+  createTracedStreamFn:
+    () => async (model: any, context: any, options: any) => {
+      observations.providerCalls += 1;
+      observations.reasoningLevels.push(options?.reasoning ?? "unset");
+      const call = observations.providerCalls;
+      if (call === 1) {
+        observations.initialModelId = model.id;
+        observations.initialToolNames = (context.tools ?? []).map(
+          (tool: { name: string }) => tool.name,
+        );
+      } else {
+        observations.afterHandoffModelId = model.id;
+        observations.afterHandoffToolNames = (context.tools ?? []).map(
+          (tool: { name: string }) => tool.name,
+        );
+      }
 
-    const text =
-      call === 1
-        ? "The standard model started an answer that must be hidden."
-        : observations.mixedBatch
-          ? "Standard model recovered safely."
-          : "Handoff model completed it.";
-    const content: Array<Record<string, unknown>> = [{ type: "text", text }];
-    if (call === 1) {
-      content.push({
-        type: "toolCall",
-        id: "handoff-call-1",
-        name: "handoff",
-        arguments:
-          observations.requestedProfile === undefined
-            ? {}
-            : { profile: observations.requestedProfile },
-      });
-      if (observations.mixedBatch) {
+      const text =
+        call === 1
+          ? "The standard model started an answer that must be hidden."
+          : observations.mixedBatch
+            ? "Standard model recovered safely."
+            : "Handoff model completed it.";
+      const content: Array<Record<string, unknown>> = [{ type: "text", text }];
+      if (call === 1) {
         content.push({
           type: "toolCall",
-          id: "bash-call-1",
-          name: "bash",
-          arguments: { command: "touch should-not-run" },
+          id: "handoff-call-1",
+          name: "handoff",
+          arguments:
+            observations.requestedProfile === undefined
+              ? {}
+              : { profile: observations.requestedProfile },
         });
+        if (observations.mixedBatch) {
+          content.push({
+            type: "toolCall",
+            id: "bash-call-1",
+            name: "bash",
+            arguments: { command: "touch should-not-run" },
+          });
+        }
       }
-    }
-    const message = {
-      role: "assistant",
-      content,
-      stopReason: call === 1 ? "toolUse" : "stop",
-      api: "test",
-      provider: "test",
-      model: model.id,
-      timestamp: Date.now(),
-      usage:
-        call === 1
-          ? { input: 2, output: 1, totalTokens: 3 }
-          : observations.mixedBatch
-            ? { input: 2, output: 2, totalTokens: 4 }
-            : { input: 4, output: 3, totalTokens: 7 },
-    };
-    const partial = { ...message, content: [] };
-    return {
-      async *[Symbol.asyncIterator]() {
-        yield { type: "start", partial };
-        yield {
-          type: "text_delta",
-          contentIndex: 0,
-          delta: text,
-          partial: {
-            ...message,
-            content: [{ type: "text", text }],
-          },
-        };
-        yield {
-          type: "done",
-          reason: message.stopReason,
-          message,
-        };
-      },
-      result: async () => message,
-    };
-  },
+      const message = {
+        role: "assistant",
+        content,
+        stopReason: call === 1 ? "toolUse" : "stop",
+        api: "test",
+        provider: "test",
+        model: model.id,
+        timestamp: Date.now(),
+        usage:
+          call === 1
+            ? { input: 2, output: 1, totalTokens: 3 }
+            : observations.mixedBatch
+              ? { input: 2, output: 2, totalTokens: 4 }
+              : { input: 4, output: 3, totalTokens: 7 },
+      };
+      const partial = { ...message, content: [] };
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "start", partial };
+          yield {
+            type: "text_delta",
+            contentIndex: 0,
+            delta: text,
+            partial: {
+              ...message,
+              content: [{ type: "text", text }],
+            },
+          };
+          yield {
+            type: "done",
+            reason: message.stopReason,
+            message,
+          };
+        },
+        result: async () => message,
+      };
+    },
 }));
 
 vi.mock("@/chat/skills", async (importOriginal) => ({
@@ -157,8 +158,8 @@ describe("executeAgentRun model handoff", () => {
     observations.mixedBatch = false;
     observations.providerCalls = 0;
     observations.requestedProfile = undefined;
-    observations.routedThinkingLevel = "high";
-    observations.thinkingLevels = [];
+    observations.routedReasoningLevel = "high";
+    observations.reasoningLevels = [];
     observations.summaryCalls = 0;
     observations.handoffStatusBeforeSummary = false;
     observations.statuses = [];
@@ -212,7 +213,7 @@ describe("executeAgentRun model handoff", () => {
       observations.afterHandoffModelId,
     );
     expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.thinkingLevels.slice(0, 2)).toEqual(["high", "high"]);
+    expect(observations.reasoningLevels.slice(0, 2)).toEqual(["high", "high"]);
     expect(observations.afterHandoffToolNames).not.toContain("handoff");
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames.filter((name) => name !== "handoff"),
@@ -276,7 +277,7 @@ describe("executeAgentRun model handoff", () => {
 
   it("preserves explicit agent reasoning across handoff without routing", async () => {
     observations.requestedProfile = null;
-    observations.routedThinkingLevel = "low";
+    observations.routedReasoningLevel = "low";
     const conversationId = "local:test:model-handoff-explicit-reasoning";
     const outcome = await executeAgentRun({
       input: { messageText: "Implement the multi-file refactor." },
@@ -293,8 +294,8 @@ describe("executeAgentRun model handoff", () => {
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
-    expect(outcome.result.diagnostics.thinkingLevel).toBe("xhigh");
-    expect(observations.thinkingLevels).toEqual(["xhigh", "xhigh"]);
+    expect(outcome.result.diagnostics.reasoningLevel).toBe("xhigh");
+    expect(observations.reasoningLevels).toEqual(["xhigh", "xhigh"]);
   });
 
   it("keeps handoff independent from status observer failures", async () => {

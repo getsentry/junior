@@ -1482,7 +1482,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 durationMs: reply.diagnostics.durationMs,
                 usage: reply.diagnostics.usage,
-                reasoningLevel: reply.diagnostics.thinkingLevel,
+                reasoningLevel: reply.diagnostics.reasoningLevel,
                 destination,
                 destinationVisibility,
                 source,

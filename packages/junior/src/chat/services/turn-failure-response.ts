@@ -87,9 +87,9 @@ export function getAgentTurnDiagnosticsAttributes(
     "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
     "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
     "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
-    ...(reply.diagnostics.thinkingLevel
+    ...(reply.diagnostics.reasoningLevel
       ? {
-          "gen_ai.request.reasoning.level": reply.diagnostics.thinkingLevel,
+          "gen_ai.request.reasoning.level": reply.diagnostics.reasoningLevel,
         }
       : {}),
     ...(reply.diagnostics.stopReason

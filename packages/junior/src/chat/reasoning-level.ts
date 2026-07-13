@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const TURN_THINKING_LEVELS = [
+export const TURN_REASONING_LEVELS = [
   "none",
   "low",
   "medium",
@@ -8,9 +8,9 @@ export const TURN_THINKING_LEVELS = [
   "xhigh",
 ] as const;
 
-export type TurnThinkingLevel = (typeof TURN_THINKING_LEVELS)[number];
+export type TurnReasoningLevel = (typeof TURN_REASONING_LEVELS)[number];
 
 /** Validate a configured main-agent reasoning level. */
-export function parseTurnThinkingLevel(value: unknown): TurnThinkingLevel {
-  return z.enum(TURN_THINKING_LEVELS).parse(value);
+export function parseTurnReasoningLevel(value: unknown): TurnReasoningLevel {
+  return z.enum(TURN_REASONING_LEVELS).parse(value);
 }

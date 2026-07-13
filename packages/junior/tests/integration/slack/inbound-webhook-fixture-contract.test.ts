@@ -7,7 +7,7 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
     const payload = slackEventsApiEnvelope({
       eventType: "app_mention",
       channel: "C12345",
-      ts: "1700000000.500"
+      ts: "1700000000.500",
     });
 
     expect(isSlackEventsApiEnvelope(payload)).toBe(true);
@@ -16,7 +16,7 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
       channel: "C12345",
       ts: "1700000000.500",
       event_ts: "1700000000.500",
-      channel_type: "channel"
+      channel_type: "channel",
     });
   });
 
@@ -25,7 +25,7 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
       eventType: "message",
       channel: "D12345",
       ts: "1700000000.700",
-      threadTs: "1700000000.100"
+      threadTs: "1700000000.100",
     });
 
     expect(isSlackEventsApiEnvelope(payload)).toBe(true);
@@ -33,7 +33,7 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
       type: "message",
       channel_type: "im",
       ts: "1700000000.700",
-      thread_ts: "1700000000.100"
+      thread_ts: "1700000000.100",
     });
   });
 
@@ -43,8 +43,8 @@ describe("Slack fixtures: inbound webhook envelopes", () => {
       ...payload,
       event: {
         ...payload.event,
-        event_ts: undefined
-      }
+        event_ts: undefined,
+      },
     };
 
     expect(isSlackEventsApiEnvelope(malformed)).toBe(false);

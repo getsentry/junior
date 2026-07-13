@@ -485,7 +485,7 @@ export async function runAgentDispatchSlice(
         modelId: reply.diagnostics.modelId,
         durationMs: reply.diagnostics.durationMs,
         usage: reply.diagnostics.usage,
-        reasoningLevel: reply.diagnostics.thinkingLevel,
+        reasoningLevel: reply.diagnostics.reasoningLevel,
         destination: dispatch.destination,
         source: dispatch.source,
         actor: dispatch.actor,
