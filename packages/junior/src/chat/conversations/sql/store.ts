@@ -600,16 +600,6 @@ export class SqlStore implements ConversationStore {
               (sameRun ? (row?.executionUsage ?? null) : null),
           })
           .where(eq(juniorConversations.conversationId, args.conversationId));
-      } else if (incomingIsFresh && !sameRun) {
-        await this.executor
-          .db()
-          .update(juniorConversations)
-          .set({
-            metricRunId: null,
-            executionDurationMs: 0,
-            executionUsage: null,
-          })
-          .where(eq(juniorConversations.conversationId, args.conversationId));
       }
     });
   }

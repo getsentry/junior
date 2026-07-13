@@ -229,7 +229,7 @@ describe("conversation transcript SQL stores", () => {
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
-      expect(applied?.count).toBe(3);
+      expect(applied?.count).toBe(4);
     } finally {
       await fixture.close();
     }
