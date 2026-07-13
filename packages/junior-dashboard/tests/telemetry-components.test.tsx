@@ -1171,6 +1171,48 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("DMs, private channels, and unknown visibility");
   });
 
+  it("keeps cached location rows visible after a refresh failure", () => {
+    const data: LocationDirectoryReport = {
+      generatedAt: "2026-01-05T00:00:00.000Z",
+      locations: [
+        {
+          active: 0,
+          conversations: 1,
+          durationMs: 1_000,
+          failed: 0,
+          firstSeenAt: "2026-01-01T00:00:00.000Z",
+          id: "destination-1",
+          kind: "channel",
+          label: "#proj-alpha",
+          lastSeenAt: "2026-01-05T00:00:00.000Z",
+          provider: "slack",
+          providerDestinationId: "C1",
+          visibility: "public",
+        },
+      ],
+      privateActivity: {
+        active: 0,
+        conversations: 0,
+        durationMs: 0,
+        failed: 0,
+        label: "Private activity",
+      },
+      sampleLimit: 1,
+      sampleSize: 1,
+      source: "conversation_index",
+      truncated: false,
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <LocationsPageContent data={data} error={new Error("refresh failed")} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Location telemetry refresh failed");
+    expect(html).toContain("#proj-alpha");
+  });
+
   it("renders public location detail with people and recent conversations", () => {
     const detail: LocationDetailReport = {
       active: 0,

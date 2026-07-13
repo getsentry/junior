@@ -73,10 +73,13 @@ export function LocationsPageContent(props: {
         {props.error ? (
           <div className="p-3">
             <EmptyTelemetry>
-              Location telemetry is unavailable. Try refreshing the dashboard.
+              {props.data
+                ? "Location telemetry refresh failed. Showing cached data."
+                : "Location telemetry is unavailable. Try refreshing the dashboard."}
             </EmptyTelemetry>
           </div>
-        ) : (
+        ) : null}
+        {props.data ? (
           <>
             <LocationToolbar
               query={search}
@@ -86,7 +89,7 @@ export function LocationsPageContent(props: {
             />
             <LocationDirectory locations={locations} />
           </>
-        )}
+        ) : null}
       </Section>
       {props.data && props.data.privateActivity.conversations > 0 ? (
         <PrivateActivity item={props.data.privateActivity} />
