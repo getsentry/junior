@@ -14,6 +14,9 @@ interface PluginMigrationResult {
   scanned: number;
 }
 
+const LEGACY_SCHEDULER_BASELINE_HASH =
+  "d1d2f712181dd3a0557808f0fc67fd0722691d25f4c8cfb816b77c71d19e1e42";
+
 function migrationTable(pluginName: string): string {
   const label = pluginName
     .toLowerCase()
@@ -72,6 +75,7 @@ async function legacyMigrationHashes(
 function adoptedMigration(
   migrations: readonly MigrationMeta[],
   legacyHashes: ReadonlySet<string>,
+  pluginName: string,
 ): MigrationMeta | undefined {
   let adopted: MigrationMeta | undefined;
   for (const migration of migrations) {
@@ -80,10 +84,11 @@ function adoptedMigration(
     }
     adopted = migration;
   }
-  // A Drizzle baseline may re-express the deployed legacy schema without
-  // preserving its SQL checksum. Legacy state still adopts only the baseline;
-  // later Drizzle migrations must run normally.
-  if (!adopted && legacyHashes.size > 0) {
+  if (
+    !adopted &&
+    pluginName === "scheduler" &&
+    legacyHashes.has(LEGACY_SCHEDULER_BASELINE_HASH)
+  ) {
     return migrations[0];
   }
   return adopted;
@@ -99,7 +104,11 @@ async function adoptLegacyMigrationState(args: {
     args.executor,
     args.pluginName,
   );
-  const migration = adoptedMigration(args.migrations, legacyHashes);
+  const migration = adoptedMigration(
+    args.migrations,
+    legacyHashes,
+    args.pluginName,
+  );
   if (!migration) {
     return undefined;
   }

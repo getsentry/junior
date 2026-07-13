@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readdirSync } from "node:fs";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
@@ -77,6 +78,12 @@ function memoryMigrationsDir(): string {
   return path.resolve(process.cwd(), "../junior-memory/migrations");
 }
 
+function memoryMigrationFiles(): string[] {
+  return readdirSync(memoryMigrationsDir())
+    .filter((filename) => filename.endsWith(".sql"))
+    .sort();
+}
+
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
@@ -89,6 +96,95 @@ async function migrateMemorySchema(
 }
 
 describe("memory plugin host wiring", () => {
+  it("adopts exact legacy migration hashes without replaying them", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const migrations = readMigrationFiles({
+      migrationsFolder: memoryMigrationsDir(),
+    });
+    const migrationFiles = memoryMigrationFiles();
+    expect(migrationFiles).toHaveLength(migrations.length);
+
+    try {
+      await migrateMemorySchema(fixture);
+      const [migrationTable] = await fixture.sql.query<{ tablename: string }>(`
+SELECT tablename
+FROM pg_tables
+WHERE schemaname = 'drizzle'
+  AND tablename LIKE '__drizzle_memory_%'
+`);
+      expect(migrationTable).toBeDefined();
+      await fixture.sql.execute(
+        `DROP TABLE drizzle.${migrationTable!.tablename}`,
+      );
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      for (const [index, migration] of migrations.entries()) {
+        await fixture.sql.execute(
+          `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
+          [`plugin:memory/${migrationFiles[index]}`, migration.hash],
+        );
+      }
+
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          {
+            dir: memoryMigrationsDir(),
+            pluginName: "memory",
+          },
+        ]),
+      ).resolves.toEqual({
+        existing: migrations.length,
+        migrated: 0,
+        scanned: migrations.length,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not adopt an unknown memory legacy checksum", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const migrationCount = readMigrationFiles({
+      migrationsFolder: memoryMigrationsDir(),
+    }).length;
+    const [baselineFile] = memoryMigrationFiles();
+    expect(baselineFile).toBeDefined();
+
+    try {
+      await fixture.sql.execute(`
+CREATE TABLE junior_schema_migrations (
+  id TEXT PRIMARY KEY,
+  checksum TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+`);
+      await fixture.sql.execute(
+        `INSERT INTO junior_schema_migrations (id, checksum) VALUES ($1, $2)`,
+        [`plugin:memory/${baselineFile}`, "unknown-memory-checksum"],
+      );
+
+      await expect(
+        migratePluginSchemas(fixture.sql, [
+          {
+            dir: memoryMigrationsDir(),
+            pluginName: "memory",
+          },
+        ]),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: migrationCount,
+        scanned: migrationCount,
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("applies packaged migrations through plugin discovery", async () => {
     const stateAdapter = createMemoryState();
     await stateAdapter.connect();
