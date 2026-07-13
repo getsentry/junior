@@ -143,13 +143,15 @@ function historyContent(args: {
             ])
           : -1;
     const summary =
-      replacementSummaryIndex >= 0
+      marker?.entry.reason === "compaction" && replacementSummaryIndex >= 0
         ? summaryAfterPrefix(
             projected[replacementSummaryIndex]!,
-            marker?.entry.reason === "handoff"
-              ? [MODEL_HANDOFF_SUMMARY_PREFIX]
-              : COMPACTION_SUMMARY_PREFIXES,
+            COMPACTION_SUMMARY_PREFIXES,
           )
+        : undefined;
+    const handoffMessage =
+      marker?.entry.reason === "handoff" && replacementSummaryIndex >= 0
+        ? messageText(projected[replacementSummaryIndex]!) || undefined
         : undefined;
 
     if (marker?.entry.reason === "compaction") {
@@ -166,7 +168,9 @@ function historyContent(args: {
         createdAt: new Date(marker.createdAtMs).toISOString(),
         ...(previousModelId ? { fromModelId: previousModelId } : {}),
         toModelId: marker.entry.modelId,
-        ...(args.canExposePayload && summary ? { summary } : {}),
+        ...(args.canExposePayload && handoffMessage
+          ? { message: handoffMessage }
+          : {}),
         transcriptIndex: messages.length,
       });
     }

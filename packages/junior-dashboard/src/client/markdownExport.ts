@@ -194,7 +194,8 @@ function appendContextEvent(
   } else {
     addMetaLine(lines, "Model", event.modelId);
   }
-  if (event.summary) lines.push("", event.summary);
+  const body = event.type === "model_handoff" ? event.message : event.summary;
+  if (body) lines.push("", body);
 }
 
 function appendMessage(

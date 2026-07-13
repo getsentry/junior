@@ -163,7 +163,7 @@ export function entryMatchesSearch(
       ? textContains("model handoff", normalizedQuery) ||
           textContains(event.fromModelId, normalizedQuery) ||
           textContains(event.toModelId, normalizedQuery) ||
-          textContains(event.summary, normalizedQuery)
+          textContains(event.message, normalizedQuery)
       : textContains("context compacted", normalizedQuery) ||
           textContains(event.modelId, normalizedQuery) ||
           textContains(event.summary, normalizedQuery);

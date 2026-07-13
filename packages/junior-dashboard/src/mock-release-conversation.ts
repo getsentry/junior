@@ -580,8 +580,8 @@ export function longReleaseConversation(
         createdAt: iso(Date.parse(secondStartedAt), 129_000),
         fromModelId: "openai/gpt-5.4",
         toModelId: "openai/gpt-5.6-sol",
-        summary:
-          "Finish the self-update change after the build failed only because CACHE_URL is unavailable in the sandbox. Check and typecheck passed; commit package.json and pnpm-lock.yaml, push the branch, and open a draft PR that records the build limitation.",
+        message:
+          "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nFinish the self-update change after the build failed only because CACHE_URL is unavailable in the sandbox. Check and typecheck passed; commit package.json and pnpm-lock.yaml, push the branch, and open a draft PR that records the build limitation.",
         transcriptIndex: handoffTranscriptIndex,
       },
     ],

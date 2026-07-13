@@ -80,7 +80,7 @@ describe("dashboard markdown export", () => {
           createdAt: "2026-01-01T00:00:04.000Z",
           fromModelId: "openai/gpt-5.4",
           toModelId: "openai/gpt-5.6-sol",
-          summary: "Continue with the implementation evidence.",
+          message: "Continue with the implementation evidence.",
           transcriptIndex: 3,
         },
       ],

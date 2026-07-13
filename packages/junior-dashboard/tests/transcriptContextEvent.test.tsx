@@ -40,7 +40,7 @@ describe("transcript context events", () => {
     expect(html).toContain("Earlier release checks passed.");
   });
 
-  it("renders a model handoff with source, destination, and markdown summary", () => {
+  it("renders a model handoff as an expandable raw user message", () => {
     const html = renderToStaticMarkup(
       withQueryClient(
         <TranscriptContextEventView
@@ -51,7 +51,8 @@ describe("transcript context events", () => {
               createdAt: "2026-01-01T00:00:04.000Z",
               fromModelId: "openai/gpt-5.4",
               toModelId: "openai/gpt-5.6-sol",
-              summary: "**Next:** Continue with the migration fix.",
+              message:
+                "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\n**Next:** Continue with the migration fix.",
               transcriptIndex: 0,
             },
           }}
@@ -62,8 +63,9 @@ describe("transcript context events", () => {
     expect(html).toContain("Model handoff");
     expect(html).toContain("gpt-5.4");
     expect(html).toContain("gpt-5.6-sol");
+    expect(html).toContain("<details");
     expect(html).toContain("**Next:**");
-    expect(html).toContain("Next:");
+    expect(html).not.toContain("<strong>Next:</strong>");
     expect(html).toContain("Continue with the migration fix.");
   });
 

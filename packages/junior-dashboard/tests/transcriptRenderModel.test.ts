@@ -297,7 +297,7 @@ describe("transcript render model", () => {
           createdAt: "2026-01-01T00:00:04.000Z",
           fromModelId: "openai/gpt-5.4",
           toModelId: "openai/gpt-5.6-sol",
-          summary: "Continue with the coding fix.",
+          message: "Continue with the coding fix.",
           transcriptIndex: 2,
         },
       ],

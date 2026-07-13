@@ -158,7 +158,7 @@ export const conversationContextEventSchema = z.discriminatedUnion("type", [
       type: z.literal("model_handoff"),
       createdAt: z.string(),
       fromModelId: z.string().optional(),
-      summary: z.string().optional(),
+      message: z.string().optional(),
       toModelId: z.string(),
       transcriptIndex: z.number().int().nonnegative(),
     })

@@ -23,8 +23,83 @@ export function TranscriptContextEventView(props: {
   timestamp?: number;
 }) {
   const event = props.part.event;
-  const handoff = event.type === "model_handoff";
-  const summary = event.summary;
+  if (event.type === "model_handoff") {
+    return <ModelHandoffView event={event} timestamp={props.timestamp} />;
+  }
+  return <ContextCompactedView event={event} timestamp={props.timestamp} />;
+}
+
+function ModelHandoffView(props: {
+  event: Extract<
+    TranscriptViewContextEventPart["event"],
+    { type: "model_handoff" }
+  >;
+  timestamp?: number;
+}) {
+  const { active: searchActive } = useTranscriptSearch();
+  const header = (
+    <>
+      <div
+        aria-hidden="true"
+        className="grid size-8 place-items-center rounded-md border border-[#beaaff]/25 bg-[#beaaff]/10 text-violet-200"
+      >
+        <Send size={15} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <strong className="text-[0.88rem] font-bold text-[#e8e3f8]">
+            Model handoff
+          </strong>
+          {typeof props.timestamp === "number" ? (
+            <span className="text-[0.76rem] text-[#777]">
+              {formatMessageTimestamp(props.timestamp)}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[0.8rem] text-[#888]">
+          {props.event.fromModelId ? (
+            <ModelLabel modelId={props.event.fromModelId} />
+          ) : (
+            <span>Previous model</span>
+          )}
+          <ArrowRight aria-hidden="true" size={13} />
+          <ModelLabel modelId={props.event.toModelId} />
+        </div>
+      </div>
+    </>
+  );
+  const className =
+    "min-w-0 border-y border-[#beaaff]/15 bg-[#beaaff]/[0.045] first:mt-1";
+
+  if (!props.event.message) {
+    return (
+      <article
+        className={`${className} grid grid-cols-[2rem_minmax(0,1fr)] gap-3 px-3 py-3`}
+      >
+        {header}
+      </article>
+    );
+  }
+
+  return (
+    <details className={className} open={searchActive || undefined}>
+      <summary className="grid cursor-pointer list-none grid-cols-[2rem_minmax(0,1fr)] gap-3 px-3 py-3 transition-colors hover:bg-white/[0.025] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#beaaff]/55 [&::-webkit-details-marker]:hidden">
+        {header}
+      </summary>
+      <pre className="min-w-0 whitespace-pre-wrap break-words border-t border-[#beaaff]/15 px-3 py-3 font-mono text-[0.82rem] leading-relaxed text-[#c8c8c8]">
+        <HighlightText text={props.event.message} />
+      </pre>
+    </details>
+  );
+}
+
+function ContextCompactedView(props: {
+  event: Extract<
+    TranscriptViewContextEventPart["event"],
+    { type: "context_compacted" }
+  >;
+  timestamp?: number;
+}) {
   const { active: searchActive } = useTranscriptSearch();
 
   return (
@@ -33,12 +108,12 @@ export function TranscriptContextEventView(props: {
         aria-hidden="true"
         className="grid size-8 place-items-center rounded-md border border-[#beaaff]/25 bg-[#beaaff]/10 text-violet-200"
       >
-        {handoff ? <Send size={15} /> : <Minimize2 size={15} />}
+        <Minimize2 size={15} />
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <strong className="text-[0.88rem] font-bold text-[#e8e3f8]">
-            {handoff ? "Model handoff" : "Context compacted"}
+            Context compacted
           </strong>
           {typeof props.timestamp === "number" ? (
             <span className="text-[0.76rem] text-[#777]">
@@ -47,19 +122,9 @@ export function TranscriptContextEventView(props: {
           ) : null}
         </div>
 
-        {handoff ? (
-          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[0.8rem] text-[#888]">
-            {event.fromModelId ? (
-              <ModelLabel modelId={event.fromModelId} />
-            ) : (
-              <span>Previous model</span>
-            )}
-            <ArrowRight aria-hidden="true" size={13} />
-            <ModelLabel modelId={event.toModelId} />
-          </div>
-        ) : event.modelId ? (
+        {props.event.modelId ? (
           <div className="mt-1.5 text-[0.8rem] text-[#888]">
-            Continuing with <ModelLabel modelId={event.modelId} />
+            Continuing with <ModelLabel modelId={props.event.modelId} />
           </div>
         ) : (
           <div className="mt-1.5 text-[0.8rem] text-[#888]">
@@ -67,7 +132,7 @@ export function TranscriptContextEventView(props: {
           </div>
         )}
 
-        {summary ? (
+        {props.event.summary ? (
           <details
             className="mt-2 text-[0.82rem] leading-relaxed text-[#b8b8b8]"
             open={searchActive || undefined}
@@ -77,9 +142,9 @@ export function TranscriptContextEventView(props: {
             </summary>
             <div className="mt-2 border-l-2 border-[#beaaff]/25 pl-3 text-[#c8c8c8]">
               {searchActive ? (
-                <HighlightText text={summary} />
+                <HighlightText text={props.event.summary} />
               ) : (
-                <TranscriptMarkdown text={summary} />
+                <TranscriptMarkdown text={props.event.summary} />
               )}
             </div>
           </details>

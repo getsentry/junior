@@ -296,7 +296,7 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "context_event") {
         const event = part.event;
         return event.type === "model_handoff"
-          ? ["model handoff", event.fromModelId, event.toModelId, event.summary]
+          ? ["model handoff", event.fromModelId, event.toModelId, event.message]
               .filter(isString)
               .join("\n")
           : ["context compacted", event.modelId, event.summary]

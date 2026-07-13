@@ -1619,8 +1619,8 @@ describe("dashboard reporting", () => {
         type: "model_handoff",
         fromModelId: "openai/gpt-5.4",
         toModelId: "openai/gpt-5.6-sol",
-        summary:
-          "The release migration fails because its constraint is created too late.",
+        message:
+          "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nThe release migration fails because its constraint is created too late.",
       }),
     ]);
     expect(JSON.stringify(report.transcript)).toContain(
@@ -1805,7 +1805,8 @@ describe("dashboard reporting", () => {
         type: "model_handoff",
         fromModelId: "openai/gpt-5.4",
         toModelId: "openai/gpt-5.6-sol",
-        summary: "Implement the prepared release plan.",
+        message:
+          "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nImplement the prepared release plan.",
       }),
     ]);
     expect(report.contextEvents?.[0]?.transcriptIndex).toBeLessThanOrEqual(
