@@ -307,11 +307,12 @@ export async function readLocationDetailFromSql(
       days.set(date, day);
     }
 
-    const actor = summary.actorIdentity ?? {};
-    const actorKey = row.actorIdentityId ?? "unknown";
-    const actorItem = actors.get(actorKey) ?? emptyActor(actor);
-    addMetrics(actorItem, metrics);
-    actors.set(actorKey, actorItem);
+    if (row.actorIdentityId) {
+      const actor = summary.actorIdentity ?? {};
+      const actorItem = actors.get(row.actorIdentityId) ?? emptyActor(actor);
+      addMetrics(actorItem, metrics);
+      actors.set(row.actorIdentityId, actorItem);
+    }
   }
 
   const end = new Date(nowMs);

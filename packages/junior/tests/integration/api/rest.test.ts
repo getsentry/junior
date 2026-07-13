@@ -51,6 +51,20 @@ describe("Junior REST API", () => {
       source: "slack",
       updatedAtMs: Date.parse("2026-06-15T11:51:00.000Z"),
     });
+    const unidentifiedConversationId = "slack:C1:unidentified-rest-api";
+    await store.recordActivity({
+      channelName: "product",
+      conversationId: unidentifiedConversationId,
+      destination: {
+        channelId: "C1",
+        platform: "slack",
+        teamId: "T1",
+      },
+      nowMs: Date.parse("2026-06-15T11:45:00.000Z"),
+      source: "slack",
+      title: "Unidentified public conversation",
+      visibility: "public",
+    });
     await store.recordActivity({
       channelName: "secret-plans",
       conversationId: "slack:C2:private-rest-api",
@@ -110,7 +124,7 @@ describe("Junior REST API", () => {
     const stats = await app.request("http://localhost/api/conversations/stats");
     expect(stats.status).toBe(200);
     await expect(stats.json()).resolves.toMatchObject({
-      conversations: 3,
+      conversations: 4,
       durationMs: 1_500,
       tokens: 120,
     });
@@ -202,9 +216,19 @@ describe("Junior REST API", () => {
       `http://localhost/api/locations/${locationReport.locations[0]?.id}`,
     );
     expect(location.status).toBe(200);
-    await expect(location.json()).resolves.toMatchObject({
+    const locationDetail = await location.json();
+    expect(locationDetail).toMatchObject({
+      actors: [
+        {
+          actor: { email: "person@example.com" },
+          conversations: 1,
+        },
+      ],
+      conversations: 2,
       label: "#product",
-      recentConversations: [{ conversationId }],
+      recentConversations: expect.arrayContaining([
+        expect.objectContaining({ conversationId }),
+      ]),
     });
 
     const [privateDestination] = await getDb()
