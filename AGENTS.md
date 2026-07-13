@@ -41,6 +41,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 ## Documentation Routing
 
 - `policies/README.md`: durable repo-wide engineering rules.
+- `TERMINOLOGY.md`: canonical repo-wide runtime vocabulary.
 - Owning package or module `README.md`: implemented architecture and non-obvious invariants.
 - Code, schemas, exported types, and tests: authoritative implementation contracts.
 - `openspec/changes/<slug>/`: temporary implementation plans; delete completed plans.
