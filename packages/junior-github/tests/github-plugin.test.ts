@@ -533,7 +533,7 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/issues",
       }),
     ).toMatchObject({
-      name: "installation-issues-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.issue-create",
@@ -545,7 +545,7 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/pulls",
       }),
     ).toMatchObject({
-      name: "installation-pull-requests-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.pull-create",
@@ -565,7 +565,7 @@ describe("github plugin", () => {
         url: "https://api.github.com/repos/getsentry/junior/actions/workflows/release.yml/dispatches",
       }),
     ).toMatchObject({
-      name: "installation-actions-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.actions-workflow-dispatch",
@@ -1312,7 +1312,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-receive-pack?service=git-upload-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
@@ -1323,7 +1323,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/git-upload-pack?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
@@ -1337,7 +1337,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior.git/info/refs?service=git-receive-pack",
       }),
     ).toMatchObject({
-      name: "installation-pr-branch-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.git-write",
@@ -1551,7 +1551,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/issues/780",
       }),
     ).resolves.toMatchObject({
-      name: "installation-issues-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.issues-write",
@@ -1574,7 +1574,7 @@ Conversation: \`local:test:old-conversation\`
         url: "https://api.github.com/repos/getsentry/junior/pulls/780",
       }),
     ).resolves.toMatchObject({
-      name: "installation-pull-requests-write",
+      name: "installation-write",
       access: "write",
       leaseScope: "repository:getsentry/junior",
       reason: "github.pull-requests-write",
@@ -1616,7 +1616,7 @@ Conversation: \`local:test:old-conversation\`
     const actionsResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-actions-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
         reason: "github.actions-workflow-dispatch",
@@ -1630,7 +1630,7 @@ Conversation: \`local:test:old-conversation\`
     const issueResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-issues-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
         reason: "github.issue-create",
@@ -1644,7 +1644,7 @@ Conversation: \`local:test:old-conversation\`
     const pullResult = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "scheduler" },
       grant: {
-        name: "installation-pull-requests-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
         reason: "github.pull-create",
@@ -1659,48 +1659,22 @@ Conversation: \`local:test:old-conversation\`
     expect(issueResult?.type).toBe("lease");
     expect(pullResult?.type).toBe("lease");
     expect(requests).toHaveLength(3);
-    expect(requests[0]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: {
-          actions: "write",
-          contents: "write",
-          issues: "write",
-          metadata: "read",
-          pull_requests: "write",
-          workflows: "write",
+    for (const request of requests) {
+      expect(request).toMatchObject({
+        method: "POST",
+        body: {
+          permissions: {
+            actions: "write",
+            contents: "write",
+            issues: "write",
+            metadata: "read",
+            pull_requests: "write",
+            workflows: "write",
+          },
+          repositories: ["junior"],
         },
-        repositories: ["junior"],
-      },
-    });
-    expect(requests[1]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: {
-          actions: "write",
-          contents: "write",
-          issues: "write",
-          metadata: "read",
-          pull_requests: "write",
-          workflows: "write",
-        },
-        repositories: ["junior"],
-      },
-    });
-    expect(requests[2]).toMatchObject({
-      method: "POST",
-      body: {
-        permissions: {
-          actions: "write",
-          contents: "write",
-          issues: "write",
-          metadata: "read",
-          pull_requests: "write",
-          workflows: "write",
-        },
-        repositories: ["junior"],
-      },
-    });
+      });
+    }
   });
 
   it("issues repository-scoped push credentials for headless resource events", async () => {
@@ -1723,7 +1697,7 @@ Conversation: \`local:test:old-conversation\`
     const result = await plugin.hooks?.issueCredential?.({
       actor: { platform: "system", name: "resource-event" },
       grant: {
-        name: "installation-pr-branch-write",
+        name: "installation-write",
         access: "write",
         leaseScope: "repository:getsentry/junior",
         reason: "github.git-write",

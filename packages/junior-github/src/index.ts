@@ -77,11 +77,8 @@ export interface GitHubPluginOptions {
 
 type JsonRecord = Record<string, unknown>;
 type GitHubGrantName =
-  | "installation-actions-write"
-  | "installation-issues-write"
-  | "installation-pr-branch-write"
-  | "installation-pull-requests-write"
   | "installation-read"
+  | "installation-write"
   | "user-read"
   | "user-write";
 type GitHubGrantReason =
@@ -1116,11 +1113,6 @@ async function issueInstallationCredential(
   const permissions =
     options.permissions ??
     (await options.loadPermissions?.({ appJwt, installationId }));
-  if (!permissions) {
-    throw new GitHubPluginSetupError(
-      "GitHub installation credential permissions are not configured.",
-    );
-  }
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
     `/app/installations/${installationId}/access_tokens`,
@@ -1128,7 +1120,7 @@ async function issueInstallationCredential(
       method: "POST",
       token: appJwt,
       body: {
-        permissions,
+        ...(permissions ? { permissions } : {}),
         ...(options.repositories ? { repositories: options.repositories } : {}),
       },
     },
@@ -1641,35 +1633,17 @@ function installationGrantForWrite(
   upstreamUrl: URL,
 ): GitHubGrant | undefined {
   const leaseScope = repositoryLeaseScope(upstreamUrl);
-  if (reason === "github.actions-workflow-dispatch") {
-    return grantForAccess(
-      "write",
-      reason,
-      "installation-actions-write",
-      leaseScope,
-    );
-  }
-  if (reason === "github.issue-create" || reason === "github.issues-write") {
-    return grantForAccess(
-      "write",
-      reason,
-      "installation-issues-write",
-      leaseScope,
-    );
+  if (reason === "github.pull-review-write") {
+    return grantForAccess("write", reason, "user-write", leaseScope);
   }
   if (
+    reason === "github.actions-workflow-dispatch" ||
+    reason === "github.issue-create" ||
+    reason === "github.issues-write" ||
     reason === "github.pull-create" ||
     reason === "github.pull-requests-write"
   ) {
-    return grantForAccess(
-      "write",
-      reason,
-      "installation-pull-requests-write",
-      leaseScope,
-    );
-  }
-  if (reason === "github.pull-review-write") {
-    return grantForAccess("write", reason, "user-write", leaseScope);
+    return grantForAccess("write", reason, "installation-write", leaseScope);
   }
   return undefined;
 }
@@ -1693,7 +1667,7 @@ async function githubGrantForEgress(
       return grantForAccess(
         "write",
         "github.git-write",
-        "installation-pr-branch-write",
+        "installation-write",
         repositoryLeaseScope(upstreamUrl),
       );
     }
@@ -1745,52 +1719,6 @@ async function githubGrantForEgress(
     );
   }
   return grantForAccess(access, "github.api-read", "installation-read");
-}
-
-function configuredWritePermissions(
-  appPermissions: GitHubAppPermissions | undefined,
-  permission: "actions" | "issues" | "pull_requests",
-): GitHubAppPermissions {
-  const level = appPermissions?.[permission];
-  if (level !== undefined && level !== "write" && level !== "admin") {
-    throw new GitHubPluginSetupError(
-      `githubPlugin appPermissions.${permission} must allow write access for Junior-owned GitHub resources.`,
-    );
-  }
-  return {
-    ...appPermissions,
-    metadata: "read",
-    ...(permission === "pull_requests" && appPermissions?.contents === undefined
-      ? { contents: "read" as const }
-      : {}),
-    [permission]: "write",
-  };
-}
-
-function configuredBranchWritePermissions(
-  appPermissions: GitHubAppPermissions | undefined,
-): GitHubAppPermissions {
-  const contents = appPermissions?.contents;
-  if (contents !== undefined && contents !== "write" && contents !== "admin") {
-    throw new GitHubPluginSetupError(
-      "githubPlugin appPermissions.contents must allow write access for Junior-managed pull request branches.",
-    );
-  }
-  const workflows = appPermissions?.workflows;
-  if (
-    workflows !== undefined &&
-    workflows !== "write" &&
-    workflows !== "admin"
-  ) {
-    throw new GitHubPluginSetupError(
-      "githubPlugin appPermissions.workflows must allow write access when configured.",
-    );
-  }
-  return {
-    ...appPermissions,
-    contents: "write",
-    metadata: "read",
-  };
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -1933,32 +1861,7 @@ export function githubPlugin(
                 : { loadPermissions: loadReadPermissions }),
             });
           }
-          if (
-            ctx.grant.name === "installation-actions-write" ||
-            ctx.grant.name === "installation-issues-write" ||
-            ctx.grant.name === "installation-pull-requests-write"
-          ) {
-            const repository = githubRepositoryFromLeaseScope(
-              ctx.grant.leaseScope,
-            );
-            const permission =
-              ctx.grant.name === "installation-actions-write"
-                ? "actions"
-                : ctx.grant.name === "installation-issues-write"
-                  ? "issues"
-                  : "pull_requests";
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              permissions: configuredWritePermissions(
-                appPermissions,
-                permission,
-              ),
-              repositories: [repository.name],
-            });
-          }
-          if (ctx.grant.name === "installation-pr-branch-write") {
+          if (ctx.grant.name === "installation-write") {
             const repository = githubRepositoryFromLeaseScope(
               ctx.grant.leaseScope,
             );
@@ -1966,7 +1869,14 @@ export function githubPlugin(
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              permissions: configuredBranchWritePermissions(appPermissions),
+              ...(appPermissions
+                ? {
+                    permissions: {
+                      ...appPermissions,
+                      metadata: "read",
+                    },
+                  }
+                : {}),
               repositories: [repository.name],
             });
           }

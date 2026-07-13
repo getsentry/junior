@@ -78,13 +78,10 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 - Plugin manifest capabilities map to GitHub App installation permissions.
 - The GitHub plugin selects `installation-read` for app-readable egress,
-  repository-scoped `installation-actions-write` for workflow dispatches,
-  `installation-issues-write` and
-  `installation-pull-requests-write` grants for Junior-owned resource
-  mutations, `installation-pr-branch-write` for Git smart-HTTP pushes,
-  `user-read` for actor-account identity reads, and `user-write` only for
-  explicitly enumerated human-identity operations such as pull request
-  reviews.
+  repository-scoped `installation-write` for allowlisted App-owned mutations
+  and Git smart-HTTP pushes, `user-read` for actor-account identity reads, and
+  `user-write` only for explicitly enumerated human-identity operations such
+  as pull request reviews.
 - Headless system turns, including resource-event subscription deliveries, may
   issue the scoped installation grants without a user credential subject. This
   allows Junior to react to its own pull request events by committing and
@@ -104,8 +101,8 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 - The GitHub API host is the exact declared `api.github.com` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
-- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but cache keys include the plugin grant name and opaque lease scope. A repository-scoped write lease must not be reused for another repository or grant family.
-- GitHub read grants are derived from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL queries, `GET /user`, and `git-upload-pack`. Allowlisted workflow dispatch, issue, and pull request REST writes receive scoped installation resource grants. Workflow dispatch is limited to `POST /repos/:owner/:repo/actions/workflows/:workflow_id/dispatches` and receives `installation-actions-write`. `git-receive-pack` receives the repository-scoped `installation-pr-branch-write` grant. Unknown REST writes and GraphQL mutations are denied rather than falling back to `user-write`.
+- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn, but cache keys include the plugin grant name and opaque lease scope. App-owned writes to the same repository share one `installation-write` lease; it must not be reused for another repository.
+- GitHub read grants are derived from runtime-visible HTTP evidence, including safe HTTP methods, GraphQL queries, `GET /user`, and `git-upload-pack`. Allowlisted workflow dispatch, issue, pull request, and Git smart-HTTP writes receive the repository-scoped `installation-write` grant. Workflow dispatch remains limited to `POST /repos/:owner/:repo/actions/workflows/:workflow_id/dispatches`. Unknown REST writes and GraphQL mutations are denied rather than falling back to `user-write`.
 - The smart-HTTP push classifier scopes the token to the repository but does
   not independently distinguish a Junior-managed branch, detect a force
   update or ref deletion, or inspect the pushed commit range. Deployments must use GitHub
