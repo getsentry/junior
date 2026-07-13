@@ -7,7 +7,7 @@ import type {
   PluginReport,
   SkillReport,
 } from "@sentry/junior/api/schema";
-import type { DashboardData } from "../types";
+import type { PluginData } from "../types";
 
 type PluginRow = {
   name: string;
@@ -15,7 +15,7 @@ type PluginRow = {
 };
 
 /** Render plugin inventory and operational summaries. */
-export function PluginsPage(props: { data?: DashboardData }) {
+export function PluginsPage(props: { data?: PluginData }) {
   const plugins = props.data?.plugins ?? [];
   const reports = props.data?.pluginReports?.reports ?? [];
   const skills = props.data?.skills ?? [];

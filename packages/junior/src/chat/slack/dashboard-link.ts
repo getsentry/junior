@@ -73,7 +73,7 @@ export function getDashboardConversationLink(
   );
   const path =
     basePath === "/"
-      ? `/conversations/${encodeURIComponent(conversationId)}`
-      : `${basePath}/conversations/${encodeURIComponent(conversationId)}`;
+      ? `/chat/${encodeURIComponent(conversationId)}`
+      : `${basePath}/chat/${encodeURIComponent(conversationId)}`;
   return `${baseURL}${path}`;
 }

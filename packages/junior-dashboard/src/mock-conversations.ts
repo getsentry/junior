@@ -1149,9 +1149,19 @@ function statsItems(map: Map<string, ConversationStatsItem>) {
   );
 }
 
-/** Return the explicit visual-QA conversation feed. */
-export function readMockConversationFeed(): ConversationFeed {
-  return mockConversationFeed(Date.now());
+/** Return the explicit visual-QA conversation feed, optionally scoped by actor. */
+export function readMockConversationFeed(
+  actorEmail?: string,
+): ConversationFeed {
+  const feed = mockConversationFeed(Date.now());
+  if (!actorEmail) return feed;
+  return {
+    ...feed,
+    conversations: feed.conversations.filter(
+      (conversation) =>
+        conversation.actorIdentity?.email?.toLowerCase() === actorEmail,
+    ),
+  };
 }
 
 /** Return one explicit visual-QA conversation detail fixture. */

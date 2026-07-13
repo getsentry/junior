@@ -1,12 +1,9 @@
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   PluginOperationalReportFeed,
-  HealthReport,
   PluginReport,
-  RuntimeInfoReport,
   SkillReport,
 } from "@sentry/junior/api/schema";
-import type { ConversationStatsReport } from "@sentry/junior/api/schema";
 import type {
   ConversationFeed,
   ConversationSummaryReport,
@@ -128,21 +125,24 @@ export type Conversation = {
 export type Identity = DashboardIdentity;
 export type { DashboardConfig };
 
-export type DashboardData = {
+export type DashboardCoreData = {
   config: DashboardConfig;
-  conversationStats?: ConversationStatsReport;
-  conversationStatsError: boolean;
-  conversationStatsLoading: boolean;
-  health: HealthReport;
   me: Identity;
+};
+
+export type ConversationHistoryData = DashboardCoreData & {
+  conversations: ConversationFeed;
+};
+
+export type PluginData = DashboardCoreData & {
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
   plugins: PluginReport[];
-  runtime: RuntimeInfoReport;
-  conversations: ConversationFeed;
   skills: SkillReport[];
 };
+
+export type DashboardData = ConversationHistoryData & PluginData;
 
 export type ConversationFilter = "active" | "recent" | "failed" | "all";
 

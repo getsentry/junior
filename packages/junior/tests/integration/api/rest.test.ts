@@ -65,6 +65,24 @@ describe("Junior REST API", () => {
       source: "conversation_index",
     });
 
+    const personalFeed = await app.request(
+      "http://localhost/api/conversations?actorEmail=Person%40Example.com",
+    );
+    expect(personalFeed.status).toBe(200);
+    await expect(personalFeed.json()).resolves.toMatchObject({
+      conversations: [
+        {
+          actorIdentity: { email: "Person@Example.com" },
+          conversationId,
+        },
+      ],
+    });
+
+    const invalidFeed = await app.request(
+      "http://localhost/api/conversations?actorEmail=not-an-email",
+    );
+    expect(invalidFeed.status).toBe(400);
+
     const stats = await app.request("http://localhost/api/conversations/stats");
     expect(stats.status).toBe(200);
     await expect(stats.json()).resolves.toMatchObject({
@@ -77,7 +95,10 @@ describe("Junior REST API", () => {
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
     );
     expect(detail.status).toBe(200);
-    await expect(detail.json()).resolves.toMatchObject({ conversationId });
+    await expect(detail.json()).resolves.toMatchObject({
+      actorIdentity: { email: "Person@Example.com" },
+      conversationId,
+    });
 
     const people = await app.request("http://localhost/api/people");
     expect(people.status).toBe(200);

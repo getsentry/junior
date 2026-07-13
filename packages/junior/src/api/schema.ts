@@ -66,6 +66,16 @@ import { z } from "zod";
 export const conversationParamsSchema = z
   .object({ conversationId: z.string().min(1) })
   .strict();
+export const conversationFeedQuerySchema = z
+  .object({
+    actorEmail: z
+      .string()
+      .trim()
+      .email()
+      .transform((value) => value.toLowerCase())
+      .optional(),
+  })
+  .strict();
 export const subagentParamsSchema = conversationParamsSchema
   .extend({ subagentId: z.string().min(1) })
   .strict();

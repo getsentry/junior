@@ -1,9 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dashboardIdentitySchema } from "../src/api/schema";
 
 describe("dashboard auth config", () => {
   afterEach(() => {
     vi.doUnmock("better-auth/minimal");
     vi.resetModules();
+  });
+
+  it("requires a valid email for every dashboard identity", () => {
+    expect(
+      dashboardIdentitySchema.parse({
+        user: { email: "person@example.com" },
+      }),
+    ).toEqual({ user: { email: "person@example.com" } });
+
+    for (const email of [undefined, null, "not-an-email"]) {
+      expect(
+        dashboardIdentitySchema.safeParse({ user: { email } }).success,
+      ).toBe(false);
+    }
   });
 
   it("keeps Google account tokens out of persistent dashboard cookies", async () => {

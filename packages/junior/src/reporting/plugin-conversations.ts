@@ -6,7 +6,7 @@ export async function listRecentConversationSummaries(
   requestedLimit = 25,
 ): Promise<PluginConversationSummary[]> {
   const limit = Math.max(0, Math.min(100, Math.floor(requestedLimit)));
-  const feed = await readConversationFeedFromSql(limit);
+  const feed = await readConversationFeedFromSql({ limit });
   return feed.conversations.map((report) => {
     return {
       conversationId: report.conversationId,

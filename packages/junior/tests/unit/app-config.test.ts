@@ -882,7 +882,7 @@ describe("createApp plugin config", () => {
       items: [
         {
           label: "ID",
-          url: "https://junior.example.com/ops/conversations/slack%3AC123%3A1700000000.000100",
+          url: "https://junior.example.com/ops/chat/slack%3AC123%3A1700000000.000100",
           value: "slack:C123:1700000000.000100",
         },
       ],

@@ -93,7 +93,7 @@ export function ConversationDurationChart(props: {
           </div>
         }
       >
-        <ChartTitle>Conversations</ChartTitle>
+        <ChartTitle>Conversation duration</ChartTitle>
       </SectionHeader>
       <div
         className="min-h-48 px-3 pb-2 pt-4"

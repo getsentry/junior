@@ -59,7 +59,7 @@ export function buildDashboardConversationURL(
   const basePath = normalizeDashboardPath(config.basePath, "/");
   const path =
     basePath === "/"
-      ? `/conversations/${encodeURIComponent(config.conversationId)}`
-      : `${basePath}/conversations/${encodeURIComponent(config.conversationId)}`;
+      ? `/chat/${encodeURIComponent(config.conversationId)}`
+      : `${basePath}/chat/${encodeURIComponent(config.conversationId)}`;
   return `${baseURL}${path}`;
 }
