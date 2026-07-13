@@ -1,6 +1,6 @@
 ---
 name: sentry
-description: Query live Sentry telemetry with the Sentry CLI and generate Sentry deep links. Use when users ask to investigate Sentry issues, events, logs, traces, organizations, projects, replays, product feature usage, Sentry's own product telemetry, or authenticated Sentry API data. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
+description: Query live Sentry telemetry, create explicitly requested Sentry alerts and monitors, and generate Sentry deep links. Use when users ask to investigate Sentry issues, events, logs, traces, organizations, projects, replays, product feature usage, Sentry's own product telemetry, authenticated Sentry API data, or to create alerting. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
 allowed-tools: bash
 ---
 
@@ -18,7 +18,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 
 1. Confirm operation and target:
 
-- Determine operation: issue, event, log, trace, org, project, replay/deep-link, Sentry product feature usage, or API query.
+- Determine operation: issue, event, log, trace, org, project, replay/deep-link, Sentry product feature usage, alert/monitor creation, or API query.
 - Resolve org from channel config: `jr-rpc config get sentry.org`
 - Resolve project from channel config: `jr-rpc config get sentry.project` (optional — many queries span multiple projects).
 - If org is missing and needed, ask the user.
@@ -31,7 +31,9 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 - Read [references/cli-commands.md](references/cli-commands.md) when choosing command shapes, target formats, flags, API fallback, or troubleshooting behavior.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
 - Prefer `--json` when parsing or summarizing results.
-- If no high-level CLI command covers the requested read-only data, use `sentry api <endpoint>` before claiming the workflow is blocked.
+- If no high-level CLI command covers the request, use `sentry api <endpoint>` before claiming the workflow is blocked.
+- Create alerts or monitors only when the user explicitly asks. Before writing, resolve the exact org and project, inspect existing alerts or monitors for duplicates, validate the endpoint and payload with `--dry-run`, then execute once and report the created resource URL.
+- For metric alerting, use the current monitor and alert workflow endpoints documented in `references/cli-commands.md`; do not use the deprecated alert-rule creation endpoints.
 - If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.
@@ -49,7 +51,8 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 
 ## Guardrails
 
-- Read-only operations only (MVP scope).
+- Default to read-only operations. The only supported mutations are explicitly requested alert or monitor operations using the documented API surface.
+- Do not modify or delete alerting resources unless the user explicitly requests that exact action.
 - Avoid speculative Sentry CLI subcommands. Use bundled references plus live `sentry --help` output to verify current commands.
 - Do not print credential values.
 - If org is missing and needed, ask the user.

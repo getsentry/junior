@@ -2,8 +2,8 @@
 
 ## Intent
 
-The Sentry skill helps agents investigate live Sentry telemetry through the Sentry CLI using per-user credentials injected by Junior.
-It should produce useful read-only investigation results or Sentry web links without exposing credentials.
+The Sentry skill helps agents investigate live Sentry telemetry and create explicitly requested alerts and monitors through the Sentry CLI using per-user credentials injected by Junior.
+It should produce useful investigation results, safe alerting mutations, or Sentry web links without exposing credentials.
 
 ## Scope
 
@@ -11,27 +11,28 @@ In scope:
 
 - Listing and viewing Sentry issues, issue events, logs, traces, organizations, and related read-only data.
 - Investigating Sentry's own product telemetry and product feature usage through Sentry CLI/API data surfaces.
-- Using `sentry api <endpoint>` for authenticated read-only requests when no high-level command exists.
+- Using `sentry api <endpoint>` for authenticated requests when no high-level command exists.
+- Creating explicitly requested monitors and alert workflows through the current public API after duplicate checks and dry-run validation.
 - Generating Sentry deep links for user-scoped or entity-specific views.
 - Diagnosing auth, scope, and access failures without guessing missing scopes.
 
 Out of scope:
 
 - Repository, code search, commit, branch, and pull-request work.
-- Mutating Sentry data unless the user explicitly asks for a write action.
+- Mutating Sentry data outside explicitly requested alert or monitor operations.
 - Persisting, printing, or transforming Sentry credentials.
 
 ## Users And Trigger Context
 
 - Primary users: Junior users asking Slack or harness agents to investigate Sentry data.
-- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry", "use Sentry telemetry", and "how much is this Sentry feature used".
+- Common user requests: "list my Sentry issues", "show error logs", "inspect this trace", "which orgs can I access", "open the issue in Sentry", "use Sentry telemetry", "create a metric alert", and "notify this channel when this monitor fires".
 - Should not trigger for: source-code tasks, GitHub PRs, repository searches, or generic questions about Sentry SDK implementation.
 
 ## Runtime Contract
 
 - Required first actions: classify the Sentry operation, resolve configured org/project when needed, and verify current CLI help before blocking on an unknown command.
-- Required outputs: concise findings, relevant Sentry URLs or deep links, and clear access/auth failure messages.
-- Non-negotiable constraints: do not print credentials; prefer read-only commands; use canonical current CLI command groups; use `sentry api` before claiming a read-only surface is unavailable.
+- Required outputs: concise findings, relevant Sentry URLs or deep links, created alerting resource URLs, and clear access/auth failure messages.
+- Non-negotiable constraints: do not print credentials; default to read-only commands; only perform explicitly requested alerting mutations; check duplicates and dry-run before writing; use canonical current CLI command groups; use `sentry api` before claiming a surface is unavailable.
 - Expected bundled files loaded at runtime: `references/cli-commands.md`, `references/deep-link-patterns.md`, and `references/sandbox-runtime.md`.
 
 ## Current CLI Data
@@ -41,7 +42,8 @@ Out of scope:
 - Auth model: Junior injects `SENTRY_AUTH_TOKEN` for authenticated Sentry commands during the requesting user's turn.
 - Canonical command groups: `sentry issue`, `sentry org`, `sentry log`, `sentry trace`, and `sentry api`.
 - Required migration rule: prefer singular command groups such as `sentry org list`; do not teach stale plural command forms such as `sentry organizations list`.
-- Required fallback rule: use `sentry api <endpoint>` for read-only data when no high-level CLI command covers the requested surface.
+- Required fallback rule: use `sentry api <endpoint>` when no high-level CLI command covers the requested surface.
+- Alerting write rule: use the current public monitor (`detectors`) and alert (`workflows`) endpoints; legacy metric `alert-rules` creation is deprecated.
 
 ## Source And Evidence Model
 
@@ -77,9 +79,9 @@ Data that must not be stored:
 ## Evaluation
 
 - Lightweight validation: run skill validation and grep for stale command forms after CLI updates.
-- Deeper evaluation: add Slack/harness evals for org listing, issue search, log search, trace lookup, API fallback, and auth recovery.
+- Deeper evaluation: add Slack/harness evals for org listing, issue search, log search, trace lookup, API fallback, auth recovery, explicit alert creation, duplicate prevention, and refusal of unrelated mutations.
 - Holdout examples: requests that mention "organizations list", "orgs", "logs for this trace", and "use the API".
-- Acceptance gates: command guidance matches latest CLI help, stale plural forms are not canonical, read-only fallback is available, and credential handling remains private.
+- Acceptance gates: command guidance matches latest CLI help, stale plural forms are not canonical, read-only fallback is available, alerting writes require explicit intent plus duplicate and dry-run checks, unrelated mutations remain blocked, and credential handling remains private.
 
 ## Known Limitations
 

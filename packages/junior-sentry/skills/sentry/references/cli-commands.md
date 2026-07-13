@@ -11,7 +11,7 @@ The npm `sentry` package is intentionally installed at runtime from the plugin m
 2. Do not use stale plural subcommands such as `sentry organizations list`.
 3. If a command errors as unknown, run `sentry --help` and the nearest subcommand help before declaring the surface unavailable.
 4. Prefer `--json` and, when useful, `--fields` for structured parsing.
-5. Use `sentry api <endpoint>` for authenticated read-only API calls when a high-level command does not cover the requested data.
+5. Use `sentry api <endpoint>` for authenticated API calls when a high-level command does not cover the request. Default to `GET`; only perform documented alert or monitor mutations when explicitly requested.
 
 ## Issue commands
 
@@ -86,8 +86,95 @@ sentry api ENDPOINT [--method METHOD] [--field KEY=VALUE] [--data JSON] [--json]
 
 - `ENDPOINT` is relative to `/api/0/`, for example `organizations/` or `issues/123456789/`.
 - Use read-only `GET` requests by default.
-- Do not use API write methods unless the user explicitly asks for a mutating Sentry action.
-- Use `--dry-run` when verifying a complex endpoint or request body.
+- The supported write surface is explicitly requested alert or monitor operations. Do not mutate unrelated Sentry resources.
+- Use `--dry-run` before every write to verify the endpoint, method, and JSON body.
+
+## Alert and monitor API
+
+Sentry's current alerting model separates detection from notification:
+
+1. A **monitor** detects a condition for one project.
+2. An **alert** (workflow) connects one or more monitors to notification actions.
+
+Use the current public endpoints:
+
+```text
+GET  organizations/ORG/detectors/
+POST organizations/ORG/projects/PROJECT/detectors/
+GET  organizations/ORG/workflows/
+POST organizations/ORG/workflows/
+```
+
+These are labeled **Monitors** and **Alerts** in Sentry's public API docs even though their paths use `detectors` and `workflows`. Do not use `POST .../alert-rules/`; legacy metric alert-rule creation is deprecated.
+
+Before creating anything:
+
+- Resolve the exact org and project.
+- List existing monitors and alerts and stop on a likely duplicate unless the user explicitly asks for another.
+- Resolve IDs for owners, integrations, notification targets, and existing workflows instead of guessing them.
+- Validate each write with `--dry-run`, then execute it once.
+- A monitor without a connected alert does not notify. Create or connect the alert workflow when notification is part of the request.
+
+### Metric monitor body
+
+The current monitor payload uses this shape:
+
+```json
+{
+  "name": "Non-Zod error spike",
+  "type": "metric_issue",
+  "projectId": "PROJECT_ID",
+  "owner": "team:TEAM_ID",
+  "workflowIds": [],
+  "conditionGroup": {
+    "logicType": "any",
+    "conditions": [
+      {"type": "gt", "comparison": 50, "conditionResult": 75},
+      {"type": "lte", "comparison": 50, "conditionResult": 0}
+    ]
+  },
+  "config": {"detectionType": "static"},
+  "dataSources": [
+    {
+      "aggregate": "count()",
+      "dataset": "events",
+      "eventTypes": ["error"],
+      "query": "!error.type:ZodError",
+      "queryType": 0,
+      "timeWindow": 3600,
+      "environment": "production"
+    }
+  ]
+}
+```
+
+For dynamic detection, replace the conditions and config with:
+
+```json
+{
+  "conditionGroup": {
+    "logicType": "any",
+    "conditions": [
+      {
+        "type": "anomaly_detection",
+        "comparison": {
+          "sensitivity": "low",
+          "seasonality": "auto",
+          "thresholdType": 0
+        },
+        "conditionResult": 75
+      }
+    ]
+  },
+  "config": {"detectionType": "dynamic"}
+}
+```
+
+Preserve the rest of the monitor body. `timeWindow` is seconds. Verify current dataset, event type, query type, threshold direction, and action payloads against live API docs or an existing comparable resource before writing; these contracts can vary by deployment and alert type.
+
+### Alert workflow body
+
+Create notification behavior through the organization alert endpoint after resolving the monitor ID and notification action configuration. The payload contains `name`, `detectorIds`, trigger conditions, action filters/actions, environment, frequency config, owner, and enabled state. Because integration/action shapes vary, inspect an existing comparable alert or the current API schema and copy only verified IDs and fields; do not invent Slack integration or channel identifiers.
 
 ## Common flags
 
@@ -109,6 +196,8 @@ sentry api ENDPOINT [--method METHOD] [--field KEY=VALUE] [--data JSON] [--json]
 | "Inspect a trace"                                     | `sentry trace view ORG/PROJECT/TRACE_ID --json`                     |
 | "Show logs for a trace"                               | `sentry trace logs ORG/TRACE_ID --json`                             |
 | "Call an endpoint not covered by high-level commands" | `sentry api organizations/ --json`                                  |
+| "Create a metric monitor"                            | Resolve target and duplicates, dry-run monitor POST, then execute   |
+| "Notify Slack when a monitor fires"                  | Create/connect an alert workflow after resolving action IDs         |
 
 ## Troubleshooting
 
@@ -124,5 +213,8 @@ sentry api ENDPOINT [--method METHOD] [--field KEY=VALUE] [--data JSON] [--json]
 | API returns `401` or invalid/expired/revoked token text             | Stale or missing credential                | Rerun the real command once so the runtime can trigger reconnect.                             |
 | API returns explicit missing scope text                             | OAuth grant lacks a named scope            | Rerun the real command once so the runtime can trigger reconnect.                             |
 | API returns generic `403` or permission denied                      | Connected account lacks org/project access | Stop and tell the user the current connection cannot access the requested data.               |
+| Alert write returns an explicit missing-scope error                  | OAuth grant predates alert writes         | Rerun once to trigger reconnect; the connection needs `alerts:write`.                          |
+| Monitor exists but no notification is sent                          | No connected alert workflow/action        | Create or connect an alert workflow with verified notification target IDs.                    |
+| `POST .../alert-rules/` is deprecated                               | Legacy metric-alert endpoint              | Use the current monitor endpoint plus an alert workflow for notification.                      |
 
 Use these command shapes during normal skill execution, but treat live CLI help as the final source when this reference and the installed CLI disagree.
