@@ -19,7 +19,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  const feed = useConversationsData(props.data.me.user.email);
+  const feed = useConversationsData(
+    props.data.config.authRequired ? props.data.me.user.email : undefined,
+  );
   const conversations = useMemo(
     () => buildConversations(feed.data?.conversations ?? []),
     [feed.data?.conversations],

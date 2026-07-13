@@ -298,6 +298,10 @@ first version, a conversation belongs to the actor stored on its normalized
 and verified conversation identity; run contributors and transcript authors do
 not imply conversation ownership.
 
+When dashboard auth is explicitly disabled for a local or demo deployment,
+there is no authenticated actor. The personal workspace uses the unfiltered
+conversation feed instead of filtering by the synthetic local dashboard email.
+
 Conversation detail routes must source their header title, owner, location,
 status, runtime, transcript metrics, and Sentry conversation link from
 `GET /api/conversations/:conversation`. They must not require the recent

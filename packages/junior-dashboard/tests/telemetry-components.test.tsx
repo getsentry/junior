@@ -823,6 +823,7 @@ describe("dashboard telemetry components", () => {
       surface: "slack",
     } satisfies ConversationSummaryReport;
     const data = dashboardData([summary]);
+    data.config.authRequired = true;
     data.me = { user: { email: "morgan@example.com" } };
     client.setQueryData(
       ["dashboard", "conversations", "morgan@example.com"],
@@ -867,6 +868,7 @@ describe("dashboard telemetry components", () => {
       surface: "slack",
     } satisfies ConversationSummaryReport;
     const data = dashboardData([summary]);
+    data.config.authRequired = true;
     client.setQueryData(
       ["dashboard", "conversations", "viewer@example.com"],
       data.conversations,
@@ -892,6 +894,35 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(html).toContain("Percent conversation");
+  });
+
+  it("shows the global feed when dashboard auth is disabled", () => {
+    const summary = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 1_000,
+      displayTitle: "Local conversation",
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      actorIdentity: { email: "actor@example.com" },
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+    } satisfies ConversationSummaryReport;
+    const data = dashboardData([summary]);
+    client.setQueryData(
+      ["dashboard", "conversations", "all"],
+      data.conversations,
+    );
+
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <ConversationWorkspace data={data} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain("Local conversation");
   });
 
   it("filters the conversation list with search and facets", () => {
