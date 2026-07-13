@@ -11,7 +11,6 @@ import {
   type LogContext,
   type SetSpanAttributes,
 } from "@/chat/logging";
-import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   AuthorizationFlowDisabledError,
@@ -76,13 +75,13 @@ export function createPiAgentTools(
   const effectiveConversationPrivacy = conversationPrivacy ?? "private";
   const serializeToolPayload = (
     payload: unknown,
-    options: { exposePrivate?: boolean } = {},
+    options: { exposePrivate?: boolean; privateMetadata?: boolean } = {},
   ) =>
-    serializeGenAiAttribute(
-      effectiveConversationPrivacy === "private" && !options.exposePrivate
-        ? toGenAiPayloadMetadata(payload)
-        : payload,
-    );
+    effectiveConversationPrivacy === "private" && !options.exposePrivate
+      ? options.privateMetadata
+        ? serializeGenAiAttribute(toGenAiPayloadMetadata(payload))
+        : undefined
+      : serializeGenAiAttribute(payload);
   const notifyToolResult = async (report: ToolExecutionReport) => {
     try {
       await onToolResult?.(report);
@@ -214,14 +213,17 @@ export function createPiAgentTools(
             hasProjectedPrivateResult
               ? projectedPrivateResult
               : resultAttributeValue,
-            { exposePrivate: hasProjectedPrivateResult },
+            {
+              exposePrivate: hasProjectedPrivateResult,
+              privateMetadata: true,
+            },
           );
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
         ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
         ...toGenAiPayloadTraceAttributes(
-          "app.ai.tool.call.result",
+          "gen_ai.tool.call.result",
           resultAttributeValue,
         ),
       });
@@ -262,9 +264,13 @@ export function createPiAgentTools(
         typeof toolCallId === "string" && toolCallId.length > 0
           ? toolCallId
           : undefined;
-      const toolArgumentsAttribute = serializeToolPayload(params);
+      // Intentional OTel deviation: private traces put Junior's safe metadata
+      // here, with flattened gen_ai.tool.call.arguments.* extension attributes.
+      const toolArgumentsAttribute = serializeToolPayload(params, {
+        privateMetadata: true,
+      });
       const toolArgumentsMetadata = toGenAiPayloadTraceAttributes(
-        "app.ai.tool.call.arguments",
+        "gen_ai.tool.call.arguments",
         params,
       );
       return withSpan(
@@ -285,7 +291,7 @@ export function createPiAgentTools(
               executionToolName = resolvedCatalogCall.toolName;
               executionParams = resolvedCatalogCall.arguments;
               setSpanAttributes({
-                "app.ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
+                "gen_ai.tool.dispatcher.name": EXECUTE_TOOL_NAME,
                 "gen_ai.tool.description":
                   resolvedCatalogCall.definition.description,
                 "gen_ai.tool.name": resolvedCatalogCall.toolName,
@@ -337,11 +343,10 @@ export function createPiAgentTools(
           }
         },
         {
-          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
           "gen_ai.tool.name": toolName,
           "gen_ai.tool.description": toolDef.description,
-          "gen_ai.tool.type": "extension",
+          "gen_ai.tool.type": "function",
           ...toolArgumentsMetadata,
           ...(normalizedToolCallId
             ? { "gen_ai.tool.call.id": normalizedToolCallId }

@@ -4,7 +4,7 @@
  * Builds the user-turn content parts (text, attachments, omitted-image
  * notices) and the full prompt for one run slice: system instructions, plugin
  * contributions, bootstrap turn context, resume-safe history trimming, and
- * the redacted telemetry view of the input messages.
+ * the optional canonical telemetry view of public input messages.
  */
 import { isDeepStrictEqual } from "node:util";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
@@ -23,10 +23,7 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { serializeGenAiAttribute, type LogContext } from "@/chat/logging";
-import {
-  toGenAiMessageMetadata,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { SkillInvocation, SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -436,9 +433,22 @@ export async function assemblePrompt(args: {
     },
   ];
   const inputMessagesAttribute = serializeGenAiAttribute(
-    args.conversationPrivacy !== "public"
-      ? inputMessages.map(toGenAiMessageMetadata)
-      : inputMessages,
+    args.conversationPrivacy === "public"
+      ? [
+          {
+            role: "system",
+            parts: [{ type: "text", content: baseInstructions }],
+          },
+          {
+            role: "user",
+            parts: promptContentParts.flatMap((part) =>
+              part.type === "text"
+                ? [{ type: "text", content: part.text }]
+                : [],
+            ),
+          },
+        ]
+      : undefined,
   );
 
   return {

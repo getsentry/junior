@@ -87,7 +87,7 @@ describe("createTracedStreamFn", () => {
     expect(opts.name).toBe("chat openai/gpt-5.4");
   });
 
-  it("sets metadata-only input messages and system instructions when privacy is unknown", async () => {
+  it("omits opt-in semantic content when privacy is unknown", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
@@ -110,26 +110,20 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["server.port"]).toBe(443);
     expect(opts.attributes["gen_ai.request.stream"]).toBe(true);
     expect(opts.attributes["gen_ai.output.type"]).toBe("text");
-    expect(opts.attributes["app.ai.input.message_count"]).toBe(1);
-    expect(opts.attributes["app.ai.input.content_chars"]).toBe(5);
-    expect(opts.attributes["app.ai.input.roles"]).toEqual(["user"]);
-    expect(opts.attributes["app.ai.system_instructions.content_chars"]).toBe(
+    expect(opts.attributes["gen_ai.input.message_count"]).toBe(1);
+    expect(opts.attributes["gen_ai.input.content_chars"]).toBe(5);
+    expect(opts.attributes["gen_ai.input.roles"]).toEqual(["user"]);
+    expect(opts.attributes["gen_ai.system_instructions.content_chars"]).toBe(
       14,
     );
-    expect(typeof opts.attributes["gen_ai.input.messages"]).toBe("string");
     expect(opts.attributes["app.conversation.privacy"]).toBe("private");
-    expect(opts.attributes["gen_ai.input.messages"]).toContain('"chars"');
-    expect(opts.attributes["gen_ai.input.messages"]).not.toContain("hello");
-    expect(typeof opts.attributes["gen_ai.system_instructions"]).toBe("string");
-    expect(opts.attributes["gen_ai.system_instructions"]).toContain('"chars"');
-    expect(opts.attributes["gen_ai.system_instructions"]).not.toContain(
-      "you are junior",
-    );
+    expect(opts.attributes["gen_ai.input.messages"]).toBeUndefined();
+    expect(opts.attributes["gen_ai.system_instructions"]).toBeUndefined();
     expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
-  it("uses message metadata for private conversation chat spans", async () => {
+  it("keeps private conversation content out of semantic attributes", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
@@ -153,24 +147,12 @@ describe("createTracedStreamFn", () => {
       attributes: Record<string, unknown>;
     };
     expect(opts.attributes["app.conversation.privacy"]).toBe("private");
-    expect(opts.attributes["app.ai.input.message_count"]).toBe(1);
-    expect(opts.attributes["app.ai.input.content_chars"]).toBe(
+    expect(opts.attributes["gen_ai.input.message_count"]).toBe(1);
+    expect(opts.attributes["gen_ai.input.content_chars"]).toBe(
       privatePrompt.length,
     );
-    expect(opts.attributes["gen_ai.input.messages"]).toContain('"chars"');
-    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
-      "private prompt",
-    );
-    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
-      "slack.conversation.name",
-    );
-    expect(opts.attributes["gen_ai.input.messages"]).not.toContain(
-      "#private-roadmap",
-    );
-    expect(opts.attributes["gen_ai.system_instructions"]).toContain('"chars"');
-    expect(opts.attributes["gen_ai.system_instructions"]).not.toContain(
-      "private system",
-    );
+    expect(opts.attributes["gen_ai.input.messages"]).toBeUndefined();
+    expect(opts.attributes["gen_ai.system_instructions"]).toBeUndefined();
 
     stream.end({
       ...fakeMessage(),
@@ -183,10 +165,9 @@ describe("createTracedStreamFn", () => {
     const endAttributes = Object.fromEntries(
       span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
     );
-    expect(endAttributes["app.ai.output.message_count"]).toBe(1);
-    expect(endAttributes["app.ai.output.content_chars"]).toBe(6);
-    expect(endAttributes["gen_ai.output.messages"]).toContain('"chars"');
-    expect(endAttributes["gen_ai.output.messages"]).not.toContain("secret");
+    expect(endAttributes["gen_ai.output.message_count"]).toBe(1);
+    expect(endAttributes["gen_ai.output.content_chars"]).toBe(6);
+    expect(endAttributes["gen_ai.output.messages"]).toBeUndefined();
   });
 
   it("sets output.messages, usage tokens, finish_reasons, response.model after stream completion", async () => {
@@ -194,7 +175,10 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const traced = createTracedStreamFn({
+      base: base as unknown as StreamFn,
+      conversationPrivacy: "public",
+    });
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -266,10 +250,9 @@ describe("createTracedStreamFn", () => {
     expect(outputMessages).toHaveLength(1);
     const msg = outputMessages[0];
     expect(msg.role).toBe("assistant");
-    expect(msg.finish_reason).toBe("tool_use");
+    expect(msg.finish_reason).toBe("tool_call");
     expect(msg.parts).toEqual([
       { type: "reasoning", content: "I should use the search tool." },
-      { type: "reasoning", redacted: true },
       { type: "text", content: "The answer is 42." },
       {
         type: "tool_call",
@@ -318,7 +301,7 @@ describe("createTracedStreamFn", () => {
       span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
     );
     expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual([
-      "tool_use",
+      "tool_call",
     ]);
   });
 
@@ -350,6 +333,37 @@ describe("createTracedStreamFn", () => {
     expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
   });
 
+  it("marks inference spans that use compacted conversation context", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      {
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Context compaction summary for future Junior turns:\nsummary",
+              },
+            ],
+            timestamp: 0,
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as {
+      attributes: Record<string, unknown>;
+    };
+    expect(opts.attributes["gen_ai.conversation.compacted"]).toBe(true);
+  });
+
   it("ends the span when the stream errors", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
@@ -373,9 +387,12 @@ describe("createTracedStreamFn", () => {
 
     const span = getSpan();
     expect(span.end).toHaveBeenCalledTimes(1);
-    // End attributes are still populated because the success arm runs.
+    expect(span.setStatus).toHaveBeenCalledWith({
+      code: 2,
+      message: "LLM stream failed",
+    });
     const endAttributeKeys = span.setAttribute.mock.calls.map((c) => c[0]);
-    expect(endAttributeKeys).toContain("gen_ai.output.messages");
+    expect(endAttributeKeys).toContain("error.type");
   });
 
   it("sets error status and ends the span when base() throws", async () => {

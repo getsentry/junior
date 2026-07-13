@@ -7,7 +7,10 @@ const { activeSpan, getTraceData, startSpan } = vi.hoisted(() => ({
   },
   getTraceData: vi.fn(),
   startSpan: vi.fn(
-    async (_options: unknown, callback: () => Promise<unknown>) => callback(),
+    async (
+      _options: unknown,
+      callback: (span: typeof activeSpan) => Promise<unknown>,
+    ) => callback(activeSpan),
   ),
 }));
 
@@ -62,9 +65,7 @@ describe("withSpan", () => {
       "thread_123",
     );
     expect(innerSpanOptions.attributes["app.run.id"]).toBe("run_123");
-    expect(innerSpanOptions.attributes["gen_ai.request.model"]).toBe(
-      "openai/gpt-4o-mini",
-    );
+    expect(innerSpanOptions.attributes["gen_ai.request.model"]).toBeUndefined();
   });
 
   it("normalizes Pi toolUse finish reasons on span attributes", async () => {
@@ -79,11 +80,26 @@ describe("withSpan", () => {
       attributes: Record<string, unknown>;
     };
     expect(spanOptions.attributes["gen_ai.response.finish_reasons"]).toEqual([
-      "tool_use",
+      "tool_call",
     ]);
     expect(activeSpan.setAttribute).toHaveBeenCalledWith(
       "gen_ai.response.finish_reasons",
-      ["tool_use"],
+      ["tool_call"],
+    );
+  });
+
+  it("sets error.type on the span that throws", async () => {
+    const { withSpan } = await import("@/chat/logging");
+
+    await expect(
+      withSpan("chat model", "gen_ai.chat", {}, async () => {
+        throw new TypeError("bad response");
+      }),
+    ).rejects.toThrow("bad response");
+
+    expect(activeSpan.setAttribute).toHaveBeenCalledWith(
+      "error.type",
+      "TypeError",
     );
   });
 

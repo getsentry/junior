@@ -135,15 +135,14 @@ describe("extractGenAiUsageSummary", () => {
     ).toEqual({
       "gen_ai.usage.input_tokens": 15,
       "gen_ai.usage.output_tokens": 2,
-      "gen_ai.usage.total_tokens": 17,
-      "gen_ai.usage.input_tokens.cached": 4,
-      "gen_ai.usage.input_tokens.cache_write": 1,
-      "app.ai.reasoning_tokens": 1,
-      "app.ai.cost.input_usd": 0.001,
-      "app.ai.cost.output_usd": 0.002,
-      "app.ai.cost.cache_read_usd": 0.0003,
-      "app.ai.cost.cache_write_usd": 0.0004,
-      "app.ai.cost.total_usd": 0.0037,
+      "gen_ai.usage.cache_read.input_tokens": 4,
+      "gen_ai.usage.cache_creation.input_tokens": 1,
+      "gen_ai.usage.reasoning.output_tokens": 1,
+      "app.cost.input_usd": 0.001,
+      "app.cost.output_usd": 0.002,
+      "app.cost.cache_read_usd": 0.0003,
+      "app.cost.cache_write_usd": 0.0004,
+      "app.cost.total_usd": 0.0037,
     });
   });
 });

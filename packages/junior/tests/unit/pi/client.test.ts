@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   completeSimple: vi.fn(),
   createGatewayProvider: vi.fn(() => ({
     chat: vi.fn((modelId: string) => ({ modelId })),
+    embeddingModel: vi.fn((modelId: string) => ({ modelId })),
   })),
+  embedMany: vi.fn(),
   generateObject: vi.fn(),
   getEnvApiKey: vi.fn(),
   getModels: vi.fn(() => [{ id: "openai/gpt-4o-mini" }]),
@@ -20,9 +22,11 @@ const mocks = vi.hoisted(() => ({
       _name: string,
       _op: string,
       _context: Record<string, unknown>,
-      callback: () => Promise<unknown>,
+      callback: (
+        setSpanAttributes: (attributes: Record<string, unknown>) => void,
+      ) => Promise<unknown>,
       _attributes?: Record<string, unknown>,
-    ) => callback(),
+    ) => callback(mocks.setSpanAttributes),
   ),
 }));
 
@@ -40,6 +44,7 @@ vi.mock("@ai-sdk/gateway", () => ({
 }));
 
 vi.mock("ai", () => ({
+  embedMany: mocks.embedMany,
   generateObject: mocks.generateObject,
 }));
 
@@ -76,6 +81,7 @@ describe("completeText", () => {
       system: "Be concise.",
       messages: [{ role: "user", content: "hi", timestamp: 1 }] as any,
       thinkingLevel: "low",
+      messageAttributeMode: "content",
     });
 
     expect(result.text).toBe("hello world");
@@ -109,19 +115,13 @@ describe("completeText", () => {
 
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": "chat",
-        "gen_ai.request.model": "openai/gpt-4o-mini",
-        "gen_ai.output.type": "text",
-        "server.address": "ai-gateway.vercel.sh",
-        "server.port": 443,
         "gen_ai.output.messages": expect.any(String),
         "gen_ai.response.finish_reasons": ["stop"],
       }),
     );
   });
 
-  it("uses message metadata for non-public conversation traces", async () => {
+  it("omits opt-in semantic content for non-public conversation traces", async () => {
     mocks.completeSimple.mockResolvedValue({
       content: [{ type: "text", text: "private answer" }],
       stopReason: "stop",
@@ -159,27 +159,18 @@ describe("completeText", () => {
     expect(attributes["server.address"]).toBe("ai-gateway.vercel.sh");
     expect(attributes["server.port"]).toBe(443);
     expect(attributes["gen_ai.output.type"]).toBe("text");
-    expect(attributes["app.ai.input.message_count"]).toBe(1);
-    expect(attributes["app.ai.input.content_chars"]).toBe(16);
-    expect(attributes["gen_ai.system_instructions"]).toContain('"chars"');
-    expect(attributes["gen_ai.system_instructions"]).not.toContain(
-      "private system",
-    );
-    expect(attributes["gen_ai.input.messages"]).toContain('"chars"');
-    expect(attributes["gen_ai.input.messages"]).not.toContain(
-      "private question",
-    );
+    expect(attributes["gen_ai.input.message_count"]).toBe(1);
+    expect(attributes["gen_ai.input.content_chars"]).toBe(16);
+    expect(attributes["gen_ai.system_instructions"]).toBeUndefined();
+    expect(attributes["gen_ai.input.messages"]).toBeUndefined();
 
     const endAttributes = mocks.setSpanAttributes.mock.calls[0]?.[0] as Record<
       string,
       unknown
     >;
-    expect(endAttributes["app.ai.output.message_count"]).toBe(1);
-    expect(endAttributes["app.ai.output.content_chars"]).toBe(14);
-    expect(endAttributes["gen_ai.output.messages"]).toContain('"chars"');
-    expect(endAttributes["gen_ai.output.messages"]).not.toContain(
-      "private answer",
-    );
+    expect(endAttributes["gen_ai.output.message_count"]).toBe(1);
+    expect(endAttributes["gen_ai.output.content_chars"]).toBe(14);
+    expect(endAttributes["gen_ai.output.messages"]).toBeUndefined();
   });
 
   it("scrubs C-prefixed channel traces unless the turn confirmed the channel public", async () => {
@@ -207,9 +198,7 @@ describe("completeText", () => {
       unknown
     >;
     expect(noSignal["app.conversation.privacy"]).toBe("private");
-    expect(noSignal["gen_ai.input.messages"]).not.toContain(
-      "possibly private question",
-    );
+    expect(noSignal["gen_ai.input.messages"]).toBeUndefined();
 
     // The turn-scoped privacy context carries the source-confirmed signal.
     await runWithConversationPrivacy("public", () =>
@@ -236,8 +225,7 @@ describe("completeText", () => {
       usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
     });
 
-    const { completeObject, GEN_AI_PROVIDER_NAME } =
-      await import("@/chat/pi/client");
+    const { completeObject } = await import("@/chat/pi/client");
     const schema = z.object({ ok: z.boolean() });
 
     const result = await completeObject({
@@ -258,10 +246,6 @@ describe("completeText", () => {
     );
     expect(mocks.setSpanAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": "chat",
-        "gen_ai.request.model": "openai/gpt-4o-mini",
-        "gen_ai.output.type": "json",
         "gen_ai.response.finish_reasons": ["stop"],
       }),
     );
@@ -285,5 +269,50 @@ describe("completeText", () => {
     );
     expect(mocks.logWarn).not.toHaveBeenCalled();
     expect(mocks.logException).not.toHaveBeenCalled();
+  });
+
+  it("records embedding usage and dimensions on the embedding span", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
+      ],
+      usage: { inputTokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+    const result = await embedTexts({
+      modelId: "openai/text-embedding-3-small",
+      texts: ["one", "two"],
+    });
+
+    expect(result.dimensions).toBe(3);
+    const startAttributes = mocks.withSpan.mock.calls[0]?.[4] as Record<
+      string,
+      unknown
+    >;
+    expect(startAttributes["gen_ai.operation.name"]).toBe("embeddings");
+    expect(startAttributes["gen_ai.output.type"]).toBeUndefined();
+    expect(mocks.setSpanAttributes).toHaveBeenCalledWith({
+      "gen_ai.embeddings.dimension.count": 3,
+      "gen_ai.usage.input_tokens": 8,
+    });
+  });
+
+  it("validates embedding output before the embedding span ends", async () => {
+    mocks.embedMany.mockResolvedValue({
+      embeddings: [[0.1], [0.2, 0.3]],
+      usage: { inputTokens: 8 },
+    });
+
+    const { embedTexts } = await import("@/chat/pi/client");
+
+    await expect(
+      embedTexts({
+        modelId: "openai/text-embedding-3-small",
+        texts: ["one", "two"],
+      }),
+    ).rejects.toThrow("Embedding provider returned invalid vectors");
+    expect(mocks.setSpanAttributes).not.toHaveBeenCalled();
   });
 });

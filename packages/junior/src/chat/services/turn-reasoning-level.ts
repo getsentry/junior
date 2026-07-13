@@ -229,11 +229,11 @@ export async function selectTurnReasoningLevel(args: {
       });
 
       setSpanAttributes({
-        "app.ai.reasoning_level": normalizedSelection.reasoningLevel,
-        "app.ai.reasoning_level_reason": normalizedSelection.reason,
+        "gen_ai.request.reasoning.level": normalizedSelection.reasoningLevel,
+        "gen_ai.request.reasoning.level_reason": normalizedSelection.reason,
         ...(normalizedSelection.confidence !== undefined
           ? {
-              "app.ai.reasoning_level_confidence":
+              "gen_ai.request.reasoning.level_confidence":
                 normalizedSelection.confidence,
             }
           : {}),

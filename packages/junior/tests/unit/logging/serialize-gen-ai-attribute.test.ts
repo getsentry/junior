@@ -28,4 +28,8 @@ describe("serializeGenAiAttribute", () => {
     expect(serialized).not.toContain("abcdefghijklmnopqrstuvwxyz1234567890");
     expect(serialized).not.toContain("super-secret-material");
   });
+
+  it("omits oversized values instead of emitting invalid JSON", () => {
+    expect(serializeGenAiAttribute({ value: "abcdef" }, 5)).toBeUndefined();
+  });
 });

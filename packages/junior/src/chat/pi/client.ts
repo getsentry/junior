@@ -24,12 +24,12 @@ registerApiProvider({
 import type { ZodTypeAny, z } from "zod";
 import {
   extractGenAiUsageAttributes,
+  normalizeGenAiFinishReason,
   serializeGenAiAttribute,
 } from "@/chat/logging";
 import {
   logException,
   logWarn,
-  setSpanAttributes,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
@@ -39,14 +39,13 @@ import {
   resolveConversationPrivacy,
   toCanonicalInputMessage,
   toCanonicalOutputMessage,
-  toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
-  toGenAiTextMetadata,
 } from "@/chat/conversation-privacy";
 import {
   createProviderError,
   isProviderRetryError,
 } from "@/chat/services/provider-retry";
+import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
@@ -136,18 +135,14 @@ export async function completeText(params: {
   const messageAttributeMode =
     params.messageAttributeMode ??
     (effectivePrivacy === "public" ? "content" : "metadata");
-  const requestMessagesAttribute = serializeGenAiAttribute(
-    messageAttributeMode === "metadata"
-      ? params.messages.map(toGenAiMessageMetadata)
-      : params.messages.map(toCanonicalInputMessage),
-  );
-  const systemInstructionsAttribute = params.system
-    ? serializeGenAiAttribute(
-        messageAttributeMode === "metadata"
-          ? [toGenAiTextMetadata(params.system)]
-          : [{ type: "text", content: params.system }],
-      )
-    : undefined;
+  const requestMessagesAttribute =
+    messageAttributeMode === "content"
+      ? serializeGenAiAttribute(params.messages.map(toCanonicalInputMessage))
+      : undefined;
+  const systemInstructionsAttribute =
+    params.system && messageAttributeMode === "content"
+      ? serializeGenAiAttribute([{ type: "text", content: params.system }])
+      : undefined;
   const baseAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
@@ -155,16 +150,25 @@ export async function completeText(params: {
     "gen_ai.output.type": "text",
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
+    ...(hasCompactedConversationContext(params.messages)
+      ? { "gen_ai.conversation.compacted": true }
+      : {}),
     "app.conversation.privacy": effectivePrivacy,
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
       : {}),
+    ...(params.temperature !== undefined
+      ? { "gen_ai.request.temperature": params.temperature }
+      : {}),
+    ...(params.maxTokens !== undefined
+      ? { "gen_ai.request.max_tokens": params.maxTokens }
+      : {}),
   };
   const startAttributes = {
     ...baseAttributes,
-    ...toGenAiMessagesTraceAttributes("app.ai.input", params.messages),
+    ...toGenAiMessagesTraceAttributes("gen_ai.input", params.messages),
     ...(params.system
-      ? { "app.ai.system_instructions.content_chars": params.system.length }
+      ? { "gen_ai.system_instructions.content_chars": params.system.length }
       : {}),
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
@@ -172,13 +176,13 @@ export async function completeText(params: {
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
-    "app.ai.auth_mode": authMode,
+    "gen_ai.provider.auth_mode": authMode,
   };
   return withSpan(
     `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
     "gen_ai.chat",
     logContextFromMetadata(params.modelId, params.metadata),
-    async () => {
+    async (setSpanAttributes) => {
       let message: Awaited<ReturnType<typeof completeSimple>>;
       try {
         message = await completeSimple(
@@ -201,19 +205,14 @@ export async function completeText(params: {
       }
       const outputText = extractText(message);
       const outputMessagesAttribute = serializeGenAiAttribute(
-        messageAttributeMode === "metadata"
-          ? [
-              {
-                role: "assistant",
-                content: outputText ? [toGenAiTextMetadata(outputText)] : [],
-              },
-            ]
-          : [toCanonicalOutputMessage(message)],
+        messageAttributeMode === "content"
+          ? [toCanonicalOutputMessage(message)]
+          : undefined,
       );
       const usageAttributes = extractGenAiUsageAttributes(message);
       const endAttributes = {
         ...baseAttributes,
-        ...toGenAiMessagesTraceAttributes("app.ai.output", [
+        ...toGenAiMessagesTraceAttributes("gen_ai.output", [
           {
             role: "assistant",
             content: outputText ? [{ type: "text", text: outputText }] : [],
@@ -224,8 +223,13 @@ export async function completeText(params: {
           : {}),
         ...usageAttributes,
         ...(message.stopReason
-          ? { "gen_ai.response.finish_reasons": [message.stopReason] }
+          ? {
+              "gen_ai.response.finish_reasons": [
+                normalizeGenAiFinishReason(message.stopReason),
+              ],
+            }
           : {}),
+        ...(message.model ? { "gen_ai.response.model": message.model } : {}),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -297,8 +301,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
       "gen_ai.chat",
       logContextFromMetadata(params.modelId, params.metadata),
-      async () =>
-        await generateObject({
+      async (setSpanAttributes) => {
+        const result = await generateObject({
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
@@ -312,7 +316,13 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : {}),
-        }),
+        });
+        setSpanAttributes({
+          "gen_ai.response.finish_reasons": [result.finishReason],
+          ...extractGenAiUsageAttributes(result.usage),
+        });
+        return result;
+      },
       {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
@@ -323,18 +333,14 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : {}),
+        ...(params.temperature !== undefined
+          ? { "gen_ai.request.temperature": params.temperature }
+          : {}),
+        ...(params.maxTokens !== undefined
+          ? { "gen_ai.request.max_tokens": params.maxTokens }
+          : {}),
       },
     );
-    setSpanAttributes({
-      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-      "gen_ai.request.model": params.modelId,
-      "gen_ai.output.type": "json",
-      "server.address": GEN_AI_SERVER_ADDRESS,
-      "server.port": GEN_AI_SERVER_PORT,
-      "gen_ai.response.finish_reasons": [result.finishReason],
-      ...extractGenAiUsageAttributes(result.usage),
-    });
     return { object: result.object as z.infer<TSchema> };
   } catch (error) {
     const providerError = createProviderError(error);
@@ -380,45 +386,43 @@ export async function embedTexts(params: {
       `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
       "gen_ai.embeddings",
       logContextFromMetadata(params.modelId, params.metadata),
-      async () =>
-        await embedMany({
+      async (setSpanAttributes) => {
+        const result = await embedMany({
           model: provider.embeddingModel(params.modelId),
           values: texts,
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : {}),
-        }),
+        });
+        const dimensions = result.embeddings[0]?.length;
+        if (
+          result.embeddings.length !== texts.length ||
+          !dimensions ||
+          !result.embeddings.every(
+            (embedding) => embedding.length === dimensions,
+          )
+        ) {
+          throw new Error("Embedding provider returned invalid vectors.");
+        }
+        setSpanAttributes({
+          "gen_ai.embeddings.dimension.count": dimensions,
+          ...extractGenAiUsageAttributes(result.usage),
+        });
+        return { dimensions, result };
+      },
       {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
         "gen_ai.request.model": params.modelId,
-        "gen_ai.output.type": "embedding",
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
       },
     );
-    const dimensions = result.embeddings[0]?.length;
-    if (
-      result.embeddings.length !== texts.length ||
-      !dimensions ||
-      !result.embeddings.every((embedding) => embedding.length === dimensions)
-    ) {
-      throw new Error("Embedding provider returned invalid vectors.");
-    }
-    setSpanAttributes({
-      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-      "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
-      "gen_ai.request.model": params.modelId,
-      "gen_ai.output.type": "embedding",
-      "server.address": GEN_AI_SERVER_ADDRESS,
-      "server.port": GEN_AI_SERVER_PORT,
-      ...extractGenAiUsageAttributes(result.usage),
-    });
     return {
-      dimensions,
+      dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,
-      vectors: result.embeddings,
+      vectors: result.result.embeddings,
     };
   } catch (error) {
     const providerError = createProviderError(error);

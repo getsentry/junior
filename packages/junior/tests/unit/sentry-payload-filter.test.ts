@@ -108,7 +108,7 @@ describe("Sentry private payload filtering", () => {
     expect(span.attributes?.["gen_ai.tool.call.result"]).toBe(projectedResult);
     expect(span.attributes?.["app.conversation.payload_redacted"]).toBe(true);
     expect(span.attributes).not.toHaveProperty(
-      "app.ai.tool.call.result.exposure",
+      "gen_ai.tool.call.result.exposure",
     );
   });
 
@@ -116,7 +116,7 @@ describe("Sentry private payload filtering", () => {
     const span = {
       attributes: {
         "gen_ai.tool.call.result": JSON.stringify({ secret: "private" }),
-        "app.ai.tool.call.result.exposure": "projected",
+        "gen_ai.tool.call.result.exposure": "projected",
       },
       end_timestamp: 2,
       is_segment: false,
@@ -131,7 +131,7 @@ describe("Sentry private payload filtering", () => {
 
     expect(span.attributes?.["gen_ai.tool.call.result"]).toBeUndefined();
     expect(span.attributes).not.toHaveProperty(
-      "app.ai.tool.call.result.exposure",
+      "gen_ai.tool.call.result.exposure",
     );
   });
 

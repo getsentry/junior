@@ -7,7 +7,6 @@ import {
   type SetSpanAttributes,
 } from "@/chat/logging";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
-import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { getMcpAwareTelemetryMessage, McpToolError } from "@/chat/mcp/errors";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
@@ -79,7 +78,6 @@ export function handleToolExecutionError(
         traceContext,
         {
           "app.credential.provider": error.provider,
-          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
           "gen_ai.tool.name": toolName,
           ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
@@ -96,7 +94,6 @@ export function handleToolExecutionError(
       "agent_tool_call_failed",
       traceContext,
       {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
@@ -118,7 +115,6 @@ export function handleToolExecutionError(
       "agent_tool_call_failed",
       {},
       {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),

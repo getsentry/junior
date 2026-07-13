@@ -17,6 +17,7 @@ import {
   logException,
   logInfo,
   logWarn,
+  normalizeGenAiFinishReason,
   serializeGenAiAttribute,
   setSpanAttributes,
   setTags,
@@ -47,8 +48,6 @@ import {
 import type { Actor } from "@/chat/actor";
 import {
   GEN_AI_PROVIDER_NAME,
-  GEN_AI_SERVER_ADDRESS,
-  GEN_AI_SERVER_PORT,
   completeObject,
   completeText,
   getPiGatewayApiKey,
@@ -83,7 +82,6 @@ import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
   toCanonicalOutputMessage,
-  toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
@@ -452,16 +450,6 @@ async function executeAgentRunInPrivacyContext(
       fastModelId: botConfig.fastModelId,
       messageText: userInput,
     });
-    setSpanAttributes({
-      "gen_ai.request.model": activeModelId,
-      "gen_ai.request.reasoning.level": reasoningSelection.reasoningLevel,
-      "app.ai.reasoning_level_reason": reasoningSelection.reason,
-      ...(reasoningSelection.confidence !== undefined
-        ? {
-            "app.ai.reasoning_level_confidence": reasoningSelection.confidence,
-          }
-        : {}),
-    });
 
     // ── Mutable turn state ───────────────────────────────────────────
     const generatedFiles: FileUpload[] = [];
@@ -761,10 +749,9 @@ async function executeAgentRunInPrivacyContext(
           runResume.setTurnStartMessageIndex(0);
           runResume.adoptCommittedBoundary(replacement);
           setSpanAttributes({
-            "gen_ai.request.model": activeModelId,
-            "gen_ai.request.reasoning.level":
-              reasoningSelection!.reasoningLevel,
-            "app.ai.model_profile": activeModelProfile,
+            "gen_ai.agent.model": activeModelId,
+            "gen_ai.agent.model_profile": activeModelProfile,
+            "gen_ai.agent.reasoning.level": reasoningSelection!.reasoningLevel,
           });
           update = {
             context: {
@@ -855,7 +842,7 @@ async function executeAgentRunInPrivacyContext(
       }
 
       await withSpan(
-        `invoke_agent ${activeModelId}`,
+        `invoke_agent ${botConfig.userName}`,
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
@@ -994,10 +981,11 @@ async function executeAgentRunInPrivacyContext(
             );
             const outputMessages = newMessages.filter(isAssistantMessage);
             const outputMessagesAttribute = serializeGenAiAttribute(
-              conversationPrivacy !== "public"
-                ? outputMessages.map(toGenAiMessageMetadata)
-                : outputMessages.map(toCanonicalOutputMessage),
+              conversationPrivacy === "public"
+                ? outputMessages.map(toCanonicalOutputMessage)
+                : undefined,
             );
+            const lastAssistant = outputMessages.at(-1);
             const usageSummary = extractGenAiUsageSummary(...outputMessages);
             const currentUsage = hasAgentTurnUsage(usageSummary)
               ? usageSummary
@@ -1012,9 +1000,16 @@ async function executeAgentRunInPrivacyContext(
                 ? { "gen_ai.output.messages": outputMessagesAttribute }
                 : {}),
               ...toGenAiMessagesTraceAttributes(
-                "app.ai.output",
+                "gen_ai.output",
                 outputMessages,
               ),
+              ...(lastAssistant
+                ? {
+                    "gen_ai.response.finish_reasons": [
+                      normalizeGenAiFinishReason(lastAssistant.stopReason),
+                    ],
+                  }
+                : {}),
               ...extractGenAiUsageAttributes(usageSummary),
             });
             if (getPendingAuthPause()) {
@@ -1024,7 +1019,6 @@ async function executeAgentRunInPrivacyContext(
               throw getPendingAuthPause()!;
             }
 
-            const lastAssistant = outputMessages.at(-1);
             const providerRetry = nextProviderRetry({
               attempt,
               lastAssistant,
@@ -1049,12 +1043,18 @@ async function executeAgentRunInPrivacyContext(
           }
         },
         {
-          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
-          "gen_ai.request.model": activeModelId,
+          "gen_ai.agent.model": activeModelId,
+          "gen_ai.agent.model_profile": activeModelProfile,
+          "gen_ai.agent.reasoning.level": reasoningSelection.reasoningLevel,
+          "gen_ai.agent.reasoning.level_reason": reasoningSelection.reason,
+          ...(reasoningSelection.confidence !== undefined
+            ? {
+                "gen_ai.agent.reasoning.level_confidence":
+                  reasoningSelection.confidence,
+              }
+            : {}),
           "gen_ai.output.type": "text",
-          "server.address": GEN_AI_SERVER_ADDRESS,
-          "server.port": GEN_AI_SERVER_PORT,
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
             : {}),
@@ -1063,8 +1063,7 @@ async function executeAgentRunInPrivacyContext(
             : {}),
           ...(sessionId ? { "app.ai.turn.session_id": sessionId } : {}),
           ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
-          "gen_ai.request.reasoning.level": reasoningSelection.reasoningLevel,
-          ...toGenAiMessagesTraceAttributes("app.ai.input", inputMessages),
+          ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
             : {}),

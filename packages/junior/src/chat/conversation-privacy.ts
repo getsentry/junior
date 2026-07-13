@@ -90,60 +90,6 @@ export function runWithConversationPrivacy<T>(
   return conversationPrivacyStorage.run(privacy, callback);
 }
 
-function contentMetadata(content: unknown): unknown {
-  if (typeof content === "string") {
-    return [{ type: "text", chars: content.length }];
-  }
-  if (!Array.isArray(content)) {
-    return { type: typeof content };
-  }
-  return content.map((part) => {
-    if (!part || typeof part !== "object") {
-      return { type: typeof part };
-    }
-    const record = part as Record<string, unknown>;
-    const type = canonicalContentPartType(
-      typeof record.type === "string" ? record.type : "unknown",
-    );
-    return {
-      type,
-      ...(typeof record.text === "string"
-        ? { chars: record.text.length }
-        : typeof record.thinking === "string" && record.thinking.length > 0
-          ? { chars: record.thinking.length }
-          : {}),
-      ...(typeof record.mimeType === "string"
-        ? { mimeType: record.mimeType }
-        : {}),
-      ...(typeof record.mediaType === "string"
-        ? { mediaType: record.mediaType }
-        : {}),
-      ...(typeof record.data === "string"
-        ? { dataChars: record.data.length }
-        : {}),
-    };
-  });
-}
-
-/** Convert a GenAI message into safe metadata for private trace contexts. */
-export function toGenAiMessageMetadata(
-  message: unknown,
-): Record<string, unknown> {
-  const record =
-    message && typeof message === "object"
-      ? (message as Record<string, unknown>)
-      : {};
-  return {
-    role: record.role,
-    content: contentMetadata(record.content),
-  };
-}
-
-/** Convert raw text into size-only metadata for private trace contexts. */
-export function toGenAiTextMetadata(text: string): Record<string, unknown> {
-  return { type: "text", chars: text.length };
-}
-
 function payloadType(payload: unknown): string {
   return Array.isArray(payload) ? "array" : typeof payload;
 }
@@ -185,7 +131,7 @@ export function toGenAiPayloadMetadata(
 
 /** Convert an arbitrary payload into safe flattened trace attributes. */
 export function toGenAiPayloadTraceAttributes(
-  prefix: string,
+  prefix: "gen_ai.tool.call.arguments" | "gen_ai.tool.call.result",
   payload: unknown,
 ): Record<string, TraceAttributeValue> {
   const attributes: Record<string, TraceAttributeValue> = {
@@ -244,7 +190,7 @@ function summarizeContent(content: unknown): {
 // ---------------------------------------------------------------------------
 
 function normalizeFinishReason(reason: string): string {
-  return reason === "toolUse" ? "tool_use" : reason;
+  return reason === "toolUse" ? "tool_call" : reason;
 }
 
 function canonicalContentPartType(type: string): string {
@@ -255,13 +201,13 @@ function canonicalContentPartType(type: string): string {
 
 function toCanonicalPart(
   part: TextContent | ThinkingContent | ImageContent | ToolCall,
-): Record<string, unknown> {
+): Record<string, unknown> | undefined {
   if (part.type === "text") {
     return { type: "text", content: part.text };
   }
   if (part.type === "thinking") {
     if (part.redacted) {
-      return { type: "reasoning", redacted: true };
+      return undefined;
     }
     return { type: "reasoning", content: part.thinking };
   }
@@ -273,8 +219,15 @@ function toCanonicalPart(
       arguments: part.arguments,
     };
   }
-  // image — omit raw base64 data, keep type and mimeType only
-  return { type: "image", mimeType: (part as ImageContent).mimeType };
+  return undefined;
+}
+
+function toCanonicalParts(
+  parts: Array<TextContent | ThinkingContent | ImageContent | ToolCall>,
+): Record<string, unknown>[] {
+  return parts
+    .map(toCanonicalPart)
+    .filter((part): part is Record<string, unknown> => part !== undefined);
 }
 
 /**
@@ -286,7 +239,7 @@ export function toCanonicalOutputMessage(
 ): Record<string, unknown> {
   return {
     role: "assistant",
-    parts: message.content.map(toCanonicalPart),
+    parts: toCanonicalParts(message.content),
     finish_reason: normalizeFinishReason(message.stopReason),
   };
 }
@@ -302,15 +255,19 @@ export function toCanonicalInputMessage(
     const parts =
       typeof message.content === "string"
         ? [{ type: "text", content: message.content }]
-        : message.content.map(toCanonicalPart);
+        : toCanonicalParts(message.content);
     return { role: "user", parts };
   }
   if (message.role === "toolResult") {
     return {
       role: "tool",
-      id: message.toolCallId,
-      name: message.toolName,
-      parts: message.content.map(toCanonicalPart),
+      parts: [
+        {
+          type: "tool_call_response",
+          id: message.toolCallId,
+          response: toCanonicalParts(message.content),
+        },
+      ],
     };
   }
   // AssistantMessage appearing as a prior turn in input context
@@ -319,7 +276,7 @@ export function toCanonicalInputMessage(
 
 /** Summarize a message list without exposing raw message content. */
 export function toGenAiMessagesTraceAttributes(
-  prefix: string,
+  prefix: "gen_ai.input" | "gen_ai.output",
   messages: unknown[],
 ): Record<string, TraceAttributeValue> {
   let contentChars = 0;

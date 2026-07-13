@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-const PRIVATE_TRACE_RESULT_ATTRIBUTE = "app.ai.tool.call.result.exposure";
+const PRIVATE_TRACE_RESULT_ATTRIBUTE = "gen_ai.tool.call.result.exposure";
 const privateTraceResultToken = randomUUID();
 
 /** Mark one tool result as an adapter-approved private trace projection. */

@@ -115,7 +115,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 
 /** Normalize runtime finish reasons to the telemetry spelling we emit. */
 export function normalizeGenAiFinishReason(reason: string): string {
-  return reason === "toolUse" ? "tool_use" : reason;
+  return reason === "toolUse" ? "tool_call" : reason;
 }
 
 /** Truncate message text for log attributes. */
@@ -1412,6 +1412,23 @@ export function getLogContextAttributes(): LogAttributes {
   return contextStorage.getStore() ?? {};
 }
 
+/** Return inherited log context filtered to attributes valid for the span operation. */
+export function getLogContextAttributesForSpan(op: string): LogAttributes {
+  const attributes = { ...getLogContextAttributes() };
+  if (op === "gen_ai.invoke_agent" || op === "gen_ai.execute_tool") {
+    delete attributes["gen_ai.request.model"];
+    return attributes;
+  }
+  if (op === "gen_ai.chat" || op === "gen_ai.embeddings") {
+    delete attributes["gen_ai.agent.name"];
+    delete attributes["gen_ai.request.model"];
+    return attributes;
+  }
+  delete attributes["gen_ai.agent.name"];
+  delete attributes["gen_ai.request.model"];
+  return attributes;
+}
+
 export function registerLogRecordSink(
   sink: (record: EmittedLogRecord) => void,
 ): () => void {
@@ -1668,7 +1685,7 @@ export async function withSpan<T>(
     // Child spans inherit the active log context so nested GenAI spans keep
     // conversation/session correlation even when callers pass only delta
     // context such as modelId or tool metadata.
-    const inheritedAttributes = getLogContextAttributes();
+    const inheritedAttributes = getLogContextAttributesForSpan(op);
     return Sentry.startSpan(
       {
         name,
@@ -1678,7 +1695,18 @@ export async function withSpan<T>(
           ...normalizedAttributes,
         },
       },
-      (span) => callback((attributes) => setAttributesOnSpan(span, attributes)),
+      async (span: Sentry.Span) => {
+        try {
+          return await callback((attributes) =>
+            setAttributesOnSpan(span, attributes),
+          );
+        } catch (error) {
+          setAttributesOnSpan(span, {
+            "error.type": error instanceof Error ? error.name : typeof error,
+          });
+          throw error;
+        }
+      },
     );
   });
 }
@@ -1801,7 +1829,7 @@ const GEN_AI_MAX_ARRAY_ITEMS = 50;
 const GEN_AI_MAX_OBJECT_KEYS = 50;
 
 function truncateGenAiString(value: string, maxChars: number): string {
-  return value.length > maxChars ? `${value.slice(0, maxChars)}...` : value;
+  return value.length > maxChars ? "" : value;
 }
 
 function sanitizeGenAiValue(
@@ -1868,7 +1896,7 @@ function sanitizeGenAiValue(
   return out;
 }
 
-/** Serialize an AI model response value into a truncated log attribute. */
+/** Serialize a bounded AI value, omitting it when valid JSON cannot fit. */
 export function serializeGenAiAttribute(
   value: unknown,
   maxChars = GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS,
@@ -1884,7 +1912,7 @@ export function serializeGenAiAttribute(
     return undefined;
   }
 
-  return truncateGenAiString(redactSecrets(serialized), maxChars);
+  return truncateGenAiString(redactSecrets(serialized), maxChars) || undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -2022,19 +2050,18 @@ export function extractGenAiUsageAttributes(
   Record<
     | "gen_ai.usage.input_tokens"
     | "gen_ai.usage.output_tokens"
-    | "gen_ai.usage.input_tokens.cached"
-    | "gen_ai.usage.input_tokens.cache_write"
-    | "gen_ai.usage.total_tokens",
+    | "gen_ai.usage.cache_read.input_tokens"
+    | "gen_ai.usage.cache_creation.input_tokens"
+    | "gen_ai.usage.reasoning.output_tokens",
     number
   > &
     Partial<
       Record<
-        | "app.ai.cost.input_usd"
-        | "app.ai.cost.output_usd"
-        | "app.ai.cost.cache_read_usd"
-        | "app.ai.cost.cache_write_usd"
-        | "app.ai.cost.total_usd"
-        | "app.ai.reasoning_tokens",
+        | "app.cost.input_usd"
+        | "app.cost.output_usd"
+        | "app.cost.cache_read_usd"
+        | "app.cost.cache_write_usd"
+        | "app.cost.total_usd",
         number
       >
     >
@@ -2045,7 +2072,6 @@ export function extractGenAiUsageAttributes(
     cachedInputTokens,
     cacheCreationTokens,
     reasoningTokens,
-    totalTokens,
     cost,
   } = extractGenAiUsageSummary(...sources);
   const semanticInputTokens = sumTokenCounts(
@@ -2054,9 +2080,6 @@ export function extractGenAiUsageAttributes(
     cacheCreationTokens,
   );
 
-  const semanticTotalTokens =
-    totalTokens ?? sumTokenCounts(semanticInputTokens, outputTokens);
-
   return {
     ...(semanticInputTokens !== undefined
       ? { "gen_ai.usage.input_tokens": semanticInputTokens }
@@ -2064,32 +2087,26 @@ export function extractGenAiUsageAttributes(
     ...(outputTokens !== undefined
       ? { "gen_ai.usage.output_tokens": outputTokens }
       : {}),
-    ...(semanticTotalTokens !== undefined
-      ? { "gen_ai.usage.total_tokens": semanticTotalTokens }
-      : {}),
+    // OTel has no monetary cost attributes, so report accounting generically.
     ...(cachedInputTokens !== undefined
-      ? { "gen_ai.usage.input_tokens.cached": cachedInputTokens }
+      ? { "gen_ai.usage.cache_read.input_tokens": cachedInputTokens }
       : {}),
     ...(cacheCreationTokens !== undefined
-      ? { "gen_ai.usage.input_tokens.cache_write": cacheCreationTokens }
+      ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
       : {}),
     ...(reasoningTokens !== undefined
-      ? { "app.ai.reasoning_tokens": reasoningTokens }
+      ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }
       : {}),
-    ...(cost?.input !== undefined
-      ? { "app.ai.cost.input_usd": cost.input }
-      : {}),
+    ...(cost?.input !== undefined ? { "app.cost.input_usd": cost.input } : {}),
     ...(cost?.output !== undefined
-      ? { "app.ai.cost.output_usd": cost.output }
+      ? { "app.cost.output_usd": cost.output }
       : {}),
     ...(cost?.cacheRead !== undefined
-      ? { "app.ai.cost.cache_read_usd": cost.cacheRead }
+      ? { "app.cost.cache_read_usd": cost.cacheRead }
       : {}),
     ...(cost?.cacheWrite !== undefined
-      ? { "app.ai.cost.cache_write_usd": cost.cacheWrite }
+      ? { "app.cost.cache_write_usd": cost.cacheWrite }
       : {}),
-    ...(cost?.total !== undefined
-      ? { "app.ai.cost.total_usd": cost.total }
-      : {}),
+    ...(cost?.total !== undefined ? { "app.cost.total_usd": cost.total } : {}),
   };
 }

@@ -36,20 +36,17 @@ import {
 } from "@/chat/pi/transcript";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
 import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
+import {
+  COMPACTION_SUMMARY_PREFIX,
+  isCompactionSummaryText,
+  MODEL_HANDOFF_SUMMARY_PREFIX,
+} from "@/chat/services/context-compaction-marker";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_INPUT_CHARS = 80_000;
 const MAX_VISIBLE_CONTEXT_CHARS = 20_000;
 const MAX_SUMMARY_CHARS = 6_000;
 const MAX_RENDERED_MESSAGE_CHARS = 4_000;
-const COMPACTION_SUMMARY_PREFIX =
-  "Context compaction summary for future Junior turns:";
-// TODO(v0.97.0): Remove support for the deployed "Context handoff summary"
-// prefix after pre-rename rows pass the conversation-history retention horizon.
-const LEGACY_COMPACTION_SUMMARY_PREFIX =
-  "Context handoff summary for future Junior turns:";
-const MODEL_HANDOFF_SUMMARY_PREFIX =
-  "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:";
 const OMITTED_OLDER_CONTEXT_NOTICE = "[older context omitted]";
 
 export interface ContextCompactorDeps {
@@ -147,12 +144,7 @@ function truncateToTokenBudget(text: string, maxTokens: number): string {
 }
 
 function isCompactionSummary(text: string): boolean {
-  const normalized = text.trimStart();
-  return (
-    normalized.startsWith(COMPACTION_SUMMARY_PREFIX) ||
-    normalized.startsWith(LEGACY_COMPACTION_SUMMARY_PREFIX) ||
-    normalized.startsWith(MODEL_HANDOFF_SUMMARY_PREFIX)
-  );
+  return isCompactionSummaryText(text);
 }
 
 function isPayloadHeavy(text: string): boolean {

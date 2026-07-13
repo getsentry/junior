@@ -9,7 +9,7 @@ import {
 import * as Sentry from "@/chat/sentry";
 import {
   extractGenAiUsageAttributes,
-  getLogContextAttributes,
+  getLogContextAttributesForSpan,
   normalizeGenAiFinishReason,
   serializeGenAiAttribute,
 } from "@/chat/logging";
@@ -22,10 +22,9 @@ import {
   type ConversationPrivacy,
   toCanonicalInputMessage,
   toCanonicalOutputMessage,
-  toGenAiMessageMetadata,
   toGenAiMessagesTraceAttributes,
-  toGenAiTextMetadata,
 } from "@/chat/conversation-privacy";
+import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 type GenAiAttributeMode = "content" | "metadata";
 type TraceAttributeValue = string | number | boolean | string[];
@@ -42,6 +41,7 @@ function attributeModeForPrivacy(
 function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
+  options: Parameters<StreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
 ): Record<string, TraceAttributeValue> {
@@ -53,31 +53,43 @@ function buildChatStartAttributes(
     "gen_ai.output.type": "text",
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
+    ...(options?.temperature !== undefined
+      ? { "gen_ai.request.temperature": options.temperature }
+      : {}),
+    ...(options?.maxTokens !== undefined
+      ? { "gen_ai.request.max_tokens": options.maxTokens }
+      : {}),
+    ...(options?.reasoning
+      ? { "gen_ai.request.reasoning.level": options.reasoning }
+      : {}),
+    ...(hasCompactedConversationContext(context.messages)
+      ? { "gen_ai.conversation.compacted": true }
+      : {}),
     ...(conversationPrivacy
       ? { "app.conversation.privacy": conversationPrivacy }
       : {}),
-    ...toGenAiMessagesTraceAttributes("app.ai.input", context.messages),
+    ...toGenAiMessagesTraceAttributes("gen_ai.input", context.messages),
   };
 
-  const inputMessages = serializeGenAiAttribute(
-    mode === "metadata"
-      ? context.messages.map(toGenAiMessageMetadata)
-      : context.messages.map(toCanonicalInputMessage),
-  );
-  if (inputMessages) {
-    attributes["gen_ai.input.messages"] = inputMessages;
+  if (mode === "content") {
+    const inputMessages = serializeGenAiAttribute(
+      context.messages.map(toCanonicalInputMessage),
+    );
+    if (inputMessages) {
+      attributes["gen_ai.input.messages"] = inputMessages;
+    }
   }
 
   if (context.systemPrompt) {
-    const systemInstructions = serializeGenAiAttribute([
-      mode === "metadata"
-        ? toGenAiTextMetadata(context.systemPrompt)
-        : { type: "text", content: context.systemPrompt },
-    ]);
-    if (systemInstructions) {
-      attributes["gen_ai.system_instructions"] = systemInstructions;
+    if (mode === "content") {
+      const systemInstructions = serializeGenAiAttribute([
+        { type: "text", content: context.systemPrompt },
+      ]);
+      if (systemInstructions) {
+        attributes["gen_ai.system_instructions"] = systemInstructions;
+      }
     }
-    attributes["app.ai.system_instructions.content_chars"] =
+    attributes["gen_ai.system_instructions.content_chars"] =
       context.systemPrompt.length;
   }
 
@@ -90,16 +102,16 @@ function buildChatEndAttributes(
   mode: GenAiAttributeMode,
 ): Record<string, TraceAttributeValue> {
   const attributes: Record<string, TraceAttributeValue> = {
-    ...toGenAiMessagesTraceAttributes("app.ai.output", [message]),
+    ...toGenAiMessagesTraceAttributes("gen_ai.output", [message]),
   };
 
-  const outputMessages = serializeGenAiAttribute(
-    mode === "metadata"
-      ? [toGenAiMessageMetadata(message)]
-      : [toCanonicalOutputMessage(message)],
-  );
-  if (outputMessages) {
-    attributes["gen_ai.output.messages"] = outputMessages;
+  if (mode === "content") {
+    const outputMessages = serializeGenAiAttribute([
+      toCanonicalOutputMessage(message),
+    ]);
+    if (outputMessages) {
+      attributes["gen_ai.output.messages"] = outputMessages;
+    }
   }
 
   Object.assign(attributes, extractGenAiUsageAttributes(message));
@@ -151,8 +163,14 @@ export function createTracedStreamFn(
       name: `chat ${model.id}`,
       op: "gen_ai.chat",
       attributes: {
-        ...getLogContextAttributes(),
-        ...buildChatStartAttributes(model, context, mode, effectivePrivacy),
+        ...getLogContextAttributesForSpan("gen_ai.chat"),
+        ...buildChatStartAttributes(
+          model,
+          context,
+          options,
+          mode,
+          effectivePrivacy,
+        ),
       },
     });
 
@@ -164,18 +182,26 @@ export function createTracedStreamFn(
       stream
         .result()
         .then(
-          (finalMessage) => {
+          (finalMessage: AssistantMessage) => {
             try {
               for (const [key, value] of Object.entries(
                 buildChatEndAttributes(finalMessage, mode),
               )) {
                 span.setAttribute(key, value);
               }
+              if (finalMessage.stopReason === "error") {
+                span.setAttribute("error.type", "provider_error");
+                span.setStatus({ code: 2, message: "LLM stream failed" });
+              }
             } finally {
               span.end();
             }
           },
-          () => {
+          (error: unknown) => {
+            span.setAttribute(
+              "error.type",
+              error instanceof Error ? error.name : typeof error,
+            );
             span.setStatus({ code: 2, message: "LLM stream failed" });
             span.end();
           },
@@ -187,6 +213,10 @@ export function createTracedStreamFn(
 
       return stream;
     } catch (error) {
+      span.setAttribute(
+        "error.type",
+        error instanceof Error ? error.name : typeof error,
+      );
       span.setStatus({ code: 2, message: "LLM call failed" });
       span.end();
       throw error;

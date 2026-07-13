@@ -1,7 +1,6 @@
 import type { LogContext } from "@/chat/logging";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
-import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
 type LogException = (
@@ -79,8 +78,6 @@ export function getAgentTurnDiagnosticsAttributes(
   reply: AgentRunResult,
 ): Record<string, unknown> {
   return {
-    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-    "gen_ai.operation.name": "invoke_agent",
     "app.ai.outcome": reply.diagnostics.outcome,
     "app.ai.assistant_messages": reply.diagnostics.assistantMessageCount,
     "app.ai.tool_results": reply.diagnostics.toolResultCount,

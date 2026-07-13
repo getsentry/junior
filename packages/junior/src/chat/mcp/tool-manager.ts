@@ -14,10 +14,8 @@ import {
   setSpanAttributes,
   withSpan,
 } from "@/chat/logging";
-import {
-  toGenAiPayloadMetadata,
-  type ConversationPrivacy,
-} from "@/chat/conversation-privacy";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import { toGenAiPayloadMetadata } from "@/chat/conversation-privacy";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
@@ -129,7 +127,11 @@ function utf8Bytes(value: string): number {
   return Buffer.byteLength(value, "utf8");
 }
 
-function prefixWithin(value: string, maxChars: number, maxBytes: number): string {
+function prefixWithin(
+  value: string,
+  maxChars: number,
+  maxBytes: number,
+): string {
   let low = 0;
   let high = Math.min(value.length, maxChars);
   while (low < high) {
@@ -146,7 +148,11 @@ function prefixWithin(value: string, maxChars: number, maxBytes: number): string
   return value.slice(0, low);
 }
 
-function suffixWithin(value: string, maxChars: number, maxBytes: number): string {
+function suffixWithin(
+  value: string,
+  maxChars: number,
+  maxBytes: number,
+): string {
   let low = Math.max(0, value.length - maxChars);
   let high = value.length;
   while (low < high) {
@@ -495,15 +501,18 @@ export class McpToolManager {
             plugin.manifest.name,
             tool,
           ),
-          "gen_ai.tool.type": "extension",
+          "gen_ai.tool.type": "function",
           "app.plugin.name": plugin.manifest.name,
           ...(options?.toolCallId
             ? { "gen_ai.tool.call.id": options.toolCallId }
             : {}),
         };
+        // Intentional OTel deviation: private traces put Junior's safe metadata
+        // projection here because it is more useful than omitting the attribute.
         const argumentAttribute = serializeMcpPayload(
           resolvedArgs,
           conversationPrivacy,
+          { privateMetadata: true },
         );
 
         return await withSpan(
@@ -520,6 +529,7 @@ export class McpToolManager {
               const resultAttribute = serializeMcpPayload(
                 result,
                 conversationPrivacy,
+                { privateMetadata: true },
               );
               if (resultAttribute) {
                 setSpanAttributes({
@@ -641,8 +651,12 @@ function toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
 function serializeMcpPayload(
   payload: unknown,
   privacy: ConversationPrivacy,
+  options: { privateMetadata?: boolean } = {},
 ): string | undefined {
-  return serializeGenAiAttribute(
-    privacy === "private" ? toGenAiPayloadMetadata(payload) : payload,
-  );
+  if (privacy !== "private") {
+    return serializeGenAiAttribute(payload);
+  }
+  return options.privateMetadata
+    ? serializeGenAiAttribute(toGenAiPayloadMetadata(payload))
+    : undefined;
 }
