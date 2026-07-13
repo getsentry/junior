@@ -256,7 +256,7 @@ function isAuthorized(
   allowedDomains: string[],
   allowedEmails: string[],
 ): boolean {
-  const email = session.user.email?.toLowerCase();
+  const email = session.user.email.toLowerCase();
   const domain = session.user.hostedDomain?.toLowerCase();
 
   if (session.user.emailVerified && email && allowedEmails.includes(email)) {
