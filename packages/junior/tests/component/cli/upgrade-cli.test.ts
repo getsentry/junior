@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
@@ -201,6 +202,82 @@ export const plugins = {
       missing: 0,
       scanned: 3,
     });
+  });
+
+  it("discovers legacy turn sessions outside the bounded global index", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const conversationId = "slack:C123:older-legacy-actor";
+    const sessionId = "turn-older-legacy-actor";
+    const requester = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U123",
+    };
+    const summary = {
+      version: 1,
+      conversationId,
+      cumulativeDurationMs: 0,
+      lastProgressAtMs: 2,
+      requester,
+      sessionId,
+      sliceId: 1,
+      startedAtMs: 1,
+      state: "completed",
+      updatedAtMs: 3,
+    };
+
+    await stateAdapter.appendToList(
+      `junior:agent_turn_session:conversation:${conversationId}:index`,
+      summary,
+      { ttlMs: 60_000 },
+    );
+    await stateAdapter.set(
+      `junior:agent_turn_session:${conversationId}:${sessionId}`,
+      { ...summary, committedSeq: -1 },
+      60_000,
+    );
+
+    const redisStateAdapter = {
+      getClient: () => ({
+        sendCommand: async (args: readonly string[]) => {
+          const match = args[3];
+          if (!match) {
+            throw new Error("Expected Redis SCAN match pattern");
+          }
+          return [
+            "0",
+            [match.replace("*", "chat-sdk").replace("*", conversationId)],
+          ];
+        },
+      }),
+    } as unknown as RedisStateAdapter;
+
+    await expect(
+      agentTurnSessionActorMigration.run({
+        io: { info: () => {} },
+        redisStateAdapter,
+        stateAdapter,
+      }),
+    ).resolves.toEqual({
+      existing: 0,
+      migrated: 2,
+      missing: 0,
+      scanned: 2,
+    });
+
+    const { listBoundedAgentTurnSessionSummariesForConversation } =
+      await import("@/chat/state/turn-session");
+    await expect(
+      listBoundedAgentTurnSessionSummariesForConversation(conversationId),
+    ).resolves.toEqual([
+      expect.objectContaining({ actor: requester, sessionId }),
+    ]);
+    await expect(
+      stateAdapter.get(
+        `junior:agent_turn_session:${conversationId}:${sessionId}`,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ actor: requester }));
   });
 
   it("migrates legacy conversation work before SQL conversation backfill", async () => {
