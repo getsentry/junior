@@ -81,7 +81,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                   )}
                   key={day.date}
                   role="listitem"
-                  title={`${day.date}: ${day.conversations} conversations, ${formatMs(day.durationMs)}`}
+                  title={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}`}
                 />
               ) : (
                 <span
@@ -114,6 +114,11 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
       </div>
     </div>
   );
+}
+
+function activityRuntime(day: DailyConversationActivity): string {
+  if (day.durationMs <= 0 && day.conversations > 0) return "unknown";
+  return formatMs(day.durationMs);
 }
 
 function activityClass(count: number, max: number): string {

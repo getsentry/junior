@@ -26,6 +26,7 @@ import { ConversationTranscriptView } from "../src/client/components/Conversatio
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
+import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
 import { ConversationsPage } from "../src/client/pages/ConversationsPage";
@@ -1328,6 +1329,21 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(">Scheduler<");
   });
 
+  it("preserves unknown runtime in shared activity tooltips", () => {
+    const html = renderToStaticMarkup(
+      <ContributionGrid
+        days={[
+          {
+            conversations: 1,
+            date: "2026-01-01",
+            durationMs: 0,
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('title="2026-01-01: 1 conversations, unknown"');
+  });
   it("renders transcript copy as an icon-only control", () => {
     const session = {
       conversationId: "conversation-1",

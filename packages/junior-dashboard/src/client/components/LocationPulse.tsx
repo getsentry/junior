@@ -2,12 +2,15 @@ import { Link } from "react-router";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
 import { formatCompactNumber, formatMs, locationPath } from "../format";
+import { EmptyTelemetry } from "./EmptyTelemetry";
 import { Section } from "./Section";
 import { SectionHeader } from "./SectionHeader";
 import { SectionTitle } from "./SectionTitle";
 
 /** Render the highest-volume public locations on the command center. */
 export function LocationPulse(props: {
+  error?: boolean;
+  loading?: boolean;
   locations: LocationSummaryReport[] | undefined;
 }) {
   const locations = props.locations ?? [];
@@ -18,7 +21,7 @@ export function LocationPulse(props: {
         left.label.localeCompare(right.label),
     )
     .slice(0, 5);
-  if (!locations.length) return null;
+  if (!locations.length && !props.error && !props.loading) return null;
 
   return (
     <Section>
@@ -34,7 +37,17 @@ export function LocationPulse(props: {
       >
         <SectionTitle>Locations</SectionTitle>
       </SectionHeader>
-      <LocationGroup items={active} title="Most active" />
+      {props.error && !locations.length ? (
+        <div className="p-3">
+          <EmptyTelemetry>Location activity failed to load.</EmptyTelemetry>
+        </div>
+      ) : props.loading && !locations.length ? (
+        <div className="px-4 py-4 text-[0.82rem] text-[#777]">
+          Loading location activity...
+        </div>
+      ) : (
+        <LocationGroup items={active} title="Most active" />
+      )}
     </Section>
   );
 }
