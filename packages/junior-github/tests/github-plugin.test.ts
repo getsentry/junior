@@ -1606,8 +1606,10 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       appPermissions: {
         actions: "write",
+        contents: "write",
         issues: "write",
         pull_requests: "write",
+        workflows: "write",
       },
     });
 
@@ -1660,14 +1662,28 @@ Conversation: \`local:test:old-conversation\`
     expect(requests[0]).toMatchObject({
       method: "POST",
       body: {
-        permissions: { actions: "write", metadata: "read" },
+        permissions: {
+          actions: "write",
+          contents: "write",
+          issues: "write",
+          metadata: "read",
+          pull_requests: "write",
+          workflows: "write",
+        },
         repositories: ["junior"],
       },
     });
     expect(requests[1]).toMatchObject({
       method: "POST",
       body: {
-        permissions: { issues: "write", metadata: "read" },
+        permissions: {
+          actions: "write",
+          contents: "write",
+          issues: "write",
+          metadata: "read",
+          pull_requests: "write",
+          workflows: "write",
+        },
         repositories: ["junior"],
       },
     });
@@ -1675,9 +1691,12 @@ Conversation: \`local:test:old-conversation\`
       method: "POST",
       body: {
         permissions: {
-          contents: "read",
+          actions: "write",
+          contents: "write",
+          issues: "write",
           metadata: "read",
           pull_requests: "write",
+          workflows: "write",
         },
         repositories: ["junior"],
       },
@@ -1695,6 +1714,8 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       appPermissions: {
         contents: "write",
+        issues: "write",
+        pull_requests: "write",
         workflows: "write",
       },
     });
@@ -1720,7 +1741,9 @@ Conversation: \`local:test:old-conversation\`
       body: {
         permissions: {
           contents: "write",
+          issues: "write",
           metadata: "read",
+          pull_requests: "write",
           workflows: "write",
         },
         repositories: ["junior"],

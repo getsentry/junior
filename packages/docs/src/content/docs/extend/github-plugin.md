@@ -47,7 +47,7 @@ export const plugins = defineJuniorPlugins([
 ]);
 ```
 
-`appPermissions` should match the permissions configured on the GitHub App. Junior requests read-level installation tokens for read traffic and separate repository-scoped installation tokens for supported workflow dispatch, issue, pull request, and branch writes. Unsupported writes are denied instead of borrowing a user token.
+`appPermissions` should match the permissions configured on the GitHub App. Junior requests read-level installation tokens for read traffic and repository-scoped tokens with the configured App permission envelope for supported workflow dispatch, issue, pull request, and branch writes. Unsupported writes are still denied by the egress policy instead of borrowing a user token.
 
 ## Configure environment variables
 
@@ -111,7 +111,7 @@ Create and install a GitHub App before you verify GitHub workflows:
 6. Install the app on the repository or organization Junior should access.
 7. Copy the App ID, OAuth client ID/secret, installation ID, bot name, bot noreply email, and, if you enabled PR event watches, the webhook secret into your deployment environment.
 
-Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. Junior downscopes each installation token to the target repository and selected operation family.
+Do not lower the GitHub App permission itself to read-only if Junior should create issues, push branches, or open pull requests. Junior scopes write tokens to the target repository and keeps write operations constrained by the egress allowlist.
 
 Git smart-HTTP push classification is repository-scoped, not branch-scoped. It does not independently identify Junior-managed branches or detect force updates or ref deletion. Protect important branches in GitHub and install the App only on repositories where Junior may push.
 
@@ -165,7 +165,7 @@ To verify PR event watches, create a PR through Junior in Slack and ask Junior t
 
 - Junior mints GitHub App installation and user-to-server tokens on the host, not in the sandbox.
 - When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
-- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, and branch writes use separate repository-scoped installation tokens. GitHub account identity checks and human review operations use user-to-server tokens.
+- App-readable requests use installation tokens downscoped to read. Allowlisted workflow dispatch, issue, pull request, and branch writes use repository-scoped installation tokens carrying the configured App permission envelope. GitHub account identity checks and human review operations use user-to-server tokens.
 - GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access comes from the App permissions, installation scope, and requesting user's access.
 - The GitHub App installation determines which repositories are reachable, and repository write grants narrow issued tokens to the parsed target repository.
 - The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
