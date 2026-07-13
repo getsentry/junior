@@ -232,6 +232,33 @@ describe("McpToolManager", () => {
     await manager.close();
   });
 
+  it("middle-truncates oversized MCP output before exposing it to the model", async () => {
+    const plugin = buildPlugin();
+    const manager = new McpToolManager([plugin]);
+    await manager.activateProvider("demo");
+    const head = "head:" + "a".repeat(40_000);
+    const tail = "z".repeat(40_000) + ":tail";
+    callToolMock.mockResolvedValueOnce({
+      content: [{ type: "text", text: `${head}${tail}` }],
+      isError: false,
+    });
+
+    const result = await manager.getResolvedActiveTools()[0]!.execute({});
+    const text = result.content[0];
+
+    expect(text).toMatchObject({ type: "text" });
+    if (text?.type !== "text") {
+      throw new Error("expected bounded text content");
+    }
+    expect(Buffer.byteLength(text.text, "utf8")).toBeLessThanOrEqual(32 * 1024);
+    expect(text.text).toContain(
+      "Warning: truncated output (original token count: 20003; original bytes: 80010)",
+    );
+    expect(text.text).toMatch(/^head:/);
+    expect(text.text).toMatch(/:tail$/);
+    await manager.close();
+  });
+
   it("surfaces MCP authorization challenges through the callback hook", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin], {

@@ -32,6 +32,10 @@ import {
   McpToolError,
 } from "./errors";
 
+const MAX_TOOL_RESULT_TOKENS = 10_000;
+const MAX_TOOL_RESULT_BYTES = 32 * 1024;
+const CHARS_PER_ESTIMATED_TOKEN = 4;
+
 function normalizeMcpToolName(provider: string, toolName: string): string {
   // Raw MCP tool names are only provider-scoped. Prefix the provider for the
   // model-facing callable name so two active MCP providers cannot collide.
@@ -121,20 +125,83 @@ function toAgentToolContent(
   return [{ type: "text", text: "ok" }];
 }
 
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+function prefixWithin(value: string, maxChars: number, maxBytes: number): string {
+  let low = 0;
+  let high = Math.min(value.length, maxChars);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (utf8Bytes(value.slice(0, middle)) <= maxBytes) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  if (low > 0 && /[\uD800-\uDBFF]/.test(value[low - 1]!)) {
+    low -= 1;
+  }
+  return value.slice(0, low);
+}
+
+function suffixWithin(value: string, maxChars: number, maxBytes: number): string {
+  const reversed = [...value].reverse().join("");
+  return [...prefixWithin(reversed, maxChars, maxBytes)].reverse().join("");
+}
+
+function boundMcpContent(
+  content: Array<TextContent | ImageContent>,
+): Array<TextContent | ImageContent> {
+  const text = content
+    .filter((part): part is TextContent => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n");
+  const originalBytes = utf8Bytes(text);
+  const originalTokens = Math.ceil(text.length / CHARS_PER_ESTIMATED_TOKEN);
+  if (
+    originalTokens <= MAX_TOOL_RESULT_TOKENS &&
+    originalBytes <= MAX_TOOL_RESULT_BYTES
+  ) {
+    return content;
+  }
+
+  const warning = `\n\nWarning: truncated output (original token count: ${originalTokens}; original bytes: ${originalBytes})\n\n`;
+  const remainingChars =
+    MAX_TOOL_RESULT_TOKENS * CHARS_PER_ESTIMATED_TOKEN - warning.length;
+  const remainingBytes = MAX_TOOL_RESULT_BYTES - utf8Bytes(warning);
+  const head = prefixWithin(
+    text,
+    Math.ceil(remainingChars / 2),
+    Math.ceil(remainingBytes / 2),
+  );
+  const tail = suffixWithin(
+    text.slice(head.length),
+    remainingChars - head.length,
+    remainingBytes - utf8Bytes(head),
+  );
+
+  return [
+    { type: "text", text: `${head}${warning}${tail}` },
+    ...content.filter((part): part is ImageContent => part.type === "image"),
+  ];
+}
+
 function toModelVisibleMcpContent(
   result: PluginMcpToolCallResult,
 ): Array<TextContent | ImageContent> {
   const content = toAgentToolContent(result);
   if (content.some((part) => part.type === "image")) {
-    return content;
+    return boundMcpContent(content);
   }
 
   const structured = summarizeStructuredContent(result.structuredContent);
   if (structured) {
-    return [{ type: "text", text: structured }];
+    return boundMcpContent([{ type: "text", text: structured }]);
   }
 
-  return content;
+  return boundMcpContent(content);
 }
 
 function describeMcpTool(provider: string, tool: PluginMcpListedTool): string {
