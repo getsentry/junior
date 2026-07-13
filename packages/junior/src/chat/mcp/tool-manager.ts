@@ -147,8 +147,20 @@ function prefixWithin(value: string, maxChars: number, maxBytes: number): string
 }
 
 function suffixWithin(value: string, maxChars: number, maxBytes: number): string {
-  const reversed = [...value].reverse().join("");
-  return [...prefixWithin(reversed, maxChars, maxBytes)].reverse().join("");
+  let low = Math.max(0, value.length - maxChars);
+  let high = value.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (utf8Bytes(value.slice(middle)) <= maxBytes) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  if (low < value.length && /[\uDC00-\uDFFF]/.test(value[low]!)) {
+    low += 1;
+  }
+  return value.slice(low);
 }
 
 function boundMcpContent(
