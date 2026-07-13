@@ -409,12 +409,12 @@ export async function wireAgentTools(
     }
   }
 
-  const activeMcpCatalogs = toolAllowed(
-    args.policy.toolPolicy,
-    "searchMcpTools",
-  )
-    ? toActiveMcpCatalogSummaries(mcpToolManager.getActiveToolCatalog())
-    : [];
+  let activeMcpCatalogs: ReturnType<typeof toActiveMcpCatalogSummaries> = [];
+  if (toolAllowed(args.policy.toolPolicy, "searchMcpTools")) {
+    activeMcpCatalogs = toActiveMcpCatalogSummaries(
+      mcpToolManager.getActiveToolCatalog(),
+    );
+  }
   const onToolCall = async (
     toolName: string,
     params: Record<string, unknown>,

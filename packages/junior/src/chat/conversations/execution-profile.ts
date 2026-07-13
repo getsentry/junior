@@ -62,12 +62,14 @@ export interface ConversationExecutionProfileStore {
 export function defaultConversationExecutionProfile(
   config: BotConfig,
 ): ConversationExecutionProfile {
+  let reasoning: ConversationReasoningPolicy = { mode: "adaptive" };
+  if (config.reasoningLevel) {
+    reasoning = { mode: "fixed", level: config.reasoningLevel };
+  }
   return {
     schemaVersion: 1,
     modelProfile: STANDARD_MODEL_PROFILE,
-    reasoning: config.reasoningLevel
-      ? { mode: "fixed", level: config.reasoningLevel }
-      : { mode: "adaptive" },
+    reasoning,
     instructions: [],
     toolPolicy: { mode: "host" },
   };

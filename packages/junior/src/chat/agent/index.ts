@@ -72,6 +72,7 @@ import {
   configuredTurnReasoningLevel,
   selectTurnReasoningLevel,
   toPiReasoningLevel,
+  type TurnReasoningSelection,
 } from "@/chat/services/turn-reasoning-level";
 import {
   addAgentTurnUsage,
@@ -212,17 +213,22 @@ async function executeAgentRunInPrivacyContext(
   let canRecordMcpProviders = false;
   let turnUsage: AgentTurnUsage | undefined;
   let handoffPhaseUsage: AgentTurnUsage | undefined;
-  const configuredReasoningLevel = policy.reasoningPolicy
-    ? policy.reasoningPolicy.mode === "fixed"
-      ? policy.reasoningPolicy.level
-      : undefined
-    : botConfig.reasoningLevel;
-  let reasoningSelection = configuredReasoningLevel
-    ? configuredTurnReasoningLevel(
-        configuredReasoningLevel,
-        policy.reasoningPolicy ? "agent_config" : "default",
-      )
-    : undefined;
+  let configuredReasoningLevel = botConfig.reasoningLevel;
+  let reasoningSource: "agent_config" | "default" = "default";
+  if (policy.reasoningPolicy) {
+    configuredReasoningLevel = undefined;
+    if (policy.reasoningPolicy.mode === "fixed") {
+      configuredReasoningLevel = policy.reasoningPolicy.level;
+      reasoningSource = "agent_config";
+    }
+  }
+  let reasoningSelection: TurnReasoningSelection | undefined;
+  if (configuredReasoningLevel) {
+    reasoningSelection = configuredTurnReasoningLevel(
+      configuredReasoningLevel,
+      reasoningSource,
+    );
+  }
   let activeModelProfile: ModelProfile =
     policy.modelProfile ?? STANDARD_MODEL_PROFILE;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
@@ -341,11 +347,10 @@ async function executeAgentRunInPrivacyContext(
       currentSliceId,
       existingSessionRecord,
     } = await restoreSessionRecord(routing);
-    if (
-      existingSessionRecord?.reasoningLevel &&
-      policy.reasoningPolicy?.mode !== "fixed" &&
-      (policy.reasoningPolicy || !botConfig.reasoningLevel)
-    ) {
+    const fixedReasoningConfigured =
+      policy.reasoningPolicy?.mode === "fixed" ||
+      (!policy.reasoningPolicy && Boolean(botConfig.reasoningLevel));
+    if (existingSessionRecord?.reasoningLevel && !fixedReasoningConfigured) {
       reasoningSelection = configuredTurnReasoningLevel(
         parseTurnReasoningLevel(existingSessionRecord.reasoningLevel),
         "resume",
