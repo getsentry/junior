@@ -10,7 +10,6 @@ import type {
   CodeBlock,
   Conversation,
   ConversationTranscript,
-  ConversationFilter,
   MarkupNode,
   TranscriptViewMessage,
   TranscriptViewPart,
@@ -20,7 +19,6 @@ import { sameToolInvocation } from "./toolInvocations";
 import { conversationTranscriptMessages } from "./transcriptActivity";
 
 let dashboardTimeZone = "America/Los_Angeles";
-const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Set the dashboard display timezone returned by the authenticated config API. */
 export function setDashboardTimeZone(timeZone: string): void {
@@ -54,30 +52,6 @@ function parseTime(value: string | undefined): number | null {
   if (!value) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
-}
-
-/** Return the recent reporting window used by the duration chart. */
-export function recentConversationRange(nowMs = Date.now()) {
-  return {
-    endMs: nowMs,
-    startMs: nowMs - RECENT_CONVERSATION_WINDOW_MS,
-  };
-}
-
-/** Keep chart conversations inside the shared recent activity window. */
-export function filterRecentConversations(
-  conversations: Conversation[],
-  nowMs = Date.now(),
-): Conversation[] {
-  const range = recentConversationRange(nowMs);
-  return conversations.filter((conversation) => {
-    const activityAt = parseTime(conversation.lastSeenAt);
-    return (
-      activityAt !== null &&
-      activityAt >= range.startMs &&
-      activityAt <= range.endMs
-    );
-  });
 }
 
 /** Format absolute dashboard timestamps with a stable empty fallback. */
@@ -127,16 +101,6 @@ export function formatMs(value: number | undefined): string {
   const minutes = Math.floor(roundedSeconds / 60);
   const remainingSeconds = roundedSeconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
-}
-
-/** Format chart duration ticks without long labels wrapping on the Y axis. */
-export function formatDurationTick(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "none";
-  const ms = Math.max(0, Math.floor(value));
-  if (Math.round(ms / 1000) >= 10 * 60) {
-    return `${Math.round(ms / (60 * 1000))}m`;
-  }
-  return formatMs(ms);
 }
 
 /** Format a persisted conversation runtime when duration data exists. */
@@ -949,44 +913,12 @@ export function conversationFromDetail(
     : undefined;
 }
 
-/** Apply the dashboard conversation filter to conversation rows. */
-export function filterConversations(
-  conversations: Conversation[],
-  filter: ConversationFilter,
-): Conversation[] {
-  if (filter === "all") return conversations;
-  if (filter === "active") return conversations.filter(isActiveConversation);
-  if (filter === "failed") return conversations.filter(isFailedConversation);
-  return conversations;
-}
-
 export type ConversationListFilters = {
   query?: string;
   actor?: string;
   location?: string;
   source?: string;
 };
-
-export type ConversationListFilterOption = {
-  label: string;
-  value: string;
-};
-
-function uniqueConversationOptions(
-  conversations: Conversation[],
-  valueForConversation: (conversation: Conversation) => string | undefined,
-  labelForConversation: (conversation: Conversation, value: string) => string,
-): ConversationListFilterOption[] {
-  const options = new Map<string, string>();
-  for (const conversation of conversations) {
-    const value = valueForConversation(conversation)?.trim();
-    if (!value || options.has(value)) continue;
-    options.set(value, labelForConversation(conversation, value));
-  }
-  return [...options.entries()]
-    .map(([value, label]) => ({ label, value }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-}
 
 function conversationSearchHaystack(conversation: Conversation): string {
   const actor = conversation.actorIdentity;
@@ -1005,44 +937,6 @@ function conversationSearchHaystack(conversation: Conversation): string {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-}
-
-/** Return source filter options present in the loaded conversation rows. */
-export function conversationSourceOptions(
-  conversations: Conversation[],
-): ConversationListFilterOption[] {
-  return uniqueConversationOptions(
-    conversations,
-    (conversation) => conversation.surface,
-    (_conversation, value) => value,
-  );
-}
-
-/** Return actor filter options present in the loaded conversation rows. */
-export function conversationActorOptions(
-  conversations: Conversation[],
-): ConversationListFilterOption[] {
-  return uniqueConversationOptions(
-    conversations,
-    conversationActorKey,
-    (conversation, value) =>
-      conversation.actorIdentity?.fullName?.trim() ||
-      conversation.actorIdentity?.email?.trim() ||
-      conversation.actorIdentity?.slackUserName?.trim() ||
-      value,
-  );
-}
-
-/** Return location filter options present in the loaded conversation rows. */
-export function conversationLocationOptions(
-  conversations: Conversation[],
-): ConversationListFilterOption[] {
-  return uniqueConversationOptions(
-    conversations,
-    (conversation) => conversation.locationId,
-    (conversation, value) =>
-      slackLocationLabel(conversation, { includeId: false }) ?? value,
-  );
 }
 
 /** Apply lightweight client-side search and facet filters to conversations. */
@@ -1066,13 +960,6 @@ export function filterConversationList(
     }
     return true;
   });
-}
-
-/** Normalize URL filter params to the supported dashboard filter set. */
-export function getFilter(value: string | null): ConversationFilter {
-  return value === "active" || value === "failed" || value === "all"
-    ? value
-    : "recent";
 }
 
 /** Serialize transcript part payloads for raw view and syntax highlighting. */

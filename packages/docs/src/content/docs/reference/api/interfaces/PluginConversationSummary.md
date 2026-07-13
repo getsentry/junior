@@ -51,7 +51,7 @@ Defined in: [junior-plugin-api/src/operations.ts:19](https://github.com/getsentr
 
 ### source?
 
-> `optional` **source?**: `"slack"` \| `"plugin"` \| `"local"` \| `"api"` \| `"internal"` \| `"resource_event"` \| `"scheduler"`
+> `optional` **source?**: `"api"` \| `"internal"` \| `"scheduler"` \| `"slack"` \| `"plugin"` \| `"local"` \| `"resource_event"`
 
 Defined in: [junior-plugin-api/src/operations.ts:20](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/operations.ts#L20)
 

@@ -9,12 +9,9 @@ import {
 import type {
   ActorActivityDayReport,
   ConversationStatsItem,
-  ActorIdentity,
   ActorTotalsReport,
 } from "./schema";
-import { conversationSignals } from "../conversations/reporting";
 
-export const SAMPLE_LIMIT = 5_000;
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 366;
 
@@ -35,17 +32,6 @@ export function emptyTotals(): ActorTotalsReport {
   };
 }
 
-/** Build a zeroed labeled stats row for people API aggregations. */
-export function emptyStatsItem(label: string): ConversationStatsItem {
-  return {
-    active: 0,
-    conversations: 0,
-    durationMs: 0,
-    failed: 0,
-    label,
-  };
-}
-
 /** Build a zeroed activity day for the people profile window. */
 export function emptyActivityDay(date: string): ActorActivityDayReport {
   return {
@@ -54,48 +40,6 @@ export function emptyActivityDay(date: string): ActorActivityDayReport {
     date,
     durationMs: 0,
     failed: 0,
-  };
-}
-
-/** Add status counters into a people API aggregate row. */
-export function addSignals(
-  target: Pick<ActorTotalsReport, "active" | "failed">,
-  value: ReturnType<typeof conversationSignals>,
-): void {
-  target.active += value.active ? 1 : 0;
-  target.failed += value.failed ? 1 : 0;
-}
-
-/** Return only actor identities that can be grouped by normalized email. */
-export function identityWithEmail(
-  actor: ActorIdentity | undefined,
-): (ActorIdentity & { email: string }) | undefined {
-  const email = normalizeEmail(actor?.email);
-  if (!email) return undefined;
-  return {
-    email,
-    ...(actor?.fullName ? { fullName: actor.fullName } : {}),
-    ...(actor?.slackUserId ? { slackUserId: actor.slackUserId } : {}),
-    ...(actor?.slackUserName ? { slackUserName: actor.slackUserName } : {}),
-  };
-}
-
-/** Preserve the first observed person fields while filling missing details. */
-export function mergeIdentity(
-  current: ActorIdentity & { email: string },
-  next: ActorIdentity & { email: string },
-): ActorIdentity & { email: string } {
-  return {
-    email: current.email,
-    ...((current.fullName ?? next.fullName)
-      ? { fullName: current.fullName ?? next.fullName }
-      : {}),
-    ...((current.slackUserId ?? next.slackUserId)
-      ? { slackUserId: current.slackUserId ?? next.slackUserId }
-      : {}),
-    ...((current.slackUserName ?? next.slackUserName)
-      ? { slackUserName: current.slackUserName ?? next.slackUserName }
-      : {}),
   };
 }
 
@@ -131,10 +75,22 @@ export function statsItems(map: Map<string, ConversationStatsItem>) {
   );
 }
 
-/** Read verified actor conversation rows directly from the SQL identity model. */
-export async function actorRows(email?: string) {
+/** Build the verified Slack actor predicate shared by People aggregate and recent-row queries. */
+export function verifiedActorWhere(email?: string) {
   const normalizedEmail = normalizeEmail(email);
-  const rows = await getDb()
+  return and(
+    eq(juniorIdentities.provider, "slack"),
+    eq(juniorIdentities.emailVerified, true),
+    sql`${juniorUsers.primaryEmailNormalized} IS NOT NULL`,
+    normalizedEmail
+      ? eq(juniorUsers.primaryEmailNormalized, normalizedEmail)
+      : undefined,
+  );
+}
+
+/** Read only the recent conversation rows required by a People profile. */
+export async function recentActorRows(email: string) {
+  return getDb()
     .select({
       channelName: juniorConversations.channelName,
       conversationId: juniorConversations.conversationId,
@@ -164,27 +120,10 @@ export async function actorRows(email?: string) {
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(
-      and(
-        eq(juniorIdentities.provider, "slack"),
-        eq(juniorIdentities.emailVerified, true),
-        sql`${juniorUsers.primaryEmailNormalized} IS NOT NULL`,
-        normalizedEmail
-          ? eq(juniorUsers.primaryEmailNormalized, normalizedEmail)
-          : undefined,
-      ),
-    )
+    .where(verifiedActorWhere(email))
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
     )
-    .limit(SAMPLE_LIMIT + 1);
-  return {
-    rows: rows.slice(0, SAMPLE_LIMIT),
-    truncated: rows.length > SAMPLE_LIMIT,
-  };
+    .limit(RECENT_LIMIT);
 }
-
-export type PeopleConversationRow = Awaited<
-  ReturnType<typeof actorRows>
->["rows"][number];

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -7,9 +7,9 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationAggregateColumns } from "./aggregate";
 import type { ConversationStatsItem, ConversationStatsReport } from "./schema";
 
-const SAMPLE_LIMIT = 5_000;
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function emptyStatsItem(label: string): ConversationStatsItem {
@@ -26,7 +26,14 @@ function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
 }
 
-function actorLabel(row: StatsRow): string {
+function actorLabel(row: {
+  identityDisplayName: string | null;
+  identityEmail: string | null;
+  identityHandle: string | null;
+  identitySubjectId: string | null;
+  userDisplayName: string | null;
+  userEmail: string | null;
+}): string {
   return (
     row.userEmail?.trim() ||
     row.identityEmail?.trim() ||
@@ -46,7 +53,14 @@ function surfaceLabel(source: string | null): string {
 }
 
 /** Collapse private Slack destinations before any stored name reaches stats. */
-function locationLabel(row: StatsRow): string {
+function locationLabel(row: {
+  channelName: string | null;
+  destinationDisplayName: string | null;
+  destinationKind: string | null;
+  destinationProvider: string | null;
+  destinationVisibility: string | null;
+  source: string | null;
+}): string {
   if (row.destinationProvider !== "slack") {
     return surfaceLabel(row.source);
   }
@@ -62,34 +76,31 @@ function locationLabel(row: StatsRow): string {
   return name ? `#${name}` : "Public Channel";
 }
 
-/** Treat every unfinished execution as active regardless of last progress. */
-function signals(row: StatsRow) {
-  if (row.executionStatus === "failed") {
-    return { active: false, failed: true };
-  }
-  if (row.executionStatus === "idle") {
-    return { active: false, failed: false };
-  }
-  return { active: true, failed: false };
-}
+type AggregateRow = {
+  active: number;
+  conversations: number;
+  costUsd: number | null;
+  durationMs: number;
+  failed: number;
+  tokens: number | null;
+};
 
-function addConversation(
+function addAggregate(
   map: Map<string, ConversationStatsItem>,
   label: string,
-  rowSignals: ReturnType<typeof signals>,
-  metrics: { costUsd?: number; durationMs: number; tokens?: number },
+  row: AggregateRow,
 ): void {
   const item = map.get(label) ?? emptyStatsItem(label);
-  item.conversations += 1;
-  item.durationMs += metrics.durationMs;
-  if (metrics.tokens !== undefined) {
-    item.tokens = (item.tokens ?? 0) + metrics.tokens;
+  item.active += row.active;
+  item.conversations += row.conversations;
+  item.durationMs += row.durationMs;
+  item.failed += row.failed;
+  if (row.tokens !== null) {
+    item.tokens = (item.tokens ?? 0) + row.tokens;
   }
-  if (metrics.costUsd !== undefined) {
-    item.costUsd = addUsd(item.costUsd, metrics.costUsd);
+  if (row.costUsd !== null) {
+    item.costUsd = addUsd(item.costUsd, row.costUsd);
   }
-  item.active += rowSignals.active ? 1 : 0;
-  item.failed += rowSignals.failed ? 1 : 0;
   map.set(label, item);
 }
 
@@ -101,137 +112,108 @@ function statsItems(map: Map<string, ConversationStatsItem>) {
   );
 }
 
-async function statsRows(db: JuniorDatabase, start: Date, end: Date) {
-  return db
-    .select({
-      channelName: juniorConversations.channelName,
-      destinationDisplayName: juniorDestinations.displayName,
-      destinationKind: juniorDestinations.kind,
-      destinationProvider: juniorDestinations.provider,
-      destinationVisibility: juniorDestinations.visibility,
-      durationMs: juniorConversations.durationMs,
-      executionStatus: juniorConversations.executionStatus,
-      identityDisplayName: juniorIdentities.displayName,
-      identityEmail: juniorIdentities.emailNormalized,
-      identityHandle: juniorIdentities.handle,
-      identitySubjectId: juniorIdentities.providerSubjectId,
-      source: juniorConversations.source,
-      usage: juniorConversations.usage,
-      userDisplayName: juniorUsers.displayName,
-      userEmail: juniorUsers.primaryEmailNormalized,
-    })
-    .from(juniorConversations)
-    .leftJoin(
-      juniorIdentities,
-      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-    )
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .where(
-      and(
-        isNull(juniorConversations.parentConversationId),
-        gte(juniorConversations.lastActivityAt, start),
-        lte(juniorConversations.lastActivityAt, end),
+function statsWhere(start: Date, end: Date) {
+  return and(
+    isNull(juniorConversations.parentConversationId),
+    gte(juniorConversations.lastActivityAt, start),
+    lte(juniorConversations.lastActivityAt, end),
+  );
+}
+
+async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
+  const where = statsWhere(start, end);
+  const [totalsRows, actorRows, locationRows] = await Promise.all([
+    db
+      .select(conversationAggregateColumns())
+      .from(juniorConversations)
+      .where(where),
+    db
+      .select({
+        identityDisplayName: juniorIdentities.displayName,
+        identityEmail: juniorIdentities.emailNormalized,
+        identityHandle: juniorIdentities.handle,
+        identitySubjectId: juniorIdentities.providerSubjectId,
+        userDisplayName: juniorUsers.displayName,
+        userEmail: juniorUsers.primaryEmailNormalized,
+        ...conversationAggregateColumns(),
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      )
+      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .where(where)
+      .groupBy(
+        juniorIdentities.displayName,
+        juniorIdentities.emailNormalized,
+        juniorIdentities.handle,
+        juniorIdentities.providerSubjectId,
+        juniorUsers.displayName,
+        juniorUsers.primaryEmailNormalized,
       ),
-    )
-    .orderBy(
-      desc(juniorConversations.lastActivityAt),
-      asc(juniorConversations.conversationId),
-    )
-    .limit(SAMPLE_LIMIT);
+    db
+      .select({
+        channelName: juniorConversations.channelName,
+        destinationDisplayName: juniorDestinations.displayName,
+        destinationKind: juniorDestinations.kind,
+        destinationProvider: juniorDestinations.provider,
+        destinationVisibility: juniorDestinations.visibility,
+        source: juniorConversations.source,
+        ...conversationAggregateColumns(),
+      })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(where)
+      .groupBy(
+        juniorConversations.channelName,
+        juniorConversations.source,
+        juniorDestinations.displayName,
+        juniorDestinations.kind,
+        juniorDestinations.provider,
+        juniorDestinations.visibility,
+      ),
+  ]);
+  return { actorRows, locationRows, totals: totalsRows[0] };
 }
 
-type StatsRow = Awaited<ReturnType<typeof statsRows>>[number];
-
-function usageTokens(
-  usage: (typeof juniorConversations.$inferSelect)["usage"],
-): number | undefined {
-  if (!usage) return undefined;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  const values = [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].filter((value): value is number => value !== undefined);
-  return values.length > 0
-    ? values.reduce((sum, value) => sum + value, 0)
-    : undefined;
-}
-
-function usageCostUsd(
-  usage: (typeof juniorConversations.$inferSelect)["usage"],
-): number | undefined {
-  const cost = usage?.cost;
-  if (!cost) return undefined;
-  if (cost.total !== undefined) return cost.total;
-  const values = [
-    cost.input,
-    cost.output,
-    cost.cacheRead,
-    cost.cacheWrite,
-  ].filter((value): value is number => value !== undefined);
-  return values.length > 0
-    ? values.reduce((sum, value) => sum + value, 0)
-    : undefined;
-}
-
-/** Build aggregate dashboard stats from normalized durable SQL records. */
+/** Build complete seven-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
   const windowStartMs = nowMs - WINDOW_MS;
-  const rows = await statsRows(
+  const { actorRows, locationRows, totals } = await aggregateStats(
     getDb(),
     new Date(windowStartMs),
     new Date(nowMs),
   );
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
-  let active = 0;
-  let costUsd: number | undefined;
-  let durationMs = 0;
-  let failed = 0;
-  let tokens: number | undefined;
 
-  for (const row of rows) {
-    const rowSignals = signals(row);
-    active += rowSignals.active ? 1 : 0;
-    failed += rowSignals.failed ? 1 : 0;
-    const rowTokens = usageTokens(row.usage);
-    const rowCostUsd = usageCostUsd(row.usage);
-    const metrics = {
-      ...(rowCostUsd !== undefined ? { costUsd: rowCostUsd } : {}),
-      durationMs: row.durationMs,
-      ...(rowTokens !== undefined ? { tokens: rowTokens } : {}),
-    };
-    durationMs += metrics.durationMs;
-    if (metrics.tokens !== undefined) {
-      tokens = (tokens ?? 0) + metrics.tokens;
-    }
-    if (metrics.costUsd !== undefined) {
-      costUsd = addUsd(costUsd, metrics.costUsd);
-    }
-    addConversation(actors, actorLabel(row), rowSignals, metrics);
-    addConversation(locations, locationLabel(row), rowSignals, metrics);
+  for (const row of actorRows) {
+    addAggregate(actors, actorLabel(row), row);
+  }
+  for (const row of locationRows) {
+    addAggregate(locations, locationLabel(row), row);
   }
 
   return {
-    active,
-    conversations: rows.length,
-    durationMs,
-    failed,
+    active: totals?.active ?? 0,
+    conversations: totals?.conversations ?? 0,
+    durationMs: totals?.durationMs ?? 0,
+    failed: totals?.failed ?? 0,
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
     actors: statsItems(actors),
-    sampleLimit: SAMPLE_LIMIT,
-    sampleSize: rows.length,
     source: "conversation_index",
-    ...(costUsd !== undefined ? { costUsd } : {}),
-    ...(tokens !== undefined ? { tokens } : {}),
-    truncated: rows.length >= SAMPLE_LIMIT,
+    ...(totals?.costUsd !== null && totals?.costUsd !== undefined
+      ? { costUsd: addUsd(undefined, totals.costUsd) }
+      : {}),
+    ...(totals?.tokens !== null && totals?.tokens !== undefined
+      ? { tokens: totals.tokens }
+      : {}),
     windowEnd: new Date(nowMs).toISOString(),
     windowStart: new Date(windowStartMs).toISOString(),
   };

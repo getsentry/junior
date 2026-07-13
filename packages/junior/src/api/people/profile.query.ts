@@ -1,34 +1,43 @@
+import { and, eq, gte, sql } from "drizzle-orm";
+import { getDb } from "@/chat/db";
+import {
+  juniorConversations,
+  juniorDestinations,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
+import {
+  conversationActiveDaysColumn,
+  conversationAggregateColumns,
+} from "../conversations/aggregate";
+import {
+  slackLocationLabel,
+  summaryFromRow,
+  surfaceLabel,
+} from "../conversations/reporting";
 import type {
   ConversationStatsItem,
-  ConversationSummaryReport,
   ActorActivityDayReport,
   ActorIdentity,
   ActorProfileReport,
 } from "./schema";
 import {
-  conversationSignals,
-  reportDate,
-  reportTime,
-  slackLocationLabel,
-  summaryFromRow,
-  surfaceLabel,
-  usageTokens,
-} from "../conversations/reporting";
-import {
   ACTIVITY_DAYS,
   activityDays,
-  addSignals,
-  emptyActivityDay,
-  emptyStatsItem,
   emptyTotals,
-  identityWithEmail,
-  mergeIdentity,
   normalizeEmail,
-  RECENT_LIMIT,
-  actorRows,
-  SAMPLE_LIMIT,
+  recentActorRows,
   statsItems,
+  verifiedActorWhere,
 } from "./shared";
+
+type AggregateRow = {
+  active: number;
+  conversations: number;
+  durationMs: number;
+  failed: number;
+  tokens: number | null;
+};
 
 function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   const end = new Date(nowMs);
@@ -41,109 +50,205 @@ function emptyProfile(email: string, nowMs: number): ActorProfileReport {
     locations: [],
     recentConversations: [],
     actor: { email },
-    sampleLimit: SAMPLE_LIMIT,
-    sampleSize: 0,
     source: "conversation_index",
     surfaces: [],
     totals: emptyTotals(),
-    truncated: false,
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),
   };
 }
 
-/** Load one person profile from the configured SQL database. */
+function addAggregate(
+  map: Map<string, ConversationStatsItem>,
+  label: string,
+  row: AggregateRow,
+): void {
+  const item = map.get(label) ?? {
+    active: 0,
+    conversations: 0,
+    durationMs: 0,
+    failed: 0,
+    label,
+  };
+  item.active += row.active;
+  item.conversations += row.conversations;
+  item.durationMs += row.durationMs;
+  item.failed += row.failed;
+  if (row.tokens !== null) item.tokens = (item.tokens ?? 0) + row.tokens;
+  map.set(label, item);
+}
+
+function surfaceExpression() {
+  return sql<string>`CASE
+    WHEN ${juniorConversations.source} IN ('api', 'scheduler', 'slack')
+      THEN ${juniorConversations.source}
+    WHEN ${juniorConversations.conversationId} LIKE 'slack:%' THEN 'slack'
+    WHEN ${juniorConversations.conversationId} LIKE 'scheduler:%' THEN 'scheduler'
+    WHEN ${juniorConversations.conversationId} LIKE 'api:%' THEN 'api'
+    ELSE 'internal'
+  END`;
+}
+
+function locationLabel(row: {
+  channel: string;
+  channelName: string | null;
+  destinationVisibility: string | null;
+  surface: string;
+}): string {
+  if (row.surface !== "slack")
+    return surfaceLabel(row.surface as "api" | "internal" | "scheduler");
+  if (row.destinationVisibility !== "public") return "Private Conversation";
+  return (
+    slackLocationLabel({
+      channel: row.channel || undefined,
+      channelName: row.channelName ?? undefined,
+    }) ?? "Conversation"
+  );
+}
+
+/** Load one complete person profile while bounding only its recent-conversation list. */
 export async function readPeopleProfileFromSql(
   email: string,
 ): Promise<ActorProfileReport> {
   const nowMs = Date.now();
   const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    return emptyProfile("", nowMs);
-  }
+  if (!normalizedEmail) return emptyProfile("", nowMs);
 
-  const { rows, truncated } = await actorRows(normalizedEmail);
-  let actor: (ActorIdentity & { email: string }) | undefined;
-  const totals = emptyTotals();
-  const activeDates = new Set<string>();
-  const days = new Map<string, ActorActivityDayReport>();
-  const locations = new Map<string, ConversationStatsItem>();
-  const surfaces = new Map<string, ConversationStatsItem>();
-  const recentConversations: ConversationSummaryReport[] = [];
-
-  for (const row of rows) {
-    const summary = summaryFromRow(row);
-    const identity = identityWithEmail(summary.actorIdentity);
-    if (identity) {
-      actor = actor ? mergeIdentity(actor, identity) : identity;
-    }
-    recentConversations.push(summary);
-
-    const value = conversationSignals(summary);
-    const date = reportDate(summary.lastSeenAt);
-    totals.conversations += 1;
-    totals.durationMs += summary.cumulativeDurationMs;
-    const tokens = usageTokens(row);
-    if (tokens !== undefined) totals.tokens = (totals.tokens ?? 0) + tokens;
-    addSignals(totals, value);
-
-    if (date) {
-      activeDates.add(date);
-      const day = days.get(date) ?? emptyActivityDay(date);
-      day.conversations += 1;
-      day.durationMs += summary.cumulativeDurationMs;
-      if (tokens !== undefined) day.tokens = (day.tokens ?? 0) + tokens;
-      addSignals(day, value);
-      days.set(date, day);
-    }
-
-    const location =
-      slackLocationLabel(summary) ?? surfaceLabel(summary.surface);
-    const locationItem = locations.get(location) ?? emptyStatsItem(location);
-    locationItem.conversations += 1;
-    locationItem.durationMs += summary.cumulativeDurationMs;
-    if (tokens !== undefined) {
-      locationItem.tokens = (locationItem.tokens ?? 0) + tokens;
-    }
-    addSignals(locationItem, value);
-    locations.set(location, locationItem);
-
-    const surface = surfaceLabel(summary.surface);
-    const surfaceItem = surfaces.get(surface) ?? emptyStatsItem(surface);
-    surfaceItem.conversations += 1;
-    surfaceItem.durationMs += summary.cumulativeDurationMs;
-    if (tokens !== undefined) {
-      surfaceItem.tokens = (surfaceItem.tokens ?? 0) + tokens;
-    }
-    addSignals(surfaceItem, value);
-    surfaces.set(surface, surfaceItem);
-  }
-
-  totals.activeDays = activeDates.size;
   const end = new Date(nowMs);
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  const where = verifiedActorWhere(normalizedEmail);
+  const surface = surfaceExpression();
+  const activityDate = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD'
+  )`;
+  const channel = sql<string>`SPLIT_PART(${juniorConversations.conversationId}, ':', 2)`;
+
+  const [totalsRows, dayRows, locationRows, surfaceRows, recentRows] =
+    await Promise.all([
+      getDb()
+        .select({
+          email: juniorUsers.primaryEmailNormalized,
+          fullName: juniorUsers.displayName,
+          slackUserId: sql<
+            string | null
+          >`MAX(${juniorIdentities.providerSubjectId})`,
+          slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+          activeDays: conversationActiveDaysColumn(),
+          ...conversationAggregateColumns(),
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(where)
+        .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName),
+      getDb()
+        .select({
+          date: activityDate,
+          ...conversationAggregateColumns(),
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(and(where, gte(juniorConversations.lastActivityAt, start)))
+        .groupBy(activityDate),
+      getDb()
+        .select({
+          channel,
+          channelName: juniorConversations.channelName,
+          destinationVisibility: juniorDestinations.visibility,
+          surface,
+          ...conversationAggregateColumns(),
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(where)
+        .groupBy(
+          channel,
+          juniorConversations.channelName,
+          juniorDestinations.visibility,
+          surface,
+        ),
+      getDb()
+        .select({ surface, ...conversationAggregateColumns() })
+        .from(juniorConversations)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(where)
+        .groupBy(surface),
+      recentActorRows(normalizedEmail),
+    ]);
+
+  const totalsRow = totalsRows[0];
+  if (!totalsRow) return emptyProfile(normalizedEmail, nowMs);
+
+  const actor: ActorIdentity & { email: string } = {
+    email: totalsRow.email,
+    ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : {}),
+    ...(totalsRow.slackUserId ? { slackUserId: totalsRow.slackUserId } : {}),
+    ...(totalsRow.slackUserName
+      ? { slackUserName: totalsRow.slackUserName }
+      : {}),
+  };
+  const days = new Map<string, ActorActivityDayReport>();
+  for (const row of dayRows) {
+    days.set(row.date, {
+      active: row.active,
+      conversations: row.conversations,
+      date: row.date,
+      durationMs: row.durationMs,
+      failed: row.failed,
+      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+    });
+  }
+  const locations = new Map<string, ConversationStatsItem>();
+  for (const row of locationRows) {
+    addAggregate(locations, locationLabel(row), row);
+  }
+  const surfaces = new Map<string, ConversationStatsItem>();
+  for (const row of surfaceRows) {
+    addAggregate(
+      surfaces,
+      surfaceLabel(row.surface as "api" | "internal" | "scheduler" | "slack"),
+      row,
+    );
+  }
 
   return {
     activityDays: activityDays(days, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
-    recentConversations: recentConversations
-      .sort(
-        (left, right) =>
-          (reportTime(right.lastSeenAt) ?? 0) -
-            (reportTime(left.lastSeenAt) ?? 0) ||
-          right.conversationId.localeCompare(left.conversationId),
-      )
-      .slice(0, RECENT_LIMIT),
-    actor: actor ?? { email: normalizedEmail },
-    sampleLimit: SAMPLE_LIMIT,
-    sampleSize: rows.length,
+    recentConversations: recentRows.map(summaryFromRow),
+    actor,
     source: "conversation_index",
     surfaces: statsItems(surfaces),
-    totals,
-    truncated,
+    totals: {
+      active: totalsRow.active,
+      activeDays: totalsRow.activeDays,
+      conversations: totalsRow.conversations,
+      durationMs: totalsRow.durationMs,
+      failed: totalsRow.failed,
+      ...(totalsRow.tokens !== null ? { tokens: totalsRow.tokens } : {}),
+    },
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),
   };

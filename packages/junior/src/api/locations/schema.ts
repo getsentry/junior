@@ -28,10 +28,7 @@ export const locationDirectoryReportSchema = z
     generatedAt: z.string(),
     locations: z.array(locationSummaryReportSchema),
     privateActivity: conversationStatsItemSchema,
-    sampleLimit: z.number(),
-    sampleSize: z.number(),
     source: z.literal("conversation_index"),
-    truncated: z.boolean(),
   })
   .strict();
 
@@ -41,10 +38,7 @@ export const locationDetailReportSchema = locationSummaryReportSchema
     actors: z.array(locationActorSummaryReportSchema),
     generatedAt: z.string(),
     recentConversations: z.array(conversationSummaryReportSchema),
-    sampleLimit: z.number(),
-    sampleSize: z.number(),
     source: z.literal("conversation_index"),
-    truncated: z.boolean(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

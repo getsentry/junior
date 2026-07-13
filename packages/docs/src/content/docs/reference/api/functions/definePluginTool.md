@@ -7,7 +7,7 @@ title: "definePluginTool"
 
 > **definePluginTool**\<`TInputSchema`, `TOutputSchema`\>(`definition`): `PluginToolDefinition`\<`output`\<`TInputSchema`\>, `output`\<`TOutputSchema`\>\>
 
-Defined in: [junior-plugin-api/src/tools.ts:195](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tools.ts#L195)
+Defined in: [junior-plugin-api/src/tools.ts:261](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tools.ts#L261)
 
 Define a plugin tool with Zod input parsing and the structured result contract.
 

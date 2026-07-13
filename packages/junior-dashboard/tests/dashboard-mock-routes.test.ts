@@ -78,8 +78,6 @@ describe("dashboard mock conversation routes", () => {
       conversations: number;
       costUsd?: number;
       durationMs: number;
-      sampleSize: number;
-      truncated: boolean;
     };
     expect(statsBody).toMatchObject({
       conversations: new Set(
@@ -87,8 +85,6 @@ describe("dashboard mock conversation routes", () => {
           (conversation) => conversation.conversationId,
         ),
       ).size,
-      sampleSize: conversationBody.conversations.length,
-      truncated: false,
     });
     const rawDurationMs = conversationBody.conversations.reduce(
       (sum, conversation) => sum + conversation.cumulativeDurationMs,
@@ -377,7 +373,6 @@ describe("dashboard mock conversation routes", () => {
     expect(stats.status).toBe(200);
     expect(await stats.json()).toMatchObject({
       conversations: expect.any(Number),
-      truncated: false,
     });
   });
 

@@ -28,6 +28,7 @@ import {
   formatRelativeTime,
   formatTime,
 } from "../format";
+import { cn, dashboardContainerClass } from "../styles";
 
 type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
 
@@ -44,14 +45,6 @@ function personMeta(person: ActorSummaryReport): string {
     `last ${formatRelativeTime(person.lastSeenAt)}`,
   ];
   return pieces.filter(Boolean).join(" / ");
-}
-
-function sampleLabel(
-  data: Pick<ActorDirectoryReport, "sampleSize" | "truncated">,
-) {
-  return `${formatCompactNumber(data.sampleSize)} sampled conversations${
-    data.truncated ? " / limited sample" : ""
-  }`;
 }
 
 function runtimeLabel(durationMs: number, conversations: number): string {
@@ -79,15 +72,18 @@ export function PeoplePageContent({
     return <LoadingView label="Loading people" />;
   }
   const people = data ? filterPeople(data.people, peopleSearch, sort) : [];
+  const conversations =
+    data?.people.reduce((total, person) => total + person.conversations, 0) ??
+    0;
   return (
-    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
+    <div className={cn(dashboardContainerClass, "px-4 py-4 md:px-8")}>
       <Section>
         <SectionHeader>
           <div>
             <SectionTitle>People</SectionTitle>
             <div className="mt-1 break-words text-[0.82rem] leading-relaxed text-[#b8b8b8]">
               {data
-                ? `${people.length} of ${data.people.length} actors / ${sampleLabel(data)}`
+                ? `${people.length} of ${data.people.length} actors / ${formatCompactNumber(conversations)} conversations`
                 : "People failed to load"}
             </div>
           </div>
@@ -260,7 +256,7 @@ export function PersonProfilePage() {
   }
   const profile = query.data;
   return (
-    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
+    <div className={cn(dashboardContainerClass, "px-4 py-4 md:px-8")}>
       {profile ? (
         <Profile profile={profile} />
       ) : (
@@ -313,7 +309,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
         <SectionHeader
           actions={
             <div className="text-right text-[0.76rem] font-semibold uppercase leading-tight text-[#888]">
-              {profile.truncated ? "limited sample" : "12 months"}
+              12 months
             </div>
           }
         >

@@ -5,7 +5,7 @@ prev: false
 title: "PluginTaskContext"
 ---
 
-Defined in: [junior-plugin-api/src/tasks.ts:51](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L51)
+Defined in: [junior-plugin-api/src/tasks.ts:82](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L82)
 
 Runtime context passed to a plugin-owned background task.
 
@@ -33,7 +33,7 @@ Shared Drizzle database connection for plugin runtime code.
 
 > **embedder**: `PluginEmbedder`
 
-Defined in: [junior-plugin-api/src/tasks.ts:52](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L52)
+Defined in: [junior-plugin-api/src/tasks.ts:83](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L83)
 
 ---
 
@@ -41,7 +41,7 @@ Defined in: [junior-plugin-api/src/tasks.ts:52](https://github.com/getsentry/jun
 
 > **id**: `string`
 
-Defined in: [junior-plugin-api/src/tasks.ts:53](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L53)
+Defined in: [junior-plugin-api/src/tasks.ts:84](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L84)
 
 ---
 
@@ -61,7 +61,7 @@ Defined in: [junior-plugin-api/src/context.ts:63](https://github.com/getsentry/j
 
 > **model**: `PluginModel`
 
-Defined in: [junior-plugin-api/src/tasks.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L54)
+Defined in: [junior-plugin-api/src/tasks.ts:85](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L85)
 
 ---
 
@@ -69,7 +69,7 @@ Defined in: [junior-plugin-api/src/tasks.ts:54](https://github.com/getsentry/jun
 
 > **name**: `string`
 
-Defined in: [junior-plugin-api/src/tasks.ts:55](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L55)
+Defined in: [junior-plugin-api/src/tasks.ts:86](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L86)
 
 ---
 
@@ -89,15 +89,15 @@ Defined in: [junior-plugin-api/src/context.ts:64](https://github.com/getsentry/j
 
 > **run**: `object`
 
-Defined in: [junior-plugin-api/src/tasks.ts:56](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L56)
+Defined in: [junior-plugin-api/src/tasks.ts:87](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L87)
 
 #### load()
 
-> **load**(): `Promise`\<\{ `actor`: \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `completedAtMs`: `number`; `conversationId`: `string`; `destination`: \{ `channelId`: `string`; `platform`: `"slack"`; `teamId`: `string`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; \}; `runId`: `string`; `source`: \{ `channelId`: `string`; `messageTs?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `threadTs?`: `string`; `type`: `"pub"` \| `"priv"`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; `type`: `"priv"`; \}; `transcript`: (\{ `role`: `"user"` \| `"assistant"`; `text`: `string`; `type`: `"message"`; \} \| \{ `isError`: `boolean`; `text?`: `string`; `toolName`: `string`; `type`: `"toolResult"`; \})[]; \}\>
+> **load**(): `Promise`\<\{ `actor?`: \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `actors`: (\{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \})[]; `completedAtMs`: `number`; `conversationId`: `string`; `destination`: \{ `channelId`: `string`; `platform`: `"slack"`; `teamId`: `string`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; \}; `runId`: `string`; `source`: \{ `channelId`: `string`; `messageTs?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `threadTs?`: `string`; `type`: `"pub"` \| `"priv"`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; `type`: `"priv"`; \}; `transcript`: (\{ `isRunActor?`: `boolean`; `provenance?`: \{ `actor?`: \{ `email?`: ... \| ...; `fullName?`: ... \| ...; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: ... \| ...; \} \| \{ `email?`: ... \| ...; `fullName?`: ... \| ...; `platform`: `"local"`; `userId`: `string`; `userName?`: ... \| ...; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `authority`: `"instruction"` \| `"context"`; \}; `role`: `"assistant"` \| `"user"`; `text`: `string`; `type`: `"message"`; \} \| \{ `isError`: `boolean`; `text?`: `string`; `toolName`: `string`; `type`: `"toolResult"`; \})[]; \}\>
 
 ##### Returns
 
-`Promise`\<\{ `actor`: \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `completedAtMs`: `number`; `conversationId`: `string`; `destination`: \{ `channelId`: `string`; `platform`: `"slack"`; `teamId`: `string`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; \}; `runId`: `string`; `source`: \{ `channelId`: `string`; `messageTs?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `threadTs?`: `string`; `type`: `"pub"` \| `"priv"`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; `type`: `"priv"`; \}; `transcript`: (\{ `role`: `"user"` \| `"assistant"`; `text`: `string`; `type`: `"message"`; \} \| \{ `isError`: `boolean`; `text?`: `string`; `toolName`: `string`; `type`: `"toolResult"`; \})[]; \}\>
+`Promise`\<\{ `actor?`: \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `actors`: (\{ `email?`: `string`; `fullName?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: `string`; \} \| \{ `email?`: `string`; `fullName?`: `string`; `platform`: `"local"`; `userId`: `string`; `userName?`: `string`; \} \| \{ `name`: `string`; `platform`: `"system"`; \})[]; `completedAtMs`: `number`; `conversationId`: `string`; `destination`: \{ `channelId`: `string`; `platform`: `"slack"`; `teamId`: `string`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; \}; `runId`: `string`; `source`: \{ `channelId`: `string`; `messageTs?`: `string`; `platform`: `"slack"`; `teamId`: `string`; `threadTs?`: `string`; `type`: `"pub"` \| `"priv"`; \} \| \{ `conversationId`: `string`; `platform`: `"local"`; `type`: `"priv"`; \}; `transcript`: (\{ `isRunActor?`: `boolean`; `provenance?`: \{ `actor?`: \{ `email?`: ... \| ...; `fullName?`: ... \| ...; `platform`: `"slack"`; `teamId`: `string`; `userId`: `string`; `userName?`: ... \| ...; \} \| \{ `email?`: ... \| ...; `fullName?`: ... \| ...; `platform`: `"local"`; `userId`: `string`; `userName?`: ... \| ...; \} \| \{ `name`: `string`; `platform`: `"system"`; \}; `authority`: `"instruction"` \| `"context"`; \}; `role`: `"assistant"` \| `"user"`; `text`: `string`; `type`: `"message"`; \} \| \{ `isError`: `boolean`; `text?`: `string`; `toolName`: `string`; `type`: `"toolResult"`; \})[]; \}\>
 
 ---
 
@@ -105,4 +105,4 @@ Defined in: [junior-plugin-api/src/tasks.ts:56](https://github.com/getsentry/jun
 
 > **state**: `PluginState`
 
-Defined in: [junior-plugin-api/src/tasks.ts:59](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L59)
+Defined in: [junior-plugin-api/src/tasks.ts:90](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L90)

@@ -5,7 +5,7 @@ prev: false
 title: "PluginTaskDefinition"
 ---
 
-Defined in: [junior-plugin-api/src/tasks.ts:63](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L63)
+Defined in: [junior-plugin-api/src/tasks.ts:94](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L94)
 
 Plugin task handler registered by name in a plugin manifest module.
 
@@ -15,7 +15,7 @@ Plugin task handler registered by name in a plugin manifest module.
 
 > **run**(`ctx`): `void` \| `Promise`\<`void`\>
 
-Defined in: [junior-plugin-api/src/tasks.ts:64](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L64)
+Defined in: [junior-plugin-api/src/tasks.ts:95](https://github.com/getsentry/junior/blob/main/packages/junior-plugin-api/src/tasks.ts#L95)
 
 #### Parameters
 

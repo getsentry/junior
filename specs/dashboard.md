@@ -152,13 +152,13 @@ The dashboard package owns browser-facing routes:
 | Route                              | Auth                                                   | Contract                                             |
 | ---------------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
 | `GET /`                            | Better Auth session unless auth is explicitly disabled | React personal conversation workspace.               |
-| `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.                       |
+| `GET /conversations`               | Better Auth session unless auth is explicitly disabled | Redirect to the personal conversation workspace.     |
 | `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React personal workspace with a selected transcript. |
 | `GET /locations`                   | Better Auth session unless auth is explicitly disabled | React public-location directory UI.                  |
 | `GET /locations/**`                | Better Auth session unless auth is explicitly disabled | React public-location detail UI.                     |
 | `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.                            |
 | `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.                              |
-| `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.                           |
+| `GET /system`                      | Better Auth session unless auth is explicitly disabled | Aggregate activity and plugin reporting UI.          |
 | `GET /_junior/dashboard/client.js` | Better Auth session unless auth is explicitly disabled | Dashboard browser bundle.                            |
 | `/api/auth/**`                     | Better Auth                                            | Better Auth social login callbacks.                  |
 | `/auth/login`                      | Public entrypoint                                      | Starts the dashboard login flow.                     |
@@ -174,7 +174,7 @@ public health route bypass dashboard auth.
 | `GET /api/plugins`                                         | Loaded plugin inventory.                                                                                                                                      |
 | `GET /api/skills`                                          | Discovered skill inventory.                                                                                                                                   |
 | `GET /api/conversations`                                   | Conversation feed queried directly from SQL records; optional `actorEmail` presentation filter matches verified normalized actor email before the feed limit. |
-| `GET /api/conversations/stats`                             | Aggregate conversation stats, leaderboards, and sampling metadata.                                                                                            |
+| `GET /api/conversations/stats`                             | Complete seven-day conversation stats and leaderboards aggregated by SQL.                                                                                     |
 | `GET /api/locations`                                       | Public destination directory plus generic private activity totals.                                                                                            |
 | `GET /api/locations/:location`                             | Activity, actors, and recent conversations for one public destination.                                                                                        |
 | `GET /api/people`                                          | Actor directory derived from trusted actor emails.                                                                                                            |
@@ -329,6 +329,10 @@ The dashboard conversation feed is ordered by the durable SQL conversation
 activity columns and must not read the legacy expiring Redis activity index.
 Actor-filtered feeds apply the normalized identity filter before the bounded
 feed limit so a busy global feed cannot hide a user's own conversations.
+On desktop, the personal workspace must keep the document viewport-bound and
+give the conversation list and selected transcript independent vertical scroll
+regions. Mobile keeps list and selected-conversation navigation as separate
+views.
 The React client must not reconstruct conversation records by grouping execution
 rows. Conversation identity, title, source, location, actor, latest activity,
 cumulative runtime, and cumulative usage all come from the conversation record.
@@ -336,23 +340,27 @@ Detail routes may join durable SQL message and agent-step history only to build
 the single conversation transcript and activity projection.
 
 Conversation stats must be exposed through `GET /api/conversations/stats`,
-not reconstructed from the recent conversation feed in the React client. The report
-must include `windowStart`, `windowEnd`, `sampleLimit`, `sampleSize`, and
-`truncated` so consumers can distinguish complete seven-day aggregates from a
-bounded sample. `truncated` means the report reached the
-sample cap and should be treated as bounded, even when the backing index cannot
-prove an additional record exists. A stats-reporting failure must not make the
-core dashboard health, conversation feed, or plugin inventory unavailable.
+not reconstructed from the recent conversation feed in the React client. The
+report must include `windowStart` and `windowEnd`, and SQL aggregate queries must
+cover every top-level conversation in that seven-day window. Aggregate endpoints
+must not materialize a bounded row sample in application code. A stats-reporting
+failure must not make the core dashboard health, conversation feed, or plugin
+inventory unavailable.
 Stats reports are conversation-index aggregates. They count conversations and
 read latest status, actor, location, cumulative runtime, and cumulative token
 usage from durable conversation records. Estimated cost and reasoning-token
 usage, when available, are also cumulative conversation fields rather than
 execution-row joins. Per-execution metrics are not part of the dashboard contract;
 feed, detail, stats, and People views expose persisted per-conversation totals.
+The System page is the browser surface for these aggregates. It must not expose
+the global conversation feed or link operators into other actors' conversation
+transcripts from aggregate metrics.
 
-People list and profile APIs must read durable actor identities from the
-SQL conversation index with Drizzle. They must not use plugin reporting hooks
-or expiring runtime-session summary state.
+People list and profile APIs must read durable actor identities from the SQL
+conversation index with Drizzle. Totals, actor/location/surface groupings, and
+daily activity must aggregate the complete qualifying SQL set. Only the profile's
+recent-conversation list may use its explicit bounded limit. People APIs must not
+use plugin reporting hooks or expiring runtime-session summary state.
 
 Location list and detail APIs must use normalized destination identity rather
 than channel labels as keys. Only destinations with persisted `public`
@@ -361,11 +369,10 @@ destinations, unknown visibility, and historical destinations without a public
 signal must be combined into a generic private-activity aggregate. Location
 responses must not expose their destination ids, names, or generated titles.
 
-Location reports sample the latest 5,000 top-level conversations. `sampleSize`
-is the number included, `sampleLimit` is the cap, and `truncated` is true when
-the query found more rows than the cap. Directory totals and detail actor
-rankings describe that bounded sample. Location detail returns at most 25 recent
-conversation summaries and a fixed 30-day daily activity projection;
+Location directory totals, private activity, detail totals, actor rankings, and
+daily activity must use complete SQL aggregates rather than bounded source-row
+samples. Location detail returns at most 25 recent conversation summaries and a
+fixed 30-day daily activity projection;
 `windowStart` and `windowEnd` describe only that activity projection.
 Location directory and command-center summaries prioritize usage signals such
 as conversation volume, tokens, runtime, and recency; execution health belongs

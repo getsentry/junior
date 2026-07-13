@@ -7,4 +7,4 @@ title: "SkillReports"
 
 > **SkillReports** = `z.infer`\<_typeof_ [`skillReportsSchema`](/reference/api/variables/skillreportsschema/)\>
 
-Defined in: junior/src/reporting-schema.ts:113
+Defined in: [junior/src/reporting-schema.ts:113](https://github.com/getsentry/junior/blob/main/packages/junior/src/reporting-schema.ts#L113)

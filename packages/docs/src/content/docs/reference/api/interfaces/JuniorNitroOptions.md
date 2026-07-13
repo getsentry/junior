@@ -5,7 +5,7 @@ prev: false
 title: "JuniorNitroOptions"
 ---
 
-Defined in: [junior/src/nitro.ts:46](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L46)
+Defined in: [junior/src/nitro.ts:45](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L45)
 
 ## Properties
 
@@ -13,7 +13,7 @@ Defined in: [junior/src/nitro.ts:46](https://github.com/getsentry/junior/blob/ma
 
 > `optional` **conversationWorkQueueTopic?**: `string`
 
-Defined in: [junior/src/nitro.ts:52](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L52)
+Defined in: [junior/src/nitro.ts:51](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L51)
 
 Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic.
 
@@ -23,15 +23,15 @@ Vercel Queue topic for durable conversation work. Must match the runtime queue p
 
 > `optional` **cwd?**: `string`
 
-Defined in: [junior/src/nitro.ts:47](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L47)
+Defined in: [junior/src/nitro.ts:46](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L46)
 
 ---
 
 ### dashboard?
 
-> `optional` **dashboard?**: [`JuniorNitroDashboardOptions`](/reference/api/type-aliases/juniornitrodashboardoptions/)
+> `optional` **dashboard?**: [`JuniorDashboardOptions`](/reference/api/interfaces/juniordashboardoptions/)
 
-Defined in: [junior/src/nitro.ts:49](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L49)
+Defined in: [junior/src/nitro.ts:48](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L48)
 
 Authenticated dashboard configuration injected for createApp().
 
@@ -41,7 +41,7 @@ Authenticated dashboard configuration injected for createApp().
 
 > `optional` **includeFiles?**: `string`[]
 
-Defined in: [junior/src/nitro.ts:61](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L61)
+Defined in: [junior/src/nitro.ts:60](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L60)
 
 Extra file patterns to copy into the server output for files that the
 bundler cannot trace (e.g. dynamically imported providers).
@@ -54,7 +54,7 @@ module resolution. Example: `"@earendil-works/pi-ai/dist/providers/*.js"`
 
 > `optional` **maxDuration?**: `number`
 
-Defined in: [junior/src/nitro.ts:50](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L50)
+Defined in: [junior/src/nitro.ts:49](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L49)
 
 ---
 
@@ -62,6 +62,6 @@ Defined in: [junior/src/nitro.ts:50](https://github.com/getsentry/junior/blob/ma
 
 > `optional` **plugins?**: `JuniorNitroPluginSource`
 
-Defined in: [junior/src/nitro.ts:54](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L54)
+Defined in: [junior/src/nitro.ts:53](https://github.com/getsentry/junior/blob/main/packages/junior/src/nitro.ts#L53)
 
 Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code.

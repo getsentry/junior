@@ -8,8 +8,6 @@ import {
   type DashboardAuth,
   type DashboardSession,
 } from "../src/auth";
-import { filterConversations } from "../src/client/format";
-import type { Conversation } from "../src/client/types";
 
 const dashboardEnvNames = [
   "BETTER_AUTH_SECRET",
@@ -105,7 +103,7 @@ describe("dashboard routes", () => {
       "/conversations/slack%3AC1%3A123?view=tools",
       "/locations",
       "/locations/destination-1",
-      "/plugins",
+      "/system",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
       expect(response.status).toBe(302);
@@ -386,7 +384,7 @@ describe("dashboard routes", () => {
       "/locations/destination-1",
       "/people",
       "/people/person%40sentry.io",
-      "/plugins",
+      "/system",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
 
@@ -397,7 +395,7 @@ describe("dashboard routes", () => {
     }
   });
 
-  it("does not serve a separate chat terminology route", async () => {
+  it("does not serve retired dashboard page routes", async () => {
     const app = dashboard({
       user: {
         email: "person@sentry.io",
@@ -406,11 +404,10 @@ describe("dashboard routes", () => {
       },
     });
 
-    const response = await app.fetch(
-      new Request("http://localhost/chat/legacy-id"),
-    );
-
-    expect(response.status).toBe(404);
+    for (const path of ["/chat/legacy-id", "/plugins"]) {
+      const response = await app.fetch(new Request(`http://localhost${path}`));
+      expect(response.status).toBe(404);
+    }
   });
 
   it("serves the dashboard client bundle without browser caching", async () => {
@@ -768,37 +765,6 @@ describe("dashboard routes", () => {
         authRequired: false,
       }),
     ).toThrow("JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array");
-  });
-
-  it("keeps active conversations in the default recent filter", () => {
-    const conversations = [
-      {
-        cumulativeDurationMs: 0,
-        displayTitle: "Active",
-        id: "active",
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "active",
-        surface: "internal",
-      },
-      {
-        cumulativeDurationMs: 0,
-        displayTitle: "Completed",
-        id: "completed",
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "internal",
-      },
-    ] as Conversation[];
-
-    expect(
-      filterConversations(conversations, "recent").map(
-        (conversation) => conversation.id,
-      ),
-    ).toEqual(["active", "completed"]);
   });
 
   it("uses JUNIOR_SECRET as the default Better Auth secret", () => {

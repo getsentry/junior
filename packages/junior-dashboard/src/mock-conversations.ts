@@ -1016,12 +1016,9 @@ function conversationStatsReportFromSummaries(
     generatedAt: iso(nowMs),
     locations: statsItems(locations),
     actors: statsItems(actors),
-    sampleLimit: summaries.length,
-    sampleSize: summaries.length,
     source: "conversation_index",
     ...(costUsd !== undefined ? { costUsd } : {}),
     ...(tokens !== undefined ? { tokens } : {}),
-    truncated: false,
     windowEnd: iso(nowMs),
     windowStart: iso(nowMs, -7 * 24 * 60 * 60 * 1000),
   };
@@ -1085,10 +1082,7 @@ function mockLocationDirectory(nowMs: number): LocationDirectoryReport {
         Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),
     ),
     privateActivity,
-    sampleLimit: summaries.length,
-    sampleSize: summaries.length,
     source: "conversation_index",
-    truncated: false,
   };
 }
 
@@ -1178,10 +1172,7 @@ export function readMockLocationDetail(
     ),
     generatedAt: iso(nowMs),
     recentConversations: conversations,
-    sampleLimit: conversations.length,
-    sampleSize: conversations.length,
     source: "conversation_index",
-    truncated: false,
     windowEnd: `${activityDays.at(-1)?.date}T00:00:00.000Z`,
     windowStart: `${activityDays[0]?.date}T00:00:00.000Z`,
   };

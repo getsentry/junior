@@ -1,100 +1,74 @@
+import { eq, sql } from "drizzle-orm";
+import { getDb } from "@/chat/db";
+import {
+  juniorConversations,
+  juniorIdentities,
+  juniorUsers,
+} from "@/db/schema";
+import {
+  conversationActiveDaysColumn,
+  conversationAggregateColumns,
+  conversationRangeColumns,
+} from "../conversations/aggregate";
 import type {
   ActorDirectoryReport,
   ActorIdentity,
   ActorSummaryReport,
-  ActorTotalsReport,
 } from "./schema";
-import {
-  conversationSignals,
-  reportDate,
-  reportTime,
-  summaryFromRow,
-  usageTokens,
-} from "../conversations/reporting";
-import {
-  addSignals,
-  emptyTotals,
-  identityWithEmail,
-  mergeIdentity,
-  actorRows,
-  SAMPLE_LIMIT,
-} from "./shared";
+import { verifiedActorWhere } from "./shared";
 
-type DirectoryAccumulator = ActorTotalsReport & {
-  activeDates: Set<string>;
-  firstSeenMs: number;
-  lastSeenMs: number;
-  actor: ActorIdentity & { email: string };
-};
-
-function directoryItem(accumulator: DirectoryAccumulator): ActorSummaryReport {
-  return {
-    active: accumulator.active,
-    activeDays: accumulator.activeDates.size,
-    conversations: accumulator.conversations,
-    durationMs: accumulator.durationMs,
-    failed: accumulator.failed,
-    firstSeenAt: new Date(accumulator.firstSeenMs).toISOString(),
-    lastSeenAt: new Date(accumulator.lastSeenMs).toISOString(),
-    actor: accumulator.actor,
-    ...(accumulator.tokens !== undefined ? { tokens: accumulator.tokens } : {}),
-  };
-}
-
-/** Load the people list from the configured SQL database. */
+/** Load the complete People directory with grouping and metrics owned by SQL. */
 export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const nowMs = Date.now();
-  const { rows, truncated } = await actorRows();
-  const people = new Map<string, DirectoryAccumulator>();
+  const rows = await getDb()
+    .select({
+      email: juniorUsers.primaryEmailNormalized,
+      fullName: juniorUsers.displayName,
+      slackUserId: sql<
+        string | null
+      >`MAX(${juniorIdentities.providerSubjectId})`,
+      slackUserName: sql<string | null>`MAX(${juniorIdentities.handle})`,
+      activeDays: conversationActiveDaysColumn(),
+      ...conversationAggregateColumns(),
+      ...conversationRangeColumns(),
+    })
+    .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .where(verifiedActorWhere())
+    .groupBy(juniorUsers.primaryEmailNormalized, juniorUsers.displayName);
 
-  for (const row of rows) {
-    const summary = summaryFromRow(row);
-    const actor = identityWithEmail(summary.actorIdentity);
-    if (!actor) continue;
-
-    const firstSeenMs =
-      reportTime(summary.startedAt) ?? row.createdAt.getTime();
-    const lastSeenMs =
-      reportTime(summary.lastSeenAt) ?? row.lastActivityAt.getTime();
-    const date = reportDate(summary.lastSeenAt);
-    const accumulator =
-      people.get(actor.email) ??
-      ({
-        ...emptyTotals(),
-        activeDates: new Set<string>(),
-        firstSeenMs,
-        lastSeenMs,
-        actor,
-      } satisfies DirectoryAccumulator);
-
-    accumulator.actor = mergeIdentity(accumulator.actor, actor);
-    accumulator.conversations += 1;
-    accumulator.durationMs += summary.cumulativeDurationMs;
-    const tokens = usageTokens(row);
-    if (tokens !== undefined) {
-      accumulator.tokens = (accumulator.tokens ?? 0) + tokens;
-    }
-    addSignals(accumulator, conversationSignals(summary));
-    accumulator.firstSeenMs = Math.min(accumulator.firstSeenMs, firstSeenMs);
-    accumulator.lastSeenMs = Math.max(accumulator.lastSeenMs, lastSeenMs);
-    if (date) accumulator.activeDates.add(date);
-    people.set(actor.email, accumulator);
-  }
+  const people: ActorSummaryReport[] = rows.map((row) => {
+    const actor: ActorIdentity & { email: string } = {
+      email: row.email,
+      ...(row.fullName ? { fullName: row.fullName } : {}),
+      ...(row.slackUserId ? { slackUserId: row.slackUserId } : {}),
+      ...(row.slackUserName ? { slackUserName: row.slackUserName } : {}),
+    };
+    return {
+      active: row.active,
+      activeDays: row.activeDays,
+      conversations: row.conversations,
+      durationMs: row.durationMs,
+      failed: row.failed,
+      firstSeenAt: row.firstSeenAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      actor,
+      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+    };
+  });
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
-    people: [...people.values()]
-      .map(directoryItem)
-      .sort(
-        (left, right) =>
-          (reportTime(right.lastSeenAt) ?? 0) -
-            (reportTime(left.lastSeenAt) ?? 0) ||
-          right.conversations - left.conversations ||
-          left.actor.email.localeCompare(right.actor.email),
-      ),
-    sampleLimit: SAMPLE_LIMIT,
-    sampleSize: rows.length,
+    people: people.sort(
+      (left, right) =>
+        Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt) ||
+        right.conversations - left.conversations ||
+        left.actor.email.localeCompare(right.actor.email),
+    ),
     source: "conversation_index",
-    truncated,
   };
 }

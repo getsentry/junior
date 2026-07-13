@@ -7,6 +7,7 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
+  conversationStatsReportSchema,
   conversationSubagentTranscriptReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -22,11 +23,7 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { dashboardConfigSchema, dashboardIdentitySchema } from "../api/schema";
-import type {
-  ConversationHistoryData,
-  DashboardCoreData,
-  PluginData,
-} from "./types";
+import type { DashboardCoreData, SystemData } from "./types";
 
 /** Share dashboard query cache between route data and tooltip detail lookups. */
 export const client = new QueryClient();
@@ -151,27 +148,15 @@ export function useLocationDetailData(locationId: string | undefined) {
   });
 }
 
-/** Fetch the core identity/config and global feed used by conversation history. */
-export function useConversationHistoryData() {
+/** Fetch aggregate system metrics, plugin inventory, and operational reports. */
+export function useSystemData() {
   const coreQuery = useDashboardCoreData();
-  const conversationsQuery = useConversationsData();
-  const dataReady = coreQuery.data && conversationsQuery.data;
-  return {
-    ...coreQuery,
-    data: dataReady
-      ? ({
-          ...coreQuery.data,
-          conversations: conversationsQuery.data,
-        } satisfies ConversationHistoryData)
-      : undefined,
-    error: coreQuery.error ?? conversationsQuery.error,
-    isPending: coreQuery.isPending || conversationsQuery.isPending,
-  };
-}
-
-/** Fetch plugin inventory and operational reports for the plugin route. */
-export function usePluginData() {
-  const coreQuery = useDashboardCoreData();
+  const conversationStatsQuery = useQuery({
+    queryKey: ["dashboard", "conversation-stats"],
+    queryFn: () =>
+      read(conversationStatsReportSchema, "/api/conversations/stats"),
+    retry: false,
+  });
   const pluginsQuery = useQuery({
     queryKey: ["dashboard", "plugins"],
     queryFn: () => read(pluginReportsSchema, "/api/plugins"),
@@ -194,6 +179,11 @@ export function usePluginData() {
     data: dataReady
       ? ({
           ...coreQuery.data,
+          conversationStatsError: Boolean(conversationStatsQuery.error),
+          ...(conversationStatsQuery.data
+            ? { conversationStats: conversationStatsQuery.data }
+            : {}),
+          conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
@@ -201,7 +191,7 @@ export function usePluginData() {
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,
-        } satisfies PluginData)
+        } satisfies SystemData)
       : undefined,
     error: coreQuery.error ?? pluginsQuery.error ?? skillsQuery.error,
     isPending:

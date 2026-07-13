@@ -367,7 +367,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     `${pagePath("locations")}/*`,
     peoplePath,
     `${peoplePath}/*`,
-    pagePath("plugins"),
+    pagePath("system"),
   ];
   const loginPath = basePath === "/" ? "/auth/login" : `${basePath}/auth/login`;
 

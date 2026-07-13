@@ -10,6 +10,7 @@ import {
   filterConversationList,
 } from "../format";
 import type { DashboardCoreData } from "../types";
+import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 
 /** Render the personal split-pane conversation workspace at the dashboard root. */
@@ -52,8 +53,19 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   }, [conversations, desktop, navigate, selectedId]);
 
   return (
-    <div className="grid h-[calc(100dvh-6.75rem)] min-h-0 min-w-0 md:h-[calc(100dvh-4.25rem)] md:grid-cols-[20rem_minmax(0,1fr)]">
-      <div className={selectedId ? "hidden min-h-0 md:block" : "min-h-0"}>
+    <div
+      className={cn(
+        dashboardContainerClass,
+        "grid h-full min-h-0 overflow-hidden md:grid-cols-[20rem_minmax(0,1fr)] xl:border-x xl:border-white/10",
+      )}
+    >
+      <div
+        className={
+          selectedId
+            ? "hidden h-full min-h-0 overflow-hidden md:block"
+            : "h-full min-h-0 overflow-hidden"
+        }
+      >
         <ConversationSidebar
           conversations={visibleConversations}
           error={feed.error?.message}
@@ -67,8 +79,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         aria-label="Selected conversation"
         className={
           selectedId
-            ? "grid min-h-0 grid-rows-[auto_1fr]"
-            : "hidden min-h-0 md:grid"
+            ? "grid min-h-0 grid-rows-[auto_1fr] overflow-hidden"
+            : "hidden min-h-0 overflow-hidden md:grid"
         }
       >
         {selectedId ? (
@@ -82,7 +94,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 Your conversations
               </Link>
             </div>
-            <div className="min-h-0 overflow-y-auto">
+            <div
+              aria-label="Conversation transcript"
+              className="min-h-0 overflow-y-auto overscroll-contain"
+              tabIndex={0}
+            >
               <ConversationPage
                 conversationId={selectedId}
                 data={

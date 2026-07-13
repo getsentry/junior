@@ -1,22 +1,25 @@
-import { Link, Navigate, NavLink, Route, Routes } from "react-router";
-
 import {
-  useConversationHistoryData,
-  useDashboardCoreData,
-  usePluginData,
-} from "./api";
+  Link,
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router";
+
+import { useDashboardCoreData, useSystemData } from "./api";
 import { LoadingView } from "./components/LoadingView";
 import { ProfileMenu } from "./components/ProfileMenu";
 import { setDashboardTimeZone } from "./format";
 import { ConversationWorkspace } from "./pages/ConversationWorkspace";
-import { ConversationsPage } from "./pages/ConversationsPage";
-import { PeoplePage, PersonProfilePage } from "./pages/PeoplePage";
 import { LocationDetailPage, LocationsPage } from "./pages/LocationsPage";
-import { PluginsPage } from "./pages/PluginsPage";
-import { cn } from "./styles";
+import { PeoplePage, PersonProfilePage } from "./pages/PeoplePage";
+import { SystemPage } from "./pages/SystemPage";
+import { cn, dashboardContainerClass } from "./styles";
 
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
+  const location = useLocation();
   const query = useDashboardCoreData();
   const data = query.data;
   if (data) {
@@ -24,6 +27,10 @@ export function DashboardShell() {
   }
   const loading = !data && !query.error;
   const loggedIn = Boolean(data?.config.authRequired && data.me.user.email);
+  const workspace =
+    location.pathname === "/" ||
+    location.pathname === "/conversations" ||
+    location.pathname.startsWith("/conversations/");
 
   async function signOut() {
     await fetch(`${data?.config.authPath ?? "/api/auth"}/sign-out`, {
@@ -42,9 +49,21 @@ export function DashboardShell() {
     );
 
   return (
-    <main className="grid min-h-screen grid-rows-[auto_1fr] bg-black font-sans text-white">
+    <main
+      className={cn(
+        "grid bg-black font-sans text-white",
+        workspace
+          ? "h-dvh min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden"
+          : "min-h-screen grid-rows-[auto_1fr]",
+      )}
+    >
       <header className="sticky top-0 z-10 border-b border-white/10 bg-[#050505]/95 backdrop-blur">
-        <div className="mx-auto grid w-full max-w-screen-xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:px-8">
+        <div
+          className={cn(
+            dashboardContainerClass,
+            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:px-8",
+          )}
+        >
           <Link
             className="flex min-w-0 max-w-full justify-self-start text-inherit no-underline"
             to="/"
@@ -56,17 +75,14 @@ export function DashboardShell() {
             </div>
           </Link>
           <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-5 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-end md:overflow-visible">
-            <NavLink className={navLinkClass} to="/conversations">
-              Conversations
-            </NavLink>
             <NavLink className={navLinkClass} to="/locations">
               Locations
             </NavLink>
             <NavLink className={navLinkClass} to="/people">
               People
             </NavLink>
-            <NavLink className={navLinkClass} to="/plugins">
-              Plugins
+            <NavLink className={navLinkClass} to="/system">
+              System
             </NavLink>
           </nav>
           {loggedIn ? (
@@ -126,21 +142,12 @@ export function DashboardShell() {
           }
           path="/conversations/:conversationId"
         />
+        <Route element={<Navigate replace to="/" />} path="/conversations" />
         <Route
           element={
-            loading ? (
-              <LoadingView label="Loading conversations" />
-            ) : (
-              <ConversationHistoryRoute />
-            )
+            loading ? <LoadingView label="Loading system" /> : <SystemRoute />
           }
-          path="/conversations"
-        />
-        <Route
-          element={
-            loading ? <LoadingView label="Loading plugins" /> : <PluginsRoute />
-          }
-          path="/plugins"
+          path="/system"
         />
         <Route
           element={
@@ -164,26 +171,14 @@ export function DashboardShell() {
   );
 }
 
-function ConversationHistoryRoute() {
-  const query = useConversationHistoryData();
+function SystemRoute() {
+  const query = useSystemData();
   if (!query.data && !query.error) {
-    return <LoadingView label="Loading conversations" />;
+    return <LoadingView label="Loading system" />;
   }
   return query.data ? (
-    <ConversationsPage data={query.data} />
+    <SystemPage data={query.data} />
   ) : (
-    <LoadingView label={query.error?.message ?? "Conversations unavailable"} />
-  );
-}
-
-function PluginsRoute() {
-  const query = usePluginData();
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading plugins" />;
-  }
-  return query.data ? (
-    <PluginsPage data={query.data} />
-  ) : (
-    <LoadingView label={query.error?.message ?? "Plugins unavailable"} />
+    <LoadingView label={query.error?.message ?? "System unavailable"} />
   );
 }

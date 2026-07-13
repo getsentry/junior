@@ -98,6 +98,15 @@ test.afterAll(async () => {
 });
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/people", async (route) => {
+    await route.fulfill({
+      json: {
+        generatedAt: "2026-06-12T00:00:00.000Z",
+        people: [],
+        source: "conversation_index",
+      },
+    });
+  });
   await page.route("**/api/plugin-reports", async (route) => {
     await route.fulfill({
       json: {
@@ -112,6 +121,7 @@ test.beforeEach(async ({ page }) => {
 test("hydrates the built dashboard client in a real browser", async ({
   page,
 }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
   const browserErrors: string[] = [];
   page.on("pageerror", (error) => {
     browserErrors.push(error.stack ?? error.message);
@@ -134,12 +144,42 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
+  const containerBounds = () =>
+    page.locator("main > div").evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width };
+    });
+  const headerBounds = await page
+    .locator("main > header > div")
+    .evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return { left: bounds.left, width: bounds.width };
+    });
+  expect(headerBounds).toEqual({ left: 160, width: 1280 });
+  expect(await containerBounds()).toEqual(headerBounds);
 
-  await page.goto(`${baseURL}/conversations`);
+  await expect(page.getByRole("link", { name: "Conversations" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
+  await page.getByRole("link", { name: "System", exact: true }).click();
+  await expect(page).toHaveURL(`${baseURL}/system`);
+  await expect(page.getByText(/Seven-day conversation activity/)).toBeVisible();
+  await expect(page.getByText("Plugins", { exact: true })).toBeVisible();
+  await expect(page.getByText("estimated cost")).toBeVisible();
+  expect(await containerBounds()).toEqual(headerBounds);
+
+  await page.goto(`${baseURL}/people`);
   await expect(
-    page.getByLabel("conversations by duration over the last 7 days"),
+    page.locator("main > div").getByText("People", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("0ms runtime")).toHaveCount(0);
+  expect(await containerBounds()).toEqual(headerBounds);
+
+  await page.goto(`${baseURL}/locations`);
+  await expect(
+    page.locator("main > div").getByText("Locations", { exact: true }),
+  ).toBeVisible();
+  expect(await containerBounds()).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
 });
 
@@ -147,7 +187,11 @@ test("opens and closes a conversation in the mobile workspace", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(baseURL);
+  await page.goto(`${baseURL}/conversations`);
+  await expect(page).toHaveURL(`${baseURL}/`);
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: /Checkout latency triage/ }).click();
   await expect(page).toHaveURL(
@@ -162,6 +206,105 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
+
+  await page.goto(`${baseURL}/system`);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});
+
+test("scrolls long conversation and transcript panes independently", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 800, width: 1440 });
+  const generatedAt = "2026-06-12T00:00:00.000Z";
+  const conversations = Array.from({ length: 40 }, (_, index) => ({
+    conversationId: `long-${index}`,
+    cumulativeDurationMs: 1_000 + index,
+    displayTitle: `Conversation ${String(index + 1).padStart(2, "0")}`,
+    lastProgressAt: generatedAt,
+    lastSeenAt: generatedAt,
+    startedAt: generatedAt,
+    status: "completed",
+    surface: "internal",
+  }));
+
+  await page.route("**/api/conversations?*", async (route) => {
+    await route.fulfill({
+      json: {
+        conversations,
+        generatedAt,
+        source: "conversation_index",
+      },
+    });
+  });
+  await page.route("**/api/conversations/long-0", async (route) => {
+    await route.fulfill({
+      json: {
+        ...conversations[0],
+        displayTitle: "Long transcript",
+        generatedAt,
+        transcript: Array.from({ length: 60 }, (_, index) => ({
+          parts: [
+            {
+              text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,
+              type: "text",
+            },
+          ],
+          role: index % 2 === 0 ? "user" : "assistant",
+          timestamp: Date.parse(generatedAt) + index * 1_000,
+        })),
+        transcriptAvailable: true,
+      },
+    });
+  });
+
+  await page.goto(`${baseURL}/conversations/long-0`);
+  await expect(
+    page.getByRole("heading", { name: "Long transcript" }),
+  ).toBeVisible();
+
+  const conversationList = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .locator("..");
+  const transcript = page.getByLabel("Conversation transcript");
+  const geometry = await page.evaluate(() => ({
+    documentHeight: document.documentElement.scrollHeight,
+    viewportHeight: document.documentElement.clientHeight,
+  }));
+  expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.viewportHeight);
+  await expect
+    .poll(() =>
+      conversationList.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    )
+    .toBe(true);
+
+  await conversationList.evaluate((element) => {
+    element.scrollTop = 240;
+  });
+  expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
+    240,
+  );
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  await transcript.evaluate((element) => {
+    element.scrollTop = 320;
+  });
+  expect(await transcript.evaluate((element) => element.scrollTop)).toBe(320);
+  expect(await conversationList.evaluate((element) => element.scrollTop)).toBe(
+    240,
+  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
 test("groups the signed-in profile and session actions in the header", async ({

@@ -28,6 +28,7 @@ import {
   locationPath,
   peoplePath,
 } from "../format";
+import { cn, dashboardContainerClass } from "../styles";
 
 type LocationSort = "conversations" | "recent" | "runtime" | "tokens";
 
@@ -49,6 +50,12 @@ export function LocationsPageContent(props: {
     return <LoadingView label="Loading locations" />;
   }
   const locations = filterLocations(props.data?.locations ?? [], search, sort);
+  const conversations = props.data
+    ? props.data.locations.reduce(
+        (total, location) => total + location.conversations,
+        props.data.privateActivity.conversations,
+      )
+    : 0;
 
   function setSearch(value: string) {
     const next = new URLSearchParams(params);
@@ -58,14 +65,14 @@ export function LocationsPageContent(props: {
   }
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-screen-xl px-4 py-4 md:px-8">
+    <div className={cn(dashboardContainerClass, "px-4 py-4 md:px-8")}>
       <Section>
         <SectionHeader>
           <div>
             <SectionTitle>Locations</SectionTitle>
             <div className="mt-1 text-[0.82rem] leading-relaxed text-[#b8b8b8]">
               {props.data
-                ? `${locations.length} of ${props.data.locations.length} public locations / ${formatCompactNumber(props.data.sampleSize)} sampled conversations`
+                ? `${locations.length} of ${props.data.locations.length} public locations / ${formatCompactNumber(conversations)} conversations`
                 : "Locations failed to load"}
             </div>
           </div>

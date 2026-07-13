@@ -2,7 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationSummaryReport } from "@sentry/junior/api/schema";
+import type {
+  ConversationFeed,
+  ConversationSummaryReport,
+} from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDirectoryReport } from "@sentry/junior/api/schema";
@@ -11,7 +14,6 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import { HighlightedCode } from "../src/client/code";
 import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { Button } from "../src/client/components/Button";
-import { FilterTabs } from "../src/client/components/FilterTabs";
 import { PluginReports } from "../src/client/components/PluginReports";
 import { StatusBadge } from "../src/client/components/StatusBadge";
 import {
@@ -24,23 +26,18 @@ import { TranscriptSubagentView } from "../src/client/components/TranscriptSubag
 import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
-import { ConversationDurationChart } from "../src/client/components/ConversationDurationChart";
 import { client } from "../src/client/api";
 import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
-import { ConversationsPage } from "../src/client/pages/ConversationsPage";
 import { PeoplePageContent, Profile } from "../src/client/pages/PeoplePage";
 import {
   LocationDetailPage,
   LocationDetailPageContent,
   LocationsPageContent,
 } from "../src/client/pages/LocationsPage";
-import { PluginsPage } from "../src/client/pages/PluginsPage";
-import type {
-  ConversationTranscript,
-  DashboardData,
-} from "../src/client/types";
+import { SystemPage } from "../src/client/pages/SystemPage";
+import type { ConversationTranscript, SystemData } from "../src/client/types";
 
 afterEach(() => {
   client.clear();
@@ -49,7 +46,7 @@ afterEach(() => {
 
 function dashboardData(
   conversationSummaries: ConversationSummaryReport[],
-): DashboardData {
+): SystemData & { conversations: ConversationFeed } {
   return {
     config: {
       allowedEmailCount: 0,
@@ -61,6 +58,27 @@ function dashboardData(
       timeZone: "UTC",
     },
     me: { user: { email: "viewer@example.com" } },
+    conversationStats: {
+      active: 0,
+      actors: [],
+      conversations: conversationSummaries.length,
+      durationMs: conversationSummaries.reduce(
+        (sum, conversation) => sum + conversation.cumulativeDurationMs,
+        0,
+      ),
+      failed: conversationSummaries.filter(
+        (conversation) => conversation.status === "failed",
+      ).length,
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      locations: [],
+      source: "conversation_index",
+      tokens: 12_345,
+      costUsd: 4.56,
+      windowEnd: "2026-01-01T00:00:00.000Z",
+      windowStart: "2025-12-25T00:00:00.000Z",
+    },
+    conversationStatsError: false,
+    conversationStatsLoading: false,
     pluginReports: {
       generatedAt: "2026-01-01T00:00:00.000Z",
       reports: [],
@@ -75,10 +93,12 @@ function dashboardData(
       source: "conversation_index",
     },
     skills: [],
-  } as DashboardData;
+  };
 }
 
-function renderConversationPage(data: DashboardData): string {
+function renderConversationPage(data: {
+  conversations: ConversationFeed;
+}): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
@@ -146,9 +166,6 @@ describe("dashboard telemetry components", () => {
   });
 
   it("exposes pressed state for dashboard toggle controls", () => {
-    const filters = renderToStaticMarkup(
-      <FilterTabs current="failed" onChange={() => {}} />,
-    );
     const transcript = renderToStaticMarkup(
       <TranscriptHeader
         actions={
@@ -160,10 +177,6 @@ describe("dashboard telemetry components", () => {
       />,
     );
 
-    expect(filters).toContain('role="group"');
-    expect(filters).toContain('aria-label="Conversation filter"');
-    expect(filters.match(/aria-pressed="true"/g) ?? []).toHaveLength(1);
-    expect(filters.match(/aria-pressed="false"/g) ?? []).toHaveLength(3);
     expect(transcript).toContain('aria-label="Transcript view"');
     expect(transcript).toContain('aria-label="Copy conversation as Markdown"');
     expect(transcript).not.toContain(">Transcript<");
@@ -348,8 +361,6 @@ describe("dashboard telemetry components", () => {
         fullName: "Avery Example",
         slackUserName: "avery",
       },
-      sampleLimit: 10,
-      sampleSize: 1,
       source: "conversation_index",
       surfaces: [
         {
@@ -367,7 +378,6 @@ describe("dashboard telemetry components", () => {
         durationMs: 1_200,
         failed: 0,
       },
-      truncated: false,
       windowEnd: "2026-01-02T00:00:00.000Z",
       windowStart: "2025-01-02T00:00:00.000Z",
     };
@@ -610,38 +620,6 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("[cached trace]");
   });
 
-  it("renders the conversation duration chart title", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 3_000,
-      lastProgressAt: "2026-01-01T00:00:03.000Z",
-      lastSeenAt: "2026-01-01T00:00:03.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Conversation",
-    } satisfies ConversationSummaryReport;
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <MemoryRouter>
-          <ConversationDurationChart
-            nowMs={Date.parse("2026-01-05T00:00:00.000Z")}
-            conversationSummaries={[session]}
-            timeZone="UTC"
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("Conversation duration");
-    expect(html).not.toContain("Turns");
-    expect(html).not.toContain('aria-label="Duration chart mode"');
-    expect(html).toContain(
-      'aria-label="conversations by duration over the last 7 days"',
-    );
-  });
-
   it("omits empty tool-call summaries", () => {
     expect(
       renderToStaticMarkup(
@@ -790,34 +768,6 @@ describe("dashboard telemetry components", () => {
     );
   });
 
-  it("caps dashboard route pages at a readable width", () => {
-    const session = {
-      conversationId: "conversation-1",
-      cumulativeDurationMs: 0,
-      lastProgressAt: "2026-01-01T00:00:00.000Z",
-      lastSeenAt: "2026-01-01T00:00:00.000Z",
-      startedAt: "2026-01-01T00:00:00.000Z",
-      status: "completed",
-      surface: "slack",
-      displayTitle: "Readable transcript",
-    } satisfies ConversationSummaryReport;
-
-    const data = dashboardData([session]);
-    const conversations = renderToStaticMarkup(
-      <MemoryRouter>
-        <ConversationsPage data={data} />
-      </MemoryRouter>,
-    );
-    const plugins = renderToStaticMarkup(
-      <MemoryRouter>
-        <PluginsPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(conversations).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
-    expect(plugins).toContain("mx-auto w-full min-w-0 max-w-screen-xl");
-  });
-
   it("renders the selected personal conversation in the home workspace", () => {
     const summary = {
       conversationId: "conversation-1",
@@ -933,98 +883,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Local conversation");
   });
 
-  it("filters the conversation list with search and facets", () => {
-    const data = dashboardData([
-      {
-        channel: "C1",
-        channelName: "proj-checkout",
-        locationId: "destination-1",
-        conversationId: "slack:C1:100",
-        cumulativeDurationMs: 1_000,
-        displayTitle: "Checkout latency triage",
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:02.000Z",
-        actorIdentity: {
-          email: "morgan@example.com",
-          fullName: "Morgan",
-        },
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-      },
-      {
-        conversationId: "internal:memory:200",
-        cumulativeDurationMs: 2_000,
-        displayTitle: "Memory cleanup",
-        lastProgressAt: "2026-01-01T00:02:01.000Z",
-        lastSeenAt: "2026-01-01T00:02:02.000Z",
-        actorIdentity: { fullName: "Casey" },
-        startedAt: "2026-01-01T00:02:00.000Z",
-        status: "completed",
-        surface: "internal",
-      },
-    ]);
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter
-        initialEntries={[
-          "/conversations?q=checkout&source=slack&location=destination-1&actor=morgan%40example.com",
-        ]}
-      >
-        <ConversationsPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain('aria-label="Search conversations"');
-    expect(html).toContain('aria-label="Source"');
-    expect(html).toContain('aria-label="Location"');
-    expect(html).toContain('aria-label="Actor"');
-    expect(html).toContain("Checkout latency triage");
-    expect(html).toContain("1 of 2 conversations");
-    expect(html).not.toContain("Memory cleanup");
-  });
-
-  it("links public conversation locations without linking private identities", () => {
-    const data = dashboardData([
-      {
-        channel: "C1",
-        channelName: "proj-alpha",
-        conversationId: "slack:C1:100",
-        cumulativeDurationMs: 1_000,
-        displayTitle: "Public conversation",
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:02.000Z",
-        locationId: "destination-1",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-      },
-      {
-        channel: "D1",
-        channelName: "Direct Message",
-        channelNameRedacted: true,
-        conversationId: "slack:D1:200",
-        cumulativeDurationMs: 1_000,
-        displayTitle: "Direct Message",
-        lastProgressAt: "2026-01-01T00:00:01.000Z",
-        lastSeenAt: "2026-01-01T00:00:02.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "slack",
-      },
-    ]);
-    const html = renderToStaticMarkup(
-      <MemoryRouter initialEntries={["/conversations?filter=all"]}>
-        <ConversationsPage data={data} />
-      </MemoryRouter>,
-    );
-    expect(html).toContain('href="/locations/destination-1"');
-    expect(html).toContain("Direct Message");
-    expect(html).not.toContain('href="/locations/D1"');
-    expect(html).not.toContain('value="D1"');
-  });
-
-  it("renders conversation history and plugin reports", () => {
+  it("renders system conversation metrics and plugin reports", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-05T00:00:00.000Z"));
 
@@ -1086,28 +945,22 @@ describe("dashboard telemetry components", () => {
     ];
     data.skills = [{ name: "triage", pluginProvider: "github" }];
 
-    const conversationsHtml = renderToStaticMarkup(
+    const systemHtml = renderToStaticMarkup(
       <MemoryRouter>
-        <ConversationsPage data={data} />
-      </MemoryRouter>,
-    );
-    const pluginHtml = renderToStaticMarkup(
-      <MemoryRouter>
-        <PluginsPage data={data} />
+        <SystemPage data={data} />
       </MemoryRouter>,
     );
 
-    expect(conversationsHtml).toContain(">Conversations<");
-    expect(conversationsHtml).toContain(
-      'aria-label="conversations by duration over the last 7 days"',
-    );
-    expect(conversationsHtml).toContain("Old thread");
-    expect(pluginHtml).toContain(">Plugins<");
-    expect(pluginHtml).toContain(">Scheduler<");
-    expect(pluginHtml).toContain("github");
-    expect(pluginHtml).toContain("triage");
-    expect(pluginHtml).toContain("scheduler");
-    expect(pluginHtml).toContain("sched_1");
+    expect(systemHtml).toContain(">System<");
+    expect(systemHtml).toContain(">conversations<");
+    expect(systemHtml).toContain(">12k<");
+    expect(systemHtml).toContain(">$4.56<");
+    expect(systemHtml).toContain(">Plugins<");
+    expect(systemHtml).toContain(">Scheduler<");
+    expect(systemHtml).toContain("github");
+    expect(systemHtml).toContain("triage");
+    expect(systemHtml).toContain("scheduler");
+    expect(systemHtml).toContain("sched_1");
   });
 
   it("renders public locations as primary rows and collapses private activity", () => {
@@ -1151,10 +1004,7 @@ describe("dashboard telemetry components", () => {
         failed: 0,
         label: "Private activity",
       },
-      sampleLimit: 9,
-      sampleSize: 9,
       source: "conversation_index",
-      truncated: false,
     };
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/locations?q=proj-alpha"]}>
@@ -1198,10 +1048,7 @@ describe("dashboard telemetry components", () => {
         failed: 0,
         label: "Private activity",
       },
-      sampleLimit: 1,
-      sampleSize: 1,
       source: "conversation_index",
-      truncated: false,
     };
 
     const html = renderToStaticMarkup(
@@ -1254,10 +1101,7 @@ describe("dashboard telemetry components", () => {
           surface: "slack",
         },
       ],
-      sampleLimit: 1,
-      sampleSize: 1,
       source: "conversation_index",
-      truncated: false,
       visibility: "public",
       windowEnd: "2026-01-05T00:00:00.000Z",
       windowStart: "2025-12-07T00:00:00.000Z",
@@ -1314,14 +1158,47 @@ describe("dashboard telemetry components", () => {
     );
   });
 
-  it("renders plugins page when plugin reports are absent", () => {
-    const data = dashboardData([]) as Partial<DashboardData>;
+  it("keeps plugin inventory available when conversation metrics fail", () => {
+    const data = dashboardData([]);
+    data.conversationStats = undefined;
+    data.conversationStatsError = true;
+    data.plugins = [{ name: "github" }];
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain("Conversation metrics failed to load.");
+    expect(html).toContain(">Plugins<");
+    expect(html).toContain(">github<");
+  });
+
+  it("keeps cached conversation metrics visible after a refresh failure", () => {
+    const data = dashboardData([]);
+    data.conversationStatsError = true;
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <SystemPage data={data} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(
+      "Conversation metrics refresh failed. Showing cached data.",
+    );
+    expect(html).toContain("Seven-day conversation activity");
+  });
+
+  it("renders system page when plugin reports are absent", () => {
+    const data = dashboardData([]);
     data.plugins = [{ name: "github" }];
     delete data.pluginReports;
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <PluginsPage data={data as DashboardData} />
+        <SystemPage data={data} />
       </MemoryRouter>,
     );
 
@@ -1338,12 +1215,12 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <PluginsPage data={data} />
+        <SystemPage data={data} />
       </MemoryRouter>,
     );
 
     expect(html).toContain("Loading plugin stats.");
-    expect(html).toContain(">...<");
+    expect(html).toContain(">…<");
     expect(html).not.toContain(">none<");
     expect(html).not.toContain("No plugins have been reported yet.");
   });
@@ -1354,7 +1231,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <PluginsPage data={data} />
+        <SystemPage data={data} />
       </MemoryRouter>,
     );
 
@@ -1375,7 +1252,7 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <PluginsPage data={data} />
+        <SystemPage data={data} />
       </MemoryRouter>,
     );
 

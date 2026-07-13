@@ -5,7 +5,7 @@ import type {
   SkillReport,
 } from "@sentry/junior/api/schema";
 import type {
-  ConversationFeed,
+  ConversationStatsReport,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 import type {
@@ -132,21 +132,16 @@ export type DashboardCoreData = {
   me: Identity;
 };
 
-export type ConversationHistoryData = DashboardCoreData & {
-  conversations: ConversationFeed;
-};
-
-export type PluginData = DashboardCoreData & {
+export type SystemData = DashboardCoreData & {
+  conversationStats?: ConversationStatsReport;
+  conversationStatsError: boolean;
+  conversationStatsLoading: boolean;
   pluginReportsError: boolean;
   pluginReports?: PluginOperationalReportFeed;
   pluginReportsLoading: boolean;
   plugins: PluginReport[];
   skills: SkillReport[];
 };
-
-export type DashboardData = ConversationHistoryData & PluginData;
-
-export type ConversationFilter = "active" | "recent" | "failed" | "all";
 
 export type VisualStatus = "active" | "failed" | "idle";
 

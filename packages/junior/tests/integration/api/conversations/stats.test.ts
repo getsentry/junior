@@ -135,10 +135,7 @@ describe("conversation stats API", () => {
         durationMs: 2_000,
         failed: 1,
         tokens: 150,
-        sampleLimit: 5_000,
-        sampleSize: 3,
         source: "conversation_index",
-        truncated: false,
       });
       expect(report.actors).toEqual(
         expect.arrayContaining([
@@ -176,7 +173,7 @@ describe("conversation stats API", () => {
     }
   });
 
-  test("marks a sample truncated when it reaches the cap", async () => {
+  test("aggregates every conversation beyond the former row cap", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
     const fixture = createConfiguredJuniorSqlFixture();
@@ -188,14 +185,16 @@ describe("conversation stats API", () => {
         .db()
         .insert(juniorConversations)
         .values(
-          Array.from({ length: 5_000 }, (_, index) =>
+          Array.from({ length: 5_001 }, (_, index) =>
             buildJuniorSqlConversation({
               conversationId: `internal:stats-cap:${index}`,
               source: "internal",
               destination: null,
               actor: null,
               createdAt: now,
+              durationMs: 2,
               lastActivityAt: now,
+              usage: { totalTokens: 3 },
               updatedAt: now,
             }),
           ),
@@ -203,8 +202,11 @@ describe("conversation stats API", () => {
 
       const report = await readConversationStatsFromSql();
 
-      expect(report.sampleSize).toBe(5_000);
-      expect(report.truncated).toBe(true);
+      expect(report).toMatchObject({
+        conversations: 5_001,
+        durationMs: 10_002,
+        tokens: 15_003,
+      });
     } finally {
       vi.useRealTimers();
       await fixture.close();

@@ -4,3 +4,5 @@ export function cn(
 ): string {
   return classes.filter(Boolean).join(" ");
 }
+
+export const dashboardContainerClass = "mx-auto w-full min-w-0 max-w-screen-xl";

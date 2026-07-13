@@ -9,14 +9,10 @@ import {
   conversationFromDetail,
   conversationIdentityMeta,
   conversationActorLabel,
-  conversationActorOptions,
-  conversationLocationOptions,
-  conversationSourceOptions,
   filterConversationList,
   formatConversationDuration,
   formatCostTotal,
   formatRuntime,
-  formatDurationTick,
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
@@ -90,12 +86,6 @@ describe("dashboard token formatting", () => {
   it("formats cumulative conversation runtime", () => {
     expect(formatRuntime(3_500)).toBe("3.5s");
     expect(formatRuntime(0)).toBe("");
-  });
-
-  it("rounds long chart duration ticks to whole minutes", () => {
-    expect(formatDurationTick(17 * 60_000 + 38_000)).toBe("18m");
-    expect(formatDurationTick(9 * 60_000 + 38_000)).toBe("9m 38s");
-    expect(formatDurationTick(9 * 60_000 + 59_900)).toBe("10m");
   });
 
   it("formats transcript duration from cumulative execution time", () => {
@@ -479,17 +469,6 @@ describe("dashboard token formatting", () => {
       },
     ]);
 
-    expect(conversationSourceOptions(conversations)).toEqual([
-      { label: "internal", value: "internal" },
-      { label: "slack", value: "slack" },
-    ]);
-    expect(conversationActorOptions(conversations)).toEqual([
-      { label: "Casey", value: "Casey" },
-      { label: "Morgan Lee", value: "morgan@example.com" },
-    ]);
-    expect(conversationLocationOptions(conversations)).toEqual([
-      { label: "#proj-checkout", value: "destination-1" },
-    ]);
     expect(
       filterConversationList(conversations, {
         query: "checkout",

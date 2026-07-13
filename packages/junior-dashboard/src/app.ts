@@ -399,7 +399,7 @@ function dashboardPagePaths(
       nested: true,
       path: basePath === "/" ? "/locations" : `${basePath}/locations`,
     },
-    { path: basePath === "/" ? "/plugins" : `${basePath}/plugins` },
+    { path: basePath === "/" ? "/system" : `${basePath}/system` },
   ];
 }
 

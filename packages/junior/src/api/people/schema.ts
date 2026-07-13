@@ -53,10 +53,7 @@ export const actorDirectoryReportSchema = z
   .object({
     generatedAt: z.string(),
     people: z.array(actorSummaryReportSchema),
-    sampleLimit: z.number(),
-    sampleSize: z.number(),
     source: z.literal("conversation_index"),
-    truncated: z.boolean(),
   })
   .strict();
 
@@ -67,12 +64,9 @@ export const actorProfileReportSchema = z
     locations: z.array(peopleConversationStatsItemSchema),
     recentConversations: z.array(peopleConversationSummaryReportSchema),
     actor: identifiedActorSchema,
-    sampleLimit: z.number(),
-    sampleSize: z.number(),
     source: z.literal("conversation_index"),
     surfaces: z.array(peopleConversationStatsItemSchema),
     totals: actorTotalsReportSchema,
-    truncated: z.boolean(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

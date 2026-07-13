@@ -240,12 +240,9 @@ export const conversationStatsReportSchema = z
     generatedAt: z.string(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
-    sampleLimit: z.number(),
-    sampleSize: z.number(),
     source: z.literal("conversation_index"),
     costUsd: z.number().optional(),
     tokens: z.number().optional(),
-    truncated: z.boolean(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

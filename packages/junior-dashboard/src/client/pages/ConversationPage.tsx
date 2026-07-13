@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
+import type { ConversationFeed } from "@sentry/junior/api/schema";
 
 import { useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
@@ -37,12 +38,12 @@ import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "../components/SubagentTranscriptDrawer";
-import type { Conversation, ConversationHistoryData } from "../types";
+import type { Conversation } from "../types";
 
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
-  data?: Pick<ConversationHistoryData, "conversations">;
+  data?: { conversations: ConversationFeed };
 }) {
   const [subagentTarget, setSubagentTarget] =
     useState<SubagentTranscriptTarget>();

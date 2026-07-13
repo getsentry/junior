@@ -803,6 +803,15 @@ describe("createApp plugin config", () => {
     expect(peoplePage.status).toBe(200);
     await expect(peoplePage.text()).resolves.toBe("dashboard");
 
+    const systemPage = await app.fetch(new Request("http://localhost/system"));
+    expect(systemPage.status).toBe(200);
+    await expect(systemPage.text()).resolves.toBe("dashboard");
+
+    const pluginsPage = await app.fetch(
+      new Request("http://localhost/plugins"),
+    );
+    expect(pluginsPage.status).toBe(404);
+
     const peopleApi = await app.fetch(
       new Request("http://localhost/api/people"),
     );
@@ -819,6 +828,7 @@ describe("createApp plugin config", () => {
       "/conversations/*",
       "/locations/*",
       "/people/*",
+      "/system",
       "/*",
       "/api/*",
       "/:slug",

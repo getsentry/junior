@@ -23,7 +23,7 @@ export function ConversationSidebar(props: {
   onQueryChange(value: string): void;
 }) {
   return (
-    <aside className="grid min-h-0 min-w-0 grid-rows-[auto_auto_1fr] border-r border-white/10 bg-[#050505]">
+    <aside className="grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/10 bg-[#050505]">
       <div className="border-b border-white/10 px-4 py-4">
         <h2 className="m-0 text-lg font-bold leading-tight text-white">
           Your conversations
@@ -51,7 +51,7 @@ export function ConversationSidebar(props: {
           />
         </div>
       </div>
-      <div className="min-h-0 overflow-y-auto">
+      <div className="min-h-0 overflow-y-auto overscroll-contain">
         {props.error ? (
           <div className="p-3">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
