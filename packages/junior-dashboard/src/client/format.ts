@@ -680,7 +680,7 @@ export function unavailableTranscriptLabel(
 
 /** Build the canonical workspace route for a conversation id. */
 export function conversationPath(conversationId: string): string {
-  return `/chat/${encodeURIComponent(conversationId)}`;
+  return `/conversations/${encodeURIComponent(conversationId)}`;
 }
 
 /** Build the canonical actor profile route for a trusted email address. */

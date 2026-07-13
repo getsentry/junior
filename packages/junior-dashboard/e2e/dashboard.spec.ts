@@ -129,7 +129,7 @@ test("hydrates the built dashboard client in a real browser", async ({
     page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
   await expect(page).toHaveURL(
-    `${baseURL}/chat/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
@@ -151,7 +151,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   await page.getByRole("link", { name: /Checkout latency triage/ }).click();
   await expect(page).toHaveURL(
-    `${baseURL}/chat/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
@@ -202,7 +202,7 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
     origin: baseURL,
   });
   await page.goto(
-    `${baseURL}/chat/${encodeURIComponent("internal:dashboard-qa")}`,
+    `${baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
 
   await expect(

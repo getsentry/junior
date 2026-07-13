@@ -357,13 +357,12 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
   const pagePath = (suffix: string) =>
     basePath === "/" ? `/${suffix}` : `${basePath}/${suffix}`;
-  const chatPath = pagePath("chat");
+  const conversationsPath = pagePath("conversations");
   const peoplePath = pagePath("people");
   const pagePaths = [
     basePath,
-    chatPath,
-    `${chatPath}/*`,
-    pagePath("conversations"),
+    conversationsPath,
+    `${conversationsPath}/*`,
     peoplePath,
     `${peoplePath}/*`,
     pagePath("plugins"),

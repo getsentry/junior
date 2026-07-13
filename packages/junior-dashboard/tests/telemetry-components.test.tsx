@@ -73,13 +73,13 @@ function dashboardData(
 function renderConversationPage(data: DashboardData): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={["/chat/conversation-1"]}>
+      <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
         <Routes>
           <Route
             element={
               <ConversationPage conversationId="conversation-1" data={data} />
             }
-            path="/chat/:conversationId"
+            path="/conversations/:conversationId"
           />
         </Routes>
       </MemoryRouter>
@@ -838,11 +838,11 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/chat/conversation-1"]}>
+        <MemoryRouter initialEntries={["/conversations/conversation-1"]}>
           <Routes>
             <Route
               element={<ConversationWorkspace data={data} />}
-              path="/chat/:conversationId"
+              path="/conversations/:conversationId"
             />
           </Routes>
         </MemoryRouter>
@@ -851,7 +851,7 @@ describe("dashboard telemetry components", () => {
 
     expect(html).toContain("Your conversations");
     expect(html).toContain('aria-label="Search your conversations"');
-    expect(html).toContain('href="/chat/conversation-1"');
+    expect(html).toContain('href="/conversations/conversation-1"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("Personal conversation");
   });
@@ -882,11 +882,11 @@ describe("dashboard telemetry components", () => {
 
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={["/chat/conversation%25one"]}>
+        <MemoryRouter initialEntries={["/conversations/conversation%25one"]}>
           <Routes>
             <Route
               element={<ConversationWorkspace data={data} />}
-              path="/chat/:conversationId"
+              path="/conversations/:conversationId"
             />
           </Routes>
         </MemoryRouter>

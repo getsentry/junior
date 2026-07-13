@@ -96,13 +96,13 @@ describe("dashboard routes", () => {
 
   it("protects sub-routes at root basePath from unauthenticated access", async () => {
     // app.use("/", ...) only matches the exact root in Hono; sub-routes like
-    // /chat, /conversations, and /plugins must be covered by wildcard middleware.
+    // /conversations and /plugins must be covered by wildcard middleware.
     const app = dashboard(null);
 
     for (const path of [
       "/conversations",
-      "/chat/slack%3AC1%3A123",
-      "/chat/slack%3AC1%3A123?view=tools",
+      "/conversations/slack%3AC1%3A123",
+      "/conversations/slack%3AC1%3A123?view=tools",
       "/plugins",
     ]) {
       const response = await app.fetch(new Request(`http://localhost${path}`));
@@ -124,7 +124,7 @@ describe("dashboard routes", () => {
       }),
     });
     const unauthenticated = await app.fetch(
-      new Request("http://localhost/chat/slack%3AC1%3A123?view=tools"),
+      new Request("http://localhost/conversations/slack%3AC1%3A123?view=tools"),
     );
     const loginUrl = unauthenticated.headers.get("location");
     expect(loginUrl).toBeTruthy();
@@ -133,7 +133,7 @@ describe("dashboard routes", () => {
 
     expect(signIn.status).toBe(302);
     expect(callbackURL).toBe(
-      "http://localhost/chat/slack%3AC1%3A123?view=tools",
+      "http://localhost/conversations/slack%3AC1%3A123?view=tools",
     );
   });
 
@@ -148,11 +148,11 @@ describe("dashboard routes", () => {
       }),
     });
     const canonicalLogin =
-      "https://junior.example.com/auth/login?next=%2Fchat%2Fslack%253AC1%253A123%3Fview%3Dtools";
+      "https://junior.example.com/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123%3Fview%3Dtools";
 
     const directLogin = await app.fetch(
       new Request(
-        "https://junior-prod.vercel.app/auth/login?next=%2Fchat%2Fslack%253AC1%253A123%3Fview%3Dtools",
+        "https://junior-prod.vercel.app/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123%3Fview%3Dtools",
       ),
     );
 
@@ -162,7 +162,7 @@ describe("dashboard routes", () => {
 
     const unauthenticated = await app.fetch(
       new Request(
-        "https://junior-prod.vercel.app/chat/slack%3AC1%3A123?view=tools",
+        "https://junior-prod.vercel.app/conversations/slack%3AC1%3A123?view=tools",
       ),
     );
 
@@ -178,7 +178,7 @@ describe("dashboard routes", () => {
       "https://accounts.google.com/o/oauth2/v2/auth",
     );
     expect(callbackURL).toBe(
-      "https://junior.example.com/chat/slack%3AC1%3A123?view=tools",
+      "https://junior.example.com/conversations/slack%3AC1%3A123?view=tools",
     );
   });
 
@@ -193,18 +193,20 @@ describe("dashboard routes", () => {
     });
 
     const unauthenticated = await app.fetch(
-      new Request("http://localhost/ops/chat/slack%3AC1%3A123"),
+      new Request("http://localhost/ops/conversations/slack%3AC1%3A123"),
     );
     const loginUrl = unauthenticated.headers.get("location");
     expect(loginUrl).toBeTruthy();
     expect(new URL(loginUrl!).searchParams.get("next")).toBe(
-      "/ops/chat/slack%3AC1%3A123",
+      "/ops/conversations/slack%3AC1%3A123",
     );
 
     const signIn = await app.fetch(new Request(loginUrl!));
 
     expect(signIn.status).toBe(302);
-    expect(callbackURL).toBe("http://localhost/ops/chat/slack%3AC1%3A123");
+    expect(callbackURL).toBe(
+      "http://localhost/ops/conversations/slack%3AC1%3A123",
+    );
   });
 
   it("starts sign-in when the auth prefix overlaps the login route", async () => {
@@ -263,13 +265,13 @@ describe("dashboard routes", () => {
 
     const response = await app.fetch(
       new Request(
-        "http://localhost/auth/login?next=%2Fchat%2Fslack%253AC1%253A123",
+        "http://localhost/auth/login?next=%2Fconversations%2Fslack%253AC1%253A123",
       ),
     );
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe(
-      "http://localhost/chat/slack%3AC1%3A123",
+      "http://localhost/conversations/slack%3AC1%3A123",
     );
     expect(startedGoogleSignIn).toBe(false);
   });
@@ -375,7 +377,7 @@ describe("dashboard routes", () => {
 
     for (const path of [
       "/conversations",
-      "/chat/slack%3AC1%3A123",
+      "/conversations/slack%3AC1%3A123",
       "/people",
       "/people/person%40sentry.io",
       "/plugins",
@@ -389,7 +391,7 @@ describe("dashboard routes", () => {
     }
   });
 
-  it("does not serve the removed standalone conversation route", async () => {
+  it("does not serve a separate chat terminology route", async () => {
     const app = dashboard({
       user: {
         email: "person@sentry.io",
@@ -399,7 +401,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.fetch(
-      new Request("http://localhost/conversations/legacy-id"),
+      new Request("http://localhost/chat/legacy-id"),
     );
 
     expect(response.status).toBe(404);
@@ -587,10 +589,10 @@ describe("dashboard routes", () => {
     const oldInfo = await app.fetch(new Request("http://localhost/api/info"));
     expect(oldInfo.status).toBe(404);
 
-    const oldConversation = await app.fetch(
-      new Request("http://localhost/conversations/legacy-id"),
+    const chatRoute = await app.fetch(
+      new Request("http://localhost/chat/legacy-id"),
     );
-    expect(oldConversation.status).toBe(404);
+    expect(chatRoute.status).toBe(404);
   });
 
   it("mounts plugin API route apps under the authenticated namespace", async () => {

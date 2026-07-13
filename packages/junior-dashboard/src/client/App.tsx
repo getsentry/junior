@@ -55,7 +55,7 @@ export function DashboardShell() {
             </div>
           </Link>
           <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-5 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-end md:overflow-visible">
-            <NavLink className={navLinkClass} end to="/conversations">
+            <NavLink className={navLinkClass} to="/conversations">
               Conversations
             </NavLink>
             <NavLink className={navLinkClass} to="/people">
@@ -100,7 +100,7 @@ export function DashboardShell() {
               />
             )
           }
-          path="/chat/:conversationId"
+          path="/conversations/:conversationId"
         />
         <Route
           element={

@@ -146,8 +146,8 @@ The dashboard package owns browser-facing routes:
 | Route                              | Auth                                                   | Contract                                             |
 | ---------------------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
 | `GET /`                            | Better Auth session unless auth is explicitly disabled | React personal conversation workspace.               |
-| `GET /chat/**`                     | Better Auth session unless auth is explicitly disabled | React personal workspace with a selected transcript. |
 | `GET /conversations`               | Better Auth session unless auth is explicitly disabled | React conversation-history UI.                       |
+| `GET /conversations/**`            | Better Auth session unless auth is explicitly disabled | React personal workspace with a selected transcript. |
 | `GET /people`                      | Better Auth session unless auth is explicitly disabled | React actor-directory UI.                            |
 | `GET /people/**`                   | Better Auth session unless auth is explicitly disabled | React actor-profile UI.                              |
 | `GET /plugins`                     | Better Auth session unless auth is explicitly disabled | React plugin reporting UI.                           |

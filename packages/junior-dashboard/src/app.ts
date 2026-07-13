@@ -384,9 +384,6 @@ function dashboardPagePaths(
     { path: basePath },
     {
       nested: true,
-      path: basePath === "/" ? "/chat" : `${basePath}/chat`,
-    },
-    {
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
     {
