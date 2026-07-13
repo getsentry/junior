@@ -20,10 +20,10 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import { resolveUpgradePluginSet } from "@/cli/upgrade";
-import { migrateAgentTurnSessionActor } from "@/cli/upgrade/migrations/agent-turn-session-actor";
 import { repairConversationUsage } from "@/cli/upgrade/migrations/conversation-usage";
-import { migrateConversationsToSql } from "@/cli/upgrade/migrations/conversations-sql";
-import { migrateRedisConversationState } from "@/cli/upgrade/migrations/redis-conversation-state";
+import { migrateAgentTurnSessionActor } from "../../../migrations/0005_agent_turn_session_actor";
+import { migrateRedisConversationState } from "../../../migrations/0006_redis_conversation_state";
+import { migrateConversationsToSql } from "../../../migrations/0007_conversations_to_sql";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -295,10 +295,21 @@ export const plugins = {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const fixture = await createLocalJuniorSqlFixture();
-    const actor = { platform: "api", userId: "migration-user" };
+    const actor = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "migration-user",
+    } as const;
     const summary = {
+      version: 1,
       conversationId: CONVERSATION_ID,
+      cumulativeDurationMs: 0,
+      lastProgressAtMs: 2,
       sessionId: "session-one",
+      sliceId: 1,
+      startedAtMs: 1,
+      state: "completed",
+      updatedAtMs: 3,
       requester: actor,
     };
     await stateAdapter.appendToList("junior:agent_turn_session:index", summary);
@@ -319,14 +330,6 @@ export const plugins = {
               migrationPath,
             ),
           mode: "all",
-          runTask: async (name) => {
-            if (name === "agent-turn-session-actor-v1") {
-              return await migrateAgentTurnSessionActor({
-                io: { info: () => {} },
-                stateAdapter,
-              });
-            }
-          },
           stateAdapter,
         }),
       ).resolves.toEqual({
@@ -338,21 +341,23 @@ export const plugins = {
       await expect(
         stateAdapter.getList("junior:agent_turn_session:index"),
       ).resolves.toEqual([
-        {
+        expect.objectContaining({
           actor,
           conversationId: CONVERSATION_ID,
           sessionId: "session-one",
-        },
+        }),
       ]);
       await expect(
         stateAdapter.get(
           `junior:agent_turn_session:${CONVERSATION_ID}:session-one`,
         ),
-      ).resolves.toEqual({
-        actor,
-        conversationId: CONVERSATION_ID,
-        sessionId: "session-one",
-      });
+      ).resolves.toEqual(
+        expect.objectContaining({
+          actor,
+          conversationId: CONVERSATION_ID,
+          sessionId: "session-one",
+        }),
+      );
       await expect(
         migrateSchema(fixture.sql, {
           loadTypeScript: async (migrationPath) =>
@@ -360,7 +365,6 @@ export const plugins = {
               migrationPath,
             ),
           mode: "all",
-          runTask: async () => undefined,
           stateAdapter,
         }),
       ).resolves.toEqual({

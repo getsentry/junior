@@ -10,6 +10,7 @@ import {
   type TypeScriptMigrationLoader,
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
@@ -185,17 +186,27 @@ CREATE TABLE IF NOT EXISTS drizzle.__drizzle_junior_core (
 
 function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
   return {
+    acquireLock: async (threadId, ttlMs) =>
+      await stateAdapter.acquireLock(threadId, ttlMs),
     appendToList: async (key, value, options) => {
       await stateAdapter.appendToList(key, value, options);
+    },
+    connect: async () => {
+      await stateAdapter.connect();
     },
     delete: async (key) => {
       await stateAdapter.delete(key);
     },
     get: async (key) => await stateAdapter.get<unknown>(key),
     getList: async (key) => await stateAdapter.getList(key),
+    releaseLock: async (lock) => {
+      await stateAdapter.releaseLock(lock);
+    },
     set: async (key, value, ttlMs) => {
       await stateAdapter.set(key, value, ttlMs);
     },
+    setIfNotExists: async (key, value, ttlMs) =>
+      await stateAdapter.setIfNotExists(key, value, ttlMs),
   };
 }
 
@@ -204,6 +215,7 @@ function migrationSql(
   executor: JuniorSqlMigrationExecutor,
 ): MigrationContextV1["sql"] {
   return {
+    db: executor.db.bind(executor),
     execute: executor.execute.bind(executor),
     query: executor.query.bind(executor),
     transaction: executor.transaction.bind(executor),
@@ -216,7 +228,7 @@ export type MigrateSchemaOptions =
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
       mode: "all";
-      runTask: MigrationContextV1["tasks"]["run"];
+      redisStateAdapter?: RedisStateAdapter;
       stateAdapter: StateAdapter;
     };
 
@@ -245,11 +257,18 @@ export async function migrateSchema(
     createContext: ({ progress }): MigrationContextV1 => ({
       log: options.log ?? (() => {}),
       progress,
+      ...(options.redisStateAdapter
+        ? {
+            redis: {
+              sendCommand: async <T>(args: readonly string[]) =>
+                await options
+                  .redisStateAdapter!.getClient()
+                  .sendCommand<T>([...args]),
+            },
+          }
+        : {}),
       sql: migrationSql(executor),
       state: migrationState(options.stateAdapter),
-      tasks: {
-        run: options.runTask,
-      },
     }),
     loadTypeScript: options.loadTypeScript,
     mode: "all",

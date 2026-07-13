@@ -57,18 +57,25 @@ function validateTypeScriptSource(tag: string, source: string): void {
   for (const match of imports) {
     const clause = match[1]?.trim();
     const specifier = match[2];
+    if (clause?.startsWith("type ")) {
+      continue;
+    }
     if (
-      !clause?.startsWith("type ") ||
-      specifier !== "@sentry/junior-migrations"
+      !specifier ||
+      specifier.startsWith(".") ||
+      specifier.startsWith("/") ||
+      specifier.startsWith("@/") ||
+      specifier === "@sentry/junior" ||
+      specifier.startsWith("@sentry/junior/")
     ) {
       throw new Error(
-        `TypeScript migration ${tag} may only import migration types`,
+        `TypeScript migration ${tag} cannot import application runtime code`,
       );
     }
   }
   if (
     /^\s*import\s*["']/m.test(source) ||
-    /^\s*export\s+.+\s+from\s+["']/m.test(source) ||
+    /^\s*export\s+.+\s+from\s+["'][./]/m.test(source) ||
     /\b(?:import\s*\(|require\s*\()/.test(source)
   ) {
     throw new Error(`TypeScript migration ${tag} cannot load runtime modules`);

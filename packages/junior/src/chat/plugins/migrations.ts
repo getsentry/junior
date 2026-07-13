@@ -3,7 +3,6 @@ import {
   resolveMigrations,
   runMigrationJournal,
   type MigrationContextV1,
-  type MigrationJsonValue,
   type MigrationStateV1,
   type ResolvedMigration,
   type TypeScriptMigrationLoader,
@@ -30,10 +29,6 @@ type PluginMigrationOptions =
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
       mode: "all";
-      runTask?: (
-        pluginName: string,
-        taskName: string,
-      ) => Promise<MigrationJsonValue | undefined>;
       stateAdapter: StateAdapter;
     };
 
@@ -138,17 +133,27 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
 
 function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
   return {
+    acquireLock: async (threadId, ttlMs) =>
+      await stateAdapter.acquireLock(threadId, ttlMs),
     appendToList: async (key, value, options) => {
       await stateAdapter.appendToList(key, value, options);
+    },
+    connect: async () => {
+      await stateAdapter.connect();
     },
     delete: async (key) => {
       await stateAdapter.delete(key);
     },
     get: async (key) => await stateAdapter.get<unknown>(key),
     getList: async (key) => await stateAdapter.getList(key),
+    releaseLock: async (lock) => {
+      await stateAdapter.releaseLock(lock);
+    },
     set: async (key, value, ttlMs) => {
       await stateAdapter.set(key, value, ttlMs);
     },
+    setIfNotExists: async (key, value, ttlMs) =>
+      await stateAdapter.setIfNotExists(key, value, ttlMs),
   };
 }
 
@@ -157,6 +162,7 @@ function migrationSql(
   executor: JuniorSqlMigrationExecutor,
 ): MigrationContextV1["sql"] {
   return {
+    db: executor.db.bind(executor),
     execute: executor.execute.bind(executor),
     query: executor.query.bind(executor),
     transaction: executor.transaction.bind(executor),
@@ -202,16 +208,6 @@ export async function migratePluginSchemas(
             progress,
             sql: migrationSql(executor),
             state: migrationState(options.stateAdapter),
-            tasks: {
-              run: async (taskName) => {
-                if (!options.runTask) {
-                  throw new Error(
-                    `Unsupported migration task for plugin ${root.pluginName}: ${taskName}`,
-                  );
-                }
-                return await options.runTask(root.pluginName, taskName);
-              },
-            },
           }),
           loadTypeScript: options.loadTypeScript,
           mode: "all",

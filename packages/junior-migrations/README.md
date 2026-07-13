@@ -6,11 +6,9 @@ migrations. Every journal entry resolves to exactly one `<tag>.sql` or
 the Junior migration runner owns execution and exact per-entry tracking.
 
 TypeScript migrations target a versioned capability API and must not import
-Junior runtime internals. New parsers and transforms belong in the migration
-file so application refactors cannot break pending upgrades. A journal can
-also invoke a versioned host task when adopting legacy migration code that
-already shipped before the mixed journal existed; the task name then becomes
-part of the permanent migration ABI.
+Junior runtime internals. Every parser, transform, and migration-specific
+helper belongs permanently in the migration file so application refactors or
+deletions cannot break pending upgrades.
 
 ## Authoring
 
@@ -34,6 +32,8 @@ Drizzle Kit remains the supported authoring tool. Drizzle ORM's stock
 requires every entry to have a SQL file. Call `runMigrationJournal` instead and
 provide the SQL, state, loader, and locking capabilities owned by the host.
 
-The runner validates that each TypeScript migration has no runtime imports.
-Only a type-only import from `@sentry/junior-migrations` is accepted. Add a new
-API version rather than changing an existing migration capability contract.
+The runner rejects runtime imports of application source, relative modules,
+and `@sentry/junior`. External package imports are allowed when the migration
+needs a stable library dependency; migration-specific implementation must
+still remain in the migration file. Add a new API version rather than changing
+an existing migration capability contract.

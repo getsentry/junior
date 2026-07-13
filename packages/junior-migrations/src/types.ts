@@ -13,27 +13,38 @@ export interface MigrationSqlExecutor {
 }
 
 /** Stable state-store capabilities exposed to v1 TypeScript migrations. */
+export interface MigrationLockV1 {
+  expiresAt: number;
+  threadId: string;
+  token: string;
+}
+
+/** Stable state-store capabilities exposed to v1 TypeScript migrations. */
 export interface MigrationStateV1 {
+  acquireLock(threadId: string, ttlMs: number): Promise<MigrationLockV1 | null>;
   appendToList(
     key: string,
     value: unknown,
     options?: { maxLength?: number; ttlMs?: number },
   ): Promise<void>;
+  connect(): Promise<void>;
   delete(key: string): Promise<void>;
   get(key: string): Promise<unknown | undefined>;
   getList(key: string): Promise<unknown[]>;
+  releaseLock(lock: MigrationLockV1): Promise<void>;
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
+  setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean>;
+}
+
+/** Optional raw Redis capability for migrations preserving Redis indexes. */
+export interface MigrationRedisV1 {
+  sendCommand<T = unknown>(args: readonly string[]): Promise<T>;
 }
 
 /** Resumable progress storage scoped to one TypeScript migration. */
 export interface MigrationProgressV1 {
   load(): Promise<MigrationJsonValue | undefined>;
   save(value: MigrationJsonValue): Promise<void>;
-}
-
-/** Versioned host tasks available to migrations that predate the public ABI. */
-export interface MigrationTasksV1 {
-  run(name: string): Promise<MigrationJsonValue | undefined>;
 }
 
 /** JSON-compatible value persisted in migration progress and result columns. */
@@ -49,9 +60,11 @@ export type MigrationJsonValue =
 export interface MigrationContextV1 {
   log(message: string): void;
   progress: MigrationProgressV1;
-  sql: Pick<MigrationSqlExecutor, "execute" | "query" | "transaction">;
+  redis?: MigrationRedisV1;
+  sql: Pick<MigrationSqlExecutor, "execute" | "query" | "transaction"> & {
+    db(): unknown;
+  };
   state: MigrationStateV1;
-  tasks: MigrationTasksV1;
 }
 
 /** Isolated TypeScript data migration targeting the v1 ABI. */

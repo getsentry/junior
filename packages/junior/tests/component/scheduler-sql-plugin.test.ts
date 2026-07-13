@@ -11,6 +11,7 @@ import {
   type SchedulerDb,
   type ScheduledTask,
 } from "@sentry/junior-scheduler";
+import schedulerStateToSqlMigration from "../../../junior-scheduler/migrations/0002_scheduler_state_to_sql";
 import { createSchedulerStore } from "../../../junior-scheduler/src/store";
 import { defineJuniorPlugins } from "@/plugins";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -72,19 +73,18 @@ async function migrateSchedulerSchema(
   ]);
 }
 
-async function runSchedulerMigrationTask(args: {
-  db: SchedulerDb;
+async function runSchedulerStateMigration(args: {
+  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>;
   stateAdapter: ReturnType<typeof createMemoryState>;
 }) {
-  const plugin = schedulerPlugin();
-  const task = plugin.migrationTasks?.["scheduler-state-to-sql-v1"];
-  if (!task) {
-    throw new Error("Missing scheduler migration task");
-  }
-  return await task({
-    db: args.db,
-    log: { error: () => {}, info: () => {}, warn: () => {} },
-    state: createPluginState("scheduler", args.stateAdapter),
+  return await schedulerStateToSqlMigration.up({
+    log: () => {},
+    progress: {
+      load: async () => undefined,
+      save: async () => {},
+    },
+    sql: args.fixture.sql,
+    state: args.stateAdapter,
   });
 }
 
@@ -545,7 +545,7 @@ ORDER BY tablename
       expect(run).toBeDefined();
 
       await expect(
-        runSchedulerMigrationTask({ db, stateAdapter }),
+        runSchedulerStateMigration({ fixture, stateAdapter }),
       ).resolves.toEqual({
         existing: 0,
         migrated: 2,
@@ -553,7 +553,7 @@ ORDER BY tablename
         scanned: 2,
       });
       await expect(
-        runSchedulerMigrationTask({ db, stateAdapter }),
+        runSchedulerStateMigration({ fixture, stateAdapter }),
       ).resolves.toEqual({
         existing: 2,
         migrated: 0,
@@ -629,7 +629,7 @@ ORDER BY tablename
       );
 
       await expect(
-        runSchedulerMigrationTask({ db, stateAdapter }),
+        runSchedulerStateMigration({ fixture, stateAdapter }),
       ).resolves.toEqual({
         existing: 0,
         migrated: 1,
@@ -718,7 +718,6 @@ ORDER BY tablename
     const scheduler = schedulerPlugin();
     const migrationOnly = defineJuniorPlugin({
       manifest: scheduler.manifest,
-      migrationTasks: scheduler.migrationTasks,
       packageName: scheduler.packageName,
     });
 

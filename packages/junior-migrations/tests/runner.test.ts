@@ -20,6 +20,10 @@ class FakeExecutor implements MigrationSqlExecutor {
   readonly rows = new Map<number, StoredRow>();
   readonly statements: string[] = [];
 
+  db(): undefined {
+    return undefined;
+  }
+
   async execute(statement: string, parameters: readonly unknown[] = []) {
     const normalized = statement.trim();
     if (
@@ -87,6 +91,20 @@ class FakeExecutor implements MigrationSqlExecutor {
   }
 }
 
+function fakeMigrationState(): MigrationContextV1["state"] {
+  return {
+    acquireLock: async () => null,
+    appendToList: async () => {},
+    connect: async () => {},
+    delete: async () => {},
+    get: async () => undefined,
+    getList: async () => [],
+    releaseLock: async () => {},
+    set: async () => {},
+    setIfNotExists: async () => true,
+  };
+}
+
 const temporaryDirectories: string[] = [];
 
 async function mixedFolder(): Promise<string> {
@@ -149,16 +167,7 @@ describe("runMigrationJournal", () => {
           log: () => {},
           progress,
           sql: executor,
-          state: {
-            appendToList: async () => {},
-            delete: async () => {},
-            get: async () => undefined,
-            getList: async () => [],
-            set: async () => {},
-          },
-          tasks: {
-            run: async () => undefined,
-          },
+          state: fakeMigrationState(),
         }),
       }),
     ).resolves.toEqual({ existing: 0, migrated: 3, scanned: 3, skipped: 0 });
@@ -178,16 +187,7 @@ describe("runMigrationJournal", () => {
           log: () => {},
           progress,
           sql: executor,
-          state: {
-            appendToList: async () => {},
-            delete: async () => {},
-            get: async () => undefined,
-            getList: async () => [],
-            set: async () => {},
-          },
-          tasks: {
-            run: async () => undefined,
-          },
+          state: fakeMigrationState(),
         }),
       }),
     ).resolves.toEqual({ existing: 3, migrated: 0, scanned: 3, skipped: 0 });
@@ -237,16 +237,7 @@ describe("runMigrationJournal", () => {
         log: () => {},
         progress,
         sql: executor,
-        state: {
-          appendToList: async () => {},
-          delete: async () => {},
-          get: async () => undefined,
-          getList: async () => [],
-          set: async () => {},
-        },
-        tasks: {
-          run: async () => undefined,
-        },
+        state: fakeMigrationState(),
       }),
     };
 

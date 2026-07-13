@@ -58,7 +58,7 @@ describe("resolveMigrations", () => {
     );
 
     await expect(resolveMigrations(folder)).rejects.toThrow(
-      "may only import migration types",
+      "cannot import application runtime code",
     );
   });
 

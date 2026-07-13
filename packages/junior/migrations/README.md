@@ -29,9 +29,9 @@ after the schema migration they require.
 For a data migration, run
 `pnpm --filter @sentry/junior db:generate:data --name <migration_name>`.
 TypeScript migrations target the versioned migration capability API and must
-not import Junior runtime internals or current feature schemas. Entries that
-adopt pre-journal upgrade code call a versioned host task; new data migrations
-should use the stable SQL, state, and progress capabilities directly.
+not import Junior runtime internals or current feature schemas. Their complete
+implementation remains in the migration file and uses only the stable SQL,
+state, Redis, and progress capabilities supplied by the runner.
 
 The `0000_initial.sql` baseline represents the schema already deployed by the
 pre-Drizzle Junior migration runner. During upgrade, existing installations
