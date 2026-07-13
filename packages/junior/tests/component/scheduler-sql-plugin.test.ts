@@ -78,12 +78,12 @@ async function runSchedulerStateMigration(args: {
   stateAdapter: ReturnType<typeof createMemoryState>;
 }) {
   return await schedulerStateToSqlMigration.up({
+    database: args.fixture.sql,
     log: () => {},
     progress: {
       load: async () => undefined,
       save: async () => {},
     },
-    sql: args.fixture.sql,
     state: args.stateAdapter,
   });
 }

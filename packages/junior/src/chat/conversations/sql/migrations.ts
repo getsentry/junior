@@ -210,18 +210,6 @@ function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
   };
 }
 
-/** Project the executor onto the permanent SQL migration capability. */
-function migrationSql(
-  executor: JuniorSqlMigrationExecutor,
-): MigrationContextV1["sql"] {
-  return {
-    db: executor.db.bind(executor),
-    execute: executor.execute.bind(executor),
-    query: executor.query.bind(executor),
-    transaction: executor.transaction.bind(executor),
-  };
-}
-
 export type MigrateSchemaOptions =
   | { mode?: "sql" }
   | {
@@ -255,6 +243,7 @@ export async function migrateSchema(
   return await runMigrationJournal({
     ...baseOptions,
     createContext: ({ progress }): MigrationContextV1 => ({
+      database: executor,
       log: options.log ?? (() => {}),
       progress,
       ...(options.redisStateAdapter
@@ -267,7 +256,6 @@ export async function migrateSchema(
             },
           }
         : {}),
-      sql: migrationSql(executor),
       state: migrationState(options.stateAdapter),
     }),
     loadTypeScript: options.loadTypeScript,

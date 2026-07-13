@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runMigrationJournal } from "../src/runner";
 import type {
   MigrationContextV1,
-  MigrationSqlExecutor,
+  MigrationDatabaseAdapter,
   MigrationV1,
 } from "../src/types";
 
@@ -16,7 +16,7 @@ interface StoredRow {
   status: string | null;
 }
 
-class FakeExecutor implements MigrationSqlExecutor {
+class FakeExecutor implements MigrationDatabaseAdapter {
   readonly rows = new Map<number, StoredRow>();
   readonly statements: string[] = [];
 
@@ -87,6 +87,10 @@ class FakeExecutor implements MigrationSqlExecutor {
     _migrationTable: string,
     callback: () => Promise<T>,
   ): Promise<T> {
+    return await callback();
+  }
+
+  async withLock<T>(_lockName: string, callback: () => Promise<T>): Promise<T> {
     return await callback();
   }
 }
@@ -166,7 +170,7 @@ describe("runMigrationJournal", () => {
         createContext: ({ progress }) => ({
           log: () => {},
           progress,
-          sql: executor,
+          database: executor,
           state: fakeMigrationState(),
         }),
       }),
@@ -186,7 +190,7 @@ describe("runMigrationJournal", () => {
         createContext: ({ progress }) => ({
           log: () => {},
           progress,
-          sql: executor,
+          database: executor,
           state: fakeMigrationState(),
         }),
       }),
@@ -236,7 +240,7 @@ describe("runMigrationJournal", () => {
       }) => ({
         log: () => {},
         progress,
-        sql: executor,
+        database: executor,
         state: fakeMigrationState(),
       }),
     };

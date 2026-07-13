@@ -30,8 +30,10 @@ For a data migration, run
 `pnpm --filter @sentry/junior db:generate:data --name <migration_name>`.
 TypeScript migrations target the versioned migration capability API and must
 not import Junior runtime internals or current feature schemas. Their complete
-implementation remains in the migration file and uses only the stable SQL,
-state, Redis, and progress capabilities supplied by the runner.
+implementation remains in the migration file and uses only the stable
+database, state, Redis, and progress capabilities supplied by the runner. The
+host database adapter owns connections, drivers, transactions, and locks so
+those infrastructure modules are not frozen into every migration.
 
 The `0000_initial.sql` baseline represents the schema already deployed by the
 pre-Drizzle Junior migration runner. During upgrade, existing installations

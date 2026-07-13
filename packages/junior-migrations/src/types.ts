@@ -1,11 +1,13 @@
-/** SQL capabilities available to the mixed migration runner. */
-export interface MigrationSqlExecutor {
+/** Database adapter used by the mixed migration runner and TypeScript entries. */
+export interface MigrationDatabaseAdapter {
+  db(): unknown;
   execute(statement: string, parameters?: readonly unknown[]): Promise<void>;
   query<T = unknown>(
     statement: string,
     parameters?: readonly unknown[],
   ): Promise<T[]>;
   transaction<T>(callback: () => Promise<T>): Promise<T>;
+  withLock<T>(lockName: string, callback: () => Promise<T>): Promise<T>;
   withMigrationLock<T>(
     migrationTable: string,
     callback: () => Promise<T>,
@@ -58,12 +60,10 @@ export type MigrationJsonValue =
 
 /** Permanent capability contract for apiVersion 1 migrations. */
 export interface MigrationContextV1 {
+  database: MigrationDatabaseAdapter;
   log(message: string): void;
   progress: MigrationProgressV1;
   redis?: MigrationRedisV1;
-  sql: Pick<MigrationSqlExecutor, "execute" | "query" | "transaction"> & {
-    db(): unknown;
-  };
   state: MigrationStateV1;
 }
 

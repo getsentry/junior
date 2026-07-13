@@ -157,18 +157,6 @@ function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
   };
 }
 
-/** Project the executor onto the permanent SQL migration capability. */
-function migrationSql(
-  executor: JuniorSqlMigrationExecutor,
-): MigrationContextV1["sql"] {
-  return {
-    db: executor.db.bind(executor),
-    execute: executor.execute.bind(executor),
-    query: executor.query.bind(executor),
-    transaction: executor.transaction.bind(executor),
-  };
-}
-
 /** Apply enabled plugins' mixed migrations in plugin-name and journal order. */
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
@@ -204,9 +192,9 @@ export async function migratePluginSchemas(
       ? await runMigrationJournal({
           ...baseOptions,
           createContext: ({ progress }): MigrationContextV1 => ({
+            database: executor,
             log: options.log ?? (() => {}),
             progress,
-            sql: migrationSql(executor),
             state: migrationState(options.stateAdapter),
           }),
           loadTypeScript: options.loadTypeScript,

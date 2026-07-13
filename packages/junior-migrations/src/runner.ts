@@ -1,7 +1,7 @@
 import type {
   MigrationContextV1,
+  MigrationDatabaseAdapter,
   MigrationRunResult,
-  MigrationSqlExecutor,
   MigrationV1,
   ResolvedMigration,
   TypeScriptMigrationLoader,
@@ -17,7 +17,7 @@ interface MigrationRow {
 
 interface RunMigrationJournalBaseOptions {
   beforeRun?: () => Promise<void>;
-  executor: MigrationSqlExecutor;
+  executor: MigrationDatabaseAdapter;
   migrationsFolder: string;
   migrationsTable: string;
 }
@@ -54,7 +54,7 @@ function qualifiedTable(table: string): string {
 }
 
 async function ensureMigrationTable(
-  executor: MigrationSqlExecutor,
+  executor: MigrationDatabaseAdapter,
   table: string,
 ): Promise<void> {
   const qualified = qualifiedTable(table);
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS ${qualified} (
 }
 
 async function migrationRows(
-  executor: MigrationSqlExecutor,
+  executor: MigrationDatabaseAdapter,
   table: string,
 ): Promise<Map<number, MigrationRow>> {
   const rows = await executor.query<MigrationRow>(`
@@ -107,7 +107,7 @@ ORDER BY created_at ASC, id ASC
 }
 
 async function adoptLegacySqlPrefix(args: {
-  executor: MigrationSqlExecutor;
+  executor: MigrationDatabaseAdapter;
   migrations: readonly ResolvedMigration[];
   rows: Map<number, MigrationRow>;
   table: string;
@@ -160,7 +160,7 @@ function migrationV1(value: unknown, tag: string): MigrationV1 {
 }
 
 async function runSqlMigration(args: {
-  executor: MigrationSqlExecutor;
+  executor: MigrationDatabaseAdapter;
   migration: ResolvedMigration;
   table: string;
 }): Promise<void> {
@@ -179,7 +179,7 @@ async function runSqlMigration(args: {
 
 async function runTypeScriptMigration(args: {
   createContext: RunAllMigrationJournalOptions["createContext"];
-  executor: MigrationSqlExecutor;
+  executor: MigrationDatabaseAdapter;
   loadTypeScript: TypeScriptMigrationLoader;
   migration: ResolvedMigration;
   row: MigrationRow | undefined;
