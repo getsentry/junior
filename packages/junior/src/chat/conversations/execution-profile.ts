@@ -29,7 +29,6 @@ export const conversationReasoningPolicySchema = z.discriminatedUnion("mode", [
 /** Durable, provider-neutral behavior selected for every run in a conversation. */
 export const conversationExecutionProfileSchema = z
   .object({
-    schemaVersion: z.literal(1),
     modelProfile: modelProfileSchema,
     reasoning: conversationReasoningPolicySchema,
     instructions: z.array(z.string().trim().min(1)),
@@ -67,7 +66,6 @@ export function defaultConversationExecutionProfile(
     reasoning = { mode: "fixed", level: config.reasoningLevel };
   }
   return {
-    schemaVersion: 1,
     modelProfile: STANDARD_MODEL_PROFILE,
     reasoning,
     instructions: [],

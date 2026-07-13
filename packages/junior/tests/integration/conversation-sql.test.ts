@@ -184,7 +184,10 @@ ALTER TABLE junior_conversations
   DROP COLUMN execution_duration_ms,
   DROP COLUMN execution_usage_json,
   DROP COLUMN metric_run_id,
-  DROP COLUMN execution_profile_json
+  DROP COLUMN execution_model_profile,
+  DROP COLUMN execution_reasoning_level,
+  DROP COLUMN execution_instructions,
+  DROP COLUMN execution_allowed_tool_names
 `);
         await Promise.all([
           fixture.sql.query("SELECT 1"),
@@ -319,7 +322,10 @@ ALTER TABLE junior_conversations
   DROP COLUMN execution_duration_ms,
   DROP COLUMN execution_usage_json,
   DROP COLUMN metric_run_id,
-  DROP COLUMN execution_profile_json
+  DROP COLUMN execution_model_profile,
+  DROP COLUMN execution_reasoning_level,
+  DROP COLUMN execution_instructions,
+  DROP COLUMN execution_allowed_tool_names
 `);
 
       await migrateSchema(fixture.sql);
@@ -380,7 +386,13 @@ VALUES
         "DROP INDEX junior_conversation_messages_search_idx",
       );
       await fixture.sql.execute(
-        "ALTER TABLE junior_conversations DROP COLUMN execution_profile_json",
+        `
+ALTER TABLE junior_conversations
+  DROP COLUMN execution_model_profile,
+  DROP COLUMN execution_reasoning_level,
+  DROP COLUMN execution_instructions,
+  DROP COLUMN execution_allowed_tool_names
+`,
       );
 
       await migrateSchema(fixture.sql);

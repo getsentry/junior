@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { IdentityUpsert } from "@/chat/identities/identity";
+import { modelProfileSchema } from "@/chat/model-profile";
+import { parseTurnReasoningLevel } from "@/chat/reasoning-level";
 import type { StoredSlackActor } from "@/chat/actor";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
@@ -53,6 +56,70 @@ interface DestinationUpsert {
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
+const executionInstructionArraySchema = z.array(
+  z
+    .string()
+    .min(1)
+    .refine((value) => value.trim() === value),
+);
+const executionToolNameArraySchema = z.array(z.string().min(1));
+
+interface ExecutionProfileRow {
+  allowedToolNames: string[] | null;
+  instructions: string[];
+  modelProfile: string | null;
+  reasoningLevel: string | null;
+}
+
+function executionProfileFromRow(
+  row: ExecutionProfileRow,
+): ConversationExecutionProfile {
+  let reasoning: ConversationExecutionProfile["reasoning"] = {
+    mode: "adaptive",
+  };
+  if (row.reasoningLevel !== null) {
+    reasoning = {
+      mode: "fixed",
+      level: parseTurnReasoningLevel(row.reasoningLevel),
+    };
+  }
+
+  let toolPolicy: ConversationExecutionProfile["toolPolicy"] = {
+    mode: "host",
+  };
+  if (row.allowedToolNames !== null) {
+    toolPolicy = {
+      mode: "allowlist",
+      toolNames: executionToolNameArraySchema.parse(row.allowedToolNames),
+    };
+  }
+
+  return {
+    modelProfile: modelProfileSchema.parse(row.modelProfile),
+    reasoning,
+    instructions: executionInstructionArraySchema.parse(row.instructions),
+    toolPolicy,
+  };
+}
+
+function executionProfileColumns(profile: ConversationExecutionProfile) {
+  let reasoningLevel: string | null = null;
+  if (profile.reasoning.mode === "fixed") {
+    reasoningLevel = profile.reasoning.level;
+  }
+
+  let allowedToolNames: string[] | null = null;
+  if (profile.toolPolicy.mode === "allowlist") {
+    allowedToolNames = profile.toolPolicy.toolNames;
+  }
+
+  return {
+    executionAllowedToolNames: allowedToolNames,
+    executionInstructions: profile.instructions,
+    executionModelProfile: profile.modelProfile,
+    executionReasoningLevel: reasoningLevel,
+  };
+}
 
 function now(): number {
   return Date.now();
@@ -488,12 +555,17 @@ export class SqlStore
       async () => {
         const rows = await this.executor
           .db()
-          .select({ executionProfile: juniorConversations.executionProfile })
+          .select({
+            allowedToolNames: juniorConversations.executionAllowedToolNames,
+            instructions: juniorConversations.executionInstructions,
+            modelProfile: juniorConversations.executionModelProfile,
+            reasoningLevel: juniorConversations.executionReasoningLevel,
+          })
           .from(juniorConversations)
           .where(eq(juniorConversations.conversationId, args.conversationId));
-        const existing = rows[0]?.executionProfile;
-        if (existing !== null && existing !== undefined) {
-          return conversationExecutionProfileSchema.parse(existing);
+        const existing = rows[0];
+        if (existing && existing.modelProfile !== null) {
+          return executionProfileFromRow(existing);
         }
         if (rows.length === 0) {
           await ensureConversationRow(
@@ -505,7 +577,7 @@ export class SqlStore
         await this.executor
           .db()
           .update(juniorConversations)
-          .set({ executionProfile: profile })
+          .set(executionProfileColumns(profile))
           .where(eq(juniorConversations.conversationId, args.conversationId));
         return profile;
       },

@@ -1,5 +1,5 @@
 {
-  "id": "93b87ae4-cec1-4e93-8e42-d48ef4d0cd31",
+  "id": "8af4c564-90d1-4e92-aa71-e7f110d28c3d",
   "prevId": "3668b705-7991-4e7e-8fb2-6e4ef8147aac",
   "version": "7",
   "dialect": "postgresql",
@@ -313,12 +313,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "execution_profile_json": {
-          "name": "execution_profile_json",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -408,6 +402,31 @@
         "metric_run_id": {
           "name": "metric_run_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_model_profile": {
+          "name": "execution_model_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_reasoning_level": {
+          "name": "execution_reasoning_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "execution_instructions": {
+          "name": "execution_instructions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "execution_allowed_tool_names": {
+          "name": "execution_allowed_tool_names",
+          "type": "text[]",
           "primaryKey": false,
           "notNull": false
         }
