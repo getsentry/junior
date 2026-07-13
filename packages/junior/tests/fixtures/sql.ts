@@ -5,7 +5,6 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
   createEmptyJuniorSqlFixture,
@@ -43,7 +42,6 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
     close: () => fixture.close(),
     db: () => fixture.db() as unknown as JuniorDatabase,
     execute: (statement, params) => fixture.execute(statement, params),
-    migrate: (config) => migrate(fixture.db(), config),
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
       fixture.query<T>(statement, params),
     transaction: (callback) => fixture.transaction(callback),

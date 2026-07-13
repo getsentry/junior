@@ -1,12 +1,42 @@
 /** SQL schema migrations for durable Junior records. */
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
+import {
+  resolveMigrations,
+  runMigrationJournal,
+  type MigrationContextV1,
+  type MigrationRunResult,
+  type MigrationStateV1,
+  type TypeScriptMigrationLoader,
+} from "@sentry/junior-migrations";
+import type { StateAdapter } from "chat";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
-import { isPostgresErrorCode } from "@/db/postgres-error";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
-const CORE_MIGRATION_BRIDGE_VERSION = "0.107.1";
+const LEGACY_CORE_MIGRATION_IDS = [
+  "0001_conversation_core",
+  "0002_slack_destination_visibility_backfill",
+  "0003_user_identities",
+  "0004_actor_cutover",
+  "0005_conversation_transcripts",
+] as const;
+const LEGACY_METRICS_MIGRATION_ID = "0006_conversation_metrics";
+// Pinned output of the pre-Drizzle runner's SHA-256(statement + NUL) algorithm.
+const LEGACY_CORE_MIGRATION_CHECKSUMS = {
+  "0001_conversation_core":
+    "78fe050d8bec8ba18e2e3192497b3d8ad6b45fbb66ad4859377fb2202ed57651",
+  "0002_slack_destination_visibility_backfill":
+    "fb590a09fa51db471a748e3d7abb4137f521ee8df97f6e9ef5563121be98c394",
+  "0003_user_identities":
+    "67d9c9c26cbd76213614eb6d7a7cc7e2501fc20e92321eb5176a08ce39cd2efb",
+  "0004_actor_cutover":
+    "d41b8bfa66b8a88d69e84af38950025ba4c9be56341565cbe1411f0ca50c1dc2",
+  "0005_conversation_transcripts":
+    "add299d1b254e023f89b5993c417dd2248dc009e874efdeaf31ec0732e0d4fb4",
+  "0006_conversation_metrics":
+    "7c7ca5c9e11ed4b0e14737fd90d3348ea46e306c88fdf31199b7afb2a11c6a41",
+} as const;
+type LegacyCoreMigrationId = keyof typeof LEGACY_CORE_MIGRATION_CHECKSUMS;
 const MIGRATIONS_TABLE = "__drizzle_junior_core";
 
 /** Resolve the packaged Drizzle migration directory in source or built output. */
@@ -21,116 +51,207 @@ function migrationFolder(): string {
   return join(packageRoot, "migrations");
 }
 
-interface CoreMigrationState {
-  appliedAt?: number;
-  hasJuniorTables: boolean;
-}
-
-interface CoreMigrationResult {
-  existing: number;
-  migrated: number;
-  scanned: number;
-}
-
-/** Read core journal progress and detect existing pre-journal Junior tables. */
-async function loadCoreMigrationState(
+async function adoptLegacyMigrationState(
   executor: JuniorSqlMigrationExecutor,
-): Promise<CoreMigrationState> {
-  try {
-    const [migration] = await executor.query<{ appliedAt: string | null }>(`
-SELECT created_at::text AS "appliedAt"
-FROM drizzle.__drizzle_junior_core
-ORDER BY created_at DESC
-LIMIT 1
+  migrationsFolder: string,
+): Promise<void> {
+  const [tables] = await executor.query<{
+    drizzleTable: string | null;
+    legacyTable: string | null;
+  }>(`
+SELECT
+  to_regclass('drizzle.__drizzle_junior_core')::text AS "drizzleTable",
+  to_regclass('public.junior_schema_migrations')::text AS "legacyTable"
 `);
-    if (migration?.appliedAt !== null && migration?.appliedAt !== undefined) {
-      return {
-        appliedAt: Number(migration.appliedAt),
-        hasJuniorTables: true,
-      };
-    }
-  } catch (error) {
-    if (!isPostgresErrorCode(error, "42P01")) {
-      throw error;
-    }
+  if (!tables?.legacyTable || tables.drizzleTable) {
+    return;
   }
 
-  const [tables] = await executor.query<{ hasJuniorTables: boolean }>(`
-SELECT EXISTS (
+  const migrations = await resolveMigrations(migrationsFolder);
+  const [metrics] = await executor.query<{ columnCount: number }>(`
+SELECT count(*)::integer AS "columnCount"
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'junior_conversations'
+  AND column_name IN (
+    'duration_ms',
+    'usage_json',
+    'execution_duration_ms',
+    'execution_usage_json'
+  )
+`);
+  const legacyRecords = await executor.query<{
+    checksum: string;
+    id: string;
+  }>("SELECT id, checksum FROM junior_schema_migrations");
+  const legacyRecordsById = new Map(
+    legacyRecords.map((record) => [record.id, record.checksum]),
+  );
+  const metricColumnCount = metrics?.columnCount ?? 0;
+  if (metricColumnCount !== 0 && metricColumnCount !== 4) {
+    throw new Error(
+      `Cannot adopt partial legacy metrics state: found ${metricColumnCount} of 4 required columns`,
+    );
+  }
+  const metricsComplete = metricColumnCount === 4;
+  const hasMetricsRecord = legacyRecordsById.has(LEGACY_METRICS_MIGRATION_ID);
+  if (metricsComplete !== hasMetricsRecord) {
+    throw new Error(
+      "Cannot adopt legacy core migration state: legacy metrics migration record does not match physical metric columns",
+    );
+  }
+  const expectedIds: readonly LegacyCoreMigrationId[] = metricsComplete
+    ? [...LEGACY_CORE_MIGRATION_IDS, LEGACY_METRICS_MIGRATION_ID]
+    : [...LEGACY_CORE_MIGRATION_IDS];
+  const missingIds = expectedIds.filter((id) => !legacyRecordsById.has(id));
+  if (missingIds.length > 0) {
+    throw new Error(
+      `Cannot adopt partial legacy core migration state; missing: ${missingIds.join(", ")}`,
+    );
+  }
+  const checksumMismatches = expectedIds.filter(
+    (id) => legacyRecordsById.get(id) !== LEGACY_CORE_MIGRATION_CHECKSUMS[id],
+  );
+  if (checksumMismatches.length > 0) {
+    throw new Error(
+      `Cannot adopt legacy core migration state: checksum mismatch: ${checksumMismatches.join(", ")}`,
+    );
+  }
+
+  const [baseline] = await executor.query<{
+    conversationEventsTable: string | null;
+    legacyAgentStepsTable: boolean;
+    metricRunIdColumn: boolean;
+    searchIndex: string | null;
+  }>(`
+SELECT
+  to_regclass('public.junior_conversation_events')::text AS "conversationEventsTable",
+  to_regclass('public.junior_conversation_messages_search_idx')::text AS "searchIndex",
+  EXISTS (
     SELECT 1
     FROM information_schema.tables
     WHERE table_schema = 'public'
-      AND table_name LIKE 'junior\\_%' ESCAPE '\\'
-  ) AS "hasJuniorTables"
+      AND table_name = 'junior_agent_steps'
+      AND table_type = 'BASE TABLE'
+  ) AS "legacyAgentStepsTable",
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'junior_conversations'
+      AND column_name = 'metric_run_id'
+  ) AS "metricRunIdColumn"
 `);
-  return {
-    hasJuniorTables: tables?.hasJuniorTables ?? false,
-  };
-}
-
-function isCurrentMigrationState(
-  state: CoreMigrationState,
-  latestMigrationAt: number,
-): boolean {
-  return state.appliedAt !== undefined && state.appliedAt >= latestMigrationAt;
-}
-
-function migrationResult(
-  migrations: readonly MigrationMeta[],
-  state: CoreMigrationState,
-): CoreMigrationResult {
-  const appliedAt = state.appliedAt;
-  const existing =
-    appliedAt === undefined
-      ? 0
-      : migrations.filter((migration) => migration.folderMillis <= appliedAt)
-          .length;
-  return {
-    existing,
-    migrated: migrations.length - existing,
-    scanned: migrations.length,
-  };
-}
-
-/** Reject legacy databases that must first run the bridge release upgrade. */
-function assertSupportedMigrationState(state: CoreMigrationState): void {
-  if (!state.hasJuniorTables || state.appliedAt !== undefined) {
-    return;
+  if (!baseline?.legacyAgentStepsTable || baseline.conversationEventsTable) {
+    throw new Error(
+      "Cannot adopt legacy core migration state: expected the pre-Drizzle junior_agent_steps table and no junior_conversation_events table",
+    );
   }
-  throw new Error(
-    `Existing Junior SQL tables have no core Drizzle migration history. Stop old Junior workers, install @sentry/junior@${CORE_MIGRATION_BRIDGE_VERSION}, run \`junior upgrade\`, then restore this Junior version and rerun \`junior upgrade\` before restarting workers.`,
-  );
-}
+  const postBaselineMarkers = [
+    baseline.searchIndex
+      ? "junior_conversation_messages_search_idx"
+      : undefined,
+    baseline.metricRunIdColumn
+      ? "junior_conversations.metric_run_id"
+      : undefined,
+  ].filter((marker): marker is string => marker !== undefined);
+  if (postBaselineMarkers.length > 0) {
+    throw new Error(
+      `Cannot adopt legacy core migration state: post-baseline schema markers are already present: ${postBaselineMarkers.join(", ")}`,
+    );
+  }
 
-export { schema };
-
-/** Apply the packaged Drizzle migrations during `junior upgrade`. */
-export async function migrateSchema(
-  executor: JuniorSqlMigrationExecutor,
-): Promise<CoreMigrationResult> {
-  const migrationsFolder = migrationFolder();
-  const migrations = readMigrationFiles({ migrationsFolder });
-  const latestMigration = migrations.at(-1);
-  if (!latestMigration) {
+  const migration = metricsComplete ? migrations[1] : migrations[0];
+  if (!migration) {
     throw new Error("No core Drizzle migrations were packaged");
   }
 
-  const initialState = await loadCoreMigrationState(executor);
-  if (isCurrentMigrationState(initialState, latestMigration.folderMillis)) {
-    return migrationResult(migrations, initialState);
-  }
-  assertSupportedMigrationState(initialState);
+  await executor.transaction(async () => {
+    await executor.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
+    await executor.execute(`
+CREATE TABLE IF NOT EXISTS drizzle.__drizzle_junior_core (
+  id SERIAL PRIMARY KEY,
+  hash TEXT NOT NULL,
+  created_at BIGINT
+)
+`);
+    await executor.execute(
+      `INSERT INTO drizzle.__drizzle_junior_core (hash, created_at)
+       VALUES ($1, $2)`,
+      [migration.hash, migration.when],
+    );
+  });
+}
 
-  return await executor.withMigrationLock(MIGRATIONS_TABLE, async () => {
-    const lockedState = await loadCoreMigrationState(executor);
-    if (isCurrentMigrationState(lockedState, latestMigration.folderMillis)) {
-      return migrationResult(migrations, lockedState);
-    }
-    assertSupportedMigrationState(lockedState);
-    await executor.migrate({
-      migrationsFolder,
-      migrationsTable: MIGRATIONS_TABLE,
-    });
-    return migrationResult(migrations, lockedState);
+function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
+  return {
+    appendToList: async (key, value, options) => {
+      await stateAdapter.appendToList(key, value, options);
+    },
+    delete: async (key) => {
+      await stateAdapter.delete(key);
+    },
+    get: async (key) => await stateAdapter.get<unknown>(key),
+    getList: async (key) => await stateAdapter.getList(key),
+    set: async (key, value, ttlMs) => {
+      await stateAdapter.set(key, value, ttlMs);
+    },
+  };
+}
+
+/** Project the executor onto the permanent SQL migration capability. */
+function migrationSql(
+  executor: JuniorSqlMigrationExecutor,
+): MigrationContextV1["sql"] {
+  return {
+    execute: executor.execute.bind(executor),
+    query: executor.query.bind(executor),
+    transaction: executor.transaction.bind(executor),
+  };
+}
+
+export type MigrateSchemaOptions =
+  | { mode?: "sql" }
+  | {
+      loadTypeScript: TypeScriptMigrationLoader;
+      log?: MigrationContextV1["log"];
+      mode: "all";
+      runTask: MigrationContextV1["tasks"]["run"];
+      stateAdapter: StateAdapter;
+    };
+
+export { schema };
+
+/** Apply the packaged mixed migration journal, or SQL entries alone in tests. */
+export async function migrateSchema(
+  executor: JuniorSqlMigrationExecutor,
+  options: MigrateSchemaOptions = { mode: "sql" },
+): Promise<MigrationRunResult> {
+  const migrationsFolder = migrationFolder();
+  const runAll = options.mode === "all";
+  const baseOptions = {
+    beforeRun: async () => {
+      await adoptLegacyMigrationState(executor, migrationsFolder);
+    },
+    executor,
+    migrationsFolder,
+    migrationsTable: MIGRATIONS_TABLE,
+  };
+  if (!runAll) {
+    return await runMigrationJournal({ ...baseOptions, mode: "sql" });
+  }
+  return await runMigrationJournal({
+    ...baseOptions,
+    createContext: ({ progress }): MigrationContextV1 => ({
+      log: options.log ?? (() => {}),
+      progress,
+      sql: migrationSql(executor),
+      state: migrationState(options.stateAdapter),
+      tasks: {
+        run: options.runTask,
+      },
+    }),
+    loadTypeScript: options.loadTypeScript,
+    mode: "all",
   });
 }

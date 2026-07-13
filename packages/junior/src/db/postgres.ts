@@ -5,8 +5,6 @@ import pg, {
   type QueryResultRow,
 } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
 
@@ -41,13 +39,6 @@ class PostgresExecutor implements JuniorSqlExecutor {
       ...params,
     ]);
     return result.rows as T[];
-  }
-
-  async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle(this.queryClient(), { schema: juniorSqlSchema }),
-      config,
-    );
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {

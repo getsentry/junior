@@ -119,6 +119,7 @@ pnpm build:pkg
 This repo uses Craft for manual lockstep npm releases of:
 
 - `@sentry/junior`
+- `@sentry/junior-migrations`
 - `@sentry/junior-plugin-api`
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-amplitude`

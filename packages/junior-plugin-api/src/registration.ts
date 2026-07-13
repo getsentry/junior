@@ -1,6 +1,7 @@
 import type { PluginCliDefinition } from "./cli";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
+import type { PluginMigrationTask } from "./operations";
 import type { PluginTasks } from "./tasks";
 
 export interface PluginModelConfig {
@@ -14,6 +15,8 @@ export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
   hooks?: PluginHooks;
   manifest: PluginManifest;
+  /** Permanently versioned data tasks referenced by this plugin's migration journal. */
+  migrationTasks?: Record<string, PluginMigrationTask>;
   model?: PluginModelConfig;
   packageName?: string;
   tasks?: PluginTasks;

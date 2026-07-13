@@ -1,19 +1,25 @@
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import type { StateAdapter } from "chat";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
-import type { JuniorSqlExecutor } from "@/db/db";
 import type { JuniorPluginSet } from "@/plugins";
 
 export interface UpgradeIo {
   info: (line: string) => void;
 }
 
-export interface UpgradeContext {
+export interface MigrationContext {
+  db?: unknown;
+  io: UpgradeIo;
   pluginCatalogConfig?: PluginCatalogConfig;
   pluginSet?: JuniorPluginSet;
-  sqlExecutor: JuniorSqlExecutor;
+  redisStateAdapter?: RedisStateAdapter;
+  stateAdapter: StateAdapter;
 }
 
-export interface MigrationSummary {
+export type MigrationResult = {
   existing: number;
   migrated: number;
+  missing: number;
   scanned: number;
-}
+  skipped?: number;
+};

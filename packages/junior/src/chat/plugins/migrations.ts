@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
-import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
+import {
+  resolveMigrations,
+  runMigrationJournal,
+  type MigrationContextV1,
+  type MigrationJsonValue,
+  type MigrationStateV1,
+  type ResolvedMigration,
+  type TypeScriptMigrationLoader,
+} from "@sentry/junior-migrations";
+import type { StateAdapter } from "chat";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
-import { isPostgresErrorCode } from "@/db/postgres-error";
 
 interface PluginMigrationRoot {
   /** Absolute path to the plugin's Drizzle migrations directory. */
@@ -9,19 +17,25 @@ interface PluginMigrationRoot {
   pluginName: string;
 }
 
-interface PluginMigrationResult {
+type PluginMigrationResult = {
   existing: number;
   migrated: number;
   scanned: number;
-}
+  skipped?: number;
+};
 
-export interface PluginMigrationSummary extends PluginMigrationResult {
-  pluginName: string;
-}
-
-interface PluginMigrationOptions {
-  onPluginMigration?: (summary: PluginMigrationSummary) => void;
-}
+type PluginMigrationOptions =
+  | { mode?: "sql" }
+  | {
+      loadTypeScript: TypeScriptMigrationLoader;
+      log?: MigrationContextV1["log"];
+      mode: "all";
+      runTask?: (
+        pluginName: string,
+        taskName: string,
+      ) => Promise<MigrationJsonValue | undefined>;
+      stateAdapter: StateAdapter;
+    };
 
 const LEGACY_SCHEDULER_BASELINE_HASH =
   "d1d2f712181dd3a0557808f0fc67fd0722691d25f4c8cfb816b77c71d19e1e42";
@@ -37,28 +51,6 @@ function migrationTable(pluginName: string): string {
     .digest("hex")
     .slice(0, 8);
   return `__drizzle_${label}_${hash}`;
-}
-
-async function appliedMigrationTime(
-  executor: JuniorSqlMigrationExecutor,
-  table: string,
-): Promise<number | undefined> {
-  try {
-    const [row] = await executor.query<{ createdAt: string | null }>(
-      `SELECT created_at::text AS "createdAt"
-       FROM drizzle.${table}
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    );
-    return row?.createdAt === null || row?.createdAt === undefined
-      ? undefined
-      : Number(row.createdAt);
-  } catch (error) {
-    if (isPostgresErrorCode(error, "42P01")) {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 async function legacyMigrationHashes(
@@ -82,13 +74,13 @@ async function legacyMigrationHashes(
 }
 
 function adoptedMigration(
-  migrations: readonly MigrationMeta[],
+  migrations: readonly ResolvedMigration[],
   legacyHashes: ReadonlySet<string>,
   pluginName: string,
-): MigrationMeta | undefined {
-  let adopted: MigrationMeta | undefined;
+): ResolvedMigration | undefined {
+  let adopted: ResolvedMigration | undefined;
   for (const migration of migrations) {
-    if (!legacyHashes.has(migration.hash)) {
+    if (migration.kind !== "sql" || !legacyHashes.has(migration.hash)) {
       break;
     }
     adopted = migration;
@@ -105,10 +97,17 @@ function adoptedMigration(
 
 async function adoptLegacyMigrationState(args: {
   executor: JuniorSqlMigrationExecutor;
-  migrations: readonly MigrationMeta[];
+  migrations: readonly ResolvedMigration[];
   pluginName: string;
   table: string;
-}): Promise<number | undefined> {
+}): Promise<void> {
+  const [exists] = await args.executor.query<{ tableName: string | null }>(
+    `SELECT to_regclass($1)::text AS "tableName"`,
+    [`drizzle.${args.table}`],
+  );
+  if (exists?.tableName) {
+    return;
+  }
   const legacyHashes = await legacyMigrationHashes(
     args.executor,
     args.pluginName,
@@ -119,7 +118,7 @@ async function adoptLegacyMigrationState(args: {
     args.pluginName,
   );
   if (!migration) {
-    return undefined;
+    return;
   }
   await args.executor.transaction(async () => {
     await args.executor.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
@@ -132,27 +131,43 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
 `);
     await args.executor.execute(
       `INSERT INTO drizzle.${args.table} (hash, created_at) VALUES ($1, $2)`,
-      [migration.hash, migration.folderMillis],
+      [migration.hash, migration.when],
     );
   });
-  return migration.folderMillis;
 }
 
-function appliedCount(
-  migrations: readonly MigrationMeta[],
-  createdAt: number | undefined,
-): number {
-  return createdAt === undefined
-    ? 0
-    : migrations.filter((migration) => migration.folderMillis <= createdAt)
-        .length;
+function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
+  return {
+    appendToList: async (key, value, options) => {
+      await stateAdapter.appendToList(key, value, options);
+    },
+    delete: async (key) => {
+      await stateAdapter.delete(key);
+    },
+    get: async (key) => await stateAdapter.get<unknown>(key),
+    getList: async (key) => await stateAdapter.getList(key),
+    set: async (key, value, ttlMs) => {
+      await stateAdapter.set(key, value, ttlMs);
+    },
+  };
 }
 
-/** Apply enabled plugins' packaged Drizzle migrations in plugin-name order. */
+/** Project the executor onto the permanent SQL migration capability. */
+function migrationSql(
+  executor: JuniorSqlMigrationExecutor,
+): MigrationContextV1["sql"] {
+  return {
+    execute: executor.execute.bind(executor),
+    query: executor.query.bind(executor),
+    transaction: executor.transaction.bind(executor),
+  };
+}
+
+/** Apply enabled plugins' mixed migrations in plugin-name and journal order. */
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
   roots: readonly PluginMigrationRoot[],
-  options: PluginMigrationOptions = {},
+  options: PluginMigrationOptions = { mode: "sql" },
 ): Promise<PluginMigrationResult> {
   const result: PluginMigrationResult = {
     existing: 0,
@@ -163,52 +178,51 @@ export async function migratePluginSchemas(
     left.pluginName.localeCompare(right.pluginName),
   );
   for (const root of orderedRoots) {
-    const migrations = readMigrationFiles({ migrationsFolder: root.dir });
-    if (migrations.length === 0) {
-      continue;
-    }
+    const migrations = await resolveMigrations(root.dir);
     const table = migrationTable(root.pluginName);
-    const initialTime = await appliedMigrationTime(executor, table);
-    const initialExisting = appliedCount(migrations, initialTime);
-    if (initialExisting === migrations.length) {
-      const summary = {
-        existing: initialExisting,
-        migrated: 0,
-        pluginName: root.pluginName,
-        scanned: migrations.length,
-      };
-      result.scanned += summary.scanned;
-      result.existing += summary.existing;
-      options.onPluginMigration?.(summary);
-      continue;
-    }
-    const summary = await executor.withMigrationLock(table, async () => {
-      const currentTime =
-        (await appliedMigrationTime(executor, table)) ??
-        (await adoptLegacyMigrationState({
+    const runAll = options.mode === "all";
+    const baseOptions = {
+      beforeRun: async () => {
+        await adoptLegacyMigrationState({
           executor,
           migrations,
           pluginName: root.pluginName,
           table,
-        }));
-      const existing = appliedCount(migrations, currentTime);
-      if (existing < migrations.length) {
-        await executor.migrate({
-          migrationsFolder: root.dir,
-          migrationsTable: table,
         });
-      }
-      return {
-        existing,
-        migrated: migrations.length - existing,
-        pluginName: root.pluginName,
-        scanned: migrations.length,
-      };
-    });
-    result.scanned += summary.scanned;
-    result.existing += summary.existing;
-    result.migrated += summary.migrated;
-    options.onPluginMigration?.(summary);
+      },
+      executor,
+      migrationsFolder: root.dir,
+      migrationsTable: table,
+    };
+    const pluginResult = runAll
+      ? await runMigrationJournal({
+          ...baseOptions,
+          createContext: ({ progress }): MigrationContextV1 => ({
+            log: options.log ?? (() => {}),
+            progress,
+            sql: migrationSql(executor),
+            state: migrationState(options.stateAdapter),
+            tasks: {
+              run: async (taskName) => {
+                if (!options.runTask) {
+                  throw new Error(
+                    `Unsupported migration task for plugin ${root.pluginName}: ${taskName}`,
+                  );
+                }
+                return await options.runTask(root.pluginName, taskName);
+              },
+            },
+          }),
+          loadTypeScript: options.loadTypeScript,
+          mode: "all",
+        })
+      : await runMigrationJournal({ ...baseOptions, mode: "sql" });
+    result.scanned += pluginResult.scanned;
+    result.existing += pluginResult.existing;
+    result.migrated += pluginResult.migrated;
+    if (pluginResult.skipped > 0) {
+      result.skipped = (result.skipped ?? 0) + pluginResult.skipped;
+    }
   }
   return result;
 }

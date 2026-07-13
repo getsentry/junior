@@ -1,6 +1,6 @@
 {
-  "name": "@sentry/junior-memory",
-  "version": "0.110.0",
+  "name": "@sentry/junior-migrations",
+  "version": "0.101.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -9,7 +9,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/getsentry/junior.git",
-    "directory": "packages/junior-memory"
+    "directory": "packages/junior-migrations"
+  },
+  "bin": {
+    "junior-migrations": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -19,31 +22,23 @@
   },
   "files": [
     "dist",
-    "migrations",
     "src"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
-    "db:generate:data": "pnpm exec junior-migrations generate --config drizzle.config.ts --out migrations",
-    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@sentry/junior-plugin-api": "workspace:*",
-    "@sinclair/typebox": "^0.34.49",
-    "commander": "^14.0.3",
-    "drizzle-orm": "catalog:",
-    "zod": "catalog:"
+  "peerDependencies": {
+    "drizzle-kit": "catalog:"
   },
   "devDependencies": {
-    "@sentry/junior-migrations": "workspace:*",
-    "@sentry/junior-testing": "workspace:*",
     "@types/node": "^25.9.1",
     "drizzle-kit": "catalog:",
+    "drizzle-orm": "catalog:",
     "oxlint": "^1.66.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

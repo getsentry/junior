@@ -14,4 +14,4 @@ rule:
     - not:
         has:
           kind: string
-          regex: '^["@'']@sentry/junior-plugin-api["@'']$'
+          regex: '^["@'']@sentry/junior-(?:plugin-api|migrations)["@'']$'

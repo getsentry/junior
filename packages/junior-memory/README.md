@@ -55,6 +55,8 @@ exported types, tools, and tests are authoritative.
 - `MEMORY_RECALL_MAX_VECTOR_DISTANCE` or
   `recallMaxVectorDistance` configures the vector candidate threshold.
 - Generate schema changes with `pnpm --filter @sentry/junior-memory db:generate`.
+- Generate self-contained data migrations with
+  `pnpm --filter @sentry/junior-memory db:generate:data --name <name>`.
 
 Follow `../../policies/data-redaction.md`, `../../policies/security.md`, and the
 plugin contract in `../junior-plugin-api/README.md`.

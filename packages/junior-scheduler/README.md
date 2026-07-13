@@ -55,6 +55,10 @@ Junior's durable agent runtime.
 The plugin exposes create, update, delete, list, and run-now tools plus bounded
 operational reporting. Generate schema changes with
 `pnpm --filter @sentry/junior-scheduler db:generate`.
+Use `pnpm --filter @sentry/junior-scheduler db:generate:data --name <name>`
+for a TypeScript data migration in the same journal. New migrations should use
+the stable migration capabilities directly; the existing scheduler backfill
+uses a versioned task to preserve its pre-journal implementation.
 
 Follow `../../policies/serverless-background-work.md`,
 `../../policies/context-bound-systems.md`, and
