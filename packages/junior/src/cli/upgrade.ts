@@ -12,6 +12,7 @@ import { sqlPluginMigration } from "./upgrade/migrations/plugin-sql";
 import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import { agentTurnSessionActorMigration } from "./upgrade/migrations/agent-turn-session-actor";
+import { conversationUsageRepairMigration } from "./upgrade/migrations/conversation-usage";
 import type {
   MigrationContext,
   MigrationResult,
@@ -31,6 +32,7 @@ const MIGRATIONS: UpgradeMigration[] = [
   coreSqlSchemaMigration,
   sqlConversationMigration,
   sqlConversationHistoryMigration,
+  conversationUsageRepairMigration,
   sqlPluginMigration,
   pluginStorageMigration,
 ];

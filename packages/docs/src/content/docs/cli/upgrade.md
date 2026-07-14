@@ -29,6 +29,7 @@ The command takes no extra arguments.
 
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.
 - Backfill retained conversation records into the shared Junior SQL database. The upgrade requires `DATABASE_URL`.
+- Repair legacy token and estimated-cost rollups from durable SQL agent steps in bounded batches. Conversations that are active during the repair are left unchanged and can be repaired by rerunning the command after they become idle.
 
 The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. The SQL conversation backfill copies a bounded legacy slice of Redis conversation metadata; after cutover, durable conversation metadata is written to SQL while Redis remains the transcript and execution/cache store.
 
@@ -60,6 +61,8 @@ Running migration migrate-redis-conversation-state...
 Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1
 Running migration backfill-conversations-sql...
 Finished migration backfill-conversations-sql: scanned=2 migrated=2 existing=0 missing=0
+Running migration repair-conversation-usage...
+Finished migration repair-conversation-usage: scanned=2 migrated=1 existing=1 missing=0
 Junior upgrade complete.
 ```
 
@@ -80,6 +83,10 @@ After running the command:
 1. Confirm the final log line includes `Junior upgrade complete`.
 2. Confirm the migration summary has the expected `scanned` and `migrated` counts.
 3. Run `pnpm exec junior check` before building or deploying the app.
+
+A nonzero `missing` count for `repair-conversation-usage` means retained SQL assistant messages did not contain usable, schema-safe usage values. Junior leaves those totals unchanged.
+
+The command does not rewrite legacy duration totals. Run summaries are TTL-bound and do not carry an authoritative completeness marker, so even a non-empty retained index may omit a run. Replacing a total from that evidence could silently undercount it.
 
 ## Next step
 

@@ -12,12 +12,15 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ConversationStore } from "@/chat/conversations/store";
+import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import { resolveUpgradePluginSet } from "@/cli/upgrade";
 import { agentTurnSessionActorMigration } from "@/cli/upgrade/migrations/agent-turn-session-actor";
+import { repairConversationUsage } from "@/cli/upgrade/migrations/conversation-usage";
 import { migrateConversationsToSql } from "@/cli/upgrade/migrations/conversations-sql";
 import { redisConversationStateMigration } from "@/cli/upgrade/migrations/redis-conversation-state";
 import {
@@ -537,6 +540,385 @@ WHERE conversation_id = $1
           totalTokens: 160,
           cost: { total: 0.0035 },
         },
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("repairs SQL usage in bounded batches without changing duration", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlStore(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const mixedConversationId = `${CONVERSATION_ID}:mixed`;
+    const unsafeConversationId = `${CONVERSATION_ID}:unsafe`;
+    const firstAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "first" }],
+      api: "responses",
+      provider: "openai",
+      model: "test-model",
+      stopReason: "stop",
+      timestamp: 2_000,
+      usage: {
+        input: 10,
+        output: 2,
+        cacheRead: 3,
+        cacheWrite: 1,
+        reasoning: 1,
+        totalTokens: 16,
+        cost: {
+          input: 0.001,
+          output: 0.002,
+          cacheRead: 0.0003,
+          cacheWrite: 0.0004,
+          total: 0.0037,
+        },
+      },
+    } as PiMessage;
+    const secondAssistant = {
+      role: "assistant",
+      content: [{ type: "text", text: "second" }],
+      api: "responses",
+      provider: "openai",
+      model: "test-model",
+      stopReason: "stop",
+      timestamp: 3_000,
+      usage: {
+        input: 20,
+        output: 5,
+        cacheRead: 0,
+        cacheWrite: 0,
+        reasoning: 2,
+        totalTokens: 25,
+        cost: {
+          input: 0.004,
+          output: 0.006,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0.01,
+        },
+      },
+    } as PiMessage;
+
+    try {
+      await migrateSchema(fixture.sql);
+      await sqlStore.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-two",
+          status: "idle",
+          updatedAtMs: 4_000,
+        },
+        lastActivityAtMs: 4_000,
+        metrics: {
+          durationMs: 9_000,
+          usage: { totalTokens: 999, cost: { total: 0.999 } },
+        },
+        updatedAtMs: 4_000,
+      });
+      await stepStore.startEpoch(CONVERSATION_ID, {
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: "test-model",
+        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
+      });
+      await stepStore.startEpoch(CONVERSATION_ID, {
+        reason: "compaction",
+        modelProfile: "standard",
+        modelId: "test-model",
+        messages: [{ message: firstAssistant, createdAtMs: 2_000 }],
+      });
+      await stepStore.append(CONVERSATION_ID, [
+        {
+          entry: { type: "pi_message", message: secondAssistant },
+          createdAtMs: 3_000,
+        },
+      ]);
+      await sqlStore.recordExecution({
+        conversationId: mixedConversationId,
+        createdAtMs: 1_000,
+        execution: { status: "idle", updatedAtMs: 4_000 },
+        lastActivityAtMs: 4_000,
+        metrics: { durationMs: 1_000, usage: { totalTokens: 777 } },
+        updatedAtMs: 4_000,
+      });
+      await stepStore.append(mixedConversationId, [
+        {
+          entry: {
+            type: "pi_message",
+            message: {
+              role: "assistant",
+              usage: { input: 3, totalTokens: 999 },
+            } as PiMessage,
+          },
+          createdAtMs: 2_000,
+        },
+        {
+          entry: {
+            type: "pi_message",
+            message: {
+              role: "assistant",
+              usage: { totalTokens: 5 },
+            } as PiMessage,
+          },
+          createdAtMs: 3_000,
+        },
+      ]);
+      await sqlStore.recordExecution({
+        conversationId: unsafeConversationId,
+        createdAtMs: 1_000,
+        execution: { status: "idle", updatedAtMs: 4_000 },
+        lastActivityAtMs: 4_000,
+        metrics: { durationMs: 1_000, usage: { totalTokens: 777 } },
+        updatedAtMs: 4_000,
+      });
+      await stepStore.append(unsafeConversationId, [
+        {
+          entry: {
+            type: "pi_message",
+            message: {
+              role: "assistant",
+              usage: { input: 9_007_199_254_740_992 },
+            } as PiMessage,
+          },
+          createdAtMs: 3_000,
+        },
+      ]);
+      const context = { io: { info: vi.fn() }, stateAdapter };
+      await expect(
+        repairConversationUsage(context, {
+          batchSize: 1,
+          executor: fixture.sql,
+        }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 2,
+        missing: 1,
+        scanned: 3,
+      });
+      const [metrics] = await fixture.sql.query<{
+        durationMs: number;
+        executionDurationMs: number;
+        usage: Record<string, unknown>;
+      }>(
+        `
+SELECT
+  duration_ms AS "durationMs",
+  execution_duration_ms AS "executionDurationMs",
+  usage_json AS usage
+FROM junior_conversations
+WHERE conversation_id = $1
+`,
+        [CONVERSATION_ID],
+      );
+      expect(metrics).toEqual({
+        durationMs: 9_000,
+        executionDurationMs: 9_000,
+        usage: {
+          inputTokens: 30,
+          outputTokens: 7,
+          cachedInputTokens: 3,
+          cacheCreationTokens: 1,
+          reasoningTokens: 3,
+          cost: {
+            input: 0.005,
+            output: 0.008,
+            cacheRead: 0.0003,
+            cacheWrite: 0.0004,
+            total: 0.0137,
+          },
+        },
+      });
+      const [mixed] = await fixture.sql.query<{ usage: unknown }>(
+        `SELECT usage_json AS usage FROM junior_conversations WHERE conversation_id = $1`,
+        [mixedConversationId],
+      );
+      expect(mixed?.usage).toEqual({ totalTokens: 8 });
+      const [unsafe] = await fixture.sql.query<{ usage: unknown }>(
+        `SELECT usage_json AS usage FROM junior_conversations WHERE conversation_id = $1`,
+        [unsafeConversationId],
+      );
+      expect(unsafe?.usage).toEqual({ totalTokens: 777 });
+
+      await expect(
+        repairConversationUsage(context, {
+          batchSize: 1,
+          executor: fixture.sql,
+        }),
+      ).resolves.toEqual({
+        existing: 2,
+        migrated: 0,
+        missing: 1,
+        scanned: 3,
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("commits completed usage batches before a later batch fails", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlStore(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const conversationIds = ["local:usage-batch-a", "local:usage-batch-b"];
+
+    try {
+      await migrateSchema(fixture.sql);
+      for (const [index, conversationId] of conversationIds.entries()) {
+        await sqlStore.recordExecution({
+          conversationId,
+          createdAtMs: 1_000,
+          execution: { status: "idle", updatedAtMs: 2_000 },
+          lastActivityAtMs: 2_000,
+          metrics: { durationMs: 1_000, usage: { totalTokens: 999 } },
+          updatedAtMs: 2_000,
+        });
+        await stepStore.append(conversationId, [
+          {
+            entry: {
+              type: "pi_message",
+              message: {
+                role: "assistant",
+                usage: { input: index + 1, totalTokens: index + 1 },
+              } as PiMessage,
+            },
+            createdAtMs: 2_000,
+          },
+        ]);
+      }
+
+      let queryCount = 0;
+      const failingExecutor = new Proxy(fixture.sql, {
+        get(target, key, receiver) {
+          if (key === "query") {
+            return async (
+              statement: string,
+              params: readonly unknown[] = [],
+            ) => {
+              queryCount += 1;
+              if (queryCount === 2) {
+                throw new Error("later usage batch failed");
+              }
+              return target.query(statement, params);
+            };
+          }
+          const value = Reflect.get(target, key, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const context = { io: { info: vi.fn() }, stateAdapter };
+      await expect(
+        repairConversationUsage(context, {
+          batchSize: 1,
+          executor: failingExecutor,
+        }),
+      ).rejects.toThrow("later usage batch failed");
+
+      const beforeRetry = await fixture.sql.query<{
+        conversationId: string;
+        usage: unknown;
+      }>(
+        `SELECT conversation_id AS "conversationId", usage_json AS usage
+         FROM junior_conversations ORDER BY conversation_id`,
+      );
+      expect(beforeRetry).toEqual([
+        {
+          conversationId: conversationIds[0],
+          usage: { inputTokens: 1 },
+        },
+        { conversationId: conversationIds[1], usage: { totalTokens: 999 } },
+      ]);
+      await expect(
+        repairConversationUsage(context, {
+          batchSize: 1,
+          executor: fixture.sql,
+        }),
+      ).resolves.toEqual({
+        existing: 1,
+        migrated: 1,
+        missing: 0,
+        scanned: 2,
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("repairs a conversation on rerun after it becomes idle", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const sqlStore = createSqlStore(fixture.sql);
+    const stepStore = createSqlAgentStepStore(fixture.sql);
+
+    try {
+      await migrateSchema(fixture.sql);
+      await sqlStore.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "active-run",
+          status: "running",
+          updatedAtMs: 2_000,
+        },
+        lastActivityAtMs: 2_000,
+        metrics: {
+          durationMs: 7_777,
+          usage: { totalTokens: 999, cost: { total: 0.999 } },
+        },
+        updatedAtMs: 2_000,
+      });
+      await stepStore.append(CONVERSATION_ID, [
+        {
+          entry: {
+            type: "pi_message",
+            message: {
+              role: "assistant",
+              usage: { input: 4, output: 2, totalTokens: 6 },
+            } as PiMessage,
+          },
+          createdAtMs: 2_000,
+        },
+      ]);
+      const context = { io: { info: vi.fn() }, stateAdapter };
+      await expect(
+        repairConversationUsage(context, { executor: fixture.sql }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 0,
+        missing: 0,
+        scanned: 0,
+      });
+
+      await fixture.sql.execute(
+        `UPDATE junior_conversations SET execution_status = 'idle' WHERE conversation_id = $1`,
+        [CONVERSATION_ID],
+      );
+      await expect(
+        repairConversationUsage(context, { executor: fixture.sql }),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 1,
+        missing: 0,
+        scanned: 1,
+      });
+      const [metrics] = await fixture.sql.query<{
+        durationMs: number;
+        usage: Record<string, unknown>;
+      }>(
+        `SELECT duration_ms AS "durationMs", usage_json AS usage
+         FROM junior_conversations WHERE conversation_id = $1`,
+        [CONVERSATION_ID],
+      );
+      expect(metrics).toEqual({
+        durationMs: 7_777,
+        usage: { inputTokens: 4, outputTokens: 2 },
       });
     } finally {
       await fixture.close();
