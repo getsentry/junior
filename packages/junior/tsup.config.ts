@@ -15,6 +15,7 @@ export default defineConfig({
     api: "src/api.ts",
     "api/schema": "src/api/schema.ts",
     instrumentation: "src/instrumentation.ts",
+    "migration-helpers/v1": "src/migration-helpers/v1.ts",
     nitro: "src/nitro.ts",
     vercel: "src/vercel.ts",
     version: "src/version.ts",

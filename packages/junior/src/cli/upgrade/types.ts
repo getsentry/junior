@@ -8,7 +8,6 @@ export interface UpgradeIo {
 }
 
 export interface MigrationContext {
-  db?: unknown;
   io: UpgradeIo;
   pluginCatalogConfig?: PluginCatalogConfig;
   pluginSet?: JuniorPluginSet;

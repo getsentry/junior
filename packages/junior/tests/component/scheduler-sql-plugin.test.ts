@@ -2,7 +2,10 @@ import path from "node:path";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { resolveMigrations } from "@sentry/junior-migrations";
+import {
+  resolveMigrations,
+  type MigrationContextV1,
+} from "@sentry/junior-migrations";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -84,7 +87,7 @@ async function runSchedulerStateMigration(args: {
       load: async () => undefined,
       save: async () => {},
     },
-    state: args.stateAdapter,
+    state: args.stateAdapter as unknown as MigrationContextV1["state"],
   });
 }
 

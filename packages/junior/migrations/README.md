@@ -35,6 +35,12 @@ database, state, Redis, and progress capabilities supplied by the runner. The
 host database adapter owns connections, drivers, transactions, and locks so
 those infrastructure modules are not frozen into every migration.
 
+Reusable infrastructure belongs in the append-only
+`@sentry/junior/migration-helpers/v1` export. It may provide stable parsers,
+stores, adapter projections, and key resolution, but must not implement a
+specific data migration. The journal entry remains the only owner of one-off
+record transformations.
+
 The `0000_initial.sql` baseline represents the schema already deployed by the
 pre-Drizzle Junior migration runner. During upgrade, existing installations
 adopt that baseline once; new installations execute it normally. All later

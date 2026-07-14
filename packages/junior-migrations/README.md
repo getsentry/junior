@@ -35,7 +35,8 @@ same database adapter drives the journal ledger and is exposed as
 `context.database`, so migration files never own connection or driver setup.
 
 The runner rejects runtime imports of application source, relative modules,
-and `@sentry/junior`. External package imports are allowed when the migration
-needs a stable library dependency; migration-specific implementation must
-still remain in the migration file. Add a new API version rather than changing
-an existing migration capability contract.
+and unversioned `@sentry/junior` modules. Migrations may import the append-only
+`@sentry/junior/migration-helpers/v1` surface for parsing primitives, adapters,
+stores, and key resolution. One-off migration decisions and data transforms
+must still remain in the journal entry. Add a new helper or capability version
+rather than changing an existing contract.

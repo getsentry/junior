@@ -144,8 +144,9 @@ function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
     delete: async (key) => {
       await stateAdapter.delete(key);
     },
-    get: async (key) => await stateAdapter.get<unknown>(key),
-    getList: async (key) => await stateAdapter.getList(key),
+    get: async <T>(key: string) =>
+      (await stateAdapter.get<T>(key)) ?? undefined,
+    getList: async <T>(key: string) => await stateAdapter.getList<T>(key),
     releaseLock: async (lock) => {
       await stateAdapter.releaseLock(lock);
     },

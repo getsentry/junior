@@ -24,6 +24,10 @@
       "types": "./dist/instrumentation.d.ts",
       "default": "./dist/instrumentation.js"
     },
+    "./migration-helpers/v1": {
+      "types": "./dist/migration-helpers/v1.d.ts",
+      "default": "./dist/migration-helpers/v1.js"
+    },
     "./nitro": {
       "types": "./dist/nitro.d.ts",
       "default": "./dist/nitro.js"

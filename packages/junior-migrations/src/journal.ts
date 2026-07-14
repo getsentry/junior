@@ -51,6 +51,9 @@ async function optionalFile(path: string): Promise<string | undefined> {
 }
 
 function validateTypeScriptSource(tag: string, source: string): void {
+  const allowedRuntimeImports = new Set([
+    "@sentry/junior/migration-helpers/v1",
+  ]);
   const imports = source.matchAll(
     /^\s*import\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
   );
@@ -65,8 +68,9 @@ function validateTypeScriptSource(tag: string, source: string): void {
       specifier.startsWith(".") ||
       specifier.startsWith("/") ||
       specifier.startsWith("@/") ||
-      specifier === "@sentry/junior" ||
-      specifier.startsWith("@sentry/junior/")
+      ((specifier === "@sentry/junior" ||
+        specifier.startsWith("@sentry/junior/")) &&
+        !allowedRuntimeImports.has(specifier))
     ) {
       throw new Error(
         `TypeScript migration ${tag} cannot import application runtime code`,

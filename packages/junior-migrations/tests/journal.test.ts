@@ -62,6 +62,18 @@ describe("resolveMigrations", () => {
     );
   });
 
+  it("allows versioned Junior migration helpers", async () => {
+    const folder = await migrationFolder(["0000_helpers"]);
+    await writeFile(
+      join(folder, "0000_helpers.ts"),
+      'import { isRecord } from "@sentry/junior/migration-helpers/v1";\nexport default { apiVersion: 1, async up() { isRecord({}); } };\n',
+    );
+
+    await expect(resolveMigrations(folder)).resolves.toMatchObject([
+      { kind: "typescript", tag: "0000_helpers" },
+    ]);
+  });
+
   it("rejects ambiguous migration files", async () => {
     const folder = await migrationFolder(["0000_ambiguous"]);
     await writeFile(join(folder, "0000_ambiguous.sql"), "SELECT 1;");

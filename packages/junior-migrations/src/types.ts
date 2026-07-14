@@ -31,8 +31,8 @@ export interface MigrationStateV1 {
   ): Promise<void>;
   connect(): Promise<void>;
   delete(key: string): Promise<void>;
-  get(key: string): Promise<unknown | undefined>;
-  getList(key: string): Promise<unknown[]>;
+  get<T = unknown>(key: string): Promise<T | null | undefined>;
+  getList<T = unknown>(key: string): Promise<T[]>;
   releaseLock(lock: MigrationLockV1): Promise<void>;
   set(key: string, value: unknown, ttlMs?: number): Promise<void>;
   setIfNotExists(key: string, value: unknown, ttlMs?: number): Promise<boolean>;
