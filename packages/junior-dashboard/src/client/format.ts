@@ -390,6 +390,33 @@ export function summarizeMessages(
   return { items, total: items.length };
 }
 
+/** Count actor-initiated exchanges rather than individual transcript messages. */
+export function summarizeTurns(
+  conversation: ConversationTranscript,
+): MessageSummary | undefined {
+  const messages = transcriptSource(conversation);
+  const userMessages = messages.filter(
+    (message) =>
+      transcriptRoleKind(message.role) === "user" &&
+      isConversationMessage(message),
+  );
+  if (userMessages.length > 0) {
+    return {
+      items: userMessages.map((message) => ({
+        author: transcriptMessageAuthor(conversation, message),
+        bytes: message.parts.reduce(
+          (sum, part) => sum + transcriptPartBytes(part),
+          0,
+        ),
+      })),
+      total: userMessages.length,
+    };
+  }
+
+  const messageCount = conversationMessageCount(conversation);
+  return messageCount > 0 ? { items: [], total: 1 } : undefined;
+}
+
 /** Format raw counts with the dashboard's compact number rules. */
 export function formatCompactNumber(value: number | undefined): string {
   return formatNumber(value);

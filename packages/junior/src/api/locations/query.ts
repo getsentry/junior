@@ -16,13 +16,14 @@ import type { ActorIdentity } from "../conversations/schema";
 import { summaryFromRow } from "../conversations/reporting";
 import type {
   LocationActorSummaryReport,
+  LocationActivityDayReport,
   LocationDetailReport,
   LocationDirectoryReport,
   LocationSummaryReport,
 } from "./schema";
 
 const RECENT_LIMIT = 25;
-const ACTIVITY_DAYS = 30;
+const ACTIVITY_DAYS = 90;
 
 type AggregateMetrics = Pick<
   LocationSummaryReport,
@@ -181,10 +182,82 @@ async function directoryRows(db: JuniorDatabase) {
     .groupBy(...locationGroupBy());
 }
 
+async function directoryActivityRows(db: JuniorDatabase, start: Date) {
+  const date = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD'
+  )`;
+  return db
+    .select({
+      conversations: sql<number>`COUNT(*)::integer`,
+      date,
+      visibility: juniorDestinations.visibility,
+    })
+    .from(juniorConversations)
+    .leftJoin(
+      juniorDestinations,
+      eq(juniorDestinations.id, juniorConversations.destinationId),
+    )
+    .where(and(topLevelWhere(), gte(juniorConversations.lastActivityAt, start)))
+    .groupBy(date, juniorDestinations.visibility);
+}
+
+function directoryActivityDays(
+  rows: Array<{
+    conversations: number;
+    date: string;
+    visibility: (typeof juniorDestinations.$inferSelect)["visibility"] | null;
+  }>,
+  nowMs: number,
+): LocationActivityDayReport[] {
+  const days = new Map<string, LocationActivityDayReport>();
+  for (const row of rows) {
+    const day = days.get(row.date) ?? {
+      date: row.date,
+      privateConversations: 0,
+      publicConversations: 0,
+    };
+    if (row.visibility === "public") {
+      day.publicConversations += row.conversations;
+    } else {
+      day.privateConversations += row.conversations;
+    }
+    days.set(row.date, day);
+  }
+
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  const activity: LocationActivityDayReport[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    activity.push(
+      days.get(date) ?? {
+        date,
+        privateConversations: 0,
+        publicConversations: 0,
+      },
+    );
+  }
+  return activity;
+}
+
 /** Load public locations plus one complete privacy-safe aggregate for non-public activity. */
 export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryReport> {
   const nowMs = Date.now();
-  const rows = await directoryRows(getDb());
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  const [rows, activityRows] = await Promise.all([
+    directoryRows(getDb()),
+    directoryActivityRows(getDb(), start),
+  ]);
   const locations: LocationSummaryReport[] = [];
   const privateActivity = {
     ...emptyMetrics(),
@@ -198,6 +271,7 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
   }
 
   return {
+    activityDays: directoryActivityDays(activityRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: locations.sort(
       (left, right) =>
@@ -207,6 +281,8 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
     ),
     privateActivity,
     source: "conversation_index",
+    windowEnd: end.toISOString(),
+    windowStart: start.toISOString(),
   };
 }
 

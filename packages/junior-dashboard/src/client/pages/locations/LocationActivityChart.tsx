@@ -46,7 +46,7 @@ export function LocationActivityChart(props: {
         </div>
         <div className="flex items-center gap-2 font-mono text-[0.64rem] text-white/35">
           <span className="size-2 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.5)]" />
-          30 days
+          90 days
         </div>
       </div>
       <div className="px-2 py-3 sm:px-4 sm:py-4">

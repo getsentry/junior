@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { Activity, Clock3, MessageSquare, Users } from "lucide-react";
 import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
 
@@ -33,15 +33,18 @@ export function PeoplePageContent(props: {
   error: unknown;
 }) {
   const [peopleSearch, setPeopleSearch] = useState("");
-  const [range, setRange] = useState<TimeRangeDays>(30);
-  const [sort, setSort] = useState<PeopleSort>("recent");
+  const [range, setRange] = useState<TimeRangeDays>(90);
+  const [sort, setSort] = useState<PeopleSort>("conversations");
+  const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
     return <LoadingView label="Loading people" />;
   }
 
   const data = props.data;
   const visibleActivity = data?.activityDays.slice(-range) ?? [];
-  const people = data ? filterPeople(data.people, peopleSearch, sort) : [];
+  const people = data
+    ? filterPeople(data.people, peopleSearch, deferredSort)
+    : [];
   const indexedConversations =
     data?.people.reduce((total, person) => total + person.conversations, 0) ??
     0;
@@ -108,6 +111,7 @@ export function PeoplePageContent(props: {
           </div>
           <PeopleActivityChart days={visibleActivity} />
           <PeopleDirectory
+            loading={sort !== deferredSort}
             onQueryChange={setPeopleSearch}
             onSortChange={setSort}
             people={people}

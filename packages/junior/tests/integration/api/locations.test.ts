@@ -80,6 +80,16 @@ describe("locations API", () => {
         tokens: 15_000,
       });
       expect(directory.privateActivity.conversations).toBe(1);
+      expect(directory.activityDays).toHaveLength(90);
+      expect(
+        directory.activityDays.find((day) => day.date === "2026-06-15"),
+      ).toEqual({
+        date: "2026-06-15",
+        privateConversations: 1,
+        publicConversations: 5_001,
+      });
+      expect(directory.windowStart).toBe("2026-03-18T00:00:00.000Z");
+      expect(directory.windowEnd).toBe("2026-06-15T00:00:00.000Z");
 
       const detail = await readLocationDetailFromSql(destination?.id ?? "");
       expect(detail).toMatchObject({
@@ -88,6 +98,7 @@ describe("locations API", () => {
         tokens: 15_000,
       });
       expect(detail?.recentConversations).toHaveLength(25);
+      expect(detail?.activityDays).toHaveLength(90);
       expect(
         detail?.activityDays.find((day) => day.date === "2026-06-15"),
       ).toMatchObject({

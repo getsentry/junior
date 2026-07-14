@@ -18,7 +18,7 @@ import {
 } from "../../format";
 import { cn } from "../../styles";
 
-/** Present seven-day runtime health as the primary System analytics surface. */
+/** Present 90-day runtime health as the primary System analytics surface. */
 export function SystemActivity(props: {
   error: boolean;
   loading: boolean;
@@ -60,7 +60,7 @@ export function SystemActivity(props: {
       <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-5 py-4 max-sm:flex-col">
         <div>
           <div className="font-mono text-[0.62rem] uppercase tracking-[0.16em] text-cyan-200/65">
-            Seven-day pulse
+            90-day pulse
           </div>
           <h2 className="mt-1 mb-0 font-display text-xl font-medium tracking-[-0.02em] text-white">
             Runtime health

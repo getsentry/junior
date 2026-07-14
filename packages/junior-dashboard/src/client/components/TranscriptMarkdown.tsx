@@ -7,6 +7,7 @@ import {
   HighlightedCodeHtml,
   type ShikiHtml,
 } from "../code";
+import { cn } from "../styles";
 import {
   buildTranscriptMarkdownDecorations,
   findTranscriptMarkdownLinks,
@@ -20,7 +21,7 @@ import {
 const TRANSCRIPT_MARKDOWN_CACHE_KEY = "transcript-markdown";
 
 /** Render transcript markdown source with Shiki highlighting and safe links. */
-export function TranscriptMarkdown(props: { text: string }) {
+export function TranscriptMarkdown(props: { compact?: boolean; text: string }) {
   const search = useTranscriptSearch();
   const links = findTranscriptMarkdownLinks(props.text);
   const decorations = [
@@ -48,13 +49,27 @@ export function TranscriptMarkdown(props: { text: string }) {
 
   if (!highlighted.data) {
     return (
-      <HighlightedCodeFallback variant="prose">
-        {renderMarkdownInline(props.text, links)}
-      </HighlightedCodeFallback>
+      <div
+        className={cn(
+          props.compact && "[&_pre]:!text-[0.9rem] [&_pre]:!leading-[1.6rem]",
+        )}
+      >
+        <HighlightedCodeFallback variant="prose">
+          {renderMarkdownInline(props.text, links)}
+        </HighlightedCodeFallback>
+      </div>
     );
   }
 
-  return <HighlightedCodeHtml html={highlighted.data} variant="prose" />;
+  return (
+    <div
+      className={cn(
+        props.compact && "[&_pre]:!text-[0.9rem] [&_pre]:!leading-[1.6rem]",
+      )}
+    >
+      <HighlightedCodeHtml html={highlighted.data} variant="prose" />
+    </div>
+  );
 }
 
 function renderMarkdownInline(

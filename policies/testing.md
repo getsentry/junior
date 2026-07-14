@@ -34,6 +34,9 @@ routine refactors do not churn brittle unit tests.
 - Assert user-visible outcomes and external contracts before implementation
   details. Logs, spans, and status telemetry are not behavior contracts unless
   the test is explicitly about instrumentation.
+- Do not assert CSS utility strings, raw DOM tag counts, or generated markup to
+  prove visual styling. Test semantic state and interaction behavior with
+  component or browser coverage, and validate styling-only changes visually.
 
 ## Exceptions
 

@@ -14,11 +14,10 @@ import {
   conversationActorLabel,
   formatConversationDuration,
   formatRelativeTime,
-  formatTime,
   peoplePath,
   slackLocationLabel,
   summarizeCost,
-  summarizeMessages,
+  summarizeTurns,
   summarizeToolCalls,
   summarizeUsage,
   visualStatusForConversation,
@@ -27,7 +26,7 @@ import { MetricList, type MetricListItem } from "../components/Metric";
 import {
   CostMetric,
   DurationMetric,
-  MessagesMetric,
+  TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
 } from "../components/TelemetryMetrics";
@@ -188,9 +187,7 @@ function ConversationStats(props: {
   detail?: ConversationDetailReport;
 }) {
   if (!props.conversation) return null;
-  const messageSummary = props.detail
-    ? summarizeMessages(props.detail)
-    : undefined;
+  const turnSummary = props.detail ? summarizeTurns(props.detail) : undefined;
   const toolSummary = props.detail
     ? summarizeToolCalls(props.detail)
     : undefined;
@@ -210,10 +207,8 @@ function ConversationStats(props: {
         }
       : undefined,
     {
-      content: (
-        <MessagesMetric loading={!props.detail} summary={messageSummary} />
-      ),
-      key: "messages",
+      content: <TurnsMetric loading={!props.detail} summary={turnSummary} />,
+      key: "turns",
     },
     !props.detail || (toolSummary && toolSummary.total > 0)
       ? {
@@ -247,10 +242,6 @@ function ConversationStats(props: {
           key: "duration",
         }
       : undefined,
-    {
-      content: `started ${formatTime(props.conversation.startedAt)}`,
-      key: "started",
-    },
   ];
   const stats = rawStats.filter(
     (item): item is MetricListItem => item !== undefined,

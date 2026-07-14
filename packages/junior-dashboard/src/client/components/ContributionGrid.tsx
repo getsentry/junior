@@ -48,12 +48,12 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
 
   return (
     <div className="overflow-x-auto px-4 py-4">
-      <div className="w-max">
+      <div className="min-w-[36rem]">
         <div
           aria-hidden="true"
           className="mb-1 grid gap-1 text-[0.64rem] font-semibold leading-none text-[#666]"
           style={{
-            gridTemplateColumns: `repeat(${weeks.length}, 0.75rem)`,
+            gridTemplateColumns: `repeat(${weeks.length}, minmax(0.75rem, 1fr))`,
           }}
         >
           {monthLabels.map((label, index) => (
@@ -64,10 +64,10 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
         </div>
         <div
           aria-label="Daily Junior conversation activity"
-          className="grid w-max grid-flow-col grid-rows-7 gap-1"
+          className="grid w-full grid-flow-col grid-rows-7 gap-1"
           role="list"
           style={{
-            gridTemplateColumns: `repeat(${weeks.length}, 0.75rem)`,
+            gridTemplateColumns: `repeat(${weeks.length}, minmax(0.75rem, 1fr))`,
           }}
         >
           {weeks.flatMap((week, weekIndex) =>

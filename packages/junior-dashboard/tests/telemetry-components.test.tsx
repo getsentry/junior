@@ -34,6 +34,7 @@ import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { ConversationWorkspace } from "../src/client/pages/ConversationWorkspace";
 import { PeoplePageContent } from "../src/client/pages/people/PeoplePage";
+import { PeopleDirectory } from "../src/client/pages/people/PeopleDirectory";
 import { Profile } from "../src/client/pages/people/PersonProfilePage";
 import {
   LocationDetailPage,
@@ -453,6 +454,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Activity");
     expect(html).toContain("Incident triage");
     expect(html).toContain("Daily Junior conversation activity");
+    expect(html).toContain("90 days");
     expect(html).toContain(">Jan<");
     expect(html).toContain(">Less<");
     expect(html).toContain(">More<");
@@ -510,6 +512,7 @@ describe("dashboard telemetry components", () => {
           actor: {
             email: "avery@example.com",
             fullName: "Avery Example",
+            slackUserName: "avery",
           },
         },
       ],
@@ -528,9 +531,29 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Active people per day");
     expect(html).toContain('aria-label="Reporting period"');
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain(">30d</button>");
+    expect(html).toContain(">90d</button>");
     expect(html).toContain("Peak daily active");
     expect(html).toContain("Avery Example");
+    expect(html).not.toContain("@avery");
+    expect(html).not.toContain("last 1 day ago");
+  });
+
+  it("renders a stable skeleton while directory sorting catches up", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <PeopleDirectory
+          loading
+          onQueryChange={() => {}}
+          onSortChange={() => {}}
+          people={[]}
+          query=""
+          sort="runtime"
+          totalPeople={2}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('aria-label="Loading sorted results"');
   });
 
   it("keeps completed status badges quiet unless explicitly requested", () => {
@@ -753,6 +776,38 @@ describe("dashboard telemetry components", () => {
 
     expect(html).not.toContain("turn");
     expect(html).not.toContain("tool call");
+  });
+
+  it("counts actor turns and omits the redundant started header item", () => {
+    const session = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 60_000,
+      lastProgressAt: "2026-01-01T00:01:00.000Z",
+      lastSeenAt: "2026-01-01T00:01:00.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "internal",
+      displayTitle: "Conversation",
+    } satisfies ConversationSummaryReport;
+    const detail = {
+      ...session,
+      generatedAt: "2026-01-01T00:01:00.000Z",
+      transcript: [
+        { role: "user", parts: [{ type: "text", text: "first" }] },
+        { role: "assistant", parts: [{ type: "text", text: "done" }] },
+        { role: "user", parts: [{ type: "text", text: "second" }] },
+        { role: "assistant", parts: [{ type: "text", text: "done" }] },
+      ],
+      transcriptAvailable: true,
+    } satisfies ConversationDetailReport;
+    client.setQueryData(["conversation", "conversation-1"], detail);
+
+    const html = renderConversationPage(dashboardData([session]));
+    const header = html.slice(0, html.indexOf('aria-label="Transcript view"'));
+
+    expect(header).toContain("2 turns");
+    expect(header).not.toContain("4 messages");
+    expect(header).not.toContain("started Jan");
   });
 
   it("shows the conversation model and thinking level in the transcript header", () => {
@@ -1072,6 +1127,13 @@ describe("dashboard telemetry components", () => {
 
   it("renders public locations as primary rows and collapses private activity", () => {
     const data: LocationDirectoryReport = {
+      activityDays: [
+        {
+          date: "2026-01-05",
+          privateConversations: 3,
+          publicConversations: 6,
+        },
+      ],
       generatedAt: "2026-01-05T00:00:00.000Z",
       locations: [
         {
@@ -1112,6 +1174,8 @@ describe("dashboard telemetry components", () => {
         label: "Private activity",
       },
       source: "conversation_index",
+      windowEnd: "2026-01-05T00:00:00.000Z",
+      windowStart: "2025-10-08T00:00:00.000Z",
     };
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/locations?q=proj-alpha"]}>
@@ -1127,10 +1191,12 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain(">Active<");
     expect(html).toContain("Private activity");
     expect(html).toContain("DMs, private channels, and unknown visibility");
+    expect(html).toContain("Public and private conversations per day");
   });
 
   it("keeps cached location rows visible after a refresh failure", () => {
     const data: LocationDirectoryReport = {
+      activityDays: [],
       generatedAt: "2026-01-05T00:00:00.000Z",
       locations: [
         {
@@ -1156,6 +1222,8 @@ describe("dashboard telemetry components", () => {
         label: "Private activity",
       },
       source: "conversation_index",
+      windowEnd: "2026-01-05T00:00:00.000Z",
+      windowStart: "2025-10-08T00:00:00.000Z",
     };
 
     const html = renderToStaticMarkup(
@@ -1295,7 +1363,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain(
       "Conversation metrics refresh failed. Showing cached data.",
     );
-    expect(html).toContain("Seven-day pulse");
+    expect(html).toContain("90-day pulse");
   });
 
   it("does not report a completion rate before any conversation finishes", () => {

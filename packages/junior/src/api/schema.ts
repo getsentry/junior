@@ -33,11 +33,13 @@ export {
   actorProfileReportSchema,
 } from "./people/schema";
 export {
+  locationActivityDayReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
 } from "./locations/schema";
 export type {
   LocationActorSummaryReport,
+  LocationActivityDayReport,
   LocationDetailReport,
   LocationDirectoryReport,
   LocationSummaryReport,

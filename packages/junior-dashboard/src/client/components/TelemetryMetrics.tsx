@@ -170,3 +170,13 @@ export function MessagesMetric(props: {
   if (!props.summary) return null;
   return <MetricValue>{plural("message", props.summary.total)}</MetricValue>;
 }
+
+/** Render an actor-initiated conversation turn count. */
+export function TurnsMetric(props: {
+  loading?: boolean;
+  summary: MessageSummary | undefined;
+}) {
+  if (props.loading) return <span>turns loading</span>;
+  if (!props.summary) return null;
+  return <MetricValue>{plural("turn", props.summary.total)}</MetricValue>;
+}

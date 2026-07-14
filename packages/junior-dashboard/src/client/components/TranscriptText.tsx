@@ -17,8 +17,9 @@ export function TranscriptText(props: {
   role?: string;
   text: string;
 }) {
+  const roleKind = transcriptRoleKind(props.role ?? "");
   const blocks = parseMarkdownBlocks(props.text, {
-    outputOnly: transcriptRoleKind(props.role ?? "") === "assistant",
+    outputOnly: roleKind === "assistant",
   });
   let seenChildren = props.firstChildIndex;
 
@@ -30,7 +31,13 @@ export function TranscriptText(props: {
         seenChildren += childCount;
 
         if (block.language === "markdown" && !block.fenced) {
-          return <TranscriptMarkdown key={index} text={block.code} />;
+          return (
+            <TranscriptMarkdown
+              compact={roleKind === "assistant" || roleKind === "user"}
+              key={index}
+              text={block.code}
+            />
+          );
         }
 
         if (!canRenderStructuredMarkup(block)) {

@@ -1,5 +1,5 @@
 import { Clock3, LockKeyhole, MapPinned, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { useSearchParams } from "react-router";
 import type {
   LocationDirectoryReport,
@@ -14,6 +14,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatMs } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
+import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
 
@@ -29,13 +30,18 @@ export function LocationsPageContent(props: {
   error: unknown;
 }) {
   const [params, setParams] = useSearchParams();
-  const [sort, setSort] = useState<LocationSort>("recent");
+  const [sort, setSort] = useState<LocationSort>("conversations");
+  const deferredSort = useDeferredValue(sort);
   const search = params.get("q") ?? "";
   if (!props.data && !props.error) {
     return <LoadingView label="Loading locations" />;
   }
 
-  const locations = filterLocations(props.data?.locations ?? [], search, sort);
+  const locations = filterLocations(
+    props.data?.locations ?? [],
+    search,
+    deferredSort,
+  );
   const publicConversations =
     props.data?.locations.reduce(
       (total, location) => total + location.conversations,
@@ -109,7 +115,9 @@ export function LocationsPageContent(props: {
               )}
             />
           </div>
+          <LocationDirectoryActivityChart days={props.data.activityDays} />
           <LocationDirectory
+            loading={sort !== deferredSort}
             locations={locations}
             onQueryChange={setSearch}
             onSortChange={setSort}

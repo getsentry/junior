@@ -19,6 +19,7 @@ import {
   actorLabel,
   slackLocationLabel,
   summarizeMessages,
+  summarizeTurns,
   summarizeCost,
   summarizeToolCalls,
   summarizeUsage,
@@ -160,6 +161,10 @@ describe("dashboard token formatting", () => {
         { author: "Junior", bytes: 4 },
       ],
       total: 2,
+    });
+    expect(summarizeTurns(conversation)).toEqual({
+      items: [{ author: "alice", bytes: 10 }],
+      total: 1,
     });
     expect(
       summarizeUsage({

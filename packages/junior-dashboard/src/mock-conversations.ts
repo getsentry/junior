@@ -20,6 +20,7 @@ import type {
 import type {
   DailyConversationActivity,
   LocationActorSummaryReport,
+  LocationActivityDayReport,
   LocationDetailReport,
   LocationDirectoryReport,
   LocationSummaryReport,
@@ -45,9 +46,9 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
-const RECENT_CONVERSATION_STATS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const RECENT_CONVERSATION_STATS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const PEOPLE_ACTIVITY_DAYS = 90;
-const PEOPLE_PROFILE_ACTIVITY_DAYS = 366;
+const PEOPLE_PROFILE_ACTIVITY_DAYS = 90;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
   "CQA123",
   "CQA456",
@@ -1271,9 +1272,19 @@ function mockLocationDirectory(nowMs: number): LocationDirectoryReport {
   const summaries = mockConversationFeed(nowMs).conversations;
   const locations = new Map<string, LocationSummaryReport>();
   const privateActivity = emptyStatsItem("Private activity");
+  const sparseActivity = new Map<string, LocationActivityDayReport>();
 
   for (const conversation of summaries) {
     const initial = publicMockLocation(conversation);
+    const date = conversation.lastSeenAt.slice(0, 10);
+    const day = sparseActivity.get(date) ?? {
+      date,
+      privateConversations: 0,
+      publicConversations: 0,
+    };
+    if (initial) day.publicConversations += 1;
+    else day.privateConversations += 1;
+    sparseActivity.set(date, day);
     if (!initial) {
       addConversationStats(privateActivity, conversation);
       continue;
@@ -1289,7 +1300,24 @@ function mockLocationDirectory(nowMs: number): LocationDirectoryReport {
     locations.set(location.id, location);
   }
 
+  const activityDays: LocationActivityDayReport[] = [];
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  for (let offset = 89; offset >= 0; offset -= 1) {
+    const cursor = new Date(end);
+    cursor.setUTCDate(cursor.getUTCDate() - offset);
+    const date = cursor.toISOString().slice(0, 10);
+    activityDays.push(
+      sparseActivity.get(date) ?? {
+        date,
+        privateConversations: 0,
+        publicConversations: 0,
+      },
+    );
+  }
+
   return {
+    activityDays,
     generatedAt: iso(nowMs),
     locations: [...locations.values()].sort(
       (left, right) =>
@@ -1297,10 +1325,12 @@ function mockLocationDirectory(nowMs: number): LocationDirectoryReport {
     ),
     privateActivity,
     source: "conversation_index",
+    windowEnd: `${activityDays.at(-1)!.date}T00:00:00.000Z`,
+    windowStart: `${activityDays[0]!.date}T00:00:00.000Z`,
   };
 }
 
-/** Fill the fixed 30-day activity series used by mock location detail. */
+/** Fill the fixed 90-day activity series used by mock location detail. */
 function mockLocationActivityDays(
   nowMs: number,
   conversations: ConversationSummaryReport[],
@@ -1326,7 +1356,7 @@ function mockLocationActivityDays(
   const result: DailyConversationActivity[] = [];
   const end = new Date(nowMs);
   end.setUTCHours(0, 0, 0, 0);
-  for (let offset = 29; offset >= 0; offset -= 1) {
+  for (let offset = 89; offset >= 0; offset -= 1) {
     const cursor = new Date(end);
     cursor.setUTCDate(cursor.getUTCDate() - offset);
     const date = cursor.toISOString().slice(0, 10);

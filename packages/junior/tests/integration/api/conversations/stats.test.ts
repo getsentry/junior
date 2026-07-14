@@ -118,7 +118,7 @@ describe("conversation stats API", () => {
         },
         source: "slack",
         visibility: "public",
-        nowMs: Date.parse("2026-06-01T10:00:00.000Z"),
+        nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
       await store.ensureChildConversation({
         conversationId: "advisor:child",

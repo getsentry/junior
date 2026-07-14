@@ -3,7 +3,9 @@ import { Link } from "react-router";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
 import { ConversationSearchInput } from "../../components/ConversationListControls";
+import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Card } from "../../components/layout/Card";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import {
@@ -21,6 +23,7 @@ export function LocationDirectory(props: {
   query: string;
   sort: LocationSort;
   totalLocations: number;
+  loading?: boolean;
   onQueryChange(value: string): void;
   onSortChange(value: LocationSort): void;
 }) {
@@ -41,26 +44,21 @@ export function LocationDirectory(props: {
           value={props.query}
           onChange={props.onQueryChange}
         />
-        <label className="grid h-9 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/25 focus-within:border-amber-500/30 focus-within:ring-1 focus-within:ring-amber-500/15">
-          <span className="flex h-full items-center border-r border-white/[0.07] px-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-white/30">
-            Sort
-          </span>
-          <select
-            aria-label="Sort locations"
-            className="h-full min-w-0 bg-transparent px-2 font-mono text-[0.72rem] text-white/70 outline-none"
-            value={props.sort}
-            onChange={(event) =>
-              props.onSortChange(event.currentTarget.value as LocationSort)
-            }
-          >
-            <option value="recent">Recently active</option>
-            <option value="conversations">Most conversations</option>
-            <option value="tokens">Most tokens</option>
-            <option value="runtime">Most runtime</option>
-          </select>
-        </label>
+        <DirectorySortSelect
+          ariaLabel="Sort locations"
+          onChange={(value) => props.onSortChange(value as LocationSort)}
+          options={[
+            { label: "Most conversations", value: "conversations" },
+            { label: "Recently active", value: "recent" },
+            { label: "Most tokens", value: "tokens" },
+            { label: "Most runtime", value: "runtime" },
+          ]}
+          value={props.sort}
+        />
       </div>
-      {props.locations.length ? (
+      {props.loading ? (
+        <DirectoryRowsSkeleton />
+      ) : props.locations.length ? (
         <div className="min-w-0" role="table">
           <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/30 max-md:hidden">
             <div>Location</div>

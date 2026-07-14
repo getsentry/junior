@@ -13,7 +13,7 @@ import type {
 } from "./schema";
 
 export const RECENT_LIMIT = 25;
-export const ACTIVITY_DAYS = 366;
+export const ACTIVITY_DAYS = 90;
 
 /** Normalize emails before matching people API rows. */
 export function normalizeEmail(email: string | undefined): string | undefined {

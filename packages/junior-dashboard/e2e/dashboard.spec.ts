@@ -201,23 +201,37 @@ test("hydrates the built dashboard client in a real browser", async ({
   ).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
 
-  const activityPoints = page
-    .getByRole("img", { name: "Active people per day" })
-    .locator("circle");
-  await expect(activityPoints).toHaveCount(30);
+  await expect(
+    page.getByRole("img", { name: "Active people per day" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
+    "conversations",
+  );
   await page.getByRole("button", { name: "7d" }).click();
   await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(activityPoints).toHaveCount(7);
   await page.getByRole("button", { name: "90d" }).click();
-  await expect(activityPoints).toHaveCount(90);
+  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   await page.goto(`${baseURL}/locations`);
   await expect(
     page.locator("main > div").getByText("Locations", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: "Public and private conversations per day" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Sort locations" }),
+  ).toHaveValue("conversations");
   expect(await containerBounds()).toEqual(headerBounds);
   expect(browserErrors).toEqual([]);
 });

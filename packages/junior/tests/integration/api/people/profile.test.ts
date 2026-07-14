@@ -50,7 +50,7 @@ describe("people profile API", () => {
           }),
         ],
       });
-      expect(report.activityDays).toHaveLength(366);
+      expect(report.activityDays).toHaveLength(90);
       expect(
         report.activityDays.find((day) => day.date === "2026-06-12"),
       ).toMatchObject({

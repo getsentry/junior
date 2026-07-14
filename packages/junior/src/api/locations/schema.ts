@@ -23,12 +23,23 @@ export const locationActorSummaryReportSchema = conversationStatsItemSchema
   .extend({ actor: actorIdentitySchema })
   .strict();
 
+export const locationActivityDayReportSchema = z
+  .object({
+    date: z.string(),
+    privateConversations: z.number(),
+    publicConversations: z.number(),
+  })
+  .strict();
+
 export const locationDirectoryReportSchema = z
   .object({
+    activityDays: z.array(locationActivityDayReportSchema),
     generatedAt: z.string(),
     locations: z.array(locationSummaryReportSchema),
     privateActivity: conversationStatsItemSchema,
     source: z.literal("conversation_index"),
+    windowEnd: z.string(),
+    windowStart: z.string(),
   })
   .strict();
 
@@ -47,6 +58,9 @@ export const locationDetailReportSchema = locationSummaryReportSchema
 export type LocationSummaryReport = z.infer<typeof locationSummaryReportSchema>;
 export type LocationActorSummaryReport = z.infer<
   typeof locationActorSummaryReportSchema
+>;
+export type LocationActivityDayReport = z.infer<
+  typeof locationActivityDayReportSchema
 >;
 export type LocationDirectoryReport = z.infer<
   typeof locationDirectoryReportSchema

@@ -10,7 +10,7 @@ import {
 import { conversationAggregateColumns } from "./aggregate";
 import type { ConversationStatsItem, ConversationStatsReport } from "./schema";
 
-const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
 function emptyStatsItem(label: string): ConversationStatsItem {
   return {
@@ -180,7 +180,7 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   return { actorRows, locationRows, totals: totalsRows[0] };
 }
 
-/** Build complete seven-day dashboard stats from normalized durable SQL records. */
+/** Build complete 90-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
   const windowStartMs = nowMs - WINDOW_MS;

@@ -82,77 +82,80 @@ export function Profile(props: { profile: ActorProfileReport }) {
         title={displayName}
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StatCard
-          detail="Across the complete conversation index"
-          icon={MessageSquare}
-          label="Conversations"
-          value={formatCompactNumber(profile.totals.conversations)}
-        />
-        <StatCard
-          detail="Cumulative persisted conversation runtime"
-          icon={Clock3}
-          label="Runtime"
-          value={formatMs(profile.totals.durationMs)}
-        />
-        <StatCard
-          detail="Persisted model token usage"
-          icon={Coins}
-          label="Tokens"
-          value={formatCompactNumber(profile.totals.tokens ?? 0)}
-        />
-      </div>
-
-      <Section className="mb-0">
-        <SectionHeader
-          actions={
-            <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-white/30">
-              12 months
-            </div>
-          }
-        >
-          <SectionTitle>Activity</SectionTitle>
-        </SectionHeader>
-        <ContributionGrid days={profile.activityDays} />
-      </Section>
-
-      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-        <LeaderboardSection items={profile.locations} title="Places" />
-        <LeaderboardSection items={profile.surfaces} title="Surfaces" />
-      </div>
-
-      <Section className="mb-0">
-        <SectionHeader>
-          <div>
-            <SectionTitle>Recent</SectionTitle>
-            <div className="mt-1 font-mono text-[0.68rem] leading-relaxed text-white/35">
-              {formatCompactNumber(visibleConversations.length)} of{" "}
-              {formatCompactNumber(profile.recentConversations.length)}{" "}
-              conversations / generated {formatTime(profile.generatedAt)}
-            </div>
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-start">
+        <aside className="grid min-w-0 gap-4 lg:order-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <StatCard
+              detail="Across the complete conversation index"
+              icon={MessageSquare}
+              label="Conversations"
+              value={formatCompactNumber(profile.totals.conversations)}
+            />
+            <StatCard
+              detail="Cumulative persisted conversation runtime"
+              icon={Clock3}
+              label="Runtime"
+              value={formatMs(profile.totals.durationMs)}
+            />
+            <StatCard
+              detail="Persisted model token usage"
+              icon={Coins}
+              label="Tokens"
+              value={formatCompactNumber(profile.totals.tokens ?? 0)}
+            />
           </div>
-        </SectionHeader>
-        <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(12rem,36rem)_auto]">
-          <ConversationSearchInput
-            label="Search recent conversations"
-            placeholder="Search title, email, channel, id..."
-            value={recentSearch}
-            onChange={setRecentSearch}
-          />
-          {recentSearch.trim() ? (
-            <Button
-              className="h-9 justify-center"
-              onClick={() => setRecentSearch("")}
+          <LeaderboardSection items={profile.locations} title="Places" />
+          <LeaderboardSection items={profile.surfaces} title="Surfaces" />
+        </aside>
+
+        <div className="grid min-w-0 gap-5 lg:order-1">
+          <Section className="mb-0">
+            <SectionHeader
+              actions={
+                <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-white/30">
+                  90 days
+                </div>
+              }
             >
-              Clear
-            </Button>
-          ) : null}
+              <SectionTitle>Activity</SectionTitle>
+            </SectionHeader>
+            <ContributionGrid days={profile.activityDays} />
+          </Section>
+
+          <Section className="mb-0">
+            <SectionHeader>
+              <div>
+                <SectionTitle>Recent</SectionTitle>
+                <div className="mt-1 font-mono text-[0.68rem] leading-relaxed text-white/35">
+                  {formatCompactNumber(visibleConversations.length)} of{" "}
+                  {formatCompactNumber(profile.recentConversations.length)}{" "}
+                  conversations / generated {formatTime(profile.generatedAt)}
+                </div>
+              </div>
+            </SectionHeader>
+            <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(12rem,36rem)_auto]">
+              <ConversationSearchInput
+                label="Search recent conversations"
+                placeholder="Search title, email, channel, id..."
+                value={recentSearch}
+                onChange={setRecentSearch}
+              />
+              {recentSearch.trim() ? (
+                <Button
+                  className="h-9 justify-center"
+                  onClick={() => setRecentSearch("")}
+                >
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+            <ConversationList
+              conversations={visibleConversations}
+              emptyLabel="No recent conversations match this search."
+            />
+          </Section>
         </div>
-        <ConversationList
-          conversations={visibleConversations}
-          emptyLabel="No recent conversations match this search."
-        />
-      </Section>
+      </div>
     </div>
   );
 }

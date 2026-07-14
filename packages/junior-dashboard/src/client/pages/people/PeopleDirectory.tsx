@@ -3,15 +3,12 @@ import { UserRound } from "lucide-react";
 import type { ActorSummaryReport } from "@sentry/junior/api/schema";
 
 import { ConversationSearchInput } from "../../components/ConversationListControls";
+import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Card } from "../../components/layout/Card";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
-import {
-  formatCompactNumber,
-  formatMs,
-  formatRelativeTime,
-  peoplePath,
-} from "../../format";
+import { formatCompactNumber, formatMs, peoplePath } from "../../format";
 
 export type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
 
@@ -21,13 +18,10 @@ function actorName(person: Pick<ActorSummaryReport, "actor">): string {
   );
 }
 
-function personMeta(person: ActorSummaryReport): string {
-  const pieces = [
-    person.actor.email,
-    person.actor.slackUserName ? `@${person.actor.slackUserName}` : undefined,
-    `last ${formatRelativeTime(person.lastSeenAt)}`,
-  ];
-  return pieces.filter(Boolean).join(" / ");
+function personMeta(person: ActorSummaryReport): string | undefined {
+  return actorName(person) === person.actor.email
+    ? undefined
+    : person.actor.email;
 }
 
 function runtimeLabel(durationMs: number, conversations: number): string {
@@ -69,6 +63,7 @@ export function filterPeople(
 export function PeopleDirectory(props: {
   onQueryChange(value: string): void;
   onSortChange(value: PeopleSort): void;
+  loading?: boolean;
   people: ActorSummaryReport[];
   query: string;
   sort: PeopleSort;
@@ -93,26 +88,21 @@ export function PeopleDirectory(props: {
           value={props.query}
           onChange={props.onQueryChange}
         />
-        <label className="grid h-9 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] transition-colors hover:border-white/20 focus-within:border-amber-500/35 focus-within:ring-1 focus-within:ring-amber-500/15">
-          <span className="flex h-full items-center border-r border-white/[0.07] px-2 font-mono text-[0.62rem] uppercase tracking-[0.12em] text-white/30">
-            Sort
-          </span>
-          <select
-            aria-label="Sort people"
-            className="h-full min-w-0 bg-transparent px-2 font-mono text-[0.72rem] text-white/70 outline-none"
-            value={props.sort}
-            onChange={(event) =>
-              props.onSortChange(event.currentTarget.value as PeopleSort)
-            }
-          >
-            <option value="recent">Recently active</option>
-            <option value="conversations">Most conversations</option>
-            <option value="activeDays">Most active days</option>
-            <option value="runtime">Most runtime</option>
-          </select>
-        </label>
+        <DirectorySortSelect
+          ariaLabel="Sort people"
+          onChange={(value) => props.onSortChange(value as PeopleSort)}
+          options={[
+            { label: "Most conversations", value: "conversations" },
+            { label: "Recently active", value: "recent" },
+            { label: "Most active days", value: "activeDays" },
+            { label: "Most runtime", value: "runtime" },
+          ]}
+          value={props.sort}
+        />
       </div>
-      {props.people.length === 0 ? (
+      {props.loading ? (
+        <DirectoryRowsSkeleton />
+      ) : props.people.length === 0 ? (
         <div className="p-4">
           <EmptyTelemetry>No people match this search.</EmptyTelemetry>
         </div>
@@ -141,9 +131,11 @@ export function PeopleDirectory(props: {
                   <div className="truncate font-display text-[1rem] font-medium leading-tight text-white/90">
                     {actorName(person)}
                   </div>
-                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/35">
-                    {personMeta(person)}
-                  </div>
+                  {personMeta(person) ? (
+                    <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/35">
+                      {personMeta(person)}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <DirectoryMetric
