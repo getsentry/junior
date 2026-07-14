@@ -413,6 +413,17 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
+    const { requestConversationWork } =
+      await import("@/chat/task-execution/store");
+    await requestConversationWork({
+      conversationId: "slack:C1:222",
+      destination: {
+        platform: "slack",
+        teamId: "T1",
+        channelId: "C1",
+      },
+      nowMs: Date.now(),
+    });
     const report = await readConversationDetailFromSql("slack:C1:222");
     expect(report).toMatchObject({
       cumulativeDurationMs: 1_200,

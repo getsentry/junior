@@ -11,23 +11,18 @@ import { getConversationTurnStore } from "@/chat/db";
 
 async function readReportedRun(
   conversationId: string,
-  runId: string | undefined,
 ): Promise<AgentTurnSessionSummary | undefined> {
   try {
     const summaries =
       await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
-    if (!runId) {
-      return summaries.find(
-        (summary) => summary.modelId || summary.reasoningLevel,
-      );
+    const summary = summaries[0];
+    if (!summary) {
+      return undefined;
     }
-    const summary = summaries.find(
-      (candidate) => candidate.sessionId === runId,
-    );
     if (summary?.modelId || summary?.reasoningLevel) {
       return summary;
     }
-    return await getAgentTurnSessionRecord(conversationId, runId);
+    return await getAgentTurnSessionRecord(conversationId, summary.sessionId);
   } catch (error) {
     logException(error, "conversation_execution_settings_read_failed", {
       conversationId,
@@ -62,11 +57,11 @@ export async function readConversationDetailFromSql(
       ...record,
       usage: record.usage ?? undefined,
     }),
-    readReportedRun(conversationId, record.conversation.execution.runId),
+    readReportedRun(conversationId),
   ]);
   const modelId = await readLatestTurnModelId(
     conversationId,
-    record.conversation.execution.runId ?? latestRun?.sessionId,
+    latestRun?.sessionId ?? record.conversation.execution.runId,
   );
   // TODO(v0.102.0): Remove the session-model fallback after every retained
   // conversation turn was created after junior_conversation_turns shipped.
