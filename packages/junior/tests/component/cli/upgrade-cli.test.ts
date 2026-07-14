@@ -850,6 +850,52 @@ WHERE conversation_id = $1
     }
   }, 15_000);
 
+  it("reports version-guard misses as skipped", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      let queryCount = 0;
+      const skippedExecutor = new Proxy(fixture.sql, {
+        get(target, key, receiver) {
+          if (key === "query") {
+            return async () => {
+              queryCount += 1;
+              return queryCount === 1
+                ? [
+                    {
+                      changed: false,
+                      conversationId: CONVERSATION_ID,
+                      matched: false,
+                      repairable: true,
+                    },
+                  ]
+                : [];
+            };
+          }
+          const value = Reflect.get(target, key, receiver) as unknown;
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+
+      await expect(
+        repairConversationUsage(
+          { io: { info: vi.fn() }, stateAdapter },
+          { executor: skippedExecutor },
+        ),
+      ).resolves.toEqual({
+        existing: 0,
+        migrated: 0,
+        missing: 0,
+        scanned: 1,
+        skipped: 1,
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
   it("repairs a conversation on rerun after it becomes idle", async () => {
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();

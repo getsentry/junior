@@ -15,6 +15,7 @@ const REPAIR_LOCK = "junior:upgrade:repair-conversation-usage";
 interface UsageRepairSource {
   changed: boolean;
   conversationId: string;
+  matched: boolean;
   repairable: boolean;
 }
 
@@ -207,24 +208,33 @@ normalized AS (
     )) AS usage
   FROM valid_rollups
 ),
+matched AS MATERIALIZED (
+  SELECT conversation.conversation_id
+  FROM junior_conversations AS conversation
+  INNER JOIN candidates AS candidate USING (conversation_id)
+  INNER JOIN normalized USING (conversation_id)
+  WHERE conversation.execution_status = 'idle'
+    AND conversation.updated_at = candidate.updated_at
+    AND conversation.execution_updated_at IS NOT DISTINCT FROM candidate.execution_updated_at
+  FOR UPDATE OF conversation
+),
 updated AS (
   UPDATE junior_conversations AS conversation
   SET usage_json = normalized.usage
   FROM normalized
-  INNER JOIN candidates AS candidate USING (conversation_id)
+  INNER JOIN matched USING (conversation_id)
   WHERE conversation.conversation_id = normalized.conversation_id
-    AND conversation.execution_status = 'idle'
-    AND conversation.updated_at = candidate.updated_at
-    AND conversation.execution_updated_at IS NOT DISTINCT FROM candidate.execution_updated_at
     AND conversation.usage_json IS DISTINCT FROM normalized.usage
   RETURNING conversation.conversation_id
 )
 SELECT
   candidate.conversation_id AS "conversationId",
   updated.conversation_id IS NOT NULL AS changed,
+  matched.conversation_id IS NOT NULL AS matched,
   normalized.conversation_id IS NOT NULL AS repairable
 FROM candidates AS candidate
 LEFT JOIN normalized USING (conversation_id)
+LEFT JOIN matched USING (conversation_id)
 LEFT JOIN updated USING (conversation_id)
 ORDER BY candidate.conversation_id
 `;
@@ -258,6 +268,7 @@ export async function repairConversationUsage(
     let migrated = 0;
     let missing = 0;
     let scanned = 0;
+    let skipped = 0;
 
     while (true) {
       const sources = await executor.withLock(REPAIR_LOCK, () =>
@@ -274,14 +285,22 @@ export async function repairConversationUsage(
           missing += 1;
         } else if (source.changed) {
           migrated += 1;
-        } else {
+        } else if (source.matched) {
           existing += 1;
+        } else {
+          skipped += 1;
         }
       }
       cursor = sources.at(-1)!.conversationId;
     }
 
-    return { existing, migrated, missing, scanned };
+    return {
+      existing,
+      migrated,
+      missing,
+      scanned,
+      ...(skipped > 0 ? { skipped } : {}),
+    };
   } finally {
     await closeExecutor?.();
   }
