@@ -413,8 +413,7 @@ export function summarizeTurns(
     };
   }
 
-  const messageCount = conversationMessageCount(conversation);
-  return messageCount > 0 ? { items: [], total: 1 } : undefined;
+  return undefined;
 }
 
 /** Format raw counts with the dashboard's compact number rules. */

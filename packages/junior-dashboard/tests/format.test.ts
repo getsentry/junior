@@ -182,6 +182,19 @@ describe("dashboard token formatting", () => {
     });
   });
 
+  it("does not count assistant-only transcripts as actor turns", () => {
+    const conversation = transcript({
+      transcript: [
+        {
+          role: "assistant",
+          parts: [{ type: "text", text: "proactive update" }],
+        },
+      ],
+    });
+
+    expect(summarizeTurns(conversation)).toBeUndefined();
+  });
+
   it("counts activity-only tool calls in tool summaries", () => {
     const conversation = {
       conversationId: "conversation-activity",
