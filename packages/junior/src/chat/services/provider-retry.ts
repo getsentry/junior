@@ -1,4 +1,3 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   getPiMessageRole,
@@ -9,7 +8,7 @@ const PROVIDER_RETRY_DELAYS_MS = [2_000, 4_000, 8_000] as const;
 const PROVIDER_ERROR_PREFIX = "AI provider error:";
 const PROVIDER_RETRY_ERROR_NAME = "ProviderRetryError";
 const NON_RETRYABLE_PROVIDER_ERROR_PATTERNS = [
-  /invalid.?api.?key|no api key|authentication|authorization|permission|forbidden|credential/i,
+  /invalid.?api.?key|no api key|authentication|authorization|permission|forbidden|(?:invalid|missing|expired|revoked).{0,24}\bcredentials?\b|\bcredentials?\b.{0,24}(?:invalid|missing|expired|revoked)|\bno\b.{0,16}\bcredentials?\b/i,
   /context.?length|context.?window/i,
   /content.?policy|validation|bad request|\b(?:400|401|403)\b/i,
   /unsupported model|invalid model|unknown ai gateway model|unknown model|mismatched api/i,
@@ -46,19 +45,11 @@ function isRetryableProviderFailure(errorMessage: string): boolean {
 /** Build the next provider retry step from Pi history, if the turn can resume. */
 export function nextProviderRetry(args: {
   attempt: number;
-  lastAssistant:
-    | Pick<AssistantMessage, "stopReason" | "errorMessage">
-    | undefined;
   messages: PiMessage[];
+  retryableFailure: boolean;
 }): { delayMs: number; messages: PiMessage[] } | undefined {
   const delayMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
-  const errorMessage = args.lastAssistant?.errorMessage?.trim();
-  if (
-    delayMs === undefined ||
-    args.lastAssistant?.stopReason !== "error" ||
-    !errorMessage ||
-    !isRetryableProviderFailure(errorMessage)
-  ) {
+  if (delayMs === undefined || !args.retryableFailure) {
     return undefined;
   }
 

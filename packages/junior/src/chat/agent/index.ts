@@ -9,6 +9,7 @@
  * stay outside this module.
  */
 import { Agent, type AgentLoopTurnUpdate } from "@earendil-works/pi-agent-core";
+import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -1021,8 +1022,10 @@ async function executeAgentRunInPrivacyContext(
 
             const providerRetry = nextProviderRetry({
               attempt,
-              lastAssistant,
               messages: agent!.state.messages,
+              retryableFailure:
+                lastAssistant !== undefined &&
+                isRetryableAssistantError(lastAssistant),
             });
             if (!providerRetry) {
               break;
