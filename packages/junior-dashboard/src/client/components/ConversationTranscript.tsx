@@ -4,7 +4,13 @@ import {
   type ClipboardEventHandler,
   type ReactNode,
 } from "react";
-import { Bot, Minimize2, Send, type LucideIcon } from "lucide-react";
+import {
+  Bot,
+  CircleAlert,
+  Minimize2,
+  Send,
+  type LucideIcon,
+} from "lucide-react";
 
 import { HighlightedCode } from "../code";
 import {
@@ -72,6 +78,7 @@ import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
+type TranscriptFailureEntry = Extract<TranscriptEntry, { kind: "failure" }>;
 type TranscriptMessageEntry = Extract<TranscriptEntry, { kind: "message" }>;
 type TranscriptSubagentEntry = Extract<TranscriptEntry, { kind: "subagent" }>;
 type TranscriptThinkingEntry = Extract<TranscriptEntry, { kind: "thinking" }>;
@@ -295,6 +302,13 @@ function VisibleTranscriptEntries(props: {
           />
         </TranscriptRailEvent>
       )}
+      renderFailure={(entry, index) => (
+        <TranscriptFailureView
+          key={`${props.conversation.conversationId}:failure:${index}`}
+          outcome={entry.outcome}
+          timestamp={entry.timestamp}
+        />
+      )}
       renderMessage={(entry, index) => (
         <TranscriptMessageView
           key={`${props.conversation.conversationId}:${index}`}
@@ -345,6 +359,7 @@ function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
   keyPrefix: string;
   renderContext: (entry: TranscriptContextEntry, index: number) => ReactNode;
+  renderFailure: (entry: TranscriptFailureEntry, index: number) => ReactNode;
   renderMessage: (entry: TranscriptMessageEntry, index: number) => ReactNode;
   renderSubagent: (entry: TranscriptSubagentEntry, index: number) => ReactNode;
   renderThinking: (entry: TranscriptThinkingEntry, index: number) => ReactNode;
@@ -394,7 +409,9 @@ function TranscriptEntryList(props: {
             ? props.renderSubagent(entry, index)
             : entry.kind === "context"
               ? props.renderContext(entry, index)
-              : props.renderMessage(entry, index)}
+              : entry.kind === "failure"
+                ? props.renderFailure(entry, index)
+                : props.renderMessage(entry, index)}
         </Fragment>,
       );
     }
@@ -408,6 +425,58 @@ function TranscriptEntryList(props: {
   }
 
   return <>{rows}</>;
+}
+
+function TranscriptFailureView(props: {
+  outcome: "error" | "aborted";
+  timestamp?: number;
+}) {
+  const timestamp = formatMessageTimestamp(props.timestamp);
+  const isError = props.outcome === "error";
+
+  return (
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border px-4 py-3 max-md:grid-cols-[auto_minmax(0,1fr)]",
+        isError
+          ? "border-rose-300/25 bg-rose-300/[0.07] text-rose-100"
+          : "border-amber-300/25 bg-amber-300/[0.07] text-amber-100",
+      )}
+      data-transcript-failure={props.outcome}
+      role={isError ? "alert" : "status"}
+    >
+      <CircleAlert
+        aria-hidden="true"
+        className={cn("mt-0.5", isError ? "text-rose-300" : "text-amber-300")}
+        size={16}
+      />
+      <div className="min-w-0">
+        <div className="font-display text-[0.95rem] font-semibold leading-tight">
+          {isError ? "Agent response failed" : "Agent response stopped"}
+        </div>
+        <div
+          className={cn(
+            "mt-1 text-[0.84rem] leading-relaxed",
+            isError ? "text-rose-100/70" : "text-amber-100/70",
+          )}
+        >
+          {isError
+            ? "The model response ended before Junior could complete this turn."
+            : "The model response was stopped before Junior could complete this turn."}
+        </div>
+      </div>
+      {timestamp ? (
+        <span
+          className={cn(
+            "font-mono text-[0.78rem] leading-none max-md:col-start-2",
+            isError ? "text-rose-100/55" : "text-amber-100/55",
+          )}
+        >
+          {timestamp}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 type TranscriptRailEventKind = "compaction" | "handoff" | "subagent";
@@ -483,6 +552,13 @@ function RedactedTranscriptView(props: {
             timestamp={entry.timestamp}
           />
         </TranscriptRailEvent>
+      )}
+      renderFailure={(entry, index) => (
+        <TranscriptFailureView
+          key={`${props.conversation.conversationId}:redacted:failure:${index}`}
+          outcome={entry.outcome}
+          timestamp={entry.timestamp}
+        />
       )}
       renderMessage={(entry, index) => (
         <RedactedMessageView

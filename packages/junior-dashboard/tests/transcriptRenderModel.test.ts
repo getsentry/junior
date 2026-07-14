@@ -28,6 +28,41 @@ function conversationTurn(
 }
 
 describe("transcript render model", () => {
+  it("promotes terminal assistant outcomes to standalone failure entries", () => {
+    const messages = [
+      {
+        role: "assistant",
+        outcome: "error",
+        timestamp: 1_000,
+        parts: [],
+      },
+      {
+        role: "assistant",
+        outcome: "aborted",
+        timestamp: 2_000,
+        parts: [{ type: "text", text: "Partial response" }],
+      },
+    ] as TranscriptMessage[];
+
+    const entries = groupTranscriptMessages(messages);
+
+    expect(entries).toEqual([
+      { kind: "failure", outcome: "error", timestamp: 1_000 },
+      {
+        kind: "message",
+        message: {
+          role: "assistant",
+          outcome: "aborted",
+          timestamp: 2_000,
+          parts: [{ type: "text", text: "Partial response" }],
+        },
+      },
+      { kind: "failure", outcome: "aborted", timestamp: 2_000 },
+    ]);
+    expect(entryMatchesSearch(entries[0]!, "failed")).toBe(true);
+    expect(entryMatchesSearch(entries[2]!, "aborted")).toBe(true);
+  });
+
   it("promotes thinking parts to standalone transcript events", () => {
     const messages = [
       {

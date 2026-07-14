@@ -90,6 +90,7 @@ export const transcriptRoleSchema = z.enum([
 
 export const transcriptMessageSchema = z
   .object({
+    outcome: z.enum(["error", "aborted"]).optional(),
     parts: z.array(transcriptPartSchema),
     role: transcriptRoleSchema,
     timestamp: z.number().optional(),

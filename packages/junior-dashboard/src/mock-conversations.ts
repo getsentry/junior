@@ -507,6 +507,12 @@ function failedConversation(nowMs: number): ConversationDetailReport {
           },
         ],
       },
+      {
+        role: "assistant",
+        outcome: "error",
+        timestamp: Date.parse(startedAt) + 72_000,
+        parts: [],
+      },
     ],
   };
 }

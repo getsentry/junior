@@ -62,6 +62,7 @@ export function transcriptBottomVersion(
     conversation.status,
     messages.length,
     lastMessage?.role ?? "",
+    lastMessage?.outcome ?? "",
     lastMessage?.timestamp ?? "",
     lastMessage?.parts.length ?? 0,
     transcriptPartVersion(lastPart),

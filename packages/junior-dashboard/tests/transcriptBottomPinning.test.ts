@@ -91,6 +91,24 @@ describe("transcript bottom pinning", () => {
     expect(after).not.toBe(before);
   });
 
+  it("changes the tail version when an empty response gains a terminal outcome", () => {
+    const emptyResponse = {
+      role: "assistant" as const,
+      timestamp: 1_000,
+      parts: [],
+    };
+    const before = transcriptBottomVersion(
+      activeTurn({ transcript: [emptyResponse] }),
+    );
+    const after = transcriptBottomVersion(
+      activeTurn({
+        transcript: [{ ...emptyResponse, outcome: "error" }],
+      }),
+    );
+
+    expect(after).not.toBe(before);
+  });
+
   it("does not auto-pin after live mode turns off", () => {
     expect(
       shouldAutoPinTranscriptBottom({ enabled: true, following: true }),

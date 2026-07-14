@@ -592,6 +592,75 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("https://sentry.example/trace/abc");
   });
 
+  it("renders terminal assistant outcomes as distinct safe callouts", () => {
+    const turn = {
+      conversationId: "conversation-1",
+      cumulativeDurationMs: 0,
+      lastProgressAt: "2026-01-01T00:00:02.000Z",
+      lastSeenAt: "2026-01-01T00:00:02.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Conversation",
+      transcript: [
+        {
+          role: "assistant",
+          outcome: "error",
+          timestamp: 1_000,
+          parts: [],
+        },
+        {
+          role: "assistant",
+          outcome: "aborted",
+          timestamp: 2_000,
+          parts: [],
+        },
+      ],
+      transcriptAvailable: true,
+    } as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <ConversationTranscriptView conversation={turn} view="rich" />,
+    );
+
+    expect(html).toContain('data-transcript-failure="error"');
+    expect(html).toContain('data-transcript-failure="aborted"');
+    expect(html).toContain("Agent response failed");
+    expect(html).toContain("Agent response stopped");
+  });
+
+  it("renders terminal assistant outcomes from redacted transcript metadata", () => {
+    const turn = {
+      conversationId: "conversation-private",
+      cumulativeDurationMs: 0,
+      lastProgressAt: "2026-01-01T00:00:01.000Z",
+      lastSeenAt: "2026-01-01T00:00:01.000Z",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      surface: "slack",
+      displayTitle: "Private conversation",
+      transcript: [],
+      transcriptAvailable: false,
+      transcriptMetadata: [
+        {
+          role: "assistant",
+          outcome: "error",
+          timestamp: 1_000,
+          parts: [],
+        },
+      ],
+      transcriptRedacted: true,
+      transcriptRedactionReason: "non_public_conversation",
+    } as ConversationTranscript;
+
+    const html = renderToStaticMarkup(
+      <ConversationTranscriptView conversation={turn} view="rich" />,
+    );
+
+    expect(html).toContain('data-transcript-failure="error"');
+    expect(html).toContain("Agent response failed");
+  });
+
   it("removes residual grid row gap from collapsed system prompts", () => {
     const turn = {
       conversationId: "conversation-1",

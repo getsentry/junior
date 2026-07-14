@@ -1009,6 +1009,126 @@ describe("dashboard reporting", () => {
     ]);
   });
 
+  it("reports terminal assistant outcomes without exposing provider errors", async () => {
+    const { getAgentStepStore, getConversationStore } =
+      await import("@/chat/db");
+    const errorConversationId = "slack:C1:terminal-error";
+    const abortedConversationId = "slack:D1:terminal-aborted";
+    const sensitiveError =
+      "xAI 503 credential=secret-provider-token upstream payload";
+
+    await confirmPublicSlackConversation(errorConversationId);
+    await getAgentStepStore().append(errorConversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            api: "openai-responses",
+            content: [],
+            model: "grok-4.5",
+            provider: "xai",
+            stopReason: "error",
+            errorMessage: sensitiveError,
+            timestamp: 2,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+          } as PiMessage,
+        },
+        createdAtMs: 2,
+      },
+    ]);
+
+    await getConversationStore().recordActivity({
+      conversationId: abortedConversationId,
+      destination: {
+        platform: "slack",
+        teamId: "T1",
+        channelId: "D1",
+      },
+      source: "slack",
+      visibility: "private",
+    });
+    await getAgentStepStore().append(abortedConversationId, [
+      {
+        entry: {
+          type: "pi_message",
+          message: {
+            role: "assistant",
+            api: "openai-responses",
+            content: [],
+            model: "grok-4.5",
+            provider: "xai",
+            stopReason: "aborted",
+            errorMessage: sensitiveError,
+            timestamp: 3,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+          } as PiMessage,
+        },
+        createdAtMs: 3,
+      },
+    ]);
+
+    const errorReport = await readConversationDetailReport(errorConversationId);
+    const abortedReport = await readConversationDetailReport(
+      abortedConversationId,
+    );
+
+    expect(errorReport.transcript).toEqual([
+      {
+        role: "assistant",
+        outcome: "error",
+        parts: [],
+        timestamp: 2,
+      },
+    ]);
+    expect(errorReport.transcriptMessageCount).toBe(0);
+    expect(abortedReport).toMatchObject({
+      transcript: [],
+      transcriptAvailable: false,
+      transcriptMetadata: [
+        {
+          role: "assistant",
+          outcome: "aborted",
+          parts: [],
+          timestamp: 3,
+        },
+      ],
+      transcriptRedacted: true,
+    });
+    expect(JSON.stringify({ errorReport, abortedReport })).not.toContain(
+      sensitiveError,
+    );
+    expect(JSON.stringify({ errorReport, abortedReport })).not.toContain(
+      '"provider":"xai"',
+    );
+  });
+
   it("keeps SQL detail available when optional execution settings fail", async () => {
     const { getAgentStepStore, getConversationStore } =
       await import("@/chat/db");

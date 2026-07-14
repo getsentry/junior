@@ -22,6 +22,7 @@ export type RenderedTranscriptPart =
 
 export type RenderedTranscriptEntry =
   | RenderedContextEventEntry
+  | RenderedFailureEntry
   | { kind: "message"; message: TranscriptViewMessage }
   | RenderedSubagentEntry
   | RenderedThinkingEntry
@@ -30,6 +31,12 @@ export type RenderedTranscriptEntry =
 export type RenderedThinkingEntry = {
   kind: "thinking";
   part: TranscriptViewPart;
+  timestamp?: number;
+};
+
+export type RenderedFailureEntry = {
+  kind: "failure";
+  outcome: "error" | "aborted";
   timestamp?: number;
 };
 
@@ -253,6 +260,13 @@ export function groupTranscriptMessages(
     }
 
     flushMessage();
+    if (message.outcome) {
+      entries.push({
+        kind: "failure",
+        outcome: message.outcome,
+        timestamp: message.timestamp,
+      });
+    }
   }
 
   return entries;

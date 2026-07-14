@@ -126,6 +126,15 @@ export function entryMatchesSearch(
     return textContains(messageRawText(entry.message), normalizedQuery);
   }
 
+  if (entry.kind === "failure") {
+    return textContains(
+      entry.outcome === "error"
+        ? "agent response failed error"
+        : "agent response stopped aborted",
+      normalizedQuery,
+    );
+  }
+
   if (entry.kind === "tool") {
     const visibleCallStatus =
       entry.call?.status === "running" && !entry.result

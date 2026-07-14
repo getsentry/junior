@@ -166,6 +166,47 @@ describe("dashboard markdown export", () => {
     expect(markdown).toContain("## Done\n\n\n\nCopied as Markdown.");
   });
 
+  it("exports terminal assistant outcomes with safe copy", () => {
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const detail = {
+      conversationId: "slack:C1:failed",
+      cumulativeDurationMs: 0,
+      displayTitle: "Failed responses",
+      generatedAt: "2026-01-01T00:00:03.000Z",
+      lastProgressAt: "2026-01-01T00:00:02.000Z",
+      lastSeenAt: "2026-01-01T00:00:02.000Z",
+      startedAt,
+      status: "completed",
+      surface: "slack",
+      transcriptAvailable: true,
+      transcript: [
+        {
+          role: "assistant",
+          outcome: "error",
+          timestamp: Date.parse(startedAt) + 1_000,
+          parts: [],
+        },
+        {
+          role: "assistant",
+          outcome: "aborted",
+          timestamp: Date.parse(startedAt) + 2_000,
+          parts: [],
+        },
+      ],
+    } satisfies ConversationDetailReport;
+
+    const markdown = buildConversationMarkdown(detail);
+
+    expect(markdown).toContain("### Agent response failed");
+    expect(markdown).toContain(
+      "The model response ended before Junior could complete this turn.",
+    );
+    expect(markdown).toContain("### Agent response stopped");
+    expect(markdown).toContain(
+      "The model response was stopped before Junior could complete this turn.",
+    );
+  });
+
   it("prefers the freshly loaded detail title over a stale list row title", () => {
     const generatedAt = "2026-01-01T00:00:08.000Z";
     const detail = {

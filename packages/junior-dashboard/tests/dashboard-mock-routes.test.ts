@@ -158,6 +158,29 @@ describe("dashboard mock conversation routes", () => {
         .filter(Boolean),
     ).toContain("datacat.search_logs");
 
+    const failedConversation = await app.fetch(
+      new Request(
+        "http://localhost/api/conversations/slack%3ACQA777%3A1770014400.000500",
+      ),
+    );
+    expect(failedConversation.status).toBe(200);
+    const failedConversationBody = (await failedConversation.json()) as {
+      transcript: Array<{
+        outcome?: string;
+        parts: unknown[];
+        role: string;
+      }>;
+      transcriptMessageCount?: number;
+    };
+    expect(failedConversationBody.transcript.at(-1)).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        outcome: "error",
+        parts: [],
+      }),
+    );
+    expect(failedConversationBody.transcriptMessageCount).toBe(3);
+
     const qaConversation = await app.fetch(
       new Request(
         `http://localhost/api/conversations/${encodeURIComponent(

@@ -187,6 +187,10 @@ function normalizeMessage(
   const role = transcriptRole(record.role);
   return {
     role,
+    ...(role === "assistant" &&
+    (record.stopReason === "error" || record.stopReason === "aborted")
+      ? { outcome: record.stopReason }
+      : {}),
     ...(typeof record.timestamp === "number"
       ? { timestamp: record.timestamp }
       : {}),
@@ -310,6 +314,7 @@ export function redactTranscriptMessage(
 ): TranscriptMessage {
   return {
     role: message.role,
+    ...(message.outcome ? { outcome: message.outcome } : {}),
     ...(typeof message.timestamp === "number"
       ? { timestamp: message.timestamp }
       : {}),

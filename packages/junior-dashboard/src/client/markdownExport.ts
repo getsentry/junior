@@ -120,6 +120,16 @@ function appendTranscriptMessages(
       continue;
     }
 
+    if (entry.kind === "failure") {
+      appendFailure(
+        lines,
+        conversationTranscript,
+        entry.outcome,
+        entry.timestamp,
+      );
+      continue;
+    }
+
     if (entry.kind === "thinking") {
       appendThinking(
         lines,
@@ -172,6 +182,27 @@ function appendTranscriptMessages(
       entry.resultTimestamp,
     );
   }
+}
+
+function appendFailure(
+  lines: string[],
+  conversationTranscript: ConversationTranscript,
+  outcome: "error" | "aborted",
+  timestamp: number | undefined,
+): void {
+  lines.push(
+    "",
+    outcome === "error"
+      ? "### Agent response failed"
+      : "### Agent response stopped",
+  );
+  addEventMeta(lines, conversationTranscript, timestamp);
+  lines.push(
+    "",
+    outcome === "error"
+      ? "The model response ended before Junior could complete this turn."
+      : "The model response was stopped before Junior could complete this turn.",
+  );
 }
 
 function appendContextEvent(
