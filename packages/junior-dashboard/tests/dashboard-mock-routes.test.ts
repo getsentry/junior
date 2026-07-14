@@ -14,7 +14,7 @@ describe("dashboard mock conversation routes", () => {
 
   it("overlays mock conversations for local dashboard visual QA", async () => {
     // Pin time to match the hardcoded conversation dates in the mock reporting fixture.
-    // Without this, recentConversationGroups filters out conversations older than 7 days.
+    // Without this, recentConversationGroups filters out conversations older than 90 days.
     vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
@@ -79,6 +79,8 @@ describe("dashboard mock conversation routes", () => {
       conversations: number;
       costUsd?: number;
       durationMs: number;
+      windowEnd: string;
+      windowStart: string;
     };
     expect(statsBody).toMatchObject({
       conversations: new Set(
@@ -93,6 +95,9 @@ describe("dashboard mock conversation routes", () => {
     );
     expect(statsBody.durationMs).toBe(rawDurationMs);
     expect(statsBody.costUsd).toBeGreaterThan(0);
+    expect(
+      Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
+    ).toBe(90 * 24 * 60 * 60 * 1000);
 
     const locations = await app.fetch(
       new Request("http://localhost/api/locations"),

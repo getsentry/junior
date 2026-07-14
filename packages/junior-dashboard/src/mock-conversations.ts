@@ -1235,7 +1235,7 @@ function conversationStatsReportFromSummaries(
     ...(costUsd !== undefined ? { costUsd } : {}),
     ...(tokens !== undefined ? { tokens } : {}),
     windowEnd: iso(nowMs),
-    windowStart: iso(nowMs, -7 * 24 * 60 * 60 * 1000),
+    windowStart: iso(windowStartMs),
   };
 }
 
