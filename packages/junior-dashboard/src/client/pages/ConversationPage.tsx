@@ -206,10 +206,14 @@ function ConversationStats(props: {
           key: "location",
         }
       : undefined,
-    {
-      content: <TurnsMetric loading={!props.detail} summary={turnSummary} />,
-      key: "turns",
-    },
+    !props.detail || turnSummary
+      ? {
+          content: (
+            <TurnsMetric loading={!props.detail} summary={turnSummary} />
+          ),
+          key: "turns",
+        }
+      : undefined,
     !props.detail || (toolSummary && toolSummary.total > 0)
       ? {
           content: (
