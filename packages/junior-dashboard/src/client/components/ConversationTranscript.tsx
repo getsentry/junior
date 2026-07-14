@@ -16,10 +16,9 @@ import {
   formatTranscriptDuration,
   actorLabel,
   summarizeCost,
-  summarizeMessages,
+  summarizeTurns,
   summarizeToolCalls,
   summarizeUsage,
-  conversationMessageCount,
   stringifyPartValue,
   unavailableTranscriptLabel,
   visualStatusForSummary,
@@ -44,7 +43,7 @@ import { MetricList, type MetricListItem } from "./Metric";
 import {
   CostMetric,
   DurationMetric,
-  MessagesMetric,
+  TurnsMetric,
   TokenMetric,
   ToolCallsMetric,
 } from "./TelemetryMetrics";
@@ -673,13 +672,6 @@ function transcriptActorLabel(conversation: ConversationTranscript): string {
   return actorLabel(conversation.actorIdentity) ?? "User";
 }
 
-function transcriptMessageSummary(conversation: ConversationTranscript) {
-  const summary = summarizeMessages(conversation);
-  if (summary.total > 0) return summary;
-  const total = conversationMessageCount(conversation);
-  return total > 0 ? { items: [], total } : undefined;
-}
-
 function transcriptMeta(
   conversation: ConversationTranscript,
 ): MetricListItem[] {
@@ -687,7 +679,7 @@ function transcriptMeta(
   const tokenSummary = summarizeUsage(conversation.cumulativeUsage);
   const costSummary = summarizeCost(conversation.cumulativeUsage);
   const toolSummary = summarizeToolCalls(conversation);
-  const messageSummary = transcriptMessageSummary(conversation);
+  const turnSummary = summarizeTurns(conversation);
   const items: Array<MetricListItem | undefined> = [
     conversation.modelId || conversation.reasoningLevel
       ? {
@@ -725,10 +717,10 @@ function transcriptMeta(
           key: "cost",
         }
       : undefined,
-    messageSummary
+    turnSummary
       ? {
-          content: <MessagesMetric summary={messageSummary} />,
-          key: "messages",
+          content: <TurnsMetric summary={turnSummary} />,
+          key: "turns",
         }
       : undefined,
     toolSummary.total > 0

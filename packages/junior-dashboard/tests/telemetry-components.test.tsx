@@ -804,10 +804,13 @@ describe("dashboard telemetry components", () => {
 
     const html = renderConversationPage(dashboardData([session]));
     const header = html.slice(0, html.indexOf('aria-label="Transcript view"'));
+    const transcript = html.slice(html.indexOf('aria-label="Transcript view"'));
 
     expect(header).toContain("2 turns");
     expect(header).not.toContain("4 messages");
     expect(header).not.toContain("started Jan");
+    expect(transcript).toContain("2 turns");
+    expect(transcript).not.toContain("4 messages");
   });
 
   it("shows the conversation model and thinking level in the transcript header", () => {
