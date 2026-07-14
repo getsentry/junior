@@ -250,13 +250,30 @@ export async function openConversationProjection(
   const stepStore = getAgentStepStore();
   const steps = await stepStore.loadCurrentEpoch(args.conversationId);
   const projection = projectSteps(steps);
-  if (
-    steps.some(
-      (step) =>
-        step.entry.type === "context_epoch_started" ||
-        step.entry.type === "pi_message",
-    )
-  ) {
+  const hasEpochMarker = steps.some(
+    (step) => step.entry.type === "context_epoch_started",
+  );
+  if (!hasEpochMarker && projection.messages.length > 0) {
+    const modelId =
+      args.pinnedModelId ?? args.resolveModelId(args.initialModelProfile);
+    await stepStore.startEpoch(args.conversationId, {
+      reason: "model_change",
+      modelProfile: args.initialModelProfile,
+      modelId,
+      messages: projection.messages.map((message, index) => ({
+        message,
+        createdAtMs: messageTimestamp(message),
+        provenance: projection.provenance[index]!,
+      })),
+    });
+    const bound = await stepStore.loadCurrentEpoch(args.conversationId);
+    const startingSeq = bound.at(-1)?.seq;
+    if (startingSeq === undefined) {
+      throw new Error("Conversation legacy context binding was not persisted");
+    }
+    return { ...projectSteps(bound), startingSeq };
+  }
+  if (hasEpochMarker) {
     let nextModelId: string | undefined;
     if (!projection.modelId) {
       nextModelId = args.pinnedModelId;

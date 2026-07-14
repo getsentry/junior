@@ -239,6 +239,43 @@ it("opens a new epoch when a profile resolves to a new model", async () => {
   ]);
 });
 
+it("binds unmarked message history to the conversation profile", async () => {
+  const conversationId = "local:test:legacy-unbound-profile";
+  await getAgentStepStore().append(conversationId, [
+    {
+      entry: {
+        type: "pi_message",
+        message: userMessage("legacy question"),
+      },
+      createdAtMs: 1,
+    },
+  ]);
+
+  const opened = await openConversationProjection({
+    conversationId,
+    initialModelProfile: "coding",
+    refreshModelBinding: true,
+    resolveModelId: () => "openai/gpt-5.6",
+  });
+  expect(opened).toMatchObject({
+    modelProfile: "coding",
+    modelId: "openai/gpt-5.6",
+    messages: [userMessage("legacy question")],
+  });
+  expect(
+    (await getAgentStepStore().loadHistory(conversationId))
+      .map((step) => step.entry)
+      .filter((entry) => entry.type === "context_epoch_started"),
+  ).toEqual([
+    {
+      type: "context_epoch_started",
+      reason: "model_change",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.6",
+    },
+  ]);
+});
+
 it("rejects writes from a model that does not own the current epoch", async () => {
   const conversationId = "local:test:wrong-model-commit";
   await openConversationProjection({
