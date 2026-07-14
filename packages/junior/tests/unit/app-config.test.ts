@@ -807,6 +807,12 @@ describe("createApp plugin config", () => {
     expect(systemPage.status).toBe(200);
     await expect(systemPage.text()).resolves.toBe("dashboard");
 
+    const dashboardAvatar = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/avatar.png"),
+    );
+    expect(dashboardAvatar.status).toBe(200);
+    await expect(dashboardAvatar.text()).resolves.toBe("dashboard");
+
     const pluginsPage = await app.fetch(
       new Request("http://localhost/plugins"),
     );
