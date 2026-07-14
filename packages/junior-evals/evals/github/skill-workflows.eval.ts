@@ -51,7 +51,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     expect(verifyCall).toMatchObject({ result: { ok: true } });
   });
 
-  it("when asked about PR auth sequencing, mention push auth before PR auth", async ({
+  it("when asked about PR auth sequencing, explain automatic installation credentials", async ({
     run,
   }) => {
     await run({
@@ -66,12 +66,13 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The answer explicitly says the branch push happens before `gh pr create` for the PR step.",
-          "The answer says the push step needs GitHub write access for the remote.",
+          "The answer says the branch is pushed before the pull request is created.",
+          "The answer explains that Junior automatically injects the GitHub App credential for the standard push and pull request workflow, with no user-managed token or authorization step.",
         ],
         fail: [
-          "Do not imply that PR creation auth alone is sufficient before the push.",
-          "Do not omit the explicit push-auth step.",
+          "Do not tell the user to grant Pull requests: write, authorize GitHub, provide a token, or take another authentication action for this standard bot workflow.",
+          "Do not recommend `gh pr create` for new pull requests.",
+          "Do not imply that pull request creation credentials alone are sufficient before the push.",
         ],
       }),
     });

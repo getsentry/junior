@@ -65,9 +65,9 @@ jr-rpc config set github.repo owner/repo
 - Prefer `--json` output for machine-readable parsing where available.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
 - A local `git commit` does not call GitHub. Pushing that commit uses Junior's repository-scoped installation credential and requires `github.contents.write` on the target repo.
-- If the commit changes workflow files under `.github/workflows`, expect `github.workflows.write` in addition to contents write.
+- If the commit changes workflow files under `.github/workflows`, the App installation needs Workflows write in addition to Contents write.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
 - Merge, fork creation, workflow reruns or cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
-- PR comments, labels, and assignees use GitHub's issue endpoints and therefore the issue grant; use the `github-issues` REST guidance for those operations.
+- PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same repository-scoped `installation-write` credential.
 - Return actionable errors for access, permission, not-found, and validation failures.

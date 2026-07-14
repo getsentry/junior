@@ -44,11 +44,12 @@ export interface GitHubPluginOptions {
   additionalUserScopes?: string[];
 
   /**
-   * GitHub App installation permissions Junior should request for app tokens.
+   * GitHub App permissions Junior should expose as capabilities and downscope
+   * to read for installation-read tokens.
    *
    * Keys may use GitHub permission names with underscores or hyphens. Junior
-   * records these as plugin capabilities and requests read-only installation
-   * tokens by scoping read-capable permissions down to `read`.
+   * records these as plugin capabilities. Installation-write tokens inherit
+   * the App installation's complete permission envelope.
    * GitHub remains the source of truth for whether a permission exists.
    */
   appPermissions?: GitHubAppPermissions;
@@ -133,14 +134,30 @@ interface UserCredentialOptions {
   userScope?: string;
 }
 
-interface InstallationCredentialOptions {
+interface InstallationCredentialBaseOptions {
   appIdEnv: string;
   installationIdEnv: string;
-  loadPermissions?: LoadInstallationReadPermissions;
-  permissions?: GitHubAppPermissions;
   privateKeyEnv: string;
-  repositories?: string[];
 }
+
+type InstallationCredentialOptions = InstallationCredentialBaseOptions &
+  (
+    | {
+        loadPermissions?: never;
+        permissions?: never;
+        repositories: string[];
+      }
+    | {
+        loadPermissions?: never;
+        permissions: GitHubAppPermissions;
+        repositories?: never;
+      }
+    | {
+        loadPermissions: LoadInstallationReadPermissions;
+        permissions?: never;
+        repositories?: never;
+      }
+  );
 
 type LoadInstallationReadPermissions = (input: {
   appJwt: string;
@@ -163,6 +180,8 @@ const USER_REFRESH_TIMEOUT_MS = 20_000;
 const GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES = 64 * 1024;
 const HTTP_READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const USER_TOKEN_GRANTS = new Set(["user-read", "user-write"]);
+const CREATE_TOOL_ROUTING_GUIDANCE =
+  "This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.";
 const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
 ];
@@ -1089,19 +1108,22 @@ async function issueInstallationCredential(
   }
 
   const appJwt = createAppJwt(appId, options.privateKeyEnv);
-  const permissions =
-    options.permissions ??
-    (await options.loadPermissions?.({ appJwt, installationId }));
+  const body =
+    "repositories" in options
+      ? { repositories: options.repositories }
+      : {
+          permissions:
+            "permissions" in options
+              ? options.permissions
+              : await options.loadPermissions({ appJwt, installationId }),
+        };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
     `/app/installations/${installationId}/access_tokens`,
     {
       method: "POST",
       token: appJwt,
-      body: {
-        ...(permissions ? { permissions } : {}),
-        ...(options.repositories ? { repositories: options.repositories } : {}),
-      },
+      body,
     },
   );
   const parsedToken = parseInstallationTokenResponse(accessTokenResponse);
@@ -1507,7 +1529,7 @@ function assertGitHubWriteAllowed(input: {
     )
   ) {
     throw new EgressPolicyDenied(
-      "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer.",
+      `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     );
   }
   if (
@@ -1519,13 +1541,9 @@ function assertGitHubWriteAllowed(input: {
     )
   ) {
     throw new EgressPolicyDenied(
-      "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer.",
+      `GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     );
   }
-}
-
-function grantRequirements(reason: GitHubGrantReason): string[] | undefined {
-  return reason === "github.user-write" ? USER_WRITE_REQUIREMENTS : undefined;
 }
 
 function grantForAccess(
@@ -1534,13 +1552,14 @@ function grantForAccess(
   name: GitHubGrantName,
   leaseScope?: string,
 ): GitHubGrant {
-  const requirements = grantRequirements(reason);
   return {
     name,
     access,
     ...(leaseScope ? { leaseScope } : {}),
     reason,
-    ...(requirements ? { requirements } : {}),
+    ...(reason === "github.user-write"
+      ? { requirements: USER_WRITE_REQUIREMENTS }
+      : {}),
   };
 }
 
@@ -1640,12 +1659,12 @@ export function githubPlugin(
   const privateKeyEnv = options.privateKeyEnv ?? GITHUB_APP_PRIVATE_KEY_ENV;
   const installationIdEnv =
     options.installationIdEnv ?? GITHUB_INSTALLATION_ID_ENV;
-  const appPermissions = normalizePermissions(options.appPermissions);
-  const appReadPermissions = appPermissions
-    ? readGrantPermissions(appPermissions)
+  const declaredAppPermissions = normalizePermissions(options.appPermissions);
+  const declaredReadPermissions = declaredAppPermissions
+    ? readGrantPermissions(declaredAppPermissions)
     : undefined;
   const loadReadPermissions = createPermissionCache();
-  const appCapabilities = permissionCapabilities(appPermissions);
+  const appCapabilities = permissionCapabilities(declaredAppPermissions);
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
 
@@ -1763,8 +1782,8 @@ export function githubPlugin(
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              ...(appReadPermissions
-                ? { permissions: appReadPermissions }
+              ...(declaredReadPermissions
+                ? { permissions: declaredReadPermissions }
                 : { loadPermissions: loadReadPermissions }),
             });
           }
@@ -1776,14 +1795,8 @@ export function githubPlugin(
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              ...(appPermissions
-                ? {
-                    permissions: {
-                      ...appPermissions,
-                      metadata: "read",
-                    },
-                  }
-                : {}),
+              // This repository-only variant cannot downscope the installed
+              // App envelope with an operation-specific permission body.
               repositories: [repository.name],
             });
           }

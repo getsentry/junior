@@ -1595,89 +1595,7 @@ Conversation: \`local:test:old-conversation\`
     });
   });
 
-  it("issues repository-scoped installation credentials for GitHub resource writes", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "123";
-    process.env.GITHUB_INSTALLATION_ID = "456";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
-    const requests = mockGitHubInstallationApi();
-    const plugin = githubPlugin({
-      appPermissions: {
-        actions: "write",
-        contents: "write",
-        issues: "write",
-        pull_requests: "write",
-        workflows: "write",
-      },
-    });
-
-    const actionsResult = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "scheduler" },
-      grant: {
-        name: "installation-write",
-        access: "write",
-        leaseScope: "repository:getsentry/junior",
-        reason: "github.installation-write",
-      },
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {},
-    });
-
-    const issueResult = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "scheduler" },
-      grant: {
-        name: "installation-write",
-        access: "write",
-        leaseScope: "repository:getsentry/junior",
-        reason: "github.installation-write",
-      },
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {},
-    });
-
-    const pullResult = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "scheduler" },
-      grant: {
-        name: "installation-write",
-        access: "write",
-        leaseScope: "repository:getsentry/junior",
-        reason: "github.installation-write",
-      },
-      db,
-      log: pluginLog,
-      plugin: { name: "github" },
-      tokens: {},
-    });
-
-    expect(actionsResult?.type).toBe("lease");
-    expect(issueResult?.type).toBe("lease");
-    expect(pullResult?.type).toBe("lease");
-    expect(requests).toHaveLength(3);
-    for (const request of requests) {
-      expect(request).toMatchObject({
-        method: "POST",
-        body: {
-          permissions: {
-            actions: "write",
-            contents: "write",
-            issues: "write",
-            metadata: "read",
-            pull_requests: "write",
-            workflows: "write",
-          },
-          repositories: ["junior"],
-        },
-      });
-    }
-  });
-
-  it("issues repository-scoped push credentials for headless resource events", async () => {
+  it("preserves installed App permissions on repository-scoped write credentials", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -1688,9 +1606,6 @@ Conversation: \`local:test:old-conversation\`
     const plugin = githubPlugin({
       appPermissions: {
         contents: "write",
-        issues: "write",
-        pull_requests: "write",
-        workflows: "write",
       },
     });
 
@@ -1710,18 +1625,13 @@ Conversation: \`local:test:old-conversation\`
 
     expect(result?.type).toBe("lease");
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({
+    expect(requests[0]).toEqual({
+      url: "https://api.github.com/app/installations/456/access_tokens",
       method: "POST",
       body: {
-        permissions: {
-          contents: "write",
-          issues: "write",
-          metadata: "read",
-          pull_requests: "write",
-          workflows: "write",
-        },
         repositories: ["junior"],
       },
+      headers: expect.any(Object),
     });
   });
 

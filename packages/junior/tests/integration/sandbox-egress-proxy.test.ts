@@ -986,7 +986,6 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
     expect(tokenRequests).toEqual([
       {
-        permissions: { actions: "write", metadata: "read" },
         repositories: ["junior"],
       },
     ]);
@@ -1154,7 +1153,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer.",
+        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1196,7 +1195,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer.",
+        "GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
@@ -1242,7 +1241,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer.",
+        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
     await expect(
@@ -1297,7 +1296,7 @@ describe("sandbox egress proxy integration", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error:
-        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer.",
+        "GitHub pull request creation must use the github_createPullRequest tool so Junior can own idempotency and the conversation footer. This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.",
     });
     expect(upstreamFetch).not.toHaveBeenCalled();
   });

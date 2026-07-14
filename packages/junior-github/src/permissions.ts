@@ -14,7 +14,7 @@ function normalizeScope(rawScope: string): string {
   return String(rawScope).trim().replace(/-/g, "_");
 }
 
-/** Validate configured GitHub App permissions before using them in grants. */
+/** Validate the configured GitHub App capability and read-token declaration. */
 export function normalizePermissions(
   permissions: GitHubAppPermissions | undefined,
 ): GitHubAppPermissions | undefined {

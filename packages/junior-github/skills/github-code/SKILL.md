@@ -1,11 +1,18 @@
 ---
 name: github-code
-description: Work with GitHub repositories, source code, branches, commits, pushes, pull requests, reviews, diffs, and CI runs. Use for repo implementation tasks, source-code investigation, cloning/fetching, branch and push workflows, PR creation, PR updates, PR review feedback, and GitHub Actions checks. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
+description: Work with GitHub repositories, source code, branches, commits, pushes, pull requests, reviews, diffs, CI runs, and GitHub App credentials for branch and PR workflows. Use for repo implementation tasks, source-code investigation, cloning/fetching, branch and push workflows, PR creation or updates, PR review feedback, GitHub credential or permission failures involving repositories, pushes, or PRs, and GitHub Actions checks. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 ---
 
 # GitHub Code Operations
 
-Use `gh` and `git` for repository checkout, source investigation, code changes, commits, and pull request inspection or mutation. Use Junior's `github_createPullRequest` tool for new pull requests.
+## Credential contract
+
+- Supported App-owned GitHub operations require no user-managed credential. Junior automatically mints and injects a repository-scoped GitHub App `installation-write` credential.
+- For a pull request from an existing branch, push the branch first, then call `github_createPullRequest`; both operations receive the automatic installation credential.
+- Do not ask the user to authorize GitHub, provide a token, or grant Contents/Pull requests permissions before trying a supported operation.
+- Request remediation only after a supported operation returns evidence of an upstream provider denial. A Junior tool-routing denial means retry with the required tool, not request permissions.
+
+Use `gh` and `git` for repository checkout, source investigation, code changes, commits, and pull request inspection or mutation. Use Junior's `github_createPullRequest` tool instead of `gh pr create` for new pull requests.
 
 ## References
 
