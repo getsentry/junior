@@ -1,3 +1,5 @@
+import packageMetadata from "../package.json" with { type: "json" };
+
 export const JUNIOR_HEARTBEAT_ROUTE = "/api/internal/heartbeat";
 export const JUNIOR_HEARTBEAT_CRON_SCHEDULE = "* * * * *";
 export const JUNIOR_RETENTION_ROUTE = "/api/internal/retention";
@@ -28,6 +30,7 @@ export function getDeploymentTelemetryAttributes(): Record<string, string> {
   const attributes: Record<string, string> = {};
   const serviceVersion = getDeploymentServiceVersion();
   const deploymentId = toOptionalTrimmed(process.env.VERCEL_DEPLOYMENT_ID);
+  attributes["app.junior.version"] = packageMetadata.version;
   if (serviceVersion) {
     attributes["service.version"] = serviceVersion;
   }

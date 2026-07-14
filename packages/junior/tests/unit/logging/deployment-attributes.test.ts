@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import packageMetadata from "../../../package.json" with { type: "json" };
 import type { EmittedLogRecord } from "@/chat/logging";
 
 const ORIGINAL_SENTRY_RELEASE = process.env.SENTRY_RELEASE;
@@ -72,6 +73,7 @@ describe("deployment log attributes", () => {
 
     expect(records).toHaveLength(1);
     expect(records[0]?.attributes).toMatchObject({
+      "app.junior.version": packageMetadata.version,
       "deployment.id": "dpl_123",
       "service.version": "git-sha",
     });
