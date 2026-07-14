@@ -17,6 +17,7 @@ export default defineConfig({
     instrumentation: "src/instrumentation.ts",
     nitro: "src/nitro.ts",
     vercel: "src/vercel.ts",
+    version: "src/version.ts",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",

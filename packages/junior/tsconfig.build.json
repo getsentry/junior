@@ -16,6 +16,7 @@
     "src/nitro.ts",
     "src/reporting.ts",
     "src/vercel.ts",
+    "src/version.ts",
     "src/virtual-modules.d.ts"
   ]
 }

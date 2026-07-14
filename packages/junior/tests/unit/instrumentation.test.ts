@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import packageMetadata from "../../package.json" with { type: "json" };
+import { JUNIOR_VERSION } from "@/version";
 import { runWithConversationPrivacy } from "@/chat/conversation-privacy";
 
 const ORIGINAL_SENTRY_DSN = process.env.SENTRY_DSN;
@@ -115,7 +115,7 @@ describe("initSentry", () => {
 
     expect(globalScope.setAttributes).toHaveBeenCalledWith(
       expect.objectContaining({
-        "app.junior.version": packageMetadata.version,
+        "app.junior.version": JUNIOR_VERSION,
         "deployment.id": "dpl_123",
         "service.version": "git-sha",
       }),

@@ -67,6 +67,7 @@ import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export { defineJuniorPlugins } from "./plugins";
+export { JUNIOR_VERSION } from "./version";
 export type {
   JuniorPluginInput,
   JuniorPluginSet,

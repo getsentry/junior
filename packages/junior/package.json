@@ -39,6 +39,10 @@
     "./vercel": {
       "types": "./dist/vercel.d.ts",
       "default": "./dist/vercel.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "default": "./dist/version.js"
     }
   },
   "files": [
