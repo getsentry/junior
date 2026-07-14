@@ -326,7 +326,7 @@ describe("persistAuthPauseSessionRecord", () => {
       resumeReason: "timeout",
     });
     await upsertAgentTurnSessionRecord({
-      modelId: "test/model",
+      modelId: "test-model",
       conversationId: "conversation-actor-empty-commit",
       sessionId: "turn-actor-empty-commit",
       sliceId: 2,
@@ -679,7 +679,7 @@ describe("persistAuthPauseSessionRecord", () => {
 
     await expect(
       persistTimeoutSessionRecord({
-        modelId: "test-model",
+        modelId: "test/model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
         currentSliceId: AGENT_CONTINUE_MAX_SLICES,
@@ -1203,12 +1203,23 @@ describe("persistAuthPauseSessionRecord", () => {
       resumeReason: "timeout",
       piMessages: [userMessage("continue")],
     });
+    const { getAgentStepStore } = await import("@/chat/db");
+    await getAgentStepStore().startEpoch(conversationId, {
+      reason: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      messages: [
+        {
+          message: userMessage("continue"),
+          createdAtMs: 1,
+        },
+      ],
+    });
     await upsertAgentTurnSessionRecord({
       conversationId,
       sessionId,
       sliceId: 2,
       state: "running",
-      startingModelId: "openai/gpt-5.6-sol",
       modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
       piMessages: [userMessage("continue")],
@@ -1217,7 +1228,6 @@ describe("persistAuthPauseSessionRecord", () => {
     await expect(
       getAgentTurnSessionRecord(conversationId, sessionId),
     ).resolves.toMatchObject({
-      startingModelId: "openai/gpt-5.6",
       modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
     });
@@ -1226,7 +1236,6 @@ describe("persistAuthPauseSessionRecord", () => {
         (summary) => summary.sessionId === sessionId,
       ),
     ).toMatchObject({
-      startingModelId: "openai/gpt-5.6",
       modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "low",
     });

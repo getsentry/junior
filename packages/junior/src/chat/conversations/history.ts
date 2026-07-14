@@ -2,9 +2,9 @@
  * Durable agent execution history port.
  *
  * Steps are appended one row at a time under the conversation lease; context
- * rebuilds (compaction, handoff, rollback) open a new context epoch instead of
- * rewriting history. Each new epoch binds the model profile that owns it and
- * records the exact resolved model id for audit.
+ * rebuilds (compaction, handoff, model change, rollback) open a new context
+ * epoch instead of rewriting history. Each epoch binds one model profile and
+ * exact model id; every execution using that epoch must use that binding.
  * The step envelope is strictly validated — an unknown type or malformed shape
  * is corrupt state and fails loudly — while `pi_message` content stays
  * permissive because the Pi SDK owns the message shape.
@@ -43,6 +43,14 @@ const contextEpochStartedEntrySchema = z.union([
       type: z.literal("context_epoch_started"),
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
+      modelId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
+      reason: z.literal("model_change"),
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
     })
     .strict(),
@@ -88,6 +96,14 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
     .object({
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
+      modelId: z.string().min(1),
+      messages: z.array(piMessageStepSchema),
+    })
+    .strict(),
+  z
+    .object({
+      reason: z.literal("model_change"),
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       messages: z.array(piMessageStepSchema),
     })

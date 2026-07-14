@@ -1,5 +1,6 @@
 import { juniorAgentSteps } from "./schema/agent-steps";
 import { juniorConversationMessages } from "./schema/conversation-messages";
+import { juniorConversationTurns } from "./schema/conversation-turns";
 import { juniorConversations } from "./schema/conversations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
@@ -8,6 +9,7 @@ import { juniorUsers } from "./schema/users";
 export {
   juniorAgentSteps,
   juniorConversationMessages,
+  juniorConversationTurns,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -17,6 +19,7 @@ export {
 export const juniorSqlSchema = {
   juniorAgentSteps,
   juniorConversationMessages,
+  juniorConversationTurns,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,

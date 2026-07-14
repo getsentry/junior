@@ -145,7 +145,10 @@ describe("agent continuation Slack integration", () => {
     executeAgentRunMock.mockResolvedValue(
       completedAgentRun({
         text: "Final resumed answer",
-        diagnostics: makeDiagnostics(),
+        diagnostics: {
+          ...makeDiagnostics(),
+          modelId: "test/model",
+        },
       }),
     );
     resetSlackApiMockState();
@@ -1196,7 +1199,10 @@ describe("agent continuation Slack integration", () => {
             timestamp: 2,
           },
         ] as any,
-        diagnostics: makeDiagnostics(),
+        diagnostics: {
+          ...makeDiagnostics(),
+          modelId: "test/model",
+        },
       }),
     );
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
@@ -1417,7 +1423,7 @@ describe("agent continuation Slack integration", () => {
         ] as any,
         diagnostics: {
           ...makeDiagnostics(),
-          modelId: "openai/gpt-5.6-sol",
+          modelId: "test/model",
         },
       });
     });
@@ -1434,7 +1440,7 @@ describe("agent continuation Slack integration", () => {
     expect(resumed).toBe(true);
     expect(recoveredRecord).toMatchObject({
       actors: [expect.objectContaining({ userId: "U123" })],
-      modelId: "openai/gpt-5.6-sol",
+      modelId: "test/model",
       piMessages: expect.arrayContaining([
         expect.objectContaining({ role: "user" }),
       ]),

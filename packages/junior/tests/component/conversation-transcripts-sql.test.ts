@@ -5,6 +5,7 @@ import { agentStepEntrySchema } from "@/chat/conversations/history";
 import { getAgentStepStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { createSqlConversationTurnStore } from "@/chat/conversations/sql/turns";
 import {
   hydrateConversationCompactions,
   persistConversationCompactions,
@@ -19,6 +20,7 @@ import {
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
 import {
+  commitMessages,
   loadConnectedMcpProviders,
   openConversationProjection,
   recordMcpProviderConnected,
@@ -75,6 +77,21 @@ it("accepts legacy markers and validates current profile names", () => {
   expect(
     agentStepEntrySchema.safeParse({
       type: "context_epoch_started",
+      reason: "model_change",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+    }).success,
+  ).toBe(true);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
+      reason: "model_change",
+      modelProfile: "coding",
+    }).success,
+  ).toBe(false);
+  expect(
+    agentStepEntrySchema.safeParse({
+      type: "context_epoch_started",
       reason: "compaction",
       modelProfile: "Fast!",
       modelId: "openai/gpt-5.4",
@@ -109,7 +126,6 @@ it("accepts legacy markers and validates current profile names", () => {
     }).success,
   ).toBe(false);
 });
-
 it("rejects epoch markers through the ordinary append boundary", async () => {
   await expect(
     getAgentStepStore().append("local:test:invalid-marker-append", [
@@ -145,8 +161,9 @@ it("opens an explicit initial epoch without dropping earlier host facts", async 
   await expect(
     openConversationProjection({
       conversationId,
-      modelId: "openai/gpt-5.4",
-      modelProfile: "standard",
+      initialModelProfile: "standard",
+      refreshModelBinding: true,
+      resolveModelId: () => "openai/gpt-5.4",
     }),
   ).resolves.toMatchObject({
     messages: [],
@@ -171,6 +188,73 @@ it("opens an explicit initial epoch without dropping earlier host facts", async 
       },
     }),
   ]);
+});
+
+it("opens a new epoch when a profile resolves to a new model", async () => {
+  const conversationId = "local:test:model-profile-remap";
+  const first = await openConversationProjection({
+    conversationId,
+    initialModelProfile: "coding",
+    refreshModelBinding: true,
+    resolveModelId: () => "openai/gpt-5.4",
+  });
+  expect(first.modelId).toBe("openai/gpt-5.4");
+
+  const changed = await openConversationProjection({
+    conversationId,
+    initialModelProfile: "standard",
+    refreshModelBinding: true,
+    resolveModelId: (profile) =>
+      profile === "coding" ? "openai/gpt-5.6" : "openai/gpt-5.5",
+  });
+  expect(changed).toMatchObject({
+    modelProfile: "coding",
+    modelId: "openai/gpt-5.6",
+  });
+
+  const resumed = await openConversationProjection({
+    conversationId,
+    initialModelProfile: "standard",
+    refreshModelBinding: false,
+    resolveModelId: () => "openai/gpt-5.7",
+  });
+  expect(resumed.modelId).toBe("openai/gpt-5.6");
+  expect(
+    (await getAgentStepStore().loadHistory(conversationId))
+      .map((step) => step.entry)
+      .filter((entry) => entry.type === "context_epoch_started"),
+  ).toEqual([
+    {
+      type: "context_epoch_started",
+      reason: "initial",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+    },
+    {
+      type: "context_epoch_started",
+      reason: "model_change",
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.6",
+    },
+  ]);
+});
+
+it("rejects writes from a model that does not own the current epoch", async () => {
+  const conversationId = "local:test:wrong-model-commit";
+  await openConversationProjection({
+    conversationId,
+    initialModelProfile: "standard",
+    refreshModelBinding: true,
+    resolveModelId: () => "openai/gpt-5.5",
+  });
+
+  await expect(
+    commitMessages({
+      conversationId,
+      modelId: "openai/gpt-5.6",
+      messages: [userMessage("wrong model")],
+    }),
+  ).rejects.toThrow("epoch bound to openai/gpt-5.5");
 });
 
 async function seedConversation(
@@ -238,7 +322,7 @@ describe("conversation transcript SQL stores", () => {
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
-      expect(applied?.count).toBe(5);
+      expect(applied?.count).toBe(6);
     } finally {
       await fixture.close();
     }
@@ -292,6 +376,59 @@ describe("conversation transcript SQL stores", () => {
             createdAt: new Date(4_000),
           }),
       ).rejects.toThrow(Error);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("derives turn models from their epoch-bound starting steps", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const steps = createSqlAgentStepStore(fixture.sql);
+      const turns = createSqlConversationTurnStore(fixture.sql);
+      await steps.startEpoch(CONVERSATION_ID, {
+        reason: "initial",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.5",
+        messages: [],
+      });
+      const first = await turns.recordStart({
+        conversationId: CONVERSATION_ID,
+        turnId: "turn-a",
+        startingSeq: 0,
+      });
+      await steps.startEpoch(CONVERSATION_ID, {
+        reason: "model_change",
+        modelProfile: "standard",
+        modelId: "openai/gpt-5.6",
+        messages: [],
+      });
+      await turns.recordStart({
+        conversationId: CONVERSATION_ID,
+        turnId: "turn-b",
+        startingSeq: 1,
+      });
+
+      expect(first.startingModelId).toBe("openai/gpt-5.5");
+      await expect(
+        turns.recordStart({
+          conversationId: CONVERSATION_ID,
+          turnId: "turn-a",
+          startingSeq: 1,
+        }),
+      ).resolves.toMatchObject({
+        startingModelId: "openai/gpt-5.5",
+        startingSeq: 0,
+      });
+      await expect(turns.get(CONVERSATION_ID, "turn-b")).resolves.toMatchObject(
+        {
+          turnId: "turn-b",
+          startingModelId: "openai/gpt-5.6",
+        },
+      );
     } finally {
       await fixture.close();
     }

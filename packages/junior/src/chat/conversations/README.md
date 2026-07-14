@@ -10,9 +10,11 @@ agent steps, compaction boundaries, search, retention, and legacy import.
 - Conversation rows carry typed execution columns for the provider-neutral
   behavior shared by every execution slice.
 - Visible messages are the destination-facing user and assistant history.
+- Conversation turns identify each user request and anchor it to the starting
+  agent-step boundary. The containing context epoch owns the exact model.
 - Agent steps are append-only execution history used to restore Pi state.
-- Context epochs identify replacement boundaries created by compaction or model
-  handoff.
+- Context epochs identify replacement boundaries created by compaction, model
+  change, handoff, or rollback.
 - Provider payloads and old state-store mirrors are migration inputs, not
   canonical product records.
 
@@ -28,10 +30,11 @@ The schemas and migrations under `sql/` are authoritative.
   `execution_reasoning_level` is null for adaptive reasoning,
   `execution_allowed_tool_names` is null for the host tool set, and
   `execution_instructions` stores the durable instruction list.
-- Model profile roles remain stable durable values while exact provider model
-  IDs continue to resolve through the current host model catalog.
-- Initial context epochs use the stored model profile. Handoff,
-  compaction, and rollback epochs retain their own durable model binding.
+- Model profile roles remain stable durable values. A fresh turn resolves the
+  active profile through the current host catalog; if the exact model changed,
+  it opens a `model_change` epoch before execution.
+- Every context epoch binds one exact model. Resumed slices, compaction, and
+  rollback preserve that binding; handoff explicitly opens a different one.
 
 ## Write Rules
 

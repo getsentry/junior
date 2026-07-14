@@ -13,6 +13,7 @@ import {
 import {
   juniorAgentSteps,
   juniorConversationMessages,
+  juniorConversationTurns,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -96,6 +97,11 @@ async function seedConversation(
       text: "hi",
       createdAt: at,
     });
+    await executor.db().insert(juniorConversationTurns).values({
+      conversationId: args.conversationId,
+      turnId: "turn-1",
+      startingSeq: 0,
+    });
   }
 }
 
@@ -120,6 +126,18 @@ async function messageCount(
     .select()
     .from(juniorConversationMessages)
     .where(eq(juniorConversationMessages.conversationId, conversationId));
+  return rows.length;
+}
+
+async function turnCount(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<number> {
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorConversationTurns)
+    .where(eq(juniorConversationTurns.conversationId, conversationId));
   return rows.length;
 }
 
@@ -179,6 +197,7 @@ describe("retention purge job", () => {
     });
     expect(first.purged).toBe(1);
     expect(await stepCount(fixture.sql, "priv")).toBe(0);
+    expect(await turnCount(fixture.sql, "priv")).toBe(0);
     expect(await stepCount(fixture.sql, "pub")).toBe(1);
     expect(
       (await readConversation(fixture.sql, "pub")).transcriptPurgedAt,

@@ -3,6 +3,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorAgentSteps,
   juniorConversationMessages,
+  juniorConversationTurns,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -85,6 +86,10 @@ export async function selectExpiredRoots(
       or exists (
         select 1 from junior_conversation_messages messages
         where messages.conversation_id = tree.conversation_id
+      )
+      or exists (
+        select 1 from junior_conversation_turns turns
+        where turns.conversation_id = tree.conversation_id
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
@@ -176,6 +181,10 @@ export async function purgeConversationTree(
       }
     }
     const ids = await conversationTreeIds(executor, args.rootConversationId);
+    await executor
+      .db()
+      .delete(juniorConversationTurns)
+      .where(inArray(juniorConversationTurns.conversationId, ids));
     await executor
       .db()
       .delete(juniorAgentSteps)

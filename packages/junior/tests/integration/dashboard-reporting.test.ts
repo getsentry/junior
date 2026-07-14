@@ -326,8 +326,28 @@ describe("dashboard reporting", () => {
       await import("@/chat/state/turn-session");
     const { readConversationDetailFromSql } =
       await import("@/api/conversations/detail.query");
+    const { getAgentStepStore, getConversationTurnStore } =
+      await import("@/chat/db");
 
     await confirmPublicSlackConversation("slack:C1:222");
+    const stepStore = getAgentStepStore();
+    await stepStore.startEpoch("slack:C1:222", {
+      reason: "initial",
+      modelProfile: "standard",
+      modelId: "openai/gpt-5.5",
+      messages: [],
+    });
+    await getConversationTurnStore().recordStart({
+      conversationId: "slack:C1:222",
+      turnId: "turn-current",
+      startingSeq: 0,
+    });
+    await stepStore.startEpoch("slack:C1:222", {
+      reason: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      messages: [],
+    });
     await upsertAgentTurnSessionRecord({
       conversationId: "slack:C1:222",
       sessionId: "turn-current",
@@ -335,7 +355,6 @@ describe("dashboard reporting", () => {
       state: "completed",
       cumulativeDurationMs: 1_200,
       cumulativeUsage: { inputTokens: 100, outputTokens: 20 },
-      startingModelId: "openai/gpt-5.5",
       modelId: "openai/gpt-5.6-sol",
       reasoningLevel: "high",
       piMessages: [

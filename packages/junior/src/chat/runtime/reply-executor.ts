@@ -132,7 +132,6 @@ import {
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
 import { persistConversationMessages } from "@/chat/conversations/visible-messages";
-import { modelIdForProfile } from "@/chat/model-profile";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -683,9 +682,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // A prior delivery already appended this input durably.
               return true;
             }
+            if (!projection.modelId) {
+              throw new Error("Parked input epoch has no model binding");
+            }
             await commitMessages({
               conversationId,
-              modelId: modelIdForProfile(botConfig, projection.modelProfile),
+              modelId: projection.modelId,
               messages: [
                 ...projection.messages,
                 ...missing.map((pair) => pair.message),
@@ -1484,7 +1486,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: turnId,
                 sliceId: 1,
                 messages: reply.piMessages,
-                startingModelId: reply.diagnostics.startingModelId,
                 modelId: reply.diagnostics.modelId,
                 logContext: {
                   threadId,

@@ -582,7 +582,7 @@ describe("executeAgentRun provider retry", () => {
     // Simulate the destination boundary committing completion after
     // acceptance; generation itself no longer persists the final reply.
     await persistCompletedSessionRecord({
-      modelId: "test-model",
+      modelId: reply.diagnostics.modelId,
       conversationId: "slack:C123:1712345.0001",
       sessionId: "turn-steering",
       allMessages: reply.piMessages ?? [],

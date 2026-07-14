@@ -35,7 +35,7 @@ import {
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { updateConversationStats } from "@/chat/services/conversation-memory";
-import { modelIdForProfile, type ModelProfile } from "@/chat/model-profile";
+import type { ModelProfile } from "@/chat/model-profile";
 
 const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 const MAX_SUMMARY_INPUT_CHARS = 80_000;
@@ -476,10 +476,13 @@ async function writeCompactedThreadContext(
     retained,
     sourceProvenance: sourceProjection.provenance,
   });
+  if (!sourceProjection.modelId) {
+    throw new Error("Compaction source epoch has no model binding");
+  }
   await stepStore.startEpoch(args.conversationId, {
     reason: "compaction",
     modelProfile: sourceProjection.modelProfile,
-    modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
+    modelId: sourceProjection.modelId,
     messages: replacement.map((message, index) => ({
       message,
       createdAtMs: piMessageTimestamp(message),

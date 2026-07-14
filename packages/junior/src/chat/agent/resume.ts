@@ -51,7 +51,6 @@ interface ResumeStateArgs {
   sessionConversationId?: string;
   sessionId?: string;
   sessionRecordState: LoadedSessionRecordState;
-  startingModelId: string;
   startedAtMs: number;
   surface?: AgentTurnSurface;
 }
@@ -95,7 +94,6 @@ export function createResumeState(args: ResumeStateArgs) {
     sessionId: args.sessionId!,
     loadedSkillNames: args.getLoadedSkillNames(),
     logContext: args.logContext,
-    startingModelId: args.startingModelId,
     modelId: args.getModelId(),
     ...(args.getReasoningLevel()
       ? { reasoningLevel: args.getReasoningLevel() }

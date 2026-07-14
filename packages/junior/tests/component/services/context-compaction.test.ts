@@ -331,7 +331,7 @@ describe("context compaction projection reset", () => {
     ).toBe("handoff");
 
     await commitMessages({
-      modelId: "test/handoff",
+      modelId: botConfig.modelProfiles.handoff,
       conversationId,
       messages: [user("Replacement safe boundary.", 3)],
     });
@@ -368,7 +368,7 @@ describe("context compaction projection reset", () => {
       {
         reason: "rollback",
         modelProfile: "handoff",
-        modelId: "test/handoff",
+        modelId: botConfig.modelProfiles.handoff,
       },
     ]);
   });

@@ -65,8 +65,6 @@ export interface AgentTurnSessionRecord {
   errorMessage?: string;
   lastProgressAtMs: number;
   loadedSkillNames?: string[];
-  /** Exact model used when this turn began. */
-  startingModelId?: string;
   /** Model active at the latest persisted boundary. */
   modelId?: string;
   reasoningLevel?: string;
@@ -154,7 +152,6 @@ const agentTurnSessionSummarySchema = z
     source: sourceSchema.optional(),
     lastProgressAtMs: nonNegativeNumberSchema,
     loadedSkillNames: z.array(z.string()).optional(),
-    startingModelId: z.string().min(1).optional(),
     modelId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
     actor: actorSchema.optional(),
@@ -178,23 +175,6 @@ const storedAgentTurnSessionRecordSchema = agentTurnSessionSummarySchema
     turnStartSeq: seqCursorSchema.optional(),
   })
   .strict() satisfies z.ZodType<StoredAgentTurnSessionRecord>;
-
-function resolveStartingModelId(args: {
-  existing?: Pick<AgentTurnSessionRecord, "modelId" | "startingModelId">;
-  modelId?: string;
-  startingModelId?: string;
-}): string | undefined {
-  if (args.existing?.startingModelId) {
-    return args.existing.startingModelId;
-  }
-  if (args.existing?.modelId) {
-    return args.existing.modelId;
-  }
-  if (args.startingModelId) {
-    return args.startingModelId;
-  }
-  return args.modelId;
-}
 
 function agentTurnSessionKey(
   conversationId: string,
@@ -327,9 +307,6 @@ function materializeAgentTurnSessionRecord(
     ...(stored.loadedSkillNames
       ? { loadedSkillNames: stored.loadedSkillNames }
       : {}),
-    ...(stored.startingModelId
-      ? { startingModelId: stored.startingModelId }
-      : {}),
     ...(stored.modelId ? { modelId: stored.modelId } : {}),
     ...(stored.reasoningLevel ? { reasoningLevel: stored.reasoningLevel } : {}),
     ...(stored.actor ? { actor: stored.actor } : {}),
@@ -402,7 +379,6 @@ function buildStoredRecord(args: {
   committedSeq: number;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  startingModelId?: string;
   modelId?: string;
   previousVersion?: number;
   reasoningLevel?: string;
@@ -443,7 +419,6 @@ function buildStoredRecord(args: {
     ...(args.loadedSkillNames
       ? { loadedSkillNames: args.loadedSkillNames }
       : {}),
-    ...(args.startingModelId ? { startingModelId: args.startingModelId } : {}),
     ...(args.modelId ? { modelId: args.modelId } : {}),
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
@@ -546,9 +521,6 @@ async function updateAgentTurnSessionState(args: {
       ...(args.existing.loadedSkillNames
         ? { loadedSkillNames: args.existing.loadedSkillNames }
         : {}),
-      ...(args.existing.startingModelId
-        ? { startingModelId: args.existing.startingModelId }
-        : {}),
       ...(args.existing.modelId ? { modelId: args.existing.modelId } : {}),
       ...(args.existing.reasoningLevel
         ? { reasoningLevel: args.existing.reasoningLevel }
@@ -582,7 +554,6 @@ export async function upsertAgentTurnSessionRecord(args: {
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  startingModelId?: string;
   modelId: string;
   conversationStore?: ConversationStore;
   sessionId: string;
@@ -607,11 +578,6 @@ export async function upsertAgentTurnSessionRecord(args: {
     args.sessionId,
   );
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  const startingModelId = resolveStartingModelId({
-    existing: existingRecord,
-    modelId: args.modelId,
-    startingModelId: args.startingModelId,
-  });
   // Attribute new user input to the turn's actor as an instruction; the step
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
@@ -680,7 +646,6 @@ export async function upsertAgentTurnSessionRecord(args: {
       ...(args.loadedSkillNames
         ? { loadedSkillNames: args.loadedSkillNames }
         : {}),
-      startingModelId,
       modelId: args.modelId,
       ...((args.reasoningLevel ?? existingRecord?.reasoningLevel)
         ? {
@@ -727,7 +692,6 @@ export async function recordAgentTurnSessionSummary(args: {
   source?: Source;
   lastProgressAtMs?: number;
   loadedSkillNames?: string[];
-  startingModelId?: string;
   modelId?: string;
   conversationStore?: ConversationStore;
   actor?: Actor;
@@ -747,11 +711,6 @@ export async function recordAgentTurnSessionSummary(args: {
   );
   const nowMs = Date.now();
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  const startingModelId = resolveStartingModelId({
-    existing,
-    modelId: args.modelId,
-    startingModelId: args.startingModelId,
-  });
   const summary: AgentTurnSessionSummary = {
     version: existing?.version ?? 0,
     ...((args.channelName ?? existing?.channelName)
@@ -783,7 +742,6 @@ export async function recordAgentTurnSessionSummary(args: {
       : existing?.loadedSkillNames
         ? { loadedSkillNames: existing.loadedSkillNames }
         : {}),
-    ...(startingModelId ? { startingModelId } : {}),
     ...((args.modelId ?? existing?.modelId)
       ? { modelId: args.modelId ?? existing?.modelId }
       : {}),

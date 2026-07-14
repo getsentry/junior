@@ -6,10 +6,9 @@
  * The current model context is exactly the highest context epoch's `pi_message`
  * steps in `seq` order; host-only step types (activity, provider connection,
  * authorization requests, epoch markers) never reach `agent.state.messages`.
- * Compaction, handoff, and rollback open a new epoch instead of rewriting
- * history, so the context reducer only walks one epoch. The epoch marker binds
- * the projection's model profile, which later replacements inherit, and the
- * exact resolved model id used when the epoch was opened for audit.
+ * Compaction, handoff, model change, and rollback open a new epoch instead of
+ * rewriting history, so the context reducer only walks one epoch. The epoch
+ * marker binds the exact model used by every execution in that epoch.
  */
 import { isDeepStrictEqual } from "node:util";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -45,6 +44,12 @@ export interface ConversationProjection extends SessionProjection {
 export interface StepProjection extends ConversationProjection {
   /** The `seq` of the step each projected message came from. */
   seqs: number[];
+}
+
+/** Projection opened at the durable execution-log boundary for a turn. */
+export interface OpenConversationProjection extends ConversationProjection {
+  /** Latest durable step before this turn appends execution history. */
+  startingSeq: number;
 }
 
 /**
@@ -234,8 +239,13 @@ export async function loadConversationProjection(
 
 /** Open the configured initial epoch before a conversation's first model request. */
 export async function openConversationProjection(
-  args: ScopedConversation & { modelId: string; modelProfile: ModelProfile },
-): Promise<ConversationProjection> {
+  args: ScopedConversation & {
+    initialModelProfile: ModelProfile;
+    pinnedModelId?: string;
+    refreshModelBinding: boolean;
+    resolveModelId: (profile: ModelProfile) => string;
+  },
+): Promise<OpenConversationProjection> {
   await importLegacyIfNeeded(args);
   const stepStore = getAgentStepStore();
   const steps = await stepStore.loadCurrentEpoch(args.conversationId);
@@ -247,22 +257,59 @@ export async function openConversationProjection(
         step.entry.type === "pi_message",
     )
   ) {
-    return projection;
+    let nextModelId: string | undefined;
+    if (!projection.modelId) {
+      nextModelId = args.pinnedModelId;
+      if (!nextModelId && args.refreshModelBinding) {
+        nextModelId = args.resolveModelId(projection.modelProfile);
+      }
+      if (!nextModelId) {
+        throw new Error("Conversation context epoch has no model binding");
+      }
+    } else if (args.refreshModelBinding) {
+      const resolvedModelId = args.resolveModelId(projection.modelProfile);
+      if (resolvedModelId !== projection.modelId) {
+        nextModelId = resolvedModelId;
+      }
+    }
+    if (nextModelId) {
+      await stepStore.startEpoch(args.conversationId, {
+        reason: "model_change",
+        modelProfile: projection.modelProfile,
+        modelId: nextModelId,
+        messages: projection.messages.map((message, index) => ({
+          message,
+          createdAtMs: messageTimestamp(message),
+          provenance: projection.provenance[index]!,
+        })),
+      });
+      const changed = await stepStore.loadCurrentEpoch(args.conversationId);
+      const startingSeq = changed.at(-1)?.seq;
+      if (startingSeq === undefined) {
+        throw new Error("Conversation model change was not persisted");
+      }
+      return { ...projectSteps(changed), startingSeq };
+    }
+    const startingSeq = steps.at(-1)?.seq;
+    if (startingSeq === undefined) {
+      throw new Error("Conversation projection has no durable start boundary");
+    }
+    return { ...projection, startingSeq };
   }
   // Host facts may predate the first model request. Keep them in epoch 0 and
   // make that formerly implicit epoch explicit before model execution.
   await stepStore.startEpoch(args.conversationId, {
     reason: "initial",
-    modelProfile: args.modelProfile,
-    modelId: args.modelId,
+    modelProfile: args.initialModelProfile,
+    modelId: args.resolveModelId(args.initialModelProfile),
     messages: [],
   });
-  return {
-    messages: projection.messages,
-    provenance: projection.provenance,
-    modelProfile: args.modelProfile,
-    modelId: args.modelId,
-  };
+  const opened = await stepStore.loadCurrentEpoch(args.conversationId);
+  const startingSeq = opened.at(-1)?.seq;
+  if (startingSeq === undefined) {
+    throw new Error("Conversation projection start was not persisted");
+  }
+  return { ...projectSteps(opened), startingSeq };
 }
 
 /**
@@ -327,7 +374,7 @@ function messageTimestamp(message: PiMessage): number {
  */
 export async function commitMessages(args: {
   conversationId: string;
-  /** Exact model selected for this write; persisted for epoch audit only. */
+  /** Exact model selected for this write; must match the current epoch. */
   modelId: string;
   messages: PiMessage[];
   /** Explicit per-message provenance aligned one-to-one with `messages`. */
@@ -344,6 +391,9 @@ export async function commitMessages(args: {
   const stepStore = getAgentStepStore();
   const currentSteps = await stepStore.loadCurrentEpoch(args.conversationId);
   const existing = projectSteps(currentSteps);
+  const hasEpochMarker = currentSteps.some(
+    (step) => step.entry.type === "context_epoch_started",
+  );
   const matchingPrefix = countMatchingPrefix(existing.messages, args.messages);
   const nextProvenance = resolveCommitProvenance({
     existing,
@@ -357,7 +407,7 @@ export async function commitMessages(args: {
       ? { newMessageProvenance: args.newMessageProvenance }
       : {}),
   });
-  if (currentSteps.length === 0) {
+  if (!hasEpochMarker) {
     await stepStore.startEpoch(args.conversationId, {
       reason: "initial",
       modelProfile: "standard",
@@ -368,6 +418,21 @@ export async function commitMessages(args: {
         provenance: nextProvenance[index]!,
       })),
     });
+  } else if (!existing.modelId) {
+    await stepStore.startEpoch(args.conversationId, {
+      reason: "model_change",
+      modelProfile: existing.modelProfile,
+      modelId: args.modelId,
+      messages: args.messages.map((message, index) => ({
+        message,
+        createdAtMs: messageTimestamp(message),
+        provenance: nextProvenance[index]!,
+      })),
+    });
+  } else if (existing.modelId !== args.modelId) {
+    throw new Error(
+      `Cannot commit model ${args.modelId} into epoch bound to ${existing.modelId}`,
+    );
   } else if (matchingPrefix === existing.messages.length) {
     const newMessages = args.messages.slice(matchingPrefix);
     await stepStore.append(

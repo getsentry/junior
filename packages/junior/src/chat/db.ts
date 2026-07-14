@@ -6,6 +6,8 @@ import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import type { AgentStepStore } from "@/chat/conversations/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import type { ConversationMessageStore } from "@/chat/conversations/messages";
+import { createSqlConversationTurnStore } from "@/chat/conversations/sql/turns";
+import type { ConversationTurnStore } from "@/chat/conversations/turns";
 import { createSqlConversationSearchStore } from "@/chat/conversations/sql/search";
 import type { ConversationSearchStore } from "@/chat/conversations/search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
@@ -19,6 +21,7 @@ let current:
       store: ConversationStore & ConversationExecutionProfileStore;
       stepStore: AgentStepStore;
       messageStore: ConversationMessageStore;
+      turnStore: ConversationTurnStore;
       searchStore: ConversationSearchStore;
     }
   | undefined;
@@ -59,6 +62,7 @@ export function getSqlExecutor(): JuniorSqlExecutor {
       store: createSqlStore(db),
       stepStore: createSqlAgentStepStore(db),
       messageStore: createSqlConversationMessageStore(db),
+      turnStore: createSqlConversationTurnStore(db),
       searchStore: createSqlConversationSearchStore(db),
     };
   }
@@ -92,6 +96,12 @@ export function getAgentStepStore(): AgentStepStore {
 export function getConversationMessageStore(): ConversationMessageStore {
   getSqlExecutor();
   return current!.messageStore;
+}
+
+/** Return the SQL-backed durable conversation turn store. */
+export function getConversationTurnStore(): ConversationTurnStore {
+  getSqlExecutor();
+  return current!.turnStore;
 }
 
 /** Return the SQL-backed public provider-tenant conversation search store. */

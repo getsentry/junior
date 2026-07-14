@@ -39,6 +39,7 @@ import {
   recordToolExecutionStarted,
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
+import { getConversationTurnStore } from "@/chat/db";
 import {
   instructionActors,
   instructionProvenanceFor,
@@ -285,16 +286,53 @@ async function executeAgentRunInPrivacyContext(
   });
 
   try {
+    const {
+      sessionRecordState,
+      resumedFromSessionRecord,
+      currentSliceId,
+      existingSessionRecord,
+    } = await restoreSessionRecord(routing);
+    const durableTurnId = sessionId ?? routing.correlation?.runId;
+    if (sessionConversationId && !durableTurnId) {
+      throw new TypeError("Durable agent run requires a turn or run id");
+    }
+    let startingSeq: number | undefined;
     if (sessionConversationId) {
       const projection = await openConversationProjection({
         conversationId: sessionConversationId,
-        modelId: activeModelId,
-        modelProfile: activeModelProfile,
+        initialModelProfile: activeModelProfile,
+        ...(resumedFromSessionRecord && existingSessionRecord?.modelId
+          ? { pinnedModelId: existingSessionRecord.modelId }
+          : {}),
+        refreshModelBinding: !resumedFromSessionRecord,
+        resolveModelId: (profile) => modelIdForProfile(botConfig, profile),
       });
       activeModelProfile = projection.modelProfile;
-      activeModelId = modelIdForProfile(botConfig, activeModelProfile);
+      if (!projection.modelId) {
+        throw new Error("Conversation projection has no executable model");
+      }
+      activeModelId = projection.modelId;
+      startingSeq = projection.startingSeq;
     }
     startingModelId = activeModelId;
+    if (sessionConversationId && durableTurnId && startingSeq !== undefined) {
+      if (resumedFromSessionRecord) {
+        const turn = await getConversationTurnStore().get(
+          sessionConversationId,
+          durableTurnId,
+        );
+        if (turn) {
+          startingModelId = turn.startingModelId;
+        }
+      } else {
+        const turn = await getConversationTurnStore().recordStart({
+          conversationId: sessionConversationId,
+          turnId: durableTurnId,
+          startingSeq,
+        });
+        startingModelId = turn.startingModelId;
+      }
+    }
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = {
       conversationId: sessionConversationId,
@@ -343,17 +381,6 @@ async function executeAgentRunInPrivacyContext(
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     // ── Turn session record ──────────────────────────────────────────
-    const {
-      sessionRecordState,
-      resumedFromSessionRecord,
-      currentSliceId,
-      existingSessionRecord,
-    } = await restoreSessionRecord(routing);
-    if (existingSessionRecord?.startingModelId) {
-      startingModelId = existingSessionRecord.startingModelId;
-    } else if (existingSessionRecord?.modelId) {
-      startingModelId = existingSessionRecord.modelId;
-    }
     const fixedReasoningConfigured =
       policy.reasoningPolicy?.mode === "fixed" ||
       (!policy.reasoningPolicy && Boolean(botConfig.reasoningLevel));
@@ -394,7 +421,6 @@ async function executeAgentRunInPrivacyContext(
       sessionConversationId,
       sessionId,
       sessionRecordState,
-      startingModelId,
       startedAtMs: replyStartedAtMs,
       surface,
     });

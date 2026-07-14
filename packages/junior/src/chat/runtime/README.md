@@ -37,10 +37,12 @@ this directory owns product orchestration around it.
   reasoning, additional instructions, and tool restrictions.
 - Profile tool policy can narrow host authority but cannot grant tools,
   credentials, destinations, or other capabilities.
-- Turn-session metadata keeps the starting model separate from the latest
-  active model so reporting does not rewrite the start after a handoff.
+- Durable turn rows anchor each user request to its starting execution-log
+  boundary. Reporting derives the starting model from the bound context epoch.
 - Durable context epochs remain authoritative after model handoff; loading the
   execution profile must not roll the conversation back to its initial model.
+- A resumed slice uses its epoch's exact model. Host catalog remapping is
+  applied only at a fresh-turn boundary by opening a `model_change` epoch.
 
 ## Prompt Ownership
 

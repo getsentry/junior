@@ -5,7 +5,6 @@
  * drop stale callbacks before generation, while any started continuation must
  * durably record success, failure, auth pause, or another safe pause boundary.
  */
-import { botConfig } from "@/chat/config";
 import {
   buildTurnFailureResponse,
   logException,
@@ -72,10 +71,7 @@ import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { requireSlackDestination } from "@/chat/destination";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { sleep } from "@/chat/sleep";
-import {
-  modelIdForProfile,
-  STANDARD_MODEL_PROFILE,
-} from "@/chat/model-profile";
+import { STANDARD_MODEL_PROFILE } from "@/chat/model-profile";
 import {
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
@@ -590,7 +586,10 @@ async function recoverStrandedRunningSession(args: {
     conversationId: args.conversationId,
   });
   const modelProfile = recoveryProjection.modelProfile;
-  const modelId = modelIdForProfile(botConfig, modelProfile);
+  const modelId = recoveryProjection.modelId ?? sessionRecord.modelId;
+  if (!modelId) {
+    throw new Error("Recovered context epoch has no model binding");
+  }
   const recoveryMessages =
     modelProfile !== STANDARD_MODEL_PROFILE
       ? [

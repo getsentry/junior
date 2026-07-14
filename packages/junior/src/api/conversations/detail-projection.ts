@@ -175,7 +175,10 @@ function historyContent(args: {
       });
     }
 
-    if (marker?.entry.reason === "rollback") {
+    if (
+      marker?.entry.reason === "rollback" ||
+      marker?.entry.reason === "model_change"
+    ) {
       messages.push(
         ...projected.slice(matchingPrefix(previousProjection, projected)),
       );

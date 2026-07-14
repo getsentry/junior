@@ -36,6 +36,13 @@
       "when": 1783976272513,
       "tag": "0004_big_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783985660251,
+      "tag": "0005_solid_franklin_storm",
+      "breakpoints": true
     }
   ]
 }
