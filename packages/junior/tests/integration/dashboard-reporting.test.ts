@@ -322,7 +322,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports the complete SQL conversation transcript", async () => {
-    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+    const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
     const { readConversationDetailFromSql } =
       await import("@/api/conversations/detail.query");
@@ -413,13 +413,6 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
-    await recordAgentTurnSessionSummary({
-      conversationId: "slack:C1:222",
-      sessionId: "turn-running",
-      sliceId: 1,
-      state: "running",
-    });
-
     const report = await readConversationDetailFromSql("slack:C1:222");
     expect(report).toMatchObject({
       cumulativeDurationMs: 1_200,
@@ -474,6 +467,56 @@ describe("dashboard reporting", () => {
         parts: [{ type: "text", text: "current answer" }],
       },
     ]);
+  });
+
+  it("does not report a prior turn model for a newer sparse run", async () => {
+    const { recordAgentTurnSessionSummary, upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { readConversationDetailFromSql } =
+      await import("@/api/conversations/detail.query");
+    const conversationId = "slack:C1:sparse-current-run";
+    await confirmPublicSlackConversation(conversationId);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: "turn-old",
+      sliceId: 1,
+      state: "completed",
+      modelId: "openai/gpt-5.5",
+      piMessages: [],
+    });
+    await recordAgentTurnSessionSummary({
+      conversationId,
+      sessionId: "turn-new",
+      sliceId: 1,
+      state: "running",
+    });
+
+    await expect(
+      readConversationDetailFromSql(conversationId),
+    ).resolves.not.toHaveProperty("modelId");
+  });
+
+  it("falls back to retained session metadata before turn rows exist", async () => {
+    const { upsertAgentTurnSessionRecord } =
+      await import("@/chat/state/turn-session");
+    const { readConversationDetailFromSql } =
+      await import("@/api/conversations/detail.query");
+    const conversationId = "slack:C1:legacy-turn-model";
+    await confirmPublicSlackConversation(conversationId);
+    await upsertAgentTurnSessionRecord({
+      conversationId,
+      sessionId: "turn-legacy",
+      sliceId: 1,
+      state: "completed",
+      modelId: "openai/gpt-5.5",
+      piMessages: [],
+    });
+
+    await expect(
+      readConversationDetailFromSql(conversationId),
+    ).resolves.toMatchObject({
+      modelId: "openai/gpt-5.5",
+    });
   });
 
   it("reports private execution activity as safe metadata", async () => {

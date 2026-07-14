@@ -1,5 +1,6 @@
 import { logException } from "@/chat/logging";
 import {
+  getAgentTurnSessionRecord,
   listBoundedAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
@@ -8,13 +9,25 @@ import { readConversationRecordFromSql } from "./list.query";
 import type { ConversationDetailReport } from "./schema";
 import { getConversationTurnStore } from "@/chat/db";
 
-async function readLatestRun(
+async function readReportedRun(
   conversationId: string,
+  runId: string | undefined,
 ): Promise<AgentTurnSessionSummary | undefined> {
   try {
-    return (
-      await listBoundedAgentTurnSessionSummariesForConversation(conversationId)
-    ).find((summary) => summary.modelId || summary.reasoningLevel);
+    const summaries =
+      await listBoundedAgentTurnSessionSummariesForConversation(conversationId);
+    if (!runId) {
+      return summaries.find(
+        (summary) => summary.modelId || summary.reasoningLevel,
+      );
+    }
+    const summary = summaries.find(
+      (candidate) => candidate.sessionId === runId,
+    );
+    if (summary?.modelId || summary?.reasoningLevel) {
+      return summary;
+    }
+    return await getAgentTurnSessionRecord(conversationId, runId);
   } catch (error) {
     logException(error, "conversation_execution_settings_read_failed", {
       conversationId,
@@ -49,15 +62,18 @@ export async function readConversationDetailFromSql(
       ...record,
       usage: record.usage ?? undefined,
     }),
-    readLatestRun(conversationId),
+    readReportedRun(conversationId, record.conversation.execution.runId),
   ]);
   const modelId = await readLatestTurnModelId(
     conversationId,
-    latestRun?.sessionId ?? record.conversation.execution.runId,
+    record.conversation.execution.runId ?? latestRun?.sessionId,
   );
+  // TODO(v0.102.0): Remove the session-model fallback after every retained
+  // conversation turn was created after junior_conversation_turns shipped.
+  const reportedModelId = modelId ?? latestRun?.modelId;
   return {
     ...report,
-    ...(modelId ? { modelId } : {}),
+    ...(reportedModelId ? { modelId: reportedModelId } : {}),
     ...(latestRun?.reasoningLevel
       ? { reasoningLevel: latestRun.reasoningLevel }
       : {}),
