@@ -433,14 +433,14 @@ describe("agent dispatch runner", () => {
       conversation: sideEffectConversation,
       conversationId: dispatchConversationId,
     });
-    expect(sideEffectConversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: `dispatch:${created.record.id}:assistant`,
-          text: "[empty response]",
-        }),
-      ]),
+    expect(sideEffectConversation.messages).toContainEqual(
+      expect.objectContaining({ id: `dispatch:${created.record.id}:user` }),
     );
+    expect(
+      sideEffectConversation.messages.find(
+        (message) => message.role === "assistant",
+      ),
+    ).toBeUndefined();
   });
 
   it("preserves task-scoped creator credentials across dispatch slices", async () => {

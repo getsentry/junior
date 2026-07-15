@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationSubagent as readConversationSubagentTranscriptReport } from "@/api/conversations/subagent";
+import { buildTurnFailureResponse } from "@/chat/logging";
 
 vi.mock("@/chat/prompt", () => ({
   buildSystemPrompt: vi.fn(() => "[system prompt]"),
@@ -1182,6 +1183,148 @@ describe("dashboard reporting", () => {
     expect(JSON.stringify({ errorReport, abortedReport })).not.toContain(
       '"provider":"xai"',
     );
+  });
+
+  it("reports one safe lifecycle failure marker for public and private details", async () => {
+    const { getConversationEventStore, getConversationStore } =
+      await import("@/chat/db");
+    const publicConversationId = "slack:C1:lifecycle-failure-public";
+    const privateConversationId = "slack:D1:lifecycle-failure-private";
+    const sensitiveError =
+      "raw-error-sentinel https://provider.invalid/private?token=secret";
+    const eventId = "0123456789abcdef0123456789abcdef";
+
+    await confirmPublicSlackConversation(publicConversationId);
+    await getConversationEventStore().append(publicConversationId, [
+      {
+        data: {
+          type: "visible_message_recorded",
+          messageId: "public-user",
+          role: "user",
+          text: "please retry",
+        },
+        createdAtMs: 1,
+      },
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-public",
+          inputMessageIds: ["public-user"],
+          surface: "slack",
+        },
+        createdAtMs: 2,
+      },
+      {
+        data: {
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            errorMessage: sensitiveError,
+            timestamp: 3,
+          } as unknown as PiMessage,
+        },
+        createdAtMs: 3,
+      },
+      {
+        data: {
+          type: "visible_message_recorded",
+          messageId: "public-fallback",
+          role: "assistant",
+          text: buildTurnFailureResponse(eventId),
+        },
+        createdAtMs: 4,
+      },
+      {
+        data: {
+          type: "turn_failed",
+          turnId: "turn-public",
+          failureCode: "model_execution_failed",
+          eventId,
+        },
+        createdAtMs: 5,
+      },
+    ]);
+
+    await getConversationStore().recordActivity({
+      conversationId: privateConversationId,
+      destination: {
+        platform: "slack",
+        teamId: "T1",
+        channelId: "D1",
+      },
+      source: "slack",
+      visibility: "private",
+    });
+    await getConversationEventStore().append(privateConversationId, [
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-private",
+          inputMessageIds: ["private-user"],
+          surface: "slack",
+        },
+        createdAtMs: 10,
+      },
+      {
+        data: {
+          type: "visible_message_recorded",
+          messageId: "private-fallback",
+          role: "assistant",
+          text: buildTurnFailureResponse(eventId),
+        },
+        createdAtMs: 10_500,
+      },
+      {
+        data: {
+          type: "turn_failed",
+          turnId: "turn-private",
+          failureCode: "delivery_failed",
+          eventId,
+        },
+        createdAtMs: 11_000,
+      },
+    ]);
+
+    const publicReport =
+      await readConversationDetailReport(publicConversationId);
+    const publicOutcomeMarkers = publicReport.transcript.filter(
+      (message) => message.outcome === "error",
+    );
+    expect(publicOutcomeMarkers).toEqual([
+      { role: "assistant", outcome: "error", parts: [], timestamp: 5 },
+    ]);
+    expect(publicReport.transcript).toContainEqual({
+      role: "assistant",
+      parts: [{ type: "text", text: buildTurnFailureResponse(eventId) }],
+      timestamp: 4,
+    });
+
+    const privateReport = await readConversationDetailReport(
+      privateConversationId,
+    );
+    expect(privateReport.transcript).toEqual([]);
+    expect(privateReport.transcriptMetadata).toContainEqual({
+      role: "assistant",
+      parts: [expect.objectContaining({ type: "text", redacted: true })],
+      timestamp: 10_500,
+    });
+    expect(privateReport.transcriptMetadata).toContainEqual({
+      role: "assistant",
+      outcome: "error",
+      parts: [],
+      timestamp: 11_000,
+    });
+    const publicSerialized = JSON.stringify(publicReport);
+    expect(publicSerialized).toContain(eventId);
+    expect(publicSerialized).not.toContain(sensitiveError);
+    expect(publicSerialized).not.toContain("model_execution_failed");
+
+    const privateSerialized = JSON.stringify(privateReport);
+    expect(privateSerialized).not.toContain(eventId);
+    expect(privateSerialized).not.toContain("delivery_failed");
+    expect(privateSerialized).not.toContain(sensitiveError);
   });
 
   it("merges safe terminal outcomes chronologically with visible messages", async () => {

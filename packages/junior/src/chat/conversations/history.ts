@@ -210,6 +210,61 @@ const visibleContextCompactedEventDataSchema = z
   })
   .strict();
 
+/** Product surface that owns a durable conversation turn. */
+export const conversationTurnSurfaceSchema = z.enum([
+  "slack",
+  "api",
+  "scheduler",
+  "internal",
+]);
+
+/** Stable, privacy-safe classification for a failed turn. */
+export const conversationTurnFailureCodeSchema = z.enum([
+  "agent_run_failed",
+  "delivery_failed",
+  "model_execution_failed",
+  "persistence_failed",
+]);
+
+/** Failure classification persisted without raw provider or exception data. */
+export type ConversationTurnFailureCode = z.output<
+  typeof conversationTurnFailureCodeSchema
+>;
+
+const turnStartedEventDataSchema = z
+  .object({
+    type: z.literal("turn_started"),
+    turnId: z.string().min(1),
+    inputMessageIds: z.array(z.string().min(1)).min(1),
+    surface: conversationTurnSurfaceSchema,
+  })
+  .strict()
+  .refine(
+    (data) =>
+      new Set(data.inputMessageIds).size === data.inputMessageIds.length,
+    "turn input message ids must be unique",
+  );
+
+const turnCompletedEventDataSchema = z
+  .object({
+    type: z.literal("turn_completed"),
+    turnId: z.string().min(1),
+    outcome: z.enum(["success", "no_reply"]),
+  })
+  .strict();
+
+const turnFailedEventDataSchema = z
+  .object({
+    type: z.literal("turn_failed"),
+    turnId: z.string().min(1),
+    failureCode: conversationTurnFailureCodeSchema,
+    eventId: z
+      .string()
+      .regex(/^[a-f0-9]{32}$/i)
+      .optional(),
+  })
+  .strict();
+
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
 const subagentStartedEventDataSchema = z
@@ -249,6 +304,9 @@ const appendableConversationEventDataSchema = z.union([
   visibleMessageMetadataUpdatedEventDataSchema,
   visibleMessageRepliedEventDataSchema,
   visibleContextCompactedEventDataSchema,
+  turnStartedEventDataSchema,
+  turnCompletedEventDataSchema,
+  turnFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
 ]);

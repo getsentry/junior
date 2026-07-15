@@ -70,6 +70,23 @@ describe("projectConversationEvents", () => {
       delivery: "private_link_sent",
     }),
     event(6, { type: "message", message: lastMessage }),
+    event(7, {
+      type: "turn_started",
+      turnId: "turn-1",
+      inputMessageIds: ["message-1"],
+      surface: "slack",
+    }),
+    event(8, {
+      type: "turn_failed",
+      turnId: "turn-1",
+      failureCode: "model_execution_failed",
+      eventId: "0123456789abcdef0123456789abcdef",
+    }),
+    event(9, {
+      type: "turn_completed",
+      turnId: "turn-2",
+      outcome: "no_reply",
+    }),
   ];
 
   it("projects messages, authorization observations, provenance, and model binding", () => {

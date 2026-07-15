@@ -213,10 +213,49 @@ function historyContent(args: {
   return { contextEvents, messages };
 }
 
-function terminalOutcomeTranscript(
-  messages: ConversationModelMessage[],
-): TranscriptMessage[] {
-  return messages.flatMap((message) => {
+function completedTurnIntervals(events: ConversationEvent[]): Array<{
+  startSeq: number;
+  terminalSeq: number;
+}> {
+  const starts = new Map<string, number>();
+  const intervals: Array<{ startSeq: number; terminalSeq: number }> = [];
+  for (const event of events) {
+    if (event.data.type === "turn_started") {
+      starts.set(event.data.turnId, event.seq);
+      continue;
+    }
+    if (
+      event.data.type !== "turn_completed" &&
+      event.data.type !== "turn_failed"
+    ) {
+      continue;
+    }
+    const startSeq = starts.get(event.data.turnId);
+    if (startSeq !== undefined && startSeq <= event.seq) {
+      intervals.push({ startSeq, terminalSeq: event.seq });
+    }
+  }
+  return intervals;
+}
+
+function terminalOutcomeTranscript(args: {
+  events: ConversationEvent[];
+  messages: ConversationModelMessage[];
+}): TranscriptMessage[] {
+  const intervals = completedTurnIntervals(args.events);
+  const lifecycleCoveredMessages = new Set(
+    args.events.flatMap((event) =>
+      event.data.type === "message" &&
+      intervals.some(
+        (interval) =>
+          event.seq >= interval.startSeq && event.seq <= interval.terminalSeq,
+      )
+        ? [event.data.message]
+        : [],
+    ),
+  );
+  const legacyOutcomes = args.messages.flatMap((message) => {
+    if (lifecycleCoveredMessages.has(message)) return [];
     const normalized = normalizeTranscriptMessage(message);
     if (
       normalized.role !== "assistant" ||
@@ -235,6 +274,19 @@ function terminalOutcomeTranscript(
       },
     ];
   });
+  const lifecycleFailures = args.events.flatMap((event) =>
+    event.data.type === "turn_failed"
+      ? [
+          {
+            role: "assistant" as const,
+            outcome: "error" as const,
+            parts: [],
+            timestamp: event.createdAtMs,
+          },
+        ]
+      : [],
+  );
+  return [...legacyOutcomes, ...lifecycleFailures];
 }
 
 function mergeTranscriptChronologically(
@@ -272,7 +324,7 @@ async function conversationContent(args: {
   const modelTranscript = history.messages.map(normalizeTranscriptMessage);
   const transcript = mergeTranscriptChronologically([
     ...visibleTranscript,
-    ...terminalOutcomeTranscript(history.messages),
+    ...terminalOutcomeTranscript({ events, messages: history.messages }),
   ]);
   const contextEvents = history.contextEvents.map((event) => ({
     ...event,

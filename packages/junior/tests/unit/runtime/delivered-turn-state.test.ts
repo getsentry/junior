@@ -57,4 +57,27 @@ describe("delivered turn state", () => {
       }),
     ]);
   });
+
+  it("does not invent an assistant message for intentional silence", () => {
+    const state = buildDeliveredTurnStatePatch({
+      artifacts: coerceThreadArtifactsState({}),
+      conversation: coerceThreadConversationState({}),
+      reply: {
+        text: "",
+        deliveryPlan: { mode: "thread", postThreadText: false },
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test/model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      },
+      sessionId: "turn_silent",
+    });
+
+    expect(state.conversation.messages).toEqual([]);
+  });
 });
