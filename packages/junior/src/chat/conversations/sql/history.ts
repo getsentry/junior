@@ -25,13 +25,6 @@ type PersistedConversationEvent = {
   createdAtMs: number;
 };
 
-function messageRole(data: ConversationEventData): string | null {
-  if (data.type === "message") {
-    return data.message.role;
-  }
-  return data.type === "visible_message_recorded" ? data.role : null;
-}
-
 /** Split validated event data into column-lifted and JSON payload fields. */
 function insertFromEvent(
   conversationId: string,
@@ -47,7 +40,6 @@ function insertFromEvent(
     schemaVersion: 1,
     idempotencyKey: event.idempotencyKey ?? null,
     type,
-    role: messageRole(event.data),
     payload: sanitizePostgresJson(payload),
     createdAt: new Date(event.createdAtMs),
   };

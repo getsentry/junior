@@ -400,14 +400,27 @@ describe("conversation event migration", () => {
           deleteFunction: string | null;
           insertFunction: string | null;
           relation: string | null;
+          roleColumn: boolean;
         }>(
           `SELECT
             to_regclass('public.junior_agent_steps')::text AS relation,
             to_regprocedure('public.junior_agent_steps_insert_compat()')::text AS "insertFunction",
-            to_regprocedure('public.junior_agent_steps_delete_compat()')::text AS "deleteFunction"`,
+            to_regprocedure('public.junior_agent_steps_delete_compat()')::text AS "deleteFunction",
+            EXISTS (
+              SELECT 1
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'junior_conversation_events'
+                AND column_name = 'role'
+            ) AS "roleColumn"`,
         ),
       ).resolves.toEqual([
-        { deleteFunction: null, insertFunction: null, relation: null },
+        {
+          deleteFunction: null,
+          insertFunction: null,
+          relation: null,
+          roleColumn: false,
+        },
       ]);
 
       await expect(
@@ -415,7 +428,6 @@ describe("conversation event migration", () => {
           conversationId: string;
           contextEpoch: number;
           createdAtPreserved: boolean;
-          role: string | null;
           schemaVersion: number;
           seq: number;
           type: string;
@@ -426,8 +438,7 @@ SELECT
   context_epoch AS "contextEpoch",
   created_at = '2026-07-14T10:01:00.000Z'::timestamptz AS "createdAtPreserved",
   schema_version AS "schemaVersion",
-  type,
-  role
+  type
 FROM junior_conversation_events
 ORDER BY seq
 `),
@@ -436,7 +447,6 @@ ORDER BY seq
           contextEpoch: 2,
           conversationId: "conversation-one",
           createdAtPreserved: true,
-          role: "assistant",
           schemaVersion: 1,
           seq: 1,
           type: "pi_message",
@@ -445,7 +455,6 @@ ORDER BY seq
           contextEpoch: 3,
           conversationId: "conversation-one",
           createdAtPreserved: true,
-          role: null,
           schemaVersion: 1,
           seq: 2,
           type: "authorization_completed",

@@ -86,7 +86,6 @@ async function seedConversation(
         contextEpoch: 0,
         schemaVersion: 1,
         type: "message",
-        role: "user",
         payload: { message: { role: "user", content: [] } },
         createdAt: at,
       });

@@ -25,7 +25,6 @@ export const juniorConversationEvents = pgTable(
     schemaVersion: integer("schema_version").default(1).notNull(),
     idempotencyKey: text("idempotency_key"),
     type: text("type").notNull(),
-    role: text("role"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamptz("created_at").notNull(),
   },
