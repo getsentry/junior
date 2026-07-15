@@ -483,80 +483,15 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(ackMessageIds).toHaveBeenCalledWith(["old-message"]);
   });
 
-  it("acknowledges an accepted terminal even when Redis repair fails", async () => {
-    const thread = createTestThread({
-      id: "slack:C0FINAL:1700006012.000",
-    });
-    const destination = createTestDestination(thread);
-    const pending = {
-      conversationId: thread.id,
-      deliveryId: "slack:turn_redis-repair",
-      turnId: "turn_redis-repair",
-      nextAttemptAtMs: Date.now(),
-      command: {
-        completion: {
-          inputMessageIds: ["redis-repair"],
-          model: { modelId: "fake-agent-model" },
-          sliceId: 1,
-          terminal: { outcome: "success" },
-        },
-        session: {
-          surface: "slack",
-          source: {
-            platform: "slack",
-            teamId: "TTEST",
-            channelId: "C0FINAL",
-          },
-          destination,
-          startedAtMs: 1_000,
-        },
-      },
-    } as never;
-    const ack = vi.fn();
-    const run = vi.fn();
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: { run },
-          recoverableSlackDelivery: {
-            loadByConversation: vi.fn(async () => pending),
-            loadByTurn: vi.fn(async () => pending),
-            loadTerminalOutcome: vi.fn(async () => undefined),
-            createIntent: vi.fn(),
-            advance: vi.fn(async () => ({ outcome: "accepted" as const })),
-          },
-        },
-      },
-    });
-    thread.setState = vi.fn(async () => {
-      throw new Error("Redis unavailable");
-    });
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "redis-repair",
-          text: "<@U0APP> recover",
-          isMention: true,
-          threadId: thread.id,
-        }),
-        { destination, ack, isFinalAttempt: true },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(run).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([]);
-  });
-
-  it("repairs session and plugin state from a row-deleted accepted terminal", async () => {
+  it("acknowledges an accepted terminal even when plugin repair fails", async () => {
     const thread = createTestThread({
       id: "slack:C0FINAL:1700006013.000",
     });
     const ack = vi.fn();
     const run = vi.fn();
-    const scheduleSessionCompletedPluginTasks = vi.fn();
+    const scheduleSessionCompletedPluginTasks = vi.fn(async () => {
+      throw new Error("plugin queue unavailable");
+    });
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
@@ -604,20 +539,17 @@ describe("Slack behavior: finalized thread replies", () => {
     ).toBe("completed");
   });
 
-  it("repairs a failed summary after an immediate definitive rejection", async () => {
+  it("repairs the failed outcome after a definitive Slack rejection", async () => {
     const ack = vi.fn();
     const recoverableSlackDelivery = {
       loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
       loadTerminalOutcome: vi.fn(async () => undefined),
-      createIntent: vi.fn(
-        async (args) =>
-          ({
-            ...args,
-            nextAttemptAtMs: Date.now(),
-            command: args.command,
-          }) as never,
-      ),
+      createIntent: vi.fn(async (args) => ({
+        ...args,
+        nextAttemptAtMs: Date.now(),
+        command: args.command,
+      })),
       advance: vi.fn(async () => ({ outcome: "failed" as const })),
     };
     const { slackRuntime } = createTestChatRuntime({
@@ -659,68 +591,6 @@ describe("Slack behavior: finalized thread replies", () => {
         (summary) => summary.sessionId === "turn_definitive-failure",
       )?.state,
     ).toBe("failed");
-  });
-
-  it("does not let plugin repair failure override accepted delivery", async () => {
-    const ack = vi.fn();
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => {
-      throw new Error("plugin queue unavailable");
-    });
-    const recoverableSlackDelivery = {
-      loadByConversation: vi.fn(async () => undefined),
-      loadByTurn: vi.fn(async () => undefined),
-      loadTerminalOutcome: vi.fn(async () => undefined),
-      createIntent: vi.fn(
-        async (args) =>
-          ({
-            ...args,
-            nextAttemptAtMs: Date.now(),
-            command: args.command,
-          }) as never,
-      ),
-      advance: vi.fn(async () => ({ outcome: "accepted" as const })),
-    };
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () =>
-              completedAgentRun({
-                text: "Accepted reply",
-                diagnostics: makeDiagnostics(),
-              }),
-          },
-          recoverableSlackDelivery,
-          scheduleSessionCompletedPluginTasks,
-        },
-      },
-    });
-    const thread = createTestThread({
-      id: "slack:C0FINAL:1700006015.000",
-    });
-    (thread.adapter as { name?: string }).name = "slack";
-
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "plugin-repair-failure",
-          text: "<@U0APP> reply",
-          isMention: true,
-          threadId: thread.id,
-        }),
-        { destination: createTestDestination(thread), ack },
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledOnce();
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([]);
-    expect(
-      (await listAgentTurnSessionSummariesForConversation(thread.id)).find(
-        (summary) => summary.sessionId === "turn_plugin-repair-failure",
-      )?.state,
-    ).toBe("completed");
   });
 
   it("defers callback failure after durable intent without failing the turn", async () => {

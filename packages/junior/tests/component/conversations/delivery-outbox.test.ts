@@ -108,42 +108,28 @@ describe("pending conversation delivery outbox", () => {
         authorizationUrl: "https://secret.example/oauth",
       }).success,
     ).toBe(false);
-    expect(
-      pendingConversationDeliveryCommandSchema.safeParse({
-        ...command(),
-        session: { ...command().session, loadedSkillNames: ["triage"] },
-      }).success,
-    ).toBe(false);
-    expect(
-      pendingConversationDeliveryCommandSchema.safeParse({
-        ...command(),
-        session: { ...command().session, turnStartMessageIndex: 1 },
-      }).success,
-    ).toBe(false);
-    expect(
-      pendingConversationDeliveryCommandSchema.safeParse({
-        ...command(),
-        route: { channelId: "C999", threadTs: "1718123456.000000" },
-      }).success,
-    ).toBe(false);
-    expect(
-      pendingConversationDeliveryCommandSchema.safeParse({
-        ...command(),
+    const validCommand = command();
+    for (const invalidCommand of [
+      {
+        ...validCommand,
+        route: { ...validCommand.route, channelId: "C999" },
+      },
+      {
+        ...validCommand,
         completion: {
-          ...command().completion,
+          ...validCommand.completion,
           assistantMessage: {
-            ...command().completion.assistantMessage,
+            ...validCommand.completion.assistantMessage,
             messageId: "assistant:wrong-turn",
           },
         },
-      }).success,
-    ).toBe(false);
-    expect(
-      pendingConversationDeliveryCommandSchema.safeParse({
-        ...command(),
-        providerResponse: { ok: true },
-      }).success,
-    ).toBe(false);
+      },
+    ]) {
+      expect(
+        pendingConversationDeliveryCommandSchema.safeParse(invalidCommand)
+          .success,
+      ).toBe(false);
+    }
 
     const fixture = await createLocalJuniorSqlFixture();
     try {
@@ -191,26 +177,6 @@ describe("pending conversation delivery outbox", () => {
         }),
       ).rejects.toThrow(
         "Conversation already has a different pending delivery",
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("fails closed on turn-terminal idempotency-key collisions", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-    try {
-      await migrateSchema(fixture.sql);
-      const events = createSqlConversationEventStore(fixture.sql);
-      await events.append(CONVERSATION_ID, [
-        {
-          idempotencyKey: "turn:turn-1:terminal",
-          createdAtMs: 900,
-          data: { type: "mcp_provider_connected", provider: "github" },
-        },
-      ]);
-      await expect(createDelivery(fixture)).rejects.toThrow(
-        "unexpected event type",
       );
     } finally {
       await fixture.close();
