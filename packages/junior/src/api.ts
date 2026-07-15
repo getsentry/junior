@@ -80,7 +80,8 @@ export function createJuniorApi(): Hono {
     return Response.json(await readConversationStats());
   });
   app.patch("/api/conversations/:conversationId/archive", async (c) => {
-    const { getConversationStore } = await import("./chat/db");
+    const { setConversationArchived } =
+      await import("./api/conversations/archive");
     const { conversationId } = parseParams(
       conversationParamsSchema,
       c.req.param(),
@@ -89,7 +90,7 @@ export function createJuniorApi(): Hono {
       .object({ archived: z.boolean() })
       .strict()
       .parse(await c.req.json());
-    const updated = await getConversationStore().setArchived({
+    const updated = await setConversationArchived({
       archived: body.archived,
       conversationId,
     });

@@ -141,7 +141,7 @@ VALUES ('host-migration', 9999999999999)
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
       expect(host?.count).toBe(1);
-      expect(core?.count).toBe(4);
+      expect(core?.count).toBe(5);
     } finally {
       await fixture.close();
     }
@@ -179,6 +179,7 @@ VALUES
         );
         await fixture.sql.execute(`
 ALTER TABLE junior_conversations
+  DROP COLUMN archived_at,
   DROP COLUMN duration_ms,
   DROP COLUMN usage_json,
   DROP COLUMN execution_duration_ms,
@@ -194,7 +195,7 @@ ALTER TABLE junior_conversations
         const [journal] = await fixture.sql.query<{ count: number }>(
           "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
         );
-        expect(journal?.count).toBe(4);
+        expect(journal?.count).toBe(5);
       } finally {
         await second.close();
         await fixture.close();
@@ -262,7 +263,7 @@ WHERE conversation_id = $1
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
 
-      expect(migrationRows?.count).toBe(4);
+      expect(migrationRows?.count).toBe(5);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         conversation_id: "slack:C123:1718123456.000000",
@@ -313,6 +314,7 @@ VALUES
       );
       await fixture.sql.execute(`
 ALTER TABLE junior_conversations
+  DROP COLUMN archived_at,
   DROP COLUMN duration_ms,
   DROP COLUMN usage_json,
   DROP COLUMN execution_duration_ms,
@@ -345,7 +347,7 @@ ORDER BY column_name
         "execution_usage_json",
         "usage_json",
       ]);
-      expect(migrationRows?.count).toBe(4);
+      expect(migrationRows?.count).toBe(5);
     } finally {
       await fixture.close();
     }
@@ -377,6 +379,9 @@ VALUES
       await fixture.sql.execute(
         "DROP INDEX junior_conversation_messages_search_idx",
       );
+      await fixture.sql.execute(
+        "ALTER TABLE junior_conversations DROP COLUMN archived_at",
+      );
 
       await migrateSchema(fixture.sql);
 
@@ -399,7 +404,7 @@ WHERE table_schema = 'public'
   )
 ORDER BY column_name
 `);
-      expect(migrationRows?.count).toBe(3);
+      expect(migrationRows?.count).toBe(4);
       expect(searchIndex?.exists).toBe(true);
       expect(metricColumns.map((row) => row.column_name)).toEqual([
         "duration_ms",

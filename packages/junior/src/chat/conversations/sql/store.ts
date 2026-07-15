@@ -472,22 +472,6 @@ export class SqlStore implements ConversationStore {
     return conversationFromRow(row);
   }
 
-  async setArchived(args: {
-    archived: boolean;
-    conversationId: string;
-    nowMs?: number;
-  }): Promise<boolean> {
-    const rows = await this.executor
-      .db()
-      .update(juniorConversations)
-      .set({
-        archivedAt: args.archived ? dateFromMs(args.nowMs ?? now()) : null,
-      })
-      .where(eq(juniorConversations.conversationId, args.conversationId))
-      .returning({ conversationId: juniorConversations.conversationId });
-    return rows.length > 0;
-  }
-
   async recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;

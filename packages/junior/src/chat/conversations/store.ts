@@ -107,9 +107,4 @@ export interface ConversationStore {
     limit?: number;
     offset?: number;
   }): Promise<Conversation[]>;
-  setArchived(args: {
-    archived: boolean;
-    conversationId: string;
-    nowMs?: number;
-  }): Promise<boolean>;
 }
