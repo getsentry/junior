@@ -1,4 +1,4 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -21,9 +21,20 @@ export async function setConversationArchived(args: {
     .set({
       archivedAt: args.archived ? new Date(args.nowMs ?? Date.now()) : null,
     })
-    .where(eq(juniorConversations.conversationId, args.conversationId))
+    .where(
+      and(
+        eq(juniorConversations.conversationId, args.conversationId),
+        args.archived ? undefined : isNotNull(juniorConversations.archivedAt),
+      ),
+    )
     .returning({ conversationId: juniorConversations.conversationId });
-  return rows.length > 0;
+  if (rows.length > 0) return true;
+  const [existing] = await getDb()
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, args.conversationId))
+    .limit(1);
+  return Boolean(existing);
 }
 
 async function archiveIfUnchanged(args: {
@@ -40,17 +51,22 @@ async function archiveIfUnchanged(args: {
         eq(juniorConversations.conversationId, args.conversationId),
         args.archived
           ? lte(juniorConversations.lastActivityAt, new Date(args.lastSeenAt))
-          : undefined,
+          : isNotNull(juniorConversations.archivedAt),
       ),
     )
     .returning({ conversationId: juniorConversations.conversationId });
   if (rows.length > 0) return "updated";
   const [existing] = await db
-    .select({ conversationId: juniorConversations.conversationId })
+    .select({
+      archivedAt: juniorConversations.archivedAt,
+      conversationId: juniorConversations.conversationId,
+    })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, args.conversationId))
     .limit(1);
-  return existing ? "conflict" : "not_found";
+  if (!existing) return "not_found";
+  if (!args.archived && existing.archivedAt === null) return "updated";
+  return "conflict";
 }
 
 /** Serve the archive mutation with optimistic activity concurrency control. */
