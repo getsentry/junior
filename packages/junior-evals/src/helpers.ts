@@ -20,10 +20,6 @@ import {
   type ToolCallRecord,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
-import { getConversationEventStore } from "@/chat/db";
-import type { ConversationEvent } from "@/chat/conversations/history";
-import type { ConversationMessage } from "@/chat/state/conversation";
-import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
 import {
   slackEventThread,
@@ -77,6 +73,8 @@ export function reactionEmojis(session: NormalizedSession): string[] {
     .filter(isReactionAddedMessage)
     .map((message) => message.content.emoji);
 }
+
+const CONVERSATION_IDS_METADATA_KEY = "conversation_ids";
 
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
@@ -1027,64 +1025,4 @@ export function threadStart(opts?: {
     },
     user_id: opts?.user_id ?? `U-${seq}`,
   };
-}
-
-// ── Durable-storage assertion helpers ──────────────────────
-//
-// These read back through the same SQL store ports the runtime writes to, using
-// the database the eval harness booted. They let a case prove conversation
-// content durably landed in the right store without inventing a parallel schema
-// or reaching for raw SQL/Drizzle in eval code.
-
-const CONVERSATION_IDS_METADATA_KEY = "conversation_ids";
-
-function conversationIdsFromSession(session: NormalizedSession): string[] {
-  const raw = session.metadata?.[CONVERSATION_IDS_METADATA_KEY];
-  if (!Array.isArray(raw) || raw.some((id) => typeof id !== "string")) {
-    throw new Error(
-      "Session metadata is missing conversation_ids; run through slackEvals so the harness records the run's conversation ids.",
-    );
-  }
-  return raw as string[];
-}
-
-/**
- * The single conversation id for the run. Throws when a scenario produced zero
- * or multiple conversations so the author passes an explicit id to the readers.
- */
-export function conversationId(session: NormalizedSession): string {
-  const ids = conversationIdsFromSession(session);
-  if (ids.length !== 1) {
-    throw new Error(
-      `Expected exactly one conversation for this run but found ${ids.length} (${ids.join(", ")}). Pass an explicit conversationId to conversationEvents/conversationMessages.`,
-    );
-  }
-  return ids[0]!;
-}
-
-/**
- * The run's durable conversation events, in `seq` order across every epoch,
- * read via `ConversationEventStore.loadHistory`. Defaults to the run's sole
- * conversation; pass a conversation id to inspect a child conversation.
- */
-export async function conversationEvents(
-  session: NormalizedSession,
-  conversationIdOverride?: string,
-): Promise<ConversationEvent[]> {
-  const id = conversationIdOverride ?? conversationId(session);
-  return await getConversationEventStore().loadHistory(id);
-}
-
-/**
- * The run's visible conversation messages projected from canonical events.
- * Defaults to the run's sole conversation.
- */
-export async function conversationMessages(
-  session: NormalizedSession,
-  conversationIdOverride?: string,
-): Promise<ConversationMessage[]> {
-  const id = conversationIdOverride ?? conversationId(session);
-  return projectVisibleConversationMessages(
-    await getConversationEventStore().loadHistory(id),
-  );
 }
