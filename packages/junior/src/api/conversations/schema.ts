@@ -157,7 +157,6 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
 export const conversationReportEventSchema = z
   .object({
     seq: z.number().int().nonnegative(),
-    contextEpoch: z.number().int().nonnegative(),
     createdAt: z.string().datetime(),
     data: conversationReportEventDataSchema,
   })

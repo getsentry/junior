@@ -13,7 +13,6 @@ function event(
 ): ConversationReportEvent {
   return {
     seq,
-    contextEpoch: 0,
     createdAt: `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
     data,
   };

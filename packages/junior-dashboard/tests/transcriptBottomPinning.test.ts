@@ -25,7 +25,6 @@ function activeTurn(
     events: [
       {
         seq: 0,
-        contextEpoch: 0,
         createdAt: "2026-01-01T00:00:01.000Z",
         data: {
           type: "visible_message",
@@ -65,7 +64,6 @@ describe("transcript bottom pinning", () => {
         events: [
           {
             seq: 0,
-            contextEpoch: 0,
             createdAt: "2026-01-01T00:00:01.000Z",
             data: {
               type: "visible_message",
@@ -111,7 +109,6 @@ describe("transcript bottom pinning", () => {
         events: [
           {
             seq: 0,
-            contextEpoch: 0,
             createdAt: "2026-01-01T00:00:01.000Z",
             data: {
               type: "turn_lifecycle",

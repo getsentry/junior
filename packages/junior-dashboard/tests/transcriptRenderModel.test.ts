@@ -17,7 +17,7 @@ function event(
   createdAt: string,
   data: ConversationReportEventData,
 ): ConversationReportEvent {
-  return { seq, contextEpoch: 0, createdAt, data };
+  return { seq, createdAt, data };
 }
 
 function conversation(

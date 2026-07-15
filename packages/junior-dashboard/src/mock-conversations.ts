@@ -51,9 +51,8 @@ function reportEvent(
   seq: number,
   createdAt: string,
   data: ConversationReportEventData,
-  contextEpoch = 0,
 ): ConversationReportEvent {
-  return { seq, contextEpoch, createdAt, data };
+  return { seq, createdAt, data };
 }
 
 type DetailOptions = Omit<
@@ -244,25 +243,15 @@ function longConversation(nowMs: number): ConversationDetailReport {
     reportEvent(13, iso(Date.parse(startedAt), 53_000), {
       type: "context_compacted",
     }),
-    reportEvent(
-      14,
-      iso(Date.parse(startedAt), 90_000),
-      {
-        type: "model_handoff",
-      },
-      1,
-    ),
-    reportEvent(
-      15,
-      iso(Date.parse(startedAt), 166_000),
-      {
-        type: "visible_message",
-        messageId: "release-assistant",
-        role: "assistant",
-        text: "Released the package and opened the update pull request.",
-      },
-      1,
-    ),
+    reportEvent(14, iso(Date.parse(startedAt), 90_000), {
+      type: "model_handoff",
+    }),
+    reportEvent(15, iso(Date.parse(startedAt), 166_000), {
+      type: "visible_message",
+      messageId: "release-assistant",
+      role: "assistant",
+      text: "Released the package and opened the update pull request.",
+    }),
   );
   return detail(nowMs, {
     conversationId: LONG_CONVERSATION_ID,
