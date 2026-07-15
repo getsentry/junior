@@ -2,13 +2,58 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
   conversationDetailReportSchema,
+  type ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
 import { createDashboardApp } from "../src/app";
-import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-conversations";
+import {
+  conversationTimeBounds,
+  DASHBOARD_QA_CONVERSATION_ID,
+} from "../src/mock-conversations";
 
 describe("dashboard canonical-event mock routes", () => {
   afterEach(() => vi.useRealTimers());
+
+  it("derives public location bounds independently of summary order", () => {
+    const summary = (
+      conversationId: string,
+      startedAt: string,
+      lastSeenAt: string,
+    ): ConversationSummaryReport => ({
+      channel: "CQA123",
+      channelName: "proj-checkout",
+      conversationId,
+      cumulativeDurationMs: 1_000,
+      displayTitle: conversationId,
+      lastProgressAt: lastSeenAt,
+      lastSeenAt,
+      startedAt,
+      status: "completed",
+      surface: "slack",
+    });
+    const summaries = [
+      summary("middle", "2026-01-02T00:00:00.000Z", "2026-01-10T00:00:00.000Z"),
+      summary(
+        "earliest",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-05T00:00:00.000Z",
+      ),
+      summary("latest", "2026-01-03T00:00:00.000Z", "2026-01-20T00:00:00.000Z"),
+    ];
+
+    const ordered = conversationTimeBounds([
+      summaries[0]!,
+      ...summaries.slice(1),
+    ]);
+    const reversedSummaries = [...summaries].reverse();
+    const reversed = conversationTimeBounds([
+      reversedSummaries[0]!,
+      ...reversedSummaries.slice(1),
+    ]);
+    expect(reversed).toEqual(ordered);
+    expect(ordered.firstSeenAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(ordered.lastSeenAt).toBe("2026-01-20T00:00:00.000Z");
+  });
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
     vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });

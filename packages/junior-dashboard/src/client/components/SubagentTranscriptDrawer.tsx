@@ -125,8 +125,13 @@ function DrawerEmptyState(props: {
   children: string;
   tone?: "default" | "error";
 }) {
+  const isError = props.tone === "error";
   return (
-    <div className={transcriptEmptyClass()} data-tone={props.tone ?? "default"}>
+    <div
+      className={transcriptEmptyClass(isError ? "error" : "default")}
+      data-tone={props.tone ?? "default"}
+      role={isError ? "alert" : undefined}
+    >
       {props.children}
     </div>
   );
