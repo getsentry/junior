@@ -30,16 +30,18 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { and, eq, inArray } from "drizzle-orm";
 import { juniorConversationMessages } from "@/db/schema";
-import {
-  RECOVERABLE_SLACK_MAX_BACKOFF_MS,
-  type RecoverableSlackPostResult,
-  type RecoverableSlackReconciliationResult,
-  type SlackDeliveryMetadata,
+import type {
+  RecoverableSlackPostResult,
+  RecoverableSlackReconciliationResult,
+  SlackDeliveryMetadata,
 } from "@/chat/slack/outbound";
 import { logError } from "@/chat/logging";
 
 const LEASE_DURATION_MS = 120_000;
 const RETRY_DELAY_MS = 5_000;
+// Recheck operator-recoverable permissions on the same one-hour cadence as
+// capped Slack provider retries without coupling this service to Slack code.
+const PERMANENT_RECONCILIATION_RETRY_DELAY_MS = 60 * 60 * 1_000;
 const REPOST_GRACE_MS = 30_000;
 const RECONCILIATION_CLOCK_SKEW_MS = 60_000;
 
@@ -304,7 +306,7 @@ export class RecoverableSlackDeliveryService {
           const retryDelayMs =
             reconciliation.outcome === "unresolved" &&
             reconciliation.reason === "permanent_provider_error"
-              ? RECOVERABLE_SLACK_MAX_BACKOFF_MS
+              ? PERMANENT_RECONCILIATION_RETRY_DELAY_MS
               : RETRY_DELAY_MS;
           const retryAtMs = reconciliationNow + retryDelayMs;
           if (
