@@ -3,7 +3,7 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
 
 const PROJECT_CWD_REGISTRY = `${SANDBOX_WORKSPACE_ROOT}/.junior/project-cwds`;
-const INSTRUCTION_FILES = ["AGENTS.override.md", "AGENTS.md"] as const;
+const INSTRUCTION_FILE = "AGENTS.md";
 
 export interface ProjectInstruction {
   path: string;
@@ -63,15 +63,12 @@ export async function resolveProjectInstructions(
 
   const instructions: ProjectInstruction[] = [];
   for (const scopedDirectory of directories) {
-    for (const filename of INSTRUCTION_FILES) {
-      const instructionPath = path.posix.join(scopedDirectory, filename);
-      try {
-        const content = await fs.readFile(instructionPath, { encoding: "utf8" });
-        instructions.push({ path: instructionPath, content });
-        break;
-      } catch {
-        // Missing instruction files are expected.
-      }
+    const instructionPath = path.posix.join(scopedDirectory, INSTRUCTION_FILE);
+    try {
+      const content = await fs.readFile(instructionPath, { encoding: "utf8" });
+      instructions.push({ path: instructionPath, content });
+    } catch {
+      // Missing instruction files are expected.
     }
   }
   return instructions;

@@ -6,5 +6,6 @@ description: Use for eval coding fixture tasks involving the small TypeScript pr
 # Coding Workspace Fixture
 
 The fixture project lives at `skills/coding-workspace-fixture/project`.
-Inspect relevant files before changing them, make only the requested change,
-and answer with the file paths and result.
+Initialize it as a Git repository before working in it. Inspect relevant files
+before changing them, make only the requested change, and answer with the file
+paths and result.

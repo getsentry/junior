@@ -35,6 +35,39 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     });
   });
 
+  it("when working from a project cwd, follow its AGENTS.md instructions", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: codingFixtureOverrides,
+      initialEvents: [
+        mention(
+          "In the eval coding fixture project, check src/config.ts and tell me the default retry count. Keep the reply to one sentence.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The reply says the default retry count is 2 and calls it the cobalt retry budget, following the project's AGENTS.md instruction.",
+        ],
+        fail: [
+          "Do not omit the project-specific phrase cobalt retry budget.",
+          "Do not report sandbox setup failure text.",
+        ],
+      }),
+    });
+
+    expect(
+      toolCalls(result.session).some(
+        (call) =>
+          call.name === "bash" &&
+          JSON.stringify(call.arguments).includes(
+            "skills/coding-workspace-fixture/project",
+          ) &&
+          JSON.stringify(call.result).includes("cobalt retry budget"),
+      ),
+    ).toBe(true);
+  });
+
   it("when comparing fixture behavior, cite the relevant files and leave them unchanged", async ({
     run,
   }) => {

@@ -35,12 +35,11 @@ function memoryFs(initial: Record<string, string | "directory">): SandboxFileSys
 }
 
 describe("project instructions", () => {
-  it("loads root-to-cwd instructions and prefers an override in each directory", async () => {
+  it("loads AGENTS.md instructions from the project root through the cwd", async () => {
     const fs = memoryFs({
       "/vercel/sandbox/repo/.git": "directory",
       "/vercel/sandbox/repo/AGENTS.md": "root",
-      "/vercel/sandbox/repo/packages/AGENTS.md": "package fallback",
-      "/vercel/sandbox/repo/packages/AGENTS.override.md": "package override",
+      "/vercel/sandbox/repo/packages/AGENTS.md": "package",
       "/vercel/sandbox/repo/packages/api/AGENTS.md": "api",
     });
 
@@ -49,8 +48,8 @@ describe("project instructions", () => {
     ).resolves.toEqual([
       { path: "/vercel/sandbox/repo/AGENTS.md", content: "root" },
       {
-        path: "/vercel/sandbox/repo/packages/AGENTS.override.md",
-        content: "package override",
+        path: "/vercel/sandbox/repo/packages/AGENTS.md",
+        content: "package",
       },
       {
         path: "/vercel/sandbox/repo/packages/api/AGENTS.md",
