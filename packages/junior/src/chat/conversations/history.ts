@@ -45,7 +45,6 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("initial"),
       modelProfile: z.literal("standard"),
       modelId: z.string().min(1),
-      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -80,7 +79,6 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("rollback"),
       modelProfile: z.undefined().optional(),
       modelId: z.undefined().optional(),
-      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -89,7 +87,6 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("rollback"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
-      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -110,7 +107,6 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       modelProfile: z.literal("standard"),
       modelId: z.string().min(1),
       messages: z.array(contextEpochMessageSchema),
-      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -135,7 +131,6 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       messages: z.array(contextEpochMessageSchema),
-      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -305,8 +300,6 @@ const subagentStartedEventDataSchema = z
     parentToolCallId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
     childConversationId: z.string().min(1),
-    parentTurnId: z.string().min(1).optional(),
-    historyMode: z.union([z.literal("isolated"), z.literal("shared")]),
   })
   .strict();
 
@@ -314,7 +307,6 @@ const subagentEndedEventDataSchema = z
   .object({
     type: z.literal("subagent_ended"),
     subagentInvocationId: z.string().min(1),
-    parentTurnId: z.string().min(1).optional(),
     outcome: z.union([
       z.literal("success"),
       z.literal("error"),

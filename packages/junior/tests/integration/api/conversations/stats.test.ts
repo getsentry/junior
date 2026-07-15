@@ -2,8 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { SubagentLineageService } from "@/chat/services/subagent-lineage";
 import { juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
@@ -122,28 +120,14 @@ describe("conversation stats API", () => {
         visibility: "public",
         nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
-      await createSqlConversationEventStore(fixture.sql).append(
-        "slack:C1:recent",
-        [
-          {
-            data: {
-              type: "turn_started",
-              turnId: "turn-recent",
-              inputMessageIds: ["recent-input"],
-              surface: "slack",
-            },
-            createdAtMs: Date.parse("2026-06-15T11:50:00.000Z"),
-          },
-        ],
-      );
-      await new SubagentLineageService(fixture.sql).start({
-        childConversationId: "advisor:child",
-        historyMode: "isolated",
+      const childAt = new Date("2026-06-15T11:55:00.000Z");
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "advisor:child",
         parentConversationId: "slack:C1:recent",
-        parentTurnId: "turn-recent",
-        subagentInvocationId: "advisor-child",
-        subagentKind: "advisor",
-        nowMs: Date.parse("2026-06-15T11:55:00.000Z"),
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
       });
 
       const report = await readConversationStatsFromSql();

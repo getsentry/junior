@@ -266,9 +266,6 @@ export function convertLegacySessionLog(args: {
               ? { parentToolCallId: entry.parentToolCallId }
               : {}),
             childConversationId,
-            // The legacy transcript records no exact parent event fork. Keep
-            // it isolated rather than guessing a shared-context boundary.
-            historyMode: "isolated",
           },
           entry.createdAtMs,
         );
@@ -543,10 +540,6 @@ async function insertLegacyAdvisorChildRow(
     createdAt,
     lastActivityAt,
   );
-  const rootConversationId = await resolveLegacyRootConversationId(
-    executor,
-    parentConversationId,
-  );
   await executor
     .db()
     .insert(juniorConversations)
@@ -554,7 +547,6 @@ async function insertLegacyAdvisorChildRow(
       conversationId: childConversationId,
       schemaVersion: 1,
       parentConversationId,
-      rootConversationId,
       createdAt,
       lastActivityAt,
       updatedAt: lastActivityAt,
@@ -572,72 +564,13 @@ async function insertLegacyAdvisorChildRow(
     .db()
     .select({
       parentConversationId: juniorConversations.parentConversationId,
-      rootConversationId: juniorConversations.rootConversationId,
-      parentTurnId: juniorConversations.parentTurnId,
-      parentEventSeq: juniorConversations.parentEventSeq,
-      contextForkSeq: juniorConversations.contextForkSeq,
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, childConversationId));
   const child = rows[0];
-  if (
-    !child ||
-    child.parentConversationId !== parentConversationId ||
-    child.rootConversationId !== rootConversationId ||
-    child.parentTurnId !== null ||
-    child.parentEventSeq !== null ||
-    child.contextForkSeq !== null
-  ) {
+  if (!child || child.parentConversationId !== parentConversationId) {
     throw new Error(
       "Legacy advisor child conflicts with existing conversation lineage",
     );
   }
-}
-
-async function resolveLegacyRootConversationId(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<string> {
-  let currentId = conversationId;
-  const seen = new Set<string>();
-  let declaredRootConversationId: string | undefined;
-  while (!seen.has(currentId)) {
-    seen.add(currentId);
-    const rows = await executor
-      .db()
-      .select({
-        conversationId: juniorConversations.conversationId,
-        parentConversationId: juniorConversations.parentConversationId,
-        rootConversationId: juniorConversations.rootConversationId,
-      })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, currentId));
-    const row = rows[0];
-    if (!row) {
-      throw new Error(`Legacy advisor parent is missing: ${currentId}`);
-    }
-    if (
-      row.rootConversationId &&
-      declaredRootConversationId &&
-      row.rootConversationId !== declaredRootConversationId
-    ) {
-      throw new Error("Legacy advisor parent declares conflicting roots");
-    }
-    if (row.rootConversationId) {
-      declaredRootConversationId = row.rootConversationId;
-    }
-    if (!row.parentConversationId) {
-      if (
-        declaredRootConversationId &&
-        declaredRootConversationId !== row.conversationId
-      ) {
-        throw new Error(
-          "Legacy advisor parent does not resolve to its declared root",
-        );
-      }
-      return row.conversationId;
-    }
-    currentId = row.parentConversationId;
-  }
-  throw new Error("Legacy advisor parent lineage contains a cycle");
 }

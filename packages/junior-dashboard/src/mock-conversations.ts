@@ -157,26 +157,22 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_PLAN_ID,
         subagentKind: "advisor",
-        historyMode: "shared",
       }),
       reportEvent(3, iso(Date.parse(startedAt), 20_000), {
         type: "subagent_ended",
         childConversationId: DASHBOARD_QA_PLAN_ID,
         subagentKind: "advisor",
-        historyMode: "shared",
         outcome: "success",
       }),
       reportEvent(4, iso(Date.parse(startedAt), 25_000), {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_REVIEW_ID,
         subagentKind: "advisor",
-        historyMode: "shared",
       }),
       reportEvent(5, iso(Date.parse(startedAt), 44_000), {
         type: "subagent_ended",
         childConversationId: DASHBOARD_QA_REVIEW_ID,
         subagentKind: "advisor",
-        historyMode: "shared",
         outcome: "success",
       }),
       reportEvent(6, iso(Date.parse(startedAt), 50_000), {

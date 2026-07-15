@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
-  check,
   index,
   integer,
   jsonb,
@@ -66,12 +65,6 @@ export const juniorConversations = pgTable(
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
     archivedAt: timestamptz("archived_at"),
-    rootConversationId: text("root_conversation_id").references(
-      (): AnyPgColumn => juniorConversations.conversationId,
-    ),
-    parentTurnId: text("parent_turn_id"),
-    parentEventSeq: integer("parent_event_seq"),
-    contextForkSeq: integer("context_fork_seq"),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(
@@ -99,34 +92,5 @@ export const juniorConversations = pgTable(
       table.lastActivityAt.desc(),
     ),
     index("junior_conversations_parent_idx").on(table.parentConversationId),
-    index("junior_conversations_parent_event_idx").on(
-      table.parentConversationId,
-      table.parentEventSeq,
-    ),
-    index("junior_conversations_root_idx").on(table.rootConversationId),
-    check(
-      "junior_conversations_not_own_parent_check",
-      sql`${table.parentConversationId} is null or ${table.parentConversationId} <> ${table.conversationId}`,
-    ),
-    check(
-      "junior_conversations_not_own_root_check",
-      sql`${table.rootConversationId} is null or ${table.rootConversationId} <> ${table.conversationId}`,
-    ),
-    check(
-      "junior_conversations_context_fork_check",
-      sql`${table.contextForkSeq} is null or (${table.parentEventSeq} is not null and ${table.contextForkSeq} <= ${table.parentEventSeq})`,
-    ),
-    check(
-      "junior_conversations_top_level_lineage_check",
-      sql`${table.parentConversationId} is not null or (${table.rootConversationId} is null and ${table.parentTurnId} is null and ${table.parentEventSeq} is null and ${table.contextForkSeq} is null)`,
-    ),
-    check(
-      "junior_conversations_parent_correlation_check",
-      sql`(${table.parentTurnId} is null) = (${table.parentEventSeq} is null)`,
-    ),
-    check(
-      "junior_conversations_correlated_root_check",
-      sql`${table.parentTurnId} is null or ${table.rootConversationId} is not null`,
-    ),
   ],
 );

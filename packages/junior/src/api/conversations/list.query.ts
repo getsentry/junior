@@ -99,16 +99,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
       ? {
           lineage: {
             parentConversationId: value.parentConversationId,
-            ...(value.rootConversationId
-              ? { rootConversationId: value.rootConversationId }
-              : {}),
-            ...(value.parentTurnId ? { parentTurnId: value.parentTurnId } : {}),
-            ...(value.parentEventSeq !== null
-              ? { parentEventSeq: value.parentEventSeq }
-              : {}),
-            ...(value.contextForkSeq !== null
-              ? { contextForkSeq: value.contextForkSeq }
-              : {}),
           },
         }
       : {}),

@@ -199,7 +199,6 @@ describe("operator legacy conversation history conversion", () => {
       subagentKind: "advisor",
       parentToolCallId: "call-1",
       childConversationId: `advisor:${CONVERSATION_ID}`,
-      historyMode: "isolated",
     });
     expect(events[0]!.createdAtMs).toBe(50);
     expect(events[1]!.data).toEqual({

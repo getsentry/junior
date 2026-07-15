@@ -31,8 +31,6 @@ interface ConversationTreeRow {
   parentConversationId: string | null;
 }
 
-const MAX_TREE_LOCK_PASSES = 32;
-
 /** Discover a root and its current descendants via `parent_conversation_id`. */
 async function discoverConversationTree(
   executor: JuniorSqlDatabase,
@@ -64,72 +62,6 @@ async function discoverConversationTree(
     depth += 1;
   }
   return [...all.values()];
-}
-
-/**
- * Lock a complete tree root-first and repeat discovery until every row in the
- * final scan is locked. Locking known parents blocks normal FK-backed child
- * creation; the repeat catches children attached to a not-yet-locked parent
- * during an earlier scan.
- */
-async function lockStableConversationTree(
-  executor: JuniorSqlDatabase,
-  root: Omit<ConversationTreeRow, "depth">,
-): Promise<ConversationTreeRow[] | undefined> {
-  const locked = new Map<string, ConversationTreeRow>([
-    [root.conversationId, { ...root, depth: 0 }],
-  ]);
-
-  for (let pass = 0; pass < MAX_TREE_LOCK_PASSES; pass += 1) {
-    const discovered = await discoverConversationTree(executor, root);
-    for (const candidate of discovered) {
-      const existing = locked.get(candidate.conversationId);
-      if (existing) {
-        if (existing.parentConversationId !== candidate.parentConversationId) {
-          return undefined;
-        }
-        continue;
-      }
-      await withConversationEventLock(
-        executor,
-        candidate.conversationId,
-        async () => undefined,
-      );
-      const rows = await executor
-        .db()
-        .select({
-          conversationId: juniorConversations.conversationId,
-          lastActivityAt: juniorConversations.lastActivityAt,
-          parentConversationId: juniorConversations.parentConversationId,
-        })
-        .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, candidate.conversationId))
-        .for("update");
-      const row = rows[0];
-      if (!row || row.parentConversationId !== candidate.parentConversationId) {
-        return undefined;
-      }
-      locked.set(row.conversationId, { ...row, depth: candidate.depth });
-    }
-
-    const finalScan = await discoverConversationTree(executor, root);
-    if (
-      finalScan.length === locked.size &&
-      finalScan.every(
-        (row) =>
-          locked.get(row.conversationId)?.parentConversationId ===
-          row.parentConversationId,
-      )
-    ) {
-      return [...locked.values()].sort(
-        (left, right) =>
-          left.depth - right.depth ||
-          left.conversationId.localeCompare(right.conversationId),
-      );
-    }
-  }
-
-  return undefined;
 }
 
 /**
@@ -296,12 +228,25 @@ export async function purgeConversationTree(
           .for("share")
       : [];
     const isPublic = destinations[0]?.visibility === "public";
-    const tree = await lockStableConversationTree(executor, {
+    const tree = await discoverConversationTree(executor, {
       conversationId: root.conversationId,
       lastActivityAt: root.lastActivityAt,
       parentConversationId: root.parentConversationId,
     });
-    if (!tree) {
+    const initiallyDiscovered = new Map(
+      initialTree.map((conversation) => [
+        conversation.conversationId,
+        conversation.parentConversationId,
+      ]),
+    );
+    if (
+      tree.length !== initiallyDiscovered.size ||
+      tree.some(
+        (conversation) =>
+          initiallyDiscovered.get(conversation.conversationId) !==
+          conversation.parentConversationId,
+      )
+    ) {
       return { purged: false, conversations: 0 };
     }
     if (args.retention) {

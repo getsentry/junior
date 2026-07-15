@@ -12,12 +12,27 @@ import type {
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import {
-  hasRuntimeTurnContextMessages,
-  retainRuntimeTurnContextMessages,
-  stripRuntimeTurnContextMessages,
-} from "@/chat/conversations/model-messages";
 import type { PiMessage } from "@/chat/pi/messages";
+import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
+
+const RUNTIME_TURN_CONTEXT_START = `<${TURN_CONTEXT_TAG}>`;
+
+function userMessageContent(message: PiMessage): unknown[] | undefined {
+  const record = message as { role?: unknown; content?: unknown };
+  return record.role === "user" && Array.isArray(record.content)
+    ? record.content
+    : undefined;
+}
+
+function isRuntimeTurnContextPart(part: unknown): boolean {
+  return (
+    part !== null &&
+    typeof part === "object" &&
+    (part as { type?: unknown }).type === "text" &&
+    typeof (part as { text?: unknown }).text === "string" &&
+    (part as { text: string }).text.startsWith(RUNTIME_TURN_CONTEXT_START)
+  );
+}
 
 // Prior-thread context blocks the runtime embeds inside the same user-turn text
 // that carries the <current-instruction> block (see buildUserTurnText and
@@ -127,12 +142,20 @@ export function trimTrailingAssistantMessages(
 
 /** Return whether Pi history already carries session bootstrap context. */
 export function hasRuntimeTurnContext(messages: PiMessage[]): boolean {
-  return hasRuntimeTurnContextMessages(messages);
+  return messages.some((message) =>
+    userMessageContent(message)?.some(isRuntimeTurnContextPart),
+  );
 }
 
 /** Keep only volatile bootstrap messages needed by an in-turn context replacement. */
 export function retainRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
-  return retainRuntimeTurnContextMessages(messages);
+  return messages.flatMap((message) => {
+    const runtimeContent =
+      userMessageContent(message)?.filter(isRuntimeTurnContextPart) ?? [];
+    return runtimeContent.length > 0
+      ? [{ ...message, content: runtimeContent } as PiMessage]
+      : [];
+  });
 }
 
 /**
@@ -158,5 +181,15 @@ export function instructionTextForProjection(text: string): string {
 
 /** Remove volatile runtime context before reusing messages as history. */
 export function stripRuntimeTurnContext(messages: PiMessage[]): PiMessage[] {
-  return stripRuntimeTurnContextMessages(messages);
+  return messages.flatMap((message) => {
+    const content = userMessageContent(message);
+    if (!content) return [message];
+
+    const nextContent = content.filter(
+      (part) => !isRuntimeTurnContextPart(part),
+    );
+    if (nextContent.length === content.length) return [message];
+    if (nextContent.length === 0) return [];
+    return [{ ...message, content: nextContent } as PiMessage];
+  });
 }

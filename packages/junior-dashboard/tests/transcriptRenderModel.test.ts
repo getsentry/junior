@@ -117,13 +117,11 @@ describe("canonical event transcript reduction", () => {
           type: "subagent_started",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          historyMode: "shared",
         }),
         event(3, "2026-01-01T00:00:03.000Z", {
           type: "subagent_ended",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          historyMode: "shared",
           outcome: "success",
         }),
         event(4, "2026-01-01T00:00:04.000Z", {
@@ -198,7 +196,6 @@ describe("canonical event transcript reduction", () => {
             type: "subagent_started",
             childConversationId: "child-1",
             subagentKind: "advisor",
-            historyMode: "isolated",
           }),
           event(2, "2026-01-01T00:00:02.000Z", {
             type: "context_compacted",

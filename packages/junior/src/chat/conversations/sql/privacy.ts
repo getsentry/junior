@@ -8,7 +8,6 @@ const MAX_LINEAGE_DEPTH = 32;
 interface LineageRow {
   destinationId: string | null;
   parentId: string | null;
-  rootId: string | null;
 }
 
 interface LineageCandidate {
@@ -25,7 +24,6 @@ async function readLineageRow(
     .db()
     .select({
       parentId: juniorConversations.parentConversationId,
-      rootId: juniorConversations.rootConversationId,
       destinationId: juniorConversations.destinationId,
     })
     .from(juniorConversations)
@@ -39,7 +37,6 @@ async function traceLineage(
   conversationId: string,
 ): Promise<LineageCandidate | undefined> {
   let currentId = conversationId;
-  let declaredRootId: string | null | undefined;
   const path: string[] = [];
   const seen = new Set<string>();
 
@@ -49,18 +46,12 @@ async function traceLineage(
     const row = await readLineageRow(executor, currentId, false);
     if (!row) return undefined;
 
-    if (declaredRootId === undefined) declaredRootId = row.rootId;
     if (row.parentId) {
-      if (!declaredRootId || row.rootId !== declaredRootId) return undefined;
       currentId = row.parentId;
       continue;
     }
 
-    if (
-      row.rootId !== null ||
-      (declaredRootId !== null && declaredRootId !== currentId) ||
-      !row.destinationId
-    ) {
+    if (!row.destinationId) {
       return undefined;
     }
     return { path, rootConversationId: currentId };
@@ -73,22 +64,12 @@ function lockedLineageIsConsistent(
   candidate: LineageCandidate,
   rows: Map<string, LineageRow>,
 ): boolean {
-  const declaredRootId = rows.get(candidate.path[0]!)?.rootId;
   for (const [index, conversationId] of candidate.path.entries()) {
     const row = rows.get(conversationId);
     if (!row) return false;
     const expectedParentId = candidate.path[index + 1] ?? null;
     if (row.parentId !== expectedParentId) return false;
-    if (expectedParentId) {
-      if (!declaredRootId || row.rootId !== declaredRootId) return false;
-      continue;
-    }
-    if (
-      row.rootId !== null ||
-      (declaredRootId !== null &&
-        declaredRootId !== candidate.rootConversationId) ||
-      !row.destinationId
-    ) {
+    if (!expectedParentId && !row.destinationId) {
       return false;
     }
   }
@@ -101,8 +82,7 @@ function lockedLineageIsConsistent(
  * The lineage is discovered without locks, then locked and revalidated from
  * root to requested conversation. Root-first ordering matches tree purges;
  * callers that keep the transaction open receive a stable privacy decision.
- * Missing, cyclic, over-depth, historically uncorrelated, or internally
- * inconsistent lineage fails closed.
+ * Missing, cyclic, over-depth, or concurrently changed lineage fails closed.
  */
 export async function resolveRootVisibility(
   executor: JuniorSqlDatabase,

@@ -9,7 +9,6 @@ import { createSqlConversationSearchStore } from "@/chat/conversations/sql/searc
 import type { ConversationSearchStore } from "@/chat/conversations/search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
-import { SubagentLineageService } from "@/chat/services/subagent-lineage";
 
 let current:
   | {
@@ -20,7 +19,6 @@ let current:
       eventStore: ConversationEventStore;
       messageStore: ConversationMessageStore;
       searchStore: ConversationSearchStore;
-      subagentLineage: SubagentLineageService;
     }
   | undefined;
 
@@ -61,7 +59,6 @@ export function getSqlExecutor(): JuniorSqlExecutor {
       eventStore: createSqlConversationEventStore(db),
       messageStore: createSqlConversationMessageStore(db),
       searchStore: createSqlConversationSearchStore(db),
-      subagentLineage: new SubagentLineageService(db),
     };
   }
   return current.db;
@@ -94,12 +91,6 @@ export function getConversationMessageStore(): ConversationMessageStore {
 export function getConversationSearchStore(): ConversationSearchStore {
   getSqlExecutor();
   return current!.searchStore;
-}
-
-/** Return the SQL-backed immutable child-conversation lineage service. */
-export function getSubagentLineageService(): SubagentLineageService {
-  getSqlExecutor();
-  return current!.subagentLineage;
 }
 
 /** Close the process SQL database when it has been opened. */

@@ -6,7 +6,7 @@ conversation events, compaction boundaries, search, and retention.
 ## Records
 
 - Conversation rows own canonical source, destination, participant, visibility,
-  lineage, and retention metadata. Their execution cursor, status, duration,
+  retention metadata, and an optional parent conversation link. Their execution cursor, status, duration,
   and usage columns are materialized reporting/control aggregates, not
   transcript or event-history authority.
 - Visible-message events are the destination-facing user and assistant history.
@@ -21,14 +21,9 @@ conversation events, compaction boundaries, search, and retention.
   events rather than stored in either aggregate.
 - Context epochs identify replacement boundaries created by compaction or model
   handoff.
-- Child rows carry immutable parent/root, parent-turn, and exact parent-event
-  correlation. Shared children additionally retain that parent sequence as
-  their context fork; isolated children retain no fork.
-- The Pi adapter recursively composes a shared child's pinned ancestor prefix
-  with only the child's current local epoch. Initial and inheriting rollback
-  markers preserve that relationship; compaction, handoff, and isolated epochs
-  are self-contained. Child sequence cursors count only child-local events, and
-  commits reject any mutation of the inherited prefix.
+- Historical advisor imports may create an isolated child conversation linked
+  to its parent. Each conversation still owns a complete local event stream;
+  parent history is never composed into a child's Pi projection.
 - Provider payloads and old state-store mirrors are inputs only to the explicit
   operator migration under `cli/upgrade`; they are not runtime dependencies or
   canonical product records.
@@ -73,16 +68,11 @@ remain internal.
   transcript cache or lazy legacy import.
 - Compaction replaces prior model context without rewriting visible history.
 - Imports and migrations are idempotent and preserve stable conversation IDs.
-- Establish child lineage and its parent `subagent_started` reference through
-  the SQL-backed lineage service in one transaction. Retries must match the
-  original parent, root, turn, event, and history mode exactly.
-- Never copy inherited Pi messages into the child log. Resolve every restore
-  path through the lineage-aware Pi projection and bound each ancestor at its
-  immutable fork before reading the next descendant.
-- Shared projection has an explicit maximum lineage depth. Parent event reads
-  currently load the parent's full retained history before selecting the fork;
-  a bounded store read remains a future optimization rather than a second
-  projection contract.
+- Historical advisor import writes the child parent link and the parent's
+  `subagent_started` and `subagent_ended` references. There is currently no live
+  runtime producer for child conversations.
+- Project Pi state from only the conversation's local current epoch. Do not
+  duplicate parent messages into child streams or recursively compose history.
 
 ## Visibility And Retention
 
@@ -113,8 +103,6 @@ Follow `../../../../../policies/data-redaction.md` and
   stopped. Its fail-closed zero-gap verification is the cutover gate; start new
   workers only after it passes.
 - Purge and migration jobs operate in bounded batches and are safe to retry.
-- The lineage backfill fills historical roots only. Missing historical turn,
-  event, and fork correlation remains null and therefore isolated.
 
 Representative coverage lives in
 `packages/junior/tests/integration/conversation-sql.test.ts` and the
@@ -136,8 +124,8 @@ visible/session/terminal writes can still leave a started turn without a
 terminal event. The next delivery slice must add durable intent/receipt
 reconciliation for Slack before claiming crash-safe terminality.
 
-Subagent executions own separate child event streams. The parent records only
-idempotent start/end references, and child events are never copied into the
-parent. New child creation requires an existing parent turn and complete
-lineage; only a metadata-bare row created by an earlier child event append may
-be upgraded. Reparenting an existing conversation is rejected.
+Imported historical advisor executions own separate child event streams. The
+parent records start/end references and the child stores only its local events.
+Dashboard detail authorizes a child through its parent chain and excludes child
+rows from top-level conversation aggregates. Purging a root purges the complete
+descendant subtree.

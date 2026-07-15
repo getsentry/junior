@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
-  hasRuntimeTurnContextMessages,
-  retainRuntimeTurnContextMessages,
-  stripRuntimeTurnContextMessages,
-} from "@/chat/conversations/model-messages";
+  hasRuntimeTurnContext,
+  retainRuntimeTurnContext,
+  stripRuntimeTurnContext,
+} from "@/chat/pi/transcript";
 
 const runtimePart = {
   type: "text",
@@ -11,28 +12,32 @@ const runtimePart = {
 };
 const instructionPart = { type: "text", text: "keep me" };
 
-describe("opaque conversation model messages", () => {
+function asPiMessages(messages: unknown[]): PiMessage[] {
+  return messages as PiMessage[];
+}
+
+describe("Pi runtime turn context", () => {
   it("detects and retains only user runtime context", () => {
-    const messages = [
+    const messages = asPiMessages([
       { role: "assistant", content: [runtimePart] },
       { role: "user", content: [runtimePart, instructionPart] },
-    ];
+    ]);
 
-    expect(hasRuntimeTurnContextMessages(messages)).toBe(true);
-    expect(retainRuntimeTurnContextMessages(messages)).toEqual([
+    expect(hasRuntimeTurnContext(messages)).toBe(true);
+    expect(retainRuntimeTurnContext(messages)).toEqual([
       { role: "user", content: [runtimePart] },
     ]);
   });
 
   it("strips runtime context and drops empty user messages", () => {
     const assistant = { role: "assistant", content: [runtimePart] };
-    const messages = [
+    const messages = asPiMessages([
       assistant,
       { role: "user", content: [runtimePart] },
       { role: "user", content: [runtimePart, instructionPart] },
-    ];
+    ]);
 
-    expect(stripRuntimeTurnContextMessages(messages)).toEqual([
+    expect(stripRuntimeTurnContext(messages)).toEqual([
       assistant,
       { role: "user", content: [instructionPart] },
     ]);

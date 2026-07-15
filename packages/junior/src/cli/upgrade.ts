@@ -15,7 +15,6 @@ import { agentTurnSessionActorMigration } from "./upgrade/migrations/agent-turn-
 import { conversationUsageRepairMigration } from "./upgrade/migrations/conversation-usage";
 import { conversationEventDataMigration } from "./upgrade/migrations/conversation-event-data";
 import { conversationVisibleMessageEventsMigration } from "./upgrade/migrations/conversation-visible-message-events";
-import { conversationLineageMigration } from "./upgrade/migrations/conversation-lineage";
 import type {
   MigrationContext,
   MigrationResult,
@@ -33,7 +32,6 @@ const MIGRATIONS: UpgradeMigration[] = [
   agentTurnSessionActorMigration,
   redisConversationStateMigration,
   coreSqlSchemaMigration,
-  conversationLineageMigration,
   sqlConversationMigration,
   conversationEventDataMigration,
   sqlConversationHistoryMigration,

@@ -557,7 +557,6 @@ describe("conversation transcript SQL stores", () => {
         subagentInvocationId: "future-subagent-call",
         subagentKind: "task",
         childConversationId: "subagent:future-child",
-        historyMode: "isolated" as const,
       };
 
       await store.append(CONVERSATION_ID, [{ data, createdAtMs: 1_000 }]);

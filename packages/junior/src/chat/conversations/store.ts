@@ -29,11 +29,7 @@ export interface ConversationExecution {
 
 /** Immutable parent correlation for a child conversation. */
 export interface ConversationLineage {
-  contextForkSeq?: number;
   parentConversationId: string;
-  parentEventSeq?: number;
-  parentTurnId?: string;
-  rootConversationId?: string;
 }
 
 export interface Conversation {
