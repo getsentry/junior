@@ -3,6 +3,7 @@ import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
+import { GLOBAL_RUNTIME_DEPENDENCIES } from "@/chat/sandbox/runtime-dependencies";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 const DEFAULT_RUNTIME = "node22";
@@ -43,7 +44,10 @@ function logSnapshotProfile(log: (line: string) => void): void {
     .sort();
   const systemDependencies: string[] = [];
   const npmDependencies: string[] = [];
-  for (const dep of pluginCatalogRuntime.getRuntimeDependencies()) {
+  for (const dep of [
+    ...GLOBAL_RUNTIME_DEPENDENCIES,
+    ...pluginCatalogRuntime.getRuntimeDependencies(),
+  ]) {
     if (dep.type === "npm") {
       npmDependencies.push(`${dep.package}@${dep.version}`);
       continue;

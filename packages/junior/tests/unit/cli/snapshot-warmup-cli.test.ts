@@ -24,6 +24,10 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
 }));
 
+vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
+  GLOBAL_RUNTIME_DEPENDENCIES: [],
+}));
+
 import { runSnapshotCreate } from "@/cli/snapshot-warmup";
 
 describe("snapshot create cli", () => {
