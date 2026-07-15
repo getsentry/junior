@@ -43,13 +43,6 @@
       "when": 1784137322421,
       "tag": "0005_conversation_events",
       "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1784089383071,
-      "tag": "0005_visible_message_events",
-      "breakpoints": true
     }
   ]
 }
