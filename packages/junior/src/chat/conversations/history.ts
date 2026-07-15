@@ -11,22 +11,22 @@ import { z } from "zod";
 import type { ConversationCompaction } from "@/chat/state/conversation";
 import { modelProfileSchema } from "@/chat/model-profile";
 import { conversationMessageProvenanceSchema } from "./provenance";
+import { conversationModelMessageSchema } from "./model-message";
+export type { ConversationModelMessage } from "./model-message";
+import { conversationTurnFailureCodeSchema } from "./turn-failure";
+export type { ConversationTurnFailureCode } from "./turn-failure";
+import {
+  conversationDeliveryCorrelationSchema,
+  conversationDeliveryFailureCodeSchema,
+  conversationDeliveryIdSchema,
+  conversationDeliveryKindSchema,
+  conversationDeliveryProviderSchema,
+} from "./delivery";
 
 const handoffModelProfileSchema = modelProfileSchema.refine(
   (profile) => profile !== "standard",
   "handoff profile must not be standard",
 );
-
-/** Junior-owned durable message shape; Pi-specific validation belongs to its adapter. */
-export const conversationModelMessageSchema = z
-  .object({ role: z.string() })
-  .passthrough()
-  .transform((value) => value as { role: string });
-
-/** Opaque model-continuity message stored by a Junior conversation event. */
-export type ConversationModelMessage = z.output<
-  typeof conversationModelMessageSchema
->;
 
 const messageEventDataSchema = z
   .object({
@@ -255,19 +255,6 @@ export const conversationTurnSurfaceSchema = z.enum([
   "internal",
 ]);
 
-/** Stable, privacy-safe classification for a failed turn. */
-export const conversationTurnFailureCodeSchema = z.enum([
-  "agent_run_failed",
-  "delivery_failed",
-  "model_execution_failed",
-  "persistence_failed",
-]);
-
-/** Failure classification persisted without raw provider or exception data. */
-export type ConversationTurnFailureCode = z.output<
-  typeof conversationTurnFailureCodeSchema
->;
-
 const turnStartedEventDataSchema = z
   .object({
     type: z.literal("turn_started"),
@@ -299,6 +286,34 @@ const turnFailedEventDataSchema = z
       .string()
       .regex(/^[a-f0-9]{32}$/i)
       .optional(),
+  })
+  .strict();
+
+const deliveryIntendedEventDataSchema = z
+  .object({
+    type: z.literal("delivery_intended"),
+    deliveryId: conversationDeliveryIdSchema,
+    correlation: conversationDeliveryCorrelationSchema,
+    messageId: z.string().min(1),
+    deliveryKind: conversationDeliveryKindSchema,
+    provider: conversationDeliveryProviderSchema,
+    partCount: z.number().int().positive(),
+  })
+  .strict();
+
+const deliveryAcceptedEventDataSchema = z
+  .object({
+    type: z.literal("delivery_accepted"),
+    deliveryId: conversationDeliveryIdSchema,
+    providerMessageIds: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)).min(1),
+  })
+  .strict();
+
+const deliveryFailedEventDataSchema = z
+  .object({
+    type: z.literal("delivery_failed"),
+    deliveryId: conversationDeliveryIdSchema,
+    failureCode: conversationDeliveryFailureCodeSchema,
   })
   .strict();
 
@@ -343,6 +358,9 @@ const appendableConversationEventDataSchema = z.union([
   turnStartedEventDataSchema,
   turnCompletedEventDataSchema,
   turnFailedEventDataSchema,
+  deliveryIntendedEventDataSchema,
+  deliveryAcceptedEventDataSchema,
+  deliveryFailedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
 ]);

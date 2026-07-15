@@ -6,6 +6,7 @@ import {
   juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
+  juniorPendingDeliveries,
 } from "@/db/schema";
 import { withConversationEventLock } from "./event-lock";
 import { resolveRootVisibility } from "./privacy";
@@ -256,6 +257,10 @@ export async function purgeConversationTree(
             return { purged: false, conversations: 0 };
           }
         }
+        await executor
+          .db()
+          .delete(juniorPendingDeliveries)
+          .where(inArray(juniorPendingDeliveries.conversationId, ids));
         await executor
           .db()
           .delete(juniorConversationEvents)

@@ -4,6 +4,7 @@ import { juniorConversations } from "./schema/conversations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
 import { juniorUsers } from "./schema/users";
+import { juniorPendingDeliveries } from "./schema/pending-deliveries";
 
 export {
   juniorConversationEvents,
@@ -12,6 +13,7 @@ export {
   juniorDestinations,
   juniorIdentities,
   juniorUsers,
+  juniorPendingDeliveries,
 };
 
 export const juniorSqlSchema = {
@@ -21,4 +23,5 @@ export const juniorSqlSchema = {
   juniorDestinations,
   juniorIdentities,
   juniorUsers,
+  juniorPendingDeliveries,
 };

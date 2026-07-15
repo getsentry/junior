@@ -128,8 +128,18 @@ Lifecycle appends have stable idempotency keys so explicitly retried calls are
 safe, but they are not an outbox transaction with an external destination. A
 process death after destination acceptance and before the
 visible/session/terminal writes can still leave a started turn without a
-terminal event. The next delivery slice must add durable intent/receipt
-reconciliation for Slack before claiming crash-safe terminality.
+terminal event.
+
+`junior_pending_deliveries` is deletable control state for closing that gap; it
+is not a second history API. Each row retains one strict finalized Slack reply
+command, fenced lease state, and per-part posting/reconciliation receipts. The
+canonical log records only privacy-safe `delivery_intended` and first-writer-
+wins `delivery_accepted` or `delivery_failed` facts. A stale `posting` part
+becomes `uncertain` and cannot be posted again until reconciliation explicitly
+marks it repostable after its grace period. Terminalization runs injected SQL
+finalization, appends the terminal fact, and deletes the pending row in one
+transaction. Slack posting and reconciliation workers must use this boundary
+before the runtime can claim crash-safe external delivery.
 
 Imported historical advisor executions own separate child event streams. The
 parent records start/end references and the child stores only its local events.
