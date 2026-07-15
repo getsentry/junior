@@ -29,6 +29,21 @@ describe("lookupSlackUser", () => {
     });
   });
 
+  it("accepts null optional Slack profile fields", async () => {
+    resetSlackApiMockState();
+    queueSlackApiResponse("users.info", {
+      body: {
+        ok: true,
+        user: {
+          name: null,
+          profile: { email: null, real_name: null },
+        },
+      },
+    });
+
+    await expect(lookupSlackUser("T-NULLISH", "U789")).resolves.toEqual({});
+  });
+
   it("rejects malformed Slack profile responses", async () => {
     resetSlackApiMockState();
     queueSlackApiResponse("users.info", {

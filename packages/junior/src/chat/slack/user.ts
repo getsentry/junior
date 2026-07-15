@@ -12,11 +12,11 @@ interface SlackUserLookupResult {
 const slackUserInfoSchema = z.object({
   ok: z.literal(true),
   user: z.object({
-    name: z.string().optional(),
+    name: z.string().nullish(),
     profile: z
       .object({
-        email: z.string().optional(),
-        real_name: z.string().optional(),
+        email: z.string().nullish(),
+        real_name: z.string().nullish(),
       })
       .optional(),
   }),
