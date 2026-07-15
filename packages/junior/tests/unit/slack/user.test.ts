@@ -12,21 +12,36 @@ describe("lookupSlackUser", () => {
     resetSlackApiMockState();
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
-        userId: "U039RR91S",
-        userName: "david",
-        displayName: "immutable dcramer",
-        realName: "David Cramer",
-        email: "david@example.com",
+        userId: "U789",
+        userName: "alice",
+        displayName: "shipit alice",
+        realName: "Alice Example",
+        email: "alice@example.com",
       }),
     });
 
     await expect(
-      lookupSlackUser("T-DISPLAY-NAME", "U039RR91S"),
+      lookupSlackUser("T-DISPLAY-NAME", "U789"),
     ).resolves.toMatchObject({
-      email: "david@example.com",
-      fullName: "David Cramer",
-      userName: "david",
+      email: "alice@example.com",
+      fullName: "Alice Example",
+      userName: "alice",
     });
+  });
+
+  it("rejects malformed Slack profile responses", async () => {
+    resetSlackApiMockState();
+    queueSlackApiResponse("users.info", {
+      body: {
+        ok: true,
+        user: {
+          name: "alice",
+          profile: { real_name: 42 },
+        },
+      },
+    });
+
+    await expect(lookupSlackUser("T-MALFORMED", "U789")).resolves.toBeNull();
   });
 
   it("caches Slack profiles by workspace and user id", async () => {
