@@ -322,6 +322,58 @@ describe("retention purge job", () => {
     expect(await eventCount(fixture.sql, "fresh-child")).toBe(1);
   });
 
+  it("keeps a tree when a child write finishes before purge locks the child", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    const nowMs = BASE_MS + 100 * DAY_MS;
+    await seedConversation(fixture.sql, {
+      conversationId: "racing-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "racing-child",
+      parentConversationId: "racing-root",
+      lastActivityAtMs: BASE_MS,
+    });
+
+    let childWriteCompleted = false;
+    const racingExecutor: JuniorSqlDatabase = {
+      db: () => fixture.sql.db(),
+      transaction: (callback) => fixture.sql.transaction(callback),
+      withLock: async (name, callback) => {
+        if (
+          !childWriteCompleted &&
+          name === "junior_conversation:event:racing-child"
+        ) {
+          await fixture.sql
+            .db()
+            .update(juniorConversations)
+            .set({
+              lastActivityAt: new Date(nowMs),
+              updatedAt: new Date(nowMs),
+            })
+            .where(eq(juniorConversations.conversationId, "racing-child"));
+          childWriteCompleted = true;
+        }
+        return await fixture.sql.withLock(name, callback);
+      },
+    };
+
+    await expect(
+      purgeConversationTree(racingExecutor, {
+        rootConversationId: "racing-root",
+        nowMs,
+        retention: {
+          publicWindowMs: 90 * DAY_MS,
+          privateWindowMs: 14 * DAY_MS,
+        },
+      }),
+    ).resolves.toEqual({ purged: false, conversations: 0 });
+    expect(childWriteCompleted).toBe(true);
+    expect(await eventCount(fixture.sql, "racing-root")).toBe(1);
+    expect(await eventCount(fixture.sql, "racing-child")).toBe(1);
+  });
+
   it("purges an expired root whose remaining content exists only on a child", async () => {
     const dest = await seedDestination(fixture.sql, "public");
     await seedConversation(fixture.sql, {
