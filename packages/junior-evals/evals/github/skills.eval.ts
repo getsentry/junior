@@ -60,6 +60,77 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     expect(verifyCall).toMatchObject({ result: { ok: true } });
   });
 
+  it("when an earlier push is denied, reconcile before retrying and report the successful remote state", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        skill_dirs: ["fixtures/github-push-outcomes-skills"],
+      },
+      initialEvents: [
+        mention(
+          "Ship the release-status change using the local `earlier-denial` push fixture. Complete the work and tell me the final remote state.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant reconciles remote state after the simulated HTTP 403 before retrying.",
+          "After verification shows the first attempt did not apply the mutation, the assistant retries once and reports that the remote contains the shipped status.",
+        ],
+        fail: [
+          "Do not ask for OAuth, a token, or changed GitHub permissions for the local fixture.",
+          "Do not report the earlier permission denial as the final outcome after verification proves the retry succeeded.",
+          "Do not contact production GitHub.",
+        ],
+      }),
+    });
+
+    const reconciledResult = toolCalls(result.session).find(
+      (call) =>
+        call.name === "bash" &&
+        JSON.stringify(call.result)?.includes(
+          "reconciled_remote_status=present push_attempts=2",
+        ) === true,
+    );
+    expect(reconciledResult).toMatchObject({ result: { ok: true } });
+  });
+
+  it("when a stale denial follows an applied push, reconcile and do not repeat the mutation", async ({
+    run,
+  }) => {
+    const result = await run({
+      overrides: {
+        skill_dirs: ["fixtures/github-push-outcomes-skills"],
+      },
+      initialEvents: [
+        mention(
+          "Ship the release-status change using the local `denial-after-apply` push fixture. Complete the work and tell me the final remote state.",
+        ),
+      ],
+      criteria: rubric({
+        pass: [
+          "The assistant treats the simulated HTTP 403 as inconclusive until it verifies remote state.",
+          "After verification proves the mutation is present remotely, the assistant reports success despite the stale denial result.",
+        ],
+        fail: [
+          "Do not retry the mutation after verification proves it already applied.",
+          "Do not ask for OAuth, a token, or changed GitHub permissions for the local fixture.",
+          "Do not report the stale permission denial as the final outcome.",
+          "Do not contact production GitHub.",
+        ],
+      }),
+    });
+
+    const reconciledResult = toolCalls(result.session).find(
+      (call) =>
+        call.name === "bash" &&
+        JSON.stringify(call.result)?.includes(
+          "reconciled_remote_status=present push_attempts=1",
+        ) === true,
+    );
+    expect(reconciledResult).toMatchObject({ result: { ok: true } });
+  });
+
   it("when asked about PR auth sequencing, explain automatic installation credentials", async ({
     run,
   }) => {
