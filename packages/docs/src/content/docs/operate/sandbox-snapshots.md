@@ -11,11 +11,11 @@ related:
   - /operate/reliability-runbooks/
 ---
 
-Junior's sandbox baseline includes Docker. Plugins can add runtime dependencies such as npm CLIs, system packages, and postinstall commands. Junior turns the baseline and plugin declarations into a single runtime dependency profile and stores the resolved Vercel Sandbox snapshot in Redis.
+Junior plugins can declare sandbox runtime dependencies such as npm CLIs, system packages, and postinstall commands. Junior turns those declarations into a single runtime dependency profile and stores the resolved Vercel Sandbox snapshot in Redis.
 
 ## When snapshots are used
 
-Snapshots are used for the core baseline and any dependencies or postinstall commands declared by loaded plugins. Because the baseline includes Docker, the default dependency profile is not empty.
+Snapshots are used only when loaded plugins declare runtime dependencies or runtime postinstall commands. If the dependency profile is empty, Junior creates a base sandbox without snapshot warmup.
 
 The common deploy path runs snapshot warmup during build:
 
@@ -34,7 +34,6 @@ Junior computes the snapshot profile from loaded plugin declarations:
 | Input                | Source                                                     |
 | -------------------- | ---------------------------------------------------------- |
 | Runtime              | Junior sandbox runtime, currently `node22`.                |
-| Baseline dependencies | Core system packages, currently `docker`.                 |
 | npm dependencies     | Plugin `runtime-dependencies` entries with `type: npm`.    |
 | system dependencies  | Plugin `runtime-dependencies` entries with `type: system`. |
 | postinstall commands | Plugin `runtime-postinstall` entries.                      |
@@ -82,12 +81,7 @@ Run snapshot warmup directly:
 pnpm exec junior snapshot create
 ```
 
-Confirm the final line includes `Sandbox snapshot create complete`. In a sandbox restored from that snapshot, verify Docker works by starting the daemon and querying it:
-
-```bash
-sudo dockerd >/tmp/dockerd.log 2>&1 &
-until sudo docker info >/dev/null 2>&1; do sleep 1; done
-```
+Confirm the final line includes `Sandbox snapshot create complete` and that dependency counts match the enabled plugins.
 
 ## Next step
 

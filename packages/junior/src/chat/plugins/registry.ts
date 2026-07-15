@@ -12,10 +12,6 @@ import {
   type InstalledPluginPackageContent,
   normalizePluginPackageNames,
 } from "./package-discovery";
-import {
-  compareRuntimeDependencies,
-  runtimeDependencyKey,
-} from "./runtime-dependencies";
 import type {
   InlinePluginManifestDefinition,
   PluginBrokerDeps,
@@ -522,7 +518,12 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
       const deps: PluginRuntimeDependency[] = [];
       for (const plugin of state.pluginDefinitions) {
         for (const dep of plugin.manifest.runtimeDependencies ?? []) {
-          const key = runtimeDependencyKey(dep);
+          const key =
+            dep.type === "npm"
+              ? `${dep.type}:${dep.package}:${dep.version}`
+              : "package" in dep
+                ? `${dep.type}:package:${dep.package}`
+                : `${dep.type}:url:${dep.url}:${dep.sha256}`;
           if (seen.has(key)) {
             continue;
           }
@@ -531,7 +532,26 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
         }
       }
 
-      return deps.sort(compareRuntimeDependencies);
+      return deps.sort((left, right) => {
+        if (left.type !== right.type) {
+          return left.type.localeCompare(right.type);
+        }
+        const leftIdentity =
+          "package" in left
+            ? `package:${left.package}`
+            : `url:${left.url}:${left.sha256}`;
+        const rightIdentity =
+          "package" in right
+            ? `package:${right.package}`
+            : `url:${right.url}:${right.sha256}`;
+        if (leftIdentity !== rightIdentity) {
+          return leftIdentity.localeCompare(rightIdentity);
+        }
+        if (left.type === "npm" && right.type === "npm") {
+          return left.version.localeCompare(right.version);
+        }
+        return 0;
+      });
     },
     getRuntimePostinstall() {
       const state = ensurePluginsLoaded(runtime);

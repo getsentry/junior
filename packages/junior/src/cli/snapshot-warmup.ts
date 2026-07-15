@@ -1,5 +1,4 @@
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { getSandboxRuntimeDependencies } from "@/chat/sandbox/runtime-dependencies";
 import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
@@ -44,7 +43,7 @@ function logSnapshotProfile(log: (line: string) => void): void {
     .sort();
   const systemDependencies: string[] = [];
   const npmDependencies: string[] = [];
-  for (const dep of getSandboxRuntimeDependencies()) {
+  for (const dep of pluginCatalogRuntime.getRuntimeDependencies()) {
     if (dep.type === "npm") {
       npmDependencies.push(`${dep.package}@${dep.version}`);
       continue;
