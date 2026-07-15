@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import {
   juniorConversations,
@@ -120,7 +120,9 @@ export async function recentActorRows(email: string) {
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(verifiedActorWhere(email))
+    .where(
+      and(verifiedActorWhere(email), isNull(juniorConversations.archivedAt)),
+    )
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),

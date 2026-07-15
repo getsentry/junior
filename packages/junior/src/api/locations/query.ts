@@ -324,7 +324,12 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(publicLocationWhere(locationId))
+    .where(
+      and(
+        publicLocationWhere(locationId),
+        isNull(juniorConversations.archivedAt),
+      ),
+    )
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
