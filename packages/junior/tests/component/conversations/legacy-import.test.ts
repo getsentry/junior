@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { juniorConversations } from "@/db/schema";
 import {
   closeDb,
-  getAgentStepStore,
+  getConversationEventStore,
   getConversationMessageStore,
   getSqlExecutor,
 } from "@/chat/db";
@@ -13,7 +13,7 @@ import {
   ensureLegacyConversationImport,
   importConversationFromLegacy,
 } from "@/chat/conversations/legacy-import";
-import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
@@ -43,7 +43,7 @@ async function processSqlStores() {
   await migrateSchema(executor);
   return {
     executor,
-    stepStore: getAgentStepStore(),
+    eventStore: getConversationEventStore(),
     messageStore: getConversationMessageStore(),
   };
 }
@@ -86,7 +86,6 @@ function conversationRecord(): Conversation {
 function staticSessionLogStore(entries: SessionLogEntry[]): SessionLogStore {
   return {
     read: async () => entries,
-    append: async () => {},
   };
 }
 
@@ -110,10 +109,10 @@ describe("legacy conversation import", () => {
     vi.restoreAllMocks();
   });
 
-  it("imports steps, advisor child, and visible messages once, idempotently", async () => {
+  it("imports events, advisor child, and visible messages once, idempotently", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
     const childId = `advisor:${CONVERSATION_ID}`;
 
@@ -175,31 +174,31 @@ describe("legacy conversation import", () => {
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: true });
 
-      const history = await stepStore.loadHistory(CONVERSATION_ID);
+      const history = await eventStore.loadHistory(CONVERSATION_ID);
       expect(
-        history.map((step) => ({
-          seq: step.seq,
-          epoch: step.contextEpoch,
-          type: step.entry.type,
+        history.map((event) => ({
+          seq: event.seq,
+          epoch: event.contextEpoch,
+          type: event.data.type,
         })),
       ).toEqual([
-        { seq: 0, epoch: 0, type: "pi_message" },
+        { seq: 0, epoch: 0, type: "message" },
         { seq: 1, epoch: 1, type: "context_epoch_started" },
-        { seq: 2, epoch: 1, type: "pi_message" },
+        { seq: 2, epoch: 1, type: "message" },
         { seq: 3, epoch: 1, type: "subagent_started" },
       ]);
 
       // Current context is exactly the highest epoch's messages.
-      const current = await stepStore.loadCurrentEpoch(CONVERSATION_ID);
+      const current = await eventStore.loadCurrentEpoch(CONVERSATION_ID);
       expect(
-        current.filter((step) => step.entry.type === "pi_message"),
+        current.filter((event) => event.data.type === "message"),
       ).toHaveLength(1);
 
-      // Advisor child is its own conversation with epoch-0 pi_message rows.
-      const childHistory = await stepStore.loadHistory(childId);
-      expect(childHistory.map((step) => step.entry.type)).toEqual([
-        "pi_message",
-        "pi_message",
+      // Advisor child is its own conversation with epoch-0 message events.
+      const childHistory = await eventStore.loadHistory(childId);
+      expect(childHistory.map((event) => event.data.type)).toEqual([
+        "message",
+        "message",
       ]);
       expect(childHistory[0]!.createdAtMs).toBe(960);
 
@@ -243,20 +242,20 @@ describe("legacy conversation import", () => {
         ]),
       );
 
-      // Re-running is a no-op: step rows already exist.
+      // Re-running is a no-op: event rows already exist.
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(4);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(4);
     } finally {
       await fixture.close();
     }
   }, 20_000);
 
-  it("rolls back steps when the transactional message import fails", async () => {
+  it("rolls back events when the transactional message import fails", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     const entries = staticSessionLogStore([
@@ -285,8 +284,8 @@ describe("legacy conversation import", () => {
         'Failed query: insert into "junior_conversation_messages"',
       );
 
-      // Messages and steps share one transaction, so neither side commits.
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(0);
+      // Messages and events share one transaction, so neither side commits.
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(0);
       expect(await messageStore.list(CONVERSATION_ID)).toHaveLength(0);
 
       const visible: ThreadConversationMessage[] = [
@@ -303,7 +302,7 @@ describe("legacy conversation import", () => {
         }),
       ).resolves.toEqual({ imported: true });
 
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
       const messages = await messageStore.list(CONVERSATION_ID);
       expect(messages.map((message) => message.messageId)).toEqual([
         "m1",
@@ -314,10 +313,10 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
-  it("seals a completed message-only import without step rows", async () => {
+  it("seals a completed message-only import without event rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
     const loadVisibleMessages = vi.fn(async () => [
       {
@@ -354,7 +353,7 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
       expect(await messageStore.list(CONVERSATION_ID)).toMatchObject([
         {
           messageId: "message-only",
@@ -382,7 +381,7 @@ describe("legacy conversation import", () => {
   it("never fabricates import-time timestamps for timestamp-less rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
     const before = Date.now();
 
@@ -402,7 +401,7 @@ describe("legacy conversation import", () => {
         loadVisibleMessages: async () => [],
       });
 
-      const history = await stepStore.loadHistory(CONVERSATION_ID);
+      const history = await eventStore.loadHistory(CONVERSATION_ID);
       expect(history).toHaveLength(1);
       // Falls back to the conversation record's createdAt, not Date.now().
       expect(history[0]!.createdAtMs).toBe(500);
@@ -413,7 +412,7 @@ describe("legacy conversation import", () => {
   }, 20_000);
 
   it("lazily imports a straggler with a Redis log but no SQL rows, once", async () => {
-    const { executor, stepStore } = await processSqlStores();
+    const { executor, eventStore } = await processSqlStores();
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
@@ -433,9 +432,9 @@ describe("legacy conversation import", () => {
     });
 
     await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-    const history = await stepStore.loadHistory(CONVERSATION_ID);
+    const history = await eventStore.loadHistory(CONVERSATION_ID);
     expect(history).toHaveLength(1);
-    expect(history[0]!.entry.type).toBe("pi_message");
+    expect(history[0]!.data.type).toBe("message");
     expect(history[0]!.createdAtMs).toBe(70);
     const [conversation] = await executor
       .db()
@@ -446,7 +445,7 @@ describe("legacy conversation import", () => {
 
     // Second read is idempotent: no duplicate rows.
     await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-    expect(await stepStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+    expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
   }, 20_000);
 
   it("loadConnectedMcpProviders triggers the lazy import for a straggler", async () => {
@@ -528,7 +527,7 @@ describe("legacy conversation import", () => {
   }, 20_000);
 
   it("does not resurrect purged SQL history from legacy Redis", async () => {
-    const { executor, stepStore } = await processSqlStores();
+    const { executor, eventStore } = await processSqlStores();
 
     await executor
       .db()
@@ -558,13 +557,13 @@ describe("legacy conversation import", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(conversation.messages).toEqual([]);
-    expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+    expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
   }, 20_000);
 
   it("rejects a legacy import when the SQL transcript was already purged", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     await fixture.sql
@@ -602,7 +601,7 @@ describe("legacy conversation import", () => {
       });
 
       expect(result).toEqual({ imported: false });
-      expect(await stepStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
       expect(await messageStore.list(CONVERSATION_ID)).toEqual([]);
     } finally {
       await fixture.close();
@@ -659,11 +658,11 @@ describe("legacy conversation import", () => {
         scanned: 1,
       });
 
-      const stepStore = createSqlAgentStepStore(fixture.sql);
-      const history = await stepStore.loadHistory(CONVERSATION_ID);
-      expect(history.map((step) => step.entry.type)).toEqual([
-        "pi_message",
-        "pi_message",
+      const eventStore = createSqlConversationEventStore(fixture.sql);
+      const history = await eventStore.loadHistory(CONVERSATION_ID);
+      expect(history.map((event) => event.data.type)).toEqual([
+        "message",
+        "message",
       ]);
 
       // Re-running the bounded scan imports nothing twice.
@@ -680,10 +679,10 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
-  it("replaces NUL characters in imported agent steps", async () => {
+  it("replaces NUL characters in imported conversation events", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const stepStore = createSqlAgentStepStore(fixture.sql);
+    const eventStore = createSqlConversationEventStore(fixture.sql);
     const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     try {
@@ -706,9 +705,9 @@ describe("legacy conversation import", () => {
       });
 
       expect(
-        (await stepStore.loadHistory(CONVERSATION_ID))[0]?.entry,
+        (await eventStore.loadHistory(CONVERSATION_ID))[0]?.data,
       ).toMatchObject({
-        type: "pi_message",
+        type: "message",
         message: {
           content: [{ text: "before after and literal \\u0000", type: "text" }],
         },

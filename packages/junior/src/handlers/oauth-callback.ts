@@ -537,7 +537,7 @@ async function resumePendingOAuthMessage(
     replyContext: {
       input: {
         conversationContext,
-        // Pi history is SQL-authoritative via the step-store projection.
+        // Pi history is SQL-authoritative via the event-store projection.
         piMessages: await loadProjection({ conversationId: threadId }),
       },
       routing: {

@@ -1342,8 +1342,8 @@ describe("agent continuation Slack integration", () => {
         email: "testuser@example.com",
       },
     });
-    const { getAgentStepStore } = await import("@/chat/db");
-    await getAgentStepStore().startEpoch(conversationId, {
+    const { getConversationEventStore } = await import("@/chat/db");
+    await getConversationEventStore().startEpoch(conversationId, {
       modelId: "test/model",
       reason: "handoff",
       modelProfile: "handoff",
@@ -1356,10 +1356,10 @@ describe("agent continuation Slack integration", () => {
     });
     // A prior recovery can park runtime context in the handoff epoch before
     // another worker dies; the next recovery must replace rather than copy it.
-    await getAgentStepStore().append(conversationId, [
+    await getConversationEventStore().append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: previousRuntimeContext }],
@@ -1464,15 +1464,16 @@ describe("agent continuation Slack integration", () => {
     expect(JSON.stringify(projection)).toContain("Handoff recovery completed.");
     expect(JSON.stringify(projection)).not.toContain(staleText);
     expect(JSON.stringify(projection)).not.toContain("<runtime-turn-context>");
-    const history = await getAgentStepStore().loadHistory(conversationId);
+    const history =
+      await getConversationEventStore().loadHistory(conversationId);
     const rollbacks = history.filter(
-      (step) =>
-        step.entry.type === "context_epoch_started" &&
-        step.entry.reason === "rollback",
+      (event) =>
+        event.data.type === "context_epoch_started" &&
+        event.data.reason === "rollback",
     );
     expect(rollbacks).toHaveLength(2);
     for (const rollback of rollbacks) {
-      expect(rollback.entry).toEqual(
+      expect(rollback.data).toEqual(
         expect.objectContaining({ modelProfile: "handoff" }),
       );
     }

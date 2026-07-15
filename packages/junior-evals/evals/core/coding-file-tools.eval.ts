@@ -1,7 +1,7 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
-  agentSteps,
+  conversationEvents,
   mention,
   rubric,
   slackEvals,
@@ -124,14 +124,14 @@ describeEval("Coding File Tools", slackEvals, (it) => {
     });
     expect(calls.filter((call) => call.name === "handoff")).toHaveLength(1);
 
-    const steps = await agentSteps(result.session);
-    const markers = steps.filter(
-      (step) =>
-        step.entry.type === "context_epoch_started" &&
-        step.entry.reason === "handoff",
+    const events = await conversationEvents(result.session);
+    const markers = events.filter(
+      (event) =>
+        event.data.type === "context_epoch_started" &&
+        event.data.reason === "handoff",
     );
     expect(markers).toHaveLength(1);
-    expect(markers[0]?.entry).toMatchObject({
+    expect(markers[0]?.data).toMatchObject({
       type: "context_epoch_started",
       reason: "handoff",
       modelProfile: "coding",
@@ -147,43 +147,41 @@ describeEval("Coding File Tools", slackEvals, (it) => {
         return args.includes("sha256sum") && args.includes("handoff-proof.txt");
       }),
     ).toBe(true);
-    const followUp = steps.find(
-      (step) =>
-        step.entry.type === "pi_message" &&
-        step.role === "user" &&
-        JSON.stringify(step.entry.message).includes(
+    const followUp = events.find(
+      (event) =>
+        event.data.type === "message" &&
+        event.data.message.role === "user" &&
+        JSON.stringify(event.data.message).includes(
           "run sha256sum on skills/coding-workspace-fixture/project/handoff-proof.txt",
         ),
     );
     expect(followUp).toBeDefined();
-    const firstHandoffModels = steps
+    const firstHandoffModels = events
       .filter(
-        (step) =>
-          step.seq > markers[0]!.seq &&
-          step.seq < followUp!.seq &&
-          step.entry.type === "pi_message" &&
-          step.role === "assistant",
+        (event) =>
+          event.seq > markers[0]!.seq &&
+          event.seq < followUp!.seq &&
+          event.data.type === "message" &&
+          event.data.message.role === "assistant",
       )
-      .map((step) =>
-        step.entry.type === "pi_message" &&
-        step.entry.message.role === "assistant"
-          ? step.entry.message.model
+      .map((event) =>
+        event.data.type === "message" && event.data.message.role === "assistant"
+          ? (event.data.message as { model?: string }).model
           : undefined,
       );
     const handoffModel = firstHandoffModels.at(-1);
     expect(handoffModel).toBeDefined();
     expect(handoffModel).not.toBe(process.env.AI_MODEL);
-    const followUpModels = steps
+    const followUpModels = events
       .filter(
-        (step) =>
-          step.seq > followUp!.seq &&
-          step.entry.type === "pi_message" &&
-          step.role === "assistant",
+        (event) =>
+          event.seq > followUp!.seq &&
+          event.data.type === "message" &&
+          event.data.message.role === "assistant",
       )
-      .map((step) =>
-        step.entry.type === "pi_message" &&
-        step.entry.message.role === "assistant"
-          ? step.entry.message.model
+      .map((event) =>
+        event.data.type === "message" && event.data.message.role === "assistant"
+          ? (event.data.message as { model?: string }).model
           : undefined,
       );
     expect(followUpModels.length).toBeGreaterThan(0);

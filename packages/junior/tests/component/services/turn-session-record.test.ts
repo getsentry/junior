@@ -409,7 +409,7 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("persists turn transcript scope and actor in the session log", async () => {
+  it("persists turn transcript scope and actor in the event log", async () => {
     const {
       getAgentTurnSessionRecord,
       listAgentTurnSessionSummariesForConversation,

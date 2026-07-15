@@ -149,7 +149,7 @@ import {
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
-import { getAgentStepStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 
@@ -229,8 +229,10 @@ describe("executeAgentRun model handoff", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const epochMarkers = (await getAgentStepStore().loadHistory(conversationId))
-      .map((step) => step.entry)
+    const epochMarkers = (
+      await getConversationEventStore().loadHistory(conversationId)
+    )
+      .map((event) => event.data)
       .filter((entry) => entry.type === "context_epoch_started");
     expect(epochMarkers).toEqual([
       {
@@ -363,8 +365,8 @@ describe("executeAgentRun model handoff", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("coding");
     expect(
-      (await getAgentStepStore().loadHistory(conversationId))
-        .map((step) => step.entry)
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
         .filter((entry) => entry.type === "context_epoch_started"),
     ).toEqual([
       {
@@ -450,8 +452,8 @@ describe("executeAgentRun model handoff", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
     expect(
-      (await getAgentStepStore().loadHistory(conversationId))
-        .map((step) => step.entry)
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
         .filter((entry) => entry.type === "context_epoch_started"),
     ).toEqual([
       {

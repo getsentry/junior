@@ -6,7 +6,7 @@ import { getSlackInterruptionMarker } from "@/chat/slack/output";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { acquireActiveLock } from "@/chat/state/locks";
-import { instructionActors } from "@/chat/state/session-log";
+import { instructionActors } from "@/chat/conversations/provenance";
 import {
   loadProjection,
   loadConversationProjection,
@@ -1278,7 +1278,7 @@ describe("bot handlers (integration)", () => {
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
   });
 
-  it("appends a parked-conversation follow-up to the session log before consuming it", async () => {
+  it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
     const conversationId = "slack:C9PARKEDLOG:1700000000.000";
     const destination = slackDestination("C9PARKEDLOG");
     const activeSessionId = "turn_msg-original";
@@ -1558,7 +1558,7 @@ describe("bot handlers (integration)", () => {
     });
 
     expect(capturedActorUserId).toBe("U-alice");
-    // The drain commits Bob's batched mention to the session log before the run
+    // The drain commits Bob's batched mention to the event log before the run
     // with his own instruction provenance, so he joins the run's actors instead
     // of being dropped as anonymous context under Alice's turn.
     const projection = await loadConversationProjection({ conversationId });

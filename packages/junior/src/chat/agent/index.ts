@@ -44,8 +44,8 @@ import {
 import {
   instructionActors,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import type { Actor } from "@/chat/actor";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -341,7 +341,7 @@ async function executeAgentRunInPrivacyContext(
     // agent starts, then adds the current actor's turn-start instruction.
     // Steering appends to this array as it drains, so `run.actors` stays a
     // pure, live projection of committed instruction provenance.
-    const committedInstructionProvenance: PiMessageProvenance[] = [
+    const committedInstructionProvenance: ConversationMessageProvenance[] = [
       ...(existingSessionRecord?.piMessageProvenance ?? []),
       ...(existingSessionRecord?.actors ?? []).map(instructionProvenanceFor),
       ...(resumedFromSessionRecord ? [] : [instructionProvenanceFor(actor)]),

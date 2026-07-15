@@ -10,7 +10,7 @@ conversation is authorized to retain.
 - Private channels, direct messages, local conversations, and unknown
   destinations are private by default.
 - Missing visibility metadata never widens access.
-- Child conversations, agent steps, generated artifacts, and plugin records
+- Child conversations, conversation events, generated artifacts, and plugin records
   inherit the visibility and actor boundaries of their owning conversation.
 
 ## Storage

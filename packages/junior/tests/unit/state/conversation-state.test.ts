@@ -158,7 +158,7 @@ describe("conversation state", () => {
     const patch = buildConversationStatePatch(conversation);
     expect(patch.conversation).not.toHaveProperty("messages");
     expect(patch.conversation).not.toHaveProperty("compactions");
-    // Pi history lives in the SQL AgentStepStore; thread-state carries no mirror.
+    // Model history lives in the SQL ConversationEventStore; thread-state carries no mirror.
     expect(patch.conversation).not.toHaveProperty("piMessages");
     // The count stat is still derived from the working set for reporting.
     expect(patch.conversation.stats.totalMessageCount).toBe(1);

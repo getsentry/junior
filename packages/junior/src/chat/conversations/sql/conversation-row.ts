@@ -4,7 +4,7 @@ import { juniorConversations } from "@/db/schema";
 
 /**
  * Establish the conversation metadata row on first contact for content writes
- * (agent steps, visible transcript) that can land before activity recording has
+ * (conversation events, visible transcript) that can land before activity has
  * created the row, and whose tables FK to it.
  *
  * First contact creates the row; every later content write advances the

@@ -311,7 +311,7 @@ export async function runAgentDispatchSlice(
         messageText: dispatch.input,
         conversationContext,
         // Pi history for redelivered dispatch slices comes from the SQL
-        // step-store projection, not a thread-state mirror.
+        // event-store projection, not a thread-state mirror.
         piMessages: await loadProjection({ conversationId }),
       },
       routing: {

@@ -116,8 +116,8 @@ import { getConversationStore } from "@/chat/db";
 import {
   contextProvenance,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import {
   commitMessages,
   loadProjection,
@@ -250,7 +250,7 @@ function queuedInstructionActor(
 function queuedInstructionProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
-): PiMessageProvenance {
+): ConversationMessageProvenance {
   if (isResourceEventMessage(queued.message)) {
     return contextProvenance;
   }
@@ -641,7 +641,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         /**
          * Commit drained parked/batched input pairs to the conversation
-         * session log, deduping by `parkedInputKey` so a redelivery never
+         * event log, deduping by `parkedInputKey` so a redelivery never
          * double-appends. This is the Membership-Rule commit point
          * Membership rule: each drained message is written with its
          * own author's instruction provenance while that author is still known,
@@ -650,11 +650,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
          * The read-compute-append races a concurrently-resumed slice, which
          * runs under the thread resume lock; take the same lock so the two
          * writers never interleave. Returns false when the lock is busy (a live
-         * resume owns the session log): the caller must leave the mailbox
+         * resume owns the event log): the caller must leave the mailbox
          * message pending for the next drain instead of consuming it.
          */
-        const drainParkedInputToSessionLog = async (
-          pairs: Array<{ message: PiMessage; provenance: PiMessageProvenance }>,
+        const drainParkedInputToEventLog = async (
+          pairs: Array<{
+            message: PiMessage;
+            provenance: ConversationMessageProvenance;
+          }>,
         ): Promise<boolean> => {
           if (!conversationId || pairs.length === 0) {
             return true;
@@ -703,7 +706,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         /**
-         * Durably append this turn's parked user input to the session log at
+         * Durably append this turn's parked user input to the event log at
          * the parked safe boundary so the resumed `continue()` sees it. The
          * awaiting record pins the log session and materializes the projection
          * tail, so the append needs no record mutation. Must complete before
@@ -740,7 +743,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          return drainParkedInputToSessionLog(parkedPairs);
+          return drainParkedInputToEventLog(parkedPairs);
         };
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
@@ -758,7 +761,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sessionId: activeTurnId,
             });
           if (resumeRequest) {
-            // Durable session-log append first: rescheduling a continuation
+            // Durable event-log append first: rescheduling a continuation
             // does not consume the message, and `ack` may only
             // fire after the input is model-visible.
             if (!(await appendParkedTurnInput(resumeRequest.sessionId))) {
@@ -802,7 +805,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // A user follow-up supersedes the auth-parked run: answer it
               // now as a fresh turn instead of consuming it into a pause that
               // may never resume. The parked prompt stays model-visible via
-              // the session-log projection, pendingAuth state keeps the
+              // the event-log projection, pendingAuth state keeps the
               // authorization link reusable, and the abandoned record turns a
               // late OAuth callback into a stale no-op instead of a competing
               // run.
@@ -1051,14 +1054,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          // Commit the batch to the session log before the run starts — the
+          // Commit the batch to the event log before the run starts — the
           // Membership-rule commit point — so its
           // authors' instruction provenance is durable while they are known.
           // The fresh prompt checkpoint then matches these merged messages as
           // an already-committed prefix and reuses that provenance instead of
           // collapsing them to the live actor.
-          if (!(await drainParkedInputToSessionLog(batchedInstructions))) {
-            // A live resume owns the session-log read-modify-write. Defer the
+          if (!(await drainParkedInputToEventLog(batchedInstructions))) {
+            // A live resume owns the event-log read-modify-write. Defer the
             // turn (as appendParkedTurnInput does) so the worker releases the
             // lease and the next drain commits provenance before running;
             // never run with the batch uncommitted.

@@ -3,7 +3,7 @@
  *
  * This module bounds visible Pi history for long conversations. It strips
  * runtime-only turn context before summarizing and opens replacement epochs in
- * the durable step store. Capacity compaction retains recent user intent;
+ * the durable event store. Capacity compaction retains recent user intent;
  * handoff starts a profile-bound epoch with only its summary. Normal checkpoints
  * may later append the current bootstrap; future replacement strips it again.
  */
@@ -24,10 +24,10 @@ import {
 } from "@/chat/services/context-budget";
 import {
   contextProvenance,
-  type PiMessageProvenance,
-} from "@/chat/state/session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
-import { getAgentStepStore } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
@@ -354,8 +354,8 @@ function estimateHistoryTokens(messages: PiMessage[]): number {
  */
 function buildReplacementProvenance(args: {
   retained: RetainedUserMessage[];
-  sourceProvenance: PiMessageProvenance[];
-}): PiMessageProvenance[] {
+  sourceProvenance: ConversationMessageProvenance[];
+}): ConversationMessageProvenance[] {
   return [
     ...args.retained.map(
       (entry) => args.sourceProvenance[entry.sourceIndex] ?? contextProvenance,
@@ -451,7 +451,7 @@ async function writeCompactedThreadContext(
     triggerTokens?: number;
   },
 ): Promise<CompactContextResult> {
-  const stepStore = getAgentStepStore();
+  const eventStore = getConversationEventStore();
   const sourceProjection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
@@ -468,7 +468,7 @@ async function writeCompactedThreadContext(
     retained,
     sourceProvenance: sourceProjection.provenance,
   });
-  await stepStore.startEpoch(args.conversationId, {
+  await eventStore.startEpoch(args.conversationId, {
     reason: "compaction",
     modelProfile: sourceProjection.modelProfile,
     modelId: modelIdForProfile(botConfig, sourceProjection.modelProfile),
@@ -526,7 +526,7 @@ export async function compactContextForHandoff(
   } as PiMessage;
   const messages = [message];
   args.signal?.throwIfAborted();
-  await getAgentStepStore().startEpoch(args.conversationId, {
+  await getConversationEventStore().startEpoch(args.conversationId, {
     reason: "handoff",
     modelProfile: args.target.modelProfile,
     modelId: args.target.modelId,

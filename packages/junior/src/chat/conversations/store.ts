@@ -42,7 +42,7 @@ export interface Conversation {
   updatedAtMs: number;
   /**
    * When retention purged this conversation's content. Set means messages and
-   * steps were deleted wholesale; reporting presents the transcript as expired
+   * events were deleted wholesale; reporting presents the transcript as expired
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;

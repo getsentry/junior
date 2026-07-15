@@ -151,7 +151,85 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("uses SQL title and visible messages when agent steps are absent", async () => {
+  it("redacts private conversation summaries", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { listRecentConversationSummaries } =
+      await import("@/reporting/plugin-conversations");
+    const conversationStore = getConversationStore();
+
+    await conversationStore.recordActivity({
+      conversationId: "slack:G1:222",
+      channelName: "private-incident-room",
+      nowMs: 1_000,
+      source: "slack",
+      title: "Sensitive escalation",
+    });
+
+    const summaries = await listRecentConversationSummaries();
+
+    expect(JSON.stringify(summaries)).not.toContain("private-incident-room");
+    expect(JSON.stringify(summaries)).not.toContain("Sensitive escalation");
+    expect(summaries[0]).toMatchObject({
+      conversationId: "slack:G1:222",
+      status: "completed",
+    });
+  });
+
+  it("redacts C-prefixed conversations Slack reports as private", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { listRecentConversationSummaries } =
+      await import("@/reporting/plugin-conversations");
+    const conversationStore = getConversationStore();
+
+    // Modern Slack private channels use C-prefixed ids; the event said
+    // channel_type: group, so the destination is confirmed private.
+    await conversationStore.recordActivity({
+      conversationId: "slack:C9:333",
+      channelName: "stealth-project",
+      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
+      nowMs: 1_000,
+      source: "slack",
+      title: "Stealth planning",
+      visibility: "private",
+    });
+
+    const summaries = await listRecentConversationSummaries();
+
+    expect(JSON.stringify(summaries)).not.toContain("stealth-project");
+    expect(JSON.stringify(summaries)).not.toContain("Stealth planning");
+    expect(summaries[0]).toMatchObject({
+      conversationId: "slack:C9:333",
+    });
+  });
+
+  it("redacts C-prefixed conversations without public visibility", async () => {
+    const { getConversationStore } = await import("@/chat/db");
+    const { listRecentConversationSummaries } =
+      await import("@/reporting/plugin-conversations");
+    const conversationStore = getConversationStore();
+
+    // Legacy-style row: no live signal ever marked this channel public.
+    await conversationStore.recordActivity({
+      conversationId: "slack:C9:444",
+      channelName: "maybe-private-room",
+      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
+      nowMs: 1_000,
+      source: "slack",
+      title: "Private by default",
+    });
+
+    const summaries = await listRecentConversationSummaries();
+
+    expect(JSON.stringify(summaries)).not.toContain("maybe-private-room");
+    expect(JSON.stringify(summaries)).not.toContain("Private by default");
+    expect(summaries[0]).toMatchObject({
+      channelName: "Private Conversation",
+      channelNameRedacted: true,
+      displayTitle: "Private Conversation",
+    });
+  });
+
+  it("uses SQL title and visible messages when conversation events are absent", async () => {
     const { getConversationMessageStore, getConversationStore } =
       await import("@/chat/db");
 
@@ -374,7 +452,7 @@ describe("dashboard reporting", () => {
   it("reports private execution activity as safe metadata", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
 
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
@@ -398,10 +476,10 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
-    // Activity now derives from durable agent steps, not the Redis session log.
-    await getAgentStepStore().append("slack:G1:activity", [
+    // Activity now derives from durable conversation events, not the Redis session log.
+    await getConversationEventStore().append("slack:G1:activity", [
       {
-        entry: {
+        data: {
           type: "tool_execution_started",
           toolCallId: "advisor-call-1",
           toolName: "advisor",
@@ -410,7 +488,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 2,
       },
       {
-        entry: {
+        data: {
           type: "subagent_started",
           subagentInvocationId: "advisor-call-1",
           subagentKind: "advisor",
@@ -423,7 +501,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 3,
       },
       {
-        entry: {
+        data: {
           type: "subagent_ended",
           subagentInvocationId: "advisor-call-1",
           outcome: "success",
@@ -431,7 +509,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 5,
       },
     ]);
-    await getAgentStepStore().startEpoch("slack:G1:activity", {
+    await getConversationEventStore().startEpoch("slack:G1:activity", {
       reason: "compaction",
       modelProfile: "standard",
       modelId: "test/model",
@@ -489,23 +567,23 @@ describe("dashboard reporting", () => {
   });
 
   it("loads subagent transcript history from the child conversation", async () => {
-    const { getAgentStepStore, getConversationStore } =
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
 
     const conversationId = "slack:C1:subagent-slices";
     await confirmPublicSlackConversation(conversationId);
     const childConversationId = `task:${conversationId}`;
     const conversationStore = getConversationStore();
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
 
     await conversationStore.ensureChildConversation({
       conversationId: childConversationId,
       parentConversationId: conversationId,
     });
-    await stepStore.append(childConversationId, [
+    await eventStore.append(childConversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [
@@ -521,8 +599,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 10,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "first subagent answer" }],
@@ -532,8 +610,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 20,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "second subagent question" }],
@@ -543,8 +621,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 30,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "second subagent answer" }],
@@ -554,8 +632,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 40,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [
@@ -576,9 +654,9 @@ describe("dashboard reporting", () => {
     // Repeated subagent calls share one child conversation, so both
     // parent subagent markers name the same child history.
     for (const subagentId of ["task-plan", "task-review"]) {
-      await stepStore.append(conversationId, [
+      await eventStore.append(conversationId, [
         {
-          entry: {
+          data: {
             type: "subagent_started",
             subagentInvocationId: subagentId,
             subagentKind: "task",
@@ -591,7 +669,7 @@ describe("dashboard reporting", () => {
           createdAtMs: subagentId === "task-plan" ? 3 : 31,
         },
         {
-          entry: {
+          data: {
             type: "subagent_ended",
             subagentInvocationId: subagentId,
             outcome: "success",
@@ -600,9 +678,9 @@ describe("dashboard reporting", () => {
         },
       ]);
     }
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
+        data: {
           type: "subagent_started",
           subagentInvocationId: "legacy-advisor",
           subagentKind: "advisor",
@@ -612,7 +690,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 50,
       },
       {
-        entry: {
+        data: {
           type: "subagent_ended",
           subagentInvocationId: "legacy-advisor",
           outcome: "success",
@@ -664,7 +742,7 @@ describe("dashboard reporting", () => {
   });
 
   it("redacts advisor subagent transcript history for private conversations", async () => {
-    const { getAgentStepStore, getConversationStore } =
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
 
     const conversationId = "slack:D1:advisor-private";
@@ -672,16 +750,16 @@ describe("dashboard reporting", () => {
     const privateAdvisorText = "private advisor question";
     const childConversationId = `advisor:${conversationId}`;
     const conversationStore = getConversationStore();
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
 
     await conversationStore.ensureChildConversation({
       conversationId: childConversationId,
       parentConversationId: conversationId,
     });
-    await stepStore.append(childConversationId, [
+    await eventStore.append(childConversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: privateAdvisorText }],
@@ -691,9 +769,9 @@ describe("dashboard reporting", () => {
         createdAtMs: 10,
       },
     ]);
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
+        data: {
           type: "subagent_started",
           subagentInvocationId: toolCallId,
           subagentKind: "advisor",
@@ -704,7 +782,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 3,
       },
       {
-        entry: {
+        data: {
           type: "subagent_ended",
           subagentInvocationId: toolCallId,
           outcome: "success",
@@ -728,7 +806,7 @@ describe("dashboard reporting", () => {
   it("derives unfinished subagent status from completed parent tool results", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
 
     await upsertAgentTurnSessionRecord({
       modelId: "test/model",
@@ -752,30 +830,33 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
-    // The subagent has no end step; its status derives from the parent tool's
+    // The subagent has no end event; its status derives from the parent tool's
     // completed result in the current epoch projection.
-    await getAgentStepStore().append("slack:C1:activity-parent-result", [
-      {
-        entry: {
-          type: "tool_execution_started",
-          toolCallId: "advisor-call-parent",
-          toolName: "advisor",
-          args: { question: "public question" },
+    await getConversationEventStore().append(
+      "slack:C1:activity-parent-result",
+      [
+        {
+          data: {
+            type: "tool_execution_started",
+            toolCallId: "advisor-call-parent",
+            toolName: "advisor",
+            args: { question: "public question" },
+          },
+          createdAtMs: 2,
         },
-        createdAtMs: 2,
-      },
-      {
-        entry: {
-          type: "subagent_started",
-          subagentInvocationId: "advisor-call-parent",
-          subagentKind: "advisor",
-          parentToolCallId: "advisor-call-parent",
-          childConversationId: "advisor:slack:C1:activity-parent-result",
-          historyMode: "shared",
+        {
+          data: {
+            type: "subagent_started",
+            subagentInvocationId: "advisor-call-parent",
+            subagentKind: "advisor",
+            parentToolCallId: "advisor-call-parent",
+            childConversationId: "advisor:slack:C1:activity-parent-result",
+            historyMode: "shared",
+          },
+          createdAtMs: 3,
         },
-        createdAtMs: 3,
-      },
-    ]);
+      ],
+    );
 
     const report = await readConversationDetailReport(
       "slack:C1:activity-parent-result",
@@ -884,7 +965,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports a conversation directly from SQL without a secondary execution index", async () => {
-    const { getAgentStepStore, getConversationStore } =
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
     await getConversationStore().recordActivity({
       conversationId: "slack:C1:999",
@@ -896,10 +977,10 @@ describe("dashboard reporting", () => {
       source: "slack",
       visibility: "public",
     });
-    await getAgentStepStore().append("slack:C1:999", [
+    await getConversationEventStore().append("slack:C1:999", [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "target question" }],
@@ -925,7 +1006,7 @@ describe("dashboard reporting", () => {
   });
 
   it("reports terminal assistant outcomes without exposing provider errors", async () => {
-    const { getAgentStepStore, getConversationStore } =
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
     const errorConversationId = "slack:C1:terminal-error";
     const abortedConversationId = "slack:D1:terminal-aborted";
@@ -933,10 +1014,10 @@ describe("dashboard reporting", () => {
       "xAI 503 credential=secret-provider-token upstream payload";
 
     await confirmPublicSlackConversation(errorConversationId);
-    await getAgentStepStore().append(errorConversationId, [
+    await getConversationEventStore().append(errorConversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             api: "openai-responses",
@@ -976,10 +1057,10 @@ describe("dashboard reporting", () => {
       source: "slack",
       visibility: "private",
     });
-    await getAgentStepStore().append(abortedConversationId, [
+    await getConversationEventStore().append(abortedConversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             api: "openai-responses",
@@ -1045,7 +1126,7 @@ describe("dashboard reporting", () => {
   });
 
   it("keeps SQL detail available when optional execution settings fail", async () => {
-    const { getAgentStepStore, getConversationStore } =
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const conversationId = "slack:C1:settings-unavailable";
@@ -1059,10 +1140,10 @@ describe("dashboard reporting", () => {
       source: "slack",
       visibility: "public",
     });
-    await getAgentStepStore().append(conversationId, [
+    await getConversationEventStore().append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "available transcript" }],
@@ -1359,17 +1440,17 @@ describe("dashboard reporting", () => {
   });
 
   it("reports complete history around a compaction without copied messages", async () => {
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
 
     const conversationId = "slack:C1:compaction";
     await confirmPublicSlackConversation(conversationId);
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
 
     // Epoch 0: execution that remains visible after a later context rebuild.
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [
@@ -1384,8 +1465,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 0,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "old question" }],
@@ -1395,8 +1476,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 1,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "current question" }],
@@ -1407,8 +1488,8 @@ describe("dashboard reporting", () => {
         createdAtMs: 2,
       },
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [{ type: "text", text: "current question" }],
@@ -1419,7 +1500,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 2,
       },
       {
-        entry: {
+        data: {
           type: "tool_execution_started",
           toolCallId: "old-tool",
           toolName: "search",
@@ -1428,7 +1509,7 @@ describe("dashboard reporting", () => {
       },
     ]);
     // Compaction copies the latest user intent and adds a generated summary.
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       modelId: "test/model",
       reason: "compaction",
       modelProfile: "standard",
@@ -1482,10 +1563,10 @@ describe("dashboard reporting", () => {
       ],
     });
     // A current-epoch tool execution the report should surface.
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "user",
             content: [
@@ -1501,7 +1582,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 4.5,
       },
       {
-        entry: {
+        data: {
           type: "tool_execution_started",
           toolCallId: "new-tool",
           toolName: "search",
@@ -1544,12 +1625,12 @@ describe("dashboard reporting", () => {
   });
 
   it("reports the original execution and continuation around a model handoff", async () => {
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "slack:C1:handoff-reporting";
     await confirmPublicSlackConversation(conversationId);
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
 
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "initial",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
@@ -1600,7 +1681,7 @@ describe("dashboard reporting", () => {
         },
       ],
     });
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "handoff",
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
@@ -1633,10 +1714,10 @@ describe("dashboard reporting", () => {
         },
       ],
     });
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "I prepared the ordering fix." }],
@@ -1682,17 +1763,17 @@ describe("dashboard reporting", () => {
   });
 
   it("reports divergent rollback history without repeating the shared prefix", async () => {
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "slack:C1:rollback-reporting";
     await confirmPublicSlackConversation(conversationId);
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
     const shared = {
       role: "user",
       content: [{ type: "text", text: "Regenerate the answer" }],
       timestamp: 1,
     } as PiMessage;
 
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "initial",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
@@ -1708,7 +1789,7 @@ describe("dashboard reporting", () => {
         },
       ],
     });
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "rollback",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
@@ -1743,23 +1824,23 @@ describe("dashboard reporting", () => {
   });
 
   it("reports ordered compaction and handoff events with a once-only transcript", async () => {
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "slack:C1:compaction-handoff-reporting";
     await confirmPublicSlackConversation(conversationId);
-    const stepStore = getAgentStepStore();
+    const eventStore = getConversationEventStore();
     const original = {
       role: "user",
       content: [{ type: "text", text: "Finish the release work" }],
       timestamp: 1,
     } as PiMessage;
 
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "initial",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
       messages: [{ message: original, createdAtMs: 1 }],
     });
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "compaction",
       modelProfile: "standard",
       modelId: "openai/gpt-5.4",
@@ -1780,10 +1861,10 @@ describe("dashboard reporting", () => {
         },
       ],
     });
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "Compacted continuation" }],
@@ -1793,7 +1874,7 @@ describe("dashboard reporting", () => {
         createdAtMs: 3,
       },
     ]);
-    await stepStore.startEpoch(conversationId, {
+    await eventStore.startEpoch(conversationId, {
       reason: "handoff",
       modelProfile: "handoff",
       modelId: "openai/gpt-5.6-sol",
@@ -1813,10 +1894,10 @@ describe("dashboard reporting", () => {
         },
       ],
     });
-    await stepStore.append(conversationId, [
+    await eventStore.append(conversationId, [
       {
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "Handoff continuation" }],

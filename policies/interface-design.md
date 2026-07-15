@@ -31,7 +31,9 @@ Interfaces should expose the smallest useful capability while keeping ownership,
   they serve multiple consumers. `conversation:active` and
   `conversation:by-activity` describe the data contract better than
   process-specific names such as `recovery`.
-- Keep exported interfaces role-shaped and small. `SessionLogStore` with `read` and `append` is clearer than a broad adapter that exposes unrelated state, Redis, or queue details.
+- Keep exported interfaces role-shaped and small. A bounded legacy-import port
+  with only `read` is clearer than a broad adapter that exposes unrelated state,
+  Redis, or queue details.
 - Prefer import-site readability over globally unique names. If a name is only clear because it includes five qualifiers, the module boundary is probably doing too little work.
 - When a term is overloaded in the product or platform, define it once in the
   owning module documentation and avoid using it for nearby concepts.
