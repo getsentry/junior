@@ -373,7 +373,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("(high)");
   });
 
-  it("renders actor profiles with activity and recent conversations", () => {
+  it("renders actor profiles with activity without recent conversations", () => {
     const profile: ActorProfileReport = {
       activityDays: [
         {
@@ -452,7 +452,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Avery Example");
     expect(html).toContain("avery@example.com");
     expect(html).toContain("Activity");
-    expect(html).toContain("Incident triage");
+    expect(html).not.toContain("Incident triage");
     expect(html).toContain("Daily Junior conversation activity");
     expect(html).toContain("90 days");
     expect(html).toContain(">Jan<");
@@ -469,8 +469,8 @@ describe("dashboard telemetry components", () => {
         )
         .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
     ).toHaveLength(4);
-    expect(html).toContain('href="/people/avery%40example.com"');
-    expect(html).toContain('aria-label="Search recent conversations"');
+    expect(html).not.toContain('href="/people/avery%40example.com"');
+    expect(html).not.toContain('aria-label="Search recent conversations"');
     expect(html).not.toContain(">Places<");
     expect(html).not.toContain(">active days<");
     expect(html).not.toContain(">runs<");
