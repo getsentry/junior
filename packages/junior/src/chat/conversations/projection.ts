@@ -21,6 +21,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   projectConversationEvents,
+  type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
 
@@ -177,27 +178,14 @@ export async function loadTurnProjection(args: {
   conversationId: string;
   committedSeq: number;
   includeTail: boolean;
-}): Promise<
-  | (PiConversationProjection & {
-      /** Number of inherited messages before the child-local projection. */
-      localMessageStartIndex: number;
-      /** Child-local message event sequences only. */
-      seqs: number[];
-    })
-  | undefined
-> {
+}): Promise<PiConversationEventProjection | undefined> {
   const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
-    const projection = projectConversationEvents(
+    return projectConversationEvents(
       await eventStore.loadCurrentEpoch(args.conversationId),
     );
-    return {
-      ...projection,
-      localMessageStartIndex: 0,
-      seqs: projection.seqs,
-    };
   }
   const history = await eventStore.loadHistory(args.conversationId);
   const committedEvent = history.find(
@@ -212,12 +200,7 @@ export async function loadTurnProjection(args: {
   const localEvents = args.includeTail
     ? epochEvents
     : epochEvents.filter((event) => event.seq <= args.committedSeq);
-  const projection = projectConversationEvents(localEvents);
-  return {
-    ...projection,
-    localMessageStartIndex: 0,
-    seqs: projection.seqs,
-  };
+  return projectConversationEvents(localEvents);
 }
 
 /** Load MCP providers durably connected in this conversation's current epoch. */
@@ -259,9 +242,7 @@ export async function commitMessages(args: {
   executor?: JuniorSqlDatabase;
 }): Promise<{
   committedSeq: number;
-  /** Index where child-local messages begin in the returned provenance. */
-  localMessageStartIndex: number;
-  /** Child-local message event sequences only. */
+  /** Event sequence for every projected model message. */
   messageSeqs: number[];
   provenance: ConversationMessageProvenance[];
 }> {
@@ -348,7 +329,6 @@ async function commitMessagesLocked(
   );
   return {
     committedSeq: committed.seqs.at(-1) ?? -1,
-    localMessageStartIndex: 0,
     messageSeqs: committed.seqs,
     provenance: nextLocalProvenance,
   };
