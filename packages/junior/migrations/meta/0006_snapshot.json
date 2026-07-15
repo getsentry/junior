@@ -1,5 +1,5 @@
 {
-  "id": "46db5bc7-e30a-41bc-8194-abe7b42f6699",
+  "id": "cd03ee3d-359f-4bd5-ab69-699fcc06ef23",
   "prevId": "cf8b6b75-b49a-40db-b801-dfaac587ae2d",
   "version": "7",
   "dialect": "postgresql",
@@ -44,12 +44,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "payload": {
           "name": "payload",
@@ -969,49 +963,17 @@
           "primaryKey": false,
           "notNull": true
         },
-        "message_id": {
-          "name": "message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "delivery_kind": {
-          "name": "delivery_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "command_json": {
           "name": "command_json",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
-        "part_states_json": {
-          "name": "part_states_json",
+        "progress_json": {
+          "name": "progress_json",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "next_part_index": {
-          "name": "next_part_index",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "attempt_count": {
-          "name": "attempt_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "next_attempt_at": {
           "name": "next_attempt_at",
@@ -1037,65 +999,20 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "last_attempt_at": {
-          "name": "last_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
         }
       },
       "indexes": {
-        "junior_pending_deliveries_conversation_turn_idx": {
-          "name": "junior_pending_deliveries_conversation_turn_idx",
+        "junior_pending_deliveries_conversation_idx": {
+          "name": "junior_pending_deliveries_conversation_idx",
           "columns": [
             {
               "expression": "conversation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
-            },
-            {
-              "expression": "turn_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
             }
           ],
           "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_pending_deliveries_retry_idx": {
-          "name": "junior_pending_deliveries_retry_idx",
-          "columns": [
-            {
-              "expression": "next_attempt_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "delivery_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1116,14 +1033,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "junior_pending_deliveries_cursor_check": {
-          "name": "junior_pending_deliveries_cursor_check",
-          "value": "\"junior_pending_deliveries\".\"next_part_index\" >= 0"
-        },
-        "junior_pending_deliveries_attempt_count_check": {
-          "name": "junior_pending_deliveries_attempt_count_check",
-          "value": "\"junior_pending_deliveries\".\"attempt_count\" >= 0"
-        },
         "junior_pending_deliveries_lease_version_check": {
           "name": "junior_pending_deliveries_lease_version_check",
           "value": "\"junior_pending_deliveries\".\"lease_version\" >= 0"

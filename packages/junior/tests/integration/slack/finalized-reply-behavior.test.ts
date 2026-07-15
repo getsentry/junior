@@ -344,7 +344,7 @@ describe("Slack behavior: finalized thread replies", () => {
     const scheduleSessionCompletedPluginTasks = vi.fn();
     const recoverableSlackDelivery = {
       loadByTurn: vi.fn(async () => pending as never),
-      loadOldestByConversation: vi.fn(async () => pending as never),
+      loadByConversation: vi.fn(async () => pending as never),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {
         pending = {
@@ -450,7 +450,7 @@ describe("Slack behavior: finalized thread replies", () => {
         replyExecutor: {
           agentRunner: { run },
           recoverableSlackDelivery: {
-            loadOldestByConversation: vi.fn(async () => older),
+            loadByConversation: vi.fn(async () => older),
             loadByTurn: vi.fn(async () => older),
             loadTerminalOutcome: vi.fn(async () => undefined),
             createIntent: vi.fn(),
@@ -519,7 +519,7 @@ describe("Slack behavior: finalized thread replies", () => {
         replyExecutor: {
           agentRunner: { run },
           recoverableSlackDelivery: {
-            loadOldestByConversation: vi.fn(async () => pending),
+            loadByConversation: vi.fn(async () => pending),
             loadByTurn: vi.fn(async () => pending),
             loadTerminalOutcome: vi.fn(async () => undefined),
             createIntent: vi.fn(),
@@ -562,7 +562,7 @@ describe("Slack behavior: finalized thread replies", () => {
         replyExecutor: {
           agentRunner: { run },
           recoverableSlackDelivery: {
-            loadOldestByConversation: vi.fn(async () => undefined),
+            loadByConversation: vi.fn(async () => undefined),
             loadByTurn: vi.fn(async () => undefined),
             loadTerminalOutcome: vi.fn(async () => ({
               deliveryOutcome: "accepted" as const,
@@ -607,7 +607,7 @@ describe("Slack behavior: finalized thread replies", () => {
   it("repairs a failed summary after an immediate definitive rejection", async () => {
     const ack = vi.fn();
     const recoverableSlackDelivery = {
-      loadOldestByConversation: vi.fn(async () => undefined),
+      loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(
@@ -667,7 +667,7 @@ describe("Slack behavior: finalized thread replies", () => {
       throw new Error("plugin queue unavailable");
     });
     const recoverableSlackDelivery = {
-      loadOldestByConversation: vi.fn(async () => undefined),
+      loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(
@@ -731,7 +731,7 @@ describe("Slack behavior: finalized thread replies", () => {
     };
     let intent: unknown;
     const recoverableSlackDelivery = {
-      loadOldestByConversation: vi.fn(async () => undefined),
+      loadByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => intent as never),
       loadTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {

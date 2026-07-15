@@ -4,18 +4,15 @@ import {
   createPendingConversationDelivery,
   claimPendingConversationDelivery,
   loadPendingDeliveryByTurn,
-  markPendingDeliveryPartPosting,
-  markPendingDeliveryPartRepostable,
-  recordPendingDeliveryPartAccepted,
-  recordPendingDeliveryPartFailed,
-  recordPendingDeliveryPartUncertain,
+  markPendingDeliveryPosting,
+  recordPendingDeliveryAccepted,
+  recordPendingDeliveryFailed,
   terminalizeAcceptedPendingDelivery,
   terminalizeFailedPendingDelivery,
   PendingDeliveryLeaseLostError,
 } from "@/chat/conversations/sql/delivery-outbox";
 import {
   conversationDeliveryFailureCodeSchema,
-  conversationDeliveryKindSchema,
   pendingConversationDeliveryCommandSchema,
   type PendingConversationDeliveryCommand,
 } from "@/chat/conversations/delivery";
@@ -37,9 +34,6 @@ function command(
   overrides: Partial<PendingConversationDeliveryCommand> = {},
 ): PendingConversationDeliveryCommand {
   return pendingConversationDeliveryCommandSchema.parse({
-    version: 1,
-    provider: "slack",
-    deliveryKind: "assistant_reply",
     publicLocator: "0123456789Abcdefgh_-XY",
     session: {
       surface: "slack",
@@ -58,14 +52,7 @@ function command(
       startedAtMs: 900,
     },
     route: { channelId: "C123", threadTs: "1718123456.000000" },
-    parts: [
-      { partId: "part-1", stage: "thread_reply", text: "First" },
-      {
-        partId: "part-2",
-        stage: "thread_reply_continuation",
-        text: "Second",
-      },
-    ],
+    parts: [{ text: "First" }, { text: "Second" }],
     completion: {
       turnId: "turn-1",
       inputMessageIds: ["user-1"],
@@ -97,22 +84,20 @@ async function createDelivery(
     conversationId?: string;
     deliveryId?: string;
     turnId?: string;
+    command?: PendingConversationDeliveryCommand;
   } = {},
 ) {
   return createPendingConversationDelivery(fixture.sql, {
     conversationId: overrides.conversationId ?? CONVERSATION_ID,
     deliveryId: overrides.deliveryId ?? DELIVERY_ID,
     turnId: overrides.turnId ?? "turn-1",
-    command: command(),
+    command: overrides.command ?? command(),
     nowMs: 1_000,
   });
 }
 
 describe("pending conversation delivery outbox", () => {
   it("validates a narrow immutable command and creates control state idempotently", async () => {
-    expect(
-      conversationDeliveryKindSchema.safeParse("public_notice").success,
-    ).toBe(false);
     expect(
       conversationDeliveryFailureCodeSchema.safeParse("retry_exhausted")
         .success,
@@ -188,6 +173,25 @@ describe("pending conversation delivery outbox", () => {
           nowMs: 2_000,
         }),
       ).rejects.toThrow("different pending delivery");
+      const nextTurnCommand = command({
+        completion: {
+          ...command().completion,
+          turnId: "turn-2",
+          assistantMessage: {
+            ...command().completion.assistantMessage,
+            messageId: "assistant:turn-2",
+          },
+        },
+      });
+      await expect(
+        createDelivery(fixture, {
+          deliveryId: "delivery:turn-2",
+          turnId: "turn-2",
+          command: nextTurnCommand,
+        }),
+      ).rejects.toThrow(
+        "Conversation already has a different pending delivery",
+      );
     } finally {
       await fixture.close();
     }
@@ -234,9 +238,8 @@ describe("pending conversation delivery outbox", () => {
       ]);
       const claimed = claims.find((claim) => claim !== undefined)!;
       expect(claims.filter(Boolean)).toHaveLength(1);
-      await markPendingDeliveryPartPosting(fixture.sql, {
+      await markPendingDeliveryPosting(fixture.sql, {
         deliveryId: DELIVERY_ID,
-        partId: "part-1",
         lease: claimed.lease!,
         nowMs: 1_002,
       });
@@ -247,78 +250,13 @@ describe("pending conversation delivery outbox", () => {
         nowMs: 1_102,
         leaseDurationMs: 100,
       });
-      expect(recovered?.partStates["part-1"]).toEqual({
+      expect(recovered?.progress.currentState).toEqual({
         status: "uncertain",
         attemptedAtMs: 1_002,
-        retryAtMs: 1_102,
-        reconciliationAttempt: 0,
       });
       await expect(
-        markPendingDeliveryPartPosting(fixture.sql, {
+        recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease: recovered!.lease!,
-          nowMs: 1_103,
-        }),
-      ).rejects.toThrow("uncertain state");
-      await expect(
-        markPendingDeliveryPartRepostable(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease: recovered!.lease!,
-          nowMs: 1_103,
-          reconciliationAttempt: 1,
-          confirmedAbsentAtMs: 1_103,
-          graceElapsedAtMs: 1_104,
-        }),
-      ).rejects.toThrow("grace must be complete");
-      await expect(
-        markPendingDeliveryPartRepostable(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease: recovered!.lease!,
-          nowMs: 1_105,
-          reconciliationAttempt: 1,
-          confirmedAbsentAtMs: 1_104,
-          graceElapsedAtMs: 1_103,
-        }),
-      ).rejects.toThrow("grace must be complete");
-      const repostable = await markPendingDeliveryPartRepostable(fixture.sql, {
-        deliveryId: DELIVERY_ID,
-        partId: "part-1",
-        lease: recovered!.lease!,
-        nowMs: 1_105,
-        reconciliationAttempt: 1,
-        confirmedAbsentAtMs: 1_103,
-        graceElapsedAtMs: 1_104,
-      });
-      expect(repostable.partStates["part-1"]).toEqual({ status: "pending" });
-      await expect(
-        markPendingDeliveryPartRepostable(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease: recovered!.lease!,
-          nowMs: 1_106,
-          reconciliationAttempt: 0,
-          confirmedAbsentAtMs: 1_103,
-          graceElapsedAtMs: 1_104,
-        }),
-      ).rejects.toThrow("reconciliationAttempt must be positive");
-      await expect(
-        markPendingDeliveryPartRepostable(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease: recovered!.lease!,
-          nowMs: 1_106,
-          reconciliationAttempt: 2,
-          confirmedAbsentAtMs: 1_103,
-          graceElapsedAtMs: 1_104,
-        }),
-      ).rejects.toThrow("pending");
-      await expect(
-        recordPendingDeliveryPartAccepted(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
           lease: claimed.lease!,
           providerMessageId: "1718123457.000001",
           nowMs: 1_103,
@@ -329,7 +267,7 @@ describe("pending conversation delivery outbox", () => {
     }
   });
 
-  it("persists multipart receipts, uncertainty cursor, and definitive failure", async () => {
+  it("persists ordered multipart receipts and a definitive failure", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -341,88 +279,35 @@ describe("pending conversation delivery outbox", () => {
         leaseDurationMs: 1_000,
       });
       const lease = claimed!.lease!;
-      await expect(
-        markPendingDeliveryPartPosting(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-2",
-          lease,
-          nowMs: 1_002,
-        }),
-      ).rejects.toThrow("current pending delivery part");
-      await markPendingDeliveryPartPosting(fixture.sql, {
+      await markPendingDeliveryPosting(fixture.sql, {
         deliveryId: DELIVERY_ID,
-        partId: "part-1",
         lease,
         nowMs: 1_002,
       });
-      const uncertain = await recordPendingDeliveryPartUncertain(fixture.sql, {
+      const firstAccepted = await recordPendingDeliveryAccepted(fixture.sql, {
         deliveryId: DELIVERY_ID,
-        partId: "part-1",
         lease,
+        providerMessageId: "1718123457.000001",
         nowMs: 1_003,
-        retryAtMs: 1_500,
-        reconciliationAttempt: 2,
-        reconciliationCursor: "cursor-next-page",
       });
-      expect(uncertain.partStates["part-1"]).toMatchObject({
-        status: "uncertain",
-        reconciliationAttempt: 2,
-        reconciliationCursor: "cursor-next-page",
-      });
-      await expect(
-        markPendingDeliveryPartRepostable(fixture.sql, {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease,
-          nowMs: 1_004,
-          reconciliationAttempt: 1,
-          confirmedAbsentAtMs: 1_003,
-          graceElapsedAtMs: 1_004,
-        }),
-      ).rejects.toThrow("attempt is stale");
-      await markPendingDeliveryPartRepostable(fixture.sql, {
-        deliveryId: DELIVERY_ID,
-        partId: "part-1",
-        lease,
-        nowMs: 1_004,
-        reconciliationAttempt: 2,
-        confirmedAbsentAtMs: 1_003,
-        graceElapsedAtMs: 1_004,
-      });
-      await markPendingDeliveryPartPosting(fixture.sql, {
-        deliveryId: DELIVERY_ID,
-        partId: "part-1",
-        lease,
-        nowMs: 1_004,
-      });
-      const firstAccepted = await recordPendingDeliveryPartAccepted(
-        fixture.sql,
-        {
-          deliveryId: DELIVERY_ID,
-          partId: "part-1",
-          lease,
-          providerMessageId: "1718123457.000001",
-          nowMs: 1_004,
-        },
-      );
       expect(firstAccepted.nextPartIndex).toBe(1);
-      await markPendingDeliveryPartPosting(fixture.sql, {
+      expect(firstAccepted.progress.acceptedReceipts).toEqual([
+        "1718123457.000001",
+      ]);
+      await markPendingDeliveryPosting(fixture.sql, {
         deliveryId: DELIVERY_ID,
-        partId: "part-2",
         lease,
+        nowMs: 1_004,
+      });
+      const failed = await recordPendingDeliveryFailed(fixture.sql, {
+        deliveryId: DELIVERY_ID,
+        lease,
+        failureCode: "provider_rejected",
         nowMs: 1_005,
       });
-      const failed = await recordPendingDeliveryPartFailed(fixture.sql, {
-        deliveryId: DELIVERY_ID,
-        partId: "part-2",
-        lease,
-        failureCode: "provider_rejected",
-        nowMs: 1_006,
-      });
-      expect(failed.partStates["part-2"]).toEqual({
+      expect(failed.progress.currentState).toEqual({
         status: "failed",
         failureCode: "provider_rejected",
-        failedAtMs: 1_006,
       });
       await expect(
         terminalizeAcceptedPendingDelivery(fixture.sql, {
@@ -430,7 +315,7 @@ describe("pending conversation delivery outbox", () => {
           deliveryId: DELIVERY_ID,
           turnId: "turn-1",
           lease,
-          nowMs: 1_007,
+          nowMs: 1_006,
           finalizer: vi.fn(),
         }),
       ).rejects.toThrow("every part is accepted");
@@ -441,7 +326,7 @@ describe("pending conversation delivery outbox", () => {
         ).fail({
           conversationId: CONVERSATION_ID,
           turnId: "turn-1",
-          createdAtMs: 1_008,
+          createdAtMs: 1_007,
           failureCode: "delivery_failed",
         });
       });
@@ -451,7 +336,7 @@ describe("pending conversation delivery outbox", () => {
           deliveryId: DELIVERY_ID,
           turnId: "turn-1",
           lease,
-          nowMs: 1_008,
+          nowMs: 1_007,
           finalizer: failureFinalizer,
         }),
       ).resolves.toBe("finalized");
@@ -461,7 +346,7 @@ describe("pending conversation delivery outbox", () => {
           deliveryId: DELIVERY_ID,
           turnId: "turn-1",
           lease,
-          nowMs: 1_009,
+          nowMs: 1_008,
           finalizer: failureFinalizer,
         }),
       ).resolves.toBe("already_finalized");
@@ -493,16 +378,14 @@ describe("pending conversation delivery outbox", () => {
         leaseDurationMs: 5_000,
       });
       const lease = claimed!.lease!;
-      for (const [index, partId] of ["part-1", "part-2"].entries()) {
-        await markPendingDeliveryPartPosting(fixture.sql, {
+      for (const index of [0, 1]) {
+        await markPendingDeliveryPosting(fixture.sql, {
           deliveryId: DELIVERY_ID,
-          partId,
           lease,
           nowMs: 1_010 + index * 2,
         });
-        await recordPendingDeliveryPartAccepted(fixture.sql, {
+        await recordPendingDeliveryAccepted(fixture.sql, {
           deliveryId: DELIVERY_ID,
-          partId,
           lease,
           providerMessageId: `1718123457.00000${index + 1}`,
           nowMs: 1_011 + index * 2,

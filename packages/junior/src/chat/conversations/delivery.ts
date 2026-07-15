@@ -16,12 +16,6 @@ export const conversationDeliveryIdSchema = z
   .max(160)
   .regex(/^[A-Za-z0-9:_-]+$/);
 
-/** Allowlisted destination provider for durable delivery facts. */
-export const conversationDeliveryProviderSchema = z.literal("slack");
-
-/** Delivery family currently owned by the durable Slack reply boundary. */
-export const conversationDeliveryKindSchema = z.literal("assistant_reply");
-
 /** Privacy-safe reason that an intended delivery cannot be completed. */
 export const conversationDeliveryFailureCodeSchema =
   z.literal("provider_rejected");
@@ -45,12 +39,6 @@ const durableSlackBlockSchema = z.union([
 
 const durableDeliveryPartSchema = z
   .object({
-    partId: z
-      .string()
-      .min(1)
-      .max(160)
-      .regex(/^[A-Za-z0-9:_-]+$/),
-    stage: z.enum(["thread_reply", "thread_reply_continuation"]),
     text: z.string().min(1).max(40_000),
     blocks: z.array(durableSlackBlockSchema).min(1).optional(),
   })
@@ -63,9 +51,6 @@ const durableDeliveryPartSchema = z
  */
 export const pendingConversationDeliveryCommandSchema = z
   .object({
-    version: z.literal(1),
-    provider: z.literal("slack"),
-    deliveryKind: z.literal("assistant_reply"),
     route: z
       .object({
         channelId: z.string().regex(/^[CDG][A-Z0-9]+$/),
@@ -127,14 +112,6 @@ export const pendingConversationDeliveryCommandSchema = z
   })
   .strict()
   .superRefine((command, ctx) => {
-    const partIds = command.parts.map((part) => part.partId);
-    if (new Set(partIds).size !== partIds.length) {
-      ctx.addIssue({
-        code: "custom",
-        message: "delivery part ids must be unique",
-        path: ["parts"],
-      });
-    }
     if (
       new Set(command.completion.inputMessageIds).size !==
       command.completion.inputMessageIds.length
@@ -176,55 +153,50 @@ export type PendingConversationDeliveryCommand = z.output<
   typeof pendingConversationDeliveryCommandSchema
 >;
 
-const pendingPartStateSchema = z
+const pendingDeliveryReadyStateSchema = z
   .object({ status: z.literal("pending") })
   .strict();
-const postingPartStateSchema = z
+const pendingDeliveryPostingStateSchema = z
   .object({
     status: z.literal("posting"),
-    startedAtMs: z.number().finite(),
+    attemptedAtMs: z.number().finite(),
   })
   .strict();
-const acceptedPartStateSchema = z
-  .object({
-    status: z.literal("accepted"),
-    providerMessageId: z.string().regex(/^\d+(?:\.\d+)?$/),
-    acceptedAtMs: z.number().finite(),
-  })
-  .strict();
-const uncertainPartStateSchema = z
+const pendingDeliveryUncertainStateSchema = z
   .object({
     status: z.literal("uncertain"),
     attemptedAtMs: z.number().finite(),
-    retryAtMs: z.number().finite(),
-    reconciliationAttempt: z.number().int().nonnegative(),
     reconciliationCursor: z.string().min(1).max(512).optional(),
     confirmedAbsentAtMs: z.number().finite().optional(),
   })
   .strict();
-const failedPartStateSchema = z
+const pendingDeliveryFailedStateSchema = z
   .object({
     status: z.literal("failed"),
     failureCode: conversationDeliveryFailureCodeSchema,
-    failedAtMs: z.number().finite(),
   })
   .strict();
 
-/** Mutable reconciliation state for one immutable command part. */
-export const pendingConversationDeliveryPartStateSchema = z.union([
-  pendingPartStateSchema,
-  postingPartStateSchema,
-  acceptedPartStateSchema,
-  uncertainPartStateSchema,
-  failedPartStateSchema,
+/** Mutable state for the current ordered delivery part. */
+export const pendingConversationDeliveryCurrentStateSchema = z.union([
+  pendingDeliveryReadyStateSchema,
+  pendingDeliveryPostingStateSchema,
+  pendingDeliveryUncertainStateSchema,
+  pendingDeliveryFailedStateSchema,
 ]);
 
-export type PendingConversationDeliveryPartState = z.output<
-  typeof pendingConversationDeliveryPartStateSchema
+export type PendingConversationDeliveryCurrentState = z.output<
+  typeof pendingConversationDeliveryCurrentStateSchema
 >;
 
-/** Validated per-part state keyed by immutable command part id. */
-export const pendingConversationDeliveryPartStatesSchema = z.record(
-  z.string().min(1),
-  pendingConversationDeliveryPartStateSchema,
-);
+/** Ordered delivery receipts plus the mutable state of the next part. */
+export const pendingConversationDeliveryProgressSchema = z
+  .object({
+    acceptedReceipts: z.array(z.string().regex(/^\d+(?:\.\d+)?$/)),
+    currentState: pendingConversationDeliveryCurrentStateSchema,
+  })
+  .strict();
+
+export type PendingConversationDeliveryProgress = z.output<
+  typeof pendingConversationDeliveryProgressSchema
+>;

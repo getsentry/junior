@@ -4,14 +4,14 @@ import {
   claimPendingConversationDelivery,
   createPendingConversationDelivery,
   loadDeliveryTerminalOutcome,
-  loadOldestPendingDeliveryByConversation,
+  loadPendingDeliveryByConversation,
   loadPendingDeliveryByTurn,
-  markPendingDeliveryPartPosting,
-  markPendingDeliveryPartRepostable,
-  recordPendingDeliveryPartAccepted,
-  recordPendingDeliveryPartFailed,
-  recordPendingDeliveryPartRetryable,
-  recordPendingDeliveryPartUncertain,
+  markPendingDeliveryPosting,
+  markPendingDeliveryRepostable,
+  recordPendingDeliveryAccepted,
+  recordPendingDeliveryFailed,
+  recordPendingDeliveryRetryable,
+  recordPendingDeliveryUncertain,
   releasePendingDeliveryLease,
   renewPendingDeliveryLease,
   terminalizeAcceptedPendingDelivery,
@@ -30,11 +30,13 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { and, eq, inArray } from "drizzle-orm";
 import { juniorConversationMessages } from "@/db/schema";
-import type {
-  RecoverableSlackPostResult,
-  RecoverableSlackReconciliationResult,
-  SlackDeliveryMetadata,
+import {
+  RECOVERABLE_SLACK_MAX_BACKOFF_MS,
+  type RecoverableSlackPostResult,
+  type RecoverableSlackReconciliationResult,
+  type SlackDeliveryMetadata,
 } from "@/chat/slack/outbound";
+import { logError } from "@/chat/logging";
 
 const LEASE_DURATION_MS = 120_000;
 const RETRY_DELAY_MS = 5_000;
@@ -167,11 +169,11 @@ export class RecoverableSlackDeliveryService {
     return loadPendingDeliveryByTurn(this.sql, args);
   }
 
-  /** Load the oldest unresolved delivery before selecting a newer turn. */
-  async loadOldestByConversation(args: {
+  /** Load the conversation's only unresolved delivery. */
+  async loadByConversation(args: {
     conversationId: string;
   }): Promise<PendingConversationDelivery | undefined> {
-    return loadOldestPendingDeliveryByConversation(this.sql, args);
+    return loadPendingDeliveryByConversation(this.sql, args);
   }
 
   /** Resolve the canonical turn terminal after an ambiguous outbox commit. */
@@ -222,16 +224,12 @@ export class RecoverableSlackDeliveryService {
       while (current.nextPartIndex < current.command.parts.length) {
         const partIndex = current.nextPartIndex;
         const part = current.command.parts[partIndex]!;
-        const state = current.partStates[part.partId]!;
+        const state = current.progress.currentState;
         const metadata: SlackDeliveryMetadata = {
           locator: current.command
             .publicLocator as SlackDeliveryMetadata["locator"],
           partIndex,
-          version: 1,
         };
-        if (state.status === "accepted") {
-          throw new Error("Pending delivery cursor points at an accepted part");
-        }
         if (state.status === "failed") break;
         if (state.status === "uncertain") {
           lease = await renewPendingDeliveryLease(this.sql, {
@@ -251,12 +249,10 @@ export class RecoverableSlackDeliveryService {
               ? { cursor: state.reconciliationCursor }
               : {}),
           });
-          const attempt = state.reconciliationAttempt + 1;
           const reconciliationNow = this.now();
           if (reconciliation.outcome === "accepted") {
-            current = await recordPendingDeliveryPartAccepted(this.sql, {
+            current = await recordPendingDeliveryAccepted(this.sql, {
               deliveryId: current.deliveryId,
-              partId: part.partId,
               lease,
               providerMessageId: reconciliation.ts,
               nowMs: reconciliationNow,
@@ -266,13 +262,11 @@ export class RecoverableSlackDeliveryService {
           if (reconciliation.outcome === "retryable") {
             const retryAtMs =
               reconciliation.retryAtMs ?? reconciliationNow + RETRY_DELAY_MS;
-            await recordPendingDeliveryPartUncertain(this.sql, {
+            await recordPendingDeliveryUncertain(this.sql, {
               deliveryId: current.deliveryId,
-              partId: part.partId,
               lease,
               nowMs: reconciliationNow,
               retryAtMs,
-              reconciliationAttempt: attempt,
               ...(state.reconciliationCursor
                 ? { reconciliationCursor: state.reconciliationCursor }
                 : {}),
@@ -290,35 +284,56 @@ export class RecoverableSlackDeliveryService {
               state.confirmedAbsentAtMs !== undefined &&
               reconciliationNow >= graceElapsedAtMs
             ) {
-              current = await markPendingDeliveryPartRepostable(this.sql, {
+              current = await markPendingDeliveryRepostable(this.sql, {
                 deliveryId: current.deliveryId,
-                partId: part.partId,
                 lease,
                 nowMs: reconciliationNow,
-                reconciliationAttempt: attempt,
-                confirmedAbsentAtMs,
                 graceElapsedAtMs,
               });
               continue;
             }
-            await recordPendingDeliveryPartUncertain(this.sql, {
+            await recordPendingDeliveryUncertain(this.sql, {
               deliveryId: current.deliveryId,
-              partId: part.partId,
               lease,
               nowMs: reconciliationNow,
               retryAtMs: graceElapsedAtMs,
-              reconciliationAttempt: attempt,
               confirmedAbsentAtMs,
             });
             return { outcome: "pending", retryAtMs: graceElapsedAtMs };
           }
-          await recordPendingDeliveryPartUncertain(this.sql, {
+          const retryDelayMs =
+            reconciliation.outcome === "unresolved" &&
+            reconciliation.reason === "permanent_provider_error"
+              ? RECOVERABLE_SLACK_MAX_BACKOFF_MS
+              : RETRY_DELAY_MS;
+          const retryAtMs = reconciliationNow + retryDelayMs;
+          if (
+            reconciliation.outcome === "unresolved" &&
+            reconciliation.reason === "permanent_provider_error"
+          ) {
+            logError(
+              "slack_delivery_reconciliation_blocked",
+              {
+                conversationId: current.conversationId,
+                platform: "slack",
+                slackChannelId: current.command.route.channelId,
+                slackThreadId: current.command.route.threadTs,
+              },
+              {
+                "app.delivery.id": current.deliveryId,
+                "app.turn.id": current.turnId,
+                "app.provider.error_code":
+                  reconciliation.providerErrorCode ?? "unknown",
+                "app.retry.delay_ms": retryDelayMs,
+              },
+              "Slack delivery reconciliation is blocked by a permanent provider error; restore Slack access before the next retry",
+            );
+          }
+          await recordPendingDeliveryUncertain(this.sql, {
             deliveryId: current.deliveryId,
-            partId: part.partId,
             lease,
             nowMs: reconciliationNow,
-            retryAtMs: reconciliationNow + RETRY_DELAY_MS,
-            reconciliationAttempt: attempt,
+            retryAtMs,
             ...(reconciliation.outcome === "continue"
               ? { reconciliationCursor: reconciliation.nextCursor }
               : state.reconciliationCursor
@@ -330,13 +345,12 @@ export class RecoverableSlackDeliveryService {
           });
           return {
             outcome: "pending",
-            retryAtMs: reconciliationNow + RETRY_DELAY_MS,
+            retryAtMs,
           };
         }
 
-        current = await markPendingDeliveryPartPosting(this.sql, {
+        current = await markPendingDeliveryPosting(this.sql, {
           deliveryId: current.deliveryId,
-          partId: part.partId,
           lease,
           nowMs: this.now(),
         });
@@ -355,9 +369,8 @@ export class RecoverableSlackDeliveryService {
         });
         const postNow = this.now();
         if (post.outcome === "accepted") {
-          current = await recordPendingDeliveryPartAccepted(this.sql, {
+          current = await recordPendingDeliveryAccepted(this.sql, {
             deliveryId: current.deliveryId,
-            partId: part.partId,
             lease,
             providerMessageId: post.ts,
             nowMs: postNow,
@@ -365,9 +378,8 @@ export class RecoverableSlackDeliveryService {
           continue;
         }
         if (post.outcome === "definitive_failure") {
-          current = await recordPendingDeliveryPartFailed(this.sql, {
+          current = await recordPendingDeliveryFailed(this.sql, {
             deliveryId: current.deliveryId,
-            partId: part.partId,
             lease,
             failureCode: "provider_rejected",
             nowMs: postNow,
@@ -375,9 +387,8 @@ export class RecoverableSlackDeliveryService {
           break;
         }
         if (post.outcome === "retryable_absence") {
-          current = await recordPendingDeliveryPartRetryable(this.sql, {
+          current = await recordPendingDeliveryRetryable(this.sql, {
             deliveryId: current.deliveryId,
-            partId: part.partId,
             lease,
             nowMs: postNow,
             retryAtMs: post.retryAtMs ?? postNow + RETRY_DELAY_MS,
@@ -387,20 +398,16 @@ export class RecoverableSlackDeliveryService {
             retryAtMs: post.retryAtMs ?? postNow + RETRY_DELAY_MS,
           };
         }
-        await recordPendingDeliveryPartUncertain(this.sql, {
+        await recordPendingDeliveryUncertain(this.sql, {
           deliveryId: current.deliveryId,
-          partId: part.partId,
           lease,
           nowMs: postNow,
           retryAtMs: postNow + RETRY_DELAY_MS,
-          reconciliationAttempt: 0,
         });
         return { outcome: "pending", retryAtMs: postNow + RETRY_DELAY_MS };
       }
 
-      const failed = Object.values(current.partStates).some(
-        (state) => state.status === "failed",
-      );
+      const failed = current.progress.currentState.status === "failed";
       if (failed) {
         try {
           await terminalizeFailedPendingDelivery(this.sql, {
@@ -466,7 +473,6 @@ export class RecoverableSlackDeliveryService {
         await releasePendingDeliveryLease(this.sql, {
           deliveryId: current.deliveryId,
           lease,
-          nowMs: this.now(),
         }).catch(() => undefined);
       }
     }

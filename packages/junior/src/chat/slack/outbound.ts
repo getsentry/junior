@@ -17,7 +17,8 @@ const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 const SLACK_DELIVERY_LOCATOR_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const MAX_SLACK_DELIVERY_PART_INDEX = 9_999;
 const SLACK_WEB_API_RATE_LIMITED_ERROR_CODE = "slack_webapi_rate_limited_error";
-const MAX_RECOVERABLE_SLACK_RETRY_AFTER_MS = 60 * 60 * 1_000;
+/** Longest delay before retrying a recoverable Slack provider operation. */
+export const RECOVERABLE_SLACK_MAX_BACKOFF_MS = 60 * 60 * 1_000;
 // Slack applies a 15-item conversations.replies limit to some commercially
 // distributed apps. One page per invocation also lets durable orchestration
 // honor the provider's rate limit between reconciliation attempts.
@@ -37,7 +38,6 @@ export type SlackDeliveryLocator = string & {
 export interface SlackDeliveryMetadata {
   locator: SlackDeliveryLocator;
   partIndex: number;
-  version: 1;
 }
 
 /** Create an opaque random locator suitable for public Slack message metadata. */
@@ -61,9 +61,6 @@ function requireSlackDeliveryMetadata(
   if (!locator) {
     throw new Error("Slack delivery metadata requires a valid locator");
   }
-  if (metadata.version !== 1) {
-    throw new Error("Slack delivery metadata requires version 1");
-  }
   if (
     !Number.isInteger(metadata.partIndex) ||
     metadata.partIndex < 0 ||
@@ -71,7 +68,7 @@ function requireSlackDeliveryMetadata(
   ) {
     throw new Error("Slack delivery metadata requires a valid part index");
   }
-  return { locator, partIndex: metadata.partIndex, version: 1 };
+  return { locator, partIndex: metadata.partIndex };
 }
 
 function toSlackMessageMetadata(metadata: SlackDeliveryMetadata): {
@@ -79,7 +76,6 @@ function toSlackMessageMetadata(metadata: SlackDeliveryMetadata): {
   event_payload: {
     locator: SlackDeliveryLocator;
     part_index: number;
-    version: 1;
   };
 } {
   const validated = requireSlackDeliveryMetadata(metadata);
@@ -88,7 +84,6 @@ function toSlackMessageMetadata(metadata: SlackDeliveryMetadata): {
     event_payload: {
       locator: validated.locator,
       part_index: validated.partIndex,
-      version: validated.version,
     },
   };
 }
@@ -288,7 +283,7 @@ function classifyRecoverableSlackPostFailure(
     const retryAfterMs = Number.isFinite(retryAfterSeconds)
       ? Math.min(
           Math.max(0, retryAfterSeconds * 1_000),
-          MAX_RECOVERABLE_SLACK_RETRY_AFTER_MS,
+          RECOVERABLE_SLACK_MAX_BACKOFF_MS,
         )
       : undefined;
     return {
@@ -373,7 +368,11 @@ export type RecoverableSlackReconciliationResult =
   | { outcome: "confirmed_absent" }
   | { outcome: "continue"; nextCursor: string }
   | { outcome: "retryable"; retryAtMs?: number }
-  | { outcome: "unresolved" };
+  | {
+      outcome: "unresolved";
+      reason?: "permanent_provider_error";
+      providerErrorCode?: string;
+    };
 
 interface SlackReconciliationIdentity {
   appId?: string;
@@ -383,6 +382,17 @@ interface SlackReconciliationIdentity {
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readSlackApiErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const candidate =
+    error instanceof SlackActionError
+      ? (error.apiError ?? error.code)
+      : (error as { data?: { error?: unknown } }).data?.error;
+  return typeof candidate === "string" && /^[a-z0-9_]{1,80}$/i.test(candidate)
+    ? candidate
+    : undefined;
 }
 
 function isMessageFromSlackIdentity(
@@ -415,10 +425,9 @@ function hasSlackDeliveryMetadata(
   }
   const payload = candidate.event_payload as Record<string, unknown>;
   return (
-    Object.keys(payload).length === 3 &&
+    Object.keys(payload).length === 2 &&
     payload.locator === expected.event_payload.locator &&
-    payload.part_index === expected.event_payload.part_index &&
-    payload.version === expected.event_payload.version
+    payload.part_index === expected.event_payload.part_index
   );
 }
 
@@ -497,6 +506,13 @@ export async function reconcileRecoverableSlackMessage(input: {
         ...(classified.retryAtMs !== undefined
           ? { retryAtMs: classified.retryAtMs }
           : {}),
+      };
+    }
+    if (classified.outcome === "definitive_failure") {
+      return {
+        outcome: "unresolved",
+        reason: "permanent_provider_error",
+        providerErrorCode: readSlackApiErrorCode(error) ?? "unknown",
       };
     }
     return { outcome: "unresolved" };

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorPendingDeliveries } from "@/db/schema";
@@ -9,9 +9,9 @@ import {
   conversationDeliveryFailureCodeSchema,
   conversationDeliveryIdSchema,
   pendingConversationDeliveryCommandSchema,
-  pendingConversationDeliveryPartStatesSchema,
+  pendingConversationDeliveryProgressSchema,
   type PendingConversationDeliveryCommand,
-  type PendingConversationDeliveryPartState,
+  type PendingConversationDeliveryProgress,
 } from "../delivery";
 import { conversationEventDataSchema } from "../history";
 import { ensureConversationRow } from "./conversation-row";
@@ -20,7 +20,6 @@ import { withConversationEventLock } from "./event-lock";
 type PendingDeliveryRow = typeof juniorPendingDeliveries.$inferSelect;
 
 const leaseOwnerSchema = z.string().min(1).max(160);
-const partIdSchema = z.string().min(1).max(160);
 
 /** A fenced claim that must accompany every delivery-state mutation. */
 export interface PendingDeliveryLease {
@@ -35,14 +34,10 @@ export interface PendingConversationDelivery {
   conversationId: string;
   turnId: string;
   command: PendingConversationDeliveryCommand;
-  partStates: Record<string, PendingConversationDeliveryPartState>;
+  progress: PendingConversationDeliveryProgress;
   nextPartIndex: number;
-  attemptCount: number;
   nextAttemptAtMs: number;
   lease?: PendingDeliveryLease;
-  lastAttemptAtMs?: number;
-  createdAtMs: number;
-  updatedAtMs: number;
 }
 
 /** Canonical turn-terminal interpretation after outbox finalization commits. */
@@ -59,39 +54,23 @@ export class PendingDeliveryLeaseLostError extends Error {
   }
 }
 
-function initialPartStates(
-  command: PendingConversationDeliveryCommand,
-): Record<string, PendingConversationDeliveryPartState> {
-  return Object.fromEntries(
-    command.parts.map((part) => [part.partId, { status: "pending" as const }]),
-  );
-}
-
-function nextPartIndex(
-  command: PendingConversationDeliveryCommand,
-  states: Record<string, PendingConversationDeliveryPartState>,
-): number {
-  const index = command.parts.findIndex(
-    (part) => states[part.partId]?.status !== "accepted",
-  );
-  return index === -1 ? command.parts.length : index;
+function initialProgress(): PendingConversationDeliveryProgress {
+  return { acceptedReceipts: [], currentState: { status: "pending" } };
 }
 
 function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
   const command = pendingConversationDeliveryCommandSchema.parse(row.command);
-  const partStates = pendingConversationDeliveryPartStatesSchema.parse(
-    row.partStates,
+  const progress = pendingConversationDeliveryProgressSchema.parse(
+    row.progress,
   );
-  const expectedPartIds = command.parts.map((part) => part.partId).sort();
-  if (!isDeepStrictEqual(Object.keys(partStates).sort(), expectedPartIds)) {
-    throw new Error("Pending delivery part state does not match its command");
+  if (progress.acceptedReceipts.length > command.parts.length) {
+    throw new Error("Pending delivery progress exceeds its command");
   }
   if (
-    row.messageId !== command.completion.assistantMessage.messageId ||
-    row.provider !== command.provider ||
-    row.deliveryKind !== command.deliveryKind
+    progress.acceptedReceipts.length === command.parts.length &&
+    progress.currentState.status !== "pending"
   ) {
-    throw new Error("Pending delivery columns do not match its command");
+    throw new Error("Completed delivery progress has an active current state");
   }
   if ((row.leaseOwner === null) !== (row.leaseExpiresAt === null)) {
     throw new Error("Pending delivery has a partial lease");
@@ -101,9 +80,8 @@ function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
     conversationId: row.conversationId,
     turnId: row.turnId,
     command,
-    partStates,
-    nextPartIndex: row.nextPartIndex,
-    attemptCount: row.attemptCount,
+    progress,
+    nextPartIndex: progress.acceptedReceipts.length,
     nextAttemptAtMs: row.nextAttemptAt.getTime(),
     ...(row.leaseOwner && row.leaseExpiresAt
       ? {
@@ -114,11 +92,6 @@ function parseRow(row: PendingDeliveryRow): PendingConversationDelivery {
           },
         }
       : {}),
-    ...(row.lastAttemptAt
-      ? { lastAttemptAtMs: row.lastAttemptAt.getTime() }
-      : {}),
-    createdAtMs: row.createdAt.getTime(),
-    updatedAtMs: row.updatedAt.getTime(),
   };
 }
 
@@ -196,26 +169,16 @@ export async function createPendingConversationDelivery(
           deliveryId,
           conversationId: args.conversationId,
           turnId: args.turnId,
-          messageId: command.completion.assistantMessage.messageId,
-          provider: command.provider,
-          deliveryKind: command.deliveryKind,
           command: sanitizePostgresJson(command),
-          partStates: sanitizePostgresJson(initialPartStates(command)),
+          progress: sanitizePostgresJson(initialProgress()),
           nextAttemptAt: new Date(nowMs),
-          createdAt: new Date(nowMs),
-          updatedAt: new Date(nowMs),
         })
         .onConflictDoNothing();
       const rows = await executor
         .db()
         .select()
         .from(juniorPendingDeliveries)
-        .where(
-          and(
-            eq(juniorPendingDeliveries.conversationId, args.conversationId),
-            eq(juniorPendingDeliveries.turnId, args.turnId),
-          ),
-        );
+        .where(eq(juniorPendingDeliveries.conversationId, args.conversationId));
       const existing = rows[0];
       if (!existing) throw new Error("Pending delivery insert was lost");
       const parsed = parseRow(existing);
@@ -223,7 +186,9 @@ export async function createPendingConversationDelivery(
         parsed.deliveryId !== deliveryId ||
         !isDeepStrictEqual(parsed.command, command)
       ) {
-        throw new Error("Turn already has a different pending delivery");
+        throw new Error(
+          "Conversation already has a different pending delivery",
+        );
       }
       return parsed;
     }),
@@ -248,8 +213,8 @@ export async function loadPendingDeliveryByTurn(
   return rows[0] ? parseRow(rows[0]) : undefined;
 }
 
-/** Load the oldest unresolved delivery so newer input cannot bypass it. */
-export async function loadOldestPendingDeliveryByConversation(
+/** Load the conversation's only unresolved delivery. */
+export async function loadPendingDeliveryByConversation(
   executor: JuniorSqlDatabase,
   args: { conversationId: string },
 ): Promise<PendingConversationDelivery | undefined> {
@@ -258,15 +223,11 @@ export async function loadOldestPendingDeliveryByConversation(
     .select()
     .from(juniorPendingDeliveries)
     .where(eq(juniorPendingDeliveries.conversationId, args.conversationId))
-    .orderBy(
-      asc(juniorPendingDeliveries.createdAt),
-      asc(juniorPendingDeliveries.deliveryId),
-    )
     .limit(1);
   return rows[0] ? parseRow(rows[0]) : undefined;
 }
 
-/** Claim a due delivery; stale `posting` parts become uncertain, never pending. */
+/** Claim a due delivery; stale `posting` state becomes uncertain, never pending. */
 export async function claimPendingConversationDelivery(
   executor: JuniorSqlDatabase,
   args: {
@@ -292,31 +253,25 @@ export async function claimPendingConversationDelivery(
       return undefined;
     }
     const current = parseRow(row);
-    const partStates = Object.fromEntries(
-      Object.entries(current.partStates).map(([partId, state]) => [
-        partId,
-        state.status === "posting"
+    const progress: PendingConversationDeliveryProgress = {
+      ...current.progress,
+      currentState:
+        current.progress.currentState.status === "posting"
           ? {
-              status: "uncertain" as const,
-              attemptedAtMs: state.startedAtMs,
-              retryAtMs: nowMs,
-              reconciliationAttempt: 0,
+              status: "uncertain",
+              attemptedAtMs: current.progress.currentState.attemptedAtMs,
             }
-          : state,
-      ]),
-    );
+          : current.progress.currentState,
+    };
     const expiresAtMs = nowMs + args.leaseDurationMs;
     const rows = await executor
       .db()
       .update(juniorPendingDeliveries)
       .set({
-        partStates: sanitizePostgresJson(partStates),
+        progress: sanitizePostgresJson(progress),
         leaseOwner: owner,
         leaseVersion: row.leaseVersion + 1,
         leaseExpiresAt: new Date(expiresAtMs),
-        attemptCount: row.attemptCount + 1,
-        lastAttemptAt: new Date(nowMs),
-        updatedAt: new Date(nowMs),
       })
       .where(eq(juniorPendingDeliveries.deliveryId, deliveryId))
       .returning();
@@ -343,7 +298,7 @@ export async function renewPendingDeliveryLease(
   const rows = await executor
     .db()
     .update(juniorPendingDeliveries)
-    .set({ leaseExpiresAt: new Date(expiresAtMs), updatedAt: new Date(nowMs) })
+    .set({ leaseExpiresAt: new Date(expiresAtMs) })
     .where(
       and(
         eq(juniorPendingDeliveries.deliveryId, deliveryId),
@@ -360,7 +315,7 @@ export async function renewPendingDeliveryLease(
 /** Release a claim only when its owner and fencing version still match. */
 export async function releasePendingDeliveryLease(
   executor: JuniorSqlDatabase,
-  args: { deliveryId: string; lease: PendingDeliveryLease; nowMs: number },
+  args: { deliveryId: string; lease: PendingDeliveryLease },
 ): Promise<void> {
   const rows = await executor
     .db()
@@ -368,7 +323,6 @@ export async function releasePendingDeliveryLease(
     .set({
       leaseOwner: null,
       leaseExpiresAt: null,
-      updatedAt: new Date(args.nowMs),
     })
     .where(
       and(
@@ -381,18 +335,16 @@ export async function releasePendingDeliveryLease(
   if (!rows[0]) throw new PendingDeliveryLeaseLostError();
 }
 
-async function mutateClaimedPart(
+async function mutateClaimedProgress(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
     mutate: (
-      state: PendingConversationDeliveryPartState,
-    ) => PendingConversationDeliveryPartState;
+      progress: PendingConversationDeliveryProgress,
+    ) => PendingConversationDeliveryProgress;
     nextAttemptAtMs?: number;
-    requireCurrentPart?: boolean;
   },
 ): Promise<PendingConversationDelivery> {
   return executor.transaction(async () => {
@@ -400,26 +352,20 @@ async function mutateClaimedPart(
     if (!row) throw new PendingDeliveryLeaseLostError();
     requireFence(row, args.lease, args.nowMs);
     const current = parseRow(row);
-    const partId = partIdSchema.parse(args.partId);
-    const state = current.partStates[partId];
-    if (!state) throw new Error("Unknown pending delivery part");
-    if (
-      args.requireCurrentPart &&
-      current.command.parts[current.nextPartIndex]?.partId !== partId
-    ) {
-      throw new Error("Only the current pending delivery part can be posted");
+    const progress = pendingConversationDeliveryProgressSchema.parse(
+      args.mutate(current.progress),
+    );
+    if (progress.acceptedReceipts.length > current.command.parts.length) {
+      throw new Error("Pending delivery progress exceeds its command");
     }
-    const partStates = { ...current.partStates, [partId]: args.mutate(state) };
     const rows = await executor
       .db()
       .update(juniorPendingDeliveries)
       .set({
-        partStates: sanitizePostgresJson(partStates),
-        nextPartIndex: nextPartIndex(current.command, partStates),
+        progress: sanitizePostgresJson(progress),
         ...(args.nextAttemptAtMs !== undefined
           ? { nextAttemptAt: new Date(args.nextAttemptAtMs) }
           : {}),
-        updatedAt: new Date(args.nowMs),
       })
       .where(eq(juniorPendingDeliveries.deliveryId, args.deliveryId))
       .returning();
@@ -428,24 +374,27 @@ async function mutateClaimedPart(
   });
 }
 
-/** Durably fence one part as posting before making the external call. */
-export async function markPendingDeliveryPartPosting(
+/** Durably mark the current ordered part as posting before the external call. */
+export async function markPendingDeliveryPosting(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
   },
 ): Promise<PendingConversationDelivery> {
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
-    requireCurrentPart: true,
-    mutate: (state) => {
-      if (state.status !== "pending") {
-        throw new Error(`Cannot post delivery part in ${state.status} state`);
+    mutate: (progress) => {
+      if (progress.currentState.status !== "pending") {
+        throw new Error(
+          `Cannot post delivery in ${progress.currentState.status} state`,
+        );
       }
-      return { status: "posting", startedAtMs: args.nowMs };
+      return {
+        ...progress,
+        currentState: { status: "posting", attemptedAtMs: args.nowMs },
+      };
     },
   });
 }
@@ -454,53 +403,39 @@ export async function markPendingDeliveryPartPosting(
  * Return an uncertain part to pending only after reconciliation explicitly
  * confirmed absence and its caller-supplied grace period elapsed.
  */
-export async function markPendingDeliveryPartRepostable(
+export async function markPendingDeliveryRepostable(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
-    reconciliationAttempt: number;
-    confirmedAbsentAtMs: number;
     graceElapsedAtMs: number;
   },
 ): Promise<PendingConversationDelivery> {
-  if (
-    !Number.isInteger(args.reconciliationAttempt) ||
-    args.reconciliationAttempt <= 0
-  ) {
-    throw new Error("reconciliationAttempt must be positive");
-  }
-  if (
-    args.confirmedAbsentAtMs > args.nowMs ||
-    args.graceElapsedAtMs > args.nowMs ||
-    args.graceElapsedAtMs < args.confirmedAbsentAtMs
-  ) {
-    throw new Error("Repost reconciliation and grace must be complete");
-  }
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
-    mutate: (state) => {
+    mutate: (progress) => {
+      const state = progress.currentState;
       if (state.status !== "uncertain") {
-        throw new Error(
-          `Cannot make delivery part repostable from ${state.status}`,
-        );
+        throw new Error(`Cannot make delivery repostable from ${state.status}`);
       }
-      if (args.reconciliationAttempt < state.reconciliationAttempt) {
-        throw new Error("Repost reconciliation attempt is stale");
+      if (
+        state.confirmedAbsentAtMs === undefined ||
+        args.graceElapsedAtMs > args.nowMs ||
+        args.graceElapsedAtMs < state.confirmedAbsentAtMs
+      ) {
+        throw new Error("Repost reconciliation and grace must be complete");
       }
-      return { status: "pending" };
+      return { ...progress, currentState: { status: "pending" } };
     },
   });
 }
 
-/** Record the provider receipt for a posting or reconciled uncertain part. */
-export async function recordPendingDeliveryPartAccepted(
+/** Append the provider receipt and advance to the next ordered part. */
+export async function recordPendingDeliveryAccepted(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     providerMessageId: string;
     nowMs: number;
@@ -510,59 +445,46 @@ export async function recordPendingDeliveryPartAccepted(
     .string()
     .regex(/^\d+(?:\.\d+)?$/)
     .parse(args.providerMessageId);
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
-    mutate: (state) => {
-      if (state.status === "accepted") {
-        if (state.providerMessageId !== receipt) {
-          throw new Error("Delivery part already has a different receipt");
-        }
-        return state;
-      }
+    mutate: (progress) => {
+      const state = progress.currentState;
       if (state.status !== "posting" && state.status !== "uncertain") {
-        throw new Error(`Cannot accept delivery part in ${state.status} state`);
+        throw new Error(`Cannot accept delivery in ${state.status} state`);
       }
       return {
-        status: "accepted",
-        providerMessageId: receipt,
-        acceptedAtMs: args.nowMs,
+        acceptedReceipts: [...progress.acceptedReceipts, receipt],
+        currentState: { status: "pending" },
       };
     },
   });
 }
 
 /** Preserve an ambiguous external result and its pagination/backoff cursor. */
-export async function recordPendingDeliveryPartUncertain(
+export async function recordPendingDeliveryUncertain(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
     retryAtMs: number;
-    reconciliationAttempt: number;
     reconciliationCursor?: string;
     confirmedAbsentAtMs?: number;
   },
 ): Promise<PendingConversationDelivery> {
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
     nextAttemptAtMs: args.retryAtMs,
-    mutate: (state) => {
+    mutate: (progress) => {
+      const state = progress.currentState;
       if (state.status !== "posting" && state.status !== "uncertain") {
-        throw new Error(
-          `Cannot make delivery part uncertain from ${state.status}`,
-        );
+        throw new Error(`Cannot make delivery uncertain from ${state.status}`);
       }
-      return pendingConversationDeliveryPartStatesSchema.parse({
-        [args.partId]: {
+      return {
+        ...progress,
+        currentState: {
           status: "uncertain",
-          attemptedAtMs:
-            state.status === "posting"
-              ? state.startedAtMs
-              : state.attemptedAtMs,
-          retryAtMs: args.retryAtMs,
-          reconciliationAttempt: args.reconciliationAttempt,
+          attemptedAtMs: state.attemptedAtMs,
           ...(args.reconciliationCursor
             ? { reconciliationCursor: args.reconciliationCursor }
             : {}),
@@ -573,40 +495,39 @@ export async function recordPendingDeliveryPartUncertain(
               ? { confirmedAbsentAtMs: state.confirmedAbsentAtMs }
               : {}),
         },
-      })[args.partId]!;
+      };
     },
   });
 }
 
 /** Return a definitely absent transient provider rejection to pending. */
-export async function recordPendingDeliveryPartRetryable(
+export async function recordPendingDeliveryRetryable(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
     retryAtMs: number;
   },
 ): Promise<PendingConversationDelivery> {
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
     nextAttemptAtMs: args.retryAtMs,
-    mutate: (state) => {
+    mutate: (progress) => {
+      const state = progress.currentState;
       if (state.status !== "posting") {
-        throw new Error(`Cannot retry delivery part in ${state.status} state`);
+        throw new Error(`Cannot retry delivery in ${state.status} state`);
       }
-      return { status: "pending" };
+      return { ...progress, currentState: { status: "pending" } };
     },
   });
 }
 
-/** Record a privacy-safe definitive part failure under the active fence. */
-export async function recordPendingDeliveryPartFailed(
+/** Record a privacy-safe definitive failure under the active fence. */
+export async function recordPendingDeliveryFailed(
   executor: JuniorSqlDatabase,
   args: {
     deliveryId: string;
-    partId: string;
     lease: PendingDeliveryLease;
     failureCode: z.output<typeof conversationDeliveryFailureCodeSchema>;
     nowMs: number;
@@ -615,13 +536,14 @@ export async function recordPendingDeliveryPartFailed(
   const failureCode = conversationDeliveryFailureCodeSchema.parse(
     args.failureCode,
   );
-  return mutateClaimedPart(executor, {
+  return mutateClaimedProgress(executor, {
     ...args,
-    mutate: (state) => {
+    mutate: (progress) => {
+      const state = progress.currentState;
       if (state.status !== "posting" && state.status !== "uncertain") {
-        throw new Error(`Cannot fail delivery part in ${state.status} state`);
+        throw new Error(`Cannot fail delivery in ${state.status} state`);
       }
-      return { status: "failed", failureCode, failedAtMs: args.nowMs };
+      return { ...progress, currentState: { status: "failed", failureCode } };
     },
   });
 }
@@ -749,12 +671,12 @@ export async function terminalizeAcceptedPendingDelivery(
       ) {
         throw new Error("Pending delivery belongs to a different conversation");
       }
-      current.command.parts.forEach((part) => {
-        const state = current.partStates[part.partId];
-        if (state?.status !== "accepted") {
-          throw new Error("Cannot terminalize before every part is accepted");
-        }
-      });
+      if (
+        current.progress.acceptedReceipts.length !==
+        current.command.parts.length
+      ) {
+        throw new Error("Cannot terminalize before every part is accepted");
+      }
       if (
         await turnTerminalOutcome(
           executor,
@@ -845,25 +767,13 @@ export async function terminalizeFailedPendingDelivery(
       ) {
         throw new Error("Pending delivery belongs to a different conversation");
       }
-      const failedStates = Object.values(current.partStates).filter(
-        (
-          state,
-        ): state is Extract<
-          PendingConversationDeliveryPartState,
-          { status: "failed" }
-        > => state.status === "failed",
-      );
-      const failureCode = failedStates[0]?.failureCode;
-      if (!failureCode) {
+      const currentState = current.progress.currentState;
+      if (currentState.status !== "failed") {
         throw new Error(
-          "Cannot terminalize failure without a definitively failed part",
+          "Cannot terminalize failure without a definitive failure",
         );
       }
-      if (failedStates.some((state) => state.failureCode !== failureCode)) {
-        throw new Error(
-          "Pending delivery parts have conflicting failure codes",
-        );
-      }
+      const failureCode = currentState.failureCode;
       if (
         await turnTerminalOutcome(
           executor,

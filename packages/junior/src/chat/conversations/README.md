@@ -131,23 +131,27 @@ paths are not yet covered by that outbox.
 
 `junior_pending_deliveries` is deletable control state for closing that gap; it
 is not a second history API. Each row retains one strict finalized Slack reply
-command, an indexed retry schedule, fenced lease state, and per-part
-posting/reconciliation receipts. The current part is derived from its ordered
-parts and their states rather than persisted as another cursor. The durable
-contract currently admits only ordinary Slack assistant replies correlated to
-their owning turn; other delivery families stay in their owning paths until
-they have a live producer and recovery design. A stale `posting` part becomes
-`uncertain` and cannot be posted again until reconciliation explicitly marks it
-repostable after its grace period. Terminalization persists the canonical turn
-terminal and deletes the pending row in one transaction. That turn terminal is
-also the post-commit delivery authority: only `turn_failed` with
-`delivery_failed` means Slack rejected delivery; every other terminal outcome
-means Slack accepted the reply while a known pending intent is being advanced.
+command, one retry schedule, fenced lease state, ordered provider receipts, and
+the current part's posting or reconciliation state. At most one unresolved row
+exists per conversation, so newer input cannot bypass older delivery. The
+durable contract currently admits only ordinary Slack assistant replies
+correlated to their owning turn; other delivery families stay in their owning
+paths until they have a live producer and recovery design. A stale `posting`
+state becomes `uncertain` and cannot be posted again until reconciliation
+explicitly marks it repostable after its grace period. Terminalization persists
+the canonical turn terminal and deletes the pending row in one transaction.
+That turn terminal is also the post-commit delivery authority: only
+`turn_failed` with `delivery_failed` means Slack rejected delivery; every other
+terminal outcome means Slack accepted the reply while a known pending intent is
+being advanced.
 Startup recovery, where the intent row may already be gone, additionally
 requires the atomically finalized visible assistant-message fact before it
 classifies a non-delivery-failure terminal as accepted. The ordinary Slack
 reply executor keeps the original inbox record until terminalization and
 resumes multipart or ambiguous delivery without rerunning the model.
+Permanent Slack reconciliation rejections remain uncertain and cannot authorize
+a repost. They emit an actionable delivery error and use a long retry interval
+so an operator can restore provider access without a five-second retry loop.
 
 Imported historical advisor executions own separate child event streams. The
 parent records start/end references and the child stores only its local events.

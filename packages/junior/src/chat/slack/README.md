@@ -28,7 +28,9 @@ runtime orchestration.
   `conversations.replies` page per invocation so durable orchestration can
   persist cursors and honor Slack's rate limit without risking duplicate posts.
 - Reconciliation validates the marker and the current app/bot identity. Read
-  errors remain unresolved and never authorize a repost.
+  errors remain unresolved and never authorize a repost. Permanent API
+  rejections use a long operator-recovery backoff; rate limits continue to
+  honor Slack's `Retry-After`.
 
 `outbound.ts` owns Slack API calls and retry classification. `mrkdwn.ts` owns
 format conversion. `assistant-thread/` owns assistant-thread lifecycle and

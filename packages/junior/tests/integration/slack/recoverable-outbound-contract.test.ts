@@ -21,7 +21,7 @@ const DEFAULT_POSTED_TS = "1700000000.100";
 function deliveryMetadata(partIndex = 0): SlackDeliveryMetadata {
   const locator = parseSlackDeliveryLocator("abcdefghijklmnopqrstuv");
   if (!locator) throw new Error("Test delivery locator must be valid");
-  return { locator, partIndex, version: 1 };
+  return { locator, partIndex };
 }
 
 function recoveredMessage(
@@ -44,7 +44,6 @@ function recoveredMessage(
       event_payload: {
         locator: "abcdefghijklmnopqrstuv",
         part_index: 0,
-        version: 1,
       },
     },
   };
@@ -77,7 +76,6 @@ describe("Slack contract: recoverable outbound delivery", () => {
         event_payload: {
           locator: "abcdefghijklmnopqrstuv",
           part_index: 2,
-          version: 1,
         },
       },
     });
@@ -244,7 +242,11 @@ describe("Slack contract: recoverable outbound delivery", () => {
         oldestTs: OLDEST_TS,
         metadata: deliveryMetadata(),
       }),
-    ).resolves.toEqual({ outcome: "unresolved" });
+    ).resolves.toEqual({
+      outcome: "unresolved",
+      reason: "permanent_provider_error",
+      providerErrorCode: "missing_scope",
+    });
   });
 
   it("confirms absence only after a successful final page with no match", async () => {

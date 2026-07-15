@@ -398,7 +398,7 @@ export interface ReplyExecutorServices {
     | "advance"
     | "createIntent"
     | "loadByTurn"
-    | "loadOldestByConversation"
+    | "loadByConversation"
     | "loadTerminalOutcome"
   >;
   turnLifecycle: ConversationTurnLifecycle;
@@ -881,9 +881,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         const pendingDelivery = conversationId
-          ? await deps.services.recoverableSlackDelivery.loadOldestByConversation(
-              { conversationId },
-            )
+          ? await deps.services.recoverableSlackDelivery.loadByConversation({
+              conversationId,
+            })
           : undefined;
         if (pendingDelivery) {
           const recovery =
@@ -1723,9 +1723,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   turnId,
                   deliveryId: `slack:${turnId}`,
                   command: {
-                    version: 1,
-                    provider: "slack",
-                    deliveryKind: "assistant_reply",
                     publicLocator,
                     route: {
                       channelId: slackChannelId,
@@ -1743,8 +1740,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                       startedAtMs: message.metadata.dateSent.getTime(),
                     },
                     parts: visiblePosts.map((post, index) => ({
-                      partId: `part:${index}`,
-                      stage: post.stage,
                       text: post.text,
                       ...(buildSlackReplyBlocks(
                         post.text,

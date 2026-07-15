@@ -21,9 +21,6 @@ function command(
   parts = ["First", "Second"],
 ): PendingConversationDeliveryCommand {
   return {
-    version: 1,
-    provider: "slack",
-    deliveryKind: "assistant_reply",
     publicLocator: "0123456789Abcdefgh_-XY",
     route: { channelId: "C123", threadTs: "1718123456.000000" },
     session: {
@@ -41,9 +38,7 @@ function command(
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
       startedAtMs: 900,
     },
-    parts: parts.map((text, index) => ({
-      partId: `part:${index}`,
-      stage: index === 0 ? "thread_reply" : "thread_reply_continuation",
+    parts: parts.map((text) => ({
       text,
       blocks: [{ type: "markdown", text }],
     })),
@@ -259,7 +254,7 @@ describe("recoverable Slack delivery", () => {
         conversationId,
         turnId: "turn-1",
       });
-      expect(pending?.partStates["part:0"]).toEqual({ status: "pending" });
+      expect(pending?.progress.currentState).toEqual({ status: "pending" });
       expect(reconcile).not.toHaveBeenCalled();
     } finally {
       await test.fixture.close();
@@ -287,6 +282,50 @@ describe("recoverable Slack delivery", () => {
       ).resolves.toEqual({ outcome: "pending", retryAtMs: 90_000 });
       expect(reconcile).toHaveBeenCalledOnce();
       expect(post).toHaveBeenCalledOnce();
+    } finally {
+      await test.fixture.close();
+    }
+  });
+
+  it("backs off permanent reconciliation failures without authorizing a repost", async () => {
+    const post = vi
+      .fn<RecoverableSlackDeliveryPort["post"]>()
+      .mockResolvedValue({ outcome: "uncertain", reason: "transport_error" });
+    const reconcile = vi
+      .fn<RecoverableSlackDeliveryPort["reconcile"]>()
+      .mockResolvedValue({
+        outcome: "unresolved",
+        reason: "permanent_provider_error",
+        providerErrorCode: "missing_scope",
+      });
+    const test = await setup({ post, reconcile });
+    try {
+      await test.service.advance(test.pending);
+      test.setNow(6_000);
+      await expect(
+        test.service.advance(
+          (await test.service.loadByTurn({
+            conversationId,
+            turnId: "turn-1",
+          }))!,
+        ),
+      ).resolves.toEqual({
+        outcome: "pending",
+        retryAtMs: 3_606_000,
+      });
+      const pending = await test.service.loadByTurn({
+        conversationId,
+        turnId: "turn-1",
+      });
+      expect(pending?.progress.currentState.status).toBe("uncertain");
+      expect(pending?.nextAttemptAtMs).toBe(3_606_000);
+      test.setNow(11_000);
+      await expect(test.service.advance(pending!)).resolves.toEqual({
+        outcome: "pending",
+        retryAtMs: 3_606_000,
+      });
+      expect(post).toHaveBeenCalledOnce();
+      expect(reconcile).toHaveBeenCalledOnce();
     } finally {
       await test.fixture.close();
     }

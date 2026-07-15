@@ -22,7 +22,7 @@ import {
 function deliveryMetadata(): SlackDeliveryMetadata {
   const locator = parseSlackDeliveryLocator("abcdefghijklmnopqrstuv");
   if (!locator) throw new Error("Test delivery locator must be valid");
-  return { locator, partIndex: 0, version: 1 };
+  return { locator, partIndex: 0 };
 }
 
 describe("recoverable Slack post failure classification", () => {
