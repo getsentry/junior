@@ -176,42 +176,6 @@ describe("canonical event transcript reduction", () => {
     ]);
   });
 
-  it("projects only failed deliveries as neutral failure history", () => {
-    const entries = groupTranscriptMessages(
-      conversationTranscriptMessages(
-        conversation([
-          event(0, "2026-01-01T00:00:00.000Z", {
-            type: "delivery",
-            deliveryId: "delivery-1",
-            state: "intended",
-          }),
-          event(1, "2026-01-01T00:00:01.000Z", {
-            type: "delivery",
-            deliveryId: "delivery-1",
-            state: "accepted",
-          }),
-          event(2, "2026-01-01T00:00:02.000Z", {
-            type: "delivery",
-            deliveryId: "delivery-2",
-            state: "failed",
-          }),
-        ]),
-      ),
-    );
-
-    expect(entries).toEqual([
-      {
-        kind: "failure",
-        outcome: "delivery_failed",
-        timestamp: Date.parse("2026-01-01T00:00:02.000Z"),
-      },
-    ]);
-    expect(entryMatchesSearch(entries[0]!, "delivery failed")).toBe(true);
-    expect(entryMatchesSearch(entries[0]!, "agent response failed")).toBe(
-      false,
-    );
-  });
-
   it("searches canonical tool, failure, context, and subagent rows", () => {
     const entries = groupTranscriptMessages(
       conversationTranscriptMessages(
@@ -233,6 +197,12 @@ describe("canonical event transcript reduction", () => {
             turnId: "turn-1",
             state: "failed",
           }),
+          event(4, "2026-01-01T00:00:04.000Z", {
+            type: "turn_lifecycle",
+            turnId: "turn-2",
+            state: "failed",
+            failureKind: "delivery",
+          }),
         ]),
       ),
     );
@@ -243,6 +213,7 @@ describe("canonical event transcript reduction", () => {
       "running",
       "compacted",
       "failed",
+      "delivery failed",
     ]) {
       expect(entries.some((entry) => entryMatchesSearch(entry, query))).toBe(
         true,

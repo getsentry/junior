@@ -42,7 +42,7 @@ function conversation(
 }
 
 describe("dashboard canonical-event Markdown export", () => {
-  it("exports visible messages once in API order", () => {
+  it("exports visible user and assistant messages", () => {
     const markdown = buildConversationMarkdown(
       conversation([
         event(0, {
