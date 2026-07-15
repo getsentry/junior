@@ -42,6 +42,13 @@ Reporting APIs must project events into an authorized, redacted product
 contract. Raw `ConversationEventData` is an internal persistence boundary and
 must not become a dashboard or external API payload.
 
+The reporting API owns a strict ordered event projection with only safe product
+fields. It preserves canonical sequence order, sources display text only from
+visible-message events, reduces model messages to content-free activity, and
+omits provider receipts, delivery commands, failure codes, authorization
+identifiers, arbitrary metadata, and persistence-envelope fields. The current
+detail response and dashboard have not yet cut over to this projection.
+
 ## Write Rules
 
 - Persist user input before agent execution.
@@ -98,10 +105,9 @@ Representative coverage lives in
 `packages/junior/tests/integration/conversation-sql.test.ts` and the
 conversation storage component tests.
 
-The local runtime is the first lifecycle-event writer, and current detail
-reporting reduces `turn_failed` to one privacy-safe error marker. Slack,
-dispatch, delivery-attempt events, and the ordered safe event API remain
-follow-up cutovers.
+The local runtime writes lifecycle events, and detail reporting reduces
+`turn_failed` to one privacy-safe error marker. Slack delivery, dispatch, and
+continuation recovery remain follow-up work.
 
 The structural failure marker never exposes failure code or event ID. An
 independently delivered fallback remains ordinary visible content, so a public
