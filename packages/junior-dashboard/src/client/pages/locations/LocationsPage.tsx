@@ -9,6 +9,10 @@ import type {
 import { useLocationDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
+import {
+  TimeRangeSelector,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
@@ -30,6 +34,7 @@ export function LocationsPageContent(props: {
   error: unknown;
 }) {
   const [params, setParams] = useSearchParams();
+  const [range, setRange] = useState<TimeRangeDays>(90);
   const [sort, setSort] = useState<LocationSort>("conversations");
   const deferredSort = useDeferredValue(sort);
   const search = params.get("q") ?? "";
@@ -42,6 +47,7 @@ export function LocationsPageContent(props: {
     search,
     deferredSort,
   );
+  const visibleActivity = props.data?.activityDays.slice(-range) ?? [];
   const publicConversations =
     props.data?.locations.reduce(
       (total, location) => total + location.conversations,
@@ -68,6 +74,7 @@ export function LocationsPageContent(props: {
       )}
     >
       <PageHeader
+        actions={<TimeRangeSelector onChange={setRange} value={range} />}
         description={
           props.error && !props.data
             ? "Locations failed to load."
@@ -115,7 +122,7 @@ export function LocationsPageContent(props: {
               )}
             />
           </div>
-          <LocationDirectoryActivityChart days={props.data.activityDays} />
+          <LocationDirectoryActivityChart days={visibleActivity} />
           <LocationDirectory
             loading={sort !== deferredSort}
             locations={locations}

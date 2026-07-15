@@ -229,6 +229,15 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(
     page.getByRole("img", { name: "Public and private conversations per day" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "7d" }).click();
+  await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(
     page.getByRole("combobox", { name: "Sort locations" }),
   ).toHaveValue("conversations");
