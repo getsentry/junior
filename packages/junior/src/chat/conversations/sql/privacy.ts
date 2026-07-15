@@ -11,16 +11,15 @@ interface LineageRow {
 }
 
 interface LineageCandidate {
-  path: string[];
+  destinationId: string;
   rootConversationId: string;
 }
 
 async function readLineageRow(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  lock: boolean,
 ): Promise<LineageRow | undefined> {
-  const query = executor
+  const rows = await executor
     .db()
     .select({
       parentId: juniorConversations.parentConversationId,
@@ -28,7 +27,6 @@ async function readLineageRow(
     })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId));
-  const rows = lock ? await query.for("share") : await query;
   return rows[0];
 }
 
@@ -37,13 +35,11 @@ async function traceLineage(
   conversationId: string,
 ): Promise<LineageCandidate | undefined> {
   let currentId = conversationId;
-  const path: string[] = [];
   const seen = new Set<string>();
 
   while (!seen.has(currentId) && seen.size < MAX_LINEAGE_DEPTH) {
     seen.add(currentId);
-    path.push(currentId);
-    const row = await readLineageRow(executor, currentId, false);
+    const row = await readLineageRow(executor, currentId);
     if (!row) return undefined;
 
     if (row.parentId) {
@@ -54,35 +50,21 @@ async function traceLineage(
     if (!row.destinationId) {
       return undefined;
     }
-    return { path, rootConversationId: currentId };
+    return {
+      destinationId: row.destinationId,
+      rootConversationId: currentId,
+    };
   }
 
   return undefined;
 }
 
-function lockedLineageIsConsistent(
-  candidate: LineageCandidate,
-  rows: Map<string, LineageRow>,
-): boolean {
-  for (const [index, conversationId] of candidate.path.entries()) {
-    const row = rows.get(conversationId);
-    if (!row) return false;
-    const expectedParentId = candidate.path[index + 1] ?? null;
-    if (row.parentId !== expectedParentId) return false;
-    if (!expectedParentId && !row.destinationId) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * Resolve a conversation's privacy authority from its persisted root.
  *
- * The lineage is discovered without locks, then locked and revalidated from
- * root to requested conversation. Root-first ordering matches tree purges;
- * callers that keep the transaction open receive a stable privacy decision.
- * Missing, cyclic, over-depth, or concurrently changed lineage fails closed.
+ * Parent links are immutable after insertion. Missing, cyclic, or over-depth
+ * lineage fails closed, while the root destination is locked so callers that
+ * keep the transaction open receive a stable visibility decision.
  */
 export async function resolveRootVisibility(
   executor: JuniorSqlDatabase,
@@ -96,43 +78,12 @@ export async function resolveRootVisibility(
     return { rootConversationId: conversationId, visibility: null };
   }
 
-  const rootRow = await readLineageRow(
-    executor,
-    candidate.rootConversationId,
-    true,
-  );
-  if (!rootRow?.destinationId) {
-    return {
-      rootConversationId: candidate.rootConversationId,
-      visibility: null,
-    };
-  }
   const destinations = await executor
     .db()
     .select({ visibility: juniorDestinations.visibility })
     .from(juniorDestinations)
-    .where(eq(juniorDestinations.id, rootRow.destinationId))
+    .where(eq(juniorDestinations.id, candidate.destinationId))
     .for("share");
-
-  const lockedRows = new Map<string, LineageRow>([
-    [candidate.rootConversationId, rootRow],
-  ]);
-  for (const id of [...candidate.path].reverse().slice(1)) {
-    const row = await readLineageRow(executor, id, true);
-    if (!row) {
-      return {
-        rootConversationId: candidate.rootConversationId,
-        visibility: null,
-      };
-    }
-    lockedRows.set(id, row);
-  }
-  if (!lockedLineageIsConsistent(candidate, lockedRows)) {
-    return {
-      rootConversationId: candidate.rootConversationId,
-      visibility: null,
-    };
-  }
   return {
     rootConversationId: candidate.rootConversationId,
     visibility: destinations[0]?.visibility ?? null,

@@ -53,14 +53,12 @@ function scriptedExecutor(args: {
 }
 
 describe("resolveRootVisibility", () => {
-  it("resolves visibility only from a consistent root destination", async () => {
+  it("resolves visibility from the persisted root destination", async () => {
     const result = await resolveRootVisibility(
       scriptedExecutor({
         conversations: [
           { destinationId: null, parentId: "root" },
           { destinationId: "destination", parentId: null },
-          { destinationId: "destination", parentId: null },
-          { destinationId: null, parentId: "root" },
         ],
         visibility: "public",
       }),
@@ -104,32 +102,6 @@ describe("resolveRootVisibility", () => {
         ],
       }),
       "requested",
-    );
-
-    expect(result.visibility).toBeNull();
-  });
-
-  it("fails closed when lineage changes between discovery and locking", async () => {
-    const result = await resolveRootVisibility(
-      scriptedExecutor({
-        conversations: [
-          { destinationId: null, parentId: "root" },
-          {
-            destinationId: "destination",
-            parentId: null,
-          },
-          {
-            destinationId: "destination",
-            parentId: null,
-          },
-          {
-            destinationId: null,
-            parentId: "different-root",
-          },
-        ],
-        visibility: "public",
-      }),
-      "child",
     );
 
     expect(result.visibility).toBeNull();
