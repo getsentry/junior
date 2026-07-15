@@ -28,7 +28,7 @@ import {
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
-  consumeRegisteredProjectCwds,
+  discoverWorkspaceProjectRoots,
   resolveProjectInstructions,
   type ProjectInstruction,
 } from "@/chat/sandbox/project-instructions";
@@ -389,10 +389,11 @@ export function createSandboxExecutor(options?: {
       await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
     const permissionDenied =
       await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
-    const registeredCwds = await consumeRegisteredProjectCwds(executors.fs);
+    const workspaceProjectRoots =
+      await discoverWorkspaceProjectRoots(executors.fs);
     const applicableInstructions = (
       await Promise.all(
-        [cwd, ...registeredCwds].map(
+        [...new Set([cwd, ...workspaceProjectRoots])].map(
           async (target) => await resolveProjectInstructions(executors.fs, target),
         ),
       )

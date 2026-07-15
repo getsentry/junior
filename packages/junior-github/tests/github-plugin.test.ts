@@ -134,9 +134,7 @@ async function prepareCommitMsgHookFixture(initialMessage: string) {
         return { exitCode: 0, stderr: "", stdout: "" };
       },
       async writeFile(input) {
-        if (input.path.endsWith("/prepare-commit-msg")) {
-          hookScript = String(input.content);
-        }
+        hookScript = String(input.content);
       },
     },
   } as SandboxPrepareHookContext);
@@ -2329,30 +2327,16 @@ Conversation: \`local:test:old-conversation\`
 
     await plugin.hooks?.sandboxPrepare?.(ctx);
 
-    expect(writes).toHaveLength(2);
-    const prepareCommitMsg = writes.find((write) =>
-      write.path.endsWith("/prepare-commit-msg"),
-    );
-    const postCheckout = writes.find((write) =>
-      write.path.endsWith("/post-checkout"),
-    );
-    expect(prepareCommitMsg?.path).toBe(
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.path).toBe(
       "/vercel/sandbox/.junior/git-hooks/prepare-commit-msg",
     );
-    expect(String(prepareCommitMsg?.content)).toContain(
+    expect(String(writes[0]?.content)).toContain(
       "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",
     );
-    expect(String(prepareCommitMsg?.content)).not.toContain(
-      "JUNIOR_GIT_COAUTHOR",
-    );
-    expect(String(prepareCommitMsg?.content)).toContain(
+    expect(String(writes[0]?.content)).not.toContain("JUNIOR_GIT_COAUTHOR");
+    expect(String(writes[0]?.content)).toContain(
       "Git author was not set to the Junior identity",
-    );
-    expect(postCheckout?.path).toBe(
-      "/vercel/sandbox/.junior/git-hooks/post-checkout",
-    );
-    expect(String(postCheckout?.content)).toContain(
-      'printf \'%s\\n\' "$PWD" >> "/vercel/sandbox/.junior/project-cwds"',
     );
     expect(started).toEqual([
       "core.hooksPath",

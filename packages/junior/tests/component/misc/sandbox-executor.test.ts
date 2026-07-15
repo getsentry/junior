@@ -715,6 +715,7 @@ describe("createSandboxExecutor", () => {
       ["/vercel/sandbox/repo/AGENTS.md", "root rules"],
       ["/vercel/sandbox/repo/packages/AGENTS.md", "package rules"],
     ]);
+    sandbox.fs.readdir.mockResolvedValue(["repo"]);
     sandbox.fs.stat.mockImplementation(async (filePath) => {
       const value = files.get(filePath);
       if (value === undefined) {

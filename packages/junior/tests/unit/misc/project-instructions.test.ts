@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  consumeRegisteredProjectCwds,
+  discoverWorkspaceProjectRoots,
   resolveProjectInstructions,
 } from "@/chat/sandbox/project-instructions";
 import type {
@@ -21,8 +21,16 @@ function memoryFs(initial: Record<string, string | "directory">): SandboxFileSys
     async writeFile(filePath, content) {
       entries.set(filePath, content);
     },
-    async readdir() {
-      return [];
+    async readdir(filePath) {
+      const prefix = `${filePath}/`;
+      return [
+        ...new Set(
+          [...entries.keys()]
+            .filter((entry) => entry.startsWith(prefix))
+            .map((entry) => entry.slice(prefix.length).split("/")[0])
+            .filter((entry): entry is string => Boolean(entry)),
+        ),
+      ];
     },
     async stat(filePath): Promise<SandboxFileStat> {
       const value = entries.get(filePath);
@@ -58,16 +66,16 @@ describe("project instructions", () => {
     ]);
   });
 
-  it("consumes and de-duplicates post-checkout registrations", async () => {
-    const registry = "/vercel/sandbox/.junior/project-cwds";
+  it("discovers repositories checked out under the workspace root", async () => {
     const fs = memoryFs({
-      [registry]: "/vercel/sandbox/one\n/vercel/sandbox/two\n/vercel/sandbox/one\n",
+      "/vercel/sandbox/one/.git": "directory",
+      "/vercel/sandbox/two/.git": "directory",
+      "/vercel/sandbox/not-a-repo/file.txt": "content",
     });
 
-    await expect(consumeRegisteredProjectCwds(fs)).resolves.toEqual([
+    await expect(discoverWorkspaceProjectRoots(fs)).resolves.toEqual([
       "/vercel/sandbox/one",
       "/vercel/sandbox/two",
     ]);
-    await expect(consumeRegisteredProjectCwds(fs)).resolves.toEqual([]);
   });
 });

@@ -2,7 +2,6 @@ import path from "node:path";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
 
-const PROJECT_CWD_REGISTRY = `${SANDBOX_WORKSPACE_ROOT}/.junior/project-cwds`;
 const INSTRUCTION_FILE = "AGENTS.md";
 
 export interface ProjectInstruction {
@@ -74,16 +73,24 @@ export async function resolveProjectInstructions(
   return instructions;
 }
 
-/** Consume repository paths recorded by Git post-checkout hooks. */
-export async function consumeRegisteredProjectCwds(
+/** Find repositories checked out directly under the sandbox workspace. */
+export async function discoverWorkspaceProjectRoots(
   fs: SandboxFileSystem,
 ): Promise<string[]> {
-  let content: string;
+  let entries: string[];
   try {
-    content = await fs.readFile(PROJECT_CWD_REGISTRY, { encoding: "utf8" });
+    entries = await fs.readdir(SANDBOX_WORKSPACE_ROOT);
   } catch {
     return [];
   }
-  await fs.writeFile(PROJECT_CWD_REGISTRY, "", { encoding: "utf8" });
-  return [...new Set(content.split("\n").map((line) => line.trim()).filter(Boolean))];
+
+  const roots = await Promise.all(
+    entries.map(async (entry) => {
+      const candidate = path.posix.join(SANDBOX_WORKSPACE_ROOT, entry);
+      return (await pathExists(fs, path.posix.join(candidate, ".git")))
+        ? candidate
+        : undefined;
+    }),
+  );
+  return roots.filter((root): root is string => root !== undefined);
 }
