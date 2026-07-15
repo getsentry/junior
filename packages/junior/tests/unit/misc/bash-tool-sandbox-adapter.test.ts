@@ -10,6 +10,10 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
+vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
+  getRuntimeDependencyProfileHash: () => "current-profile",
+}));
+
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 
 function makeSandbox() {
@@ -49,6 +53,7 @@ describe("bash-tool sandbox adapter", () => {
     sandboxGetMock.mockResolvedValue(sandbox);
     const manager = createSandboxSessionManager({
       sandboxId: "sbx_adapter_contract",
+      sandboxDependencyProfileHash: "current-profile",
     });
 
     const executors = await manager.ensureToolExecutors();
