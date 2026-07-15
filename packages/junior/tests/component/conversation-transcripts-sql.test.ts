@@ -416,7 +416,6 @@ describe("conversation transcript SQL stores", () => {
             contextEpoch: 0,
             schemaVersion: 1,
             type: "message",
-            role: "user",
             payload: { message: userMessage("clobber") },
             createdAt: new Date(4_000),
           }),
@@ -628,8 +627,8 @@ describe("conversation transcript SQL stores", () => {
         await fixture.sql.execute(
           `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, role, payload, created_at
-) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, $7)
+  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
 `,
           [
             CONVERSATION_ID,
@@ -664,8 +663,8 @@ INSERT INTO junior_conversation_events (
       await fixture.sql.execute(
         `
 INSERT INTO junior_conversation_events (
-  conversation_id, seq, context_epoch, schema_version, type, role, payload, created_at
-) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, $7)
+  conversation_id, seq, context_epoch, schema_version, type, payload, created_at
+) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
 `,
         [
           CONVERSATION_ID,

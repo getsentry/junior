@@ -318,13 +318,6 @@ export function convertAdvisorMessages(
 
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 
-function messageRole(entry: ConversationEventData): string | null {
-  if (entry.type === "message") {
-    return entry.message.role;
-  }
-  return entry.type === "visible_message_recorded" ? entry.role : null;
-}
-
 /** Encode one validated imported event as a physical SQL row. */
 function insertRow(
   conversationId: string,
@@ -338,7 +331,6 @@ function insertRow(
     schemaVersion: 1,
     idempotencyKey: event.idempotencyKey ?? null,
     type,
-    role: messageRole(event.data),
     payload: sanitizePostgresJson(payload),
     createdAt: new Date(event.createdAtMs),
   };
