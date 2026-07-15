@@ -29,6 +29,13 @@
       "when": 1783915376595,
       "tag": "0003_peaceful_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784137322420,
+      "tag": "0004_useful_magus",
+      "breakpoints": true
     }
   ]
 }

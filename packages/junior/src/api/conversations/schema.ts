@@ -39,6 +39,7 @@ export const conversationSummaryReportSchema = z
     lastProgressAt: z.string(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
+    archivedAt: z.string().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),

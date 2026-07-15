@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationFeed } from "@sentry/junior/api/schema";
 
-import { useConversationData } from "../api";
+import { useArchiveConversation, useConversationData } from "../api";
 import { buildConversationMarkdown } from "../markdownExport";
 import { CopyMarkdownButton } from "../components/CopyMarkdownButton";
 import { StatusBadge } from "../components/StatusBadge";
@@ -49,6 +49,7 @@ export function ConversationPage(props: {
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
+  const archive = useArchiveConversation(conversationId);
   const feedConversation = conversations.find(
     (item) => item.id === conversationId,
   );
@@ -87,6 +88,23 @@ export function ConversationPage(props: {
                 conversation?.lastSeenAt ?? detail.data?.generatedAt,
               )}
             </div>
+            <button
+              className="rounded border border-white/15 px-2.5 py-1 text-white/60 transition hover:border-white/30 hover:text-white disabled:opacity-40"
+              disabled={!conversation || archive.isPending}
+              onClick={() => archive.mutate(!conversation?.archivedAt)}
+              type="button"
+            >
+              {archive.isPending
+                ? "Saving…"
+                : conversation?.archivedAt
+                  ? "Unarchive"
+                  : "Archive"}
+            </button>
+            {archive.error ? (
+              <div className="text-red-300/80">
+                Could not update archive state.
+              </div>
+            ) : null}
           </div>
           <ConversationStats conversation={conversation} detail={detail.data} />
         </header>

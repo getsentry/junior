@@ -178,6 +178,9 @@ export function conversationSummaryFromStoredConversation(args: {
     surface,
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
+    ...(conversation.archivedAtMs
+      ? { archivedAt: new Date(conversation.archivedAtMs).toISOString() }
+      : {}),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),

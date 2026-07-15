@@ -909,6 +909,7 @@ export function buildConversations(
 ): Conversation[] {
   return summaries
     .map((summary) => ({
+      archivedAt: summary.archivedAt,
       channel: summary.channel,
       channelName: summary.channelName,
       channelNameRedacted: summary.channelNameRedacted,
@@ -977,6 +978,7 @@ export function filterConversationList(
   const location = filters.location?.trim();
 
   return conversations.filter((conversation) => {
+    if (conversation.archivedAt) return false;
     if (source && conversation.surface !== source) return false;
     if (location && conversation.locationId !== location) return false;
     if (actor && conversationActorKey(conversation) !== actor) {

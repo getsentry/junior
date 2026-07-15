@@ -9,9 +9,13 @@ import type { ConversationFeed } from "./schema";
 export async function readConversationFeed(
   options: {
     actorEmail?: string;
+    includeArchived?: boolean;
   } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
-    await readConversationFeedFromSql({ actorEmail: options.actorEmail }),
+    await readConversationFeedFromSql({
+      actorEmail: options.actorEmail,
+      includeArchived: options.includeArchived,
+    }),
   );
 }

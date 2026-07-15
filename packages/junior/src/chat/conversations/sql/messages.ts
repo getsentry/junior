@@ -6,7 +6,7 @@ import type {
   NewConversationMessage,
 } from "../messages";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorConversationMessages } from "@/db/schema";
+import { juniorConversationMessages, juniorConversations } from "@/db/schema";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
 
@@ -45,6 +45,11 @@ class SqlConversationMessageStore implements ConversationMessageStore {
         conversationId,
         newestCreatedAtMs,
       );
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(eq(juniorConversations.conversationId, conversationId));
       await this.executor
         .db()
         .insert(juniorConversationMessages)

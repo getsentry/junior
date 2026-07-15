@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "archived_at" timestamp with time zone;

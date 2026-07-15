@@ -89,6 +89,10 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    includeArchived: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .optional(),
   })
   .strict();
 export const subagentParamsSchema = conversationParamsSchema

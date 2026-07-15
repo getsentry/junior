@@ -106,6 +106,7 @@ export type ConversationTranscript = Omit<
 };
 
 export type Conversation = {
+  archivedAt?: string;
   channel?: string;
   channelName?: string;
   channelNameRedacted?: boolean;

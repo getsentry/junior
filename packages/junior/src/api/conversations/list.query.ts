@@ -16,6 +16,7 @@ async function conversationRows(
   db: JuniorDatabase,
   limit: number,
   actorEmail?: string,
+  includeArchived = false,
 ) {
   return db
     .select({
@@ -41,6 +42,7 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
+        includeArchived ? undefined : isNull(juniorConversations.archivedAt),
         actorEmail
           ? and(
               eq(juniorIdentities.emailNormalized, actorEmail),
@@ -89,6 +91,7 @@ function conversationFromRow(row: ConversationRow): Conversation {
         : {}),
     },
     ...(actor ? { actor } : {}),
+    ...(value.archivedAt ? { archivedAtMs: value.archivedAt.getTime() } : {}),
     ...(value.channelName ? { channelName: value.channelName } : {}),
     ...(value.source ? { source: value.source } : {}),
     ...(value.title ? { title: value.title } : {}),
@@ -158,13 +161,18 @@ export async function readConversationRecordFromSql(
  * before the limit when one is provided.
  */
 export async function readConversationFeedFromSql(
-  options: { actorEmail?: string; limit?: number } = {},
+  options: {
+    actorEmail?: string;
+    includeArchived?: boolean;
+    limit?: number;
+  } = {},
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const rows = await conversationRows(
     getDb(),
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.actorEmail,
+    options.includeArchived,
   );
   return {
     conversations: rows.map((row) =>

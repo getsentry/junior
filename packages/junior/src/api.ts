@@ -67,15 +67,35 @@ export function createJuniorApi(): Hono {
 
   app.get("/api/conversations", async (c) => {
     const { readConversationFeed } = await import("./api/conversations/list");
-    const { actorEmail } = parseQuery(
+    const { actorEmail, includeArchived } = parseQuery(
       conversationFeedQuerySchema,
       c.req.query(),
     );
-    return Response.json(await readConversationFeed({ actorEmail }));
+    return Response.json(
+      await readConversationFeed({ actorEmail, includeArchived }),
+    );
   });
   app.get("/api/conversations/stats", async () => {
     const { readConversationStats } = await import("./api/conversations/stats");
     return Response.json(await readConversationStats());
+  });
+  app.patch("/api/conversations/:conversationId/archive", async (c) => {
+    const { getConversationStore } = await import("./chat/db");
+    const { conversationId } = parseParams(
+      conversationParamsSchema,
+      c.req.param(),
+    );
+    const body = z
+      .object({ archived: z.boolean() })
+      .strict()
+      .parse(await c.req.json());
+    const updated = await getConversationStore().setArchived({
+      archived: body.archived,
+      conversationId,
+    });
+    return updated
+      ? Response.json({ archived: body.archived })
+      : Response.json({ error: "Conversation not found." }, { status: 404 });
   });
   app.get("/api/conversations/:conversationId", async (c) => {
     const { readConversationDetail } =

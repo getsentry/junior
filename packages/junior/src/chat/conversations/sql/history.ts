@@ -12,7 +12,7 @@ import {
   type StoredAgentStep,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorAgentSteps } from "@/db/schema";
+import { juniorAgentSteps, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 
 type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
@@ -88,6 +88,11 @@ class SqlAgentStepStore implements AgentStepStore {
         conversationId,
         newestCreatedAtMs,
       );
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(eq(juniorConversations.conversationId, conversationId));
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
@@ -105,6 +110,11 @@ class SqlAgentStepStore implements AgentStepStore {
     const parsed = contextEpochStartSchema.parse(opts);
     await this.executor.transaction(async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(eq(juniorConversations.conversationId, conversationId));
       const cursor = await this.readCursor(conversationId);
       const contextEpoch =
         parsed.reason === "initial"
