@@ -17,7 +17,7 @@ import type {
 } from "./types";
 import { sameToolInvocation } from "./toolInvocations";
 import { formatDuration } from "./components/Duration";
-import { conversationTranscriptMessages } from "./transcriptActivity";
+import { conversationTranscriptMessages } from "./eventTranscript";
 
 let dashboardTimeZone = "America/Los_Angeles";
 
@@ -183,12 +183,6 @@ function transcriptSource(conversation: ConversationTranscript) {
   return conversationTranscriptMessages(conversation);
 }
 
-function rawTranscriptSource(conversation: ConversationTranscript) {
-  return conversation.transcriptAvailable
-    ? conversation.transcript
-    : (conversation.transcriptMetadata ?? []);
-}
-
 /** Normalized role category for transcript messages. */
 export type TranscriptRoleKind =
   | "assistant"
@@ -230,11 +224,7 @@ function isConversationMessage(
 export function conversationMessageCount(
   conversation: ConversationTranscript,
 ): number {
-  const source = rawTranscriptSource(conversation);
-  if (source.length > 0) {
-    return source.filter(isConversationMessage).length;
-  }
-  return conversation.transcriptMessageCount ?? 0;
+  return transcriptSource(conversation).filter(isConversationMessage).length;
 }
 
 export type ToolCallSummaryItem = {
@@ -661,8 +651,11 @@ export function visualStatusForConversation(
 export function unavailableTranscriptLabel(
   conversation: ConversationTranscript,
 ): string {
-  if (conversation.transcriptRedacted) {
+  if (conversation.eventHistory.status === "redacted") {
     return "Transcript hidden because this conversation is not public.";
+  }
+  if (conversation.eventHistory.status === "expired") {
+    return "Transcript expired for this conversation.";
   }
   const status = visualStatusForSummary(conversation);
   if (status === "active") {

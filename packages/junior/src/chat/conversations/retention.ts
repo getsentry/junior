@@ -9,11 +9,7 @@
  */
 import { logException, logInfo } from "@/chat/logging";
 import type { JuniorSqlDatabase } from "@/db/db";
-import {
-  purgeConversationTree,
-  resolveRootVisibility,
-  selectExpiredRoots,
-} from "./sql/purge";
+import { purgeConversationTree, selectExpiredRoots } from "./sql/purge";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -110,10 +106,9 @@ export async function purgeConversation(
   conversationId: string,
   opts: { nowMs?: number } = {},
 ): Promise<void> {
-  const { visibility } = await resolveRootVisibility(executor, conversationId);
   await purgeConversationTree(executor, {
     rootConversationId: conversationId,
-    scrubMetadata: visibility !== "public",
+    scrubMetadataFromRootVisibility: true,
     nowMs: opts.nowMs ?? Date.now(),
   });
 }

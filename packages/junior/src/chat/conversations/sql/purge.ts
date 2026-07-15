@@ -1,12 +1,14 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   juniorConversationEvents,
   juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import { withConversationEventLock } from "./event-lock";
+import { resolveRootVisibility } from "./privacy";
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
@@ -22,28 +24,112 @@ export interface PurgeTreeResult {
   conversations: number;
 }
 
-/** Collect a conversation and every descendant via `parent_conversation_id`. */
-async function conversationTreeIds(
+interface ConversationTreeRow {
+  conversationId: string;
+  depth: number;
+  lastActivityAt: Date;
+  parentConversationId: string | null;
+}
+
+const MAX_TREE_LOCK_PASSES = 32;
+
+/** Discover a root and its current descendants via `parent_conversation_id`. */
+async function discoverConversationTree(
   executor: JuniorSqlDatabase,
-  rootConversationId: string,
-): Promise<string[]> {
-  const all = new Set<string>([rootConversationId]);
-  let frontier = [rootConversationId];
+  root: Omit<ConversationTreeRow, "depth">,
+): Promise<ConversationTreeRow[]> {
+  const all = new Map<string, ConversationTreeRow>([
+    [root.conversationId, { ...root, depth: 0 }],
+  ]);
+  let frontier = [root.conversationId];
+  let depth = 1;
   while (frontier.length > 0) {
     const children = await executor
       .db()
-      .select({ id: juniorConversations.conversationId })
+      .select({
+        conversationId: juniorConversations.conversationId,
+        lastActivityAt: juniorConversations.lastActivityAt,
+        parentConversationId: juniorConversations.parentConversationId,
+      })
       .from(juniorConversations)
-      .where(inArray(juniorConversations.parentConversationId, frontier));
+      .where(inArray(juniorConversations.parentConversationId, frontier))
+      .orderBy(asc(juniorConversations.conversationId));
     frontier = [];
     for (const child of children) {
-      if (!all.has(child.id)) {
-        all.add(child.id);
-        frontier.push(child.id);
+      if (!all.has(child.conversationId)) {
+        all.set(child.conversationId, { ...child, depth });
+        frontier.push(child.conversationId);
       }
     }
+    depth += 1;
   }
-  return [...all];
+  return [...all.values()];
+}
+
+/**
+ * Lock a complete tree root-first and repeat discovery until every row in the
+ * final scan is locked. Locking known parents blocks normal FK-backed child
+ * creation; the repeat catches children attached to a not-yet-locked parent
+ * during an earlier scan.
+ */
+async function lockStableConversationTree(
+  executor: JuniorSqlDatabase,
+  root: Omit<ConversationTreeRow, "depth">,
+): Promise<ConversationTreeRow[] | undefined> {
+  const locked = new Map<string, ConversationTreeRow>([
+    [root.conversationId, { ...root, depth: 0 }],
+  ]);
+
+  for (let pass = 0; pass < MAX_TREE_LOCK_PASSES; pass += 1) {
+    const discovered = await discoverConversationTree(executor, root);
+    for (const candidate of discovered) {
+      const existing = locked.get(candidate.conversationId);
+      if (existing) {
+        if (existing.parentConversationId !== candidate.parentConversationId) {
+          return undefined;
+        }
+        continue;
+      }
+      await withConversationEventLock(
+        executor,
+        candidate.conversationId,
+        async () => undefined,
+      );
+      const rows = await executor
+        .db()
+        .select({
+          conversationId: juniorConversations.conversationId,
+          lastActivityAt: juniorConversations.lastActivityAt,
+          parentConversationId: juniorConversations.parentConversationId,
+        })
+        .from(juniorConversations)
+        .where(eq(juniorConversations.conversationId, candidate.conversationId))
+        .for("update");
+      const row = rows[0];
+      if (!row || row.parentConversationId !== candidate.parentConversationId) {
+        return undefined;
+      }
+      locked.set(row.conversationId, { ...row, depth: candidate.depth });
+    }
+
+    const finalScan = await discoverConversationTree(executor, root);
+    if (
+      finalScan.length === locked.size &&
+      finalScan.every(
+        (row) =>
+          locked.get(row.conversationId)?.parentConversationId ===
+          row.parentConversationId,
+      )
+    ) {
+      return [...locked.values()].sort(
+        (left, right) =>
+          left.depth - right.depth ||
+          left.conversationId.localeCompare(right.conversationId),
+      );
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -68,6 +154,16 @@ export async function selectExpiredRoots(
     args.nowMs - args.privateWindowMs,
   ).toISOString();
   const cutoff = sql`case when ${juniorDestinations.visibility} = 'public' then ${publicCutoff}::timestamptz else ${privateCutoff}::timestamptz end`;
+  const effectiveLastActivityAt = sql<Date>`(
+    with recursive conversation_tree(conversation_id, last_activity_at) as (
+      select ${juniorConversations.conversationId}, ${juniorConversations.lastActivityAt}
+      union all
+      select child.conversation_id, child.last_activity_at
+      from junior_conversations child
+      join conversation_tree parent on child.parent_conversation_id = parent.conversation_id
+    )
+    select max(tree.last_activity_at) from conversation_tree tree
+  )`;
   const hasTreeWork = sql`exists (
     with recursive conversation_tree(conversation_id) as (
       select ${juniorConversations.conversationId}
@@ -113,12 +209,12 @@ export async function selectExpiredRoots(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        sql`${juniorConversations.lastActivityAt} < ${cutoff}`,
+        sql`${effectiveLastActivityAt} < ${cutoff}`,
         hasTreeWork,
       ),
     )
     .orderBy(
-      asc(juniorConversations.lastActivityAt),
+      asc(effectiveLastActivityAt),
       asc(juniorConversations.conversationId),
     )
     .limit(Math.max(0, args.limit));
@@ -140,14 +236,46 @@ export async function purgeConversationTree(
   args: {
     rootConversationId: string;
     scrubMetadata?: boolean;
+    scrubMetadataFromRootVisibility?: boolean;
     nowMs: number;
     retention?: { privateWindowMs: number; publicWindowMs: number };
   },
 ): Promise<PurgeTreeResult> {
   return await executor.transaction(async () => {
+    const initialRoots = await executor
+      .db()
+      .select({
+        conversationId: juniorConversations.conversationId,
+        destinationId: juniorConversations.destinationId,
+        lastActivityAt: juniorConversations.lastActivityAt,
+        parentConversationId: juniorConversations.parentConversationId,
+      })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, args.rootConversationId));
+    const initialRoot = initialRoots[0];
+    if (
+      !initialRoot ||
+      (args.retention && initialRoot.parentConversationId !== null)
+    ) {
+      return { purged: false, conversations: 0 };
+    }
+    const initialTree = await discoverConversationTree(executor, initialRoot);
+    for (const conversation of initialTree) {
+      await withConversationEventLock(
+        executor,
+        conversation.conversationId,
+        async () => undefined,
+      );
+    }
+    const resolvedScrubMetadata = args.scrubMetadataFromRootVisibility
+      ? (await resolveRootVisibility(executor, args.rootConversationId))
+          .visibility !== "public"
+      : args.scrubMetadata;
+
     const roots = await executor
       .db()
       .select({
+        conversationId: juniorConversations.conversationId,
         destinationId: juniorConversations.destinationId,
         lastActivityAt: juniorConversations.lastActivityAt,
         parentConversationId: juniorConversations.parentConversationId,
@@ -165,17 +293,29 @@ export async function purgeConversationTree(
           .select({ visibility: juniorDestinations.visibility })
           .from(juniorDestinations)
           .where(eq(juniorDestinations.id, root.destinationId))
+          .for("share")
       : [];
     const isPublic = destinations[0]?.visibility === "public";
+    const tree = await lockStableConversationTree(executor, {
+      conversationId: root.conversationId,
+      lastActivityAt: root.lastActivityAt,
+      parentConversationId: root.parentConversationId,
+    });
+    if (!tree) {
+      return { purged: false, conversations: 0 };
+    }
     if (args.retention) {
       const windowMs = isPublic
         ? args.retention.publicWindowMs
         : args.retention.privateWindowMs;
-      if (root.lastActivityAt.getTime() >= args.nowMs - windowMs) {
+      const effectiveLastActivityAt = Math.max(
+        ...tree.map((conversation) => conversation.lastActivityAt.getTime()),
+      );
+      if (effectiveLastActivityAt >= args.nowMs - windowMs) {
         return { purged: false, conversations: 0 };
       }
     }
-    const ids = await conversationTreeIds(executor, args.rootConversationId);
+    const ids = tree.map((conversation) => conversation.conversationId);
     await executor
       .db()
       .delete(juniorConversationEvents)
@@ -189,51 +329,11 @@ export async function purgeConversationTree(
       .update(juniorConversations)
       .set({
         transcriptPurgedAt: new Date(args.nowMs),
-        ...((args.retention ? !isPublic : args.scrubMetadata)
+        ...((args.retention ? !isPublic : resolvedScrubMetadata)
           ? { title: null, channelName: null, actor: null }
           : {}),
       })
       .where(inArray(juniorConversations.conversationId, ids));
     return { purged: true, conversations: ids.length };
   });
-}
-
-/**
- * Walk `parent_conversation_id` to the root and return the root's destination
- * visibility. Retention resolves visibility at purge time rather than storing an
- * expiry, so a public↔private flip takes effect on the next pass.
- */
-export async function resolveRootVisibility(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-): Promise<{
-  rootConversationId: string;
-  visibility: JuniorDestinationVisibility | null;
-}> {
-  let currentId = conversationId;
-  const seen = new Set<string>();
-  while (!seen.has(currentId)) {
-    seen.add(currentId);
-    const rows = await executor
-      .db()
-      .select({
-        parentId: juniorConversations.parentConversationId,
-        visibility: juniorDestinations.visibility,
-      })
-      .from(juniorConversations)
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(eq(juniorConversations.conversationId, currentId));
-    const row = rows[0];
-    if (!row) {
-      return { rootConversationId: currentId, visibility: null };
-    }
-    if (!row.parentId) {
-      return { rootConversationId: currentId, visibility: row.visibility };
-    }
-    currentId = row.parentId;
-  }
-  return { rootConversationId: currentId, visibility: null };
 }

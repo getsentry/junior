@@ -43,11 +43,12 @@ contract. Raw `ConversationEventData` is an internal persistence boundary and
 must not become a dashboard or external API payload.
 
 The reporting API owns a strict ordered event projection with only safe product
-fields. It preserves canonical sequence order, sources display text only from
-visible-message events, reduces model messages to content-free activity, and
-omits provider receipts, delivery commands, failure codes, authorization
-identifiers, arbitrary metadata, and persistence-envelope fields. The current
-detail response and dashboard have not yet cut over to this projection.
+fields. Conversation detail exposes that projection as its sole history, and
+the dashboard derives its view directly from canonical sequence order. Display
+text comes only from visible-message events; model messages become content-free
+activity, while provider receipts, delivery commands, failure codes,
+authorization identifiers, arbitrary metadata, and persistence-envelope fields
+remain internal.
 
 ## Write Rules
 

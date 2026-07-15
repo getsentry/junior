@@ -11,9 +11,9 @@ state.
 - Better Auth owns authentication; dashboard routes fail closed when identity
   or required configuration is missing.
 - API schemas under `src/api/` define the client/server boundary.
-- Reporting projections expose normalized visible messages, agent activity,
-  artifacts, and tool summaries rather than raw provider payloads or runtime
-  state.
+- Conversation detail exposes one ordered, privacy-safe event log. The
+  dashboard owns the event-to-view reduction and never merges a duplicate
+  transcript, activity stream, or provider runtime state.
 - Private conversation access requires authenticated authorization at the
   server boundary. Client-side route hiding is not authorization.
 - The package remains stateless apart from normal auth/session infrastructure;

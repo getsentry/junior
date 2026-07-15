@@ -40,7 +40,7 @@ export function TranscriptToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const missingResultLabel =
-    props.call?.status === "running" ? "running" : "missing result";
+    props.call?.status === "running" ? "running" : "started";
   const meta = [
     duration,
     props.result ? formatBytes(outputBytes) : undefined,

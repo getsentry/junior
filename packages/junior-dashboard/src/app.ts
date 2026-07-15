@@ -8,14 +8,12 @@ import {
   conversationFeedSchema,
   conversationParamsSchema,
   conversationStatsReportSchema,
-  conversationSubagentTranscriptReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
   personParamsSchema,
   actorDirectoryReportSchema,
   actorProfileReportSchema,
-  subagentParamsSchema,
 } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import type {
@@ -41,7 +39,6 @@ import {
   readMockConversationDetail,
   readMockConversationFeed,
   readMockConversationStats,
-  readMockConversationSubagent,
   readMockLocationDetail,
   readMockLocationDirectory,
   readMockPeopleDirectory,
@@ -282,8 +279,8 @@ function isAuthorized(
 
   return Boolean(
     session.user.emailVerified &&
-      emailDomain &&
-      allowedDomains.includes(emailDomain),
+    emailDomain &&
+    allowedDomains.includes(emailDomain),
   );
 }
 
@@ -719,17 +716,6 @@ export function createDashboardApp(
       return report
         ? Response.json(conversationDetailReportSchema.parse(report))
         : Response.json({ error: "Conversation not found." }, { status: 404 });
-    });
-    app.get("/api/conversations/:conversationId/subagents/:subagentId", (c) => {
-      const { conversationId, subagentId } = subagentParamsSchema.parse(
-        c.req.param(),
-      );
-      const report = conversationSubagentTranscriptReportSchema.parse(
-        readMockConversationSubagent(conversationId, subagentId),
-      );
-      return report.unavailableReason === "not_found"
-        ? Response.json(report, { status: 404 })
-        : Response.json(report);
     });
   }
   app.route("/", createJuniorApi());

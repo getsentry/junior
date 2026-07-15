@@ -280,6 +280,42 @@ describe("retention purge job", () => {
     expect(await eventCount(fixture.sql, "child")).toBe(0);
   });
 
+  it("uses the freshest activity in the tree for selection and destructive recheck", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    const nowMs = BASE_MS + 100 * DAY_MS;
+    await seedConversation(fixture.sql, {
+      conversationId: "old-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "fresh-child",
+      parentConversationId: "old-root",
+      lastActivityAtMs: nowMs - DAY_MS,
+    });
+
+    await expect(
+      selectExpiredRoots(fixture.sql, {
+        nowMs,
+        publicWindowMs: 90 * DAY_MS,
+        privateWindowMs: 14 * DAY_MS,
+        limit: 10,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      purgeConversationTree(fixture.sql, {
+        rootConversationId: "old-root",
+        nowMs,
+        retention: {
+          publicWindowMs: 90 * DAY_MS,
+          privateWindowMs: 14 * DAY_MS,
+        },
+      }),
+    ).resolves.toEqual({ purged: false, conversations: 0 });
+    expect(await eventCount(fixture.sql, "old-root")).toBe(1);
+    expect(await eventCount(fixture.sql, "fresh-child")).toBe(1);
+  });
+
   it("purges an expired root whose remaining content exists only on a child", async () => {
     const dest = await seedDestination(fixture.sql, "public");
     await seedConversation(fixture.sql, {

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { resolveRootVisibility } from "@/chat/conversations/sql/purge";
+import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import {
   SubagentLineageConflictError,
   SubagentLineageService,

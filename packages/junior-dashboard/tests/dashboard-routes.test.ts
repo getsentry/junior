@@ -310,7 +310,6 @@ describe("dashboard routes", () => {
       "/api/locations/destination-1",
       "/api/plugin-reports",
       "/api/conversations/slack%3AC1%3A123",
-      "/api/conversations/slack%3AC1%3A123/subagents/advisor-call",
       "/api/config",
       "/api/me",
     ]) {

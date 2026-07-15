@@ -15,7 +15,7 @@ function withQueryClient(children: ReactNode) {
 }
 
 describe("transcript context events", () => {
-  it("renders compaction as a compact expandable event", () => {
+  it("renders compaction without the private summary or model", () => {
     const html = renderToStaticMarkup(
       withQueryClient(
         <TranscriptContextEventView
@@ -24,9 +24,6 @@ describe("transcript context events", () => {
             event: {
               type: "context_compacted",
               createdAt: "2026-01-01T00:00:02.000Z",
-              modelId: "openai/gpt-5.4",
-              summary: "Earlier release checks passed.",
-              transcriptIndex: 0,
             },
           }}
           timestamp={Date.parse("2026-01-01T00:00:02.000Z")}
@@ -35,12 +32,12 @@ describe("transcript context events", () => {
     );
 
     expect(html).toContain("Context compacted");
-    expect(html).toContain("gpt-5.4");
-    expect(html).toContain("View summary");
-    expect(html).toContain("Earlier release checks passed.");
+    expect(html).toContain("Earlier context was summarized");
+    expect(html).not.toContain("gpt-5.4");
+    expect(html).not.toContain("Earlier release checks passed.");
   });
 
-  it("renders a model handoff as an expandable raw user message", () => {
+  it("renders a structural model handoff without raw context", () => {
     const html = renderToStaticMarkup(
       withQueryClient(
         <TranscriptContextEventView
@@ -49,11 +46,6 @@ describe("transcript context events", () => {
             event: {
               type: "model_handoff",
               createdAt: "2026-01-01T00:00:04.000Z",
-              fromModelId: "openai/gpt-5.4",
-              toModelId: "openai/gpt-5.6-sol",
-              message:
-                "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\n**Next:** Continue with the migration fix.",
-              transcriptIndex: 0,
             },
           }}
         />,
@@ -61,15 +53,13 @@ describe("transcript context events", () => {
     );
 
     expect(html).toContain("Model handoff");
-    expect(html).toContain("gpt-5.4");
-    expect(html).toContain("gpt-5.6-sol");
-    expect(html).toContain("<details");
-    expect(html).toContain("**Next:**");
-    expect(html).not.toContain("<strong>Next:</strong>");
-    expect(html).toContain("Continue with the migration fix.");
+    expect(html).toContain("Execution continued with a different model.");
+    expect(html).not.toContain("gpt-5.4");
+    expect(html).not.toContain("gpt-5.6-sol");
+    expect(html).not.toContain("Continue with the migration fix.");
   });
 
-  it("reveals a transition summary while transcript search is active", () => {
+  it("does not reveal transition payload while search is active", () => {
     const html = renderToStaticMarkup(
       withQueryClient(
         <TranscriptSearchProvider query="release checks">
@@ -79,8 +69,6 @@ describe("transcript context events", () => {
               event: {
                 type: "context_compacted",
                 createdAt: "2026-01-01T00:00:02.000Z",
-                summary: "Earlier release checks passed.",
-                transcriptIndex: 0,
               },
             }}
           />
@@ -88,8 +76,8 @@ describe("transcript context events", () => {
       ),
     );
 
-    expect(html).toContain("<details");
-    expect(html).toContain('open=""');
-    expect(html).toContain("<mark");
+    expect(html).toContain("Context compacted");
+    expect(html).not.toContain("Earlier release checks passed.");
+    expect(html).not.toContain("<mark");
   });
 });

@@ -8,23 +8,38 @@ import type {
   ConversationStatsReport,
   ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
-import type {
-  ConversationActivityStatus,
-  ConversationContextEvent,
-  ConversationDetailReport,
-  TranscriptMessage,
-  TranscriptPart,
-} from "@sentry/junior/api/schema";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
-// Dashboard view transcript parts merge reporting transcript payloads with
-// lifecycle activity rows; the backend reporting transcript contract is unchanged.
-type TranscriptViewReportingPart = TranscriptPart & {
-  endedAt?: never;
+export type TranscriptViewStatus =
+  | "aborted"
+  | "completed"
+  | "error"
+  | "running"
+  | "success";
+
+type TranscriptViewReportingPart = {
+  bytes?: number;
+  chars?: number;
+  id?: string;
+  input?: unknown;
+  inputKeys?: string[];
+  inputSizeBytes?: number;
+  inputSizeChars?: number;
+  inputType?: string;
+  name?: string;
+  output?: unknown;
+  outputKeys?: string[];
+  outputSizeBytes?: number;
+  outputSizeChars?: number;
+  outputType?: string;
   outcome?: never;
-  parentToolCallId?: never;
-  status?: ConversationActivityStatus;
+  redacted?: boolean;
+  sourceType?: string;
+  status?: TranscriptViewStatus;
   subagentKind?: never;
+  text?: string;
+  type: "text" | "thinking" | "tool_call" | "tool_result" | "unknown";
 };
 
 export type TranscriptViewToolCallPart = TranscriptViewReportingPart & {
@@ -34,14 +49,13 @@ export type TranscriptViewToolCallPart = TranscriptViewReportingPart & {
 export type TranscriptViewSubagentPart = {
   bytes?: never;
   chars?: never;
-  endedAt?: string;
+  childConversationId?: string;
   id: string;
   input?: never;
   inputKeys?: never;
   inputSizeBytes?: never;
   inputSizeChars?: never;
   inputType?: never;
-  modelId?: string;
   name?: never;
   outcome?: "success" | "error" | "aborted";
   output?: never;
@@ -49,12 +63,9 @@ export type TranscriptViewSubagentPart = {
   outputSizeBytes?: never;
   outputSizeChars?: never;
   outputType?: never;
-  parentToolCallId?: string;
-  reasoningLevel?: string;
   redacted?: boolean;
-  status: ConversationActivityStatus;
+  status: TranscriptViewStatus;
   subagentKind: string;
-  transcriptAvailable?: boolean;
   text?: never;
   type: "subagent";
 };
@@ -62,15 +73,16 @@ export type TranscriptViewSubagentPart = {
 export type TranscriptViewContextEventPart = {
   bytes?: never;
   chars?: never;
-  endedAt?: never;
-  event: ConversationContextEvent;
+  event: {
+    createdAt: string;
+    type: "context_compacted" | "model_handoff";
+  };
   id?: never;
   input?: never;
   inputKeys?: never;
   inputSizeBytes?: never;
   inputSizeChars?: never;
   inputType?: never;
-  modelId?: never;
   name?: never;
   outcome?: never;
   output?: never;
@@ -78,13 +90,10 @@ export type TranscriptViewContextEventPart = {
   outputSizeBytes?: never;
   outputSizeChars?: never;
   outputType?: never;
-  parentToolCallId?: never;
-  reasoningLevel?: never;
   redacted?: never;
   status?: never;
   subagentKind?: never;
   text?: never;
-  transcriptAvailable?: never;
   type: "context_event";
 };
 
@@ -94,14 +103,14 @@ export type TranscriptViewPart =
   | TranscriptViewSubagentPart
   | TranscriptViewToolCallPart;
 
-export type TranscriptViewMessage = Omit<TranscriptMessage, "parts"> & {
+export type TranscriptViewMessage = {
+  outcome?: "error" | "aborted" | "delivery_failed";
   parts: TranscriptViewPart[];
+  role: "assistant" | "system" | "tool" | "toolResult" | "unknown" | "user";
+  timestamp?: number;
 };
 
-export type ConversationTranscript = Omit<
-  ConversationDetailReport,
-  "generatedAt" | "sentryConversationUrl"
-> & {
+export type ConversationTranscript = ConversationDetailReport & {
   assistantLabel?: string;
 };
 

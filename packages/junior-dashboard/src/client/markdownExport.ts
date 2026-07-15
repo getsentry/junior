@@ -13,9 +13,7 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./components/transcriptRenderModel";
-import { conversationTranscriptMessages } from "./transcriptActivity";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
+import { conversationTranscriptMessages } from "./eventTranscript";
 import type {
   Conversation,
   ConversationTranscript,
@@ -27,7 +25,7 @@ import type {
 
 /** Build a clipboard Markdown transcript from the already-authorized dashboard report. */
 export function buildConversationMarkdown(
-  detail: ConversationDetailReport,
+  detail: ConversationTranscript,
   conversation?: Conversation,
 ): string {
   const lines: string[] = [];
@@ -55,43 +53,21 @@ export function buildConversationMarkdown(
   return finishMarkdown(lines);
 }
 
-/** Build Markdown for one child-agent transcript using the shared formatter. */
-export function buildSubagentMarkdown(
-  report: ConversationSubagentTranscriptReport,
-  conversationTranscript: ConversationTranscript,
-): string {
-  const lines: string[] = [`# ${headingText(report.subagentKind)}`, ""];
-  addMetaLine(lines, "Subagent ID", inlineCode(report.id));
-  addMetaLine(lines, "Conversation ID", report.subagentConversationId);
-  addMetaLine(lines, "Created", report.createdAt);
-  addMetaLine(lines, "Status", report.outcome ?? report.status);
-  addMetaLine(
-    lines,
-    "Duration",
-    formatMs(conversationTranscript.cumulativeDurationMs),
-  );
-  addMetaLine(
-    lines,
-    "Sentry conversation",
-    report.subagentSentryConversationUrl,
-  );
-  lines.push("", "## Transcript");
-  appendConversationTranscript(lines, conversationTranscript);
-  return finishMarkdown(lines);
-}
-
 function appendConversationTranscript(
   lines: string[],
   conversationTranscript: ConversationTranscript,
 ): void {
   const transcript = conversationTranscriptMessages(conversationTranscript);
 
-  if (conversationTranscript.transcriptAvailable) {
+  if (conversationTranscript.eventHistory.status === "available") {
     appendTranscriptMessages(lines, conversationTranscript, transcript, false);
     return;
   }
 
-  if (conversationTranscript.transcriptRedacted && transcript.length) {
+  if (
+    conversationTranscript.eventHistory.status === "redacted" &&
+    transcript.length
+  ) {
     lines.push(
       "",
       "Transcript hidden because this conversation is not public.",
@@ -187,21 +163,25 @@ function appendTranscriptMessages(
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  outcome: "error" | "aborted",
+  outcome: "error" | "aborted" | "delivery_failed",
   timestamp: number | undefined,
 ): void {
   lines.push(
     "",
-    outcome === "error"
-      ? "### Agent response failed"
-      : "### Agent response stopped",
+    outcome === "delivery_failed"
+      ? "### Message delivery failed"
+      : outcome === "error"
+        ? "### Agent response failed"
+        : "### Agent response stopped",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   lines.push(
     "",
-    outcome === "error"
-      ? "The model response ended before Junior could complete this turn."
-      : "The model response was stopped before Junior could complete this turn.",
+    outcome === "delivery_failed"
+      ? "Junior could not deliver this message to its destination."
+      : outcome === "error"
+        ? "The model response ended before Junior could complete this turn."
+        : "The model response was stopped before Junior could complete this turn.",
   );
 }
 
@@ -219,14 +199,6 @@ function appendContextEvent(
       : "### Context compacted",
   );
   addEventMeta(lines, conversationTranscript, timestamp);
-  if (event.type === "model_handoff") {
-    addMetaLine(lines, "From model", event.fromModelId);
-    addMetaLine(lines, "To model", event.toModelId);
-  } else {
-    addMetaLine(lines, "Model", event.modelId);
-  }
-  const body = event.type === "model_handoff" ? event.message : event.summary;
-  if (body) lines.push("", body);
 }
 
 function appendMessage(
@@ -275,7 +247,6 @@ function appendSubagent(
   lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
   addMetaLine(lines, "Status", part.outcome ?? part.status);
-  addMetaLine(lines, "Parent tool call", part.parentToolCallId);
 }
 
 function appendTool(
@@ -336,7 +307,7 @@ function appendToolHeader(
     addMetaLine(
       lines,
       "Result",
-      call?.status === "running" ? "running" : "missing",
+      call?.status === "running" ? "running" : "started",
     );
   }
 }
@@ -356,7 +327,7 @@ function addEventMeta(
 }
 
 function conversationTitle(
-  detail: ConversationDetailReport,
+  detail: ConversationTranscript,
   conversation: Conversation | undefined,
 ): string {
   const title = detail.displayTitle.trim();

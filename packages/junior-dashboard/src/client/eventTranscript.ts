@@ -1,0 +1,140 @@
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+
+import type {
+  ConversationTranscript,
+  TranscriptViewMessage,
+  TranscriptViewPart,
+  TranscriptViewSubagentPart,
+} from "./types";
+
+function eventTimestamp(event: ConversationReportEvent): number {
+  return Date.parse(event.createdAt);
+}
+
+function eventMessage(
+  event: ConversationReportEvent,
+  role: TranscriptViewMessage["role"],
+  parts: TranscriptViewPart[],
+): TranscriptViewMessage {
+  return { role, timestamp: eventTimestamp(event), parts };
+}
+
+function subagentOutcomes(
+  events: ConversationReportEvent[],
+): Map<
+  string,
+  Extract<
+    ConversationReportEvent["data"],
+    { type: "subagent_ended" }
+  >["outcome"]
+> {
+  const outcomes = new Map<
+    string,
+    Extract<
+      ConversationReportEvent["data"],
+      { type: "subagent_ended" }
+    >["outcome"]
+  >();
+  for (const event of events) {
+    if (event.data.type === "subagent_ended") {
+      outcomes.set(event.data.childConversationId, event.data.outcome);
+    }
+  }
+  return outcomes;
+}
+
+function subagentPart(
+  data: Extract<ConversationReportEvent["data"], { type: "subagent_started" }>,
+  outcome: "aborted" | "error" | "success" | undefined,
+): TranscriptViewSubagentPart {
+  return {
+    type: "subagent",
+    id: data.childConversationId,
+    childConversationId: data.childConversationId,
+    subagentKind: data.subagentKind,
+    status:
+      outcome === "error" || outcome === "aborted"
+        ? outcome
+        : outcome === "success"
+          ? "completed"
+          : "running",
+    ...(outcome ? { outcome } : {}),
+  };
+}
+
+/** Reduce the ordered reporting event API into dashboard-only transcript rows. */
+export function conversationTranscriptMessages(
+  conversation: ConversationTranscript,
+): TranscriptViewMessage[] {
+  const outcomes = subagentOutcomes(conversation.events);
+  const messages: TranscriptViewMessage[] = [];
+
+  // API sequence is the only ordering authority. Do not sort by timestamps:
+  // producers may preserve ingestion order while clocks are skewed.
+  for (const event of conversation.events) {
+    const data = event.data;
+    if (data.type === "visible_message") {
+      messages.push(
+        eventMessage(event, data.role, [
+          data.redacted
+            ? { type: "text", redacted: true }
+            : { type: "text", text: data.text },
+        ]),
+      );
+      continue;
+    }
+
+    if (data.type === "tool_started") {
+      messages.push(
+        eventMessage(event, "tool", [
+          // Reporting intentionally has no completion state. This is a neutral
+          // structural start row, not a claim that the tool is still running.
+          { type: "tool_call", name: data.name },
+        ]),
+      );
+      continue;
+    }
+
+    if (data.type === "subagent_started") {
+      messages.push(
+        eventMessage(event, "tool", [
+          subagentPart(data, outcomes.get(data.childConversationId)),
+        ]),
+      );
+      continue;
+    }
+
+    if (data.type === "context_compacted" || data.type === "model_handoff") {
+      messages.push(
+        eventMessage(event, "system", [
+          {
+            type: "context_event",
+            event: { type: data.type, createdAt: event.createdAt },
+          },
+        ]),
+      );
+      continue;
+    }
+
+    if (data.type === "turn_lifecycle" && data.state === "failed") {
+      messages.push({
+        role: "assistant",
+        outcome: "error",
+        parts: [],
+        timestamp: eventTimestamp(event),
+      });
+      continue;
+    }
+
+    if (data.type === "delivery" && data.state === "failed") {
+      messages.push({
+        role: "system",
+        outcome: "delivery_failed",
+        parts: [],
+        timestamp: eventTimestamp(event),
+      });
+    }
+  }
+
+  return messages;
+}

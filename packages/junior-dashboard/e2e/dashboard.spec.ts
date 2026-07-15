@@ -315,17 +315,20 @@ test("scrolls long conversation and transcript panes independently", async ({
         ...conversations[0],
         displayTitle: "Long transcript",
         generatedAt,
-        transcript: Array.from({ length: 60 }, (_, index) => ({
-          parts: [
-            {
-              text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,
-              type: "text",
-            },
-          ],
-          role: index % 2 === 0 ? "user" : "assistant",
-          timestamp: Date.parse(generatedAt) + index * 1_000,
+        eventHistory: { status: "available" },
+        events: Array.from({ length: 60 }, (_, index) => ({
+          contextEpoch: 0,
+          createdAt: new Date(
+            Date.parse(generatedAt) + index * 1_000,
+          ).toISOString(),
+          data: {
+            type: "visible_message",
+            messageId: `message-${index + 1}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            text: `Transcript message ${index + 1} with enough content to occupy a visible row.`,
+          },
+          seq: index,
         })),
-        transcriptAvailable: true,
       },
     });
   });

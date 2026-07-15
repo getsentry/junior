@@ -137,9 +137,10 @@ export function ConversationPage(props: {
               />
             }
             live={conversationIsLive(visualStatus, detail.data)}
-            onOpenSubagentTranscript={({ part, conversation }) => {
-              if (!conversationId) return;
-              setSubagentTarget({ conversation, conversationId, part });
+            onOpenSubagentTranscript={({ part }) => {
+              const childConversationId = part.childConversationId;
+              if (!childConversationId) return;
+              setSubagentTarget({ conversationId: childConversationId, part });
             }}
             transcript={detail.data}
           />
