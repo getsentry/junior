@@ -8,6 +8,27 @@ import {
 } from "../../msw/handlers/slack-api";
 
 describe("lookupSlackUser", () => {
+  it("uses the real name instead of the custom Slack display name", async () => {
+    resetSlackApiMockState();
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({
+        userId: "U039RR91S",
+        userName: "david",
+        displayName: "immutable dcramer",
+        realName: "David Cramer",
+        email: "david@example.com",
+      }),
+    });
+
+    await expect(
+      lookupSlackUser("T-DISPLAY-NAME", "U039RR91S"),
+    ).resolves.toMatchObject({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userName: "david",
+    });
+  });
+
   it("caches Slack profiles by workspace and user id", async () => {
     resetSlackApiMockState();
     queueSlackApiResponse("users.info", {
