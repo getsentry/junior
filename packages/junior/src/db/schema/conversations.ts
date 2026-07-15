@@ -59,12 +59,12 @@ export const juniorConversations = pgTable(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
     transcriptPurgedAt: timestamptz("transcript_purged_at"),
-    archivedAt: timestamptz("archived_at"),
     durationMs: integer("duration_ms").notNull().default(0),
     usage: jsonb("usage_json").$type<AgentTurnUsage>(),
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
+    archivedAt: timestamptz("archived_at"),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(

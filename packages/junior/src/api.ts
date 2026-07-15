@@ -1,13 +1,7 @@
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
-import { z } from "zod";
-import {
-  conversationFeedQuerySchema,
-  conversationParamsSchema,
-  locationParamsSchema,
-  personParamsSchema,
-  subagentParamsSchema,
-} from "./api/schema";
+import { createConversationRoutes } from "./api/conversations/routes";
+import { createLocationRoutes } from "./api/locations/routes";
+import { createPeopleRoutes } from "./api/people/routes";
 import {
   readHealthReport,
   readPluginOperationalReportFeed,
@@ -15,35 +9,6 @@ import {
   readRuntimeInfoReport,
   readSkillReports,
 } from "./reporting";
-
-function parseParams<TSchema extends z.ZodType>(
-  schema: TSchema,
-  params: Record<string, string>,
-): z.infer<TSchema> {
-  const result = schema.safeParse(params);
-  if (result.success) {
-    return result.data;
-  }
-  throw new HTTPException(400, {
-    cause: result.error,
-    message: "Invalid route parameters.",
-  });
-}
-
-/** Parse and normalize an HTTP query, returning a 400 for invalid input. */
-function parseQuery<TSchema extends z.ZodType>(
-  schema: TSchema,
-  query: unknown,
-): z.infer<TSchema> {
-  const result = schema.safeParse(query);
-  if (result.success) {
-    return result.data;
-  }
-  throw new HTTPException(400, {
-    cause: result.error,
-    message: "Invalid query parameters.",
-  });
-}
 
 /** Create Junior's production REST API for authenticated dashboard consumers. */
 export function createJuniorApi(): Hono {
@@ -65,89 +30,9 @@ export function createJuniorApi(): Hono {
     return Response.json(await readPluginOperationalReportFeed());
   });
 
-  app.get("/api/conversations", async (c) => {
-    const { readConversationFeed } = await import("./api/conversations/list");
-    const { actorEmail, includeArchived } = parseQuery(
-      conversationFeedQuerySchema,
-      c.req.query(),
-    );
-    return Response.json(
-      await readConversationFeed({ actorEmail, includeArchived }),
-    );
-  });
-  app.get("/api/conversations/stats", async () => {
-    const { readConversationStats } = await import("./api/conversations/stats");
-    return Response.json(await readConversationStats());
-  });
-  app.patch("/api/conversations/:conversationId/archive", async (c) => {
-    const { setConversationArchived } =
-      await import("./api/conversations/archive");
-    const { conversationId } = parseParams(
-      conversationParamsSchema,
-      c.req.param(),
-    );
-    const body = z
-      .object({ archived: z.boolean() })
-      .strict()
-      .parse(await c.req.json());
-    const updated = await setConversationArchived({
-      archived: body.archived,
-      conversationId,
-    });
-    return updated
-      ? Response.json({ archived: body.archived })
-      : Response.json({ error: "Conversation not found." }, { status: 404 });
-  });
-  app.get("/api/conversations/:conversationId", async (c) => {
-    const { readConversationDetail } =
-      await import("./api/conversations/detail");
-    const { conversationId } = parseParams(
-      conversationParamsSchema,
-      c.req.param(),
-    );
-    const report = await readConversationDetail(conversationId);
-    return report
-      ? Response.json(report)
-      : Response.json({ error: "Conversation not found." }, { status: 404 });
-  });
-  app.get(
-    "/api/conversations/:conversationId/subagents/:subagentId",
-    async (c) => {
-      const { readConversationSubagent } =
-        await import("./api/conversations/subagent");
-      const { conversationId, subagentId } = parseParams(
-        subagentParamsSchema,
-        c.req.param(),
-      );
-      const report = await readConversationSubagent(conversationId, subagentId);
-      return report.unavailableReason === "not_found"
-        ? Response.json(report, { status: 404 })
-        : Response.json(report);
-    },
-  );
-
-  app.get("/api/people", async () => {
-    const { readPeopleList } = await import("./api/people/list");
-    return Response.json(await readPeopleList());
-  });
-  app.get("/api/people/:email", async (c) => {
-    const { email } = parseParams(personParamsSchema, c.req.param());
-    const { readPeopleProfile } = await import("./api/people/profile");
-    return Response.json(await readPeopleProfile(email));
-  });
-
-  app.get("/api/locations", async () => {
-    const { readLocationDirectory } = await import("./api/locations/list");
-    return Response.json(await readLocationDirectory());
-  });
-  app.get("/api/locations/:locationId", async (c) => {
-    const { locationId } = parseParams(locationParamsSchema, c.req.param());
-    const { readLocationDetail } = await import("./api/locations/detail");
-    const report = await readLocationDetail(locationId);
-    return report
-      ? Response.json(report)
-      : Response.json({ error: "Location not found." }, { status: 404 });
-  });
+  app.route("/api/conversations", createConversationRoutes());
+  app.route("/api/people", createPeopleRoutes());
+  app.route("/api/locations", createLocationRoutes());
 
   return app;
 }
