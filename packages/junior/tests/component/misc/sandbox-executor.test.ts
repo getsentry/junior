@@ -708,6 +708,58 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo ok");
   });
 
+  it("runs bash in an explicit cwd and returns applicable project instructions once", async () => {
+    const sandbox = makeSandbox("sbx_bash_cwd");
+    const files = new Map<string, string | "directory">([
+      ["/vercel/sandbox/repo/.git", "directory"],
+      ["/vercel/sandbox/repo/AGENTS.md", "root rules"],
+      ["/vercel/sandbox/repo/packages/AGENTS.md", "package rules"],
+    ]);
+    sandbox.fs.stat.mockImplementation(async (filePath) => {
+      const value = files.get(filePath);
+      if (value === undefined) {
+        throw new Error("ENOENT");
+      }
+      return { isDirectory: () => value === "directory" };
+    });
+    sandbox.fs.readFile.mockImplementation(async (filePath) => {
+      const value = files.get(filePath);
+      if (typeof value !== "string") {
+        throw new Error("ENOENT");
+      }
+      return value;
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_bash_cwd" });
+    executor.configureSkills([]);
+    const input = {
+      toolName: "bash",
+      input: { command: "pwd", cwd: "/vercel/sandbox/repo/packages" },
+    };
+
+    const first = await executor.execute<StructuredSandboxResult>(input);
+    const second = await executor.execute<StructuredSandboxResult>(input);
+
+    expect(sandbox.runCommand.mock.calls[0]?.[0]).toMatchObject({
+      cwd: "/vercel/sandbox/repo/packages",
+    });
+    expect(first.result.details.project_instructions).toEqual([
+      { path: "/vercel/sandbox/repo/AGENTS.md", content: "root rules" },
+      {
+        path: "/vercel/sandbox/repo/packages/AGENTS.md",
+        content: "package rules",
+      },
+    ]);
+    expect(second.result.details.project_instructions).toBeUndefined();
+  });
+
   it("applies a host timeout to bash commands when the model omits one", async () => {
     vi.useFakeTimers();
     const sandbox = makeSandbox("sbx_bash_timeout");

@@ -9,10 +9,12 @@ describe("buildSandboxInput", () => {
     expect(
       buildSandboxInput("bash", {
         command: "env",
+        cwd: "/vercel/sandbox/repo",
         env: { AGENT_PLUGIN: "1" },
       }),
     ).toEqual({
       command: "env",
+      cwd: "/vercel/sandbox/repo",
       env: { AGENT_PLUGIN: "1" },
     });
     expect(

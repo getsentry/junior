@@ -366,6 +366,15 @@ function additionalActorCoauthorTrailers(args: {
   return trailers;
 }
 
+function postCheckoutHook(juniorRoot: string): string {
+  return `#!/usr/bin/env bash
+set -eu
+
+mkdir -p "${juniorRoot}"
+printf '%s\\n' "$PWD" >> "${juniorRoot}/project-cwds"
+`;
+}
+
 function prepareCommitMsgHook(): string {
   return `#!/usr/bin/env bash
 set -eu
@@ -1720,11 +1729,18 @@ export function githubPlugin(
       },
       async sandboxPrepare(ctx) {
         const hooksPath = `${ctx.sandbox.juniorRoot}/git-hooks`;
-        await ctx.sandbox.writeFile({
-          path: `${hooksPath}/prepare-commit-msg`,
-          mode: 0o755,
-          content: prepareCommitMsgHook(),
-        });
+        await Promise.all([
+          ctx.sandbox.writeFile({
+            path: `${hooksPath}/prepare-commit-msg`,
+            mode: 0o755,
+            content: prepareCommitMsgHook(),
+          }),
+          ctx.sandbox.writeFile({
+            path: `${hooksPath}/post-checkout`,
+            mode: 0o755,
+            content: postCheckoutHook(ctx.sandbox.juniorRoot),
+          }),
+        ]);
         await configureGit(ctx, "core.hooksPath", hooksPath);
         await configureGit(ctx, "commit.gpgsign", "false");
         await configureGit(ctx, "credential.helper", "");

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import {
   getTracePropagationHeaders,
   logInfo,
@@ -26,6 +27,11 @@ import {
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import {
+  consumeRegisteredProjectCwds,
+  resolveProjectInstructions,
+  type ProjectInstruction,
+} from "@/chat/sandbox/project-instructions";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
@@ -75,6 +81,7 @@ export interface BashCustomCommandResult {
   stderr_truncated: boolean;
   auth_required?: SandboxEgressAuthRequiredSignal;
   permission_denied?: SandboxEgressPermissionDeniedSignal;
+  project_instructions?: ProjectInstruction[];
 }
 
 export interface SandboxAcquiredState {
@@ -147,6 +154,9 @@ function bashToolResult(params: BashCustomCommandResult) {
       stderr: params.stderr,
       stdout_truncated: params.stdout_truncated,
       stderr_truncated: params.stderr_truncated,
+      ...(params.project_instructions
+        ? { project_instructions: params.project_instructions }
+        : {}),
     },
     truncated: params.stdout_truncated || params.stderr_truncated,
     ...(!params.ok
@@ -179,6 +189,9 @@ function bashToolResult(params: BashCustomCommandResult) {
     ...(params.permission_denied
       ? { permission_denied: params.permission_denied }
       : {}),
+    ...(params.project_instructions
+      ? { project_instructions: params.project_instructions }
+      : {}),
   });
 }
 
@@ -198,6 +211,7 @@ export function createSandboxExecutor(options?: {
 }): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
+  const presentedProjectInstructions = new Map<string, string>();
   const traceContext = options?.traceContext ?? {};
   const tracePropagation = options?.tracePropagation;
   const hasTracePropagationDomains =
@@ -303,10 +317,22 @@ export function createSandboxExecutor(options?: {
   ): Promise<SandboxExecutionEnvelope<T>> => {
     const env = parseEnv(rawInput.env);
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
+    const requestedCwd = String(rawInput.cwd ?? "").trim();
+    const cwd = path.posix.resolve(
+      SANDBOX_WORKSPACE_ROOT,
+      requestedCwd || SANDBOX_WORKSPACE_ROOT,
+    );
+    if (
+      cwd !== SANDBOX_WORKSPACE_ROOT &&
+      !cwd.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`)
+    ) {
+      throw new ToolInputError("cwd must be inside the sandbox workspace");
+    }
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
-    const executeBash = (await sessionManager.ensureToolExecutors()).bash;
+    const executors = await sessionManager.ensureToolExecutors();
+    const executeBash = executors.bash;
     const activeEgressId = sessionManager.getSandboxEgressId();
     await clearSandboxEgressSignals(activeEgressId);
     const result = await withSandboxToolSpan(
@@ -319,6 +345,7 @@ export function createSandboxExecutor(options?: {
         try {
           const response = await executeBash({
             command,
+            cwd,
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
             ...(signal ? { signal } : {}),
@@ -362,12 +389,27 @@ export function createSandboxExecutor(options?: {
       await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
     const permissionDenied =
       await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
+    const registeredCwds = await consumeRegisteredProjectCwds(executors.fs);
+    const applicableInstructions = (
+      await Promise.all(
+        [cwd, ...registeredCwds].map(
+          async (target) => await resolveProjectInstructions(executors.fs, target),
+        ),
+      )
+    ).flat();
+    const projectInstructions = applicableInstructions.filter((instruction) => {
+      if (presentedProjectInstructions.get(instruction.path) === instruction.content) {
+        return false;
+      }
+      presentedProjectInstructions.set(instruction.path, instruction.content);
+      return true;
+    });
 
     return {
       result: bashToolResult({
         ok: result.exitCode === 0,
         command,
-        cwd: SANDBOX_WORKSPACE_ROOT,
+        cwd,
         exit_code: result.exitCode,
         signal: null,
         timed_out: Boolean(result.timedOut),
@@ -378,6 +420,9 @@ export function createSandboxExecutor(options?: {
         stderr_truncated: result.stderrTruncated,
         ...(authRequired ? { auth_required: authRequired } : {}),
         ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
+        ...(projectInstructions.length > 0
+          ? { project_instructions: projectInstructions }
+          : {}),
       }) as T,
     };
   };

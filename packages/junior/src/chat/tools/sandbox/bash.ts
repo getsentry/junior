@@ -12,6 +12,13 @@ export function createBashTool() {
         .string()
         .min(1)
         .describe("Bash command to run inside the sandbox."),
+      cwd: z
+        .string()
+        .min(1)
+        .describe(
+          "Optional working directory inside the sandbox workspace. Use this when operating in a repository or subdirectory.",
+        )
+        .optional(),
       timeoutMs: z.coerce
         .number()
         .int()
