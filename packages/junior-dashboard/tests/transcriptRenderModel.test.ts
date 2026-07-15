@@ -251,6 +251,9 @@ describe("canonical event transcript reduction", () => {
     expect(entries.some((entry) => entryMatchesSearch(entry, "child-1"))).toBe(
       false,
     );
+    expect(entries.some((entry) => entryMatchesSearch(entry, "started"))).toBe(
+      false,
+    );
   });
 });
 
