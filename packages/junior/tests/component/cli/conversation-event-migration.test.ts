@@ -174,7 +174,7 @@ describe("conversation event migration", () => {
     expect(append).toHaveBeenCalledTimes(2);
   });
 
-  it("backfills drained old-worker rows after removing their compatibility view", async () => {
+  it("backfills visible-message read-model rows after the hard cutover", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const migrationsBeforeVisibleEvents = [
       "0000_initial.sql",
@@ -244,13 +244,13 @@ describe("conversation event migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_conversation_messages (
           conversation_id, message_id, role, text, created_at
-        ) VALUES ($1, 'old-worker', 'assistant', 'compatibility', $2)`,
+        ) VALUES ($1, 'late', 'assistant', 'late read model', $2)`,
         [conversationId, new Date("2026-07-14T10:00:03.000Z")],
       );
       await fixture.sql.execute(
         `UPDATE junior_conversation_messages
          SET meta = $2::jsonb, replied_at = $3
-         WHERE conversation_id = $1 AND message_id = 'old-worker'`,
+         WHERE conversation_id = $1 AND message_id = 'late'`,
         [
           conversationId,
           JSON.stringify({ slackTs: "123.456" }),
@@ -260,7 +260,7 @@ describe("conversation event migration", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_conversation_messages (
           conversation_id, message_id, role, text, replied_at, created_at
-        ) VALUES ($1, 'old-worker-replied', 'user', 'already replied', $2, $3)`,
+        ) VALUES ($1, 'late-replied', 'user', 'already replied', $2, $3)`,
         [
           conversationId,
           new Date("2026-07-14T10:00:04.500Z"),
@@ -303,48 +303,32 @@ describe("conversation event migration", () => {
       const events = await createSqlConversationEventStore(
         fixture.sql,
       ).loadHistory(conversationId);
-      const [compatibility] = await fixture.sql.query<{
-        relation: string | null;
-        functions: number;
-      }>(
-        `SELECT
-          to_regclass('public.junior_agent_steps')::text AS relation,
-          (
-            SELECT count(*)::integer
-            FROM pg_proc
-            WHERE proname IN (
-              'junior_agent_steps_insert_compat',
-              'junior_agent_steps_delete_compat'
-            )
-          ) AS functions`,
-      );
-      expect(compatibility).toEqual({ relation: null, functions: 0 });
       expect(
         events.filter(
           (event) =>
             event.data.type === "visible_message_recorded" &&
-            event.data.messageId === "old-worker",
+            event.data.messageId === "late",
         ),
       ).toHaveLength(1);
       expect(
         events.filter(
           (event) =>
             event.data.type === "visible_message_replied" &&
-            event.data.messageId === "old-worker-replied",
+            event.data.messageId === "late-replied",
         ),
       ).toHaveLength(1);
       expect(
         events.filter(
           (event) =>
             event.data.type === "visible_message_metadata_updated" &&
-            event.data.messageId === "old-worker",
+            event.data.messageId === "late",
         ),
       ).toHaveLength(0);
       expect(
         events.filter(
           (event) =>
             event.data.type === "visible_message_replied" &&
-            event.data.messageId === "old-worker",
+            event.data.messageId === "late",
         ),
       ).toHaveLength(1);
       expect(
@@ -366,7 +350,7 @@ describe("conversation event migration", () => {
     }
   }, 20_000);
 
-  it("renames history, preserves rows, and provides rolling compatibility", async () => {
+  it("renames history, preserves rows, and rewrites legacy event payloads", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const initial = migrationStatements("0000_initial.sql");
     const conversationEvents = migrationStatements(
@@ -418,6 +402,20 @@ describe("conversation event migration", () => {
         (statement) => fixture.sql.execute(statement),
         conversationEvents,
       );
+      await expect(
+        fixture.sql.query<{
+          deleteFunction: string | null;
+          insertFunction: string | null;
+          relation: string | null;
+        }>(
+          `SELECT
+            to_regclass('public.junior_agent_steps')::text AS relation,
+            to_regprocedure('public.junior_agent_steps_insert_compat()')::text AS "insertFunction",
+            to_regprocedure('public.junior_agent_steps_delete_compat()')::text AS "deleteFunction"`,
+        ),
+      ).resolves.toEqual([
+        { deleteFunction: null, insertFunction: null, relation: null },
+      ]);
 
       await expect(
         fixture.sql.query<{
@@ -514,72 +512,6 @@ ORDER BY seq
         ),
       ).resolves.toEqual([{ count: 0 }]);
       await expect(
-        fixture.sql.query<{ seq: number; type: string }>(
-          `SELECT seq, type FROM junior_agent_steps ORDER BY seq`,
-        ),
-      ).resolves.toEqual([
-        { seq: 1, type: "pi_message" },
-        { seq: 2, type: "authorization_completed" },
-      ]);
-
-      await fixture.sql.execute(
-        `INSERT INTO junior_agent_steps (
-          conversation_id,
-          seq,
-          context_epoch,
-          type,
-          role,
-          payload,
-          created_at
-        ) VALUES ($1, 3, 3, 'pi_message', 'user', $2::jsonb, $3)`,
-        [
-          "conversation-one",
-          JSON.stringify({
-            schemaVersion: 99,
-            message: { role: "user", content: "hello" },
-          }),
-          new Date("2026-07-14T10:02:00.000Z"),
-        ],
-      );
-      await expect(
-        fixture.sql.query<{
-          payload: Record<string, unknown>;
-          schemaVersion: number;
-          type: string;
-        }>(
-          `
-SELECT
-  schema_version AS "schemaVersion",
-  type,
-  payload
-FROM junior_conversation_events
-WHERE conversation_id = $1 AND seq = 3
-`,
-          ["conversation-one"],
-        ),
-      ).resolves.toEqual([
-        {
-          payload: { message: { role: "user", content: "hello" } },
-          schemaVersion: 1,
-          type: "message",
-        },
-      ]);
-
-      await fixture.sql.execute(
-        `DELETE FROM junior_agent_steps
-         WHERE conversation_id = $1 AND seq = 3`,
-        ["conversation-one"],
-      );
-      await expect(
-        fixture.sql.query<{ count: number }>(
-          `SELECT count(*)::integer AS count
-           FROM junior_conversation_events
-           WHERE conversation_id = $1 AND seq = 3`,
-          ["conversation-one"],
-        ),
-      ).resolves.toEqual([{ count: 0 }]);
-
-      await expect(
         migrateConversationEventData(
           { io: { info: () => {} }, stateAdapter: getStateAdapter() },
           { batchSize: 1, executor: fixture.sql },
@@ -599,7 +531,6 @@ WHERE table_schema = 'public'
 ORDER BY table_name
 `),
       ).resolves.toEqual([
-        { name: "junior_agent_steps", type: "VIEW" },
         { name: "junior_conversation_events", type: "BASE TABLE" },
       ]);
       await expect(
