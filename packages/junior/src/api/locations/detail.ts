@@ -11,7 +11,7 @@ export async function readLocationDetail(locationId: string) {
 }
 
 /** Serve one public location detail endpoint. */
-export const locationDetailRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/:locationId",
   handler: async (c) => {
@@ -21,4 +21,4 @@ export const locationDetailRoute: ApiRoute = {
       ? Response.json(report)
       : Response.json({ error: "Location not found." }, { status: 404 });
   },
-};
+} satisfies ApiRoute;

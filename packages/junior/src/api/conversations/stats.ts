@@ -11,8 +11,8 @@ export async function readConversationStats(): Promise<ConversationStatsReport> 
 }
 
 /** Serve aggregate conversation stats. */
-export const conversationStatsRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/stats",
   handler: async () => Response.json(await readConversationStats()),
-};
+} satisfies ApiRoute;

@@ -24,7 +24,7 @@ export async function readConversationFeed(
 }
 
 /** Serve the conversation feed endpoint. */
-export const conversationListRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/",
   handler: async (c) => {
@@ -36,4 +36,4 @@ export const conversationListRoute: ApiRoute = {
       await readConversationFeed({ actorEmail, includeArchived }),
     );
   },
-};
+} satisfies ApiRoute;

@@ -30,7 +30,7 @@ export async function readConversationSubagent(
 }
 
 /** Serve one child-agent transcript endpoint. */
-export const conversationSubagentRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/:conversationId/subagents/:subagentId",
   handler: async (c) => {
@@ -43,4 +43,4 @@ export const conversationSubagentRoute: ApiRoute = {
       ? Response.json(report, { status: 404 })
       : Response.json(report);
   },
-};
+} satisfies ApiRoute;

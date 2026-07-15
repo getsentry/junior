@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { ApiRoute } from "../route";
-import { locationDetailRoute } from "./detail";
-import { locationListRoute } from "./list";
+import detailRoute from "./detail";
+import listRoute from "./list";
 
-const routes: ApiRoute[] = [locationListRoute, locationDetailRoute];
+const routes: ApiRoute[] = [listRoute, detailRoute];
 
 /** Create the HTTP routes owned by the locations API. */
 export function createLocationRoutes(): Hono {

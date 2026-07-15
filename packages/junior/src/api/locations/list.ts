@@ -10,8 +10,8 @@ export async function readLocationDirectory() {
 }
 
 /** Serve the public location directory endpoint. */
-export const locationListRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/",
   handler: async () => Response.json(await readLocationDirectory()),
-};
+} satisfies ApiRoute;

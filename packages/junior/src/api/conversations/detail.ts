@@ -14,7 +14,7 @@ export async function readConversationDetail(
 }
 
 /** Serve one conversation detail endpoint. */
-export const conversationDetailRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/:conversationId",
   handler: async (c) => {
@@ -27,4 +27,4 @@ export const conversationDetailRoute: ApiRoute = {
       ? Response.json(report)
       : Response.json({ error: "Conversation not found." }, { status: 404 });
   },
-};
+} satisfies ApiRoute;

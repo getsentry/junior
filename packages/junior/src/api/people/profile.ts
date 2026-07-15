@@ -13,11 +13,11 @@ export async function readPeopleProfile(
 }
 
 /** Serve one People profile endpoint. */
-export const peopleProfileRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/:email",
   handler: async (c) => {
     const { email } = parseParams(personParamsSchema, c.req.param());
     return Response.json(await readPeopleProfile(email));
   },
-};
+} satisfies ApiRoute;

@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import type { ApiRoute } from "../route";
-import { conversationArchiveRoute } from "./archive";
-import { conversationDetailRoute } from "./detail";
-import { conversationListRoute } from "./list";
-import { conversationStatsRoute } from "./stats";
-import { conversationSubagentRoute } from "./subagent";
+import archiveRoute from "./archive";
+import detailRoute from "./detail";
+import listRoute from "./list";
+import statsRoute from "./stats";
+import subagentRoute from "./subagent";
 
 const routes: ApiRoute[] = [
-  conversationListRoute,
-  conversationStatsRoute,
-  conversationArchiveRoute,
-  conversationDetailRoute,
-  conversationSubagentRoute,
+  listRoute,
+  statsRoute,
+  archiveRoute,
+  detailRoute,
+  subagentRoute,
 ];
 
 /** Create the HTTP routes owned by the conversations API. */

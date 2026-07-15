@@ -9,8 +9,8 @@ export async function readPeopleList(): Promise<ActorDirectoryReport> {
 }
 
 /** Serve the People directory endpoint. */
-export const peopleListRoute: ApiRoute = {
+export default {
   method: "get",
   path: "/",
   handler: async () => Response.json(await readPeopleList()),
-};
+} satisfies ApiRoute;

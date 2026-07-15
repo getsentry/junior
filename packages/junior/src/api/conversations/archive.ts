@@ -54,7 +54,7 @@ async function archiveIfUnchanged(args: {
 }
 
 /** Serve the archive mutation with optimistic activity concurrency control. */
-export const conversationArchiveRoute: ApiRoute = {
+export default {
   method: "patch",
   path: "/:conversationId/archive",
   handler: async (c) => {
@@ -78,4 +78,4 @@ export const conversationArchiveRoute: ApiRoute = {
     }
     return Response.json({ archived: body.archived });
   },
-};
+} satisfies ApiRoute;

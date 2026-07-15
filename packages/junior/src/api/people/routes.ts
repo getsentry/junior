@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { ApiRoute } from "../route";
-import { peopleListRoute } from "./list";
-import { peopleProfileRoute } from "./profile";
+import listRoute from "./list";
+import profileRoute from "./profile";
 
-const routes: ApiRoute[] = [peopleListRoute, peopleProfileRoute];
+const routes: ApiRoute[] = [listRoute, profileRoute];
 
 /** Create the HTTP routes owned by the People API. */
 export function createPeopleRoutes(): Hono {
