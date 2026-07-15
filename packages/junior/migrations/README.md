@@ -1,36 +1,74 @@
 # SQL migrations for `@sentry/junior`
 
-This is a standard Drizzle migration folder. `drizzle-kit generate` owns each
-SQL file, snapshot, and journal entry; `junior upgrade` applies the folder with
-Drizzle ORM's migrator before any data backfills run.
+This directory is the ordered Drizzle migration history for Junior's core SQL
+schema. The TypeScript schema under `src/db/schema/` is the current contract;
+the SQL files and `meta/` records describe how an existing database reaches
+that contract.
 
-1. Edit the schema under `src/db/schema/`.
-2. Run `pnpm --filter @sentry/junior db:generate --name <migration_name>`.
-3. Commit the generated SQL file and `meta/` changes together.
+## Generate a migration
 
-The `0000_initial.sql` baseline represents the schema already deployed by the
-pre-Drizzle Junior migration runner. During upgrade, existing installations
-adopt that baseline once; new installations execute it normally. All later
-migrations are applied by Drizzle in journal order. Baseline adoption requires
-the legacy `junior_agent_steps` base table and no
-`junior_conversation_events` table. A post-cutover schema without its Drizzle
-journal fails closed for operator repair instead of inferring completed
-migrations from mutable table shape. Every expected legacy migration record
-must retain its exact historical checksum; an ID alone cannot prove which SQL
-ran. Legacy metrics adoption likewise requires either none or all four metric
-columns, with the legacy metrics record agreeing with that physical state. The
-later search index and `metric_run_id` column must also be absent because only
-the Drizzle journal may prove those immutable migrations ran.
+1. Change the owning schema under `src/db/schema/`.
+2. Run
+   `pnpm --filter @sentry/junior db:generate --name <migration_name>` from the
+   repository root.
+3. Review the generated SQL for locking, table rewrites, defaults, constraints,
+   indexes, and compatibility with the currently deployed workers.
+4. Commit the SQL file, `meta/_journal.json`, and generated snapshot together.
 
-`0004_conversation_events.sql` temporarily creates `junior_agent_steps` as an
-updatable 0.103.x compatibility view. It maps legacy `pi_message` reads and
-writes to canonical `message` events while the first event rewrite runs.
+Drizzle compares the latest snapshot with the TypeScript schema. Snapshots are
+generation inputs, not a substitute for the executable SQL history. Do not
+rename, reorder, delete, or rewrite an applied migration, its snapshot, or its
+journal entry; correct an already-shipped schema with a new migration.
+Migration timestamps and journal order must remain append-only.
 
-`0005_visible_message_events.sql` is the hard cut: drain every 0.103.x worker
-before applying it because it drops the legacy view and its functions. Run the
-final visible-message backfill next and require zero-gap verification before
-starting new workers.
+## Apply migrations
 
-`0007_conversation_lineage.sql` expands conversation metadata with immutable
-child lineage and fork correlation. The subsequent bounded upgrade backfill
-fills historical root IDs only; unknown historical fork points stay null.
+`junior upgrade` applies core schema migrations before running application data
+backfills. `src/chat/conversations/sql/migrations.ts` resolves this packaged
+directory in both source and built CLI layouts, serializes migration with the
+core migration lock, and lets Drizzle record applied entries in
+`drizzle.__drizzle_junior_core`. Re-running upgrade is expected and must not
+reapply journaled SQL.
+
+Schema migration and data migration are separate concerns:
+
+- SQL files establish tables, columns, constraints, indexes, and temporary
+  database compatibility objects.
+- Upgrade migrations under `src/cli/upgrade/migrations/` perform bounded,
+  rerunnable data adoption and backfills after the required schema exists.
+
+Keep destructive or non-rolling cutovers explicit. If old and new workers
+cannot safely share the intermediate schema, drain the incompatible workers,
+apply the schema migration, run and verify the required backfill, and only then
+start the new workers. The owning module README must document any active
+cutover gate; migration filenames are not durable operational documentation.
+
+## Legacy adoption
+
+The initial Drizzle baseline represents schema that predated the Drizzle
+journal. Upgrade may adopt that baseline only when the legacy migration records
+and physical schema match the exact state recognized by
+`migrations.ts`. Adoption validates historical checksums and requires complete,
+internally consistent schema markers. Ambiguous, partial, or post-cutover state
+fails closed for operator repair instead of inferring success from mutable
+table shape.
+
+This adoption path is the only exception to normal journal application. New
+installations execute the baseline normally, and every later migration is
+proved solely by the Drizzle journal.
+
+## Verification invariants
+
+- A migration must work on both a new database and every supported upgrade
+  state.
+- Running schema migration twice must be safe because the journal prevents a
+  second application.
+- Concurrent upgrade attempts must serialize on the migration lock.
+- Generated SQL and metadata must stay synchronized with the schema change.
+- Backfills must be bounded, rerunnable, and verify their completion criteria
+  before an incompatible cutover proceeds.
+
+The migration integration coverage in
+`tests/integration/conversation-sql.test.ts` owns fresh-install, legacy-adoption,
+ordering, locking, and failure-contract checks. Feature tests own the behavior
+that becomes possible after a schema change.
