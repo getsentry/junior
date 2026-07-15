@@ -1,6 +1,7 @@
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -93,18 +94,38 @@ export function LocationActivityChart(props: {
             const x = left + index * step + (step - barWidth) / 2;
             const y = top + plotHeight - barHeight;
             return (
-              <rect
-                fill="url(#location-bars)"
-                height={Math.max(day.conversations ? 2 : 0, barHeight)}
+              <Tooltip
+                content={
+                  <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
+                    <span className="text-white/40">conversations</span>
+                    <span className="text-right text-white/80">
+                      {day.conversations}
+                    </span>
+                    <span className="text-white/40">active</span>
+                    <span className="text-right text-white/80">
+                      {day.active}
+                    </span>
+                    <span className="text-white/40">failed</span>
+                    <span className="text-right text-white/80">
+                      {day.failed}
+                    </span>
+                  </div>
+                }
                 key={day.date}
-                opacity={day.conversations ? 0.9 : 0.18}
-                rx="2"
-                width={barWidth}
-                x={x}
-                y={y}
+                label={shortDate(day.date)}
               >
-                <title>{`${shortDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}</title>
-              </rect>
+                <rect
+                  aria-label={`${shortDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
+                  fill="url(#location-bars)"
+                  height={Math.max(day.conversations ? 2 : 0, barHeight)}
+                  opacity={day.conversations ? 0.9 : 0.18}
+                  rx="2"
+                  tabIndex={0}
+                  width={barWidth}
+                  x={x}
+                  y={y}
+                />
+              </Tooltip>
             );
           })}
           {labelIndexes.map((index) => {

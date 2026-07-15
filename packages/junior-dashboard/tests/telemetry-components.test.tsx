@@ -465,7 +465,7 @@ describe("dashboard telemetry components", () => {
       html
         .slice(
           activityStart,
-          html.indexOf('aria-label="2026-01-01: 0 conversations"'),
+          html.indexOf('aria-label="2026-01-01: 0 conversations, 0ms"'),
         )
         .match(/class="size-3 border border-black\/40 bg-\[#101010\]"/g),
     ).toHaveLength(4);
@@ -1539,7 +1539,7 @@ describe("dashboard telemetry components", () => {
       />,
     );
 
-    expect(html).toContain('title="2026-01-01: 1 conversations, unknown"');
+    expect(html).toContain('aria-label="2026-01-01: 1 conversations, unknown"');
   });
   it("renders transcript copy as an icon-only control", () => {
     const session = {

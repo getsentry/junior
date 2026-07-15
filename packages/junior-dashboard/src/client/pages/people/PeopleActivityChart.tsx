@@ -1,6 +1,7 @@
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -127,16 +128,32 @@ export function PeopleActivityChart(props: {
           {props.days.map((day, index) => {
             const point = points[index]!;
             return (
-              <circle
-                cx={point.x}
-                cy={point.y}
-                fill="#fbbf24"
+              <Tooltip
+                content={
+                  <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
+                    <span className="text-white/40">active people</span>
+                    <span className="text-right text-white/80">
+                      {day.activePeople}
+                    </span>
+                    <span className="text-white/40">conversations</span>
+                    <span className="text-right text-white/80">
+                      {day.conversations}
+                    </span>
+                  </div>
+                }
                 key={day.date}
-                opacity={props.days.length > 30 ? 0.35 : 0.75}
-                r={props.days.length > 30 ? 1.5 : 2.5}
+                label={shortDate(day.date)}
               >
-                <title>{`${shortDate(day.date)}: ${day.activePeople} active people, ${day.conversations} conversations`}</title>
-              </circle>
+                <circle
+                  aria-label={`${shortDate(day.date)}: ${day.activePeople} active people, ${day.conversations} conversations`}
+                  cx={point.x}
+                  cy={point.y}
+                  fill="#fbbf24"
+                  opacity={props.days.length > 30 ? 0.35 : 0.75}
+                  r={props.days.length > 30 ? 3 : 4}
+                  tabIndex={0}
+                />
+              </Tooltip>
             );
           })}
           {labelIndexes.map((index) => {

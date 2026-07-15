@@ -1,6 +1,7 @@
 import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -113,18 +114,34 @@ export function LocationDirectoryActivityChart(props: {
             ).map((bar) => {
               const barHeight = (bar.count / maximum) * plotHeight;
               return (
-                <rect
-                  fill={bar.fill}
-                  height={Math.max(bar.count ? 2 : 0, barHeight)}
+                <Tooltip
+                  content={
+                    <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
+                      <span className="text-white/40">public</span>
+                      <span className="text-right text-white/80">
+                        {day.publicConversations}
+                      </span>
+                      <span className="text-white/40">private</span>
+                      <span className="text-right text-white/80">
+                        {day.privateConversations}
+                      </span>
+                    </div>
+                  }
                   key={`${day.date}-${bar.key}`}
-                  opacity={bar.count ? 0.85 : 0.12}
-                  rx="1.5"
-                  width={barWidth}
-                  x={bar.x}
-                  y={top + plotHeight - barHeight}
+                  label={shortDate(day.date)}
                 >
-                  <title>{`${shortDate(day.date)}: ${bar.count} ${bar.key} conversations`}</title>
-                </rect>
+                  <rect
+                    aria-label={`${shortDate(day.date)}: ${day.publicConversations} public conversations, ${day.privateConversations} private conversations`}
+                    fill={bar.fill}
+                    height={Math.max(bar.count ? 2 : 0, barHeight)}
+                    opacity={bar.count ? 0.85 : 0.12}
+                    rx="1.5"
+                    tabIndex={0}
+                    width={barWidth}
+                    x={bar.x}
+                    y={top + plotHeight - barHeight}
+                  />
+                </Tooltip>
               );
             });
           })}

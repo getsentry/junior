@@ -1,4 +1,5 @@
 import { formatDuration } from "./Duration";
+import { Tooltip } from "./Tooltip";
 import { cn } from "../styles";
 
 type ContributionDay = {
@@ -73,16 +74,32 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
           {weeks.flatMap((week, weekIndex) =>
             week.map((day, dayIndex) =>
               day ? (
-                <span
-                  aria-label={`${day.date}: ${day.conversations} conversations`}
-                  className={cn(
-                    "size-3 border border-black/40",
-                    activityClass(day.conversations, max),
-                  )}
+                <Tooltip
+                  content={
+                    <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
+                      <span className="text-white/40">conversations</span>
+                      <span className="text-right text-white/80">
+                        {day.conversations}
+                      </span>
+                      <span className="text-white/40">runtime</span>
+                      <span className="text-right text-white/80">
+                        {activityRuntime(day)}
+                      </span>
+                    </div>
+                  }
                   key={day.date}
-                  role="listitem"
-                  title={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}`}
-                />
+                  label={formatDate(day.date)}
+                >
+                  <span
+                    aria-label={`${day.date}: ${day.conversations} conversations, ${activityRuntime(day)}`}
+                    className={cn(
+                      "size-3 border border-black/40 outline-none focus-visible:ring-2 focus-visible:ring-[#beaaff]",
+                      activityClass(day.conversations, max),
+                    )}
+                    role="listitem"
+                    tabIndex={0}
+                  />
+                </Tooltip>
               ) : (
                 <span
                   aria-hidden="true"
@@ -114,6 +131,15 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
       </div>
     </div>
   );
+}
+
+function formatDate(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+    year: "numeric",
+  });
 }
 
 function activityRuntime(day: ContributionDay): string {
