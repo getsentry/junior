@@ -1,3 +1,4 @@
+import { Duration } from "../../components/Duration";
 import { Clock3, LockKeyhole, MapPinned, MessageSquare } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -104,7 +105,7 @@ export function LocationsPageContent(props: {
               detail="Cumulative public runtime"
               icon={Clock3}
               label="Runtime"
-              value={formatMs(totalRuntime)}
+              value={<Duration value={totalRuntime} />}
             />
             <StatCard
               detail="Combined to preserve privacy"

@@ -1,3 +1,4 @@
+import { Duration } from "../../components/Duration";
 import { useDeferredValue, useState } from "react";
 import { Activity, Clock3, MessageSquare, Users } from "lucide-react";
 import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
@@ -100,7 +101,7 @@ export function PeoplePageContent(props: {
               detail="Cumulative persisted conversation runtime"
               icon={Clock3}
               label="Total runtime"
-              value={formatMs(runtimeMs)}
+              value={<Duration value={runtimeMs} />}
             />
             <StatCard
               detail={`Highest distinct daily count in ${range} days`}

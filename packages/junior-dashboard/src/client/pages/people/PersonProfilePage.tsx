@@ -1,3 +1,4 @@
+import { Duration, formatDuration } from "../../components/Duration";
 import { Clock3, Coins, MessageSquare } from "lucide-react";
 import { useParams } from "react-router";
 import type {
@@ -20,7 +21,7 @@ import { cn, dashboardContainerClass } from "../../styles";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
-  return formatMs(durationMs);
+  return formatDuration(durationMs);
 }
 
 /** Render one actor's profile and activity summary. */
@@ -80,7 +81,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
               detail="Cumulative persisted conversation runtime"
               icon={Clock3}
               label="Runtime"
-              value={formatMs(profile.totals.durationMs)}
+              value={<Duration value={profile.totals.durationMs} />}
             />
             <StatCard
               detail="Persisted model token usage"

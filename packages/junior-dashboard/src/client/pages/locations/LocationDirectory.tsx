@@ -1,3 +1,4 @@
+import { Duration } from "../../components/Duration";
 import { Hash } from "lucide-react";
 import { Link } from "react-router";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
@@ -10,7 +11,6 @@ import { Card } from "../../components/layout/Card";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import {
   formatCompactNumber,
-  formatMs,
   formatRelativeTime,
   locationPath,
 } from "../../format";
@@ -95,7 +95,7 @@ export function LocationDirectory(props: {
               />
               <DirectoryMetric
                 label="Runtime"
-                value={formatMs(location.durationMs)}
+                value={<Duration value={location.durationMs} />}
               />
             </Link>
           ))}

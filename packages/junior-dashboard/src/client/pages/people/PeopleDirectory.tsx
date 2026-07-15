@@ -1,3 +1,4 @@
+import { formatDuration } from "../../components/Duration";
 import { Link } from "react-router";
 import { UserRound } from "lucide-react";
 import type { ActorSummaryReport } from "@sentry/junior/api/schema";
@@ -8,7 +9,7 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Card } from "../../components/layout/Card";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
-import { formatCompactNumber, formatMs, peoplePath } from "../../format";
+import { formatCompactNumber, peoplePath } from "../../format";
 
 export type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
 
@@ -26,7 +27,7 @@ function personMeta(person: ActorSummaryReport): string | undefined {
 
 function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
-  return formatMs(durationMs);
+  return formatDuration(durationMs);
 }
 
 /** Filter and order people without mutating the reporting response. */

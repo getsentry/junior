@@ -16,6 +16,7 @@ import type {
   VisualStatus,
 } from "./types";
 import { sameToolInvocation } from "./toolInvocations";
+import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./transcriptActivity";
 
 let dashboardTimeZone = "America/Los_Angeles";
@@ -107,7 +108,7 @@ export function formatMs(value: number | undefined): string {
 export function formatRuntime(durationMs: number | undefined): string {
   if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return "";
   const runtime = Math.max(0, Math.floor(durationMs));
-  return runtime === 0 ? "" : formatMs(runtime);
+  return runtime === 0 ? "" : formatDuration(runtime);
 }
 
 /** Format transcript event timestamps independently from conversation start. */

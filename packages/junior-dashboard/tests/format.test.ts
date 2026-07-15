@@ -25,6 +25,7 @@ import {
   summarizeUsage,
   conversationMessageCount,
 } from "../src/client/format";
+import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 
 afterEach(() => {
@@ -82,6 +83,13 @@ describe("dashboard token formatting", () => {
     });
     expect(formatCostTotal(usage)).toBe("$0.01");
     expect(formatCostTotal({ cost: { total: 1.999 } })).toBe("$2.00");
+  });
+
+  it("formats human-readable durations at increasing scales", () => {
+    expect(formatDuration(999)).toBe("999ms");
+    expect(formatDuration(3_500)).toBe("3.5s");
+    expect(formatDuration(2_700_000)).toBe("45m");
+    expect(formatDuration(11_117_520_000)).toBe("4mo 1w 1d 16h 12m");
   });
 
   it("formats cumulative conversation runtime", () => {

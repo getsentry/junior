@@ -1,3 +1,5 @@
+import { Duration } from "../../components/Duration";
+import type { ReactNode } from "react";
 import {
   Activity,
   Clock3,
@@ -13,7 +15,6 @@ import { Card } from "../../components/layout/Card";
 import {
   formatCompactNumber,
   formatCostSummary,
-  formatMs,
   formatTime,
 } from "../../format";
 import { cn } from "../../styles";
@@ -142,7 +143,7 @@ export function SystemActivity(props: {
             detail="Cumulative persisted runtime"
             icon={Clock3}
             label="runtime"
-            value={formatMs(stats.durationMs)}
+            value={<Duration value={stats.durationMs} />}
           />
           <PulseMetric
             detail="Across recorded model usage"
@@ -188,7 +189,7 @@ function PulseMetric(props: {
   icon: typeof Activity;
   label: string;
   tone?: "good" | "warning";
-  value: string;
+  value: ReactNode;
 }) {
   const Icon = props.icon;
   return (

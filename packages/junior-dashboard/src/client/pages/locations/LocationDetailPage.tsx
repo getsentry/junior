@@ -1,3 +1,4 @@
+import { Duration } from "../../components/Duration";
 import { Clock3, Coins, MapPin, MessageSquare, Users } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
@@ -19,7 +20,6 @@ import {
   buildConversations,
   filterConversationList,
   formatCompactNumber,
-  formatMs,
   formatRelativeTime,
   formatTime,
   peoplePath,
@@ -99,7 +99,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
           detail="Cumulative conversation runtime"
           icon={Clock3}
           label="Runtime"
-          value={formatMs(detail.durationMs)}
+          value={<Duration value={detail.durationMs} />}
         />
       </div>
 
@@ -136,7 +136,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
                   </div>
                   <div className="mt-1 font-mono text-[0.66rem] text-white/30">
                     {formatCompactNumber(item.conversations)} conversations /{" "}
-                    {formatMs(item.durationMs)}
+                    <Duration value={item.durationMs} />
                   </div>
                 </>
               );

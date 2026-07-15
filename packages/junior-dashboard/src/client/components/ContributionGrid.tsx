@@ -1,4 +1,4 @@
-import { formatMs } from "../format";
+import { formatDuration } from "./Duration";
 import { cn } from "../styles";
 
 type ContributionDay = {
@@ -118,7 +118,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
 
 function activityRuntime(day: ContributionDay): string {
   if (day.durationMs <= 0 && day.conversations > 0) return "unknown";
-  return formatMs(day.durationMs);
+  return formatDuration(day.durationMs);
 }
 
 function activityClass(count: number, max: number): string {
