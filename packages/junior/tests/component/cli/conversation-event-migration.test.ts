@@ -176,22 +176,21 @@ describe("conversation event migration", () => {
 
   it("backfills visible-message read-model rows after the hard cutover", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const migrationsBeforeVisibleEvents = [
+    const migrationsBeforeConversationEvents = [
       "0000_initial.sql",
       "0001_conversation_metrics.sql",
       "0002_conversation_message_search.sql",
       "0003_peaceful_scalphunter.sql",
-      "0004_conversation_events.sql",
     ].flatMap(migrationStatements);
-    const visibleMessageEvents = migrationStatements(
-      "0005_visible_message_events.sql",
+    const conversationEvents = migrationStatements(
+      "0004_conversation_events.sql",
     );
     const conversationId = "conversation-visible-events";
 
     try {
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
-        migrationsBeforeVisibleEvents,
+        migrationsBeforeConversationEvents,
       );
       await fixture.sql.execute(
         `INSERT INTO junior_conversations (
@@ -214,7 +213,7 @@ describe("conversation event migration", () => {
       );
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
-        visibleMessageEvents,
+        conversationEvents,
       );
 
       const context = {
@@ -559,6 +558,7 @@ ORDER BY indexname
       ).resolves.toEqual([
         { name: "junior_conversation_events_conversation_id_seq_pk" },
         { name: "junior_conversation_events_epoch_idx" },
+        { name: "junior_conversation_events_idempotency_idx" },
       ]);
     } finally {
       await fixture.close();

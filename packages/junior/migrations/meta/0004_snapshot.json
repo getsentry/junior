@@ -32,6 +32,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "payload": {
           "name": "payload",
           "type": "jsonb",
