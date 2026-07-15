@@ -1,3 +1,4 @@
+import type { UsersInfoResponse } from "@slack/web-api";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { createSlackActor, type SlackActor } from "@/chat/actor";
@@ -85,27 +86,14 @@ export async function lookupSlackUser(
       return null;
     }
 
-    const payload = (await response.json()) as {
-      ok?: boolean;
-      user?: {
-        name?: string;
-        profile?: {
-          display_name?: string;
-          real_name?: string;
-          email?: string;
-        };
-      };
-    };
+    const payload = (await response.json()) as UsersInfoResponse;
 
     if (!payload.ok || !payload.user) {
       return null;
     }
 
     const userName = payload.user.name?.trim() || undefined;
-    const fullName =
-      payload.user.profile?.real_name?.trim() ||
-      payload.user.profile?.display_name?.trim() ||
-      undefined;
+    const fullName = payload.user.profile?.real_name?.trim() || undefined;
 
     const result: SlackUserLookupResult = {
       userName,
