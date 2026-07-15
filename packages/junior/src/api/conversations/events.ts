@@ -150,7 +150,6 @@ export function projectConversationReportEvents(args: {
     projected.push(
       conversationReportEventSchema.parse({
         seq: event.seq,
-        contextEpoch: event.contextEpoch,
         createdAt: new Date(event.createdAtMs).toISOString(),
         data,
       }),

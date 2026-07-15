@@ -15,12 +15,11 @@ function event(
   seq: number,
   data: ConversationEventData,
   createdAtMs = seq * 1_000,
-  contextEpoch = 0,
 ): ConversationEvent {
   return conversationEventSchema.parse({
     schemaVersion: 1,
     seq,
-    contextEpoch,
+    contextEpoch: 0,
     idempotencyKey: `private-idempotency-${seq}`,
     createdAtMs,
     data,
@@ -83,7 +82,6 @@ describe("conversation report event projection", () => {
     expect(projected).toEqual([
       {
         seq: 10,
-        contextEpoch: 0,
         createdAt: "1970-01-01T00:00:30.000Z",
         data: {
           type: "visible_message",
@@ -94,7 +92,6 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 11,
-        contextEpoch: 0,
         createdAt: "1970-01-01T00:00:10.000Z",
         data: {
           type: "model_activity",
@@ -103,13 +100,11 @@ describe("conversation report event projection", () => {
       },
       {
         seq: 12,
-        contextEpoch: 0,
         createdAt: "1970-01-01T00:00:05.000Z",
         data: { type: "tool_started", name: "search" },
       },
       {
         seq: 13,
-        contextEpoch: 0,
         createdAt: "1970-01-01T00:00:01.000Z",
         data: {
           type: "visible_message_replied",
@@ -394,7 +389,6 @@ describe("conversation report event projection", () => {
   it("owns a strict runtime boundary for envelope and data fields", () => {
     const valid = {
       seq: 1,
-      contextEpoch: 0,
       createdAt: "2026-07-15T12:00:00.000Z",
       data: {
         type: "turn_lifecycle",
@@ -408,6 +402,12 @@ describe("conversation report event projection", () => {
       conversationReportEventSchema.safeParse({
         ...valid,
         schemaVersion: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...valid,
+        contextEpoch: 0,
       }).success,
     ).toBe(false);
     expect(
@@ -439,7 +439,6 @@ describe("conversation report event projection", () => {
     };
     const reportEvent = (seq: number) => ({
       seq,
-      contextEpoch: 0,
       createdAt: "2026-07-15T12:00:00.000Z",
       data: {
         type: "turn_lifecycle" as const,
@@ -486,7 +485,6 @@ describe("conversation report event projection", () => {
         | { redacted: true; text?: never },
     ) => ({
       seq: 1,
-      contextEpoch: 0,
       createdAt: "2026-07-15T12:00:00.000Z",
       data: {
         type: "visible_message" as const,

@@ -39,7 +39,7 @@ function event(
   data: ConversationReportEventData,
   createdAt = `2026-01-01T00:00:${String(seq).padStart(2, "0")}.000Z`,
 ): ConversationReportEvent {
-  return { seq, contextEpoch: 0, createdAt, data };
+  return { seq, createdAt, data };
 }
 
 function conversation(
