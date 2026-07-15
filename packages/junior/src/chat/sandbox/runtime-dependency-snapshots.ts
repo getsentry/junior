@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { withSpan } from "@/chat/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { getSandboxRuntimeDependencies } from "@/chat/sandbox/runtime-dependencies";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
@@ -105,7 +106,7 @@ function parseFloatingDepMaxAgeMs(): number {
 }
 
 function buildDependencyProfile(runtime: string): DependencyProfile | null {
-  const dependencies = pluginCatalogRuntime.getRuntimeDependencies();
+  const dependencies = getSandboxRuntimeDependencies();
   const postinstall = pluginCatalogRuntime.getRuntimePostinstall();
   if (dependencies.length === 0 && postinstall.length === 0) {
     return null;

@@ -20,6 +20,13 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   },
 }));
 
+vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
+  getSandboxRuntimeDependencies: () => [
+    { type: "system", package: "docker" },
+    ...getRuntimeDependenciesMock(),
+  ],
+}));
+
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
 }));
@@ -56,7 +63,7 @@ describe("snapshot create cli", () => {
     });
     expect(logs).toContain("Loaded plugins (0): none");
     expect(logs).toContain(
-      "Sandbox snapshot inputs: plugins=0 system_dependencies=0 npm_dependencies=0 postinstall_commands=0",
+      "Sandbox snapshot inputs: plugins=0 system_dependencies=1 npm_dependencies=0 postinstall_commands=0",
     );
     await resolveRuntimeDependencySnapshotMock.mock.calls[0][0].onProgress(
       "resolve_start",
@@ -108,10 +115,10 @@ describe("snapshot create cli", () => {
 
     expect(logs).toContain("Loaded plugins (2): agent-browser, notion");
     expect(logs).toContain(
-      "Sandbox snapshot inputs: plugins=1 system_dependencies=1 npm_dependencies=1 postinstall_commands=1",
+      "Sandbox snapshot inputs: plugins=1 system_dependencies=2 npm_dependencies=1 postinstall_commands=1",
     );
     expect(logs).toContain("Snapshot plugins (1): agent-browser");
-    expect(logs).toContain("System dependencies (1): gtk3");
+    expect(logs).toContain("System dependencies (2): docker, gtk3");
     expect(logs).toContain("NPM dependencies (1): agent-browser@latest");
     expect(logs).toContain("Runtime postinstall (1): agent-browser install");
   });
