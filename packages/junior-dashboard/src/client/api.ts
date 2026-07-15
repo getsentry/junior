@@ -218,7 +218,7 @@ export function useArchiveConversation(conversationId: string) {
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
         args,
       ),
-    onSuccess: async () => {
+    onSettled: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["dashboard", "conversations"] }),
         client.invalidateQueries({ queryKey: ["dashboard", "locations"] }),

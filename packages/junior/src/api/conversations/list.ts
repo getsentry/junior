@@ -10,16 +10,10 @@ import { conversationFeedQuerySchema } from "../schema";
  * filter. This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: {
-    actorEmail?: string;
-    includeArchived?: boolean;
-  } = {},
+  options: { actorEmail?: string } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
-    await readConversationFeedFromSql({
-      actorEmail: options.actorEmail,
-      includeArchived: options.includeArchived,
-    }),
+    await readConversationFeedFromSql({ actorEmail: options.actorEmail }),
   );
 }
 
@@ -28,12 +22,10 @@ export default {
   method: "get",
   path: "/",
   handler: async (c) => {
-    const { actorEmail, includeArchived } = parseQuery(
+    const { actorEmail } = parseQuery(
       conversationFeedQuerySchema,
       c.req.query(),
     );
-    return Response.json(
-      await readConversationFeed({ actorEmail, includeArchived }),
-    );
+    return Response.json(await readConversationFeed({ actorEmail }));
   },
 } satisfies ApiRoute;

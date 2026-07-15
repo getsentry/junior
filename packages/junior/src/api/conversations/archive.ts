@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -23,7 +23,7 @@ async function archiveIfUnchanged(args: {
       and(
         eq(juniorConversations.conversationId, args.conversationId),
         args.archived
-          ? lte(juniorConversations.lastActivityAt, new Date(args.lastSeenAt))
+          ? eq(juniorConversations.lastActivityAt, new Date(args.lastSeenAt))
           : isNotNull(juniorConversations.archivedAt),
       ),
     )

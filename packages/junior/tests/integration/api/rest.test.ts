@@ -143,14 +143,6 @@ describe("Junior REST API", () => {
     expect(archive.status).toBe(200);
     await expect(archive.json()).resolves.toEqual({ archived: true });
 
-    const archivedFeed = await app.request(
-      "http://localhost/api/conversations?includeArchived=true",
-    );
-    await expect(archivedFeed.json()).resolves.toMatchObject({
-      conversations: expect.arrayContaining([
-        expect.objectContaining({ conversationId }),
-      ]),
-    });
     const defaultFeedAfterArchive = await app.request(
       "http://localhost/api/conversations",
     );
