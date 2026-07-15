@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
-  juniorAgentSteps,
+  juniorConversationEvents,
   juniorConversationMessages,
   juniorConversations,
   juniorDestinations,
@@ -79,8 +79,8 @@ export async function selectExpiredRoots(
     select 1
     from conversation_tree tree
     where exists (
-      select 1 from junior_agent_steps steps
-      where steps.conversation_id = tree.conversation_id
+      select 1 from junior_conversation_events events
+      where events.conversation_id = tree.conversation_id
     )
       or exists (
         select 1 from junior_conversation_messages messages
@@ -130,7 +130,7 @@ export async function selectExpiredRoots(
 
 /**
  * Purge one conversation tree in a single transaction: delete all message and
- * step rows for the given conversation and every descendant, stamp
+ * event rows for the given conversation and every descendant, stamp
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. The metadata rows themselves survive.
@@ -178,8 +178,8 @@ export async function purgeConversationTree(
     const ids = await conversationTreeIds(executor, args.rootConversationId);
     await executor
       .db()
-      .delete(juniorAgentSteps)
-      .where(inArray(juniorAgentSteps.conversationId, ids));
+      .delete(juniorConversationEvents)
+      .where(inArray(juniorConversationEvents.conversationId, ids));
     await executor
       .db()
       .delete(juniorConversationMessages)

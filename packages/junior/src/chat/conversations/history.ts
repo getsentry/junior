@@ -1,35 +1,39 @@
 /**
- * Durable agent execution history port.
+ * Durable conversation event history port.
  *
- * Steps are appended one row at a time under the conversation lease; context
+ * Events append under the conversation lease in stable sequence order. Context
  * rebuilds (compaction, handoff, rollback) open a new context epoch instead of
- * rewriting history. Each new epoch binds the model profile that owns it and
- * records the exact resolved model id for audit.
- * The step envelope is strictly validated — an unknown type or malformed shape
- * is corrupt state and fails loudly — while `pi_message` content stays
- * permissive because the Pi SDK owns the message shape.
+ * rewriting history. Unknown event types or malformed shapes fail loudly;
+ * nested model-message fields remain opaque continuity data and are interpreted
+ * only by the Pi adapter.
  */
 import { z } from "zod";
-import { piMessageSchema } from "@/chat/pi/messages";
 import type { ConversationCompaction } from "@/chat/state/conversation";
-import { piMessageProvenanceSchema } from "@/chat/state/session-log";
 import { modelProfileSchema } from "@/chat/model-profile";
+import { conversationMessageProvenanceSchema } from "./provenance";
 
 const handoffModelProfileSchema = modelProfileSchema.refine(
   (profile) => profile !== "standard",
   "handoff profile must not be standard",
 );
 
-const piMessageStepEntrySchema = z.object({
-  type: z.literal("pi_message"),
-  schemaVersion: z.number().int().optional(),
-  message: piMessageSchema,
-  provenance: piMessageProvenanceSchema.optional(),
-});
+/** Junior-owned durable message shape; Pi-specific validation belongs to its adapter. */
+export const conversationModelMessageSchema = z
+  .object({ role: z.string() })
+  .passthrough()
+  .transform((value) => value as { role: string });
+
+const messageEventDataSchema = z
+  .object({
+    type: z.literal("message"),
+    message: conversationModelMessageSchema,
+    provenance: conversationMessageProvenanceSchema.optional(),
+  })
+  .strict();
 
 // Replaces the legacy `projection_reset` payload at the SQL layer: a marker plus
-// ordinary pi_message rows in the new epoch, not an embedded transcript array.
-const contextEpochStartedEntrySchema = z.union([
+// ordinary message events in the new epoch, not an embedded transcript array.
+const contextEpochStartedEventDataSchema = z.union([
   z
     .object({
       type: z.literal("context_epoch_started"),
@@ -50,7 +54,7 @@ const contextEpochStartedEntrySchema = z.union([
     .object({
       type: z.literal("context_epoch_started"),
       reason: z.union([z.literal("compaction"), z.literal("rollback")]),
-      // TODO(v0.97.0): Remove support for deployed compaction/rollback markers
+      // TODO(v0.104.0): Remove support for deployed compaction/rollback markers
       // without model bindings after those rows pass the retention horizon.
       modelProfile: z.undefined().optional(),
       modelId: z.undefined().optional(),
@@ -66,11 +70,11 @@ const contextEpochStartedEntrySchema = z.union([
     .strict(),
 ]);
 
-const piMessageStepSchema = z
+const contextEpochMessageSchema = z
   .object({
-    message: piMessageSchema,
+    message: conversationModelMessageSchema,
     createdAtMs: z.number().finite(),
-    provenance: piMessageProvenanceSchema.optional(),
+    provenance: conversationMessageProvenanceSchema.optional(),
   })
   .strict();
 
@@ -81,7 +85,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.literal("initial"),
       modelProfile: z.literal("standard"),
       modelId: z.string().min(1),
-      messages: z.array(piMessageStepSchema),
+      messages: z.array(contextEpochMessageSchema),
     })
     .strict(),
   z
@@ -89,7 +93,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
-      messages: z.array(piMessageStepSchema),
+      messages: z.array(contextEpochMessageSchema),
     })
     .strict(),
   z
@@ -97,7 +101,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.union([z.literal("compaction"), z.literal("rollback")]),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
-      messages: z.array(piMessageStepSchema),
+      messages: z.array(contextEpochMessageSchema),
     })
     .strict(),
 ]);
@@ -105,58 +109,73 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
 /** One atomically persisted context epoch and its model binding. */
 export type ContextEpochStart = z.output<typeof contextEpochStartSchema>;
 
-const mcpProviderConnectedEntrySchema = z.object({
-  type: z.literal("mcp_provider_connected"),
-  provider: z.string().min(1),
-});
+const mcpProviderConnectedEventDataSchema = z
+  .object({
+    type: z.literal("mcp_provider_connected"),
+    provider: z.string().min(1),
+  })
+  .strict();
 
-const authorizationKindSchema = z.union([
+export const authorizationKindSchema = z.union([
   z.literal("plugin"),
   z.literal("mcp"),
 ]);
 
-const authorizationRequestedEntrySchema = z.object({
-  type: z.literal("authorization_requested"),
-  kind: authorizationKindSchema,
-  provider: z.string().min(1),
-  actorId: z.string().min(1),
-  authorizationId: z.string().min(1),
-  delivery: z.union([
-    z.literal("private_link_sent"),
-    z.literal("private_link_reused"),
-  ]),
-});
+/** Provider authorization family recorded by conversation events. */
+export type AuthorizationKind = z.output<typeof authorizationKindSchema>;
 
-const authorizationCompletedEntrySchema = z.object({
-  type: z.literal("authorization_completed"),
-  kind: authorizationKindSchema,
-  provider: z.string().min(1),
-  actorId: z.string().min(1),
-  authorizationId: z.string().min(1),
-});
+const authorizationRequestedEventDataSchema = z
+  .object({
+    type: z.literal("authorization_requested"),
+    kind: authorizationKindSchema,
+    provider: z.string().min(1),
+    actorId: z.string().min(1),
+    authorizationId: z.string().min(1),
+    delivery: z.union([
+      z.literal("private_link_sent"),
+      z.literal("private_link_reused"),
+    ]),
+  })
+  .strict();
 
-const toolExecutionStartedEntrySchema = z.object({
-  type: z.literal("tool_execution_started"),
-  toolCallId: z.string().min(1),
-  toolName: z.string().min(1),
-  args: z.unknown().optional(),
-});
+const authorizationCompletedEventDataSchema = z
+  .object({
+    type: z.literal("authorization_completed"),
+    kind: authorizationKindSchema,
+    provider: z.string().min(1),
+    actorId: z.string().min(1),
+    authorizationId: z.string().min(1),
+  })
+  .strict();
 
-const visibleContextCompactedEntrySchema = z.object({
-  type: z.literal("visible_context_compacted"),
-  compactions: z.array(
-    z.object({
-      coveredMessageIds: z.array(z.string()),
-      createdAtMs: z.number(),
-      id: z.string().min(1),
-      summary: z.string(),
-    }),
-  ) satisfies z.ZodType<ConversationCompaction[]>,
-});
+const toolExecutionStartedEventDataSchema = z
+  .object({
+    type: z.literal("tool_execution_started"),
+    toolCallId: z.string().min(1),
+    toolName: z.string().min(1),
+    args: z.unknown().optional(),
+  })
+  .strict();
+
+const visibleContextCompactedEventDataSchema = z
+  .object({
+    type: z.literal("visible_context_compacted"),
+    compactions: z.array(
+      z
+        .object({
+          coveredMessageIds: z.array(z.string()),
+          createdAtMs: z.number(),
+          id: z.string().min(1),
+          summary: z.string(),
+        })
+        .strict(),
+    ) satisfies z.ZodType<ConversationCompaction[]>,
+  })
+  .strict();
 
 // Subagent histories are child conversations; the marker references the child by
 // its own conversation id rather than a polymorphic transcript locator.
-const subagentStartedEntrySchema = z
+const subagentStartedEventDataSchema = z
   .object({
     type: z.literal("subagent_started"),
     subagentInvocationId: z.string().min(1),
@@ -169,70 +188,83 @@ const subagentStartedEntrySchema = z
   })
   .strict();
 
-const subagentEndedEntrySchema = z.object({
-  type: z.literal("subagent_ended"),
-  subagentInvocationId: z.string().min(1),
-  outcome: z.union([
-    z.literal("success"),
-    z.literal("error"),
-    z.literal("aborted"),
-  ]),
-  errorCode: z.string().min(1).optional(),
-});
+const subagentEndedEventDataSchema = z
+  .object({
+    type: z.literal("subagent_ended"),
+    subagentInvocationId: z.string().min(1),
+    outcome: z.union([
+      z.literal("success"),
+      z.literal("error"),
+      z.literal("aborted"),
+    ]),
+    errorCode: z.string().min(1).optional(),
+  })
+  .strict();
 
 /** Prevent ordinary appends from bypassing context-epoch lifecycle validation. */
-const appendableAgentStepEntrySchema = z.union([
-  piMessageStepEntrySchema,
-  mcpProviderConnectedEntrySchema,
-  authorizationRequestedEntrySchema,
-  authorizationCompletedEntrySchema,
-  toolExecutionStartedEntrySchema,
-  visibleContextCompactedEntrySchema,
-  subagentStartedEntrySchema,
-  subagentEndedEntrySchema,
+const appendableConversationEventDataSchema = z.union([
+  messageEventDataSchema,
+  mcpProviderConnectedEventDataSchema,
+  authorizationRequestedEventDataSchema,
+  authorizationCompletedEventDataSchema,
+  toolExecutionStartedEventDataSchema,
+  visibleContextCompactedEventDataSchema,
+  subagentStartedEventDataSchema,
+  subagentEndedEventDataSchema,
 ]);
 
-/** Strict step envelope reused by the SQL row codec; unknown types fail loudly. */
-export const agentStepEntrySchema = z.union([
-  appendableAgentStepEntrySchema,
-  contextEpochStartedEntrySchema,
+/** Strict event-data contract reused by the SQL row codec. */
+export const conversationEventDataSchema = z.union([
+  appendableConversationEventDataSchema,
+  contextEpochStartedEventDataSchema,
 ]);
 
-/** One durable execution step's validated payload (sessionId lifted to epoch). */
-export type AgentStepEntry = z.infer<typeof agentStepEntrySchema>;
+/** One durable conversation event's validated data. */
+export type ConversationEventData = z.output<
+  typeof conversationEventDataSchema
+>;
 
-/** A step read back from storage with its assigned order and epoch. */
-export interface StoredAgentStep {
-  seq: number;
-  contextEpoch: number;
-  createdAtMs: number;
-  entry: AgentStepEntry;
-}
+/**
+ * Canonical ordered envelope for the durable conversation log.
+ * `schemaVersion` is persisted with every physical event row.
+ */
+export const conversationEventSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    seq: z.number().int().nonnegative(),
+    contextEpoch: z.number().int().nonnegative(),
+    createdAtMs: z.number().finite(),
+    data: conversationEventDataSchema,
+  })
+  .strict();
+
+/** One versioned event read from the durable conversation log. */
+export type ConversationEvent = z.output<typeof conversationEventSchema>;
 
 /** Validate a current-epoch append without permitting epoch markers. */
-export const newAgentStepSchema = z
+export const newConversationEventSchema = z
   .object({
-    entry: appendableAgentStepEntrySchema,
+    data: appendableConversationEventDataSchema,
     createdAtMs: z.number().finite(),
   })
   .strict();
 
-/** A step to append; the store assigns `seq` and the current `context_epoch`. */
-export type NewAgentStep = z.output<typeof newAgentStepSchema>;
+/** An event to append; the store assigns `seq` and the current context epoch. */
+export type NewConversationEvent = z.output<typeof newConversationEventSchema>;
 
-/** A replacement Pi message written into a freshly opened epoch. */
-export type PiMessageStep = z.output<typeof piMessageStepSchema>;
+/** A model message written into a freshly opened context epoch. */
+export type ContextEpochMessage = z.output<typeof contextEpochMessageSchema>;
 
-/** Persist and read the durable per-conversation agent execution history. */
-export interface AgentStepStore {
-  /** Append steps in one transaction, assigning `seq = max+1` under the lease. */
-  append(conversationId: string, steps: NewAgentStep[]): Promise<void>;
+/** Persist and read the canonical per-conversation event log. */
+export interface ConversationEventStore {
+  /** Append events atomically, assigning `seq = max+1` under the lease. */
+  append(conversationId: string, events: NewConversationEvent[]): Promise<void>;
   /**
    * Open initial epoch 0 or the next replacement epoch in one transaction.
    */
   startEpoch(conversationId: string, opts: ContextEpochStart): Promise<void>;
-  /** Steps of the highest epoch in `seq` order (all types; caller filters). */
-  loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]>;
-  /** All steps across all epochs in `seq` order, for audit and reporting. */
-  loadHistory(conversationId: string): Promise<StoredAgentStep[]>;
+  /** Events of the highest epoch in `seq` order (all types; caller filters). */
+  loadCurrentEpoch(conversationId: string): Promise<ConversationEvent[]>;
+  /** All events across every epoch in `seq` order, for audit and reporting. */
+  loadHistory(conversationId: string): Promise<ConversationEvent[]>;
 }

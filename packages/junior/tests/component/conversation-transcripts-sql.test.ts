@@ -1,8 +1,11 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
-import { agentStepEntrySchema } from "@/chat/conversations/history";
-import { getAgentStepStore } from "@/chat/db";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import {
+  conversationEventDataSchema,
+  conversationEventSchema,
+} from "@/chat/conversations/history";
+import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import {
@@ -12,7 +15,7 @@ import {
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorAgentSteps, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -29,14 +32,14 @@ const CHILD_CONVERSATION_ID = "advisor:child-1";
 
 it("accepts legacy markers and validates current profile names", () => {
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "initial",
       modelProfile: "standard",
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "initial",
       modelProfile: "standard",
@@ -44,20 +47,20 @@ it("accepts legacy markers and validates current profile names", () => {
     }).success,
   ).toBe(true);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "handoff",
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "handoff",
       modelProfile: "handoff",
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "handoff",
       modelProfile: "standard",
@@ -65,7 +68,7 @@ it("accepts legacy markers and validates current profile names", () => {
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
       modelProfile: "Fast!",
@@ -73,13 +76,13 @@ it("accepts legacy markers and validates current profile names", () => {
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
     }).success,
   ).toBe(true);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
       modelProfile: "coding",
@@ -87,14 +90,14 @@ it("accepts legacy markers and validates current profile names", () => {
     }).success,
   ).toBe(true);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
       modelProfile: "coding",
     }).success,
   ).toBe(false);
   expect(
-    agentStepEntrySchema.safeParse({
+    conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
       reason: "compaction",
       modelId: "openai/gpt-5.4",
@@ -102,11 +105,53 @@ it("accepts legacy markers and validates current profile names", () => {
   ).toBe(false);
 });
 
+it("rejects unknown Junior event fields while retaining opaque message fields", () => {
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "mcp_provider_connected",
+      provider: "github",
+      unknown: true,
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "visible_context_compacted",
+      compactions: [
+        {
+          coveredMessageIds: ["m1"],
+          createdAtMs: 1_000,
+          id: "compaction-1",
+          summary: "Earlier context",
+          unknown: true,
+        },
+      ],
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "message",
+      message: { role: "", providerOwnedField: true },
+    }).success,
+  ).toBe(true);
+});
+
+it("rejects unsupported conversation event schema versions", () => {
+  expect(
+    conversationEventSchema.safeParse({
+      schemaVersion: 2,
+      seq: 0,
+      contextEpoch: 0,
+      createdAtMs: 1_000,
+      data: { type: "mcp_provider_connected", provider: "github" },
+    }).success,
+  ).toBe(false);
+});
+
 it("rejects epoch markers through the ordinary append boundary", async () => {
   await expect(
-    getAgentStepStore().append("local:test:invalid-marker-append", [
+    getConversationEventStore().append("local:test:invalid-marker-append", [
       {
-        entry: {
+        data: {
           type: "context_epoch_started",
           reason: "compaction",
         },
@@ -119,14 +164,14 @@ it("rejects epoch markers through the ordinary append boundary", async () => {
 it("rejects incomplete markers through the epoch boundary", async () => {
   const conversationId = "local:test:invalid-marker-start";
   await expect(
-    getAgentStepStore().startEpoch(conversationId, {
+    getConversationEventStore().startEpoch(conversationId, {
       reason: "handoff",
       modelProfile: "handoff",
       messages: [],
     } as never),
   ).rejects.toThrow("Invalid input");
   await expect(
-    getAgentStepStore().loadHistory(conversationId),
+    getConversationEventStore().loadHistory(conversationId),
   ).resolves.toEqual([]);
 });
 
@@ -147,21 +192,23 @@ it("opens an explicit initial epoch without dropping earlier host facts", async 
   await expect(loadConnectedMcpProviders({ conversationId })).resolves.toEqual([
     "linear",
   ]);
-  expect(await getAgentStepStore().loadHistory(conversationId)).toEqual([
-    expect.objectContaining({
-      contextEpoch: 0,
-      entry: expect.objectContaining({ type: "mcp_provider_connected" }),
-    }),
-    expect.objectContaining({
-      contextEpoch: 0,
-      entry: {
-        type: "context_epoch_started",
-        reason: "initial",
-        modelProfile: "standard",
-        modelId: "openai/gpt-5.4",
-      },
-    }),
-  ]);
+  expect(await getConversationEventStore().loadHistory(conversationId)).toEqual(
+    [
+      expect.objectContaining({
+        contextEpoch: 0,
+        data: expect.objectContaining({ type: "mcp_provider_connected" }),
+      }),
+      expect.objectContaining({
+        contextEpoch: 0,
+        data: {
+          type: "context_epoch_started",
+          reason: "initial",
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+        },
+      }),
+    ],
+  );
 });
 
 async function seedConversation(
@@ -189,8 +236,8 @@ function userMessage(text: string) {
 }
 
 describe("conversation transcript SQL stores", () => {
-  it("persists visible-context compaction snapshots in agent history", async () => {
-    const steps = getAgentStepStore();
+  it("persists visible-context compaction snapshots in conversation history", async () => {
+    const events = getConversationEventStore();
     const conversation = coerceThreadConversationState({});
     conversation.compactions = [
       {
@@ -216,7 +263,7 @@ describe("conversation transcript SQL stores", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(rehydrated.compactions).toEqual(conversation.compactions);
-    expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+    expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(1);
   });
 
   it("applies Drizzle migrations idempotently", async () => {
@@ -241,30 +288,31 @@ describe("conversation transcript SQL stores", () => {
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
 
       await store.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("one") },
+          data: { type: "message", message: userMessage("one") },
           createdAtMs: 1_000,
         },
         {
-          entry: { type: "pi_message", message: userMessage("two") },
+          data: { type: "message", message: userMessage("two") },
           createdAtMs: 2_000,
         },
       ]);
       await store.append(CONVERSATION_ID, [
         {
-          entry: { type: "mcp_provider_connected", provider: "github" },
+          data: { type: "mcp_provider_connected", provider: "github" },
           createdAtMs: 3_000,
         },
       ]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((step) => step.seq)).toEqual([0, 1, 2]);
-      expect(history.map((step) => step.entry.type)).toEqual([
-        "pi_message",
-        "pi_message",
+      expect(history.map((event) => event.seq)).toEqual([0, 1, 2]);
+      expect(history.map((event) => event.schemaVersion)).toEqual([1, 1, 1]);
+      expect(history.map((event) => event.data.type)).toEqual([
+        "message",
+        "message",
         "mcp_provider_connected",
       ]);
 
@@ -272,12 +320,13 @@ describe("conversation transcript SQL stores", () => {
       await expect(
         fixture.sql
           .db()
-          .insert(juniorAgentSteps)
+          .insert(juniorConversationEvents)
           .values({
             conversationId: CONVERSATION_ID,
             seq: 0,
             contextEpoch: 0,
-            type: "pi_message",
+            schemaVersion: 1,
+            type: "message",
             role: "user",
             payload: { message: userMessage("clobber") },
             createdAt: new Date(4_000),
@@ -288,32 +337,34 @@ describe("conversation transcript SQL stores", () => {
     }
   });
 
-  it("replaces NUL characters before persisting agent steps", async () => {
+  it("replaces NUL characters before persisting conversation events", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
 
       await store.append(CONVERSATION_ID, [
         {
-          entry: {
-            type: "pi_message",
+          data: {
+            type: "message",
             message: userMessage("before\u0000after and literal \\u0000"),
           },
           createdAtMs: 1_000,
         },
       ]);
 
-      expect(
-        (await store.loadHistory(CONVERSATION_ID))[0]?.entry,
-      ).toMatchObject({
-        type: "pi_message",
-        message: {
-          content: [{ text: "before after and literal \\u0000", type: "text" }],
+      expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toMatchObject(
+        {
+          type: "message",
+          message: {
+            content: [
+              { text: "before after and literal \\u0000", type: "text" },
+            ],
+          },
         },
-      });
+      );
     } finally {
       await fixture.close();
     }
@@ -325,15 +376,15 @@ describe("conversation transcript SQL stores", () => {
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
 
       await store.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("epoch0-a") },
+          data: { type: "message", message: userMessage("epoch0-a") },
           createdAtMs: 1_000,
         },
         {
-          entry: { type: "pi_message", message: userMessage("epoch0-b") },
+          data: { type: "message", message: userMessage("epoch0-b") },
           createdAtMs: 2_000,
         },
       ]);
@@ -347,15 +398,15 @@ describe("conversation transcript SQL stores", () => {
       });
 
       const current = await store.loadCurrentEpoch(CONVERSATION_ID);
-      expect(current.map((step) => step.contextEpoch)).toEqual([1, 1]);
-      expect(current.map((step) => step.entry.type)).toEqual([
+      expect(current.map((event) => event.contextEpoch)).toEqual([1, 1]);
+      expect(current.map((event) => event.data.type)).toEqual([
         "context_epoch_started",
-        "pi_message",
+        "message",
       ]);
-      expect(current.map((step) => step.seq)).toEqual([2, 3]);
+      expect(current.map((event) => event.seq)).toEqual([2, 3]);
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((step) => step.contextEpoch)).toEqual([0, 0, 1, 1]);
+      expect(history.map((event) => event.contextEpoch)).toEqual([0, 0, 1, 1]);
     } finally {
       await fixture.close();
     }
@@ -367,8 +418,8 @@ describe("conversation transcript SQL stores", () => {
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
-      const entry = {
+      const store = createSqlConversationEventStore(fixture.sql);
+      const data = {
         type: "subagent_started" as const,
         subagentInvocationId: "future-subagent-call",
         subagentKind: "task",
@@ -376,11 +427,9 @@ describe("conversation transcript SQL stores", () => {
         historyMode: "isolated" as const,
       };
 
-      await store.append(CONVERSATION_ID, [{ entry, createdAtMs: 1_000 }]);
+      await store.append(CONVERSATION_ID, [{ data, createdAtMs: 1_000 }]);
 
-      expect((await store.loadHistory(CONVERSATION_ID))[0]?.entry).toEqual(
-        entry,
-      );
+      expect((await store.loadHistory(CONVERSATION_ID))[0]?.data).toEqual(data);
     } finally {
       await fixture.close();
     }
@@ -392,10 +441,10 @@ describe("conversation transcript SQL stores", () => {
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
       await store.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("epoch0") },
+          data: { type: "message", message: userMessage("epoch0") },
           createdAtMs: 1_000,
         },
       ]);
@@ -410,7 +459,7 @@ describe("conversation transcript SQL stores", () => {
             throw new Error("epoch write failed");
           }),
       };
-      const failingStore = createSqlAgentStepStore(failing);
+      const failingStore = createSqlConversationEventStore(failing);
 
       await expect(
         failingStore.startEpoch(CONVERSATION_ID, {
@@ -422,42 +471,90 @@ describe("conversation transcript SQL stores", () => {
       ).rejects.toThrow("epoch write failed");
 
       const history = await store.loadHistory(CONVERSATION_ID);
-      expect(history.map((step) => step.contextEpoch)).toEqual([0]);
+      expect(history.map((event) => event.contextEpoch)).toEqual([0]);
       expect(
-        history.some((step) => step.entry.type === "context_epoch_started"),
+        history.some((event) => event.data.type === "context_epoch_started"),
       ).toBe(false);
     } finally {
       await fixture.close();
     }
   });
 
-  it("fails loudly when a stored step has an unknown type", async () => {
+  it.each([
+    { schemaVersion: 1, type: "bogus_type" },
+    { schemaVersion: 2, type: "mcp_provider_connected" },
+  ])(
+    "fails loudly for unsupported stored event envelopes %#",
+    async ({ schemaVersion, type }) => {
+      const fixture = await createLocalJuniorSqlFixture();
+
+      try {
+        await migrateSchema(fixture.sql);
+        await seedConversation(fixture, CONVERSATION_ID);
+        const store = createSqlConversationEventStore(fixture.sql);
+
+        await fixture.sql.execute(
+          `
+INSERT INTO junior_conversation_events (
+  conversation_id, seq, context_epoch, schema_version, type, role, payload, created_at
+) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, $7)
+`,
+          [
+            CONVERSATION_ID,
+            0,
+            0,
+            schemaVersion,
+            type,
+            JSON.stringify(
+              type === "mcp_provider_connected" ? { provider: "github" } : {},
+            ),
+            new Date(1_000).toISOString(),
+          ],
+        );
+
+        await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
+          /Invalid input/,
+        );
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+
+  it("uses physical event columns as authoritative when decoding rows", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
-      const store = createSqlAgentStepStore(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
 
       await fixture.sql.execute(
         `
-INSERT INTO junior_agent_steps (
-  conversation_id, seq, context_epoch, type, role, payload, created_at
-) VALUES ($1, $2, $3, $4, NULL, $5::jsonb, $6)
+INSERT INTO junior_conversation_events (
+  conversation_id, seq, context_epoch, schema_version, type, role, payload, created_at
+) VALUES ($1, $2, $3, $4, $5, NULL, $6::jsonb, $7)
 `,
         [
           CONVERSATION_ID,
           0,
           0,
-          "bogus_type",
-          "{}",
+          1,
+          "mcp_provider_connected",
+          JSON.stringify({ type: "message", provider: "github" }),
           new Date(1_000).toISOString(),
         ],
       );
 
-      await expect(store.loadHistory(CONVERSATION_ID)).rejects.toThrow(
-        /Invalid input/,
-      );
+      await expect(store.loadHistory(CONVERSATION_ID)).resolves.toEqual([
+        {
+          schemaVersion: 1,
+          seq: 0,
+          contextEpoch: 0,
+          createdAtMs: 1_000,
+          data: { type: "mcp_provider_connected", provider: "github" },
+        },
+      ]);
     } finally {
       await fixture.close();
     }
@@ -533,7 +630,7 @@ INSERT INTO junior_agent_steps (
         .set({ lastActivityAt: new Date(1_000) })
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
       const messages = createSqlConversationMessageStore(fixture.sql);
-      const steps = createSqlAgentStepStore(fixture.sql);
+      const events = createSqlConversationEventStore(fixture.sql);
 
       // A newer message advances the clock (append-refresh semantics).
       await messages.record(CONVERSATION_ID, [
@@ -562,17 +659,17 @@ INSERT INTO junior_agent_steps (
       ]);
       expect(await lastActivityMs()).toBe(6_500);
 
-      // Step appends advance the clock too, and also never regress it.
-      await steps.append(CONVERSATION_ID, [
+      // Event appends advance the clock too, and also never regress it.
+      await events.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("newest") },
+          data: { type: "message", message: userMessage("newest") },
           createdAtMs: 8_000,
         },
       ]);
       expect(await lastActivityMs()).toBe(8_000);
-      await steps.append(CONVERSATION_ID, [
+      await events.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("backdated") },
+          data: { type: "message", message: userMessage("backdated") },
           createdAtMs: 3_000,
         },
       ]);
@@ -582,20 +679,20 @@ INSERT INTO junior_agent_steps (
     }
   });
 
-  it("purges steps and messages for a conversation and its descendants", async () => {
+  it("purges events and messages for a conversation and its descendants", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
       await seedConversation(fixture, CHILD_CONVERSATION_ID, CONVERSATION_ID);
-      const steps = createSqlAgentStepStore(fixture.sql);
+      const events = createSqlConversationEventStore(fixture.sql);
       const messages = createSqlConversationMessageStore(fixture.sql);
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
-        await steps.append(conversationId, [
+        await events.append(conversationId, [
           {
-            entry: { type: "pi_message", message: userMessage("hi") },
+            data: { type: "message", message: userMessage("hi") },
             createdAtMs: 1_000,
           },
         ]);
@@ -609,7 +706,7 @@ INSERT INTO junior_agent_steps (
       });
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
-        expect(await steps.loadHistory(conversationId)).toEqual([]);
+        expect(await events.loadHistory(conversationId)).toEqual([]);
         expect(await messages.list(conversationId)).toEqual([]);
       }
 
@@ -624,9 +721,9 @@ INSERT INTO junior_agent_steps (
       expect(rows).toHaveLength(1);
       expect(rows[0]?.transcriptPurgedAt).toBeInstanceOf(Date);
 
-      await steps.append(CONVERSATION_ID, [
+      await events.append(CONVERSATION_ID, [
         {
-          entry: { type: "pi_message", message: userMessage("new history") },
+          data: { type: "message", message: userMessage("new history") },
           createdAtMs: 6_000,
         },
       ]);
@@ -639,7 +736,7 @@ INSERT INTO junior_agent_steps (
         },
       ]);
 
-      expect(await steps.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(1);
       expect(await messages.list(CONVERSATION_ID)).toHaveLength(1);
       const reopened = await fixture.sql
         .db()

@@ -18,7 +18,7 @@ this directory owns product orchestration around it.
 
 ## Durable Continuation
 
-- Agent steps are appended at safe boundaries with monotonic sequence numbers.
+- Conversation events append at safe boundaries with monotonic sequence numbers.
 - Restoration reduces the current context epoch into Pi messages and derived
   runtime state.
 - A timeout or soft execution limit yields only at a boundary where tool results

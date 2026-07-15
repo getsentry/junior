@@ -1,7 +1,7 @@
 import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
-  agentSteps,
+  conversationEvents,
   conversationMessages,
   mention,
   rubric,
@@ -81,24 +81,29 @@ describeEval("Conversation Storage", slackEvals, (it) => {
       }),
     });
 
-    // (a) The durable step history holds the turn's user and assistant
-    // pi_message rows in the current (highest) epoch, in seq order.
-    const steps = await agentSteps(result.session);
-    const currentEpoch = Math.max(...steps.map((step) => step.contextEpoch));
-    const currentPiMessages = steps.filter(
-      (step) =>
-        step.type === "pi_message" && step.contextEpoch === currentEpoch,
+    // (a) The durable event history holds the turn's user and assistant
+    // Message events in the current (highest) epoch, in seq order.
+    const events = await conversationEvents(result.session);
+    const currentEpoch = Math.max(...events.map((event) => event.contextEpoch));
+    const currentMessages = events.filter(
+      (event) =>
+        event.data.type === "message" && event.contextEpoch === currentEpoch,
     );
 
-    const firstUser = currentPiMessages.find((step) => step.role === "user");
-    const firstAssistant = currentPiMessages.find(
-      (step) => step.role === "assistant",
+    const firstUser = currentMessages.find(
+      (event) =>
+        event.data.type === "message" && event.data.message.role === "user",
+    );
+    const firstAssistant = currentMessages.find(
+      (event) =>
+        event.data.type === "message" &&
+        event.data.message.role === "assistant",
     );
     expect(firstUser).toBeDefined();
     expect(firstAssistant).toBeDefined();
     expect(firstUser!.seq).toBeLessThan(firstAssistant!.seq);
     // seq order is preserved by loadHistory; the filtered slice stays ascending.
-    const seqs = currentPiMessages.map((step) => step.seq);
+    const seqs = currentMessages.map((event) => event.seq);
     expect(seqs).toEqual([...seqs].sort((left, right) => left - right));
 
     // (b) The visible message transcript holds the user message and the
@@ -115,7 +120,7 @@ describeEval("Conversation Storage", slackEvals, (it) => {
   });
 
   // Regression guard for lost MCP provider-connection facts between turns. A
-  // durable `mcp_provider_connected` step recorded on the first turn must be
+  // durable `mcp_provider_connected` event recorded on the first turn must be
   // visible to the follow-up turn so an already-connected provider is reused
   // instead of re-authorized. (The concrete bug: a projection reader that
   // skipped the lazy legacy import missed a prior connection and re-prompted.)
@@ -164,24 +169,24 @@ describeEval("Conversation Storage", slackEvals, (it) => {
       }),
     });
 
-    // (1) The durable step history records the provider connection exactly once
+    // (1) The durable event history records the provider connection exactly once
     // for the whole conversation. A lost turn-1 fact forces a second connection
     // on turn 2; a duplicated fact signals a re-connect.
-    const steps = await agentSteps(result.session);
-    const connectedSteps = steps.filter(
-      (step) =>
-        step.entry.type === "mcp_provider_connected" &&
-        step.entry.provider === EVAL_MCP_PROVIDER,
+    const events = await conversationEvents(result.session);
+    const connectedEvents = events.filter(
+      (event) =>
+        event.data.type === "mcp_provider_connected" &&
+        event.data.provider === EVAL_MCP_PROVIDER,
     );
-    expect(connectedSteps).toHaveLength(1);
+    expect(connectedEvents).toHaveLength(1);
 
     // (2) No re-authorization after the connection: any `authorization_requested`
-    // step ordered after the first connection means the follow-up re-prompted.
-    const firstConnectSeq = connectedSteps[0]!.seq;
-    const authAfterConnect = steps.filter(
-      (step) =>
-        step.entry.type === "authorization_requested" &&
-        step.seq > firstConnectSeq,
+    // event ordered after the first connection means the follow-up re-prompted.
+    const firstConnectSeq = connectedEvents[0]!.seq;
+    const authAfterConnect = events.filter(
+      (event) =>
+        event.data.type === "authorization_requested" &&
+        event.seq > firstConnectSeq,
     );
     expect(authAfterConnect).toEqual([]);
 

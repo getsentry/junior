@@ -112,7 +112,7 @@ function nextUserMessageSequence(
   );
 }
 
-/** Load the durable local Pi history from the SQL step-store projection. */
+/** Load durable local Pi history from the conversation-event projection. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
 }): Promise<PiMessage[] | undefined> {
@@ -341,7 +341,7 @@ export async function runLocalAgentTurn(
   });
   if (reply.piMessages?.length) {
     // Destination acceptance is the completion boundary: this first commits
-    // the final assistant messages to the session log and marks the session
+    // the final assistant messages to the event log and marks the session
     // record completed only after the CLI sink accepted the reply.
     await completeDeliveredTurn({
       conversationId: input.conversationId,

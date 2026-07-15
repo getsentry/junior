@@ -80,7 +80,7 @@ function fromStoredMessage(
  * projection read (turn-dedupe, delivered-message redelivery guards,
  * channel-context assembly) would otherwise make correctness decisions on an
  * empty transcript for promotion-window stragglers whose history is still only
- * in legacy Redis. The import is idempotent (skips when SQL step rows exist)
+ * in legacy Redis. The import is idempotent (skips when SQL event rows exist)
  * and no-ops cheaply when there is nothing legacy to read.
  */
 export async function hydrateConversationMessages(args: {

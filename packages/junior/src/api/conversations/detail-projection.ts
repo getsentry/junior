@@ -5,12 +5,16 @@ import type {
   ConversationMessageStore,
 } from "@/chat/conversations/messages";
 import type {
-  AgentStepStore,
-  StoredAgentStep,
+  ConversationEventStore,
+  ConversationEvent,
 } from "@/chat/conversations/history";
 import type { Conversation } from "@/chat/conversations/store";
-import { loadProjection, projectSteps } from "@/chat/conversations/projection";
-import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
+import { loadProjection } from "@/chat/conversations/projection";
+import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import {
+  getConversationEventStore,
+  getConversationMessageStore,
+} from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import {
@@ -18,10 +22,10 @@ import {
   buildSentryTraceUrl,
 } from "@/chat/sentry-links";
 import {
-  buildConversationActivityFromSteps,
-  subagentActivityFromSteps,
-  type SubagentEndedStep,
-  type SubagentStartedStep,
+  buildConversationActivityFromEvents,
+  subagentActivityFromEvents,
+  type SubagentEndedEvent,
+  type SubagentStartedEvent,
 } from "./activity";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import {
@@ -47,8 +51,8 @@ const COMPACTION_SUMMARY_PREFIXES = [
 const MODEL_HANDOFF_SUMMARY_PREFIX =
   "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:";
 
-type EpochStartedStep = StoredAgentStep & {
-  entry: Extract<StoredAgentStep["entry"], { type: "context_epoch_started" }>;
+type EpochStartedEvent = ConversationEvent & {
+  data: Extract<ConversationEvent["data"], { type: "context_epoch_started" }>;
 };
 
 function messageText(message: PiMessage): string {
@@ -100,28 +104,28 @@ function matchingPrefix(left: PiMessage[], right: PiMessage[]): number {
  */
 function historyContent(args: {
   canExposePayload: boolean;
-  steps: StoredAgentStep[];
+  events: ConversationEvent[];
 }): {
   contextEvents: ConversationContextEvent[];
   messages: PiMessage[];
 } {
   const contextEvents: ConversationContextEvent[] = [];
   const messages: PiMessage[] = [];
-  const epochs = new Map<number, StoredAgentStep[]>();
-  for (const step of args.steps) {
-    const epoch = epochs.get(step.contextEpoch);
-    if (epoch) epoch.push(step);
-    else epochs.set(step.contextEpoch, [step]);
+  const epochs = new Map<number, ConversationEvent[]>();
+  for (const event of args.events) {
+    const epoch = epochs.get(event.contextEpoch);
+    if (epoch) epoch.push(event);
+    else epochs.set(event.contextEpoch, [event]);
   }
 
   let previousModelId: string | undefined;
   let previousProjection: PiMessage[] = [];
-  for (const steps of epochs.values()) {
-    const marker = steps.find(
-      (step): step is EpochStartedStep =>
-        step.entry.type === "context_epoch_started",
+  for (const events of epochs.values()) {
+    const marker = events.find(
+      (event): event is EpochStartedEvent =>
+        event.data.type === "context_epoch_started",
     );
-    const projection = projectSteps(steps);
+    const projection = projectConversationEvents(events);
     const projected: PiMessage[] = [];
     const projectedProvenance: typeof projection.provenance = [];
     projection.messages.forEach((message, index) => {
@@ -131,43 +135,43 @@ function historyContent(args: {
       }
     });
     const replacementSummaryIndex =
-      marker?.entry.reason === "compaction"
+      marker?.data.reason === "compaction"
         ? summaryIndex(
             projected,
             projectedProvenance,
             COMPACTION_SUMMARY_PREFIXES,
           )
-        : marker?.entry.reason === "handoff"
+        : marker?.data.reason === "handoff"
           ? summaryIndex(projected, projectedProvenance, [
               MODEL_HANDOFF_SUMMARY_PREFIX,
             ])
           : -1;
     const summary =
-      marker?.entry.reason === "compaction" && replacementSummaryIndex >= 0
+      marker?.data.reason === "compaction" && replacementSummaryIndex >= 0
         ? summaryAfterPrefix(
             projected[replacementSummaryIndex]!,
             COMPACTION_SUMMARY_PREFIXES,
           )
         : undefined;
     const handoffMessage =
-      marker?.entry.reason === "handoff" && replacementSummaryIndex >= 0
+      marker?.data.reason === "handoff" && replacementSummaryIndex >= 0
         ? messageText(projected[replacementSummaryIndex]!) || undefined
         : undefined;
 
-    if (marker?.entry.reason === "compaction") {
+    if (marker?.data.reason === "compaction") {
       contextEvents.push({
         type: "context_compacted",
         createdAt: new Date(marker.createdAtMs).toISOString(),
-        ...(marker.entry.modelId ? { modelId: marker.entry.modelId } : {}),
+        ...(marker.data.modelId ? { modelId: marker.data.modelId } : {}),
         ...(args.canExposePayload && summary ? { summary } : {}),
         transcriptIndex: messages.length,
       });
-    } else if (marker?.entry.reason === "handoff") {
+    } else if (marker?.data.reason === "handoff") {
       contextEvents.push({
         type: "model_handoff",
         createdAt: new Date(marker.createdAtMs).toISOString(),
         ...(previousModelId ? { fromModelId: previousModelId } : {}),
-        toModelId: marker.entry.modelId,
+        toModelId: marker.data.modelId,
         ...(args.canExposePayload && handoffMessage
           ? { message: handoffMessage }
           : {}),
@@ -175,7 +179,7 @@ function historyContent(args: {
       });
     }
 
-    if (marker?.entry.reason === "rollback") {
+    if (marker?.data.reason === "rollback") {
       messages.push(
         ...projected.slice(matchingPrefix(previousProjection, projected)),
       );
@@ -185,7 +189,7 @@ function historyContent(args: {
         if (index === replacementSummaryIndex) return;
         let copiedCompactionMessage = false;
         if (
-          marker?.entry.reason === "compaction" &&
+          marker?.data.reason === "compaction" &&
           replacementSummaryIndex >= 0 &&
           index < replacementSummaryIndex
         ) {
@@ -200,7 +204,7 @@ function historyContent(args: {
         if (!copiedCompactionMessage) messages.push(message);
       });
     }
-    previousModelId = marker?.entry.modelId ?? previousModelId;
+    previousModelId = marker?.data.modelId ?? previousModelId;
     previousProjection = projected;
   }
 
@@ -210,17 +214,17 @@ function historyContent(args: {
 async function conversationContent(args: {
   conversationId: string;
   messageStore: ConversationMessageStore;
-  stepStore: AgentStepStore;
+  eventStore: ConversationEventStore;
   canExposePayload: boolean;
 }): Promise<{
   activity: ConversationActivityReport[];
   contextEvents: ConversationContextEvent[];
   transcript: TranscriptMessage[];
 }> {
-  const steps = await args.stepStore.loadHistory(args.conversationId);
+  const events = await args.eventStore.loadHistory(args.conversationId);
   const history = historyContent({
     canExposePayload: args.canExposePayload,
-    steps,
+    events,
   });
   const messages = history.messages;
   const transcript =
@@ -230,9 +234,9 @@ async function conversationContent(args: {
           visibleMessageTranscript,
         );
   return {
-    activity: buildConversationActivityFromSteps({
+    activity: buildConversationActivityFromEvents({
       canExposePayload: args.canExposePayload,
-      steps,
+      events,
       messages,
     }),
     contextEvents: history.contextEvents,
@@ -260,7 +264,7 @@ export async function buildConversationDetail(args: {
   const { conversation } = args;
   const conversationId = conversation.conversationId;
   const nowMs = Date.now();
-  const stepStore = getAgentStepStore();
+  const eventStore = getConversationEventStore();
   const messageStore = getConversationMessageStore();
   const transcriptPurgedAtMs = conversation.transcriptPurgedAtMs;
   const transcriptExpiredAt =
@@ -270,7 +274,7 @@ export async function buildConversationDetail(args: {
 
   // Reporting reads the complete durable execution history. Context rebuilds
   // become explicit events while copied replacement messages are de-duplicated.
-  // Purged conversations have no steps to read.
+  // Purged conversations have no events to read.
   const canExposeSqlContent = canExposeConversationPayload({
     conversationId,
     visibility: conversation.visibility,
@@ -280,7 +284,7 @@ export async function buildConversationDetail(args: {
       ? await conversationContent({
           conversationId,
           messageStore,
-          stepStore,
+          eventStore,
           canExposePayload: canExposeSqlContent,
         })
       : { activity: [], contextEvents: [], transcript: [] };
@@ -341,10 +345,10 @@ export async function buildConversationSubagent(
   subagentId: string,
 ): Promise<ConversationSubagentTranscriptReport> {
   const conversationId = conversation.conversationId;
-  const stepStore = getAgentStepStore();
-  const parentSteps = await stepStore.loadHistory(conversationId);
+  const eventStore = getConversationEventStore();
+  const parentEvents = await eventStore.loadHistory(conversationId);
 
-  // Retention purge deletes the parent tree's steps wholesale; present the
+  // Retention purge deletes the parent tree's events wholesale; present the
   // subagent as expired rather than "not found" (data-redaction.md).
   if (conversation?.transcriptPurgedAtMs !== undefined) {
     return {
@@ -362,10 +366,10 @@ export async function buildConversationSubagent(
     };
   }
 
-  const start = parentSteps.find(
-    (step): step is SubagentStartedStep =>
-      step.entry.type === "subagent_started" &&
-      step.entry.subagentInvocationId === subagentId,
+  const start = parentEvents.find(
+    (event): event is SubagentStartedEvent =>
+      event.data.type === "subagent_started" &&
+      event.data.subagentInvocationId === subagentId,
   );
   if (!start) {
     return {
@@ -379,14 +383,14 @@ export async function buildConversationSubagent(
       unavailableReason: "not_found",
     };
   }
-  const end = parentSteps.find(
-    (step): step is SubagentEndedStep =>
-      step.entry.type === "subagent_ended" &&
-      step.entry.subagentInvocationId === subagentId,
+  const end = parentEvents.find(
+    (event): event is SubagentEndedEvent =>
+      event.data.type === "subagent_ended" &&
+      event.data.subagentInvocationId === subagentId,
   );
 
-  const childConversationId = start.entry.childConversationId;
-  const activity = subagentActivityFromSteps(start, end);
+  const childConversationId = start.data.childConversationId;
+  const activity = subagentActivityFromEvents(start, end);
   const subagentSentryConversationUrl =
     buildSentryConversationUrl(childConversationId);
   const conversationFields = {

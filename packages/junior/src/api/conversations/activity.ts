@@ -1,6 +1,6 @@
 import type {
-  AgentStepEntry,
-  StoredAgentStep,
+  ConversationEvent,
+  ConversationEventData,
 } from "@/chat/conversations/history";
 import type { PiMessage } from "@/chat/pi/messages";
 import { redactedPayloadFields } from "./transcript";
@@ -43,51 +43,51 @@ function activityPayloadFields(
 }
 
 /**
- * Build the current-run activity timeline from durable agent steps.
+ * Build the current-run activity timeline from durable conversation events.
  *
  * Tool executions, subagent starts/ends, and their nesting are derived from the
- * conversation's `junior_agent_steps` rows instead of the legacy Redis session
- * log; tool statuses come from the aligned `pi_message` tool results. Redaction
+ * conversation's durable events instead of the legacy Redis session log; tool
+ * statuses come from aligned model-message tool results. Redaction
  * stays byte-compatible with the prior session-log path.
  */
-export function buildConversationActivityFromSteps(args: {
+export function buildConversationActivityFromEvents(args: {
   canExposePayload: boolean;
-  steps: StoredAgentStep[];
+  events: ConversationEvent[];
   messages: PiMessage[];
 }): ConversationActivityReport[] {
   const toolStatuses = toolResultStatuses(args.messages);
-  const subagentEnds = new Map<string, SubagentEndedStep>();
+  const subagentEnds = new Map<string, SubagentEndedEvent>();
   const subagentsByToolCallId = new Map<
     string,
     ConversationSubagentActivityReport[]
   >();
   const orphanSubagents: ConversationSubagentActivityReport[] = [];
 
-  for (const step of args.steps) {
-    if (step.entry.type === "subagent_ended") {
+  for (const event of args.events) {
+    if (event.data.type === "subagent_ended") {
       subagentEnds.set(
-        step.entry.subagentInvocationId,
-        step as SubagentEndedStep,
+        event.data.subagentInvocationId,
+        event as SubagentEndedEvent,
       );
     }
   }
 
-  for (const step of args.steps) {
-    if (step.entry.type !== "subagent_started") {
+  for (const event of args.events) {
+    if (event.data.type !== "subagent_started") {
       continue;
     }
-    const start = step as SubagentStartedStep;
-    const parentStatus = start.entry.parentToolCallId
-      ? toolStatuses.get(start.entry.parentToolCallId)
+    const start = event as SubagentStartedEvent;
+    const parentStatus = start.data.parentToolCallId
+      ? toolStatuses.get(start.data.parentToolCallId)
       : undefined;
-    const activity = subagentActivityFromSteps(
+    const activity = subagentActivityFromEvents(
       start,
-      subagentEnds.get(start.entry.subagentInvocationId),
+      subagentEnds.get(start.data.subagentInvocationId),
       { canExposeTranscript: args.canExposePayload, parentStatus },
     );
-    if (start.entry.parentToolCallId) {
-      subagentsByToolCallId.set(start.entry.parentToolCallId, [
-        ...(subagentsByToolCallId.get(start.entry.parentToolCallId) ?? []),
+    if (start.data.parentToolCallId) {
+      subagentsByToolCallId.set(start.data.parentToolCallId, [
+        ...(subagentsByToolCallId.get(start.data.parentToolCallId) ?? []),
         activity,
       ]);
       continue;
@@ -96,19 +96,19 @@ export function buildConversationActivityFromSteps(args: {
   }
 
   const rows: ConversationActivityReport[] = [];
-  for (const step of args.steps) {
-    if (step.entry.type !== "tool_execution_started") {
+  for (const event of args.events) {
+    if (event.data.type !== "tool_execution_started") {
       continue;
     }
     rows.push({
       type: "tool_execution",
-      id: step.entry.toolCallId,
-      toolCallId: step.entry.toolCallId,
-      toolName: step.entry.toolName,
-      createdAt: new Date(step.createdAtMs).toISOString(),
-      status: toolStatuses.get(step.entry.toolCallId) ?? "running",
-      subagents: subagentsByToolCallId.get(step.entry.toolCallId) ?? [],
-      ...activityPayloadFields(step.entry.args, args.canExposePayload),
+      id: event.data.toolCallId,
+      toolCallId: event.data.toolCallId,
+      toolName: event.data.toolName,
+      createdAt: new Date(event.createdAtMs).toISOString(),
+      status: toolStatuses.get(event.data.toolCallId) ?? "running",
+      subagents: subagentsByToolCallId.get(event.data.toolCallId) ?? [],
+      ...activityPayloadFields(event.data.args, args.canExposePayload),
     });
   }
 
@@ -119,17 +119,17 @@ export function buildConversationActivityFromSteps(args: {
   );
 }
 
-export type SubagentStartedStep = StoredAgentStep & {
-  entry: Extract<AgentStepEntry, { type: "subagent_started" }>;
+export type SubagentStartedEvent = ConversationEvent & {
+  data: Extract<ConversationEventData, { type: "subagent_started" }>;
 };
-export type SubagentEndedStep = StoredAgentStep & {
-  entry: Extract<AgentStepEntry, { type: "subagent_ended" }>;
+export type SubagentEndedEvent = ConversationEvent & {
+  data: Extract<ConversationEventData, { type: "subagent_ended" }>;
 };
 
-/** Pair durable subagent start and end steps into one activity report. */
-export function subagentActivityFromSteps(
-  start: SubagentStartedStep,
-  end: SubagentEndedStep | undefined,
+/** Pair durable subagent start and end events into one activity report. */
+export function subagentActivityFromEvents(
+  start: SubagentStartedEvent,
+  end: SubagentEndedEvent | undefined,
   options: {
     canExposeTranscript?: boolean;
     parentStatus?: ConversationActivityStatus;
@@ -137,21 +137,21 @@ export function subagentActivityFromSteps(
 ): ConversationSubagentActivityReport {
   return {
     type: "subagent",
-    id: start.entry.subagentInvocationId,
-    subagentKind: start.entry.subagentKind,
-    ...(start.entry.modelId ? { modelId: start.entry.modelId } : {}),
-    ...(start.entry.parentToolCallId
-      ? { parentToolCallId: start.entry.parentToolCallId }
+    id: start.data.subagentInvocationId,
+    subagentKind: start.data.subagentKind,
+    ...(start.data.modelId ? { modelId: start.data.modelId } : {}),
+    ...(start.data.parentToolCallId
+      ? { parentToolCallId: start.data.parentToolCallId }
       : {}),
-    ...(start.entry.reasoningLevel
-      ? { reasoningLevel: start.entry.reasoningLevel }
+    ...(start.data.reasoningLevel
+      ? { reasoningLevel: start.data.reasoningLevel }
       : {}),
     createdAt: new Date(start.createdAtMs).toISOString(),
     ...(end
       ? {
           endedAt: new Date(end.createdAtMs).toISOString(),
-          outcome: end.entry.outcome,
-          status: end.entry.outcome,
+          outcome: end.data.outcome,
+          status: end.data.outcome,
           // Every subagent is a child conversation whose transcript loads on
           // demand; expose the affordance only when the parent is public.
           ...(options.canExposeTranscript ? { transcriptAvailable: true } : {}),
@@ -163,9 +163,9 @@ export function subagentActivityFromSteps(
 /**
  * Read one child-agent transcript through its parent conversation.
  *
- * The parent records `subagent_started`/`subagent_ended` as durable steps that
+ * The parent records `subagent_started`/`subagent_ended` as durable events that
  * name the child by `childConversationId`; the transcript is the child
  * conversation's own projected Pi messages. `runId` is retained for the route
- * signature but no longer scopes the lookup — subagent steps live on the parent
+ * signature but no longer scopes the lookup — subagent events live on the parent
  * conversation regardless of the run that produced them.
  */

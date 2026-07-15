@@ -2,10 +2,10 @@
  * Turn session records.
  *
  * These records track one user request across auth pauses, timeout slices, and
- * completion. Full Pi messages live in the durable agent step store; this
+ * completion. Full Pi messages live in the durable conversation event store; this
  * record stores resumability metadata and a committed `seq` cursor into
- * `junior_agent_steps` so resumes can materialize the exact continuable
- * boundary without duplicating the step history.
+ * `junior_conversation_events` so resumes can materialize the exact continuable
+ * boundary without duplicating the event history.
  */
 import { THREAD_STATE_TTL_MS, type StateAdapter } from "chat";
 import {
@@ -21,9 +21,8 @@ import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
   instructionActors,
   instructionProvenanceFor,
-  type PiMessageProvenance,
-  type SessionProjection,
-} from "./session-log";
+  type ConversationMessageProvenance,
+} from "@/chat/conversations/provenance";
 import {
   commitMessages,
   loadTurnProjection,
@@ -55,6 +54,11 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
+interface ConversationMessageProjection {
+  messages: PiMessage[];
+  provenance: ConversationMessageProvenance[];
+}
+
 export interface AgentTurnSessionRecord {
   channelName?: string;
   version: number;
@@ -70,7 +74,7 @@ export interface AgentTurnSessionRecord {
   reasoningLevel?: string;
   piMessages: PiMessage[];
   /** Per-message provenance aligned one-to-one with `piMessages`. */
-  piMessageProvenance: PiMessageProvenance[];
+  piMessageProvenance: ConversationMessageProvenance[];
   /**
    * All distinct actors annotated on this run's committed instruction-authority
    * messages, in first-seen order. Persisted as an attribution handle so a
@@ -107,7 +111,7 @@ interface StoredAgentTurnSessionRecord extends Omit<
 > {
   actors?: Actor[];
   /**
-   * `seq` of the last step in `junior_agent_steps` whose projection reproduces
+   * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
    */
   committedSeq: number;
@@ -292,7 +296,7 @@ async function recordConversationActivityMetadata(args: {
 
 function materializeAgentTurnSessionRecord(
   stored: StoredAgentTurnSessionRecord,
-  piProjection: SessionProjection,
+  piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
 ): AgentTurnSessionRecord {
   return {
@@ -448,7 +452,7 @@ async function setStoredRecord(args: {
   /** Source-confirmed destination visibility from the current event's signal. */
   destinationVisibility?: ConversationPrivacy;
   piMessages: PiMessage[];
-  piMessageProvenance: PiMessageProvenance[];
+  piMessageProvenance: ConversationMessageProvenance[];
   record: StoredAgentTurnSessionRecord;
   ttlMs: number;
   turnStartMessageIndex?: number;
@@ -574,7 +578,7 @@ export async function upsertAgentTurnSessionRecord(args: {
   surface?: AgentTurnSurface;
   piMessages: PiMessage[];
   /** Provenance for trailing newly committed messages, such as steering. */
-  trailingMessageProvenance?: PiMessageProvenance[];
+  trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   actors?: Actor[];
   resumeReason?: AgentTurnResumeReason;
@@ -590,7 +594,7 @@ export async function upsertAgentTurnSessionRecord(args: {
     args.sessionId,
   );
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  // Attribute new user input to the turn's actor as an instruction; the step
+  // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
   const instructionActor = args.actor ?? existingRecord?.actor;

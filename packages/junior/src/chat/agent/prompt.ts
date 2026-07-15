@@ -286,7 +286,7 @@ export function buildPromptInput(input: AgentRunInput): PromptInput {
 
 /**
  * Convert a mid-run user message into the Pi user message shape used for
- * steering injection and parked-conversation session-log appends, so both
+ * steering injection and parked-conversation event-log appends, so both
  * paths store identical durable history.
  */
 export function buildSteeringPiMessage(

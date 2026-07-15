@@ -3,7 +3,7 @@
  *
  * This module detects plugin credential failures from the sandbox egress layer
  * and maps them onto the same paused-run contract used by MCP auth. It owns
- * provider attribution, private-link delivery/reuse, session-log recording,
+ * provider attribution, private-link delivery/reuse, event-log recording,
  * and credential cleanup.
  *
  * Auth failures are detected exclusively through the structured `auth_required`

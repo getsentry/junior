@@ -1,86 +1,92 @@
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
-  agentStepEntrySchema,
+  conversationEventDataSchema,
+  conversationEventSchema,
   contextEpochStartSchema,
-  newAgentStepSchema,
-  type AgentStepEntry,
-  type AgentStepStore,
+  newConversationEventSchema,
+  type ConversationEvent,
+  type ConversationEventStore,
+  type ConversationEventData,
   type ContextEpochStart,
-  type NewAgentStep,
-  type PiMessageStep,
-  type StoredAgentStep,
+  type ContextEpochMessage,
+  type NewConversationEvent,
 } from "../history";
 import { ensureConversationRow } from "./conversation-row";
-import { juniorAgentSteps, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 
-type AgentStepRow = typeof juniorAgentSteps.$inferSelect;
-type AgentStepInsert = typeof juniorAgentSteps.$inferInsert;
-type PersistedAgentStep = {
-  entry: AgentStepEntry;
+type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
+type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
+type PersistedConversationEvent = {
+  data: ConversationEventData;
   createdAtMs: number;
 };
 
-function messageRole(entry: AgentStepEntry): string | null {
-  if (entry.type !== "pi_message") {
+function messageRole(data: ConversationEventData): string | null {
+  if (data.type !== "message") {
     return null;
   }
-  const role = (entry.message as { role?: unknown }).role;
-  return typeof role === "string" ? role : null;
+  return data.message.role;
 }
 
-/** Split the validated entry into its column-lifted envelope and jsonb payload. */
-function insertFromStep(
+/** Split validated event data into column-lifted and JSON payload fields. */
+function insertFromEvent(
   conversationId: string,
   seq: number,
   contextEpoch: number,
-  step: PersistedAgentStep,
-): AgentStepInsert {
-  const { type, ...payload } = agentStepEntrySchema.parse(step.entry);
+  event: PersistedConversationEvent,
+): ConversationEventInsert {
+  const { type, ...payload } = conversationEventDataSchema.parse(event.data);
   return {
     conversationId,
     seq,
     contextEpoch,
+    schemaVersion: 1,
     type,
-    role: messageRole(step.entry),
+    role: messageRole(event.data),
     payload: sanitizePostgresJson(payload),
-    createdAt: new Date(step.createdAtMs),
+    createdAt: new Date(event.createdAtMs),
   };
 }
 
-/** Reconstruct the domain entry from a row; corrupt envelopes fail loudly. */
-function stepFromRow(row: AgentStepRow): StoredAgentStep {
-  const entry = agentStepEntrySchema.parse({ type: row.type, ...row.payload });
-  return {
+/** Parse one physical event row into the canonical domain envelope. */
+function eventFromRow(row: ConversationEventRow): ConversationEvent {
+  return conversationEventSchema.parse({
+    schemaVersion: row.schemaVersion,
     seq: row.seq,
     contextEpoch: row.contextEpoch,
     createdAtMs: row.createdAt.getTime(),
-    entry,
-  };
+    data: { ...row.payload, type: row.type },
+  });
 }
 
-function piMessageStep(step: PiMessageStep): NewAgentStep {
+function epochMessageEvent(message: ContextEpochMessage): NewConversationEvent {
   return {
-    entry: {
-      type: "pi_message",
-      message: step.message,
-      ...(step.provenance ? { provenance: step.provenance } : {}),
+    data: {
+      type: "message",
+      message: message.message,
+      ...(message.provenance ? { provenance: message.provenance } : {}),
     },
-    createdAtMs: step.createdAtMs,
+    createdAtMs: message.createdAtMs,
   };
 }
 
-class SqlAgentStepStore implements AgentStepStore {
+class SqlConversationEventStore implements ConversationEventStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
-  async append(conversationId: string, steps: NewAgentStep[]): Promise<void> {
-    const parsed = steps.map((step) => newAgentStepSchema.parse(step));
+  async append(
+    conversationId: string,
+    events: NewConversationEvent[],
+  ): Promise<void> {
+    const parsed = events.map((event) =>
+      newConversationEventSchema.parse(event),
+    );
     if (parsed.length === 0) {
       return;
     }
     const newestCreatedAtMs = Math.max(
-      ...parsed.map((step) => step.createdAtMs),
+      ...parsed.map((event) => event.createdAtMs),
     );
     await this.executor.transaction(async () => {
       await ensureConversationRow(
@@ -101,10 +107,10 @@ class SqlAgentStepStore implements AgentStepStore {
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
-      const rows = parsed.map((step) =>
-        insertFromStep(conversationId, seq++, contextEpoch, step),
+      const rows = parsed.map((event) =>
+        insertFromEvent(conversationId, seq++, contextEpoch, event),
       );
-      await this.executor.db().insert(juniorAgentSteps).values(rows);
+      await this.executor.db().insert(juniorConversationEvents).values(rows);
     });
   }
 
@@ -132,18 +138,18 @@ class SqlAgentStepStore implements AgentStepStore {
           : (cursor.maxEpoch ?? -1) + 1;
       let seq = cursor.nextSeq;
       const { messages, ...binding } = parsed;
-      const marker: PersistedAgentStep = {
-        entry: { type: "context_epoch_started", ...binding },
+      const marker: PersistedConversationEvent = {
+        data: { type: "context_epoch_started", ...binding },
         createdAtMs: Date.now(),
       };
-      const rows = [marker, ...messages.map(piMessageStep)].map((step) =>
-        insertFromStep(conversationId, seq++, contextEpoch, step),
+      const rows = [marker, ...messages.map(epochMessageEvent)].map((event) =>
+        insertFromEvent(conversationId, seq++, contextEpoch, event),
       );
-      await this.executor.db().insert(juniorAgentSteps).values(rows);
+      await this.executor.db().insert(juniorConversationEvents).values(rows);
     });
   }
 
-  async loadCurrentEpoch(conversationId: string): Promise<StoredAgentStep[]> {
+  async loadCurrentEpoch(conversationId: string): Promise<ConversationEvent[]> {
     const cursor = await this.readCursor(conversationId);
     if (cursor.maxEpoch === null) {
       return [];
@@ -151,25 +157,25 @@ class SqlAgentStepStore implements AgentStepStore {
     const rows = await this.executor
       .db()
       .select()
-      .from(juniorAgentSteps)
+      .from(juniorConversationEvents)
       .where(
         and(
-          eq(juniorAgentSteps.conversationId, conversationId),
-          eq(juniorAgentSteps.contextEpoch, cursor.maxEpoch),
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.contextEpoch, cursor.maxEpoch),
         ),
       )
-      .orderBy(asc(juniorAgentSteps.seq));
-    return rows.map(stepFromRow);
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
   }
 
-  async loadHistory(conversationId: string): Promise<StoredAgentStep[]> {
+  async loadHistory(conversationId: string): Promise<ConversationEvent[]> {
     const rows = await this.executor
       .db()
       .select()
-      .from(juniorAgentSteps)
-      .where(eq(juniorAgentSteps.conversationId, conversationId))
-      .orderBy(asc(juniorAgentSteps.seq));
-    return rows.map(stepFromRow);
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId))
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
   }
 
   /** Read the next `seq` and current highest epoch for one conversation. */
@@ -179,11 +185,13 @@ class SqlAgentStepStore implements AgentStepStore {
     const rows = await this.executor
       .db()
       .select({
-        maxSeq: sql<number | null>`max(${juniorAgentSteps.seq})`,
-        maxEpoch: sql<number | null>`max(${juniorAgentSteps.contextEpoch})`,
+        maxSeq: sql<number | null>`max(${juniorConversationEvents.seq})`,
+        maxEpoch: sql<
+          number | null
+        >`max(${juniorConversationEvents.contextEpoch})`,
       })
-      .from(juniorAgentSteps)
-      .where(eq(juniorAgentSteps.conversationId, conversationId));
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
     const maxSeq = rows[0]?.maxSeq;
     const maxEpoch = rows[0]?.maxEpoch;
     return {
@@ -194,9 +202,9 @@ class SqlAgentStepStore implements AgentStepStore {
   }
 }
 
-/** Create a SQL-backed agent step store. */
-export function createSqlAgentStepStore(
+/** Create a SQL-backed canonical conversation event store. */
+export function createSqlConversationEventStore(
   executor: JuniorSqlDatabase,
-): AgentStepStore {
-  return new SqlAgentStepStore(executor);
+): ConversationEventStore {
+  return new SqlConversationEventStore(executor);
 }

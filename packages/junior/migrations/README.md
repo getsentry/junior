@@ -12,3 +12,9 @@ The `0000_initial.sql` baseline represents the schema already deployed by the
 pre-Drizzle Junior migration runner. During upgrade, existing installations
 adopt that baseline once; new installations execute it normally. All later
 migrations are applied by Drizzle in journal order.
+
+`0004_conversation_events.sql` keeps `junior_agent_steps` as an updatable
+compatibility view for the 0.103.x rolling-deploy window. It maps legacy
+`pi_message` reads and writes to canonical `message` events while the CLI
+upgrade backfills existing rows in bounded batches. Remove the view and its
+trigger functions in 0.104.0 after 0.103.x workers are no longer supported.

@@ -20,8 +20,11 @@ import {
   type ToolCallRecord,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
-import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
-import type { AgentStepEntry } from "@/chat/conversations/history";
+import {
+  getConversationEventStore,
+  getConversationMessageStore,
+} from "@/chat/db";
+import type { ConversationEvent } from "@/chat/conversations/history";
 import type { ConversationMessage } from "@/chat/conversations/messages";
 import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
 import {
@@ -1037,17 +1040,6 @@ export function threadStart(opts?: {
 
 const CONVERSATION_IDS_METADATA_KEY = "conversation_ids";
 
-/** One durable execution step, flattened for ordering/presence assertions. */
-export interface AgentStepView {
-  seq: number;
-  contextEpoch: number;
-  type: AgentStepEntry["type"];
-  /** Message role for `pi_message` steps; absent for host-only step types. */
-  role?: string;
-  /** The strictly validated step payload, for deeper assertions when needed. */
-  entry: AgentStepEntry;
-}
-
 function conversationIdsFromSession(session: NormalizedSession): string[] {
   const raw = session.metadata?.[CONVERSATION_IDS_METADATA_KEY];
   if (!Array.isArray(raw) || raw.some((id) => typeof id !== "string")) {
@@ -1066,40 +1058,23 @@ export function conversationId(session: NormalizedSession): string {
   const ids = conversationIdsFromSession(session);
   if (ids.length !== 1) {
     throw new Error(
-      `Expected exactly one conversation for this run but found ${ids.length} (${ids.join(", ")}). Pass an explicit conversationId to agentSteps/conversationMessages.`,
+      `Expected exactly one conversation for this run but found ${ids.length} (${ids.join(", ")}). Pass an explicit conversationId to conversationEvents/conversationMessages.`,
     );
   }
   return ids[0]!;
 }
 
-function toStepRole(entry: AgentStepEntry): string | undefined {
-  if (entry.type === "pi_message") {
-    const role = (entry.message as { role?: unknown }).role;
-    return typeof role === "string" ? role : undefined;
-  }
-  return undefined;
-}
-
 /**
- * The run's durable execution step rows, in `seq` order across every epoch,
- * read via `AgentStepStore.loadHistory`. Defaults to the run's sole
+ * The run's durable conversation events, in `seq` order across every epoch,
+ * read via `ConversationEventStore.loadHistory`. Defaults to the run's sole
  * conversation; pass a conversation id to inspect a child conversation.
  */
-export async function agentSteps(
+export async function conversationEvents(
   session: NormalizedSession,
   conversationIdOverride?: string,
-): Promise<AgentStepView[]> {
+): Promise<ConversationEvent[]> {
   const id = conversationIdOverride ?? conversationId(session);
-  const steps = await getAgentStepStore().loadHistory(id);
-  return steps.map((step) => ({
-    seq: step.seq,
-    contextEpoch: step.contextEpoch,
-    type: step.entry.type,
-    ...(toStepRole(step.entry) !== undefined
-      ? { role: toStepRole(step.entry) }
-      : {}),
-    entry: step.entry,
-  }));
+  return await getConversationEventStore().loadHistory(id);
 }
 
 /**

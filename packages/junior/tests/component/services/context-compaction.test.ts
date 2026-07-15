@@ -248,7 +248,7 @@ describe("context compaction projection reset", () => {
       await import("@/chat/conversations/projection");
     const { coerceThreadConversationState } =
       await import("@/chat/state/conversation");
-    const { getAgentStepStore } = await import("@/chat/db");
+    const { getConversationEventStore } = await import("@/chat/db");
     const { botConfig } = await import("@/chat/config");
     const conversationId = "conversation-handoff";
     const priorMessages = [
@@ -302,8 +302,10 @@ describe("context compaction projection reset", () => {
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
-    const marker = (await getAgentStepStore().loadHistory(conversationId))
-      .map((step) => step.entry)
+    const marker = (
+      await getConversationEventStore().loadHistory(conversationId)
+    )
+      .map((event) => event.data)
       .find(
         (entry) =>
           entry.type === "context_epoch_started" && entry.reason === "handoff",
@@ -339,9 +341,9 @@ describe("context compaction projection reset", () => {
       (await loadConversationProjection({ conversationId })).modelProfile,
     ).toBe("handoff");
     const projectionMarkers = (
-      await getAgentStepStore().loadHistory(conversationId)
+      await getConversationEventStore().loadHistory(conversationId)
     )
-      .map((step) => step.entry)
+      .map((event) => event.data)
       .filter((entry) => entry.type === "context_epoch_started");
     expect(
       projectionMarkers.map(({ reason, modelProfile, modelId }) => ({

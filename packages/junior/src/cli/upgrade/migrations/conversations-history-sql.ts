@@ -15,7 +15,7 @@ const HISTORY_BACKFILL_LIMIT = 10_000;
  * Bulk-import legacy Redis conversation history (session logs, advisor blobs,
  * and visible messages) into SQL, bounded newest-first over the same activity
  * scan as the metadata backfill. Idempotent per conversation: it skips any
- * conversation that already has step rows.
+ * conversation that already has event rows.
  */
 export async function migrateConversationHistoryToSql(
   context: MigrationContext,
@@ -82,6 +82,6 @@ export async function migrateConversationHistoryToSql(
 }
 
 export const sqlConversationHistoryMigration = {
-  name: "backfill-agent-steps-sql",
+  name: "backfill-conversation-events-sql",
   run: migrateConversationHistoryToSql,
 };

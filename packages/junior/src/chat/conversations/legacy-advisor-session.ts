@@ -2,7 +2,7 @@ import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-// TODO(v0.95.0): Remove this reader with the bounded Redis-to-SQL import path
+// TODO(v0.104.0): Remove this reader with the bounded Redis-to-SQL import path
 // after the legacy import horizon.
 const legacyAdvisorMessagesSchema = z.array(piMessageSchema);
 

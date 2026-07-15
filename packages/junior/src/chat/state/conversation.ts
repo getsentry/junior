@@ -163,7 +163,7 @@ export function coerceThreadConversationState(
   const base = defaultConversationState();
 
   // The visible transcript lives in the ConversationMessageStore and Pi
-  // history lives in the AgentStepStore (both SQL). Legacy `messages` /
+  // history lives in the ConversationEventStore (both SQL). Legacy `messages` /
   // `piMessages` mirrors left in old thread-state payloads are ignored on
   // read; consumers hydrate from SQL instead.
   const messages: ConversationMessage[] = [];
@@ -262,7 +262,7 @@ export function coerceThreadConversationState(
  * Wrap a conversation state into the storage envelope for persistence. The
  * visible transcript (`messages`) is not written to `thread-state`; it lives
  * in SQL (`ConversationMessageStore`), and Pi history lives in the SQL
- * `AgentStepStore`. Only runtime scratch is persisted here.
+ * `ConversationEventStore`. Only runtime scratch is persisted here.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,

@@ -29,9 +29,10 @@ The command takes no extra arguments.
 
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.
 - Backfill retained conversation records into the shared Junior SQL database. The upgrade requires `DATABASE_URL`.
-- Repair legacy token and estimated-cost rollups from durable SQL agent steps in bounded batches. Conversations that are active during the repair are left unchanged and can be repaired by rerunning the command after they become idle.
+- Rewrite legacy SQL Pi-message rows into canonical conversation events in bounded batches.
+- Repair legacy token and estimated-cost rollups from durable SQL conversation events in bounded batches. Conversations that are active during the repair are left unchanged and can be repaired by rerunning the command after they become idle.
 
-The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. The SQL conversation backfill copies a bounded legacy slice of Redis conversation metadata; after cutover, durable conversation metadata is written to SQL while Redis remains the transcript and execution/cache store.
+The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. After cutover, SQL owns durable conversation metadata and event history; retained Redis session data is only a bounded import source.
 
 ## Vercel deploys
 
@@ -61,6 +62,8 @@ Running migration migrate-redis-conversation-state...
 Finished migration migrate-redis-conversation-state: scanned=2 migrated=1 existing=0 missing=1
 Running migration backfill-conversations-sql...
 Finished migration backfill-conversations-sql: scanned=2 migrated=2 existing=0 missing=0
+Running migration rewrite-conversation-event-data...
+Finished migration rewrite-conversation-event-data: scanned=3 migrated=3 existing=0 missing=0
 Running migration repair-conversation-usage...
 Finished migration repair-conversation-usage: scanned=2 migrated=1 existing=1 missing=0
 Junior upgrade complete.

@@ -41,7 +41,7 @@ function piEntry(
 
 describe("convertLegacySessionLog", () => {
   it("keeps a single session in epoch 0 with sequential seq and message timestamps", () => {
-    const { steps, advisorChildConversationId } = convertLegacySessionLog({
+    const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
       entries: [
@@ -51,13 +51,13 @@ describe("convertLegacySessionLog", () => {
     });
 
     expect(advisorChildConversationId).toBeUndefined();
-    expect(steps).toEqual([
+    expect(events).toEqual([
       {
         seq: 0,
         contextEpoch: 0,
         createdAtMs: 10,
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: userMessage("hello", 10),
           provenance: { authority: "context" },
         },
@@ -66,8 +66,8 @@ describe("convertLegacySessionLog", () => {
         seq: 1,
         contextEpoch: 0,
         createdAtMs: 20,
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: assistantMessage("hi", 20),
           provenance: { authority: "context" },
         },
@@ -82,7 +82,7 @@ describe("convertLegacySessionLog", () => {
       teamId: "T1",
       slackUserName: "ada",
     };
-    const { steps } = convertLegacySessionLog({
+    const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
       entries: [
@@ -101,9 +101,9 @@ describe("convertLegacySessionLog", () => {
 
     // actor_recorded produces no row; the v1 pi_message decodes to an authored
     // instruction from the stored Slack actor.
-    expect(steps).toHaveLength(1);
-    expect(steps[0]!.entry).toEqual({
-      type: "pi_message",
+    expect(events).toHaveLength(1);
+    expect(events[0]!.data).toEqual({
+      type: "message",
       message: userMessage("do the thing", 30),
       provenance: {
         authority: "instruction",
@@ -118,7 +118,7 @@ describe("convertLegacySessionLog", () => {
   });
 
   it("explodes projection_reset into an epoch marker plus per-message rows and keeps stale sessions in their epoch", () => {
-    const { steps } = convertLegacySessionLog({
+    const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
       entries: [
@@ -136,30 +136,30 @@ describe("convertLegacySessionLog", () => {
     });
 
     expect(
-      steps.map((step) => ({
-        seq: step.seq,
-        epoch: step.contextEpoch,
-        type: step.entry.type,
+      events.map((event) => ({
+        seq: event.seq,
+        epoch: event.contextEpoch,
+        type: event.data.type,
       })),
     ).toEqual([
-      { seq: 0, epoch: 0, type: "pi_message" },
+      { seq: 0, epoch: 0, type: "message" },
       { seq: 1, epoch: 1, type: "context_epoch_started" },
-      { seq: 2, epoch: 1, type: "pi_message" },
-      { seq: 3, epoch: 1, type: "pi_message" },
-      { seq: 4, epoch: 0, type: "pi_message" },
-      { seq: 5, epoch: 1, type: "pi_message" },
+      { seq: 2, epoch: 1, type: "message" },
+      { seq: 3, epoch: 1, type: "message" },
+      { seq: 4, epoch: 0, type: "message" },
+      { seq: 5, epoch: 1, type: "message" },
     ]);
-    expect(steps[1]!.entry).toEqual({
+    expect(events[1]!.data).toEqual({
       type: "context_epoch_started",
       reason: "compaction",
     });
     // Highest epoch (current context) is exactly the reset's session rows.
-    const currentEpoch = Math.max(...steps.map((step) => step.contextEpoch));
+    const currentEpoch = Math.max(...events.map((event) => event.contextEpoch));
     expect(currentEpoch).toBe(1);
   });
 
   it("converts an advisor subagent transcriptRef to a child conversation link and drops transcript cursors", () => {
-    const { steps, advisorChildConversationId } = convertLegacySessionLog({
+    const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
       entries: [
@@ -193,7 +193,7 @@ describe("convertLegacySessionLog", () => {
     });
 
     expect(advisorChildConversationId).toBe(`advisor:${CONVERSATION_ID}`);
-    expect(steps[0]!.entry).toEqual({
+    expect(events[0]!.data).toEqual({
       type: "subagent_started",
       subagentInvocationId: "call-1",
       subagentKind: "advisor",
@@ -201,8 +201,8 @@ describe("convertLegacySessionLog", () => {
       childConversationId: `advisor:${CONVERSATION_ID}`,
       historyMode: "shared",
     });
-    expect(steps[0]!.createdAtMs).toBe(50);
-    expect(steps[1]!.entry).toEqual({
+    expect(events[0]!.createdAtMs).toBe(50);
+    expect(events[1]!.data).toEqual({
       type: "subagent_ended",
       subagentInvocationId: "call-1",
       outcome: "success",
@@ -211,7 +211,7 @@ describe("convertLegacySessionLog", () => {
 
   it("falls back to the supplied conversation timestamp and never fabricates now", () => {
     const before = Date.now();
-    const { steps } = convertLegacySessionLog({
+    const { events } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
       fallbackCreatedAtMs: FALLBACK_MS,
       entries: [
@@ -225,13 +225,13 @@ describe("convertLegacySessionLog", () => {
       ],
     });
 
-    expect(steps.map((step) => step.createdAtMs)).toEqual([
+    expect(events.map((event) => event.createdAtMs)).toEqual([
       FALLBACK_MS,
       FALLBACK_MS,
     ]);
     // Guard against any Date.now() creeping in as a timestamp source.
-    for (const step of steps) {
-      expect(step.createdAtMs).toBeLessThan(before);
+    for (const event of events) {
+      expect(event.createdAtMs).toBeLessThan(before);
     }
   });
 });
@@ -256,8 +256,8 @@ describe("convertAdvisorMessages", () => {
         seq: 0,
         contextEpoch: 0,
         createdAtMs: 5,
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: userMessage(
             `Review <change> & "risk".\n\nExecutor context:\nUse owner='dashboard' & preserve <context>.`,
             5,
@@ -269,8 +269,8 @@ describe("convertAdvisorMessages", () => {
         seq: 1,
         contextEpoch: 0,
         createdAtMs: 6,
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: assistantMessage("a", 6),
           provenance: { authority: "context" },
         },
@@ -279,8 +279,8 @@ describe("convertAdvisorMessages", () => {
         seq: 2,
         contextEpoch: 0,
         createdAtMs: FALLBACK_MS,
-        entry: {
-          type: "pi_message",
+        data: {
+          type: "message",
           message: assistantMessage("no ts"),
           provenance: { authority: "context" },
         },

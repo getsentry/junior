@@ -3,16 +3,16 @@
  *
  * A single per-conversation import unit shared by `junior upgrade` (bulk,
  * bounded newest-first) and the lazy first-read straggler path. It converts the
- * legacy session log into `junior_agent_steps`, imports the advisor session blob
- * as a child conversation, and copies the `thread-state` visible messages into
- * `junior_conversation_messages`. Import is idempotent per conversation: step
+ * legacy session log into `junior_conversation_events`, imports the advisor
+ * session blob as a child conversation, and copies the `thread-state` visible messages into
+ * `junior_conversation_messages`. Import is idempotent per conversation: event
  * rows seal normal imports, while message-only imports verify their complete
  * SQL projection before skipping. It never fabricates import-time timestamps.
  *
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
-// TODO(v0.95.0): Remove this module and its advisor-session reader after the
+// TODO(v0.104.0): Remove this module and its advisor-session reader after the
 // legacy Redis-to-SQL import horizon.
 import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
@@ -36,11 +36,11 @@ import {
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
 import {
-  getAgentStepStore,
+  getConversationEventStore,
   getConversationMessageStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { createSqlAgentStepStore } from "./sql/history";
+import { createSqlConversationEventStore } from "./sql/history";
 import type { ConversationMessageStore } from "./messages";
 import type { Conversation } from "./store";
 import {
@@ -150,15 +150,15 @@ function intrinsicTimestamps(
 /**
  * Import one conversation's legacy Redis history into SQL, idempotently.
  *
- * Returns whether an import ran (false when step rows already exist or there is
+ * Returns whether an import ran (false when event rows already exist or there is
  * nothing legacy to import).
  */
 export async function importConversationFromLegacy(
   conversationId: string,
   deps: LegacyImportDeps,
 ): Promise<{ imported: boolean }> {
-  const stepStore = createSqlAgentStepStore(deps.executor);
-  const existing = await stepStore.loadCurrentEpoch(conversationId);
+  const eventStore = createSqlConversationEventStore(deps.executor);
+  const existing = await eventStore.loadCurrentEpoch(conversationId);
   if (existing.length > 0) {
     return { imported: false };
   }
@@ -212,15 +212,15 @@ export async function importConversationFromLegacy(
     fallbackCreatedAtMs,
   });
   if (compactions.length > 0) {
-    converted.steps.push({
-      seq: converted.steps.length,
-      contextEpoch: converted.steps.at(-1)?.contextEpoch ?? 0,
-      entry: { type: "visible_context_compacted", compactions },
+    converted.events.push({
+      seq: converted.events.length,
+      contextEpoch: converted.events.at(-1)?.contextEpoch ?? 0,
+      data: { type: "visible_context_compacted", compactions },
       createdAtMs: compactions.at(-1)?.createdAtMs ?? fallbackCreatedAtMs,
     });
   }
 
-  if (converted.steps.length === 0 && visible.length > 0) {
+  if (converted.events.length === 0 && visible.length > 0) {
     const existingMessages = new Map(
       (await deps.messageStore.list(conversationId)).map((message) => [
         message.messageId,
@@ -244,7 +244,7 @@ export async function importConversationFromLegacy(
         conversationId,
         fallbackCreatedAtMs,
         lastActivityAtMs,
-        steps: [],
+        events: [],
       });
       return { imported: false };
     }
@@ -253,13 +253,13 @@ export async function importConversationFromLegacy(
   let child:
     | {
         conversationId: string;
-        steps: ReturnType<typeof convertAdvisorMessages>;
+        events: ReturnType<typeof convertAdvisorMessages>;
       }
     | undefined;
   if (converted.advisorChildConversationId) {
     child = {
       conversationId: converted.advisorChildConversationId,
-      steps: convertAdvisorMessages(advisorMessages, fallbackCreatedAtMs),
+      events: convertAdvisorMessages(advisorMessages, fallbackCreatedAtMs),
     };
   }
 
@@ -268,14 +268,14 @@ export async function importConversationFromLegacy(
     ...(message.meta?.replied ? { repliedAtMs: message.createdAtMs } : {}),
   }));
 
-  // Messages and steps share one locked SQL transaction so retention can never
+  // Messages and events share one locked SQL transaction so retention can never
   // purge between the legacy-source check and the import commit.
   const imported = await writeLegacyImport(deps.executor, {
     conversationId,
     fallbackCreatedAtMs,
     lastActivityAtMs,
     ...(messages.length > 0 ? { messages } : {}),
-    steps: converted.steps,
+    events: converted.events,
     ...(child ? { child } : {}),
   });
 
@@ -292,8 +292,8 @@ export async function importConversationFromLegacy(
 export async function ensureLegacyConversationImport(args: {
   conversationId: string;
 }): Promise<void> {
-  const stepStore = getAgentStepStore();
-  if ((await stepStore.loadCurrentEpoch(args.conversationId)).length > 0) {
+  const eventStore = getConversationEventStore();
+  if ((await eventStore.loadCurrentEpoch(args.conversationId)).length > 0) {
     return;
   }
   const entries = await readSessionLogEntries({
@@ -320,7 +320,7 @@ export async function ensureLegacyConversationImport(args: {
   await importConversationFromLegacy(args.conversationId, {
     executor,
     messageStore: getConversationMessageStore(),
-    sessionLogStore: { read: async () => entries, append: async () => {} },
+    sessionLogStore: { read: async () => entries },
     loadVisibleMessages: async () => visible,
     legacyCompactions: snapshot.compactions,
     ...(snapshot.lastActivityAtMs === undefined
