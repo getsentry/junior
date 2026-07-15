@@ -155,8 +155,7 @@ export function entryMatchesSearch(
     return (
       textContains(entry.part.subagentKind, normalizedQuery) ||
       textContains(entry.part.id, normalizedQuery) ||
-      textContains(entry.part.status, normalizedQuery) ||
-      textContains(entry.part.outcome, normalizedQuery)
+      textContains(entry.part.status, normalizedQuery)
     );
   }
 

@@ -8,11 +8,6 @@ import {
   type ConversationReportEventData,
 } from "./schema";
 
-interface SubagentReference {
-  childConversationId: string;
-  subagentKind: string;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -118,24 +113,24 @@ export function projectConversationReportEvents(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
 }): ConversationReportEvent[] {
-  const subagents = new Map<string, SubagentReference>();
+  const subagentStarts = new Map<string, number>();
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
     let data: ConversationReportEventData | undefined;
     if (event.data.type === "subagent_started") {
-      const reference: SubagentReference = {
+      subagentStarts.set(event.data.subagentInvocationId, event.seq);
+      data = {
+        type: "subagent_started",
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
       };
-      subagents.set(event.data.subagentInvocationId, reference);
-      data = { type: "subagent_started", ...reference };
     } else if (event.data.type === "subagent_ended") {
-      const reference = subagents.get(event.data.subagentInvocationId);
-      if (reference) {
+      const startedSeq = subagentStarts.get(event.data.subagentInvocationId);
+      if (startedSeq !== undefined) {
         data = {
           type: "subagent_ended",
-          ...reference,
+          startedSeq,
           outcome: event.data.outcome,
         };
       }

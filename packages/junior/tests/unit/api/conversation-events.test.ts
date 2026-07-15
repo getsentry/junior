@@ -320,7 +320,7 @@ describe("conversation report event projection", () => {
         }),
         event(7, {
           type: "subagent_started",
-          subagentInvocationId: "private-invocation-id",
+          subagentInvocationId: "subagent-invocation-1",
           subagentKind: "advisor",
           modelId: "private-child-model-id",
           parentToolCallId: "private-parent-tool-id",
@@ -329,7 +329,7 @@ describe("conversation report event projection", () => {
         }),
         event(8, {
           type: "subagent_ended",
-          subagentInvocationId: "private-invocation-id",
+          subagentInvocationId: "subagent-invocation-1",
           outcome: "error",
           errorCode: "private-child-error-code",
         }),
@@ -361,8 +361,7 @@ describe("conversation report event projection", () => {
       },
       {
         type: "subagent_ended",
-        childConversationId: "child-conversation-1",
-        subagentKind: "advisor",
+        startedSeq: 7,
         outcome: "error",
       },
       { type: "turn_lifecycle", turnId: "turn-2", state: "no_reply" },
@@ -374,7 +373,7 @@ describe("conversation report event projection", () => {
       "private-handoff-model-id",
       "private-rollback-model-id",
       "123.456",
-      "private-invocation-id",
+      "subagent-invocation-1",
       "private-child-model-id",
       "private-parent-tool-id",
       "private-reasoning-level",
@@ -420,6 +419,41 @@ describe("conversation report event projection", () => {
       conversationReportEventSchema.safeParse({
         ...valid,
         data: { type: "visible_message", messageId: "m1", role: "user" },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...valid,
+        data: {
+          type: "subagent_started",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+        },
+      }).success,
+    ).toBe(true);
+
+    const subagentEnded = {
+      ...valid,
+      data: {
+        type: "subagent_ended",
+        startedSeq: 1,
+        outcome: "success",
+      },
+    };
+    expect(conversationReportEventSchema.safeParse(subagentEnded).success).toBe(
+      true,
+    );
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...subagentEnded,
+        data: { ...subagentEnded.data, startedSeq: undefined },
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...subagentEnded,
+        data: { ...subagentEnded.data, childConversationId: "child-1" },
       }).success,
     ).toBe(false);
   });

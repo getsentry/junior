@@ -39,7 +39,7 @@ export function TranscriptSubagentView(props: {
     />
   );
 
-  if (!props.onOpenTranscript || props.part.status === "running") {
+  if (!props.onOpenTranscript) {
     return frame;
   }
 
@@ -56,12 +56,9 @@ export function TranscriptSubagentView(props: {
 }
 
 function statusLabel(part: TranscriptViewSubagentPart): string | undefined {
-  if (part.outcome === "error") return "error";
-  if (part.outcome === "aborted") return "aborted";
-  if (part.status === "error" || part.status === "aborted") {
-    return part.status;
-  }
-  return undefined;
+  return part.status === "error" || part.status === "aborted"
+    ? part.status
+    : undefined;
 }
 
 function isString(value: string | undefined): value is string {

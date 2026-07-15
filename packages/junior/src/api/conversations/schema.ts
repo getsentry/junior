@@ -133,8 +133,7 @@ const conversationReportSubagentStartedEventDataSchema = z
 const conversationReportSubagentEndedEventDataSchema = z
   .object({
     type: z.literal("subagent_ended"),
-    childConversationId: z.string().min(1),
-    subagentKind: z.string().min(1),
+    startedSeq: z.number().int().nonnegative(),
     outcome: z.enum(["success", "error", "aborted"]),
   })
   .strict();
