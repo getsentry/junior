@@ -95,7 +95,7 @@ export interface SandboxExecutor {
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
   createSandbox(): Promise<SandboxInstance>;
-  captureProjectInstructions(): Promise<ProjectInstruction[]>;
+  captureProjectInstructions?(): Promise<ProjectInstruction[]>;
   execute<T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>>;

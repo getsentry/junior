@@ -1,4 +1,4 @@
-import { assistantMessages, describeEval } from "vitest-evals";
+import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import {
   agentSteps,

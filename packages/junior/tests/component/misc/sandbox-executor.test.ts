@@ -751,7 +751,7 @@ describe("createSandboxExecutor", () => {
       cwd: "/vercel/sandbox/repo/packages",
     });
     expect(result.result.details.project_instructions).toBeUndefined();
-    await expect(executor.captureProjectInstructions()).resolves.toEqual([
+    await expect(executor.captureProjectInstructions!()).resolves.toEqual([
       { path: "/vercel/sandbox/repo/AGENTS.md", content: "root rules" },
       {
         path: "/vercel/sandbox/repo/packages/AGENTS.md",

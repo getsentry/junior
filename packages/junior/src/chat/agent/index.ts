@@ -617,7 +617,7 @@ async function executeAgentRunInPrivacyContext(
     mcpToolManager = wiring.mcpToolManager;
     const sandboxExecutor = wiring.sandboxExecutor;
     let activeProjectInstructionsText = projectInstructionsText(
-      await sandboxExecutor.captureProjectInstructions(),
+      (await sandboxExecutor.captureProjectInstructions?.()) ?? [],
     );
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools.filter(
@@ -800,7 +800,7 @@ async function executeAgentRunInPrivacyContext(
           };
         }
         const nextProjectInstructionsText = projectInstructionsText(
-          await sandboxExecutor.captureProjectInstructions(),
+          (await sandboxExecutor.captureProjectInstructions?.()) ?? [],
         );
         if (nextProjectInstructionsText !== activeProjectInstructionsText) {
           activeProjectInstructionsText = nextProjectInstructionsText;
