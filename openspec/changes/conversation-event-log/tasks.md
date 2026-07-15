@@ -49,6 +49,8 @@
 ## 5. Cleanup And Verification
 
 - [x] Make the visible-message table an explicit event-backed read model.
+- [x] Hydrate runtime and primary conversation-detail transcripts from visible
+      events instead of the message-table projection or model messages.
 - [ ] Make remaining aggregate stores explicit read models.
 - [ ] Remove obsolete transcript reconstruction and legacy compatibility after
       migration completion.

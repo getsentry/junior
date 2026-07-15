@@ -6,7 +6,10 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 
-function latestSnapshot(events: ConversationEvent[]): ConversationCompaction[] {
+/** Project the latest visible-context compaction snapshot from event history. */
+export function projectVisibleConversationCompactions(
+  events: ConversationEvent[],
+): ConversationCompaction[] {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const data = events[index]?.data;
     if (data?.type === "visible_context_compacted") {
@@ -16,24 +19,13 @@ function latestSnapshot(events: ConversationEvent[]): ConversationCompaction[] {
   return [];
 }
 
-/** Hydrate the durable visible-context compaction snapshot from SQL. */
-export async function hydrateConversationCompactions(args: {
-  conversation: ThreadConversationState;
-  conversationId: string;
-}): Promise<void> {
-  const events = await getConversationEventStore().loadHistory(
-    args.conversationId,
-  );
-  args.conversation.compactions = latestSnapshot(events);
-}
-
 /** Persist a changed visible-context compaction snapshot in event history. */
 export async function persistConversationCompactions(args: {
   conversation: ThreadConversationState;
   conversationId: string;
 }): Promise<void> {
   const eventStore = getConversationEventStore();
-  const existing = latestSnapshot(
+  const existing = projectVisibleConversationCompactions(
     await eventStore.loadHistory(args.conversationId),
   );
   if (isDeepStrictEqual(existing, args.conversation.compactions)) {

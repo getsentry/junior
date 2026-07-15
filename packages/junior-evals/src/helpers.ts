@@ -20,12 +20,10 @@ import {
   type ToolCallRecord,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
-import {
-  getConversationEventStore,
-  getConversationMessageStore,
-} from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
-import type { ConversationMessage } from "@/chat/conversations/messages";
+import type { ConversationMessage } from "@/chat/state/conversation";
+import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
 import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
 import {
   slackEventThread,
@@ -1078,13 +1076,15 @@ export async function conversationEvents(
 }
 
 /**
- * The run's visible conversation message rows in `created_at` order, read via
- * `ConversationMessageStore.list`. Defaults to the run's sole conversation.
+ * The run's visible conversation messages projected from canonical events.
+ * Defaults to the run's sole conversation.
  */
 export async function conversationMessages(
   session: NormalizedSession,
   conversationIdOverride?: string,
 ): Promise<ConversationMessage[]> {
   const id = conversationIdOverride ?? conversationId(session);
-  return await getConversationMessageStore().list(id);
+  return projectVisibleConversationMessages(
+    await getConversationEventStore().loadHistory(id),
+  );
 }

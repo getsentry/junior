@@ -62,7 +62,6 @@ import {
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
-  generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import type { ContextCompactor } from "@/chat/services/context-compaction";
@@ -96,6 +95,7 @@ import {
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import {
@@ -858,7 +858,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
           );
           upsertConversationMessage(preparedState.conversation, {
-            id: generateConversationId("assistant"),
+            id: buildDeterministicAssistantMessageId(turnId),
             role: "assistant",
             text: normalizeConversationText(configReply.text),
             createdAtMs: Date.now(),
@@ -1295,7 +1295,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 },
               );
               upsertConversationMessage(preparedState.conversation, {
-                id: generateConversationId("assistant"),
+                id: buildDeterministicAssistantMessageId(turnId),
                 role: "assistant",
                 text: normalizeConversationText(text),
                 createdAtMs: Date.now(),
@@ -1484,8 +1484,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
           try {
             // Commit the durable delivery record first so recovery cannot
-            // regenerate an accepted reply. Persist the SQL-visible transcript
-            // next, then update Redis runtime scratch independently.
+            // regenerate an accepted reply. Persist canonical visible-message
+            // facts next, then update Redis runtime scratch independently.
             if (conversationId && reply.piMessages?.length) {
               await completeDeliveredTurn({
                 channelName,
@@ -1661,7 +1661,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
             );
             upsertConversationMessage(preparedState.conversation, {
-              id: generateConversationId("assistant"),
+              id: buildDeterministicAssistantMessageId(turnId),
               role: "assistant",
               text: normalizeConversationText(recoveryText),
               createdAtMs: Date.now(),

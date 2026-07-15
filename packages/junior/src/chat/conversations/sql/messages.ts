@@ -1,8 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
-  ConversationMessage,
   ConversationMessageStore,
   NewConversationMessage,
 } from "../messages";
@@ -13,6 +12,17 @@ import { juniorConversationMessages, juniorConversations } from "@/db/schema";
 import type { NewConversationEvent } from "../history";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
+
+interface ConversationMessage {
+  conversationId: string;
+  messageId: string;
+  role: NewConversationMessage["role"];
+  text: string;
+  authorIdentityId?: string;
+  meta?: Record<string, unknown>;
+  repliedAtMs?: number;
+  createdAtMs: number;
+}
 
 function messageFromRow(row: ConversationMessageRow): ConversationMessage {
   return {
@@ -208,26 +218,6 @@ class SqlConversationMessageStore implements ConversationMessageStore {
           ),
         );
     });
-  }
-
-  async list(
-    conversationId: string,
-    opts: { limit?: number } = {},
-  ): Promise<ConversationMessage[]> {
-    const query = this.executor
-      .db()
-      .select()
-      .from(juniorConversationMessages)
-      .where(eq(juniorConversationMessages.conversationId, conversationId))
-      .orderBy(
-        asc(juniorConversationMessages.createdAt),
-        asc(juniorConversationMessages.messageId),
-      );
-    const rows =
-      opts.limit === undefined
-        ? await query
-        : await query.limit(Math.max(0, opts.limit));
-    return rows.map(messageFromRow);
   }
 }
 

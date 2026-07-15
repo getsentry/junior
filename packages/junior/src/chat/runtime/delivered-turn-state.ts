@@ -8,13 +8,13 @@ import {
 } from "@/chat/runtime/thread-state";
 import { markTurnCompleted } from "@/chat/runtime/turn";
 import {
-  generateConversationId,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 
 const NO_VISIBLE_REPLY_CONVERSATION_TEXT = "[no visible reply]";
 
@@ -48,7 +48,7 @@ export function buildDeliveredTurnStatePatch(args: {
     skippedReason: undefined,
   });
   upsertConversationMessage(conversation, {
-    id: generateConversationId("assistant"),
+    id: buildDeterministicAssistantMessageId(args.sessionId),
     role: "assistant",
     text: assistantText,
     createdAtMs: Date.now(),

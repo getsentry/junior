@@ -4,24 +4,23 @@
  * A single per-conversation import unit shared by `junior upgrade` (bulk,
  * bounded newest-first) and the lazy first-read straggler path. It converts the
  * legacy session log into `junior_conversation_events`, imports the advisor
- * session blob as a child conversation, and copies the `thread-state` visible messages into
- * `junior_conversation_messages`. Import is idempotent per conversation: event
- * rows seal normal imports, while message-only imports verify their complete
- * SQL projection before skipping. It never fabricates import-time timestamps.
+ * session blob as a child conversation, and converts `thread-state` visible
+ * messages into canonical events plus their rebuildable SQL search projection.
+ * Import is idempotent per conversation: canonical event rows seal completed
+ * imports. It never fabricates import-time timestamps.
  *
  * This module and its lazy hook are removed wholesale after the legacy Redis TTL
  * horizon passes; keeping it separate keeps that deletion mechanical.
  */
 // TODO(v0.104.0): Remove this module and its advisor-session reader after the
 // legacy Redis-to-SQL import horizon.
-import { isDeepStrictEqual } from "node:util";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   type ConversationCompaction,
   type ConversationMessage as ThreadConversationMessage,
 } from "@/chat/state/conversation";
-import { toStoredConversationMessage } from "@/chat/conversations/visible-messages";
+import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -35,13 +34,8 @@ import {
 } from "@/chat/conversations/legacy-advisor-session";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
-import {
-  getConversationEventStore,
-  getConversationMessageStore,
-  getSqlExecutor,
-} from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { createSqlConversationEventStore } from "./sql/history";
-import type { ConversationMessageStore } from "./messages";
 import type { Conversation } from "./store";
 import {
   convertAdvisorMessages,
@@ -82,7 +76,6 @@ const legacyThreadStateSnapshotSchema = z.object({
 /** Legacy source seams used by the one-time migration. */
 export interface LegacyImportDeps {
   executor: JuniorSqlDatabase;
-  messageStore: ConversationMessageStore;
   sessionLogStore?: SessionLogStore;
   advisorSessionStore?: LegacyAdvisorSessionReader;
   loadVisibleMessages?: (
@@ -220,36 +213,6 @@ export async function importConversationFromLegacy(
     });
   }
 
-  if (converted.events.length === 0 && visible.length > 0) {
-    const existingMessages = new Map(
-      (await deps.messageStore.list(conversationId)).map((message) => [
-        message.messageId,
-        message,
-      ]),
-    );
-    const fullyImported = visible.every((message) => {
-      const existingMessage = existingMessages.get(message.id);
-      const projected = toStoredConversationMessage(message);
-      return (
-        existingMessage !== undefined &&
-        Object.entries(projected.meta ?? {}).every(([key, value]) =>
-          isDeepStrictEqual(existingMessage.meta?.[key], value),
-        ) &&
-        (message.meta?.replied !== true ||
-          existingMessage.repliedAtMs !== undefined)
-      );
-    });
-    if (fullyImported) {
-      await writeLegacyImport(deps.executor, {
-        conversationId,
-        fallbackCreatedAtMs,
-        lastActivityAtMs,
-        events: [],
-      });
-      return { imported: false };
-    }
-  }
-
   let child:
     | {
         conversationId: string;
@@ -319,7 +282,6 @@ export async function ensureLegacyConversationImport(args: {
   }
   await importConversationFromLegacy(args.conversationId, {
     executor,
-    messageStore: getConversationMessageStore(),
     sessionLogStore: { read: async () => entries },
     loadVisibleMessages: async () => visible,
     legacyCompactions: snapshot.compactions,
