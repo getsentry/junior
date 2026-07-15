@@ -2,7 +2,6 @@ import type {
   ConversationEvent,
   ConversationEventData,
 } from "@/chat/conversations/history";
-import type { PiMessage } from "@/chat/pi/messages";
 import { redactedPayloadFields } from "./transcript";
 import type {
   ConversationActivityReport,
@@ -17,11 +16,12 @@ interface ActivityPayloadMetadata {
   inputType?: string;
 }
 function toolResultStatuses(
-  messages: PiMessage[],
+  events: ConversationEvent[],
 ): Map<string, ConversationActivityStatus> {
   const statuses = new Map<string, ConversationActivityStatus>();
-  for (const message of messages) {
-    const record = message as unknown as Record<string, unknown>;
+  for (const event of events) {
+    if (event.data.type !== "message") continue;
+    const record = event.data.message as Record<string, unknown>;
     if (record.role !== "toolResult" || typeof record.toolCallId !== "string") {
       continue;
     }
@@ -47,15 +47,14 @@ function activityPayloadFields(
  *
  * Tool executions, subagent starts/ends, and their nesting are derived from the
  * conversation's durable events instead of the legacy Redis session log; tool
- * statuses come from aligned model-message tool results. Redaction
- * stays byte-compatible with the prior session-log path.
+ * statuses come from durable model-message events. Redaction stays
+ * byte-compatible with the prior session-log path.
  */
 export function buildConversationActivityFromEvents(args: {
   canExposePayload: boolean;
   events: ConversationEvent[];
-  messages: PiMessage[];
 }): ConversationActivityReport[] {
-  const toolStatuses = toolResultStatuses(args.messages);
+  const toolStatuses = toolResultStatuses(args.events);
   const subagentEnds = new Map<string, SubagentEndedEvent>();
   const subagentsByToolCallId = new Map<
     string,

@@ -1,6 +1,6 @@
 import { isRecord } from "@/chat/coerce";
+import type { ConversationModelMessage } from "@/chat/conversations/history";
 import { unwrapCurrentInstruction } from "@/chat/current-instruction";
-import type { PiMessage } from "@/chat/pi/messages";
 import { unescapeXml } from "@/chat/xml";
 import type {
   ConversationSubagentActivityReport,
@@ -70,7 +70,7 @@ function isDisplayableTranscriptPart(part: TranscriptPart): boolean {
   return typeof part.output === "string" && part.output.trim().length > 0;
 }
 
-/** Normalize Pi content parts for user-facing transcript output. */
+/** Normalize opaque model content parts for user-facing transcript output. */
 function normalizeTranscriptPart(
   part: unknown,
   options: {
@@ -161,16 +161,16 @@ function normalizeToolResultMessage(
   };
 }
 
-/** Normalize one provider transcript message into the reporting contract. */
+/** Normalize one durable model message into the reporting contract. */
 export function normalizeTranscriptMessage(
-  message: PiMessage,
+  message: ConversationModelMessage,
 ): TranscriptMessage {
   return normalizeMessage(message);
 }
 
 /** Normalize a stored subagent message, including bounded legacy formats. */
 export function normalizeSubagentTranscriptMessage(
-  message: PiMessage,
+  message: ConversationModelMessage,
   subagentKind: string,
 ): TranscriptMessage {
   return normalizeMessage(message, {
@@ -179,7 +179,7 @@ export function normalizeSubagentTranscriptMessage(
 }
 
 function normalizeMessage(
-  message: PiMessage,
+  message: ConversationModelMessage,
   options: { unwrapLegacyAdvisorTask?: boolean } = {},
 ): TranscriptMessage {
   const record = message as unknown as Record<string, unknown>;

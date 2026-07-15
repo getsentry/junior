@@ -4,6 +4,7 @@ import {
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
+import { projectConversationEventHistory } from "@/chat/conversations/event-projection";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 
 function event(seq: number, data: ConversationEventData): ConversationEvent {
@@ -72,7 +73,10 @@ describe("projectConversationEvents", () => {
   ];
 
   it("projects messages, authorization observations, provenance, and model binding", () => {
+    const genericProjection = projectConversationEventHistory(events);
     const projection = projectConversationEvents(events);
+
+    expect(projection).toEqual(genericProjection);
 
     expect(projection).toEqual({
       messages: [

@@ -7,19 +7,17 @@ import type {
 import type {
   ConversationEventStore,
   ConversationEvent,
+  ConversationModelMessage,
 } from "@/chat/conversations/history";
 import type { Conversation } from "@/chat/conversations/store";
-import { loadProjection } from "@/chat/conversations/projection";
-import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import { projectConversationEventHistory } from "@/chat/conversations/event-projection";
+import { loadCurrentConversationEvents } from "@/chat/conversations/history-loader";
+import { stripRuntimeTurnContextMessages } from "@/chat/conversations/model-messages";
 import {
   getConversationEventStore,
   getConversationMessageStore,
 } from "@/chat/db";
-import type { PiMessage } from "@/chat/pi/messages";
-import {
-  isAssistantMessage,
-  stripRuntimeTurnContext,
-} from "@/chat/pi/transcript";
+import { isAssistantMessage } from "@/chat/pi/transcript";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { addAgentTurnUsage, hasAgentTurnUsage } from "@/chat/usage";
 import {
@@ -61,7 +59,7 @@ type EpochStartedEvent = ConversationEvent & {
   data: Extract<ConversationEvent["data"], { type: "context_epoch_started" }>;
 };
 
-function messageText(message: PiMessage): string {
+function messageText(message: ConversationModelMessage): string {
   return normalizeTranscriptMessage(message)
     .parts.filter((part) => part.type === "text")
     .map((part) => part.text ?? "")
@@ -70,7 +68,7 @@ function messageText(message: PiMessage): string {
 }
 
 function summaryAfterPrefix(
-  message: PiMessage,
+  message: ConversationModelMessage,
   prefixes: readonly string[],
 ): string | undefined {
   const text = messageText(message);
@@ -80,7 +78,7 @@ function summaryAfterPrefix(
 }
 
 function summaryIndex(
-  messages: PiMessage[],
+  messages: ConversationModelMessage[],
   provenance: Array<{ authority: "context" | "instruction" }>,
   prefixes: readonly string[],
 ): number {
@@ -95,7 +93,10 @@ function summaryIndex(
   return -1;
 }
 
-function matchingPrefix(left: PiMessage[], right: PiMessage[]): number {
+function matchingPrefix(
+  left: ConversationModelMessage[],
+  right: ConversationModelMessage[],
+): number {
   const limit = Math.min(left.length, right.length);
   for (let index = 0; index < limit; index += 1) {
     if (!isDeepStrictEqual(left[index], right[index])) return index;
@@ -113,10 +114,10 @@ function historyContent(args: {
   events: ConversationEvent[];
 }): {
   contextEvents: ConversationContextEvent[];
-  messages: PiMessage[];
+  messages: ConversationModelMessage[];
 } {
   const contextEvents: ConversationContextEvent[] = [];
-  const messages: PiMessage[] = [];
+  const messages: ConversationModelMessage[] = [];
   const epochs = new Map<number, ConversationEvent[]>();
   for (const event of args.events) {
     const epoch = epochs.get(event.contextEpoch);
@@ -125,17 +126,17 @@ function historyContent(args: {
   }
 
   let previousModelId: string | undefined;
-  let previousProjection: PiMessage[] = [];
+  let previousProjection: ConversationModelMessage[] = [];
   for (const events of epochs.values()) {
     const marker = events.find(
       (event): event is EpochStartedEvent =>
         event.data.type === "context_epoch_started",
     );
-    const projection = projectConversationEvents(events);
-    const projected: PiMessage[] = [];
+    const projection = projectConversationEventHistory(events);
+    const projected: ConversationModelMessage[] = [];
     const projectedProvenance: typeof projection.provenance = [];
     projection.messages.forEach((message, index) => {
-      for (const retained of stripRuntimeTurnContext([message])) {
+      for (const retained of stripRuntimeTurnContextMessages([message])) {
         projected.push(retained);
         projectedProvenance.push(projection.provenance[index]!);
       }
@@ -225,7 +226,7 @@ async function conversationContent(args: {
 }): Promise<{
   activity: ConversationActivityReport[];
   contextEvents: ConversationContextEvent[];
-  messages: PiMessage[];
+  messages: ConversationModelMessage[];
   transcript: TranscriptMessage[];
 }> {
   const events = await args.eventStore.loadHistory(args.conversationId);
@@ -244,7 +245,6 @@ async function conversationContent(args: {
     activity: buildConversationActivityFromEvents({
       canExposePayload: args.canExposePayload,
       events,
-      messages,
     }),
     contextEvents: history.contextEvents,
     messages,
@@ -253,7 +253,7 @@ async function conversationContent(args: {
 }
 
 function modelUsageFromMessages(
-  messages: PiMessage[],
+  messages: ConversationModelMessage[],
 ): ConversationModelUsage[] {
   const byModel = new Map<string, ConversationModelUsage["usage"]>();
   for (const message of messages) {
@@ -437,9 +437,10 @@ export async function buildConversationSubagent(
     });
   }
 
-  const childMessages: PiMessage[] = await loadProjection({
+  const childEvents = await loadCurrentConversationEvents({
     conversationId: childConversationId,
   });
+  const childMessages = projectConversationEventHistory(childEvents).messages;
   if (childMessages.length === 0) {
     return subagentTranscriptReport(activity, {
       ...conversationFields,
