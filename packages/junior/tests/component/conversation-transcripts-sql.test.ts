@@ -108,6 +108,22 @@ it("accepts legacy markers and validates current profile names", () => {
 it("rejects unknown Junior event fields while retaining opaque message fields", () => {
   expect(
     conversationEventDataSchema.safeParse({
+      type: "visible_message_recorded",
+      messageId: "m1",
+      role: "user",
+      text: "hello",
+      unknown: true,
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "visible_message_metadata_updated",
+      messageId: "m1",
+      meta: { imagesHydrated: true },
+    }).success,
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
       type: "mcp_provider_connected",
       provider: "github",
       unknown: true,
@@ -276,7 +292,7 @@ describe("conversation transcript SQL stores", () => {
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
-      expect(applied?.count).toBe(5);
+      expect(applied?.count).toBe(6);
     } finally {
       await fixture.close();
     }
@@ -452,12 +468,12 @@ describe("conversation transcript SQL stores", () => {
       // Force a failure inside the startEpoch transaction after its writes.
       const failing: JuniorSqlDatabase = {
         db: () => fixture.sql.db(),
-        withLock: (name, callback) => fixture.sql.withLock(name, callback),
-        transaction: (callback) =>
-          fixture.sql.transaction(async () => {
+        withLock: (name, callback) =>
+          fixture.sql.withLock(name, async () => {
             await callback();
             throw new Error("epoch write failed");
           }),
+        transaction: (callback) => fixture.sql.transaction(callback),
       };
       const failingStore = createSqlConversationEventStore(failing);
 
@@ -603,6 +619,133 @@ INSERT INTO junior_conversation_events (
           createdAtMs: 2_000,
         },
       ]);
+      const visibleEvents = (
+        await createSqlConversationEventStore(fixture.sql).loadHistory(
+          CONVERSATION_ID,
+        )
+      ).filter((event) => event.data.type.startsWith("visible_message_"));
+      expect(visibleEvents).toEqual([
+        expect.objectContaining({
+          idempotencyKey: "visible-message:m1:recorded",
+          data: expect.objectContaining({
+            type: "visible_message_recorded",
+            messageId: "m1",
+            text: "first",
+          }),
+        }),
+        expect.objectContaining({
+          idempotencyKey: "visible-message:m2:recorded",
+          data: expect.objectContaining({
+            type: "visible_message_recorded",
+            messageId: "m2",
+          }),
+        }),
+        expect.objectContaining({
+          idempotencyKey: "visible-message:m1:replied",
+          data: { type: "visible_message_replied", messageId: "m1" },
+          createdAtMs: 5_000,
+        }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rolls back a recorded event when its message projection fails", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      await fixture.sql.execute(`
+        CREATE FUNCTION fail_visible_message_insert()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 'projection insert failed';
+        END;
+        $$
+      `);
+      await fixture.sql.execute(`
+        CREATE TRIGGER fail_visible_message_insert_trigger
+        BEFORE INSERT ON junior_conversation_messages
+        FOR EACH ROW EXECUTE FUNCTION fail_visible_message_insert()
+      `);
+      const messages = createSqlConversationMessageStore(fixture.sql);
+
+      await expect(
+        messages.record(CONVERSATION_ID, [
+          {
+            messageId: "projection-failure",
+            role: "user",
+            text: "must roll back",
+            createdAtMs: 1_000,
+          },
+        ]),
+      ).rejects.toThrow(
+        'Failed query: insert into "junior_conversation_messages"',
+      );
+
+      expect(await messages.list(CONVERSATION_ID)).toEqual([]);
+      expect(
+        await createSqlConversationEventStore(fixture.sql).loadHistory(
+          CONVERSATION_ID,
+        ),
+      ).toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("rolls back a replied event when its message projection fails", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const messages = createSqlConversationMessageStore(fixture.sql);
+      await messages.record(CONVERSATION_ID, [
+        {
+          messageId: "reply-projection-failure",
+          role: "user",
+          text: "must stay unreplied",
+          createdAtMs: 1_000,
+        },
+      ]);
+      await fixture.sql.execute(`
+        CREATE FUNCTION fail_visible_message_reply_update()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          RAISE EXCEPTION 'projection reply update failed';
+        END;
+        $$
+      `);
+      await fixture.sql.execute(`
+        CREATE TRIGGER fail_visible_message_reply_update_trigger
+        BEFORE UPDATE OF replied_at ON junior_conversation_messages
+        FOR EACH ROW EXECUTE FUNCTION fail_visible_message_reply_update()
+      `);
+
+      await expect(
+        messages.markReplied(
+          CONVERSATION_ID,
+          "reply-projection-failure",
+          2_000,
+        ),
+      ).rejects.toThrow('Failed query: update "junior_conversation_messages"');
+
+      const projected = await messages.list(CONVERSATION_ID);
+      expect(projected).toEqual([
+        expect.objectContaining({ messageId: "reply-projection-failure" }),
+      ]);
+      expect(projected[0]?.repliedAtMs).toBeUndefined();
+      const visibleEvents = (
+        await createSqlConversationEventStore(fixture.sql).loadHistory(
+          CONVERSATION_ID,
+        )
+      ).filter((event) => event.data.type.startsWith("visible_message_"));
+      expect(visibleEvents.map((event) => event.data.type)).toEqual([
+        "visible_message_recorded",
+      ]);
     } finally {
       await fixture.close();
     }
@@ -736,7 +879,7 @@ INSERT INTO junior_conversation_events (
         },
       ]);
 
-      expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(2);
       expect(await messages.list(CONVERSATION_ID)).toHaveLength(1);
       const reopened = await fixture.sql
         .db()

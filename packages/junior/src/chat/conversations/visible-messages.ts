@@ -1,11 +1,10 @@
 /**
  * Visible-transcript sync between the in-memory turn working set and SQL.
  *
- * The durable authority for the visible conversation transcript is the
- * `ConversationMessageStore`; `ThreadConversationState.messages` is only the
- * in-memory working set for the current turn. These helpers hydrate that
- * working set from SQL at load boundaries and write new/updated messages back
- * through the store, so no transcript data is persisted to `thread-state`.
+ * Visible-message events are the durable transcript authority;
+ * `ConversationMessageStore` maintains their SQL hydration/search read model,
+ * and `ThreadConversationState.messages` is only the current-turn working set.
+ * No transcript data is persisted to `thread-state`.
  */
 import type {
   ConversationMessage as StoredConversationMessage,

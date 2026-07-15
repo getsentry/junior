@@ -7,7 +7,9 @@ conversation events, compaction boundaries, search, retention, and legacy import
 
 - Conversation rows identify the source, destination, participants, visibility,
   and lifecycle metadata.
-- Visible messages are the destination-facing user and assistant history.
+- Visible-message events are the destination-facing user and assistant history.
+  `junior_conversation_messages` is their rebuildable hydration and search read
+  model, never a second history authority.
 - Conversation events are the versioned, append-only execution history used to
   restore Pi state. Pi messages and context are projections of this log, not a
   second authority.
@@ -36,6 +38,8 @@ must not become a dashboard or external API payload.
 
 - Persist user input before agent execution.
 - Persist assistant text only after successful destination delivery.
+- Append each visible-message fact and update its SQL read model in one
+  transaction under the conversation event lock.
 - Append conversation events in monotonic sequence order.
 - Restore state from durable events rather than a duplicate transcript cache.
 - Compaction replaces prior model context without rewriting visible history.
@@ -58,9 +62,12 @@ Follow `../../../../../policies/data-redaction.md` and
 - Data rewrites use explicit migrations or resumable import code.
 - Legacy fields remain readable only for the migration window and are removed
   after the new authority is verified.
-- The database-only `junior_agent_steps` compatibility view supports old workers
-  during the 0.103.x rollout and is removed in 0.104.0; it stores no duplicate
-  rows and is never an application read or write path.
+- Drain every 0.103.x worker before applying the visible-message schema cut,
+  which drops the temporary `junior_agent_steps` compatibility view and its
+  functions.
+- Run the final rerunnable visible-message backfill while workers remain
+  stopped. Its fail-closed zero-gap verification is the cutover gate; start new
+  workers only after it passes.
 - Purge and migration jobs operate in bounded batches and are safe to retry.
 
 Representative coverage lives in

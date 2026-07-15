@@ -3,8 +3,8 @@ ALTER TABLE "junior_conversation_events" RENAME CONSTRAINT "junior_agent_steps_c
 ALTER TABLE "junior_conversation_events" RENAME CONSTRAINT "junior_agent_steps_conversation_id_junior_conversations_conversation_id_fk" TO "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk";--> statement-breakpoint
 ALTER INDEX "junior_agent_steps_epoch_idx" RENAME TO "junior_conversation_events_epoch_idx";--> statement-breakpoint
 ALTER TABLE "junior_conversation_events" ADD COLUMN "schema_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
--- TODO(v0.104.0): Remove the junior_agent_steps compatibility view and trigger
--- functions after the 0.103.x rolling-deploy window.
+-- Temporary 0.103.x compatibility; 0005 removes the view and functions after
+-- the required worker drain.
 CREATE VIEW "junior_agent_steps" AS
 SELECT
 	"conversation_id",

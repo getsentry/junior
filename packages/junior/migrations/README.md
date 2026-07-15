@@ -13,8 +13,11 @@ pre-Drizzle Junior migration runner. During upgrade, existing installations
 adopt that baseline once; new installations execute it normally. All later
 migrations are applied by Drizzle in journal order.
 
-`0004_conversation_events.sql` keeps `junior_agent_steps` as an updatable
-compatibility view for the 0.103.x rolling-deploy window. It maps legacy
-`pi_message` reads and writes to canonical `message` events while the CLI
-upgrade backfills existing rows in bounded batches. Remove the view and its
-trigger functions in 0.104.0 after 0.103.x workers are no longer supported.
+`0004_conversation_events.sql` temporarily creates `junior_agent_steps` as an
+updatable 0.103.x compatibility view. It maps legacy `pi_message` reads and
+writes to canonical `message` events while the first event rewrite runs.
+
+`0005_visible_message_events.sql` is the hard cut: drain every 0.103.x worker
+before applying it because it drops the legacy view and its functions. Run the
+final visible-message backfill next and require zero-gap verification before
+starting new workers.

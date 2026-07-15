@@ -56,9 +56,10 @@ child event stream.
 1. Formalize the event contract, isolate Pi projection, rename the physical
    table, persist schema versions, and cut every application reader and writer
    over to canonical Junior events.
-2. Rewrite legacy SQL message rows in bounded batches. A database-only view
-   translates old worker reads and writes during the rolling-deploy window; it
-   stores no duplicate rows and is removed in the next release.
+2. Rewrite legacy model-message rows, drain all 0.103.x workers, then apply the
+   hard schema cut that removes their compatibility view. Backfill
+   visible-message rows while workers remain stopped; start new workers only
+   after fail-closed zero-gap verification passes.
 3. Expose privacy-safe events from the detail API and move timeline shaping to
    the dashboard.
 4. Add child-conversation lineage and context-fork projection.
@@ -75,8 +76,8 @@ child event stream.
 
 ## Compatibility
 
-The in-place table rename preserves sequence identity and payload bytes. Old
-workers remain compatible through the temporary SQL view while the application
-uses only `junior_conversation_events`; the view and triggers are dropped after
-the rolling-deploy window. Internal runtime and dashboard contracts may use
-hard cutovers because their producers and consumers ship together.
+The in-place table rename preserves sequence identity and payload bytes. A
+temporary SQL view supports the first migration phase, but the visible-message
+cutover is intentionally not rolling: 0.103.x workers must be drained before
+the view and its functions are dropped. New workers start only after the final
+backfill verifies zero gaps.

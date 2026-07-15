@@ -33,6 +33,7 @@ import {
   juniorConversationMessages,
   juniorConversations,
 } from "@/db/schema";
+import { withConversationEventLock } from "./event-lock";
 
 const INITIAL_SESSION_ID = "session_0";
 const ADVISOR_TASK_OPEN = "<advisor-task>\n";
@@ -44,6 +45,7 @@ const ADVISOR_CONTEXT_CLOSE = "\n</executor-context>";
 export interface ImportedEvent {
   seq: number;
   contextEpoch: number;
+  idempotencyKey?: string;
   data: ConversationEventData;
   createdAtMs: number;
 }
@@ -321,10 +323,10 @@ export function convertAdvisorMessages(
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 
 function messageRole(entry: ConversationEventData): string | null {
-  if (entry.type !== "message") {
-    return null;
+  if (entry.type === "message") {
+    return entry.message.role;
   }
-  return entry.message.role;
+  return entry.type === "visible_message_recorded" ? entry.role : null;
 }
 
 /** Encode one validated imported event as a physical SQL row. */
@@ -338,6 +340,7 @@ function insertRow(
     seq: event.seq,
     contextEpoch: event.contextEpoch,
     schemaVersion: 1,
+    idempotencyKey: event.idempotencyKey ?? null,
     type,
     role: messageRole(event.data),
     payload: sanitizePostgresJson(payload),
@@ -367,103 +370,138 @@ export async function writeLegacyImport(
   executor: JuniorSqlDatabase,
   args: LegacyImportWrite,
 ): Promise<boolean> {
-  return executor.withLock(
-    `junior_conversation:legacy-import:${args.conversationId}`,
-    () =>
-      executor.transaction(async () => {
-        const db = executor.db();
-        const conversations = await db
-          .select({
-            transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
-          })
-          .from(juniorConversations)
-          .where(eq(juniorConversations.conversationId, args.conversationId))
-          .for("update");
-        if (conversations[0]?.transcriptPurgedAt) {
-          return false;
-        }
-        const existing = await db
-          .select({ seq: juniorConversationEvents.seq })
-          .from(juniorConversationEvents)
-          .where(
-            eq(juniorConversationEvents.conversationId, args.conversationId),
-          )
-          .limit(1);
-        if (existing.length > 0) {
-          return false;
-        }
-        const createdAt = new Date(args.fallbackCreatedAtMs);
-        await ensureConversationRow(
-          executor,
-          args.conversationId,
-          createdAt,
-          new Date(args.lastActivityAtMs),
+  return withConversationEventLock(executor, args.conversationId, async () => {
+    const db = executor.db();
+    const conversations = await db
+      .select({
+        transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+      })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, args.conversationId))
+      .for("update");
+    if (conversations[0]?.transcriptPurgedAt) {
+      return false;
+    }
+    const existing = await db
+      .select({ seq: juniorConversationEvents.seq })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, args.conversationId))
+      .limit(1);
+    if (existing.length > 0) {
+      return false;
+    }
+    const createdAt = new Date(args.fallbackCreatedAtMs);
+    await ensureConversationRow(
+      executor,
+      args.conversationId,
+      createdAt,
+      new Date(args.lastActivityAtMs),
+    );
+    const lastEvent = args.events.at(-1);
+    let nextSeq = (lastEvent?.seq ?? -1) + 1;
+    const contextEpoch = lastEvent?.contextEpoch ?? 0;
+    const visibleEvents: ImportedEvent[] = [];
+    for (const message of args.messages ?? []) {
+      visibleEvents.push({
+        seq: nextSeq++,
+        contextEpoch,
+        idempotencyKey: `visible-message:${message.messageId}:recorded`,
+        data: {
+          type: "visible_message_recorded",
+          messageId: message.messageId,
+          role: message.role,
+          text: message.text,
+          ...(message.authorIdentityId
+            ? { authorIdentityId: message.authorIdentityId }
+            : {}),
+          ...(message.meta ? { meta: message.meta } : {}),
+        },
+        createdAtMs: message.createdAtMs,
+      });
+      if (message.repliedAtMs !== undefined) {
+        visibleEvents.push({
+          seq: nextSeq++,
+          contextEpoch,
+          idempotencyKey: `visible-message:${message.messageId}:replied`,
+          data: {
+            type: "visible_message_replied",
+            messageId: message.messageId,
+          },
+          createdAtMs: message.repliedAtMs,
+        });
+      }
+    }
+    if (visibleEvents.length > 0) {
+      await db
+        .insert(juniorConversationEvents)
+        .values(
+          visibleEvents.map((event) => insertRow(args.conversationId, event)),
         );
-        if (args.messages && args.messages.length > 0) {
-          await db
-            .insert(juniorConversationMessages)
-            .values(
-              args.messages.map((message) => ({
-                conversationId: args.conversationId,
-                messageId: message.messageId,
-                role: message.role,
-                authorIdentityId: message.authorIdentityId ?? null,
-                text: message.text,
-                meta: message.meta ?? null,
-                repliedAt:
-                  message.repliedAtMs === undefined
-                    ? null
-                    : new Date(message.repliedAtMs),
-                createdAt: new Date(message.createdAtMs),
-              })),
-            )
-            .onConflictDoUpdate({
-              target: [
-                juniorConversationMessages.conversationId,
-                juniorConversationMessages.messageId,
-              ],
-              set: {
-                meta: sql`nullif(coalesce(${juniorConversationMessages.meta}, '{}'::jsonb) || coalesce(excluded.meta, '{}'::jsonb), '{}'::jsonb)`,
-                repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, excluded.replied_at)`,
-              },
-            });
-        }
-        if (args.events.length > 0) {
-          await db
-            .insert(juniorConversationEvents)
-            .values(
-              args.events.map((event) => insertRow(args.conversationId, event)),
-            );
-        }
-        if (args.child) {
-          const childCreatedAtMs =
-            args.child.events.length > 0
-              ? Math.min(...args.child.events.map((event) => event.createdAtMs))
-              : args.fallbackCreatedAtMs;
-          const childLastActivityAtMs =
-            args.child.events.length > 0
-              ? Math.max(...args.child.events.map((event) => event.createdAtMs))
-              : childCreatedAtMs;
-          await ensureChildConversationRow(
-            executor,
-            args.child.conversationId,
-            args.conversationId,
-            new Date(childCreatedAtMs),
-            new Date(childLastActivityAtMs),
+    }
+    if (args.messages && args.messages.length > 0) {
+      await db
+        .insert(juniorConversationMessages)
+        .values(
+          args.messages.map((message) => ({
+            conversationId: args.conversationId,
+            messageId: message.messageId,
+            role: message.role,
+            authorIdentityId: message.authorIdentityId ?? null,
+            text: message.text,
+            meta: message.meta ?? null,
+            repliedAt:
+              message.repliedAtMs === undefined
+                ? null
+                : new Date(message.repliedAtMs),
+            createdAt: new Date(message.createdAtMs),
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            juniorConversationMessages.conversationId,
+            juniorConversationMessages.messageId,
+          ],
+          set: {
+            meta: sql`nullif(coalesce(${juniorConversationMessages.meta}, '{}'::jsonb) || coalesce(excluded.meta, '{}'::jsonb), '{}'::jsonb)`,
+            repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, excluded.replied_at)`,
+          },
+        });
+    }
+    if (args.events.length > 0) {
+      await db
+        .insert(juniorConversationEvents)
+        .values(
+          args.events.map((event) => insertRow(args.conversationId, event)),
+        );
+    }
+    if (args.child) {
+      const childCreatedAtMs =
+        args.child.events.length > 0
+          ? Math.min(...args.child.events.map((event) => event.createdAtMs))
+          : args.fallbackCreatedAtMs;
+      const childLastActivityAtMs =
+        args.child.events.length > 0
+          ? Math.max(...args.child.events.map((event) => event.createdAtMs))
+          : childCreatedAtMs;
+      await ensureChildConversationRow(
+        executor,
+        args.child.conversationId,
+        args.conversationId,
+        new Date(childCreatedAtMs),
+        new Date(childLastActivityAtMs),
+      );
+      if (args.child.events.length > 0) {
+        await db
+          .insert(juniorConversationEvents)
+          .values(
+            args.child.events.map((event) =>
+              insertRow(args.child!.conversationId, event),
+            ),
           );
-          if (args.child.events.length > 0) {
-            await db
-              .insert(juniorConversationEvents)
-              .values(
-                args.child.events.map((event) =>
-                  insertRow(args.child!.conversationId, event),
-                ),
-              );
-          }
-        }
-        return true;
-      }),
-  );
+      }
+    }
+    return true;
+  });
 }
 
 async function ensureConversationRow(

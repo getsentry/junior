@@ -1,4 +1,5 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { isDeepStrictEqual } from "node:util";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type {
   ConversationMessage,
@@ -6,7 +7,10 @@ import type {
   NewConversationMessage,
 } from "../messages";
 import { ensureConversationRow } from "./conversation-row";
+import { withConversationEventLock } from "./event-lock";
+import { createSqlConversationEventStore } from "./history";
 import { juniorConversationMessages, juniorConversations } from "@/db/schema";
+import type { NewConversationEvent } from "../history";
 
 type ConversationMessageRow = typeof juniorConversationMessages.$inferSelect;
 
@@ -39,11 +43,67 @@ class SqlConversationMessageStore implements ConversationMessageStore {
     const newestCreatedAtMs = Math.max(
       ...messages.map((message) => message.createdAtMs),
     );
-    await this.executor.transaction(async () => {
+    await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(
         this.executor,
         conversationId,
         newestCreatedAtMs,
+      );
+      const messageIds = messages.map((message) => message.messageId);
+      const existing = new Map(
+        (
+          await this.executor
+            .db()
+            .select()
+            .from(juniorConversationMessages)
+            .where(
+              and(
+                eq(juniorConversationMessages.conversationId, conversationId),
+                inArray(juniorConversationMessages.messageId, messageIds),
+              ),
+            )
+        ).map((row) => [row.messageId, row]),
+      );
+      const events: NewConversationEvent[] = [];
+      for (const message of messages) {
+        const current = existing.get(message.messageId);
+        const recorded = current
+          ? messageFromRow(current)
+          : { conversationId, ...message };
+        events.push({
+          idempotencyKey: `visible-message:${message.messageId}:recorded`,
+          data: {
+            type: "visible_message_recorded",
+            messageId: recorded.messageId,
+            role: recorded.role,
+            text: recorded.text,
+            ...(recorded.authorIdentityId
+              ? { authorIdentityId: recorded.authorIdentityId }
+              : {}),
+            ...(recorded.meta ? { meta: recorded.meta } : {}),
+          },
+          createdAtMs: recorded.createdAtMs,
+        });
+        if (current && message.meta) {
+          const mergedMeta = {
+            ...(current.meta ?? {}),
+            ...message.meta,
+          };
+          if (!isDeepStrictEqual(current.meta ?? {}, mergedMeta)) {
+            events.push({
+              data: {
+                type: "visible_message_metadata_updated",
+                messageId: message.messageId,
+                meta: mergedMeta,
+              },
+              createdAtMs: Date.now(),
+            });
+          }
+        }
+      }
+      await createSqlConversationEventStore(this.executor).append(
+        conversationId,
+        events,
       );
       await this.executor
         .db()
@@ -94,19 +154,60 @@ class SqlConversationMessageStore implements ConversationMessageStore {
     messageId: string,
     repliedAtMs: number,
   ): Promise<void> {
-    await this.executor
-      .db()
-      .update(juniorConversationMessages)
-      .set({
-        repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, ${new Date(repliedAtMs)})`,
-      })
-      .where(
-        and(
-          eq(juniorConversationMessages.conversationId, conversationId),
-          eq(juniorConversationMessages.messageId, messageId),
-          isNull(juniorConversationMessages.repliedAt),
-        ),
+    await withConversationEventLock(this.executor, conversationId, async () => {
+      const rows = await this.executor
+        .db()
+        .select()
+        .from(juniorConversationMessages)
+        .where(
+          and(
+            eq(juniorConversationMessages.conversationId, conversationId),
+            eq(juniorConversationMessages.messageId, messageId),
+          ),
+        )
+        .limit(1);
+      if (!rows[0] || rows[0].repliedAt) {
+        return;
+      }
+      const recorded = messageFromRow(rows[0]);
+      await createSqlConversationEventStore(this.executor).append(
+        conversationId,
+        [
+          {
+            idempotencyKey: `visible-message:${messageId}:recorded`,
+            data: {
+              type: "visible_message_recorded",
+              messageId: recorded.messageId,
+              role: recorded.role,
+              text: recorded.text,
+              ...(recorded.authorIdentityId
+                ? { authorIdentityId: recorded.authorIdentityId }
+                : {}),
+              ...(recorded.meta ? { meta: recorded.meta } : {}),
+            },
+            createdAtMs: recorded.createdAtMs,
+          },
+          {
+            idempotencyKey: `visible-message:${messageId}:replied`,
+            data: { type: "visible_message_replied", messageId },
+            createdAtMs: repliedAtMs,
+          },
+        ],
       );
+      await this.executor
+        .db()
+        .update(juniorConversationMessages)
+        .set({
+          repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, ${new Date(repliedAtMs)})`,
+        })
+        .where(
+          and(
+            eq(juniorConversationMessages.conversationId, conversationId),
+            eq(juniorConversationMessages.messageId, messageId),
+            isNull(juniorConversationMessages.repliedAt),
+          ),
+        );
+    });
   }
 
   async list(
