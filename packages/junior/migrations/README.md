@@ -11,7 +11,16 @@ Drizzle ORM's migrator before any data backfills run.
 The `0000_initial.sql` baseline represents the schema already deployed by the
 pre-Drizzle Junior migration runner. During upgrade, existing installations
 adopt that baseline once; new installations execute it normally. All later
-migrations are applied by Drizzle in journal order.
+migrations are applied by Drizzle in journal order. Baseline adoption requires
+the legacy `junior_agent_steps` base table and no
+`junior_conversation_events` table. A post-cutover schema without its Drizzle
+journal fails closed for operator repair instead of inferring completed
+migrations from mutable table shape. Every expected legacy migration record
+must retain its exact historical checksum; an ID alone cannot prove which SQL
+ran. Legacy metrics adoption likewise requires either none or all four metric
+columns, with the legacy metrics record agreeing with that physical state. The
+later search index and `metric_run_id` column must also be absent because only
+the Drizzle journal may prove those immutable migrations ran.
 
 `0004_conversation_events.sql` temporarily creates `junior_agent_steps` as an
 updatable 0.103.x compatibility view. It maps legacy `pi_message` reads and
