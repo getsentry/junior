@@ -10,33 +10,6 @@ const archiveBodySchema = z
   .object({ archived: z.boolean(), lastSeenAt: z.string().datetime() })
   .strict();
 
-/** Set or clear the dashboard archive marker for one conversation. */
-export async function setConversationArchived(args: {
-  archived: boolean;
-  conversationId: string;
-  nowMs?: number;
-}): Promise<boolean> {
-  const rows = await getDb()
-    .update(juniorConversations)
-    .set({
-      archivedAt: args.archived ? new Date(args.nowMs ?? Date.now()) : null,
-    })
-    .where(
-      and(
-        eq(juniorConversations.conversationId, args.conversationId),
-        args.archived ? undefined : isNotNull(juniorConversations.archivedAt),
-      ),
-    )
-    .returning({ conversationId: juniorConversations.conversationId });
-  if (rows.length > 0) return true;
-  const [existing] = await getDb()
-    .select({ conversationId: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, args.conversationId))
-    .limit(1);
-  return Boolean(existing);
-}
-
 async function archiveIfUnchanged(args: {
   archived: boolean;
   conversationId: string;
