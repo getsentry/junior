@@ -276,6 +276,7 @@ const subagentStartedEventDataSchema = z
     parentToolCallId: z.string().min(1).optional(),
     reasoningLevel: z.string().min(1).optional(),
     childConversationId: z.string().min(1),
+    parentTurnId: z.string().min(1).optional(),
     historyMode: z.union([z.literal("isolated"), z.literal("shared")]),
   })
   .strict();
@@ -284,6 +285,7 @@ const subagentEndedEventDataSchema = z
   .object({
     type: z.literal("subagent_ended"),
     subagentInvocationId: z.string().min(1),
+    parentTurnId: z.string().min(1).optional(),
     outcome: z.union([
       z.literal("success"),
       z.literal("error"),

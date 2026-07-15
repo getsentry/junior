@@ -1,0 +1,13 @@
+ALTER TABLE "junior_conversations" ADD COLUMN "root_conversation_id" text;--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD COLUMN "parent_turn_id" text;--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD COLUMN "parent_event_seq" integer;--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD COLUMN "context_fork_seq" integer;--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_root_conversation_id_junior_conversations_conversation_id_fk" FOREIGN KEY ("root_conversation_id") REFERENCES "public"."junior_conversations"("conversation_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "junior_conversations_root_idx" ON "junior_conversations" USING btree ("root_conversation_id");--> statement-breakpoint
+CREATE INDEX "junior_conversations_parent_event_idx" ON "junior_conversations" USING btree ("parent_conversation_id","parent_event_seq");--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_not_own_parent_check" CHECK ("junior_conversations"."parent_conversation_id" is null or "junior_conversations"."parent_conversation_id" <> "junior_conversations"."conversation_id");--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_not_own_root_check" CHECK ("junior_conversations"."root_conversation_id" is null or "junior_conversations"."root_conversation_id" <> "junior_conversations"."conversation_id");--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_context_fork_check" CHECK ("junior_conversations"."context_fork_seq" is null or ("junior_conversations"."parent_event_seq" is not null and "junior_conversations"."context_fork_seq" <= "junior_conversations"."parent_event_seq"));--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_top_level_lineage_check" CHECK ("junior_conversations"."parent_conversation_id" is not null or ("junior_conversations"."root_conversation_id" is null and "junior_conversations"."parent_turn_id" is null and "junior_conversations"."parent_event_seq" is null and "junior_conversations"."context_fork_seq" is null));--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_parent_correlation_check" CHECK (("junior_conversations"."parent_turn_id" is null) = ("junior_conversations"."parent_event_seq" is null));--> statement-breakpoint
+ALTER TABLE "junior_conversations" ADD CONSTRAINT "junior_conversations_correlated_root_check" CHECK ("junior_conversations"."parent_turn_id" is null or "junior_conversations"."root_conversation_id" is not null);

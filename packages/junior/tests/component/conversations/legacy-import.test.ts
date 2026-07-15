@@ -135,6 +135,29 @@ describe("legacy conversation import", () => {
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
     const childId = `advisor:${CONVERSATION_ID}`;
+    const rootId = "legacy-root";
+    const at = new Date(0);
+    await fixture.sql
+      .db()
+      .insert(juniorConversations)
+      .values([
+        {
+          conversationId: rootId,
+          createdAt: at,
+          lastActivityAt: at,
+          updatedAt: at,
+          executionStatus: "idle",
+        },
+        {
+          conversationId: CONVERSATION_ID,
+          parentConversationId: rootId,
+          rootConversationId: rootId,
+          createdAt: at,
+          lastActivityAt: at,
+          updatedAt: at,
+          executionStatus: "idle",
+        },
+      ]);
 
     const entries: SessionLogEntry[] = [
       {
@@ -237,8 +260,13 @@ describe("legacy conversation import", () => {
         .db()
         .select({
           conversationId: juniorConversations.conversationId,
+          contextForkSeq: juniorConversations.contextForkSeq,
           createdAt: juniorConversations.createdAt,
           lastActivityAt: juniorConversations.lastActivityAt,
+          parentConversationId: juniorConversations.parentConversationId,
+          parentEventSeq: juniorConversations.parentEventSeq,
+          parentTurnId: juniorConversations.parentTurnId,
+          rootConversationId: juniorConversations.rootConversationId,
           updatedAt: juniorConversations.updatedAt,
         })
         .from(juniorConversations)
@@ -257,8 +285,13 @@ describe("legacy conversation import", () => {
           }),
           expect.objectContaining({
             conversationId: childId,
+            contextForkSeq: null,
             createdAt: new Date(960),
             lastActivityAt: new Date(961),
+            parentConversationId: CONVERSATION_ID,
+            parentEventSeq: null,
+            parentTurnId: null,
+            rootConversationId: rootId,
             updatedAt: new Date(961),
           }),
         ]),

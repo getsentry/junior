@@ -3,6 +3,7 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationSubagent as readConversationSubagentTranscriptReport } from "@/api/conversations/subagent";
 import { buildTurnFailureResponse } from "@/chat/logging";
+import { SubagentLineageService } from "@/chat/services/subagent-lineage";
 
 vi.mock("@/chat/prompt", () => ({
   buildSystemPrompt: vi.fn(() => "[system prompt]"),
@@ -557,18 +558,38 @@ describe("dashboard reporting", () => {
   });
 
   it("loads subagent transcript history from the child conversation", async () => {
-    const { getConversationEventStore, getConversationStore } =
+    const { getConversationEventStore, getSqlExecutor } =
       await import("@/chat/db");
 
     const conversationId = "slack:C1:subagent-slices";
     await confirmPublicSlackConversation(conversationId);
     const childConversationId = `task:${conversationId}`;
-    const conversationStore = getConversationStore();
     const eventStore = getConversationEventStore();
+    const lineage = new SubagentLineageService(getSqlExecutor());
 
-    await conversationStore.ensureChildConversation({
-      conversationId: childConversationId,
+    await eventStore.append(conversationId, [
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-subagent-slices",
+          inputMessageIds: ["subagent-slices-input"],
+          surface: "slack",
+        },
+        createdAtMs: 1,
+      },
+    ]);
+
+    await lineage.start({
+      childConversationId,
+      historyMode: "shared",
+      modelId: "openai/gpt-5.6-sol",
       parentConversationId: conversationId,
+      parentToolCallId: "task-plan",
+      parentTurnId: "turn-subagent-slices",
+      reasoningLevel: "high",
+      subagentInvocationId: "task-plan",
+      subagentKind: "task",
+      nowMs: 3,
     });
     await eventStore.append(childConversationId, [
       {
@@ -641,34 +662,37 @@ describe("dashboard reporting", () => {
       },
     ]);
 
-    // Repeated subagent calls share one child conversation, so both
-    // parent subagent markers name the same child history.
-    for (const subagentId of ["task-plan", "task-review"]) {
-      await eventStore.append(conversationId, [
-        {
-          data: {
-            type: "subagent_started",
-            subagentInvocationId: subagentId,
-            subagentKind: "task",
-            parentToolCallId: subagentId,
-            childConversationId,
-            historyMode: "shared",
-            modelId: "openai/gpt-5.6-sol",
-            reasoningLevel: "high",
-          },
-          createdAtMs: subagentId === "task-plan" ? 3 : 31,
-        },
-        {
-          data: {
-            type: "subagent_ended",
-            subagentInvocationId: subagentId,
-            outcome: "success",
-          },
-          createdAtMs: subagentId === "task-plan" ? 25 : 45,
-        },
-      ]);
-    }
+    await lineage.finish({
+      parentConversationId: conversationId,
+      parentTurnId: "turn-subagent-slices",
+      subagentInvocationId: "task-plan",
+      outcome: "success",
+      nowMs: 25,
+    });
+    // Preserve coverage for historical references that predate immutable
+    // per-invocation lineage and reused one advisor child transcript.
     await eventStore.append(conversationId, [
+      {
+        data: {
+          type: "subagent_started",
+          subagentInvocationId: "task-review",
+          subagentKind: "task",
+          parentToolCallId: "task-review",
+          childConversationId,
+          historyMode: "shared",
+          modelId: "openai/gpt-5.6-sol",
+          reasoningLevel: "high",
+        },
+        createdAtMs: 31,
+      },
+      {
+        data: {
+          type: "subagent_ended",
+          subagentInvocationId: "task-review",
+          outcome: "success",
+        },
+        createdAtMs: 45,
+      },
       {
         data: {
           type: "subagent_started",
@@ -732,19 +756,36 @@ describe("dashboard reporting", () => {
   });
 
   it("redacts advisor subagent transcript history for private conversations", async () => {
-    const { getConversationEventStore, getConversationStore } =
+    const { getConversationEventStore, getSqlExecutor } =
       await import("@/chat/db");
 
     const conversationId = "slack:D1:advisor-private";
     const toolCallId = "advisor-private";
     const privateAdvisorText = "private advisor question";
     const childConversationId = `advisor:${conversationId}`;
-    const conversationStore = getConversationStore();
     const eventStore = getConversationEventStore();
 
-    await conversationStore.ensureChildConversation({
-      conversationId: childConversationId,
+    await eventStore.append(conversationId, [
+      {
+        data: {
+          type: "turn_started",
+          turnId: "turn-advisor-private",
+          inputMessageIds: ["advisor-private-input"],
+          surface: "slack",
+        },
+        createdAtMs: 1,
+      },
+    ]);
+
+    await new SubagentLineageService(getSqlExecutor()).start({
+      childConversationId,
+      historyMode: "shared",
       parentConversationId: conversationId,
+      parentToolCallId: toolCallId,
+      parentTurnId: "turn-advisor-private",
+      subagentInvocationId: toolCallId,
+      subagentKind: "advisor",
+      nowMs: 3,
     });
     await eventStore.append(childConversationId, [
       {
@@ -759,27 +800,13 @@ describe("dashboard reporting", () => {
         createdAtMs: 10,
       },
     ]);
-    await eventStore.append(conversationId, [
-      {
-        data: {
-          type: "subagent_started",
-          subagentInvocationId: toolCallId,
-          subagentKind: "advisor",
-          parentToolCallId: toolCallId,
-          childConversationId,
-          historyMode: "shared",
-        },
-        createdAtMs: 3,
-      },
-      {
-        data: {
-          type: "subagent_ended",
-          subagentInvocationId: toolCallId,
-          outcome: "success",
-        },
-        createdAtMs: 10,
-      },
-    ]);
+    await new SubagentLineageService(getSqlExecutor()).finish({
+      parentConversationId: conversationId,
+      parentTurnId: "turn-advisor-private",
+      subagentInvocationId: toolCallId,
+      outcome: "success",
+      nowMs: 10,
+    });
 
     const transcript = await readConversationSubagentTranscriptReport(
       conversationId,

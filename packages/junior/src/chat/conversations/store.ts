@@ -27,6 +27,15 @@ export interface ConversationExecution {
   updatedAtMs?: number;
 }
 
+/** Immutable parent correlation for a child conversation. */
+export interface ConversationLineage {
+  contextForkSeq?: number;
+  parentConversationId: string;
+  parentEventSeq?: number;
+  parentTurnId?: string;
+  rootConversationId?: string;
+}
+
 export interface Conversation {
   archivedAtMs?: number;
   channelName?: string;
@@ -35,6 +44,7 @@ export interface Conversation {
   destination?: Destination;
   execution: ConversationExecution;
   lastActivityAtMs: number;
+  lineage?: ConversationLineage;
   actor?: StoredSlackActor;
   schemaVersion: 1;
   source?: ConversationSource;
@@ -70,19 +80,6 @@ export interface ConversationStore {
     title?: string;
     /** Source-confirmed visibility from the current event's signal only. */
     visibility?: ConversationPrivacy;
-  }): Promise<void>;
-  /**
-   * Establish a subagent child conversation row linked to its parent.
-   *
-   * Subagent histories live under their own child `conversation_id` with
-   * `parent_conversation_id` set; the child carries no destination and is
-   * excluded from top-level listings. Idempotent: it links a bare row a step
-   * append may have created first without clobbering it.
-   */
-  ensureChildConversation(args: {
-    conversationId: string;
-    parentConversationId: string;
-    nowMs?: number;
   }): Promise<void>;
   /** Store task-execution metadata for long-term conversation history. */
   recordExecution(args: {
