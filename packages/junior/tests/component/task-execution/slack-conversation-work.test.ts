@@ -1674,7 +1674,11 @@ describe("Slack conversation work execution", () => {
       state,
     });
     expect(work?.needsRun).toBe(true);
-    expect(work?.messages).toEqual([]);
+    // The executor keeps the original inbox record as its recovery trigger;
+    // Pi's input-commit callback no longer acknowledges queue ownership.
+    expect(work?.messages.map((entry) => entry.inboundMessageId)).toEqual([
+      "slack:T123:slack:C123:1712345.0001:1712345.0001",
+    ]);
     const persistedState = await getPersistedThreadState(CONVERSATION_ID);
     const conversation = coerceThreadConversationState(persistedState);
     expect(conversation.processing.activeTurnId).toBe(yieldedSessionId);

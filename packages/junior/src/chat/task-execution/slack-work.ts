@@ -467,6 +467,9 @@ export function createSlackConversationWorker(
           threadJson: latestMetadata.thread,
         });
         const skipped = messages.slice(0, -1);
+        const initialInboundMessageIds = new Set(
+          records.map((record) => record.inboundMessageId),
+        );
         const messageContext: MessageContext = {
           skipped,
           totalSinceLastHandler: messages.length,
@@ -485,6 +488,25 @@ export function createSlackConversationWorker(
             );
           }
         };
+        const ackMessageIds = async (
+          slackMessageIds: readonly string[],
+        ): Promise<void> => {
+          const ids = new Set(slackMessageIds);
+          try {
+            await context.attempt.drain(async (pendingRecords) =>
+              pendingRecords.flatMap((record) => {
+                const metadata = record.input.metadata;
+                return isSlackMetadata(metadata) && ids.has(metadata.message.id)
+                  ? [record.inboundMessageId]
+                  : [];
+              }),
+            );
+          } catch {
+            throw new TurnInputCommitLostError(
+              `Conversation work lease lost before partial Slack inbox ack for ${context.conversationId}`,
+            );
+          }
+        };
         // Restore stored mailbox entries as Slack steering candidates; the
         // runtime returns only the inbound ids it handled durably.
         const drainSteeringMessages = async (
@@ -493,7 +515,18 @@ export function createSlackConversationWorker(
           ) => Promise<readonly string[] | void>,
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
-            const messages = pendingRecords.map((record) => {
+            // The initial attempt remains intentionally unacked until delivery
+            // terminalization. It is already represented by `messageContext`
+            // and must never be redrained as mid-run steering or accidentally
+            // consumed by an undefined (ack-all) drain result.
+            const steeringRecords = pendingRecords.filter(
+              (record) =>
+                !initialInboundMessageIds.has(record.inboundMessageId),
+            );
+            if (steeringRecords.length === 0) {
+              return [];
+            }
+            const messages = steeringRecords.map((record) => {
               const metadata = record.input.metadata;
               if (!isSlackMetadata(metadata)) {
                 throw new Error(
@@ -509,7 +542,7 @@ export function createSlackConversationWorker(
                 message,
               };
             });
-            return await accept(messages);
+            return (await accept(messages)) ?? [];
           });
         };
 
@@ -520,6 +553,7 @@ export function createSlackConversationWorker(
               messageContext,
               drainSteeringMessages,
               ack,
+              ackMessageIds,
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
             });
@@ -531,12 +565,19 @@ export function createSlackConversationWorker(
             messageContext,
             drainSteeringMessages,
             ack,
+            ackMessageIds,
             isFinalAttempt: context.attempt.isFinalAttempt,
             shouldYield: context.shouldYield,
           });
         } catch (error) {
           if (isTurnInputDeferredError(error)) {
-            return { status: "deferred" } satisfies ConversationWorkerResult;
+            return {
+              status: "deferred",
+              ...(error.retryAfterMs !== undefined
+                ? { delayMs: error.retryAfterMs }
+                : {}),
+              ...(error.immediate ? { immediate: true } : {}),
+            } satisfies ConversationWorkerResult;
           }
           if (isCooperativeTurnYieldError(error)) {
             return { status: "yielded" } satisfies ConversationWorkerResult;

@@ -214,29 +214,38 @@ describe("Slack contract: recoverable outbound delivery", () => {
     ).toBe("page-2");
   });
 
-  it.each(["rate limit", "missing scope"])(
-    "fails closed when reconciliation hits a %s",
-    async (failure) => {
-      if (failure === "rate limit") {
-        queueSlackRateLimit("conversations.replies");
-      } else {
-        queueSlackApiError("conversations.replies", {
-          error: "missing_scope",
-          needed: "channels:history",
-        });
-      }
+  it("carries Retry-After when reconciliation is rate limited", async () => {
+    const before = Date.now();
+    queueSlackRateLimit("conversations.replies");
 
-      await expect(
-        reconcileRecoverableSlackMessage({
-          channelId: "C123",
-          threadTs: THREAD_TS,
-          oldestTs: OLDEST_TS,
-          metadata: deliveryMetadata(),
-        }),
-      ).resolves.toEqual({ outcome: "unresolved" });
-      expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
-    },
-  );
+    const result = await reconcileRecoverableSlackMessage({
+      channelId: "C123",
+      threadTs: THREAD_TS,
+      oldestTs: OLDEST_TS,
+      metadata: deliveryMetadata(),
+    });
+
+    expect(result).toMatchObject({ outcome: "retryable" });
+    expect(
+      result.outcome === "retryable" ? result.retryAtMs : undefined,
+    ).toBeGreaterThanOrEqual(before);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("fails closed when reconciliation is missing scope", async () => {
+    queueSlackApiError("conversations.replies", {
+      error: "missing_scope",
+      needed: "channels:history",
+    });
+    await expect(
+      reconcileRecoverableSlackMessage({
+        channelId: "C123",
+        threadTs: THREAD_TS,
+        oldestTs: OLDEST_TS,
+        metadata: deliveryMetadata(),
+      }),
+    ).resolves.toEqual({ outcome: "unresolved" });
+  });
 
   it("confirms absence only after a successful final page with no match", async () => {
     queueSlackApiResponse("conversations.replies", {

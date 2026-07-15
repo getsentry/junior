@@ -32,10 +32,18 @@ this directory owns product orchestration around it.
   idempotency key, so the first committed outcome wins.
 - Intentional silence is a `turn_completed` `no_reply` outcome and does not
   create a synthetic visible assistant message.
-- Stable lifecycle keys make explicit retries idempotent; they do not cover
-  process death between external delivery and persistence. Slack needs a
-  durable delivery outbox/receipt reconciler before terminal events are
-  crash-safe across that boundary.
+- Ordinary finalized Slack thread replies use a durable intent before the
+  first post, opaque per-part metadata, one-attempt writes, and receipt
+  reconciliation. A redelivered inbox record advances that outbox without
+  rerunning Pi; accepted delivery, final Pi/visible facts, and the turn
+  terminal commit atomically before the inbox is acknowledged.
+- Authorization/private notices, resumed continuation delivery, canvas
+  recovery, and generic Chat SDK fallback notices remain outside the ordinary
+  finalized-reply outbox and retain their owning delivery semantics.
+- Recovery repairs canonical conversation state and terminal session metadata;
+  exact reconstruction of artifact-only Redis scratch after process loss
+  remains a separate bounded follow-up rather than widening the durable reply
+  command with arbitrary artifact payloads.
 
 ## Prompt Ownership
 

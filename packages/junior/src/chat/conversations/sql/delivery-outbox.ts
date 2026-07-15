@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorPendingDeliveries } from "@/db/schema";
@@ -168,6 +168,9 @@ export async function createPendingConversationDelivery(
   if (!args.conversationId || !args.turnId) {
     throw new Error("Pending delivery requires conversation and turn ids");
   }
+  if (command.completion.turnId !== args.turnId) {
+    throw new Error("Pending delivery command turn does not match its row");
+  }
   return withConversationEventLock(executor, args.conversationId, async () =>
     executor.transaction(async () => {
       const eventStore = createSqlConversationEventStore(executor);
@@ -254,6 +257,24 @@ export async function loadPendingDeliveryByTurn(
         eq(juniorPendingDeliveries.turnId, args.turnId),
       ),
     );
+  return rows[0] ? parseRow(rows[0]) : undefined;
+}
+
+/** Load the oldest unresolved delivery so newer input cannot bypass it. */
+export async function loadOldestPendingDeliveryByConversation(
+  executor: JuniorSqlDatabase,
+  args: { conversationId: string },
+): Promise<PendingConversationDelivery | undefined> {
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorPendingDeliveries)
+    .where(eq(juniorPendingDeliveries.conversationId, args.conversationId))
+    .orderBy(
+      asc(juniorPendingDeliveries.createdAt),
+      asc(juniorPendingDeliveries.deliveryId),
+    )
+    .limit(1);
   return rows[0] ? parseRow(rows[0]) : undefined;
 }
 
@@ -533,6 +554,7 @@ export async function recordPendingDeliveryPartUncertain(
     retryAtMs: number;
     reconciliationAttempt: number;
     reconciliationCursor?: string;
+    confirmedAbsentAtMs?: number;
   },
 ): Promise<PendingConversationDelivery> {
   return mutateClaimedPart(executor, {
@@ -556,8 +578,37 @@ export async function recordPendingDeliveryPartUncertain(
           ...(args.reconciliationCursor
             ? { reconciliationCursor: args.reconciliationCursor }
             : {}),
+          ...(args.confirmedAbsentAtMs !== undefined
+            ? { confirmedAbsentAtMs: args.confirmedAbsentAtMs }
+            : state.status === "uncertain" &&
+                state.confirmedAbsentAtMs !== undefined
+              ? { confirmedAbsentAtMs: state.confirmedAbsentAtMs }
+              : {}),
         },
       })[args.partId]!;
+    },
+  });
+}
+
+/** Return a definitely absent transient provider rejection to pending. */
+export async function recordPendingDeliveryPartRetryable(
+  executor: JuniorSqlDatabase,
+  args: {
+    deliveryId: string;
+    partId: string;
+    lease: PendingDeliveryLease;
+    nowMs: number;
+    retryAtMs: number;
+  },
+): Promise<PendingConversationDelivery> {
+  return mutateClaimedPart(executor, {
+    ...args,
+    nextAttemptAtMs: args.retryAtMs,
+    mutate: (state) => {
+      if (state.status !== "posting") {
+        throw new Error(`Cannot retry delivery part in ${state.status} state`);
+      }
+      return { status: "pending" };
     },
   });
 }
@@ -640,6 +691,14 @@ async function terminalFact(
       : undefined;
 }
 
+/** Read the authoritative terminal fact after a possibly ambiguous SQL commit. */
+export async function loadDeliveryTerminalOutcome(
+  executor: JuniorSqlDatabase,
+  args: { conversationId: string; deliveryId: string },
+): Promise<"accepted" | "failed" | undefined> {
+  return terminalFact(executor, args.conversationId, args.deliveryId);
+}
+
 /**
  * Run final SQL persistence, append the accepted fact, and delete control state
  * in one transaction. A retry after commit never invokes the finalizer again.
@@ -685,7 +744,6 @@ export async function terminalizeAcceptedPendingDelivery(
           "Pending delivery conflicts with an existing terminal fact",
         );
       }
-      await args.finalizer({ command: current.command, providerMessageIds });
       await createSqlConversationEventStore(executor).append(
         args.conversationId,
         [
@@ -700,6 +758,7 @@ export async function terminalizeAcceptedPendingDelivery(
           },
         ],
       );
+      await args.finalizer({ command: current.command, providerMessageIds });
       const deleted = await executor
         .db()
         .delete(juniorPendingDeliveries)
@@ -774,7 +833,6 @@ export async function terminalizeFailedPendingDelivery(
           "Pending delivery conflicts with an existing terminal fact",
         );
       }
-      await args.finalizer({ command: current.command, failureCode });
       await createSqlConversationEventStore(executor).append(
         args.conversationId,
         [
@@ -789,6 +847,7 @@ export async function terminalizeFailedPendingDelivery(
           },
         ],
       );
+      await args.finalizer({ command: current.command, failureCode });
       const deleted = await executor
         .db()
         .delete(juniorPendingDeliveries)

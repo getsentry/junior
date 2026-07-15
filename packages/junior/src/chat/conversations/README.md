@@ -116,19 +116,18 @@ conversation storage component tests.
 
 Local, ordinary and resumed Slack, and dispatch runtimes write lifecycle
 events, and detail reporting reduces `turn_failed` to one privacy-safe error
-marker. Crash-safe Slack delivery and continuation recovery remain follow-up
-work.
+marker. Ordinary Slack replies now use the durable delivery boundary; resumed
+and dispatched recovery are separate runtime integrations.
 
 The structural failure marker never exposes failure code or event ID. An
 independently delivered fallback remains ordinary visible content, so a public
 conversation preserves its approved `event_id` reference while private detail
 redaction removes the fallback text and retains only structural metadata.
 
-Lifecycle appends have stable idempotency keys so explicitly retried calls are
-safe, but they are not an outbox transaction with an external destination. A
-process death after destination acceptance and before the
-visible/session/terminal writes can still leave a started turn without a
-terminal event.
+Lifecycle appends have stable idempotency keys. Ordinary concrete Slack final
+replies additionally close the external-acceptance gap through the pending
+delivery outbox; private authorization, continuation, and nonstandard notice
+paths are not yet covered by that outbox.
 
 `junior_pending_deliveries` is deletable control state for closing that gap; it
 is not a second history API. Each row retains one strict finalized Slack reply
@@ -139,7 +138,9 @@ becomes `uncertain` and cannot be posted again until reconciliation explicitly
 marks it repostable after its grace period. Terminalization runs injected SQL
 finalization, appends the terminal fact, and deletes the pending row in one
 transaction. Slack posting and reconciliation workers must use this boundary
-before the runtime can claim crash-safe external delivery.
+before the runtime can claim crash-safe external delivery. The ordinary Slack
+reply executor uses it to resume multipart or ambiguous delivery without
+rerunning the model.
 
 Imported historical advisor executions own separate child event streams. The
 parent records start/end references and the child stores only its local events.

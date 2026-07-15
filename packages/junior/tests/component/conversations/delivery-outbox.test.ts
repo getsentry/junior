@@ -66,8 +66,14 @@ function command(
       },
     ],
     completion: {
+      turnId: "turn-1",
       inputMessageIds: ["user-1"],
-      assistantMessage: { messageId: "assistant-1", text: "First\nSecond" },
+      assistantMessage: {
+        messageId: "assistant-1",
+        text: "First\nSecond",
+        createdAtMs: 950,
+        author: { userName: "junior", isBot: true },
+      },
       model: {
         modelId: "openai/gpt-5.4",
         messages: [
@@ -192,7 +198,7 @@ describe("pending conversation delivery outbox", () => {
         createPendingConversationDelivery(fixture.sql, {
           conversationId: secondConversation,
           deliveryId: secondDelivery,
-          turnId: "turn-2",
+          turnId: "turn-1",
           command: command(),
           nowMs: 1_000,
         }),

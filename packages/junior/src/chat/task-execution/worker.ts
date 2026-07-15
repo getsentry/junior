@@ -55,6 +55,8 @@ export interface InboxAttempt {
 
 export interface ConversationWorkerResult {
   status: "completed" | "deferred" | "lost_lease" | "yielded";
+  delayMs?: number;
+  immediate?: boolean;
 }
 
 export interface ConversationWorkProcessResult {
@@ -487,6 +489,9 @@ export async function processConversationWork(
           deferredNowMs,
         ),
         nowMs: deferredNowMs,
+        delayMs: result.immediate
+          ? 0
+          : Math.max(CONVERSATION_WORK_DEFER_DELAY_MS, result.delayMs ?? 0),
         queue: options.queue,
         state: options.state,
       });

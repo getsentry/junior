@@ -16,6 +16,8 @@ import {
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 const SLACK_DELIVERY_LOCATOR_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const MAX_SLACK_DELIVERY_PART_INDEX = 9_999;
+const SLACK_WEB_API_RATE_LIMITED_ERROR_CODE = "slack_webapi_rate_limited_error";
+const MAX_RECOVERABLE_SLACK_RETRY_AFTER_MS = 60 * 60 * 1_000;
 // Slack applies a 15-item conversations.replies limit to some commercially
 // distributed apps. One page per invocation also lets durable orchestration
 // honor the provider's rate limit between reconciliation attempts.
@@ -225,7 +227,12 @@ export type RecoverableSlackPostResult =
   | { outcome: "accepted"; ts: SlackMessageTs }
   | {
       outcome: "definitive_failure";
-      reason: "api_rejected" | "missing_token" | "rate_limited";
+      reason: "api_rejected" | "missing_token";
+    }
+  | {
+      outcome: "retryable_absence";
+      reason: "rate_limited";
+      retryAtMs?: number;
     }
   | {
       outcome: "uncertain";
@@ -261,9 +268,36 @@ function classifyRecoverableSlackPostFailure(
   }
   if (
     statusCode === 429 ||
+    (error !== null &&
+      typeof error === "object" &&
+      (error as { code?: unknown }).code ===
+        SLACK_WEB_API_RATE_LIMITED_ERROR_CODE) ||
     (error instanceof SlackActionError && error.code === "rate_limited")
   ) {
-    return { outcome: "definitive_failure", reason: "rate_limited" };
+    const candidate = error as {
+      retryAfter?: unknown;
+      retryAfterSeconds?: unknown;
+      headers?: Record<string, unknown>;
+    };
+    const rawRetryAfter =
+      candidate.retryAfter ??
+      candidate.retryAfterSeconds ??
+      candidate.headers?.["retry-after"] ??
+      candidate.headers?.["Retry-After"];
+    const retryAfterSeconds = Number(rawRetryAfter);
+    const retryAfterMs = Number.isFinite(retryAfterSeconds)
+      ? Math.min(
+          Math.max(0, retryAfterSeconds * 1_000),
+          MAX_RECOVERABLE_SLACK_RETRY_AFTER_MS,
+        )
+      : undefined;
+    return {
+      outcome: "retryable_absence",
+      reason: "rate_limited",
+      ...(retryAfterMs !== undefined
+        ? { retryAtMs: Date.now() + retryAfterMs }
+        : {}),
+    };
   }
   if (error instanceof SlackActionError && error.code === "missing_token") {
     return { outcome: "definitive_failure", reason: "missing_token" };
@@ -338,6 +372,7 @@ export type RecoverableSlackReconciliationResult =
   | { outcome: "accepted"; ts: SlackMessageTs }
   | { outcome: "confirmed_absent" }
   | { outcome: "continue"; nextCursor: string }
+  | { outcome: "retryable"; retryAtMs?: number }
   | { outcome: "unresolved" };
 
 interface SlackReconciliationIdentity {
@@ -454,7 +489,16 @@ export async function reconcileRecoverableSlackMessage(input: {
     return response.has_more === true
       ? { outcome: "unresolved" }
       : { outcome: "confirmed_absent" };
-  } catch {
+  } catch (error) {
+    const classified = classifyRecoverableSlackPostFailure(error);
+    if (classified.outcome === "retryable_absence") {
+      return {
+        outcome: "retryable",
+        ...(classified.retryAtMs !== undefined
+          ? { retryAtMs: classified.retryAtMs }
+          : {}),
+      };
+    }
     return { outcome: "unresolved" };
   }
 }

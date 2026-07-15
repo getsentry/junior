@@ -76,10 +76,18 @@ export function isTurnInputCommitLostError(
 /** Error indicating durable turn input should stay pending for a later worker. */
 export class TurnInputDeferredError extends Error {
   readonly code = "turn_input_deferred";
+  readonly retryAfterMs?: number;
+  readonly immediate: boolean;
 
-  constructor(message = "Turn input is deferred until the active resume ends") {
+  constructor(
+    message = "Turn input is deferred until the active resume ends",
+    retryAfterMs?: number,
+    immediate = false,
+  ) {
     super(message);
     this.name = "TurnInputDeferredError";
+    this.retryAfterMs = retryAfterMs;
+    this.immediate = immediate;
   }
 }
 

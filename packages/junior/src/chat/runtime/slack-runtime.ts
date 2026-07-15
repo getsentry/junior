@@ -73,6 +73,7 @@ export interface ReplyHooks {
   ) => Promise<void>;
   messageContext?: MessageContext;
   ack?: () => Promise<void>;
+  ackMessageIds?: (messageIds: readonly string[]) => Promise<void>;
   onToolInvocation?: (invocation: TurnToolInvocation) => void;
   onTurnStatePersisted?: () => Promise<void>;
   isFinalAttempt?: boolean;
@@ -196,6 +197,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
+      ackMessageIds?: (messageIds: readonly string[]) => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
       onTurnStatePersisted?: () => Promise<void>;
@@ -808,6 +810,7 @@ export function createSlackTurnRuntime<
             destination: hooks.destination,
             queuedMessages,
             ack,
+            ackMessageIds: hooks.ackMessageIds,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
             drainSteeringMessages,
@@ -1128,6 +1131,7 @@ export function createSlackTurnRuntime<
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             queuedMessages,
             ack,
+            ackMessageIds: hooks.ackMessageIds,
             onToolInvocation: toolInvocationHook,
             onTurnCompleted,
             drainSteeringMessages,

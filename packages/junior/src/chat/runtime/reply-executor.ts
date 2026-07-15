@@ -46,6 +46,7 @@ import {
 import {
   persistThreadRuntimeState,
   persistThreadState,
+  type ThreadStatePatch,
 } from "@/chat/runtime/thread-state";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -94,6 +95,7 @@ import {
   ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
   getConversationTurnBoundaryError,
+  isTurnInputCommitLostError,
   TurnInputDeferredError,
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -134,8 +136,15 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
-import { persistConversationMessages } from "@/chat/conversations/visible-messages";
+import {
+  hydrateConversationMessages,
+  persistConversationMessages,
+} from "@/chat/conversations/visible-messages";
 import { modelIdForProfile } from "@/chat/model-profile";
+import type { RecoverableSlackDeliveryService } from "@/chat/services/recoverable-slack-delivery";
+import type { PendingConversationDelivery } from "@/chat/conversations/sql/delivery-outbox";
+import { createSlackDeliveryLocator } from "@/chat/slack/outbound";
+import { buildSlackReplyBlocks } from "@/chat/slack/footer";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 /**
@@ -384,6 +393,15 @@ export interface ReplyExecutorServices {
     sessionId: string;
   }) => Promise<AgentContinueRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
+  recoverableSlackDelivery: Pick<
+    RecoverableSlackDeliveryService,
+    | "advance"
+    | "createIntent"
+    | "loadByTurn"
+    | "loadOldestByConversation"
+    | "loadTerminalOutcome"
+    | "loadTurnTerminalOutcome"
+  >;
   turnLifecycle: ConversationTurnLifecycle;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks: (params: {
@@ -426,6 +444,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       destination: Destination;
       explicitMention?: boolean;
       ack?: () => Promise<void>;
+      ackMessageIds?: (messageIds: readonly string[]) => Promise<void>;
       onToolInvocation?: (invocation: TurnToolInvocation) => void;
       onTurnCompleted?: () => Promise<void>;
       onTurnStatePersisted?: () => Promise<void>;
@@ -749,6 +768,245 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }));
           return drainParkedInputToEventLog(parkedPairs);
         };
+        /**
+         * Repair every Redis-backed terminal projection after SQL has become
+         * authoritative. None of these derived writes may turn a delivered or
+         * definitively rejected reply into a fresh agent failure; only losing
+         * ownership while acknowledging durable inbox work propagates.
+         */
+        const repairCanonicalTerminal = async (args: {
+          ack:
+            | { kind: "all" }
+            | { kind: "messages"; messageIds: readonly string[] };
+          deliveryId: string;
+          deliveryOutcome: "accepted" | "failed";
+          inputMessageId?: string;
+          modelSucceeded: boolean;
+          sessionSummary: Parameters<typeof recordAgentTurnSessionSummary>[0];
+          turnId: string;
+          runtimePatch?: Omit<ThreadStatePatch, "conversation">;
+        }): Promise<void> => {
+          const attributes = { "app.delivery.id": args.deliveryId };
+          try {
+            await hydrateConversationMessages({
+              conversation: preparedState.conversation,
+              conversationId,
+            });
+            if (args.deliveryOutcome === "accepted") {
+              markTurnClosed({
+                conversation: preparedState.conversation,
+                nowMs: Date.now(),
+                sessionId: args.turnId,
+                updateConversationStats,
+              });
+            } else {
+              markTurnFailed({
+                conversation: preparedState.conversation,
+                nowMs: Date.now(),
+                sessionId: args.turnId,
+                userMessageId: args.inputMessageId,
+                markConversationMessage,
+                updateConversationStats,
+              });
+            }
+            await persistThreadRuntimeStateWithRetry(thread, {
+              ...args.runtimePatch,
+              conversation: preparedState.conversation,
+            });
+          } catch (repairError) {
+            logException(
+              repairError,
+              "slack_delivery_runtime_repair_failed",
+              turnTraceContext,
+              attributes,
+              "Failed to repair terminal Slack delivery runtime state",
+            );
+          }
+          try {
+            await options.onTurnStatePersisted?.();
+          } catch (repairError) {
+            logException(
+              repairError,
+              "slack_delivery_state_callback_repair_failed",
+              turnTraceContext,
+              attributes,
+              "Failed to confirm repaired Slack delivery runtime state",
+            );
+          }
+          try {
+            await recordAgentTurnSessionSummary(args.sessionSummary);
+          } catch (repairError) {
+            logException(
+              repairError,
+              "slack_delivery_session_repair_failed",
+              turnTraceContext,
+              attributes,
+              "Failed to repair terminal Slack delivery session summary",
+            );
+          }
+          if (
+            args.deliveryOutcome === "accepted" &&
+            args.modelSucceeded &&
+            conversationId
+          ) {
+            try {
+              await deps.services.scheduleSessionCompletedPluginTasks({
+                conversationId,
+                sessionId: args.turnId,
+              });
+            } catch (repairError) {
+              logException(
+                repairError,
+                "slack_delivery_plugin_repair_failed",
+                turnTraceContext,
+                attributes,
+                "Failed to schedule terminal Slack delivery plugin tasks",
+              );
+            }
+          }
+          try {
+            await options.onTurnCompleted?.();
+          } catch (repairError) {
+            logException(
+              repairError,
+              "slack_delivery_completion_callback_repair_failed",
+              turnTraceContext,
+              attributes,
+              "Failed to complete repaired Slack delivery callbacks",
+            );
+          }
+          if (args.ack.kind === "messages") {
+            await options.ackMessageIds?.(args.ack.messageIds);
+          } else {
+            await options.ack?.();
+          }
+        };
+        const pendingDelivery = conversationId
+          ? await deps.services.recoverableSlackDelivery.loadOldestByConversation(
+              { conversationId },
+            )
+          : undefined;
+        if (pendingDelivery) {
+          const recovery =
+            await deps.services.recoverableSlackDelivery.advance(
+              pendingDelivery,
+            );
+          if (recovery.outcome === "pending") {
+            throw new TurnInputDeferredError(
+              "Slack delivery is awaiting retry or reconciliation",
+              Math.max(0, recovery.retryAtMs - Date.now()),
+            );
+          }
+          const recoveredSuccessfully =
+            recovery.outcome === "accepted" &&
+            pendingDelivery.command.completion.terminal.outcome === "success";
+          await repairCanonicalTerminal({
+            ack:
+              pendingDelivery.turnId === turnId
+                ? { kind: "all" }
+                : {
+                    kind: "messages",
+                    messageIds:
+                      pendingDelivery.command.completion.inputMessageIds,
+                  },
+            deliveryId: pendingDelivery.deliveryId,
+            deliveryOutcome: recovery.outcome,
+            inputMessageId:
+              pendingDelivery.command.completion.inputMessageIds[0],
+            modelSucceeded: recoveredSuccessfully,
+            turnId: pendingDelivery.turnId,
+            sessionSummary: {
+              ...(pendingDelivery.command.session.channelName
+                ? { channelName: pendingDelivery.command.session.channelName }
+                : {}),
+              conversationId: conversationId!,
+              cumulativeDurationMs:
+                pendingDelivery.command.completion.durationMs,
+              cumulativeUsage: pendingDelivery.command.completion.usage,
+              sessionId: pendingDelivery.turnId,
+              sliceId: pendingDelivery.command.completion.sliceId,
+              startedAtMs: pendingDelivery.command.session.startedAtMs,
+              state: recoveredSuccessfully ? "completed" : "failed",
+              actor: pendingDelivery.command.session.actor,
+              destination: pendingDelivery.command.session.destination,
+              destinationVisibility:
+                pendingDelivery.command.session.destinationVisibility,
+              source: pendingDelivery.command.session.source,
+              traceId: getActiveTraceId(),
+              modelId: pendingDelivery.command.completion.model.modelId,
+              reasoningLevel: pendingDelivery.command.completion.reasoningLevel,
+              surface: pendingDelivery.command.session.surface,
+            },
+          });
+          if (pendingDelivery.turnId !== turnId) {
+            throw new TurnInputDeferredError(
+              "Recovered an older Slack delivery before newer input",
+              0,
+              true,
+            );
+          }
+          return;
+        }
+        const priorTerminal = conversationId
+          ? await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
+              conversationId,
+              deliveryId: `slack:${turnId}`,
+            })
+          : undefined;
+        if (priorTerminal && conversationId) {
+          let modelSucceeded = false;
+          if (priorTerminal === "accepted") {
+            let terminalOutcome: "success" | "failed" | undefined;
+            try {
+              terminalOutcome =
+                await deps.services.recoverableSlackDelivery.loadTurnTerminalOutcome(
+                  { conversationId, turnId },
+                );
+            } catch (repairError) {
+              logException(
+                repairError,
+                "slack_delivery_lifecycle_repair_lookup_failed",
+                turnTraceContext,
+                { "app.delivery.id": `slack:${turnId}` },
+                "Failed to classify terminal Slack delivery lifecycle",
+              );
+              throw new TurnInputDeferredError(
+                "Accepted Slack delivery lifecycle is not yet available",
+              );
+            }
+            if (!terminalOutcome) {
+              throw new TurnInputDeferredError(
+                "Accepted Slack delivery lifecycle is not yet available",
+              );
+            }
+            modelSucceeded = terminalOutcome === "success";
+          }
+          await repairCanonicalTerminal({
+            ack: { kind: "all" },
+            deliveryId: `slack:${turnId}`,
+            deliveryOutcome: priorTerminal,
+            inputMessageId: preparedState.userMessageId,
+            modelSucceeded,
+            turnId,
+            sessionSummary: {
+              ...(channelName ? { channelName } : {}),
+              conversationId,
+              cumulativeDurationMs: 0,
+              sessionId: turnId,
+              sliceId: 1,
+              startedAtMs: message.metadata.dateSent.getTime(),
+              state: modelSucceeded ? "completed" : "failed",
+              actor: executionActor,
+              destination,
+              destinationVisibility,
+              source,
+              traceId: getActiveTraceId(),
+              modelId: botConfig.modelId,
+              surface: "slack",
+            },
+          });
+          return;
+        }
         if (preparedState.userMessageAlreadyReplied) {
           await persistThreadState(thread, {
             conversation: preparedState.conversation,
@@ -1018,15 +1276,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         // destination accepted the final posts, later errors in the same turn
         // must not mark it failed or trigger the fallback failure reply.
         let finalReplyDelivered = false;
-        let lifecycleTerminalized = false;
         let turnCompletionNotified = false;
+        let recoverableDeliveryTerminalized = false;
+        let lifecycleTerminalized = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let agentContinueScheduleError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
-        let boundaryFailureEventId: string | undefined;
         let finalizedFailureEventId: string | undefined;
+        let durableDeliveryIntent: PendingConversationDelivery | undefined;
         const hasVisibleSlackDelivery = (post: { text: string }) =>
           post.text.trim().length > 0;
         const notifyTurnCompleted = async (): Promise<void> => {
@@ -1281,7 +1540,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               onToolInvocation: options.onToolInvocation,
             },
             durability: {
-              onInputCommitted: options.ack,
+              // Pi still receives an explicit safe input-commit callback, but
+              // the queue inbox remains the recovery trigger until delivery
+              // terminalization or another durable handoff below.
+              onInputCommitted: async () => undefined,
               drainSteeringMessages,
               shouldYield: options.shouldYield,
               onSandboxAcquired: async (sandbox) => {
@@ -1368,6 +1630,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
               persistedAtLeastOnce = true;
               shouldPersistFailureState = false;
+              await options.ack?.();
               return;
             }
             await postAuthPauseNotice(outcome.providerDisplayName);
@@ -1380,6 +1643,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             persistedAtLeastOnce = true;
             shouldPersistFailureState = false;
+            await options.ack?.();
             return;
           }
           if (outcome.status === "suspended") {
@@ -1403,6 +1667,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: turnId,
                 expectedVersion: outcome.resumeVersion,
               });
+              await options.ack?.();
               shouldPersistFailureState = false;
             } catch (scheduleError) {
               logException(
@@ -1451,9 +1716,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const replyFooter = buildSlackReplyFooter({
             conversationId,
           });
-          const shouldUseSlackFooter =
-            Boolean(replyFooter) &&
-            Boolean(channelId && threadTs) &&
+          const shouldUseRecoverableSlackDelivery =
+            Boolean(channelId && threadTs && conversationId) &&
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
 
           boundaryFailureCode = "delivery_failed";
@@ -1469,37 +1733,155 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 "Slack final reply plan did not contain visible delivery",
               );
             }
-            if (shouldUseSlackFooter) {
+            if (shouldUseRecoverableSlackDelivery) {
               const slackChannelId = channelId;
               const slackThreadTs = threadTs;
               if (!slackChannelId || !slackThreadTs) {
                 throw new Error(
-                  "Slack footer delivery requires a concrete channel and thread timestamp",
+                  "Recoverable Slack delivery requires a concrete channel and thread timestamp",
                 );
               }
-
-              await postSlackApiReplyPosts({
-                beforePost: beforeFirstResponsePost,
-                channelId: slackChannelId,
-                threadTs: slackThreadTs,
-                posts: plannedPosts,
-                footer: replyFooter,
-                onPostError: ({ error, messageTs, stage }) => {
-                  boundaryFailureEventId = logException(
-                    error,
-                    "slack_thread_post_failed",
-                    turnTraceContext,
-                    {
-                      "app.slack.reply_stage": stage,
-                      ...(messageTs
-                        ? { "messaging.message.id": messageTs }
-                        : {}),
-                      ...getSlackErrorObservabilityAttributes(error),
+              const visiblePosts = plannedPosts.filter(hasVisibleSlackDelivery);
+              const assistantCreatedAtMs = Date.now();
+              const publicLocator = createSlackDeliveryLocator();
+              const delivery =
+                await deps.services.recoverableSlackDelivery.createIntent({
+                  conversationId: conversationId!,
+                  turnId,
+                  deliveryId: `slack:${turnId}`,
+                  command: {
+                    version: 1,
+                    provider: "slack",
+                    deliveryKind: "assistant_reply",
+                    publicLocator,
+                    route: {
+                      channelId: slackChannelId,
+                      threadTs: slackThreadTs,
                     },
-                    "Failed to post Slack thread reply",
-                  );
-                },
-              });
+                    session: {
+                      surface: "slack",
+                      source,
+                      destination,
+                      ...(destinationVisibility
+                        ? { destinationVisibility }
+                        : {}),
+                      ...(executionActor ? { actor: executionActor } : {}),
+                      ...(channelName ? { channelName } : {}),
+                      startedAtMs: message.metadata.dateSent.getTime(),
+                    },
+                    parts: visiblePosts.map((post, index) => ({
+                      partId: `part:${index}`,
+                      stage: post.stage,
+                      text: post.text,
+                      ...(buildSlackReplyBlocks(
+                        post.text,
+                        index === visiblePosts.length - 1
+                          ? replyFooter
+                          : undefined,
+                      )
+                        ? {
+                            blocks: buildSlackReplyBlocks(
+                              post.text,
+                              index === visiblePosts.length - 1
+                                ? replyFooter
+                                : undefined,
+                            ),
+                          }
+                        : {}),
+                    })),
+                    completion: {
+                      turnId,
+                      inputMessageIds: [
+                        ...new Set([
+                          ...(options.queuedMessages ?? []).map(
+                            (queued) => queued.message.id,
+                          ),
+                          ...(preparedState.userMessageId
+                            ? [preparedState.userMessageId]
+                            : []),
+                        ]),
+                      ],
+                      assistantMessage: {
+                        messageId: buildDeterministicAssistantMessageId(turnId),
+                        text: normalizeConversationText(reply.text),
+                        createdAtMs: assistantCreatedAtMs,
+                        author: {
+                          userName: botConfig.userName,
+                          isBot: true,
+                        },
+                      },
+                      model: {
+                        modelId: reply.diagnostics.modelId,
+                        messages: reply.piMessages ?? [],
+                      },
+                      ...(reply.diagnostics.durationMs !== undefined
+                        ? { durationMs: reply.diagnostics.durationMs }
+                        : {}),
+                      ...(reply.diagnostics.usage
+                        ? { usage: reply.diagnostics.usage }
+                        : {}),
+                      ...(reply.diagnostics.reasoningLevel
+                        ? { reasoningLevel: reply.diagnostics.reasoningLevel }
+                        : {}),
+                      sliceId: 1,
+                      terminal:
+                        reply.diagnostics.outcome === "success"
+                          ? { outcome: "success" }
+                          : {
+                              outcome: "failed",
+                              failureCode: "model_execution_failed",
+                              ...(finalizedFailureEventId
+                                ? { eventId: finalizedFailureEventId }
+                                : {}),
+                            },
+                    },
+                  },
+                });
+              durableDeliveryIntent = delivery;
+              await beforeFirstResponsePost();
+              const deliveryOutcome =
+                await deps.services.recoverableSlackDelivery.advance(delivery);
+              if (deliveryOutcome.outcome === "pending") {
+                shouldPersistFailureState = false;
+                throw new TurnInputDeferredError(
+                  "Slack delivery is awaiting retry or reconciliation",
+                  Math.max(0, deliveryOutcome.retryAtMs - Date.now()),
+                );
+              }
+              if (deliveryOutcome.outcome === "failed") {
+                lifecycleTerminalized = true;
+                persistedAtLeastOnce = true;
+                shouldPersistFailureState = false;
+                await repairCanonicalTerminal({
+                  ack: { kind: "all" },
+                  deliveryId: delivery.deliveryId,
+                  deliveryOutcome: "failed",
+                  inputMessageId: preparedState.userMessageId,
+                  modelSucceeded: false,
+                  turnId,
+                  sessionSummary: {
+                    ...(channelName ? { channelName } : {}),
+                    conversationId: conversationId!,
+                    cumulativeDurationMs: reply.diagnostics.durationMs,
+                    cumulativeUsage: reply.diagnostics.usage,
+                    sessionId: turnId,
+                    sliceId: 1,
+                    startedAtMs: message.metadata.dateSent.getTime(),
+                    state: "failed",
+                    actor: executionActor,
+                    destination,
+                    destinationVisibility,
+                    source,
+                    traceId: getActiveTraceId(),
+                    modelId: reply.diagnostics.modelId,
+                    reasoningLevel: reply.diagnostics.reasoningLevel,
+                    surface: "slack",
+                  },
+                });
+                return;
+              }
+              recoverableDeliveryTerminalized = true;
+              lifecycleTerminalized = true;
             } else {
               for (const post of plannedPosts) {
                 if (!hasVisibleSlackDelivery(post)) {
@@ -1537,71 +1919,74 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (completedState.artifacts) {
             latestArtifacts = completedState.artifacts;
           }
+          preparedState.conversation = completedState.conversation;
           try {
             // Commit the durable delivery record first so recovery cannot
             // regenerate an accepted reply. Persist canonical visible-message
             // facts next, then update Redis runtime scratch independently.
-            if (conversationId && reply.piMessages?.length) {
-              await completeDeliveredTurn({
-                channelName,
-                conversationId,
-                durationMs: reply.diagnostics.durationMs,
-                usage: reply.diagnostics.usage,
-                reasoningLevel: reply.diagnostics.reasoningLevel,
-                destination,
-                destinationVisibility,
-                source,
-                sessionId: turnId,
-                sliceId: 1,
-                messages: reply.piMessages,
-                modelId: reply.diagnostics.modelId,
-                logContext: {
-                  threadId,
-                  actorId: slackActorId,
-                  channelId,
-                  runId,
-                  assistantUserName: botConfig.userName,
-                },
-                actor: executionActor,
-                surface: "slack",
-              });
-            } else if (conversationId) {
-              await recordAgentTurnSessionSummary({
-                channelName,
-                conversationId,
-                cumulativeDurationMs: reply.diagnostics.durationMs,
-                cumulativeUsage: reply.diagnostics.usage,
-                sessionId: turnId,
-                sliceId: 1,
-                startedAtMs: message.metadata.dateSent.getTime(),
-                state: "completed",
-                actor: executionActor,
-                destination,
-                destinationVisibility,
-                source,
-                traceId: getActiveTraceId(),
-              });
-            }
-            await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation: completedState.conversation,
-                conversationId,
-              }),
-            );
-            await persistThreadRuntimeStateWithRetry(thread, completedState);
-            if (
-              completedState.artifacts &&
-              (assistantTitleArtifacts.assistantTitle !== undefined ||
-                assistantTitleArtifacts.assistantTitleSourceMessageId !==
-                  undefined) &&
-              (completedState.artifacts.assistantTitle !==
-                assistantTitleArtifacts.assistantTitle ||
-                completedState.artifacts.assistantTitleSourceMessageId !==
-                  assistantTitleArtifacts.assistantTitleSourceMessageId)
-            ) {
-              await persistThreadRuntimeStateWithRetry(thread, {
-                artifacts: latestArtifacts,
-              });
+            if (!recoverableDeliveryTerminalized) {
+              if (conversationId && reply.piMessages?.length) {
+                await completeDeliveredTurn({
+                  channelName,
+                  conversationId,
+                  durationMs: reply.diagnostics.durationMs,
+                  usage: reply.diagnostics.usage,
+                  reasoningLevel: reply.diagnostics.reasoningLevel,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  sessionId: turnId,
+                  sliceId: 1,
+                  messages: reply.piMessages,
+                  modelId: reply.diagnostics.modelId,
+                  logContext: {
+                    threadId,
+                    actorId: slackActorId,
+                    channelId,
+                    runId,
+                    assistantUserName: botConfig.userName,
+                  },
+                  actor: executionActor,
+                  surface: "slack",
+                });
+              } else if (conversationId) {
+                await recordAgentTurnSessionSummary({
+                  channelName,
+                  conversationId,
+                  cumulativeDurationMs: reply.diagnostics.durationMs,
+                  cumulativeUsage: reply.diagnostics.usage,
+                  sessionId: turnId,
+                  sliceId: 1,
+                  startedAtMs: message.metadata.dateSent.getTime(),
+                  state: "completed",
+                  actor: executionActor,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  traceId: getActiveTraceId(),
+                });
+              }
+              await persistWithRetry(() =>
+                persistConversationMessages({
+                  conversation: completedState.conversation,
+                  conversationId,
+                }),
+              );
+              await persistThreadRuntimeStateWithRetry(thread, completedState);
+              if (
+                completedState.artifacts &&
+                (assistantTitleArtifacts.assistantTitle !== undefined ||
+                  assistantTitleArtifacts.assistantTitleSourceMessageId !==
+                    undefined) &&
+                (completedState.artifacts.assistantTitle !==
+                  assistantTitleArtifacts.assistantTitle ||
+                  completedState.artifacts.assistantTitleSourceMessageId !==
+                    assistantTitleArtifacts.assistantTitleSourceMessageId)
+              ) {
+                await persistThreadRuntimeStateWithRetry(thread, {
+                  artifacts: latestArtifacts,
+                });
+              }
             }
           } catch (commitError) {
             // The user already saw the reply; keep the turn successful and
@@ -1624,8 +2009,43 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               lifecycleTerminalized = true;
             }
           }
-          preparedState.conversation = completedState.conversation;
           persistedAtLeastOnce = true;
+          if (recoverableDeliveryTerminalized && conversationId) {
+            const { conversation: _conversation, ...runtimePatch } =
+              completedState;
+            await repairCanonicalTerminal({
+              ack: { kind: "all" },
+              deliveryId:
+                durableDeliveryIntent?.deliveryId ?? `slack:${turnId}`,
+              deliveryOutcome: "accepted",
+              inputMessageId: preparedState.userMessageId,
+              modelSucceeded: reply.diagnostics.outcome === "success",
+              turnId,
+              runtimePatch,
+              sessionSummary: {
+                channelName,
+                conversationId,
+                cumulativeDurationMs: reply.diagnostics.durationMs,
+                cumulativeUsage: reply.diagnostics.usage,
+                sessionId: turnId,
+                sliceId: 1,
+                startedAtMs: message.metadata.dateSent.getTime(),
+                state:
+                  reply.diagnostics.outcome === "success"
+                    ? "completed"
+                    : "failed",
+                actor: executionActor,
+                destination,
+                destinationVisibility,
+                source,
+                traceId: getActiveTraceId(),
+                modelId: reply.diagnostics.modelId,
+                reasoningLevel: reply.diagnostics.reasoningLevel,
+                surface: "slack",
+              },
+            });
+            return;
+          }
           if (!lifecycleTerminalized && conversationId) {
             if (reply.diagnostics.outcome === "success") {
               await deps.services.turnLifecycle.complete({
@@ -1677,6 +2097,87 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }
         } catch (error) {
+          if (isTurnInputCommitLostError(error)) {
+            shouldPersistFailureState = false;
+            throw error;
+          }
+          if (
+            durableDeliveryIntent &&
+            conversationId &&
+            !recoverableDeliveryTerminalized
+          ) {
+            logException(
+              error,
+              "slack_delivery_intent_interrupted",
+              turnTraceContext,
+              {
+                "app.delivery.id": durableDeliveryIntent.deliveryId,
+                "app.delivery.turn_id": durableDeliveryIntent.turnId,
+              },
+              "Slack delivery attempt was interrupted after durable intent",
+            );
+            const stillPending =
+              await deps.services.recoverableSlackDelivery.loadByTurn({
+                conversationId,
+                turnId: durableDeliveryIntent.turnId,
+              });
+            if (stillPending) {
+              shouldPersistFailureState = false;
+              throw new TurnInputDeferredError(
+                "Slack delivery intent remains pending after an interrupted attempt",
+                Math.max(
+                  0,
+                  Math.max(
+                    stillPending.nextAttemptAtMs,
+                    stillPending.lease?.expiresAtMs ?? 0,
+                  ) - Date.now(),
+                ),
+              );
+            }
+            const terminal =
+              await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
+                conversationId,
+                deliveryId: durableDeliveryIntent.deliveryId,
+              });
+            if (terminal) {
+              shouldPersistFailureState = false;
+              finalReplyDelivered = terminal === "accepted";
+              persistedAtLeastOnce = true;
+              const command = durableDeliveryIntent.command;
+              const modelSucceeded =
+                terminal === "accepted" &&
+                command.completion.terminal.outcome === "success";
+              await repairCanonicalTerminal({
+                ack: { kind: "all" },
+                deliveryId: durableDeliveryIntent.deliveryId,
+                deliveryOutcome: terminal,
+                inputMessageId: command.completion.inputMessageIds[0],
+                modelSucceeded,
+                turnId: durableDeliveryIntent.turnId,
+                sessionSummary: {
+                  ...(command.session.channelName
+                    ? { channelName: command.session.channelName }
+                    : {}),
+                  conversationId,
+                  cumulativeDurationMs: command.completion.durationMs,
+                  cumulativeUsage: command.completion.usage,
+                  sessionId: durableDeliveryIntent.turnId,
+                  sliceId: command.completion.sliceId,
+                  startedAtMs: command.session.startedAtMs,
+                  state: modelSucceeded ? "completed" : "failed",
+                  actor: command.session.actor,
+                  destination: command.session.destination,
+                  destinationVisibility: command.session.destinationVisibility,
+                  source: command.session.source,
+                  traceId: getActiveTraceId(),
+                  modelId: command.completion.model.modelId,
+                  reasoningLevel: command.completion.reasoningLevel,
+                  surface: command.session.surface,
+                },
+              });
+              return;
+            }
+          }
           if (finalReplyDelivered) {
             // Delivered-turn guard: errors after Slack accepted the final
             // reply (redundant-ack cleanup, completion callbacks) must not
@@ -1723,7 +2224,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             classifiedFailure?.failureCode ?? boundaryFailureCode;
           const failureEventId =
             classifiedFailure?.eventId ??
-            boundaryFailureEventId ??
             logException(
               failureCause,
               "slack_turn_execution_failed",
@@ -1784,6 +2284,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             persistedAtLeastOnce = true;
             shouldPersistFailureState = false;
+            await options.ack?.();
             return;
           }
           throw new ConversationTurnBoundaryError({
@@ -1805,6 +2306,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
             if (conversationId) {
               try {
+                if (!lifecycleTerminalized) {
+                  await deps.services.turnLifecycle.fail({
+                    conversationId,
+                    turnId,
+                    createdAtMs: Date.now(),
+                    failureCode: "agent_run_failed",
+                  });
+                  lifecycleTerminalized = true;
+                }
                 await recordAgentTurnSessionSummary({
                   channelName,
                   conversationId,

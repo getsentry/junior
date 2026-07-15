@@ -112,12 +112,20 @@ export const pendingConversationDeliveryCommandSchema = z
       .object({
         inputMessageIds: z.array(z.string().min(1)).min(1),
         assistantMessage: z
-          .object({ messageId: z.string().min(1), text: z.string() })
+          .object({
+            messageId: z.string().min(1),
+            text: z.string(),
+            createdAtMs: z.number().finite(),
+            author: z
+              .object({ userName: z.string().min(1), isBot: z.literal(true) })
+              .strict(),
+          })
           .strict(),
+        turnId: z.string().min(1),
         model: z
           .object({
             modelId: z.string().min(1),
-            messages: z.array(conversationModelMessageSchema).min(1),
+            messages: z.array(conversationModelMessageSchema),
           })
           .strict(),
         durationMs: z.number().int().nonnegative().optional(),
@@ -204,6 +212,7 @@ const uncertainPartStateSchema = z
     retryAtMs: z.number().finite(),
     reconciliationAttempt: z.number().int().nonnegative(),
     reconciliationCursor: z.string().min(1).max(512).optional(),
+    confirmedAbsentAtMs: z.number().finite().optional(),
   })
   .strict();
 const failedPartStateSchema = z

@@ -31,6 +31,12 @@ import {
   type VisionContextService,
 } from "@/chat/slack/vision-context";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import { getSqlExecutor } from "@/chat/db";
+import {
+  postRecoverableSlackMessage,
+  reconcileRecoverableSlackMessage,
+} from "@/chat/slack/outbound";
+import { RecoverableSlackDeliveryService } from "@/chat/services/recoverable-slack-delivery";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 
@@ -94,6 +100,12 @@ export function createJuniorRuntimeServices(
         overrides.replyExecutor?.scheduleSessionCompletedPluginTasks ??
         (async (params) => {
           await scheduleSessionCompletedPluginTasks(params);
+        }),
+      recoverableSlackDelivery:
+        overrides.replyExecutor?.recoverableSlackDelivery ??
+        new RecoverableSlackDeliveryService(getSqlExecutor(), {
+          post: postRecoverableSlackMessage,
+          reconcile: reconcileRecoverableSlackMessage,
         }),
       turnLifecycle:
         overrides.replyExecutor?.turnLifecycle ??

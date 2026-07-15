@@ -290,7 +290,6 @@ describe("conversation work execution", () => {
 
     const work = await getConversationWorkState({
       conversationId: CONVERSATION_ID,
-      state,
     });
     expect(work?.messages).toHaveLength(1);
     expect(queue.sentRecords()).toHaveLength(1);
@@ -581,6 +580,30 @@ describe("conversation work execution", () => {
 
     finish.resolve();
     await expect(first).resolves.toEqual({ status: "completed" });
+  });
+
+  it("immediately requeues partial completion without incrementing attempts", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async () => ({
+          status: "deferred",
+          immediate: true,
+          delayMs: 0,
+        }),
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+
+    expect(queue.sentRecords()).toMatchObject([
+      { conversationId: CONVERSATION_ID, delayMs: 0 },
+    ]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages[0]?.attemptCount).toBeUndefined();
   });
 
   it("wakes fresh inbound work after a consumed deferred nudge left a recent marker", async () => {
