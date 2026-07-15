@@ -25,9 +25,10 @@
 - [x] Keep Pi messages derived rather than separately persisted.
 - [x] Add strict turn-start and mutually exclusive terminal outcome variants,
       then cut the local runtime over at its input/delivery persistence bounds.
-- [ ] Add durable delivery intent/receipt reconciliation and delivery-attempt
-      events, then cut Slack/dispatch lifecycle writers over without a
-      destination-acceptance/process-crash gap.
+- [x] Add durable delivery intent/receipt reconciliation and delivery-attempt
+      events for ordinary Slack finalized replies.
+- [ ] Cut dispatch, resumed, private-authorization, and nonstandard notice
+      delivery paths over without a destination-acceptance/process-crash gap.
 - [x] Persist visible-message and reply facts as canonical events while updating
       the hydration/search table as an atomic read model.
 - [x] Backfill existing visible-message rows with a bounded, verified migration
@@ -36,11 +37,11 @@
 
 ## 3. Event API And Dashboard
 
-- [ ] Return one ordered, authorized, privacy-safe event array from conversation
+- [x] Return one ordered, authorized, privacy-safe event array from conversation
       detail reporting.
-- [ ] Move turn grouping, tool activity, failures, compactions, and delivery
+- [x] Move turn grouping, tool activity, failures, compactions, and delivery
       presentation into the dashboard client.
-- [ ] Remove the parallel transcript, activity, and context-event API views once
+- [x] Remove the parallel transcript, activity, and context-event API views once
       all consumers use events.
 
 ## 4. Child Conversations
@@ -57,10 +58,11 @@
       events instead of the message-table projection or model messages.
 - [x] Remove lazy Redis/advisor history import from every runtime read and move
       the retained backfill decoder/writer under `cli/upgrade` only.
-- [ ] Make remaining aggregate stores explicit read models.
+- [x] Document conversation execution/usage aggregates and Redis turn-session
+      summaries as non-history reporting and control projections.
 - [ ] Delete the explicit operator Redis backfill after every supported
       deployment has crossed its migration horizon.
-- [ ] Verify retention, purge, redaction, idempotency, replay parity, and event
+- [x] Verify retention, purge, redaction, idempotency, replay parity, and event
       tree behavior.
 - [ ] Move durable invariants into owning code and documentation, then delete
       this completed plan.

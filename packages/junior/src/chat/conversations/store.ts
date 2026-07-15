@@ -81,7 +81,10 @@ export interface ConversationStore {
     /** Source-confirmed visibility from the current event's signal only. */
     visibility?: ConversationPrivacy;
   }): Promise<void>;
-  /** Store task-execution metadata for long-term conversation history. */
+  /**
+   * Materialize execution and usage aggregates beside canonical metadata.
+   * These fields serve reporting and runtime control, never history hydration.
+   */
   recordExecution(args: {
     channelName?: string;
     conversationId: string;

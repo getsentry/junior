@@ -5,14 +5,20 @@ conversation events, compaction boundaries, search, and retention.
 
 ## Records
 
-- Conversation rows identify the source, destination, participants, visibility,
-  and lifecycle metadata.
+- Conversation rows own canonical source, destination, participant, visibility,
+  lineage, and retention metadata. Their execution cursor, status, duration,
+  and usage columns are materialized reporting/control aggregates, not
+  transcript or event-history authority.
 - Visible-message events are the destination-facing user and assistant history.
   `junior_conversation_messages` is their rebuildable search read model, never
   a hydration source or second history authority.
 - Conversation events are the versioned, append-only execution history used to
   restore Pi state. Pi messages and context are projections of this log, not a
   second authority.
+- Redis turn-session records retain bounded resumability metadata and event
+  sequence cursors. Their summary indexes and the SQL execution/usage columns
+  are operational projections; Pi state is materialized from conversation
+  events rather than stored in either aggregate.
 - Context epochs identify replacement boundaries created by compaction or model
   handoff.
 - Child rows carry immutable parent/root, parent-turn, and exact parent-event
