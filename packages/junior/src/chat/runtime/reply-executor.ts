@@ -400,7 +400,6 @@ export interface ReplyExecutorServices {
     | "loadByTurn"
     | "loadOldestByConversation"
     | "loadTerminalOutcome"
-    | "loadTurnTerminalOutcome"
   >;
   turnLifecycle: ConversationTurnLifecycle;
   scheduleAgentContinue: (request: AgentContinueRequest) => Promise<void>;
@@ -950,41 +949,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const priorTerminal = conversationId
           ? await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
               conversationId,
-              deliveryId: `slack:${turnId}`,
+              turnId,
             })
           : undefined;
         if (priorTerminal && conversationId) {
-          let modelSucceeded = false;
-          if (priorTerminal === "accepted") {
-            let terminalOutcome: "success" | "failed" | undefined;
-            try {
-              terminalOutcome =
-                await deps.services.recoverableSlackDelivery.loadTurnTerminalOutcome(
-                  { conversationId, turnId },
-                );
-            } catch (repairError) {
-              logException(
-                repairError,
-                "slack_delivery_lifecycle_repair_lookup_failed",
-                turnTraceContext,
-                { "app.delivery.id": `slack:${turnId}` },
-                "Failed to classify terminal Slack delivery lifecycle",
-              );
-              throw new TurnInputDeferredError(
-                "Accepted Slack delivery lifecycle is not yet available",
-              );
-            }
-            if (!terminalOutcome) {
-              throw new TurnInputDeferredError(
-                "Accepted Slack delivery lifecycle is not yet available",
-              );
-            }
-            modelSucceeded = terminalOutcome === "success";
-          }
+          const modelSucceeded = priorTerminal.modelSucceeded;
           await repairCanonicalTerminal({
             ack: { kind: "all" },
             deliveryId: `slack:${turnId}`,
-            deliveryOutcome: priorTerminal,
+            deliveryOutcome: priorTerminal.deliveryOutcome,
             inputMessageId: preparedState.userMessageId,
             modelSucceeded,
             turnId,
@@ -2137,20 +2110,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const terminal =
               await deps.services.recoverableSlackDelivery.loadTerminalOutcome({
                 conversationId,
-                deliveryId: durableDeliveryIntent.deliveryId,
+                turnId: durableDeliveryIntent.turnId,
+                knownIntent: true,
               });
             if (terminal) {
               shouldPersistFailureState = false;
-              finalReplyDelivered = terminal === "accepted";
+              finalReplyDelivered = terminal.deliveryOutcome === "accepted";
               persistedAtLeastOnce = true;
               const command = durableDeliveryIntent.command;
-              const modelSucceeded =
-                terminal === "accepted" &&
-                command.completion.terminal.outcome === "success";
+              const modelSucceeded = terminal.modelSucceeded;
               await repairCanonicalTerminal({
                 ack: { kind: "all" },
                 deliveryId: durableDeliveryIntent.deliveryId,
-                deliveryOutcome: terminal,
+                deliveryOutcome: terminal.deliveryOutcome,
                 inputMessageId: command.completion.inputMessageIds[0],
                 modelSucceeded,
                 turnId: durableDeliveryIntent.turnId,

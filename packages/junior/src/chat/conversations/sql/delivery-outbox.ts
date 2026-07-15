@@ -4,18 +4,17 @@ import { z } from "zod";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents, juniorPendingDeliveries } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import {
   conversationDeliveryFailureCodeSchema,
   conversationDeliveryIdSchema,
-  deliveryIntentEventKey,
-  deliveryTerminalEventKey,
   pendingConversationDeliveryCommandSchema,
   pendingConversationDeliveryPartStatesSchema,
   type PendingConversationDeliveryCommand,
   type PendingConversationDeliveryPartState,
 } from "../delivery";
 import { conversationEventDataSchema } from "../history";
-import { createSqlConversationEventStore } from "./history";
+import { ensureConversationRow } from "./conversation-row";
 import { withConversationEventLock } from "./event-lock";
 
 type PendingDeliveryRow = typeof juniorPendingDeliveries.$inferSelect;
@@ -44,6 +43,12 @@ export interface PendingConversationDelivery {
   lastAttemptAtMs?: number;
   createdAtMs: number;
   updatedAtMs: number;
+}
+
+/** Canonical turn-terminal interpretation after outbox finalization commits. */
+export interface PendingDeliveryTerminalOutcome {
+  deliveryOutcome: "accepted" | "failed";
+  modelSucceeded: boolean;
 }
 
 /** Raised when a stale worker tries to mutate state after losing its fence. */
@@ -151,7 +156,7 @@ function requireFence(
   }
 }
 
-/** Create immutable control state and its canonical intent fact atomically. */
+/** Create or validate immutable unresolved delivery control state. */
 export async function createPendingConversationDelivery(
   executor: JuniorSqlDatabase,
   args: {
@@ -173,34 +178,17 @@ export async function createPendingConversationDelivery(
   }
   return withConversationEventLock(executor, args.conversationId, async () =>
     executor.transaction(async () => {
-      const eventStore = createSqlConversationEventStore(executor);
-      const intendedData = {
-        type: "delivery_intended" as const,
-        deliveryId,
-        correlation: { kind: "turn" as const, turnId: args.turnId },
-        messageId: command.completion.assistantMessage.messageId,
-        deliveryKind: command.deliveryKind,
-        provider: command.provider,
-        partCount: command.parts.length,
-      };
-      if (await terminalFact(executor, args.conversationId, deliveryId)) {
+      await ensureConversationRow(executor, args.conversationId, nowMs);
+      if (
+        await turnTerminalOutcome(
+          executor,
+          args.conversationId,
+          args.turnId,
+          true,
+        )
+      ) {
         throw new Error("Delivery is already terminalized");
       }
-      const existingIntent = await eventFact(
-        executor,
-        args.conversationId,
-        deliveryIntentEventKey(deliveryId),
-      );
-      if (existingIntent && !isDeepStrictEqual(existingIntent, intendedData)) {
-        throw new Error("Delivery intent idempotency key has conflicting data");
-      }
-      await eventStore.append(args.conversationId, [
-        {
-          idempotencyKey: deliveryIntentEventKey(deliveryId),
-          createdAtMs: nowMs,
-          data: intendedData,
-        },
-      ]);
       await executor
         .db()
         .insert(juniorPendingDeliveries)
@@ -638,7 +626,7 @@ export async function recordPendingDeliveryPartFailed(
   });
 }
 
-async function eventFact(
+async function canonicalEventByKey(
   executor: JuniorSqlDatabase,
   conversationId: string,
   idempotencyKey: string,
@@ -662,57 +650,80 @@ async function eventFact(
     : undefined;
 }
 
-async function terminalFact(
+async function turnTerminalOutcome(
   executor: JuniorSqlDatabase,
   conversationId: string,
-  deliveryId: string,
-): Promise<"accepted" | "failed" | undefined> {
-  const fact = await eventFact(
+  turnId: string,
+  knownIntent: boolean,
+): Promise<PendingDeliveryTerminalOutcome | undefined> {
+  const fact = await canonicalEventByKey(
     executor,
     conversationId,
-    deliveryTerminalEventKey(deliveryId),
+    `turn:${turnId}:terminal`,
   );
-  if (
-    fact &&
-    fact.type !== "delivery_accepted" &&
-    fact.type !== "delivery_failed"
-  ) {
+  if (!fact) return undefined;
+  if (fact.type !== "turn_completed" && fact.type !== "turn_failed") {
     throw new Error(
-      "Delivery terminal idempotency key has an unexpected event type",
+      "Turn terminal idempotency key has an unexpected event type",
     );
   }
-  if (fact && fact.deliveryId !== deliveryId) {
-    throw new Error("Delivery terminal idempotency key has conflicting data");
+  if (fact.turnId !== turnId) {
+    throw new Error("Turn terminal idempotency key has conflicting data");
   }
-  return fact?.type === "delivery_accepted"
-    ? "accepted"
-    : fact?.type === "delivery_failed"
-      ? "failed"
-      : undefined;
+  if (fact.type === "turn_failed" && fact.failureCode === "delivery_failed") {
+    return { deliveryOutcome: "failed", modelSucceeded: false };
+  }
+  if (!knownIntent) {
+    const assistantMessageId = buildDeterministicAssistantMessageId(turnId);
+    const visibleAssistant = await canonicalEventByKey(
+      executor,
+      conversationId,
+      `visible-message:${assistantMessageId}:recorded`,
+    );
+    if (!visibleAssistant) return undefined;
+    if (
+      visibleAssistant.type !== "visible_message_recorded" ||
+      visibleAssistant.messageId !== assistantMessageId ||
+      visibleAssistant.role !== "assistant"
+    ) {
+      throw new Error(
+        "Finalized assistant idempotency key has conflicting data",
+      );
+    }
+  }
+  return {
+    deliveryOutcome: "accepted",
+    modelSucceeded: fact.type === "turn_completed",
+  };
 }
 
-/** Read the authoritative terminal fact after a possibly ambiguous SQL commit. */
+/** Interpret the authoritative turn terminal after an ambiguous SQL commit. */
 export async function loadDeliveryTerminalOutcome(
   executor: JuniorSqlDatabase,
-  args: { conversationId: string; deliveryId: string },
-): Promise<"accepted" | "failed" | undefined> {
-  return terminalFact(executor, args.conversationId, args.deliveryId);
+  args: { conversationId: string; turnId: string; knownIntent?: boolean },
+): Promise<PendingDeliveryTerminalOutcome | undefined> {
+  return turnTerminalOutcome(
+    executor,
+    args.conversationId,
+    args.turnId,
+    args.knownIntent ?? false,
+  );
 }
 
 /**
- * Run final SQL persistence, append the accepted fact, and delete control state
- * in one transaction. A retry after commit never invokes the finalizer again.
+ * Run accepted-delivery persistence and delete control state in one transaction.
+ * A retry after commit resolves the canonical turn terminal instead.
  */
 export async function terminalizeAcceptedPendingDelivery(
   executor: JuniorSqlDatabase,
   args: {
     conversationId: string;
     deliveryId: string;
+    turnId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
     finalizer: (input: {
       command: PendingConversationDeliveryCommand;
-      providerMessageIds: string[];
     }) => Promise<void>;
   },
 ): Promise<"finalized" | "already_finalized" | "not_found"> {
@@ -720,45 +731,63 @@ export async function terminalizeAcceptedPendingDelivery(
     executor.transaction(async () => {
       const row = await lockedRow(executor, args.deliveryId);
       if (!row) {
-        const terminal = await terminalFact(
+        const terminal = await turnTerminalOutcome(
           executor,
           args.conversationId,
-          args.deliveryId,
+          args.turnId,
+          true,
         );
-        return terminal === "accepted" ? "already_finalized" : "not_found";
+        return terminal?.deliveryOutcome === "accepted"
+          ? "already_finalized"
+          : "not_found";
       }
       requireFence(row, args.lease, args.nowMs);
       const current = parseRow(row);
-      if (current.conversationId !== args.conversationId) {
+      if (
+        current.conversationId !== args.conversationId ||
+        current.turnId !== args.turnId
+      ) {
         throw new Error("Pending delivery belongs to a different conversation");
       }
-      const providerMessageIds = current.command.parts.map((part) => {
+      current.command.parts.forEach((part) => {
         const state = current.partStates[part.partId];
         if (state?.status !== "accepted") {
           throw new Error("Cannot terminalize before every part is accepted");
         }
-        return state.providerMessageId;
       });
-      if (await terminalFact(executor, args.conversationId, args.deliveryId)) {
+      if (
+        await turnTerminalOutcome(
+          executor,
+          args.conversationId,
+          args.turnId,
+          true,
+        )
+      ) {
         throw new Error(
-          "Pending delivery conflicts with an existing terminal fact",
+          "Pending delivery conflicts with an existing turn terminal",
         );
       }
-      await createSqlConversationEventStore(executor).append(
+      await args.finalizer({ command: current.command });
+      const terminal = await canonicalEventByKey(
+        executor,
         args.conversationId,
-        [
-          {
-            idempotencyKey: deliveryTerminalEventKey(args.deliveryId),
-            createdAtMs: args.nowMs,
-            data: {
-              type: "delivery_accepted",
-              deliveryId: args.deliveryId,
-              providerMessageIds,
-            },
-          },
-        ],
+        `turn:${args.turnId}:terminal`,
       );
-      await args.finalizer({ command: current.command, providerMessageIds });
+      const expected = current.command.completion.terminal;
+      const matchesExpected =
+        expected.outcome === "success"
+          ? terminal?.type === "turn_completed" &&
+            terminal.turnId === args.turnId &&
+            terminal.outcome === "success"
+          : terminal?.type === "turn_failed" &&
+            terminal.turnId === args.turnId &&
+            terminal.failureCode === expected.failureCode &&
+            terminal.eventId === expected.eventId;
+      if (!matchesExpected) {
+        throw new Error(
+          "Accepted delivery finalizer did not write the expected turn terminal",
+        );
+      }
       const deleted = await executor
         .db()
         .delete(juniorPendingDeliveries)
@@ -777,14 +806,15 @@ export async function terminalizeAcceptedPendingDelivery(
 }
 
 /**
- * Run failure persistence, append the failed fact, and delete control state in
- * one transaction. Only a part already marked definitively failed can close.
+ * Run failure persistence and delete control state in one transaction. Only a
+ * part already marked definitively failed can close.
  */
 export async function terminalizeFailedPendingDelivery(
   executor: JuniorSqlDatabase,
   args: {
     conversationId: string;
     deliveryId: string;
+    turnId: string;
     lease: PendingDeliveryLease;
     nowMs: number;
     finalizer: (input: {
@@ -797,16 +827,22 @@ export async function terminalizeFailedPendingDelivery(
     executor.transaction(async () => {
       const row = await lockedRow(executor, args.deliveryId);
       if (!row) {
-        const terminal = await terminalFact(
+        const terminal = await turnTerminalOutcome(
           executor,
           args.conversationId,
-          args.deliveryId,
+          args.turnId,
+          true,
         );
-        return terminal === "failed" ? "already_finalized" : "not_found";
+        return terminal?.deliveryOutcome === "failed"
+          ? "already_finalized"
+          : "not_found";
       }
       requireFence(row, args.lease, args.nowMs);
       const current = parseRow(row);
-      if (current.conversationId !== args.conversationId) {
+      if (
+        current.conversationId !== args.conversationId ||
+        current.turnId !== args.turnId
+      ) {
         throw new Error("Pending delivery belongs to a different conversation");
       }
       const failedStates = Object.values(current.partStates).filter(
@@ -828,26 +864,33 @@ export async function terminalizeFailedPendingDelivery(
           "Pending delivery parts have conflicting failure codes",
         );
       }
-      if (await terminalFact(executor, args.conversationId, args.deliveryId)) {
+      if (
+        await turnTerminalOutcome(
+          executor,
+          args.conversationId,
+          args.turnId,
+          true,
+        )
+      ) {
         throw new Error(
-          "Pending delivery conflicts with an existing terminal fact",
+          "Pending delivery conflicts with an existing turn terminal",
         );
       }
-      await createSqlConversationEventStore(executor).append(
-        args.conversationId,
-        [
-          {
-            idempotencyKey: deliveryTerminalEventKey(args.deliveryId),
-            createdAtMs: args.nowMs,
-            data: {
-              type: "delivery_failed",
-              deliveryId: args.deliveryId,
-              failureCode,
-            },
-          },
-        ],
-      );
       await args.finalizer({ command: current.command, failureCode });
+      const terminal = await canonicalEventByKey(
+        executor,
+        args.conversationId,
+        `turn:${args.turnId}:terminal`,
+      );
+      if (
+        terminal?.type !== "turn_failed" ||
+        terminal.turnId !== args.turnId ||
+        terminal.failureCode !== "delivery_failed"
+      ) {
+        throw new Error(
+          "Failed delivery finalizer did not write the expected turn terminal",
+        );
+      }
       const deleted = await executor
         .db()
         .delete(juniorPendingDeliveries)

@@ -5,6 +5,7 @@ import {
   slackSourceSchema,
 } from "@sentry/junior-plugin-api";
 import { agentTurnUsageSchema } from "@/chat/usage";
+import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
 import { conversationModelMessageSchema } from "./model-message";
 import { conversationTurnFailureCodeSchema } from "./turn-failure";
 
@@ -18,34 +19,12 @@ export const conversationDeliveryIdSchema = z
 /** Allowlisted destination provider for durable delivery facts. */
 export const conversationDeliveryProviderSchema = z.literal("slack");
 
-/** Public delivery family; private authorization links use a separate path. */
-export const conversationDeliveryKindSchema = z.enum([
-  "assistant_reply",
-  "public_notice",
-]);
+/** Delivery family currently owned by the durable Slack reply boundary. */
+export const conversationDeliveryKindSchema = z.literal("assistant_reply");
 
 /** Privacy-safe reason that an intended delivery cannot be completed. */
-export const conversationDeliveryFailureCodeSchema = z.enum([
-  "provider_rejected",
-  "reconciliation_failed",
-  "retry_exhausted",
-]);
-
-/** Correlate delivery without copying provider payloads into history. */
-export const conversationDeliveryCorrelationSchema = z.union([
-  z
-    .object({
-      kind: z.literal("turn"),
-      turnId: z.string().min(1).max(256),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("authorization"),
-      authorizationId: z.string().min(1).max(256),
-    })
-    .strict(),
-]);
+export const conversationDeliveryFailureCodeSchema =
+  z.literal("provider_rejected");
 
 const slackMrkdwnTextSchema = z
   .object({ type: z.literal("mrkdwn"), text: z.string() })
@@ -102,8 +81,6 @@ export const pendingConversationDeliveryCommandSchema = z
         destinationVisibility: z.enum(["public", "private"]).optional(),
         actor: actorSchema.optional(),
         channelName: z.string().min(1).optional(),
-        loadedSkillNames: z.array(z.string().min(1)).optional(),
-        turnStartMessageIndex: z.number().int().nonnegative().optional(),
         startedAtMs: z.number().finite(),
       })
       .strict(),
@@ -166,6 +143,16 @@ export const pendingConversationDeliveryCommandSchema = z
         code: "custom",
         message: "delivery input message ids must be unique",
         path: ["completion", "inputMessageIds"],
+      });
+    }
+    if (
+      command.completion.assistantMessage.messageId !==
+      buildDeterministicAssistantMessageId(command.completion.turnId)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "delivery assistant message id must match its turn",
+        path: ["completion", "assistantMessage", "messageId"],
       });
     }
     const sourceThreadTs =
@@ -241,13 +228,3 @@ export const pendingConversationDeliveryPartStatesSchema = z.record(
   z.string().min(1),
   pendingConversationDeliveryPartStateSchema,
 );
-
-/** Idempotency key for the first durable intent fact. */
-export function deliveryIntentEventKey(deliveryId: string): string {
-  return `delivery:${conversationDeliveryIdSchema.parse(deliveryId)}:intent`;
-}
-
-/** Shared first-writer-wins key for accepted and failed terminal facts. */
-export function deliveryTerminalEventKey(deliveryId: string): string {
-  return `delivery:${conversationDeliveryIdSchema.parse(deliveryId)}:terminal`;
-}

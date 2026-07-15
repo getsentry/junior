@@ -13,10 +13,7 @@ import {
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 import { TurnInputDeferredError } from "@/chat/runtime/turn";
-import {
-  listAgentTurnSessionSummariesForConversation,
-  listBoundedAgentTurnSessionSummariesForConversation,
-} from "@/chat/state/turn-session";
+import { listAgentTurnSessionSummariesForConversation } from "@/chat/state/turn-session";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -349,7 +346,6 @@ describe("Slack behavior: finalized thread replies", () => {
       loadByTurn: vi.fn(async () => pending as never),
       loadOldestByConversation: vi.fn(async () => pending as never),
       loadTerminalOutcome: vi.fn(async () => undefined),
-      loadTurnTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {
         pending = {
           ...args,
@@ -457,7 +453,6 @@ describe("Slack behavior: finalized thread replies", () => {
             loadOldestByConversation: vi.fn(async () => older),
             loadByTurn: vi.fn(async () => older),
             loadTerminalOutcome: vi.fn(async () => undefined),
-            loadTurnTerminalOutcome: vi.fn(async () => undefined),
             createIntent: vi.fn(),
             advance: vi.fn(async () => ({ outcome: "accepted" as const })),
           },
@@ -527,7 +522,6 @@ describe("Slack behavior: finalized thread replies", () => {
             loadOldestByConversation: vi.fn(async () => pending),
             loadByTurn: vi.fn(async () => pending),
             loadTerminalOutcome: vi.fn(async () => undefined),
-            loadTurnTerminalOutcome: vi.fn(async () => "success" as const),
             createIntent: vi.fn(),
             advance: vi.fn(async () => ({ outcome: "accepted" as const })),
           },
@@ -570,8 +564,10 @@ describe("Slack behavior: finalized thread replies", () => {
           recoverableSlackDelivery: {
             loadOldestByConversation: vi.fn(async () => undefined),
             loadByTurn: vi.fn(async () => undefined),
-            loadTerminalOutcome: vi.fn(async () => "accepted" as const),
-            loadTurnTerminalOutcome: vi.fn(async () => "success" as const),
+            loadTerminalOutcome: vi.fn(async () => ({
+              deliveryOutcome: "accepted" as const,
+              modelSucceeded: true,
+            })),
             createIntent: vi.fn(),
             advance: vi.fn(),
           },
@@ -608,75 +604,12 @@ describe("Slack behavior: finalized thread replies", () => {
     ).toBe("completed");
   });
 
-  it.each(["missing", "lookup failure"] as const)(
-    "defers a row-deleted accepted terminal when lifecycle classification has a %s",
-    async (classificationFailure) => {
-      const thread = createTestThread({
-        id: `slack:C0FINAL:terminal-classification-${classificationFailure.replace(" ", "-")}`,
-      });
-      const ack = vi.fn();
-      const run = vi.fn();
-      const scheduleSessionCompletedPluginTasks = vi.fn();
-      const loadTurnTerminalOutcome = vi.fn(async () => {
-        if (classificationFailure === "lookup failure") {
-          throw new Error("lifecycle lookup unavailable");
-        }
-        return undefined;
-      });
-      const messageId = `prior-terminal-${classificationFailure.replace(" ", "-")}`;
-      const { slackRuntime } = createTestChatRuntime({
-        services: {
-          replyExecutor: {
-            agentRunner: { run },
-            recoverableSlackDelivery: {
-              loadOldestByConversation: vi.fn(async () => undefined),
-              loadByTurn: vi.fn(async () => undefined),
-              loadTerminalOutcome: vi.fn(async () => "accepted" as const),
-              loadTurnTerminalOutcome,
-              createIntent: vi.fn(),
-              advance: vi.fn(),
-            },
-            scheduleSessionCompletedPluginTasks,
-          },
-        },
-      });
-
-      await expect(
-        slackRuntime.handleNewMention(
-          thread,
-          createTestMessage({
-            id: messageId,
-            text: "<@U0APP> already delivered",
-            isMention: true,
-            threadId: thread.id,
-          }),
-          {
-            destination: createTestDestination(thread),
-            ack,
-          },
-        ),
-      ).rejects.toBeInstanceOf(TurnInputDeferredError);
-
-      expect(loadTurnTerminalOutcome).toHaveBeenCalledOnce();
-      expect(run).not.toHaveBeenCalled();
-      expect(ack).not.toHaveBeenCalled();
-      expect(scheduleSessionCompletedPluginTasks).not.toHaveBeenCalled();
-      expect(thread.posts).toEqual([]);
-      expect(
-        (
-          await listBoundedAgentTurnSessionSummariesForConversation(thread.id)
-        ).find((summary) => summary.sessionId === `turn_${messageId}`),
-      ).toBeUndefined();
-    },
-  );
-
   it("repairs a failed summary after an immediate definitive rejection", async () => {
     const ack = vi.fn();
     const recoverableSlackDelivery = {
       loadOldestByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
       loadTerminalOutcome: vi.fn(async () => undefined),
-      loadTurnTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(
         async (args) =>
           ({
@@ -737,7 +670,6 @@ describe("Slack behavior: finalized thread replies", () => {
       loadOldestByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => undefined),
       loadTerminalOutcome: vi.fn(async () => undefined),
-      loadTurnTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(
         async (args) =>
           ({
@@ -802,7 +734,6 @@ describe("Slack behavior: finalized thread replies", () => {
       loadOldestByConversation: vi.fn(async () => undefined),
       loadByTurn: vi.fn(async () => intent as never),
       loadTerminalOutcome: vi.fn(async () => undefined),
-      loadTurnTerminalOutcome: vi.fn(async () => undefined),
       createIntent: vi.fn(async (args) => {
         intent = {
           ...args,

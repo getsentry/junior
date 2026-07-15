@@ -131,16 +131,23 @@ paths are not yet covered by that outbox.
 
 `junior_pending_deliveries` is deletable control state for closing that gap; it
 is not a second history API. Each row retains one strict finalized Slack reply
-command, fenced lease state, and per-part posting/reconciliation receipts. The
-canonical log records only privacy-safe `delivery_intended` and first-writer-
-wins `delivery_accepted` or `delivery_failed` facts. A stale `posting` part
-becomes `uncertain` and cannot be posted again until reconciliation explicitly
-marks it repostable after its grace period. Terminalization runs injected SQL
-finalization, appends the terminal fact, and deletes the pending row in one
-transaction. Slack posting and reconciliation workers must use this boundary
-before the runtime can claim crash-safe external delivery. The ordinary Slack
-reply executor uses it to resume multipart or ambiguous delivery without
-rerunning the model.
+command, an indexed retry schedule, fenced lease state, and per-part
+posting/reconciliation receipts. The current part is derived from its ordered
+parts and their states rather than persisted as another cursor. The durable
+contract currently admits only ordinary Slack assistant replies correlated to
+their owning turn; other delivery families stay in their owning paths until
+they have a live producer and recovery design. A stale `posting` part becomes
+`uncertain` and cannot be posted again until reconciliation explicitly marks it
+repostable after its grace period. Terminalization persists the canonical turn
+terminal and deletes the pending row in one transaction. That turn terminal is
+also the post-commit delivery authority: only `turn_failed` with
+`delivery_failed` means Slack rejected delivery; every other terminal outcome
+means Slack accepted the reply while a known pending intent is being advanced.
+Startup recovery, where the intent row may already be gone, additionally
+requires the atomically finalized visible assistant-message fact before it
+classifies a non-delivery-failure terminal as accepted. The ordinary Slack
+reply executor keeps the original inbox record until terminalization and
+resumes multipart or ambiguous delivery without rerunning the model.
 
 Imported historical advisor executions own separate child event streams. The
 parent records start/end references and the child stores only its local events.

@@ -14,12 +14,13 @@ import {
   PendingDeliveryLeaseLostError,
 } from "@/chat/conversations/sql/delivery-outbox";
 import {
-  deliveryIntentEventKey,
-  deliveryTerminalEventKey,
+  conversationDeliveryFailureCodeSchema,
+  conversationDeliveryKindSchema,
   pendingConversationDeliveryCommandSchema,
   type PendingConversationDeliveryCommand,
 } from "@/chat/conversations/delivery";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
@@ -69,7 +70,7 @@ function command(
       turnId: "turn-1",
       inputMessageIds: ["user-1"],
       assistantMessage: {
-        messageId: "assistant-1",
+        messageId: "assistant:turn-1",
         text: "First\nSecond",
         createdAtMs: 950,
         author: { userName: "junior", isBot: true },
@@ -108,7 +109,14 @@ async function createDelivery(
 }
 
 describe("pending conversation delivery outbox", () => {
-  it("validates a narrow immutable command and creates intent idempotently", async () => {
+  it("validates a narrow immutable command and creates control state idempotently", async () => {
+    expect(
+      conversationDeliveryKindSchema.safeParse("public_notice").success,
+    ).toBe(false);
+    expect(
+      conversationDeliveryFailureCodeSchema.safeParse("retry_exhausted")
+        .success,
+    ).toBe(false);
     expect(
       pendingConversationDeliveryCommandSchema.safeParse({
         ...command(),
@@ -118,7 +126,31 @@ describe("pending conversation delivery outbox", () => {
     expect(
       pendingConversationDeliveryCommandSchema.safeParse({
         ...command(),
+        session: { ...command().session, loadedSkillNames: ["triage"] },
+      }).success,
+    ).toBe(false);
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse({
+        ...command(),
+        session: { ...command().session, turnStartMessageIndex: 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse({
+        ...command(),
         route: { channelId: "C999", threadTs: "1718123456.000000" },
+      }).success,
+    ).toBe(false);
+    expect(
+      pendingConversationDeliveryCommandSchema.safeParse({
+        ...command(),
+        completion: {
+          ...command().completion,
+          assistantMessage: {
+            ...command().completion.assistantMessage,
+            messageId: "assistant:wrong-turn",
+          },
+        },
       }).success,
     ).toBe(false);
     expect(
@@ -141,12 +173,11 @@ describe("pending conversation delivery outbox", () => {
           turnId: "turn-1",
         }),
       ).toEqual(first);
-      const events = await createSqlConversationEventStore(
-        fixture.sql,
-      ).loadHistory(CONVERSATION_ID);
-      expect(
-        events.filter((event) => event.data.type === "delivery_intended"),
-      ).toHaveLength(1);
+      await expect(
+        createSqlConversationEventStore(fixture.sql).loadHistory(
+          CONVERSATION_ID,
+        ),
+      ).resolves.toEqual([]);
 
       await expect(
         createPendingConversationDelivery(fixture.sql, {
@@ -157,52 +188,26 @@ describe("pending conversation delivery outbox", () => {
           nowMs: 2_000,
         }),
       ).rejects.toThrow("different pending delivery");
-      expect(
-        (
-          await createSqlConversationEventStore(fixture.sql).loadHistory(
-            CONVERSATION_ID,
-          )
-        ).filter((event) => event.data.type === "delivery_intended"),
-      ).toHaveLength(1);
     } finally {
       await fixture.close();
     }
   });
 
-  it("fails closed on intent and terminal idempotency-key collisions", async () => {
+  it("fails closed on turn-terminal idempotency-key collisions", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
       const events = createSqlConversationEventStore(fixture.sql);
       await events.append(CONVERSATION_ID, [
         {
-          idempotencyKey: deliveryIntentEventKey(DELIVERY_ID),
+          idempotencyKey: "turn:turn-1:terminal",
           createdAtMs: 900,
           data: { type: "mcp_provider_connected", provider: "github" },
         },
       ]);
       await expect(createDelivery(fixture)).rejects.toThrow(
-        "intent idempotency key has conflicting data",
+        "unexpected event type",
       );
-
-      const secondConversation = "slack:C123:1718123456.000001";
-      const secondDelivery = "delivery:turn-2";
-      await events.append(secondConversation, [
-        {
-          idempotencyKey: deliveryTerminalEventKey(secondDelivery),
-          createdAtMs: 900,
-          data: { type: "mcp_provider_connected", provider: "github" },
-        },
-      ]);
-      await expect(
-        createPendingConversationDelivery(fixture.sql, {
-          conversationId: secondConversation,
-          deliveryId: secondDelivery,
-          turnId: "turn-1",
-          command: command(),
-          nowMs: 1_000,
-        }),
-      ).rejects.toThrow("unexpected event type");
     } finally {
       await fixture.close();
     }
@@ -423,17 +428,28 @@ describe("pending conversation delivery outbox", () => {
         terminalizeAcceptedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_007,
           finalizer: vi.fn(),
         }),
       ).rejects.toThrow("every part is accepted");
 
-      const failureFinalizer = vi.fn();
+      const failureFinalizer = vi.fn(async () => {
+        await new ConversationTurnLifecycleService(
+          createSqlConversationEventStore(fixture.sql),
+        ).fail({
+          conversationId: CONVERSATION_ID,
+          turnId: "turn-1",
+          createdAtMs: 1_008,
+          failureCode: "delivery_failed",
+        });
+      });
       await expect(
         terminalizeFailedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_008,
           finalizer: failureFinalizer,
@@ -443,6 +459,7 @@ describe("pending conversation delivery outbox", () => {
         terminalizeFailedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_009,
           finalizer: failureFinalizer,
@@ -453,7 +470,11 @@ describe("pending conversation delivery outbox", () => {
         fixture.sql,
       ).loadHistory(CONVERSATION_ID);
       expect(
-        history.filter((event) => event.data.type === "delivery_failed"),
+        history.filter(
+          (event) =>
+            event.data.type === "turn_failed" &&
+            event.data.failureCode === "delivery_failed",
+        ),
       ).toHaveLength(1);
     } finally {
       await fixture.close();
@@ -492,6 +513,7 @@ describe("pending conversation delivery outbox", () => {
         terminalizeAcceptedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_020,
           finalizer: async () => {
@@ -517,17 +539,57 @@ describe("pending conversation delivery outbox", () => {
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
       expect(conversationAfterRollback?.title).toBeNull();
 
+      await expect(
+        terminalizeAcceptedPendingDelivery(fixture.sql, {
+          conversationId: CONVERSATION_ID,
+          deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
+          lease,
+          nowMs: 1_020,
+          finalizer: async () => {
+            await fixture.sql
+              .db()
+              .update(juniorConversations)
+              .set({ title: "wrong terminal" })
+              .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+            await new ConversationTurnLifecycleService(
+              createSqlConversationEventStore(fixture.sql),
+            ).complete({
+              conversationId: CONVERSATION_ID,
+              turnId: "turn-1",
+              createdAtMs: 1_020,
+              outcome: "no_reply",
+            });
+          },
+        }),
+      ).rejects.toThrow("did not write the expected turn terminal");
+      expect(
+        await loadPendingDeliveryByTurn(fixture.sql, {
+          conversationId: CONVERSATION_ID,
+          turnId: "turn-1",
+        }),
+      ).toBeDefined();
+
       const finalizer = vi.fn(async () => {
         await fixture.sql
           .db()
           .update(juniorConversations)
           .set({ title: "finalized" })
           .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+        await new ConversationTurnLifecycleService(
+          createSqlConversationEventStore(fixture.sql),
+        ).complete({
+          conversationId: CONVERSATION_ID,
+          turnId: "turn-1",
+          createdAtMs: 1_021,
+          outcome: "success",
+        });
       });
       await expect(
         terminalizeAcceptedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_021,
           finalizer,
@@ -537,6 +599,7 @@ describe("pending conversation delivery outbox", () => {
         terminalizeAcceptedPendingDelivery(fixture.sql, {
           conversationId: CONVERSATION_ID,
           deliveryId: DELIVERY_ID,
+          turnId: "turn-1",
           lease,
           nowMs: 1_022,
           finalizer,
@@ -550,7 +613,7 @@ describe("pending conversation delivery outbox", () => {
         fixture.sql,
       ).loadHistory(CONVERSATION_ID);
       expect(
-        events.filter((event) => event.data.type === "delivery_accepted"),
+        events.filter((event) => event.data.type === "turn_completed"),
       ).toHaveLength(1);
     } finally {
       await fixture.close();

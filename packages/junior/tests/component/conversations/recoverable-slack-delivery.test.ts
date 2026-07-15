@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
   claimPendingConversationDelivery,
   loadPendingDeliveryByTurn,
@@ -105,7 +106,7 @@ async function setup(port: RecoverableSlackDeliveryPort) {
 }
 
 describe("recoverable Slack delivery", () => {
-  it("posts multipart once and atomically orders accepted before turn completion", async () => {
+  it("posts multipart once and atomically finalizes the accepted turn", async () => {
     let posted = 0;
     const port: RecoverableSlackDeliveryPort = {
       post: vi.fn(async () => ({
@@ -130,10 +131,6 @@ describe("recoverable Slack delivery", () => {
       const history = await createSqlConversationEventStore(
         test.fixture.sql,
       ).loadHistory(conversationId);
-      const types = history.map((event) => event.data.type);
-      expect(types.indexOf("delivery_accepted")).toBeLessThan(
-        types.indexOf("turn_completed"),
-      );
       expect(
         history.filter(
           (event) =>
@@ -142,20 +139,20 @@ describe("recoverable Slack delivery", () => {
         ),
       ).toHaveLength(1);
       expect(
-        history.filter((event) => event.data.type === "delivery_accepted"),
-      ).toHaveLength(1);
-      expect(
         history.filter((event) => event.data.type === "turn_completed"),
       ).toHaveLength(1);
       expect(
         history.filter((event) => event.data.type === "message"),
       ).toHaveLength(2);
       await expect(
-        test.service.loadTurnTerminalOutcome({
+        test.service.loadTerminalOutcome({
           conversationId,
           turnId: "turn-1",
         }),
-      ).resolves.toBe("success");
+      ).resolves.toEqual({
+        deliveryOutcome: "accepted",
+        modelSucceeded: true,
+      });
     } finally {
       await test.fixture.close();
     }
@@ -335,10 +332,13 @@ describe("recoverable Slack delivery", () => {
       const history = await createSqlConversationEventStore(
         test.fixture.sql,
       ).loadHistory(conversationId);
-      const types = history.map((event) => event.data.type);
-      expect(types.indexOf("delivery_failed")).toBeLessThan(
-        types.indexOf("turn_failed"),
-      );
+      expect(
+        history.filter(
+          (event) =>
+            event.data.type === "turn_failed" &&
+            event.data.failureCode === "delivery_failed",
+        ),
+      ).toHaveLength(1);
       expect(
         history.some(
           (event) =>
@@ -347,11 +347,14 @@ describe("recoverable Slack delivery", () => {
         ),
       ).toBe(false);
       await expect(
-        test.service.loadTurnTerminalOutcome({
+        test.service.loadTerminalOutcome({
           conversationId,
           turnId: "turn-1",
         }),
-      ).resolves.toBe("failed");
+      ).resolves.toEqual({
+        deliveryOutcome: "failed",
+        modelSucceeded: false,
+      });
       expect(
         history.some(
           (event) =>
@@ -387,7 +390,7 @@ describe("recoverable Slack delivery", () => {
               await createSqlConversationEventStore(
                 test.fixture.sql,
               ).loadHistory(conversationId)
-            ).some((event) => event.data.type === "delivery_accepted");
+            ).some((event) => event.data.type === "turn_completed");
             if (terminal) {
               injected = true;
               throw new Error("commit acknowledgement lost");
@@ -405,14 +408,70 @@ describe("recoverable Slack delivery", () => {
         outcome: "accepted",
       });
       expect(injected).toBe(true);
+      await expect(
+        service.loadByTurn({ conversationId, turnId: test.pending.turnId }),
+      ).resolves.toBeUndefined();
       expect(
         await service.loadTerminalOutcome({
           conversationId,
-          deliveryId: test.pending.deliveryId,
+          turnId: test.pending.turnId,
         }),
-      ).toBe("accepted");
+      ).toEqual({ deliveryOutcome: "accepted", modelSucceeded: true });
     } finally {
       await test.fixture.close();
+    }
+  });
+
+  it("requires assistant evidence at startup while known-intent recovery trusts the terminal", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    await migrateSchema(fixture.sql);
+    const events = createSqlConversationEventStore(fixture.sql);
+    const service = new RecoverableSlackDeliveryService(
+      fixture.sql,
+      { post: vi.fn(), reconcile: vi.fn() },
+      () => 1_000,
+    );
+    try {
+      await new ConversationTurnLifecycleService(events).fail({
+        conversationId,
+        turnId: "turn-1",
+        createdAtMs: 1_000,
+        failureCode: "agent_run_failed",
+      });
+
+      await expect(
+        service.loadTerminalOutcome({ conversationId, turnId: "turn-1" }),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.loadTerminalOutcome({
+          conversationId,
+          turnId: "turn-1",
+          knownIntent: true,
+        }),
+      ).resolves.toEqual({
+        deliveryOutcome: "accepted",
+        modelSucceeded: false,
+      });
+
+      await createSqlConversationMessageStore(fixture.sql).record(
+        conversationId,
+        [
+          {
+            messageId: "assistant:turn-1",
+            role: "assistant",
+            text: "Fallback response",
+            createdAtMs: 1_001,
+          },
+        ],
+      );
+      await expect(
+        service.loadTerminalOutcome({ conversationId, turnId: "turn-1" }),
+      ).resolves.toEqual({
+        deliveryOutcome: "accepted",
+        modelSucceeded: false,
+      });
+    } finally {
+      await fixture.close();
     }
   });
 });

@@ -29,10 +29,7 @@ import { commitMessages } from "@/chat/conversations/projection";
 import type { PiMessage } from "@/chat/pi/messages";
 import { toStoredConversationMessage } from "@/chat/conversations/visible-message-serializer";
 import { and, eq, inArray } from "drizzle-orm";
-import {
-  juniorConversationEvents,
-  juniorConversationMessages,
-} from "@/db/schema";
+import { juniorConversationMessages } from "@/db/schema";
 import type {
   RecoverableSlackPostResult,
   RecoverableSlackReconciliationResult,
@@ -177,36 +174,13 @@ export class RecoverableSlackDeliveryService {
     return loadOldestPendingDeliveryByConversation(this.sql, args);
   }
 
-  /** Resolve a terminal fact when row deletion or commit acknowledgement was ambiguous. */
+  /** Resolve the canonical turn terminal after an ambiguous outbox commit. */
   async loadTerminalOutcome(args: {
     conversationId: string;
-    deliveryId: string;
-  }): Promise<"accepted" | "failed" | undefined> {
-    return loadDeliveryTerminalOutcome(this.sql, args);
-  }
-
-  /** Resolve the canonical model outcome for a terminal turn without loading its transcript. */
-  async loadTurnTerminalOutcome(args: {
-    conversationId: string;
     turnId: string;
-  }): Promise<"success" | "failed" | undefined> {
-    const rows = await this.sql
-      .db()
-      .select({ type: juniorConversationEvents.type })
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, args.conversationId),
-          eq(
-            juniorConversationEvents.idempotencyKey,
-            `turn:${args.turnId}:terminal`,
-          ),
-        ),
-      )
-      .limit(1);
-    if (rows[0]?.type === "turn_completed") return "success";
-    if (rows[0]?.type === "turn_failed") return "failed";
-    return undefined;
+    knownIntent?: boolean;
+  }) {
+    return loadDeliveryTerminalOutcome(this.sql, args);
   }
 
   /** Claim and advance one pending delivery until it must defer or terminalizes. */
@@ -228,9 +202,10 @@ export class RecoverableSlackDeliveryService {
       if (!latest) {
         const terminal = await loadDeliveryTerminalOutcome(this.sql, {
           conversationId: pending.conversationId,
-          deliveryId: pending.deliveryId,
+          turnId: pending.turnId,
+          knownIntent: true,
         });
-        if (terminal) return { outcome: terminal };
+        if (terminal) return { outcome: terminal.deliveryOutcome };
         return { outcome: "pending", retryAtMs: pending.nextAttemptAtMs };
       }
       return {
@@ -431,6 +406,7 @@ export class RecoverableSlackDeliveryService {
           await terminalizeFailedPendingDelivery(this.sql, {
             conversationId: current.conversationId,
             deliveryId: current.deliveryId,
+            turnId: current.turnId,
             lease,
             nowMs: this.now(),
             finalizer: async ({ command }) => {
@@ -447,9 +423,10 @@ export class RecoverableSlackDeliveryService {
         } catch (error) {
           const terminal = await loadDeliveryTerminalOutcome(this.sql, {
             conversationId: current.conversationId,
-            deliveryId: current.deliveryId,
+            turnId: current.turnId,
+            knownIntent: true,
           });
-          if (terminal) return { outcome: terminal };
+          if (terminal) return { outcome: terminal.deliveryOutcome };
           throw error;
         }
         return { outcome: "failed" };
@@ -458,6 +435,7 @@ export class RecoverableSlackDeliveryService {
         await terminalizeAcceptedPendingDelivery(this.sql, {
           conversationId: current.conversationId,
           deliveryId: current.deliveryId,
+          turnId: current.turnId,
           lease,
           nowMs: this.now(),
           finalizer: async ({ command }) => {
@@ -472,9 +450,10 @@ export class RecoverableSlackDeliveryService {
       } catch (error) {
         const terminal = await loadDeliveryTerminalOutcome(this.sql, {
           conversationId: current.conversationId,
-          deliveryId: current.deliveryId,
+          turnId: current.turnId,
+          knownIntent: true,
         });
-        if (terminal) return { outcome: terminal };
+        if (terminal) return { outcome: terminal.deliveryOutcome };
         throw error;
       }
       return { outcome: "accepted" };
