@@ -10,23 +10,20 @@ import {
 } from "@/chat/db";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { requestConversationWork } from "@/chat/task-execution/store";
-import {
-  ensureLegacyConversationImport,
-  importConversationFromLegacy,
-} from "@/chat/conversations/legacy-import";
+import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { hydrateConversationMessages } from "@/chat/conversations/visible-messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateConversationHistoryToSql } from "@/cli/upgrade/migrations/conversations-history-sql";
-import type { LegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
+import type { LegacyAdvisorSessionReader } from "@/cli/upgrade/migrations/conversation-history/advisor-session";
 import type { Conversation } from "@/chat/conversations/store";
 import type { PiMessage } from "@/chat/pi/messages";
 import type {
   SessionLogEntry,
   SessionLogStore,
-} from "@/chat/state/session-log";
+} from "@/cli/upgrade/migrations/conversation-history/session-log";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
 import {
   CONVERSATION_ID,
@@ -116,7 +113,7 @@ function staticAdvisorStore(messages: PiMessage[]): LegacyAdvisorSessionReader {
   };
 }
 
-describe("legacy conversation import", () => {
+describe("operator conversation history import", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
@@ -460,121 +457,6 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
-  it("lazily imports a straggler with a Redis log but no SQL rows, once", async () => {
-    const { executor, eventStore } = await processSqlStores();
-
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
-      {
-        schemaVersion: 2,
-        type: "pi_message",
-        sessionId: "session_0",
-        message: userMessage("straggler", 70),
-      },
-    ]);
-    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
-      conversation: {
-        messages: [],
-        stats: { updatedAtMs: 900 },
-      },
-    });
-
-    await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-    const history = await eventStore.loadHistory(CONVERSATION_ID);
-    expect(history).toHaveLength(1);
-    expect(history[0]!.data.type).toBe("message");
-    expect(history[0]!.createdAtMs).toBe(70);
-    const [conversation] = await executor
-      .db()
-      .select({ lastActivityAt: juniorConversations.lastActivityAt })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-    expect(conversation?.lastActivityAt.getTime()).toBe(900);
-
-    // Second read is idempotent: no duplicate rows.
-    await ensureLegacyConversationImport({ conversationId: CONVERSATION_ID });
-    expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
-  }, 20_000);
-
-  it("loadConnectedMcpProviders triggers the lazy import for a straggler", async () => {
-    await processSqlStores();
-
-    // A Redis-only straggler whose durable MCP connection fact has not been
-    // imported yet: the provider read must not miss it.
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
-      {
-        schemaVersion: 2,
-        type: "pi_message",
-        sessionId: "session_0",
-        message: userMessage("straggler", 70),
-      },
-      {
-        schemaVersion: 2,
-        type: "mcp_provider_connected",
-        sessionId: "session_0",
-        provider: "linear",
-      },
-    ]);
-
-    const { loadConnectedMcpProviders } =
-      await import("@/chat/conversations/projection");
-    await expect(
-      loadConnectedMcpProviders({ conversationId: CONVERSATION_ID }),
-    ).resolves.toEqual(["linear"]);
-  }, 20_000);
-
-  it("hydrate triggers the lazy import for a Redis-only straggler and preserves replied + author", async () => {
-    await processSqlStores();
-
-    // Seed ONLY legacy Redis thread-state (a user message with a delivery mark
-    // and an author) and no SQL rows: the promotion-window straggler shape.
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [
-          {
-            id: "legacy-compaction",
-            summary: "Older imported context",
-            coveredMessageIds: ["older-message"],
-            createdAtMs: 90,
-          },
-        ],
-        messages: [
-          {
-            id: "m1",
-            role: "user",
-            text: "legacy hello",
-            createdAtMs: 100,
-            author: { userId: "U123", userName: "alice", fullName: "Alice" },
-            meta: { replied: true },
-          },
-        ],
-      },
-    });
-
-    const conversation = coerceThreadConversationState({});
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: CONVERSATION_ID,
-    });
-
-    const hydratedUser = conversation.messages.find(
-      (message) => message.id === "m1",
-    );
-    expect(hydratedUser?.text).toBe("legacy hello");
-    expect(hydratedUser?.author?.userId).toBe("U123");
-    expect(hydratedUser?.author?.userName).toBe("alice");
-    expect(hydratedUser?.meta?.replied).toBe(true);
-    expect(conversation.compactions).toEqual([
-      expect.objectContaining({ id: "legacy-compaction" }),
-    ]);
-  }, 20_000);
-
   it("hydrates visible messages from events without message-table rows", async () => {
     const { eventStore } = await processSqlStores();
     await eventStore.append(CONVERSATION_ID, [
@@ -605,36 +487,29 @@ describe("legacy conversation import", () => {
     ]);
   }, 20_000);
 
-  it("does not resurrect purged SQL history from legacy Redis", async () => {
-    const { executor, eventStore } = await processSqlStores();
-
-    await executor
-      .db()
-      .insert(juniorConversations)
-      .values({
-        conversationId: CONVERSATION_ID,
-        createdAt: new Date(100),
-        lastActivityAt: new Date(100),
-        updatedAt: new Date(100),
-        executionStatus: "idle",
-        transcriptPurgedAt: new Date(200),
-      });
+  it("does not consult legacy Redis during live hydration", async () => {
+    const { eventStore } = await processSqlStores();
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
-      {
-        schemaVersion: 2,
-        type: "pi_message",
-        sessionId: "session_0",
-        message: userMessage("must stay purged", 50),
+    await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
+      conversation: {
+        messages: [
+          {
+            id: "redis-only",
+            role: "user",
+            text: "legacy text must stay outside the runtime",
+            createdAtMs: 100,
+          },
+        ],
       },
-    ]);
+    });
 
     const conversation = coerceThreadConversationState({});
     await hydrateConversationMessages({
       conversation,
       conversationId: CONVERSATION_ID,
     });
+
     expect(conversation.messages).toEqual([]);
     expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
   }, 20_000);
@@ -683,19 +558,6 @@ describe("legacy conversation import", () => {
     } finally {
       await fixture.close();
     }
-  }, 20_000);
-
-  it("surfaces legacy Redis read failures during lazy import", async () => {
-    await processSqlStores();
-    const stateAdapter = getStateAdapter();
-    await stateAdapter.connect();
-    vi.spyOn(stateAdapter, "getList").mockRejectedValueOnce(
-      new Error("legacy Redis unavailable"),
-    );
-
-    await expect(
-      ensureLegacyConversationImport({ conversationId: CONVERSATION_ID }),
-    ).rejects.toThrow("legacy Redis unavailable");
   }, 20_000);
 
   it("bulk-imports legacy Redis history through the upgrade migration", async () => {

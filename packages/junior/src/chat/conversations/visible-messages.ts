@@ -6,8 +6,10 @@
  * `ThreadConversationState.messages` is the current-turn working set. No
  * transcript data is persisted to `thread-state`.
  */
-import { getConversationMessageStore } from "@/chat/db";
-import { loadConversationEventHistory } from "./history-loader";
+import {
+  getConversationEventStore,
+  getConversationMessageStore,
+} from "@/chat/db";
 import { projectVisibleConversationCompactions } from "./visible-compactions";
 import { projectVisibleConversationMessages } from "./visible-message-projection";
 import { toStoredConversationMessage } from "./visible-message-serializer";
@@ -18,13 +20,8 @@ import type { ThreadConversationState } from "@/chat/state/conversation";
  * Replace the in-memory working set with the durable event-log transcript,
  * excluding messages already folded into a visible compaction summary.
  *
- * Hydrate is a first-read boundary, so it must trigger the once-only Redis→SQL
- * lazy import before reading events: consumers that hydrate before any model
- * projection read (turn-dedupe, delivered-message redelivery guards,
- * channel-context assembly) would otherwise make correctness decisions on an
- * empty transcript for promotion-window stragglers whose history is still only
- * in legacy Redis. The import is idempotent (skips when SQL event rows exist)
- * and no-ops cheaply when there is nothing legacy to read.
+ * SQL events are the only live history authority. The operator upgrade command
+ * owns any pre-cutover Redis import before new workers serve the conversation.
  */
 export async function hydrateConversationMessages(args: {
   conversation: ThreadConversationState;
@@ -34,9 +31,9 @@ export async function hydrateConversationMessages(args: {
     args.conversation.messages = [];
     return;
   }
-  const events = await loadConversationEventHistory({
-    conversationId: args.conversationId,
-  });
+  const events = await getConversationEventStore().loadHistory(
+    args.conversationId,
+  );
   args.conversation.compactions = projectVisibleConversationCompactions(events);
   const coveredIds = new Set(
     args.conversation.compactions.flatMap(

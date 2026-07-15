@@ -1,20 +1,17 @@
 /**
- * One-time Redis→SQL conversation import (bulk + lazy), deletion-scoped.
+ * One-time Redis→SQL conversation import for the operator upgrade command.
  *
- * A single per-conversation import unit shared by `junior upgrade` (bulk,
- * bounded newest-first) and the lazy first-read straggler path. It converts the
+ * A single per-conversation import unit used by `junior upgrade` (bulk,
+ * bounded newest-first). It converts the
  * legacy session log into `junior_conversation_events`, imports the advisor
  * session blob as a child conversation, and converts `thread-state` visible
  * messages into canonical events plus their rebuildable SQL search projection.
  * Import is idempotent per conversation: canonical event rows seal completed
  * imports. It never fabricates import-time timestamps.
  *
- * This module and its lazy hook are removed wholesale after the legacy Redis TTL
- * horizon passes; keeping it separate keeps that deletion mechanical.
+ * This module is intentionally outside the runtime conversation graph. Remove
+ * it after the legacy Redis operator-migration horizon passes.
  */
-// TODO(v0.104.0): Remove this module and its advisor-session reader after the
-// legacy Redis-to-SQL import horizon.
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   type ConversationCompaction,
@@ -27,21 +24,19 @@ import {
   readSessionLogEntries,
   type SessionLogEntry,
   type SessionLogStore,
-} from "@/chat/state/session-log";
+} from "./session-log";
 import {
   createLegacyAdvisorSessionReader,
   type LegacyAdvisorSessionReader,
-} from "@/chat/conversations/legacy-advisor-session";
+} from "./advisor-session";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversations } from "@/db/schema";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
-import { createSqlConversationEventStore } from "./sql/history";
-import type { Conversation } from "./store";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import type { Conversation } from "@/chat/conversations/store";
 import {
   convertAdvisorMessages,
   convertLegacySessionLog,
   writeLegacyImport,
-} from "./sql/legacy-history-import";
+} from "./legacy-history-import";
 
 const legacyVisibleMessageSchema = z.object({
   id: z.string(),
@@ -243,50 +238,4 @@ export async function importConversationFromLegacy(
   });
 
   return { imported };
-}
-
-/**
- * Lazy first-read import for a straggler the old deployment touched during
- * promotion. Runs under the conversation lease the worker already holds before
- * any turn/resume projection read; idempotent skip-if-rows-exist makes re-entry
- * safe. Missing legacy keys produce empty reads for genuinely new conversations;
- * actual Redis read failures surface through normal worker recovery.
- */
-export async function ensureLegacyConversationImport(args: {
-  conversationId: string;
-}): Promise<void> {
-  const eventStore = getConversationEventStore();
-  if ((await eventStore.loadCurrentEpoch(args.conversationId)).length > 0) {
-    return;
-  }
-  const entries = await readSessionLogEntries({
-    conversationId: args.conversationId,
-  });
-  const snapshot = await loadThreadStateSnapshot(args.conversationId);
-  const visible = snapshot.messages;
-  if (
-    entries.length === 0 &&
-    visible.length === 0 &&
-    snapshot.compactions.length === 0
-  ) {
-    return;
-  }
-  const executor = getSqlExecutor();
-  const purged = await executor
-    .db()
-    .select({ transcriptPurgedAt: juniorConversations.transcriptPurgedAt })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, args.conversationId));
-  if (purged[0]?.transcriptPurgedAt) {
-    return;
-  }
-  await importConversationFromLegacy(args.conversationId, {
-    executor,
-    sessionLogStore: { read: async () => entries },
-    loadVisibleMessages: async () => visible,
-    legacyCompactions: snapshot.compactions,
-    ...(snapshot.lastActivityAtMs === undefined
-      ? {}
-      : { legacyLastActivityAtMs: snapshot.lastActivityAtMs }),
-  });
 }

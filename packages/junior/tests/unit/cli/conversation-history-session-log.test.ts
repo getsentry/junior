@@ -5,7 +5,7 @@ import {
   readSessionLogEntries,
   type SessionLogEntry,
   type SessionLogStore,
-} from "@/chat/state/session-log";
+} from "@/cli/upgrade/migrations/conversation-history/session-log";
 
 function userMessage(text: string): PiMessage {
   return {
@@ -21,7 +21,7 @@ function memoryStore(values: unknown[]): SessionLogStore {
   };
 }
 
-describe("legacy session log decode", () => {
+describe("operator legacy session log decode", () => {
   it("preserves ordered legacy entry discriminants for the SQL importer", async () => {
     const message = userMessage("legacy question");
     const values = [

@@ -1,6 +1,6 @@
 import { getChatConfig } from "@/chat/config";
 import { createSqlStore, type SqlStore } from "@/chat/conversations/sql/store";
-import { createStateConversationStore } from "@/chat/conversations/state";
+import { createStateConversationStore } from "./conversation-history/state-conversation-store";
 import { addAgentTurnUsage } from "@/chat/usage";
 import { listAgentTurnSessionSummariesForConversations } from "@/chat/state/turn-session";
 import { createJuniorSqlExecutor } from "@/db/executor";

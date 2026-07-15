@@ -10,8 +10,8 @@
       authorization observations, and bounded sequence projection.
 - [x] Hard-cut storage writes and SQL rows to canonical events without changing
       API payloads or runtime behavior.
-- [x] Restrict legacy `pi_message` to the bounded Redis/import and rolling-worker
-      compatibility seams; never expose raw persistence data through the API.
+- [x] Restrict legacy `pi_message` to the explicit operator backfill; never
+      expose it through runtime conversation modules or reporting APIs.
 - [x] Add focused adapter parity tests and update owning module documentation.
 
 ## 2. Canonical Event Writes
@@ -55,9 +55,11 @@
 - [x] Make the visible-message table an explicit event-backed read model.
 - [x] Hydrate runtime and primary conversation-detail transcripts from visible
       events instead of the message-table projection or model messages.
+- [x] Remove lazy Redis/advisor history import from every runtime read and move
+      the retained backfill decoder/writer under `cli/upgrade` only.
 - [ ] Make remaining aggregate stores explicit read models.
-- [ ] Remove obsolete transcript reconstruction and legacy compatibility after
-      migration completion.
+- [ ] Delete the explicit operator Redis backfill after every supported
+      deployment has crossed its migration horizon.
 - [ ] Verify retention, purge, redaction, idempotency, replay parity, and event
       tree behavior.
 - [ ] Move durable invariants into owning code and documentation, then delete

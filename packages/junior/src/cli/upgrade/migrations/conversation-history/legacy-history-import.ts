@@ -1,39 +1,36 @@
 /**
- * One-time Redis→SQL legacy history importer (import-only, deletion-scoped).
+ * One-time Redis→SQL legacy history importer used only by `junior upgrade`.
  *
  * Translates the legacy `junior:agent-session-log:<id>` list shape into
  * `junior_conversation_events` rows: `sessionId` markers become context epochs,
  * `projection_reset` entries explode into a `context_epoch_started` marker plus
  * per-message rows, advisor `transcriptRef` links become `childConversationId`,
  * and legacy v1 provenance normalizes exactly as the legacy reducer does. This
- * whole module is removed with the lazy-import path after the Redis TTL horizon;
- * its self-contained child-id formula reproduces historical advisor ids during
- * that bounded import.
+ * whole module is removed after the operator-migration horizon; its
+ * self-contained child-id formula reproduces historical advisor ids during
+ * that bounded backfill.
  */
 import { eq, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import type { PiMessage } from "@/chat/pi/messages";
 import { unescapeXml } from "@/chat/xml";
-import type { NewConversationMessage } from "../messages";
-import {
-  legacyActorProvenance,
-  type SessionLogEntry,
-} from "@/chat/state/session-log";
+import type { NewConversationMessage } from "@/chat/conversations/messages";
+import { legacyActorProvenance, type SessionLogEntry } from "./session-log";
 import {
   contextProvenance,
   type ConversationMessageProvenance,
-} from "../provenance";
+} from "@/chat/conversations/provenance";
 import {
   conversationEventDataSchema,
   type ConversationEventData,
-} from "../history";
+} from "@/chat/conversations/history";
 import {
   juniorConversationEvents,
   juniorConversationMessages,
   juniorConversations,
 } from "@/db/schema";
-import { withConversationEventLock } from "./event-lock";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 
 const INITIAL_SESSION_ID = "session_0";
 const ADVISOR_TASK_OPEN = "<advisor-task>\n";

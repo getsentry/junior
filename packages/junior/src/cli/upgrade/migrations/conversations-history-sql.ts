@@ -1,9 +1,9 @@
 import { getChatConfig } from "@/chat/config";
-import { importConversationFromLegacy } from "@/chat/conversations/legacy-import";
-import { createStateConversationStore } from "@/chat/conversations/state";
-import type { LegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
+import { importConversationFromLegacy } from "./conversation-history/import";
+import { createStateConversationStore } from "./conversation-history/state-conversation-store";
+import type { LegacyAdvisorSessionReader } from "./conversation-history/advisor-session";
 import type { ConversationMessage as ThreadConversationMessage } from "@/chat/state/conversation";
-import type { SessionLogStore } from "@/chat/state/session-log";
+import type { SessionLogStore } from "./conversation-history/session-log";
 import { createJuniorSqlExecutor } from "@/db/executor";
 import type { JuniorSqlExecutor } from "@/db/db";
 import type { MigrationContext, MigrationResult } from "../types";

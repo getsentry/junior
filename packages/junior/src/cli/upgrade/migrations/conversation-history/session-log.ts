@@ -1,5 +1,5 @@
 /**
- * Legacy Redis Pi session-log read port.
+ * Legacy Redis Pi session-log reader for the operator SQL backfill.
  *
  * SQL conversation events are the sole durable history authority. This module
  * exists only to decode and read pre-cutover Redis entries during the bounded
