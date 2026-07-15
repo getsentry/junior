@@ -82,7 +82,7 @@ Run snapshot warmup directly:
 pnpm exec junior snapshot create
 ```
 
-Confirm the final line includes `Sandbox snapshot create complete` and that the system dependencies include `docker`. The Docker daemon is not preserved in a snapshot; start it in a sandbox before running containers:
+Confirm the final line includes `Sandbox snapshot create complete`. In a sandbox restored from that snapshot, verify Docker works by starting the daemon and querying it:
 
 ```bash
 sudo dockerd >/tmp/dockerd.log 2>&1 &

@@ -22,7 +22,7 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   getSandboxRuntimeDependencies: () => [
-    { type: "system", package: "docker" },
+    { type: "system", package: "baseline-package" },
     ...getRuntimeDependenciesMock(),
   ],
 }));
@@ -118,7 +118,9 @@ describe("snapshot create cli", () => {
       "Sandbox snapshot inputs: plugins=1 system_dependencies=2 npm_dependencies=1 postinstall_commands=1",
     );
     expect(logs).toContain("Snapshot plugins (1): agent-browser");
-    expect(logs).toContain("System dependencies (2): docker, gtk3");
+    expect(logs).toContain(
+      "System dependencies (2): baseline-package, gtk3",
+    );
     expect(logs).toContain("NPM dependencies (1): agent-browser@latest");
     expect(logs).toContain("Runtime postinstall (1): agent-browser install");
   });
