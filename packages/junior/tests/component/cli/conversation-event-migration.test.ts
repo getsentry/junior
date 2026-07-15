@@ -1,12 +1,11 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { migrateConversationEventData } from "@/cli/upgrade/migrations/conversation-event-data";
 import { migrateConversationVisibleMessageEvents } from "@/cli/upgrade/migrations/conversation-visible-message-events";
-import type { JuniorSqlExecutor } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { importConversationFromLegacy } from "@/cli/upgrade/migrations/conversation-history/import";
+import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-history/session-log";
 import { createLocalJuniorSqlFixture } from "../../fixtures/sql";
 
 const migrationsFolder = path.resolve(
@@ -32,149 +31,7 @@ async function executeStatements(
 }
 
 describe("conversation event migration", () => {
-  it("advances batches by the last rewritten event key", async () => {
-    const query = vi
-      .fn<JuniorSqlExecutor["query"]>()
-      .mockResolvedValueOnce([
-        { conversation_id: "conversation-one", seq: 3 },
-        { conversation_id: "conversation-two", seq: 1 },
-      ])
-      .mockResolvedValueOnce([{ conversation_id: "conversation-two", seq: 4 }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ count: 0 }]);
-    const executor = {
-      query,
-      withLock: async (_name: string, callback: () => Promise<unknown>) =>
-        callback(),
-    } as unknown as JuniorSqlExecutor;
-
-    await expect(
-      migrateConversationEventData(
-        { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-        { batchSize: 2, executor },
-      ),
-    ).resolves.toEqual({
-      existing: 0,
-      migrated: 3,
-      missing: 0,
-      scanned: 3,
-    });
-    expect(query.mock.calls.map(([, parameters]) => parameters)).toEqual([
-      [2, null, null],
-      [2, "conversation-two", 1],
-      [2, "conversation-two", 4],
-      undefined,
-    ]);
-  });
-
-  it("fails closed when skipped locked legacy rows remain", async () => {
-    const query = vi
-      .fn<JuniorSqlExecutor["query"]>()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ count: 1 }]);
-    const executor = {
-      query,
-      withLock: async (_name: string, callback: () => Promise<unknown>) =>
-        callback(),
-    } as unknown as JuniorSqlExecutor;
-
-    await expect(
-      migrateConversationEventData(
-        { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-        { batchSize: 10, executor },
-      ),
-    ).rejects.toThrow(
-      "Conversation event migration left 1 locked legacy row(s)",
-    );
-  });
-
-  it("fails closed when the remaining-row aggregate is missing", async () => {
-    const query = vi
-      .fn<JuniorSqlExecutor["query"]>()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
-    const executor = {
-      query,
-      withLock: async (_name: string, callback: () => Promise<unknown>) =>
-        callback(),
-    } as unknown as JuniorSqlExecutor;
-
-    await expect(
-      migrateConversationEventData(
-        { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-        { executor },
-      ),
-    ).rejects.toThrow(
-      "Conversation event migration could not verify that all legacy rows were rewritten",
-    );
-  });
-
-  it("fails closed when visible-message rows remain unbackfilled", async () => {
-    const query = vi
-      .fn<JuniorSqlExecutor["query"]>()
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ count: 1 }]);
-    const executor = {
-      query,
-      withLock: async (_name: string, callback: () => Promise<unknown>) =>
-        callback(),
-    } as unknown as JuniorSqlExecutor;
-
-    await expect(
-      migrateConversationVisibleMessageEvents(
-        { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-        { executor },
-      ),
-    ).rejects.toThrow("Visible-message event migration left 1 message row(s)");
-  });
-
-  it("advances visible-message batches by the last stable row key", async () => {
-    const first = {
-      conversation_id: "conversation-one",
-      message_id: "m1",
-      role: "user",
-      text: "one",
-      author_identity_id: null,
-      meta: null,
-      replied_at: null,
-      created_at: "2026-07-14T10:00:01.000Z",
-    } as const;
-    const second = {
-      ...first,
-      conversation_id: "conversation-two",
-      message_id: "m2",
-      text: "two",
-      created_at: "2026-07-14T10:00:02.000Z",
-    } as const;
-    const query = vi
-      .fn<JuniorSqlExecutor["query"]>()
-      .mockResolvedValueOnce([first])
-      .mockResolvedValueOnce([second])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ count: 0 }]);
-    const executor = {
-      query,
-      withLock: async (_name: string, callback: () => Promise<unknown>) =>
-        callback(),
-    } as unknown as JuniorSqlExecutor;
-    const append = vi.fn(async () => {});
-
-    await expect(
-      migrateConversationVisibleMessageEvents(
-        { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-        { batchSize: 1, eventStore: { append }, executor },
-      ),
-    ).resolves.toMatchObject({ migrated: 2, missing: 0 });
-    expect(query.mock.calls.map(([, parameters]) => parameters)).toEqual([
-      [1, null, null, null],
-      [1, first.conversation_id, first.created_at, first.message_id],
-      [1, second.conversation_id, second.created_at, second.message_id],
-      undefined,
-    ]);
-    expect(append).toHaveBeenCalledTimes(2);
-  });
-
-  it("backfills visible-message read-model rows after the hard cutover", async () => {
+  it("imports external history before visible-message rows seal the conversation", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const migrationsBeforeConversationEvents = [
       "0000_initial.sql",
@@ -216,6 +73,27 @@ describe("conversation event migration", () => {
         conversationEvents,
       );
 
+      const eventStore = createSqlConversationEventStore(fixture.sql);
+      await expect(eventStore.loadHistory(conversationId)).resolves.toEqual([]);
+
+      const retainedSessionEntry = {
+        schemaVersion: 2,
+        type: "pi_message",
+        sessionId: "retained-session",
+        message: {
+          role: "user",
+          content: [{ type: "text", text: "retained external history" }],
+          timestamp: Date.parse("2026-07-14T10:00:00.500Z"),
+        },
+      } as unknown as SessionLogEntry;
+      await expect(
+        importConversationFromLegacy(conversationId, {
+          executor: fixture.sql,
+          sessionLogStore: { read: async () => [retainedSessionEntry] },
+          loadVisibleMessages: async () => [],
+        }),
+      ).resolves.toEqual({ imported: true });
+
       const context = {
         io: { info: () => {} },
         stateAdapter: getStateAdapter(),
@@ -232,111 +110,39 @@ describe("conversation event migration", () => {
           executor: fixture.sql,
         }),
       ).resolves.toMatchObject({ migrated: 0, missing: 0 });
-
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversation_messages (
-          conversation_id, message_id, role, text, created_at
-        ) VALUES ($1, 'late', 'assistant', 'late read model', $2)`,
-        [conversationId, new Date("2026-07-14T10:00:03.000Z")],
-      );
-      await fixture.sql.execute(
-        `UPDATE junior_conversation_messages
-         SET meta = $2::jsonb, replied_at = $3
-         WHERE conversation_id = $1 AND message_id = 'late'`,
-        [
-          conversationId,
-          JSON.stringify({ slackTs: "123.456" }),
-          new Date("2026-07-14T10:00:04.000Z"),
-        ],
-      );
-      await fixture.sql.execute(
-        `INSERT INTO junior_conversation_messages (
-          conversation_id, message_id, role, text, replied_at, created_at
-        ) VALUES ($1, 'late-replied', 'user', 'already replied', $2, $3)`,
-        [
-          conversationId,
-          new Date("2026-07-14T10:00:04.500Z"),
-          new Date("2026-07-14T10:00:04.000Z"),
-        ],
-      );
-
-      await expect(
-        migrateConversationVisibleMessageEvents(context, {
-          batchSize: 1,
-          executor: fixture.sql,
-        }),
-      ).resolves.toMatchObject({ migrated: 2, missing: 0 });
-
-      const store = createSqlConversationMessageStore(fixture.sql);
-      await store.record(conversationId, [
+      const events = await eventStore.loadHistory(conversationId);
+      expect(
+        events.map((event) => ({
+          contextEpoch: event.contextEpoch,
+          idempotencyKey: event.idempotencyKey,
+          messageId:
+            "messageId" in event.data ? event.data.messageId : undefined,
+          seq: event.seq,
+          type: event.data.type,
+        })),
+      ).toEqual([
         {
-          messageId: "application",
-          role: "user",
-          text: "new writer",
-          meta: { imagesHydrated: false },
-          createdAtMs: Date.parse("2026-07-14T10:00:05.000Z"),
+          contextEpoch: 0,
+          idempotencyKey: undefined,
+          messageId: undefined,
+          seq: 0,
+          type: "message",
+        },
+        {
+          contextEpoch: 0,
+          idempotencyKey: "visible-message:before:recorded",
+          messageId: "before",
+          seq: 1,
+          type: "visible_message_recorded",
+        },
+        {
+          contextEpoch: 0,
+          idempotencyKey: "visible-message:before:replied",
+          messageId: "before",
+          seq: 2,
+          type: "visible_message_replied",
         },
       ]);
-      await store.record(conversationId, [
-        {
-          messageId: "application",
-          role: "user",
-          text: "new writer",
-          meta: { imagesHydrated: true },
-          createdAtMs: Date.parse("2026-07-14T10:00:05.000Z"),
-        },
-      ]);
-      await store.markReplied(
-        conversationId,
-        "application",
-        Date.parse("2026-07-14T10:00:06.000Z"),
-      );
-
-      const events = await createSqlConversationEventStore(
-        fixture.sql,
-      ).loadHistory(conversationId);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_recorded" &&
-            event.data.messageId === "late",
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_replied" &&
-            event.data.messageId === "late-replied",
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_metadata_updated" &&
-            event.data.messageId === "late",
-        ),
-      ).toHaveLength(0);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_replied" &&
-            event.data.messageId === "late",
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_metadata_updated" &&
-            event.data.messageId === "application",
-        ),
-      ).toHaveLength(1);
-      expect(
-        events.filter(
-          (event) =>
-            event.data.type === "visible_message_replied" &&
-            event.data.messageId === "application",
-        ),
-      ).toHaveLength(1);
     } finally {
       await fixture.close();
     }
@@ -426,7 +232,9 @@ describe("conversation event migration", () => {
         fixture.sql.query<{
           conversationId: string;
           contextEpoch: number;
-          createdAtPreserved: boolean;
+          createdAt: Date;
+          idempotencyKey: string | null;
+          payload: Record<string, unknown>;
           schemaVersion: number;
           seq: number;
           type: string;
@@ -435,9 +243,11 @@ SELECT
   conversation_id AS "conversationId",
   seq,
   context_epoch AS "contextEpoch",
-  created_at = '2026-07-14T10:01:00.000Z'::timestamptz AS "createdAtPreserved",
   schema_version AS "schemaVersion",
-  type
+  idempotency_key AS "idempotencyKey",
+  type,
+  payload,
+  created_at AS "createdAt"
 FROM junior_conversation_events
 ORDER BY seq
 `),
@@ -445,49 +255,8 @@ ORDER BY seq
         {
           contextEpoch: 2,
           conversationId: "conversation-one",
-          createdAtPreserved: true,
-          schemaVersion: 1,
-          seq: 1,
-          type: "pi_message",
-        },
-        {
-          contextEpoch: 3,
-          conversationId: "conversation-one",
-          createdAtPreserved: true,
-          schemaVersion: 1,
-          seq: 2,
-          type: "authorization_completed",
-        },
-      ]);
-
-      await expect(
-        migrateConversationEventData(
-          { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-          { batchSize: 1, executor: fixture.sql },
-        ),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 1,
-        missing: 0,
-        scanned: 1,
-      });
-
-      const canonicalRows = await fixture.sql.query<{
-        payload: Record<string, unknown>;
-        schemaVersion: number;
-        seq: number;
-        type: string;
-      }>(`
-SELECT
-  seq,
-  schema_version AS "schemaVersion",
-  type,
-  payload
-FROM junior_conversation_events
-ORDER BY seq
-`);
-      expect(canonicalRows).toEqual([
-        {
+          createdAt: new Date("2026-07-14T10:01:00.000Z"),
+          idempotencyKey: null,
           payload: {
             message: {
               role: "assistant",
@@ -499,6 +268,10 @@ ORDER BY seq
           type: "message",
         },
         {
+          contextEpoch: 3,
+          conversationId: "conversation-one",
+          createdAt: new Date("2026-07-14T10:01:00.000Z"),
+          idempotencyKey: null,
           payload: { requestId: "request-one" },
           schemaVersion: 1,
           seq: 2,
@@ -512,17 +285,6 @@ ORDER BY seq
            WHERE type = 'pi_message'`,
         ),
       ).resolves.toEqual([{ count: 0 }]);
-      await expect(
-        migrateConversationEventData(
-          { io: { info: () => {} }, stateAdapter: getStateAdapter() },
-          { batchSize: 1, executor: fixture.sql },
-        ),
-      ).resolves.toEqual({
-        existing: 0,
-        migrated: 0,
-        missing: 0,
-        scanned: 0,
-      });
       await expect(
         fixture.sql.query<{ name: string; type: string }>(`
 SELECT table_name AS name, table_type AS type

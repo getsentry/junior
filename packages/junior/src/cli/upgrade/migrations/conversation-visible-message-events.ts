@@ -116,7 +116,13 @@ function eventsForRow(row: VisibleMessageRow): NewConversationEvent[] {
   return events;
 }
 
-/** Backfill canonical visible-message events from the SQL read model. */
+/**
+ * Backfill canonical visible-message events from the SQL read model.
+ *
+ * This must run after the external legacy-history import. A visible-message
+ * event is a completed-import seal, so running this from the schema migration
+ * would hide richer retained Redis session and advisor history from import.
+ */
 export async function migrateConversationVisibleMessageEvents(
   _context: MigrationContext,
   options: {

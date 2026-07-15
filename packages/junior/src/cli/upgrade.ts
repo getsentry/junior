@@ -13,7 +13,6 @@ import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import { redisConversationStateMigration } from "./upgrade/migrations/redis-conversation-state";
 import { agentTurnSessionActorMigration } from "./upgrade/migrations/agent-turn-session-actor";
 import { conversationUsageRepairMigration } from "./upgrade/migrations/conversation-usage";
-import { conversationEventDataMigration } from "./upgrade/migrations/conversation-event-data";
 import { conversationVisibleMessageEventsMigration } from "./upgrade/migrations/conversation-visible-message-events";
 import type {
   MigrationContext,
@@ -33,7 +32,8 @@ const MIGRATIONS: UpgradeMigration[] = [
   redisConversationStateMigration,
   coreSqlSchemaMigration,
   sqlConversationMigration,
-  conversationEventDataMigration,
+  // The external history import must precede the SQL read-model backfill.
+  // Visible events seal a conversation against legacy Redis/session import.
   sqlConversationHistoryMigration,
   conversationVisibleMessageEventsMigration,
   conversationUsageRepairMigration,
