@@ -55,7 +55,3 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Search every consumer before changing a shared signature, error contract, or name.
 - For non-trivial changes: discover, implement the smallest vertical slice, verify, summarize.
 - Run applicable checks, move durable explanation beside code, and delete completed plans.
-
-## Commit Attribution
-
-AI commits MUST include `Co-Authored-By: (agent model name) <email>`.
