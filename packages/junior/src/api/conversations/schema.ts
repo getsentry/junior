@@ -127,7 +127,6 @@ const conversationReportSubagentStartedEventDataSchema = z
     type: z.literal("subagent_started"),
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
-    historyMode: z.enum(["isolated", "shared"]),
   })
   .strict();
 
@@ -136,7 +135,6 @@ const conversationReportSubagentEndedEventDataSchema = z
     type: z.literal("subagent_ended"),
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
-    historyMode: z.enum(["isolated", "shared"]),
     outcome: z.enum(["success", "error", "aborted"]),
   })
   .strict();

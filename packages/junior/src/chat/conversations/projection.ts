@@ -3,7 +3,7 @@
  *
  * Materializes model-visible Pi context and derived run facts such as connected
  * providers. Storage and commit lifecycle stay in the conversations domain;
- * provider-neutral event reduction stays here while Pi validates at its adapter.
+ * the Pi adapter owns event reduction and opaque-message validation.
  */
 import { isDeepStrictEqual } from "node:util";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -14,21 +14,13 @@ import {
 import type {
   AuthorizationKind,
   ConversationEvent,
-  ConversationEventStore,
 } from "@/chat/conversations/history";
-import type { ConversationStore } from "@/chat/conversations/store";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
+import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
   projectConversationEvents,
-  type PiConversationEventProjection,
   type PiConversationProjection,
 } from "@/chat/pi/conversation-events";
 
@@ -123,263 +115,24 @@ interface ScopedConversation {
   conversationId: string;
 }
 
-interface ComposedConversationProjection {
-  inheritsLineageContext: boolean;
-  inherited: PiConversationEventProjection;
-  local: PiConversationEventProjection;
-  projection: PiConversationProjection;
-}
-
-/** Maximum number of shared parent edges composed into one Pi projection. */
-export const MAX_LINEAGE_PROJECTION_DEPTH = 32;
-
-/** Raised when durable child lineage cannot safely identify one pinned context. */
-export class ConversationLineageProjectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ConversationLineageProjectionError";
-  }
-}
-
-function emptyEventProjection(): PiConversationEventProjection {
-  return {
-    messages: [],
-    provenance: [],
-    seqs: [],
-    modelProfile: "standard",
-    modelId: undefined,
-  };
-}
-
-function epochInheritsLineage(events: ConversationEvent[]): boolean {
-  const markers = events.filter(
-    (event) => event.data.type === "context_epoch_started",
-  );
-  if (markers.length > 1) {
-    throw new ConversationLineageProjectionError(
-      "conversation epoch has conflicting context markers",
-    );
-  }
-  if (markers.length === 0) {
-    return true;
-  }
-  const marker = markers[0]!;
-  return (
-    marker.data.type === "context_epoch_started" &&
-    (marker.data.reason === "initial" || marker.data.reason === "rollback") &&
-    marker.data.inheritsLineageContext === true
-  );
-}
-
-function epochAtFork(args: {
-  childConversationId: string;
-  forkSeq: number;
-  history: ConversationEvent[];
-}): ConversationEvent[] {
-  const fork = args.history.find((event) => event.seq === args.forkSeq);
-  if (!fork) {
-    throw new ConversationLineageProjectionError(
-      `shared context fork is missing for ${args.childConversationId}`,
-    );
-  }
-  return args.history.filter(
-    (event) =>
-      event.seq <= args.forkSeq && event.contextEpoch === fork.contextEpoch,
-  );
-}
-
-async function loadComposedProjection(args: {
-  conversationId: string;
-  depth?: number;
-  localEvents: ConversationEvent[];
-  eventStore: ConversationEventStore;
-  conversationStore: ConversationStore;
-  visited?: ReadonlySet<string>;
-}): Promise<ComposedConversationProjection> {
-  const local = projectConversationEvents(args.localEvents);
-  const conversation = await args.conversationStore.get({
-    conversationId: args.conversationId,
-  });
-  if (!conversation) {
-    const inherited = emptyEventProjection();
-    return {
-      inheritsLineageContext: false,
-      inherited,
-      local,
-      projection: local,
-    };
-  }
-  const lineage = conversation.lineage;
-  if (!lineage) {
-    const inherited = emptyEventProjection();
-    return {
-      inheritsLineageContext: false,
-      inherited,
-      local,
-      projection: local,
-    };
-  }
-  const { parentConversationId } = lineage;
-  const hasParentEvent = lineage.parentEventSeq !== undefined;
-  const hasParentTurn = lineage.parentTurnId !== undefined;
-  if (
-    hasParentEvent !== hasParentTurn ||
-    lineage.rootConversationId === undefined ||
-    (lineage.contextForkSeq !== undefined && !hasParentEvent)
-  ) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage is incomplete for ${args.conversationId}`,
-    );
-  }
-  const visited = new Set(args.visited ?? []);
-  if (visited.has(args.conversationId)) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage contains a cycle at ${args.conversationId}`,
-    );
-  }
-  visited.add(args.conversationId);
-  if (visited.has(parentConversationId)) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage contains a cycle at ${parentConversationId}`,
-    );
-  }
-
-  const parent = await args.conversationStore.get({
-    conversationId: parentConversationId,
-  });
-  if (!parent) {
-    throw new ConversationLineageProjectionError(
-      `shared lineage parent is missing for ${args.conversationId}`,
-    );
-  }
-  const expectedRoot =
-    parent.lineage === undefined
-      ? parent.conversationId
-      : parent.lineage.rootConversationId;
-  if (expectedRoot === undefined) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage parent is incomplete for ${args.conversationId}`,
-    );
-  }
-  if (lineage.rootConversationId !== expectedRoot) {
-    throw new ConversationLineageProjectionError(
-      `shared lineage root conflicts for ${args.conversationId}`,
-    );
-  }
-  if (!hasParentEvent || !hasParentTurn) {
-    const inherited = emptyEventProjection();
-    return {
-      inheritsLineageContext: false,
-      inherited,
-      local,
-      projection: local,
-    };
-  }
-
-  // A correlated child can only be created from a canonical parent start
-  // event, so this read never needs the legacy importer.
-  const parentHistory = await args.eventStore.loadHistory(parentConversationId);
-  const parentEventSeq = lineage.parentEventSeq!;
-  const parentTurnId = lineage.parentTurnId!;
-  const fork = parentHistory.find((event) => event.seq === parentEventSeq);
-  if (
-    !fork ||
-    fork.data.type !== "subagent_started" ||
-    fork.data.childConversationId !== args.conversationId ||
-    fork.data.parentTurnId !== parentTurnId
-  ) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage reference conflicts for ${args.conversationId}`,
-    );
-  }
-  const contextForkSeq = lineage.contextForkSeq;
-  if (contextForkSeq === undefined) {
-    if (fork.data.historyMode !== "isolated") {
-      throw new ConversationLineageProjectionError(
-        `isolated lineage reference conflicts for ${args.conversationId}`,
-      );
-    }
-    const inherited = emptyEventProjection();
-    return {
-      inheritsLineageContext: false,
-      inherited,
-      local,
-      projection: local,
-    };
-  }
-  if (fork.data.historyMode !== "shared" || parentEventSeq !== contextForkSeq) {
-    throw new ConversationLineageProjectionError(
-      `shared lineage fork conflicts for ${args.conversationId}`,
-    );
-  }
-  if (!epochInheritsLineage(args.localEvents)) {
-    const inherited = emptyEventProjection();
-    return {
-      inheritsLineageContext: false,
-      inherited,
-      local,
-      projection: local,
-    };
-  }
-  const depth = args.depth ?? 0;
-  if (depth >= MAX_LINEAGE_PROJECTION_DEPTH) {
-    throw new ConversationLineageProjectionError(
-      `conversation lineage exceeds maximum projection depth for ${args.conversationId}`,
-    );
-  }
-  const parentProjection = await loadComposedProjection({
-    conversationId: parentConversationId,
-    depth: depth + 1,
-    localEvents: epochAtFork({
-      childConversationId: args.conversationId,
-      forkSeq: contextForkSeq,
-      history: parentHistory,
-    }),
-    eventStore: args.eventStore,
-    conversationStore: args.conversationStore,
-    visited,
-  });
-  const inherited: PiConversationEventProjection = {
-    ...parentProjection.projection,
-    seqs: [...parentProjection.inherited.seqs, ...parentProjection.local.seqs],
-  };
-  return {
-    inheritsLineageContext: true,
-    inherited,
-    local,
-    projection: {
-      messages: [...inherited.messages, ...local.messages],
-      provenance: [...inherited.provenance, ...local.provenance],
-      modelProfile: local.modelProfile,
-      modelId: local.modelId,
-    },
-  };
-}
-
-async function loadCurrentComposedProjection(
-  args: ScopedConversation,
-): Promise<ComposedConversationProjection> {
-  const eventStore = getConversationEventStore();
-  return await loadComposedProjection({
-    conversationId: args.conversationId,
-    localEvents: await eventStore.loadCurrentEpoch(args.conversationId),
-    eventStore,
-    conversationStore: getConversationStore(),
-  });
-}
-
 /** Load the current-epoch Pi projection for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
 ): Promise<PiMessage[]> {
-  return (await loadCurrentComposedProjection(args)).projection.messages;
+  const events = await getConversationEventStore().loadCurrentEpoch(
+    args.conversationId,
+  );
+  return projectConversationEvents(events).messages;
 }
 
 /** Load the current-epoch Pi projection with aligned per-message provenance. */
 export async function loadConversationProjection(
   args: ScopedConversation,
 ): Promise<PiConversationProjection> {
-  return (await loadCurrentComposedProjection(args)).projection;
+  const events = await getConversationEventStore().loadCurrentEpoch(
+    args.conversationId,
+  );
+  return projectConversationEvents(events);
 }
 
 /** Open a standard initial epoch before a conversation's first model request. */
@@ -388,13 +141,7 @@ export async function openConversationProjection(
 ): Promise<PiConversationProjection> {
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentEpoch(args.conversationId);
-  const composed = await loadComposedProjection({
-    conversationId: args.conversationId,
-    localEvents: events,
-    eventStore,
-    conversationStore: getConversationStore(),
-  });
-  const projection = composed.projection;
+  const projection = projectConversationEvents(events);
   if (events.some((event) => event.data.type === "context_epoch_started")) {
     return projection;
   }
@@ -405,9 +152,6 @@ export async function openConversationProjection(
     modelProfile: "standard",
     modelId: args.modelId,
     messages: [],
-    ...(composed.inheritsLineageContext
-      ? { inheritsLineageContext: true as const }
-      : {}),
   });
   return {
     messages: projection.messages,
@@ -446,16 +190,13 @@ export async function loadTurnProjection(args: {
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
   if (args.committedSeq < 0) {
-    const composed = await loadComposedProjection({
-      conversationId: args.conversationId,
-      localEvents: await eventStore.loadCurrentEpoch(args.conversationId),
-      eventStore,
-      conversationStore: getConversationStore(),
-    });
+    const projection = projectConversationEvents(
+      await eventStore.loadCurrentEpoch(args.conversationId),
+    );
     return {
-      ...composed.projection,
-      localMessageStartIndex: composed.inherited.messages.length,
-      seqs: composed.local.seqs,
+      ...projection,
+      localMessageStartIndex: 0,
+      seqs: projection.seqs,
     };
   }
   const history = await eventStore.loadHistory(args.conversationId);
@@ -471,16 +212,11 @@ export async function loadTurnProjection(args: {
   const localEvents = args.includeTail
     ? epochEvents
     : epochEvents.filter((event) => event.seq <= args.committedSeq);
-  const composed = await loadComposedProjection({
-    conversationId: args.conversationId,
-    localEvents,
-    eventStore,
-    conversationStore: getConversationStore(),
-  });
+  const projection = projectConversationEvents(localEvents);
   return {
-    ...composed.projection,
-    localMessageStartIndex: composed.inherited.messages.length,
-    seqs: composed.local.seqs,
+    ...projection,
+    localMessageStartIndex: 0,
+    seqs: projection.seqs,
   };
 }
 
@@ -546,48 +282,17 @@ async function commitMessagesLocked(
 ): ReturnType<typeof commitMessages> {
   const eventStore = createSqlConversationEventStore(executor);
   const currentEvents = await eventStore.loadCurrentEpoch(args.conversationId);
-  const composed = await loadComposedProjection({
-    conversationId: args.conversationId,
-    localEvents: currentEvents,
-    eventStore,
-    conversationStore: createSqlStore(executor),
-  });
-  const inheritedMessageCount = composed.inherited.messages.length;
-  if (
-    countMatchingPrefix(
-      composed.inherited.messages,
-      args.messages.slice(0, inheritedMessageCount),
-    ) !== inheritedMessageCount
-  ) {
-    throw new ConversationLineageProjectionError(
-      `commit mutated inherited context for ${args.conversationId}`,
-    );
-  }
-  if (
-    args.provenance &&
-    !isDeepStrictEqual(
-      args.provenance.slice(0, inheritedMessageCount),
-      composed.inherited.provenance,
-    )
-  ) {
-    throw new ConversationLineageProjectionError(
-      `commit mutated inherited provenance for ${args.conversationId}`,
-    );
-  }
-  const nextLocalMessages = args.messages.slice(inheritedMessageCount);
+  const current = projectConversationEvents(currentEvents);
+  const nextLocalMessages = args.messages;
   const matchingPrefix = countMatchingPrefix(
-    composed.local.messages,
+    current.messages,
     nextLocalMessages,
   );
   const nextLocalProvenance = resolveCommitProvenance({
-    existing: composed.local,
+    existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
-    ...(args.provenance
-      ? {
-          explicitProvenance: args.provenance.slice(inheritedMessageCount),
-        }
-      : {}),
+    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
       : {}),
@@ -600,8 +305,7 @@ async function commitMessagesLocked(
   );
   if (
     currentEvents.length === 0 ||
-    (!hasContextEpochMarker &&
-      matchingPrefix === composed.local.messages.length)
+    (!hasContextEpochMarker && matchingPrefix === current.messages.length)
   ) {
     const initialMessages = nextLocalMessages.slice(matchingPrefix);
     await eventStore.startEpoch(args.conversationId, {
@@ -613,11 +317,8 @@ async function commitMessagesLocked(
         createdAtMs: messageTimestamp(message),
         provenance: nextLocalProvenance[matchingPrefix + index]!,
       })),
-      ...(composed.inheritsLineageContext
-        ? { inheritsLineageContext: true as const }
-        : {}),
     });
-  } else if (matchingPrefix === composed.local.messages.length) {
+  } else if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
     await eventStore.append(
       args.conversationId,
@@ -633,16 +334,13 @@ async function commitMessagesLocked(
   } else {
     await eventStore.startEpoch(args.conversationId, {
       reason: "rollback",
-      modelProfile: composed.local.modelProfile,
+      modelProfile: current.modelProfile,
       modelId: args.modelId,
       messages: nextLocalMessages.map((message, index) => ({
         message,
         createdAtMs: messageTimestamp(message),
         provenance: nextLocalProvenance[index]!,
       })),
-      ...(composed.inheritsLineageContext
-        ? { inheritsLineageContext: true as const }
-        : {}),
     });
   }
   const committed = projectConversationEvents(
@@ -650,9 +348,9 @@ async function commitMessagesLocked(
   );
   return {
     committedSeq: committed.seqs.at(-1) ?? -1,
-    localMessageStartIndex: inheritedMessageCount,
+    localMessageStartIndex: 0,
     messageSeqs: committed.seqs,
-    provenance: [...composed.inherited.provenance, ...nextLocalProvenance],
+    provenance: nextLocalProvenance,
   };
 }
 

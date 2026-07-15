@@ -335,13 +335,11 @@ describe("dashboard canonical-event components", () => {
                 type: "subagent_started",
                 childConversationId: "child-1",
                 subagentKind: "advisor",
-                historyMode: "shared",
               }),
               event(1, {
                 type: "subagent_ended",
                 childConversationId: "child-1",
                 subagentKind: "advisor",
-                historyMode: "shared",
                 outcome: "success",
               }),
             ])}

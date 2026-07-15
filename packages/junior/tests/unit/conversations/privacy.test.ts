@@ -6,7 +6,6 @@ import { juniorConversations, juniorDestinations } from "@/db/schema";
 interface ConversationRow {
   destinationId: string | null;
   parentId: string | null;
-  rootId: string | null;
 }
 
 function scriptedExecutor(args: {
@@ -58,10 +57,10 @@ describe("resolveRootVisibility", () => {
     const result = await resolveRootVisibility(
       scriptedExecutor({
         conversations: [
-          { destinationId: null, parentId: "root", rootId: "root" },
-          { destinationId: "destination", parentId: null, rootId: null },
-          { destinationId: "destination", parentId: null, rootId: null },
-          { destinationId: null, parentId: "root", rootId: "root" },
+          { destinationId: null, parentId: "root" },
+          { destinationId: "destination", parentId: null },
+          { destinationId: "destination", parentId: null },
+          { destinationId: null, parentId: "root" },
         ],
         visibility: "public",
       }),
@@ -81,22 +80,11 @@ describe("resolveRootVisibility", () => {
     },
     {
       name: "a missing parent",
-      rows: [{ destinationId: null, parentId: "missing", rootId: "root" }],
-    },
-    {
-      name: "a historical child without a declared root",
-      rows: [{ destinationId: null, parentId: "root", rootId: null }],
-    },
-    {
-      name: "an inconsistent intermediate root",
-      rows: [
-        { destinationId: null, parentId: "parent", rootId: "root" },
-        { destinationId: null, parentId: "root", rootId: "other-root" },
-      ],
+      rows: [{ destinationId: null, parentId: "missing" }],
     },
     {
       name: "a missing root destination",
-      rows: [{ destinationId: null, parentId: null, rootId: null }],
+      rows: [{ destinationId: null, parentId: null }],
     },
   ])("fails closed for $name", async ({ rows }) => {
     await expect(
@@ -111,8 +99,8 @@ describe("resolveRootVisibility", () => {
     const result = await resolveRootVisibility(
       scriptedExecutor({
         conversations: [
-          { destinationId: null, parentId: "parent", rootId: "root" },
-          { destinationId: null, parentId: "requested", rootId: "root" },
+          { destinationId: null, parentId: "parent" },
+          { destinationId: null, parentId: "requested" },
         ],
       }),
       "requested",
@@ -125,21 +113,18 @@ describe("resolveRootVisibility", () => {
     const result = await resolveRootVisibility(
       scriptedExecutor({
         conversations: [
-          { destinationId: null, parentId: "root", rootId: "root" },
+          { destinationId: null, parentId: "root" },
           {
             destinationId: "destination",
             parentId: null,
-            rootId: null,
           },
           {
             destinationId: "destination",
             parentId: null,
-            rootId: null,
           },
           {
             destinationId: null,
             parentId: "different-root",
-            rootId: "different-root",
           },
         ],
         visibility: "public",
@@ -154,7 +139,6 @@ describe("resolveRootVisibility", () => {
     const conversations = Array.from({ length: 32 }, (_, index) => ({
       destinationId: null,
       parentId: `node-${index + 1}`,
-      rootId: "root",
     }));
 
     const result = await resolveRootVisibility(

@@ -186,9 +186,6 @@ describe("conversation event migration", () => {
     const visibleMessageEvents = migrationStatements(
       "0005_visible_message_events.sql",
     );
-    const conversationLineage = migrationStatements(
-      "0007_conversation_lineage.sql",
-    );
     const conversationId = "conversation-visible-events";
 
     try {
@@ -218,10 +215,6 @@ describe("conversation event migration", () => {
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
         visibleMessageEvents,
-      );
-      await executeStatements(
-        (statement) => fixture.sql.execute(statement),
-        conversationLineage,
       );
 
       const context = {

@@ -314,16 +314,6 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       ? {
           lineage: {
             parentConversationId: row.parentConversationId,
-            ...(row.rootConversationId
-              ? { rootConversationId: row.rootConversationId }
-              : {}),
-            ...(row.parentTurnId ? { parentTurnId: row.parentTurnId } : {}),
-            ...(row.parentEventSeq !== null
-              ? { parentEventSeq: row.parentEventSeq }
-              : {}),
-            ...(row.contextForkSeq !== null
-              ? { contextForkSeq: row.contextForkSeq }
-              : {}),
           },
         }
       : {}),
@@ -875,10 +865,6 @@ export class SqlStore implements ConversationStore {
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId:
           conversation.lineage?.parentConversationId ?? null,
-        rootConversationId: conversation.lineage?.rootConversationId ?? null,
-        parentTurnId: conversation.lineage?.parentTurnId ?? null,
-        parentEventSeq: conversation.lineage?.parentEventSeq ?? null,
-        contextForkSeq: conversation.lineage?.contextForkSeq ?? null,
       })
       .onConflictDoUpdate({
         target: juniorConversations.conversationId,

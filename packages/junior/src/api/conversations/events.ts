@@ -10,7 +10,6 @@ import {
 
 interface SubagentReference {
   childConversationId: string;
-  historyMode: "isolated" | "shared";
   subagentKind: string;
 }
 
@@ -127,7 +126,6 @@ export function projectConversationReportEvents(args: {
     if (event.data.type === "subagent_started") {
       const reference: SubagentReference = {
         childConversationId: event.data.childConversationId,
-        historyMode: event.data.historyMode,
         subagentKind: event.data.subagentKind,
       };
       subagents.set(event.data.subagentInvocationId, reference);

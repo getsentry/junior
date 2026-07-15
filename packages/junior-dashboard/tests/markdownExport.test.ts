@@ -80,7 +80,6 @@ describe("dashboard canonical-event Markdown export", () => {
           type: "subagent_started",
           childConversationId: "child-1",
           subagentKind: "advisor",
-          historyMode: "shared",
         }),
         event(2, { type: "context_compacted" }),
         event(3, {

@@ -4,7 +4,6 @@ import {
   type ConversationEvent,
   type ConversationEventData,
 } from "@/chat/conversations/history";
-import { projectConversationEventHistory } from "@/chat/conversations/event-projection";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 
 function event(seq: number, data: ConversationEventData): ConversationEvent {
@@ -90,19 +89,21 @@ describe("projectConversationEvents", () => {
   ];
 
   it("projects messages, authorization observations, provenance, and model binding", () => {
-    const genericProjection = projectConversationEventHistory(events);
     const projection = projectConversationEvents(events);
-
-    expect(projection).toEqual(genericProjection);
 
     expect(projection).toEqual({
       messages: [
         firstMessage,
-        expect.objectContaining({
+        {
           role: "user",
-          content: [expect.objectContaining({ type: "text" })],
+          content: [
+            {
+              type: "text",
+              text: 'MCP authorization completed for provider "linear". Continue the blocked request and retry the provider operation if needed.',
+            },
+          ],
           timestamp: 1_003,
-        }),
+        },
         lastMessage,
       ],
       provenance: [
@@ -125,5 +126,17 @@ describe("projectConversationEvents", () => {
       modelId: "openai/gpt-5.4",
     });
     expect(projection.messages).toHaveLength(2);
+  });
+
+  it("validates opaque durable messages only at the Pi boundary", () => {
+    const invalid = {
+      schemaVersion: 1,
+      seq: 1,
+      contextEpoch: 2,
+      createdAtMs: 1_001,
+      data: { type: "message", message: {} },
+    } as ConversationEvent;
+
+    expect(() => projectConversationEvents([invalid])).toThrow(/role/);
   });
 });

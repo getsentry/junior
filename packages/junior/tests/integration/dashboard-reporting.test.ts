@@ -119,7 +119,6 @@ async function appendVisibleHistory(
         subagentInvocationId: `${conversationId}:subagent-call`,
         subagentKind: "review",
         childConversationId: `${conversationId}:child`,
-        historyMode: "isolated",
       },
       createdAtMs: 17,
     },
@@ -150,28 +149,35 @@ async function createChild(args: {
   childConversationId: string;
   parentConversationId: string;
 }): Promise<void> {
-  const { getConversationEventStore, getSubagentLineageService } =
-    await import("@/chat/db");
+  const { getConversationEventStore, getDb } = await import("@/chat/db");
+  const at = new Date(3);
+  await getDb().insert(juniorConversations).values({
+    conversationId: args.childConversationId,
+    parentConversationId: args.parentConversationId,
+    createdAt: at,
+    lastActivityAt: at,
+    updatedAt: at,
+    executionStatus: "idle",
+  });
   await getConversationEventStore().append(args.parentConversationId, [
     {
       data: {
-        type: "turn_started",
-        turnId: `${args.parentConversationId}:turn`,
-        inputMessageIds: [`${args.parentConversationId}:input`],
-        surface: "internal",
+        type: "subagent_started",
+        childConversationId: args.childConversationId,
+        subagentInvocationId: `${args.childConversationId}:call`,
+        subagentKind: "advisor",
       },
       createdAtMs: 2,
     },
+    {
+      data: {
+        type: "subagent_ended",
+        subagentInvocationId: `${args.childConversationId}:call`,
+        outcome: "success",
+      },
+      createdAtMs: 3,
+    },
   ]);
-  await getSubagentLineageService().start({
-    childConversationId: args.childConversationId,
-    historyMode: "isolated",
-    parentConversationId: args.parentConversationId,
-    parentTurnId: `${args.parentConversationId}:turn`,
-    subagentInvocationId: `${args.childConversationId}:call`,
-    subagentKind: "task",
-    nowMs: 3,
-  });
   await appendVisibleHistory(args.childConversationId, "Child answer");
 }
 
@@ -289,13 +295,11 @@ describe("dashboard canonical event reporting", () => {
         type: "subagent_started",
         childConversationId: `${conversationId}:child`,
         subagentKind: "review",
-        historyMode: "isolated",
       },
       {
         type: "subagent_ended",
         childConversationId: `${conversationId}:child`,
         subagentKind: "review",
-        historyMode: "isolated",
         outcome: "success",
       },
       { type: "context_compacted" },
@@ -403,16 +407,6 @@ describe("dashboard canonical event reporting", () => {
     );
     expect(JSON.stringify(privateChildDetail)).not.toContain(
       "forged-public-child-channel",
-    );
-
-    const forgedRoot = "slack:C-reporting:forged-root";
-    await recordRoot(forgedRoot, "public");
-    await getDb()
-      .update(juniorConversations)
-      .set({ rootConversationId: forgedRoot })
-      .where(eq(juniorConversations.conversationId, publicChild));
-    expect((await requireDetail(publicChild)).eventHistory.status).toBe(
-      "redacted",
     );
   });
 
@@ -650,116 +644,6 @@ describe("dashboard canonical event reporting", () => {
         blocker.close(),
         observer.close(),
         writer.close(),
-        purger.close(),
-      ]);
-    }
-  }, 15_000);
-
-  it("rediscovers a child attached while known descendants are being locked", async () => {
-    const rootConversationId = "slack:C-reporting:membership-race-root";
-    const firstChildId = "child:a-reporting-membership-race";
-    const secondChildId = "child:z-reporting-membership-race";
-    const lateGrandchildId = "child:late-reporting-membership-race";
-    await recordRoot(rootConversationId, "public");
-    await createChild({
-      childConversationId: firstChildId,
-      parentConversationId: rootConversationId,
-    });
-    await createChild({
-      childConversationId: secondChildId,
-      parentConversationId: rootConversationId,
-    });
-
-    const blocker = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-membership-race-blocker",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const observer = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-membership-race-observer",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const creator = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-membership-race-creator",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const purger = createPostgresJuniorSqlExecutor({
-      applicationName: "junior-membership-race-purger",
-      connectionString: TEST_DATABASE_URL,
-    });
-    const childLocked = deferred();
-    const releaseChild = deferred();
-    const blockerDone = blocker.transaction(async () => {
-      await blocker
-        .db()
-        .select()
-        .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, firstChildId))
-        .for("update");
-      childLocked.resolve();
-      await releaseChild.promise;
-    });
-
-    try {
-      await childLocked.promise;
-      const purgePromise = purgeConversation(purger, rootConversationId, {
-        nowMs: Date.now(),
-      });
-      await waitUntilApplicationWaitsOnLock(
-        observer,
-        "junior-membership-race-purger",
-        "junior_conversations",
-      );
-
-      const now = new Date();
-      await creator.db().insert(juniorConversations).values({
-        conversationId: lateGrandchildId,
-        parentConversationId: secondChildId,
-        createdAt: now,
-        lastActivityAt: now,
-        updatedAt: now,
-        executionStatus: "idle",
-      });
-      await createSqlConversationMessageStore(creator).record(
-        lateGrandchildId,
-        [
-          {
-            messageId: "late-grandchild-message",
-            role: "assistant",
-            text: "late grandchild payload",
-            createdAtMs: now.getTime(),
-          },
-        ],
-      );
-
-      releaseChild.resolve();
-      await blockerDone;
-      await purgePromise;
-
-      const events = await observer
-        .db()
-        .select()
-        .from(juniorConversationEvents)
-        .where(eq(juniorConversationEvents.conversationId, lateGrandchildId));
-      const messages = await observer
-        .db()
-        .select()
-        .from(juniorConversationMessages)
-        .where(eq(juniorConversationMessages.conversationId, lateGrandchildId));
-      const [conversation] = await observer
-        .db()
-        .select({ transcriptPurgedAt: juniorConversations.transcriptPurgedAt })
-        .from(juniorConversations)
-        .where(eq(juniorConversations.conversationId, lateGrandchildId));
-      expect(events).toEqual([]);
-      expect(messages).toEqual([]);
-      expect(conversation?.transcriptPurgedAt).toBeInstanceOf(Date);
-    } finally {
-      releaseChild.resolve();
-      await blockerDone.catch(() => undefined);
-      await Promise.all([
-        blocker.close(),
-        observer.close(),
-        creator.close(),
         purger.close(),
       ]);
     }

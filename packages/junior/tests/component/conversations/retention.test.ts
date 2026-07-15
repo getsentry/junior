@@ -251,7 +251,7 @@ describe("retention purge job", () => {
     expect(await eventCount(fixture.sql, "raced")).toBe(1);
   });
 
-  it("rides children on the root window and purges them with the root", async () => {
+  it("rides descendants on the root window and purges the whole subtree", async () => {
     const dest = await seedDestination(fixture.sql, "public");
     // Fresh public root, but its advisor child has old activity and content.
     await seedConversation(fixture.sql, {
@@ -264,6 +264,11 @@ describe("retention purge job", () => {
       parentConversationId: "root",
       lastActivityAtMs: BASE_MS,
     });
+    await seedConversation(fixture.sql, {
+      conversationId: "grandchild",
+      parentConversationId: "child",
+      lastActivityAtMs: BASE_MS,
+    });
 
     // The child is never a purge candidate on its own: it rides the root.
     const result = await runRetentionPurge(fixture.sql, {
@@ -271,6 +276,7 @@ describe("retention purge job", () => {
     });
     expect(result.purged).toBe(0);
     expect(await eventCount(fixture.sql, "child")).toBe(1);
+    expect(await eventCount(fixture.sql, "grandchild")).toBe(1);
 
     // Erasing the root purges the child's content too.
     await purgeConversation(fixture.sql, "root", {
@@ -278,6 +284,7 @@ describe("retention purge job", () => {
     });
     expect(await eventCount(fixture.sql, "root")).toBe(0);
     expect(await eventCount(fixture.sql, "child")).toBe(0);
+    expect(await eventCount(fixture.sql, "grandchild")).toBe(0);
   });
 
   it("uses the freshest activity in the tree for selection and destructive recheck", async () => {
