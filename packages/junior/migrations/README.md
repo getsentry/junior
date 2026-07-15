@@ -30,12 +30,14 @@ core migration lock, and lets Drizzle record applied entries in
 `drizzle.__drizzle_junior_core`. Re-running upgrade is expected and must not
 reapply journaled SQL.
 
-Schema migration and data migration are separate concerns:
+Choose the migration boundary from the data source and transaction contract:
 
-- SQL files establish tables, columns, constraints, indexes, and temporary
-  database compatibility objects.
-- Upgrade migrations under `src/cli/upgrade/migrations/` perform bounded,
-  rerunnable data adoption and backfills after the required schema exists.
+- SQL files establish tables, columns, constraints, and indexes. They may also
+  perform deterministic, transactional transformations of rows already in the
+  same database when that transformation is part of reaching the new schema.
+- Upgrade migrations under `src/cli/upgrade/migrations/` adopt external state
+  or perform application-decoded, bounded, rerunnable backfills after the
+  required schema exists.
 
 Keep destructive or non-rolling cutovers explicit. If old and new workers
 cannot safely share the intermediate schema, drain the incompatible workers,
