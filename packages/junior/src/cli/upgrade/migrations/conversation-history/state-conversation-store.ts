@@ -5,7 +5,7 @@ import {
   recordConversationExecution as recordTaskConversationExecution,
 } from "@/chat/task-execution/state";
 import type { StateAdapter } from "chat";
-import type { ConversationStore } from "./store";
+import type { ConversationStore } from "@/chat/conversations/store";
 
 /** Create the legacy-import conversation record store backed by task-execution state. */
 export function createStateConversationStore(

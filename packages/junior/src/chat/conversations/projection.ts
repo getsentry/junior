@@ -27,10 +27,6 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
-  ensureConversationEventHistory,
-  loadCurrentConversationEvents,
-} from "@/chat/conversations/history-loader";
-import {
   projectConversationEvents,
   type PiConversationEventProjection,
   type PiConversationProjection,
@@ -363,7 +359,6 @@ async function loadComposedProjection(args: {
 async function loadCurrentComposedProjection(
   args: ScopedConversation,
 ): Promise<ComposedConversationProjection> {
-  await ensureConversationEventHistory(args);
   const eventStore = getConversationEventStore();
   return await loadComposedProjection({
     conversationId: args.conversationId,
@@ -391,7 +386,6 @@ export async function loadConversationProjection(
 export async function openConversationProjection(
   args: ScopedConversation & { modelId: string },
 ): Promise<PiConversationProjection> {
-  await ensureConversationEventHistory(args);
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentEpoch(args.conversationId);
   const composed = await loadComposedProjection({
@@ -448,7 +442,6 @@ export async function loadTurnProjection(args: {
     })
   | undefined
 > {
-  await ensureConversationEventHistory(args);
   const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
@@ -495,7 +488,9 @@ export async function loadTurnProjection(args: {
 export async function loadConnectedMcpProviders(
   args: ScopedConversation,
 ): Promise<string[]> {
-  const events = await loadCurrentConversationEvents(args);
+  const events = await getConversationEventStore().loadCurrentEpoch(
+    args.conversationId,
+  );
   return connectedMcpProvidersFromEvents(events);
 }
 

@@ -1,7 +1,7 @@
 # Conversation Storage
 
 This module owns the durable product record for conversations, visible messages,
-conversation events, compaction boundaries, search, retention, and legacy import.
+conversation events, compaction boundaries, search, and retention.
 
 ## Records
 
@@ -23,7 +23,8 @@ conversation events, compaction boundaries, search, retention, and legacy import
   markers preserve that relationship; compaction, handoff, and isolated epochs
   are self-contained. Child sequence cursors count only child-local events, and
   commits reject any mutation of the inherited prefix.
-- Provider payloads and old state-store mirrors are migration inputs, not
+- Provider payloads and old state-store mirrors are inputs only to the explicit
+  operator migration under `cli/upgrade`; they are not runtime dependencies or
   canonical product records.
 
 The schemas and migrations under `sql/` are authoritative.
@@ -34,9 +35,10 @@ timestamp. The `(conversation_id, seq)` key is both stable event identity and
 the lease-fencing tripwire.
 
 The Junior-owned `message` event retains an opaque model-continuity payload and
-canonical provenance. The Pi adapter is the only module that interprets that
-payload as a Pi message; the legacy Redis `pi_message` shape exists only as a
-bounded import input.
+canonical provenance. The Pi adapter is the only runtime module that
+interprets that payload as a Pi message. The legacy Redis `pi_message` shape
+exists only in the explicit operator backfill and is absent from the live
+conversation module graph.
 
 Reporting APIs must project events into an authorized, redacted product
 contract. Raw `ConversationEventData` is an internal persistence boundary and
@@ -61,7 +63,8 @@ remain internal.
   one first-writer-wins `turn_completed` or `turn_failed` terminal event.
 - Persist only allowlisted failure classifications and opaque Sentry event IDs;
   raw exceptions, provider payloads, and URLs are not lifecycle data.
-- Restore state from durable events rather than a duplicate transcript cache.
+- Restore state directly from durable SQL events rather than a duplicate
+  transcript cache or lazy legacy import.
 - Compaction replaces prior model context without rewriting visible history.
 - Imports and migrations are idempotent and preserve stable conversation IDs.
 - Establish child lineage and its parent `subagent_started` reference through
@@ -90,8 +93,12 @@ Follow `../../../../../policies/data-redaction.md` and
 - Schema changes are expand-first and compatible with the currently deployed
   reader and writer during rollout.
 - Data rewrites use explicit migrations or resumable import code.
-- Legacy fields remain readable only for the migration window and are removed
-  after the new authority is verified.
+- Live workers never read Redis session logs, advisor blobs, or legacy
+  thread-state to restore history. Operators must run `junior upgrade` before
+  serving retained pre-cutover conversations.
+- The Redis decoder and backfill writer remain under `cli/upgrade` only for the
+  bounded operator-migration horizon; they can be deleted independently once
+  every supported deployment has completed that upgrade.
 - Drain every 0.103.x worker before applying the visible-message schema cut,
   which drops the temporary `junior_agent_steps` compatibility view and its
   functions.

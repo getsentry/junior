@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   convertAdvisorMessages,
   convertLegacySessionLog,
-} from "@/chat/conversations/sql/legacy-history-import";
+} from "@/cli/upgrade/migrations/conversation-history/legacy-history-import";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { SessionLogEntry } from "@/chat/state/session-log";
+import type { SessionLogEntry } from "@/cli/upgrade/migrations/conversation-history/session-log";
 
 const CONVERSATION_ID = "slack:C1:1710000.0001";
 const FALLBACK_MS = 1_000;
@@ -39,7 +39,7 @@ function piEntry(
   } as SessionLogEntry;
 }
 
-describe("convertLegacySessionLog", () => {
+describe("operator legacy conversation history conversion", () => {
   it("keeps a single session in epoch 0 with sequential seq and message timestamps", () => {
     const { events, advisorChildConversationId } = convertLegacySessionLog({
       conversationId: CONVERSATION_ID,
