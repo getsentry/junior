@@ -26,6 +26,16 @@ this directory owns product orchestration around it.
 - Auth pauses persist the pending authorization state and end the live run;
   callbacks append new work and start a later run.
 - Completion and delivery markers make retries idempotent.
+- Canonical turn lifecycle uses stable correlation IDs: input is durable before
+  `turn_started`, and completion/failure is appended only at the owning
+  delivery-and-persistence boundary. Competing terminal writes share one
+  idempotency key, so the first committed outcome wins.
+- Intentional silence is a `turn_completed` `no_reply` outcome and does not
+  create a synthetic visible assistant message.
+- Stable lifecycle keys make explicit retries idempotent; they do not cover
+  process death between external delivery and persistence. Slack needs a
+  durable delivery outbox/receipt reconciler before terminal events are
+  crash-safe across that boundary.
 
 ## Prompt Ownership
 

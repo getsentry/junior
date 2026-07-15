@@ -436,20 +436,23 @@ export async function runAgentDispatchSlice(
       replied: true,
       skippedReason: undefined,
     });
-    upsertConversationMessage(conversation, {
-      id: getAssistantMessageId(dispatch),
-      role: "assistant",
-      text: normalizeConversationText(deliveryReply.text) || "[empty response]",
-      createdAtMs: nowMs,
-      author: {
-        userName: botConfig.userName,
-        isBot: true,
-      },
-      meta: {
-        replied: true,
-        slackTs: resultMessageTs,
-      },
-    });
+    if (reply.deliveryPlan?.postThreadText !== false) {
+      upsertConversationMessage(conversation, {
+        id: getAssistantMessageId(dispatch),
+        role: "assistant",
+        text:
+          normalizeConversationText(deliveryReply.text) || "[empty response]",
+        createdAtMs: nowMs,
+        author: {
+          userName: botConfig.userName,
+          isBot: true,
+        },
+        meta: {
+          replied: true,
+          slackTs: resultMessageTs,
+        },
+      });
+    }
     updateConversationStats(conversation);
     const nextArtifacts = reply.artifactStatePatch
       ? mergeArtifactsState(artifacts, reply.artifactStatePatch)

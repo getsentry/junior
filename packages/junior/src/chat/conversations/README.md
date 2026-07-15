@@ -41,6 +41,10 @@ must not become a dashboard or external API payload.
 - Append each visible-message fact and update its SQL read model in one
   transaction under the conversation event lock.
 - Append conversation events in monotonic sequence order.
+- Correlate each turn with one `turn_started` event after its input messages and
+  one first-writer-wins `turn_completed` or `turn_failed` terminal event.
+- Persist only allowlisted failure classifications and opaque Sentry event IDs;
+  raw exceptions, provider payloads, and URLs are not lifecycle data.
 - Restore state from durable events rather than a duplicate transcript cache.
 - Compaction replaces prior model context without rewriting visible history.
 - Imports and migrations are idempotent and preserve stable conversation IDs.
@@ -73,3 +77,20 @@ Follow `../../../../../policies/data-redaction.md` and
 Representative coverage lives in
 `packages/junior/tests/integration/conversation-sql.test.ts` and the
 conversation storage component tests.
+
+The local runtime is the first lifecycle-event writer, and current detail
+reporting reduces `turn_failed` to one privacy-safe error marker. Slack,
+dispatch, delivery-attempt events, and the ordered safe event API remain
+follow-up cutovers.
+
+The structural failure marker never exposes failure code or event ID. An
+independently delivered fallback remains ordinary visible content, so a public
+conversation preserves its approved `event_id` reference while private detail
+redaction removes the fallback text and retains only structural metadata.
+
+Lifecycle appends have stable idempotency keys so explicitly retried calls are
+safe, but they are not an outbox transaction with an external destination. A
+process death after destination acceptance and before the
+visible/session/terminal writes can still leave a started turn without a
+terminal event. The next delivery slice must add durable intent/receipt
+reconciliation for Slack before claiming crash-safe terminality.

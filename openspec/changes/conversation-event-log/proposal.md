@@ -22,9 +22,10 @@ rather than creating another transcript or lifecycle sidecar.
 
 `ConversationEvent` is the canonical persisted history contract. Every event
 has stable conversation ordering, a timestamp, and a versioned payload. The
-first slice formalizes only the durable event kinds Junior already stores; turn
-lifecycle, delivery, correlation, and lineage variants are added with their
-own write boundaries in later slices.
+initial cutover formalized the durable event kinds Junior already stored. A
+later vertical slice adds correlated start and first-terminal-wins outcome
+events to the local runtime; Slack, dispatch, delivery attempts, and lineage
+follow at their own owning boundaries.
 
 The storage cutover rewrites existing `pi_message` rows into Junior-owned
 `message` events. Their opaque continuity payload is interpreted as a Pi
@@ -60,10 +61,13 @@ child event stream.
    hard schema cut that removes their compatibility view. Backfill
    visible-message rows while workers remain stopped; start new workers only
    after fail-closed zero-gap verification passes.
-3. Expose privacy-safe events from the detail API and move timeline shaping to
+3. Add correlated local lifecycle events and project failures as safe detail
+   markers. Add Slack/dispatch writers only with durable delivery
+   intent/receipt reconciliation so process death cannot strand accepted work.
+4. Expose privacy-safe events from the detail API and move timeline shaping to
    the dashboard.
-4. Add child-conversation lineage and context-fork projection.
-5. Remove obsolete transcript reconstruction and demote remaining message
+5. Add child-conversation lineage and context-fork projection.
+6. Remove obsolete transcript reconstruction and demote remaining message
    stores to explicit read models.
 
 ## Non-Goals

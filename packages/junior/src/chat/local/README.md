@@ -12,6 +12,14 @@ provider mailbox worker.
   and Slack-only authorization or delivery surfaces are disabled.
 - User input is persisted before execution; finalized assistant output is
   persisted after stdout delivery succeeds.
+- Each invocation uses a collision-resistant turn ID independent of transcript
+  length. It records `turn_started` after durable input, then a terminal
+  success, no-reply, or privacy-safe failure after the owning boundary.
+- Intentional no-reply turns do not call the stdout sink and do not synthesize
+  an assistant transcript message.
+- Event appends are idempotent when explicitly retried, but stdout acceptance
+  and SQL persistence are not one transaction. A process death in that interval
+  can strand a started turn; lifecycle history does not claim otherwise.
 - New CLI invocations do not promise restoration of prior interactive history.
 - Status and diagnostics go to stderr; the final answer goes to stdout.
 - Local file requests use paths named by the user. The adapter does not

@@ -100,15 +100,21 @@ export function getAgentTurnDiagnosticsAttributes(
   };
 }
 
-/** Enforce one captured, event-ID-bearing failure response before delivery. */
-export function finalizeFailedTurnReply(args: {
+/** Sanitized final reply plus its optional captured failure correlation. */
+export interface FinalizedTurnFailure {
+  eventId?: string;
+  reply: AgentRunResult;
+}
+
+/** Enforce one captured failure response and return its structured correlation. */
+export function finalizeFailedTurnReplyWithEvent(args: {
   reply: AgentRunResult;
   logException: LogException;
   context: LogContext;
   attributes?: Record<string, unknown>;
-}): AgentRunResult {
+}): FinalizedTurnFailure {
   if (args.reply.diagnostics.outcome === "success") {
-    return args.reply;
+    return { reply: args.reply };
   }
 
   const capture = getFailureCapture(args.reply);
@@ -138,14 +144,24 @@ export function finalizeFailedTurnReply(args: {
       : "";
 
   return {
-    ...args.reply,
-    text: providerPartialText
-      ? `${providerPartialText}${getInterruptionMarker()}`
-      : buildTurnFailureResponse(eventId),
-    deliveryMode: "thread",
-    deliveryPlan: {
-      mode: "thread",
-      postThreadText: true,
+    eventId,
+    reply: {
+      ...args.reply,
+      text: providerPartialText
+        ? `${providerPartialText}${getInterruptionMarker()}`
+        : buildTurnFailureResponse(eventId),
+      deliveryMode: "thread",
+      deliveryPlan: {
+        mode: "thread",
+        postThreadText: true,
+      },
     },
   };
+}
+
+/** Enforce one captured, event-ID-bearing failure response before delivery. */
+export function finalizeFailedTurnReply(
+  args: Parameters<typeof finalizeFailedTurnReplyWithEvent>[0],
+): AgentRunResult {
+  return finalizeFailedTurnReplyWithEvent(args).reply;
 }

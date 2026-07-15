@@ -23,7 +23,11 @@
 - [x] Rewrite legacy SQL message rows in bounded, retry-safe batches while a
       database-only compatibility view supports rolling old workers.
 - [x] Keep Pi messages derived rather than separately persisted.
-- [ ] Add turn outcome, delivery, and explicit turn-correlation event variants.
+- [x] Add strict turn-start and mutually exclusive terminal outcome variants,
+      then cut the local runtime over at its input/delivery persistence bounds.
+- [ ] Add durable delivery intent/receipt reconciliation and delivery-attempt
+      events, then cut Slack/dispatch lifecycle writers over without a
+      destination-acceptance/process-crash gap.
 - [x] Persist visible-message and reply facts as canonical events while updating
       the hydration/search table as an atomic read model.
 - [x] Backfill existing visible-message rows with a bounded, verified migration

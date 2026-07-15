@@ -30,6 +30,7 @@ import {
   openConversationProjection,
   recordMcpProviderConnected,
 } from "@/chat/conversations/projection";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
@@ -168,6 +169,56 @@ it("rejects unknown Junior event fields while retaining opaque message fields", 
       message: { role: "", providerOwnedField: true },
     }).success,
   ).toBe(true);
+});
+
+it("validates strict privacy-safe turn lifecycle event shapes", () => {
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_started",
+      turnId: "turn-1",
+      inputMessageIds: ["message-1"],
+      surface: "internal",
+    }).success,
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_completed",
+      turnId: "turn-1",
+      outcome: "no_reply",
+    }).success,
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_failed",
+      turnId: "turn-1",
+      failureCode: "model_execution_failed",
+      eventId: "0123456789abcdef0123456789abcdef",
+    }).success,
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_started",
+      turnId: "turn-1",
+      inputMessageIds: ["message-1", "message-1"],
+      surface: "internal",
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_failed",
+      turnId: "turn-1",
+      failureCode: "model_execution_failed",
+      eventId: "https://errors.invalid/raw-error-sentinel",
+    }).success,
+  ).toBe(false);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "turn_failed",
+      turnId: "turn-1",
+      failureCode: "provider_error: raw-error-sentinel",
+      providerError: { message: "raw-error-sentinel" },
+    }).success,
+  ).toBe(false);
 });
 
 it("rejects unsupported conversation event schema versions", () => {
@@ -365,6 +416,50 @@ describe("conversation transcript SQL stores", () => {
             createdAt: new Date(4_000),
           }),
       ).rejects.toThrow(Error);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("persists only the first conflicting terminal turn event", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      await seedConversation(fixture, CONVERSATION_ID);
+      const store = createSqlConversationEventStore(fixture.sql);
+      const lifecycle = new ConversationTurnLifecycleService(store);
+      await lifecycle.start({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        inputMessageIds: ["message-1"],
+        surface: "internal",
+        turnId: "turn-conflict",
+      });
+
+      await Promise.all([
+        lifecycle.complete({
+          conversationId: CONVERSATION_ID,
+          createdAtMs: 2_000,
+          outcome: "success",
+          turnId: "turn-conflict",
+        }),
+        lifecycle.fail({
+          conversationId: CONVERSATION_ID,
+          createdAtMs: 2_000,
+          failureCode: "delivery_failed",
+          turnId: "turn-conflict",
+        }),
+      ]);
+
+      const history = await store.loadHistory(CONVERSATION_ID);
+      expect(history.map((event) => event.data.type)).toEqual([
+        "turn_started",
+        expect.stringMatching(/^turn_(?:completed|failed)$/),
+      ]);
+      expect(
+        history.filter((event) => event.idempotencyKey?.endsWith(":terminal")),
+      ).toHaveLength(1);
     } finally {
       await fixture.close();
     }
