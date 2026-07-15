@@ -49,7 +49,7 @@ message_occurrences AS (
   INNER JOIN candidates AS candidate
     ON candidate.conversation_id = event.conversation_id
   WHERE event.type = 'message'
-    AND event.role = 'assistant'
+    AND event.payload -> 'message' ->> 'role' = 'assistant'
     AND jsonb_typeof(event.payload -> 'message' -> 'usage') = 'object'
 ),
 canonical_messages AS (
