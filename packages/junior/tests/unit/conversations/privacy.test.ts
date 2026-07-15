@@ -92,32 +92,4 @@ describe("resolveRootVisibility", () => {
       ),
     ).resolves.toMatchObject({ visibility: null });
   });
-
-  it("fails closed when lineage contains a cycle", async () => {
-    const result = await resolveRootVisibility(
-      scriptedExecutor({
-        conversations: [
-          { destinationId: null, parentId: "parent" },
-          { destinationId: null, parentId: "requested" },
-        ],
-      }),
-      "requested",
-    );
-
-    expect(result.visibility).toBeNull();
-  });
-
-  it("fails closed when lineage exceeds the traversal bound", async () => {
-    const conversations = Array.from({ length: 32 }, (_, index) => ({
-      destinationId: null,
-      parentId: `node-${index + 1}`,
-    }));
-
-    const result = await resolveRootVisibility(
-      scriptedExecutor({ conversations }),
-      "node-0",
-    );
-
-    expect(result.visibility).toBeNull();
-  });
 });

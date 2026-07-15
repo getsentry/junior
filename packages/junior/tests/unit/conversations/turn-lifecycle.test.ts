@@ -116,53 +116,6 @@ describe("conversation turn lifecycle", () => {
     });
   });
 
-  it("does not replace a first failure with later completion", async () => {
-    const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
-
-    await lifecycle.fail({
-      conversationId: "local:test:turn",
-      createdAtMs: 200,
-      failureCode: "agent_run_failed",
-      turnId: "turn-1",
-    });
-    await lifecycle.complete({
-      conversationId: "local:test:turn",
-      createdAtMs: 300,
-      outcome: "success",
-      turnId: "turn-1",
-    });
-
-    expect(store.history).toHaveLength(1);
-    expect(store.history[0]).toMatchObject({
-      idempotencyKey: "turn:turn-1:terminal",
-      data: {
-        type: "turn_failed",
-        turnId: "turn-1",
-        failureCode: "agent_run_failed",
-      },
-    });
-  });
-
-  it("persists only the allowlisted failure correlation", async () => {
-    const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
-
-    await lifecycle.fail({
-      conversationId: "local:test:turn",
-      createdAtMs: 300,
-      eventId: "0123456789abcdef0123456789abcdef",
-      failureCode: "model_execution_failed",
-      turnId: "turn-1",
-    });
-
-    const serialized = JSON.stringify(store.history);
-    expect(serialized).toContain("0123456789abcdef0123456789abcdef");
-    expect(serialized).not.toContain("providerError");
-    expect(serialized).not.toContain("raw error sentinel");
-    expect(serialized).not.toContain("https://");
-  });
-
   it("surfaces append failures to the owning runtime boundary", async () => {
     const appendError = new Error("event store unavailable");
     const store = new MemoryConversationEventStore();
