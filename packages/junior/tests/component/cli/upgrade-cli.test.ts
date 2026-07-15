@@ -666,6 +666,16 @@ WHERE conversation_id = $1
           },
           createdAtMs: 3_000,
         },
+        {
+          data: {
+            type: "message",
+            message: {
+              role: "user",
+              usage: { input: 1_000, output: 1_000 },
+            } as unknown as PiMessage,
+          },
+          createdAtMs: 3_500,
+        },
       ]);
       await sqlStore.recordExecution({
         conversationId: unsafeConversationId,
