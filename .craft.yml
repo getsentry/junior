@@ -1,5 +1,7 @@
 minVersion: 0.23.1
-changelogPolicy: none
+changelog:
+  filePath: CHANGELOG.md
+  policy: auto
 preReleaseCommand: bash scripts/craft-pre-release.sh
 targets:
   - name: npm
@@ -50,3 +52,4 @@ targets:
   - name: npm
     id: "@sentry/junior-vercel"
     includeNames: /^sentry-junior-vercel-\d.*\.tgz$/
+  - name: github
