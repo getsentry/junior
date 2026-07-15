@@ -1,8 +1,8 @@
 /**
  * Visible conversation message port.
  *
- * Messages are immutable source facts recorded idempotently by source identity;
- * the only mutable bookkeeping is the `replied_at` delivery mark.
+ * Conversation events are the source facts. This port atomically appends those
+ * facts and maintains the SQL table used for hydration and indexed search.
  */
 
 /** Author role of a visible conversation message. */
@@ -30,20 +30,20 @@ export interface ConversationMessage {
   createdAtMs: number;
 }
 
-/** Persist and read the visible per-conversation message transcript. */
+/** Persist event-backed visible messages and read their SQL projection. */
 export interface ConversationMessageStore {
-  /** Record source messages idempotently by `(conversation_id, message_id)`. */
+  /** Append source facts and project them idempotently by message identity. */
   record(
     conversationId: string,
     messages: NewConversationMessage[],
   ): Promise<void>;
-  /** Set the mutable `replied_at` mark; content columns are never touched. */
+  /** Append a reply fact and project its immutable first timestamp. */
   markReplied(
     conversationId: string,
     messageId: string,
     repliedAtMs: number,
   ): Promise<void>;
-  /** List messages in `created_at` order. */
+  /** List the materialized read model in `created_at` order. */
   list(
     conversationId: string,
     opts?: { limit?: number },

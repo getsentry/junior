@@ -6,6 +6,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
@@ -22,6 +23,7 @@ export const juniorConversationEvents = pgTable(
     seq: integer("seq").notNull(),
     contextEpoch: integer("context_epoch").notNull(),
     schemaVersion: integer("schema_version").default(1).notNull(),
+    idempotencyKey: text("idempotency_key"),
     type: text("type").notNull(),
     role: text("role"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
@@ -41,6 +43,10 @@ export const juniorConversationEvents = pgTable(
       table.conversationId,
       table.contextEpoch,
       table.seq,
+    ),
+    uniqueIndex("junior_conversation_events_idempotency_idx").on(
+      table.conversationId,
+      table.idempotencyKey,
     ),
   ],
 );

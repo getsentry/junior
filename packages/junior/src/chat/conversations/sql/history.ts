@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
@@ -15,19 +15,21 @@ import {
 import { ensureConversationRow } from "./conversation-row";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
+import { withConversationEventLock } from "./event-lock";
 
 type ConversationEventRow = typeof juniorConversationEvents.$inferSelect;
 type ConversationEventInsert = typeof juniorConversationEvents.$inferInsert;
 type PersistedConversationEvent = {
   data: ConversationEventData;
+  idempotencyKey?: string;
   createdAtMs: number;
 };
 
 function messageRole(data: ConversationEventData): string | null {
-  if (data.type !== "message") {
-    return null;
+  if (data.type === "message") {
+    return data.message.role;
   }
-  return data.message.role;
+  return data.type === "visible_message_recorded" ? data.role : null;
 }
 
 /** Split validated event data into column-lifted and JSON payload fields. */
@@ -43,6 +45,7 @@ function insertFromEvent(
     seq,
     contextEpoch,
     schemaVersion: 1,
+    idempotencyKey: event.idempotencyKey ?? null,
     type,
     role: messageRole(event.data),
     payload: sanitizePostgresJson(payload),
@@ -56,6 +59,7 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     contextEpoch: row.contextEpoch,
+    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
     createdAtMs: row.createdAt.getTime(),
     data: { ...row.payload, type: row.type },
   });
@@ -88,7 +92,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     const newestCreatedAtMs = Math.max(
       ...parsed.map((event) => event.createdAtMs),
     );
-    await this.executor.transaction(async () => {
+    await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(
         this.executor,
         conversationId,
@@ -104,13 +108,56 @@ class SqlConversationEventStore implements ConversationEventStore {
             isNotNull(juniorConversations.archivedAt),
           ),
         );
+      const existingKeys = parsed
+        .map((event) => event.idempotencyKey)
+        .filter((key): key is string => key !== undefined);
+      const persistedKeys =
+        existingKeys.length === 0
+          ? new Set<string>()
+          : new Set(
+              (
+                await this.executor
+                  .db()
+                  .select({ key: juniorConversationEvents.idempotencyKey })
+                  .from(juniorConversationEvents)
+                  .where(
+                    and(
+                      eq(
+                        juniorConversationEvents.conversationId,
+                        conversationId,
+                      ),
+                      inArray(
+                        juniorConversationEvents.idempotencyKey,
+                        existingKeys,
+                      ),
+                    ),
+                  )
+              ).flatMap((row) => (row.key ? [row.key] : [])),
+            );
+      const pending = parsed.filter(
+        (event) =>
+          event.idempotencyKey === undefined ||
+          !persistedKeys.has(event.idempotencyKey),
+      );
+      if (pending.length === 0) {
+        return;
+      }
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
-      const rows = parsed.map((event) =>
+      const rows = pending.map((event) =>
         insertFromEvent(conversationId, seq++, contextEpoch, event),
       );
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
+      await this.executor
+        .db()
+        .insert(juniorConversationEvents)
+        .values(rows)
+        .onConflictDoNothing({
+          target: [
+            juniorConversationEvents.conversationId,
+            juniorConversationEvents.idempotencyKey,
+          ],
+        });
     });
   }
 
@@ -119,7 +166,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     opts: ContextEpochStart,
   ): Promise<void> {
     const parsed = contextEpochStartSchema.parse(opts);
-    await this.executor.transaction(async () => {
+    await withConversationEventLock(this.executor, conversationId, async () => {
       await ensureConversationRow(this.executor, conversationId, Date.now());
       await this.executor
         .db()

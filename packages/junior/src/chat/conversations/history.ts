@@ -162,6 +162,38 @@ const toolExecutionStartedEventDataSchema = z
   })
   .strict();
 
+const visibleMessageRoleSchema = z.union([
+  z.literal("user"),
+  z.literal("assistant"),
+  z.literal("system"),
+]);
+
+const visibleMessageRecordedEventDataSchema = z
+  .object({
+    type: z.literal("visible_message_recorded"),
+    messageId: z.string().min(1),
+    role: visibleMessageRoleSchema,
+    text: z.string(),
+    authorIdentityId: z.string().min(1).optional(),
+    meta: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict();
+
+const visibleMessageMetadataUpdatedEventDataSchema = z
+  .object({
+    type: z.literal("visible_message_metadata_updated"),
+    messageId: z.string().min(1),
+    meta: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+const visibleMessageRepliedEventDataSchema = z
+  .object({
+    type: z.literal("visible_message_replied"),
+    messageId: z.string().min(1),
+  })
+  .strict();
+
 const visibleContextCompactedEventDataSchema = z
   .object({
     type: z.literal("visible_context_compacted"),
@@ -213,6 +245,9 @@ const appendableConversationEventDataSchema = z.union([
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
+  visibleMessageRecordedEventDataSchema,
+  visibleMessageMetadataUpdatedEventDataSchema,
+  visibleMessageRepliedEventDataSchema,
   visibleContextCompactedEventDataSchema,
   subagentStartedEventDataSchema,
   subagentEndedEventDataSchema,
@@ -238,6 +273,7 @@ export const conversationEventSchema = z
     schemaVersion: z.literal(1),
     seq: z.number().int().nonnegative(),
     contextEpoch: z.number().int().nonnegative(),
+    idempotencyKey: z.string().min(1).optional(),
     createdAtMs: z.number().finite(),
     data: conversationEventDataSchema,
   })
@@ -250,6 +286,7 @@ export type ConversationEvent = z.output<typeof conversationEventSchema>;
 export const newConversationEventSchema = z
   .object({
     data: appendableConversationEventDataSchema,
+    idempotencyKey: z.string().min(1).optional(),
     createdAtMs: z.number().finite(),
   })
   .strict();

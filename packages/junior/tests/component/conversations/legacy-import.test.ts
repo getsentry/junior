@@ -186,6 +186,9 @@ describe("legacy conversation import", () => {
         { seq: 1, epoch: 1, type: "context_epoch_started" },
         { seq: 2, epoch: 1, type: "message" },
         { seq: 3, epoch: 1, type: "subagent_started" },
+        { seq: 4, epoch: 1, type: "visible_message_recorded" },
+        { seq: 5, epoch: 1, type: "visible_message_replied" },
+        { seq: 6, epoch: 1, type: "visible_message_recorded" },
       ]);
 
       // Current context is exactly the highest epoch's messages.
@@ -246,7 +249,7 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
-      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(4);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(7);
     } finally {
       await fixture.close();
     }
@@ -281,7 +284,7 @@ describe("legacy conversation import", () => {
           loadVisibleMessages: async () => invalidVisible,
         }),
       ).rejects.toThrow(
-        'Failed query: insert into "junior_conversation_messages"',
+        'Failed query: insert into "junior_conversation_events"',
       );
 
       // Messages and events share one transaction, so neither side commits.
@@ -302,7 +305,7 @@ describe("legacy conversation import", () => {
         }),
       ).resolves.toEqual({ imported: true });
 
-      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(3);
       const messages = await messageStore.list(CONVERSATION_ID);
       expect(messages.map((message) => message.messageId)).toEqual([
         "m1",
@@ -313,7 +316,7 @@ describe("legacy conversation import", () => {
     }
   }, 20_000);
 
-  it("seals a completed message-only import without event rows", async () => {
+  it("treats event-backed visible-message writes as an import seal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
@@ -349,15 +352,11 @@ describe("legacy conversation import", () => {
 
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, deps),
-      ).resolves.toEqual({ imported: true });
-      await expect(
-        importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
-      expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
+      expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(2);
       expect(await messageStore.list(CONVERSATION_ID)).toMatchObject([
         {
           messageId: "message-only",
-          meta: { author: { fullName: "Legacy User" } },
           repliedAtMs: 100,
         },
       ]);
@@ -370,8 +369,8 @@ describe("legacy conversation import", () => {
         .from(juniorConversations)
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
       expect(conversation).toMatchObject({
-        lastActivityAt: new Date(900),
-        updatedAt: new Date(900),
+        lastActivityAt: new Date(100),
+        updatedAt: new Date(100),
       });
     } finally {
       await fixture.close();

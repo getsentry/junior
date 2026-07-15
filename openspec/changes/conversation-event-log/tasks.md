@@ -24,6 +24,11 @@
       database-only compatibility view supports rolling old workers.
 - [x] Keep Pi messages derived rather than separately persisted.
 - [ ] Add turn outcome, delivery, and explicit turn-correlation event variants.
+- [x] Persist visible-message and reply facts as canonical events while updating
+      the hydration/search table as an atomic read model.
+- [x] Backfill existing visible-message rows with a bounded, verified migration
+      while workers are stopped, after removing the drained 0.103.x workers'
+      compatibility view.
 
 ## 3. Event API And Dashboard
 
@@ -43,7 +48,8 @@
 
 ## 5. Cleanup And Verification
 
-- [ ] Make remaining visible-message and aggregate stores explicit read models.
+- [x] Make the visible-message table an explicit event-backed read model.
+- [ ] Make remaining aggregate stores explicit read models.
 - [ ] Remove obsolete transcript reconstruction and legacy compatibility after
       migration completion.
 - [ ] Verify retention, purge, redaction, idempotency, replay parity, and event
