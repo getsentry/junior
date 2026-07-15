@@ -18,6 +18,11 @@ conversation events, compaction boundaries, search, retention, and legacy import
 - Child rows carry immutable parent/root, parent-turn, and exact parent-event
   correlation. Shared children additionally retain that parent sequence as
   their context fork; isolated children retain no fork.
+- The Pi adapter recursively composes a shared child's pinned ancestor prefix
+  with only the child's current local epoch. Initial and inheriting rollback
+  markers preserve that relationship; compaction, handoff, and isolated epochs
+  are self-contained. Child sequence cursors count only child-local events, and
+  commits reject any mutation of the inherited prefix.
 - Provider payloads and old state-store mirrors are migration inputs, not
   canonical product records.
 
@@ -54,6 +59,13 @@ must not become a dashboard or external API payload.
 - Establish child lineage and its parent `subagent_started` reference through
   the SQL-backed lineage service in one transaction. Retries must match the
   original parent, root, turn, event, and history mode exactly.
+- Never copy inherited Pi messages into the child log. Resolve every restore
+  path through the lineage-aware Pi projection and bound each ancestor at its
+  immutable fork before reading the next descendant.
+- Shared projection has an explicit maximum lineage depth. Parent event reads
+  currently load the parent's full retained history before selecting the fork;
+  a bounded store read remains a future optimization rather than a second
+  projection contract.
 
 ## Visibility And Retention
 

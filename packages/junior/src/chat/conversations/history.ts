@@ -45,6 +45,7 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("initial"),
       modelProfile: z.literal("standard"),
       modelId: z.string().min(1),
+      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -58,7 +59,7 @@ const contextEpochStartedEventDataSchema = z.union([
   z
     .object({
       type: z.literal("context_epoch_started"),
-      reason: z.union([z.literal("compaction"), z.literal("rollback")]),
+      reason: z.literal("compaction"),
       // TODO(v0.104.0): Remove support for deployed compaction/rollback markers
       // without model bindings after those rows pass the retention horizon.
       modelProfile: z.undefined().optional(),
@@ -68,9 +69,27 @@ const contextEpochStartedEventDataSchema = z.union([
   z
     .object({
       type: z.literal("context_epoch_started"),
-      reason: z.union([z.literal("compaction"), z.literal("rollback")]),
+      reason: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
+      reason: z.literal("rollback"),
+      modelProfile: z.undefined().optional(),
+      modelId: z.undefined().optional(),
+      inheritsLineageContext: z.literal(true).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
+      reason: z.literal("rollback"),
+      modelProfile: modelProfileSchema,
+      modelId: z.string().min(1),
+      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
 ]);
@@ -91,6 +110,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       modelProfile: z.literal("standard"),
       modelId: z.string().min(1),
       messages: z.array(contextEpochMessageSchema),
+      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
   z
@@ -103,10 +123,19 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
     .strict(),
   z
     .object({
-      reason: z.union([z.literal("compaction"), z.literal("rollback")]),
+      reason: z.literal("compaction"),
       modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       messages: z.array(contextEpochMessageSchema),
+    })
+    .strict(),
+  z
+    .object({
+      reason: z.literal("rollback"),
+      modelProfile: modelProfileSchema,
+      modelId: z.string().min(1),
+      messages: z.array(contextEpochMessageSchema),
+      inheritsLineageContext: z.literal(true).optional(),
     })
     .strict(),
 ]);
