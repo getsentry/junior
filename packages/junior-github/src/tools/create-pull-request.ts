@@ -261,6 +261,7 @@ function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
   actor: ToolRegistrationHookContext["actor"],
+  dashboardUrl?: string,
 ): Request {
   const repo = parseRepo(input.repo);
   const payload = {
@@ -270,6 +271,7 @@ function createGitHubPullRequestRequest(
     body: appendGitHubFooter(
       appendGitHubRequesterAttribution(input.body ?? "", actor),
       conversationId,
+      dashboardUrl,
     ),
     ...(input.draft !== undefined ? { draft: input.draft } : {}),
   };
@@ -430,6 +432,7 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
             conversationId,
             parsedInput,
             ctx.actor,
+            ctx.slack?.conversationLink?.url,
           );
           const pendingState: CreatePullRequestState = {
             status: "pending",

@@ -7,6 +7,7 @@ import type {
   SlackInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
+import type { SlackConversationLink } from "./operations";
 import type { PluginState } from "./state";
 import { z, type ZodType, type ZodTypeAny } from "zod";
 
@@ -277,6 +278,8 @@ export interface SlackToolRegistrationHookContext {
     canCreateCanvas: boolean;
     canPostToChannel: boolean;
   };
+  /** Host-owned link to this conversation, preferring the dashboard when enabled. */
+  conversationLink?: SlackConversationLink;
   credentialSubject?: Extract<
     PluginCredentialSubject,
     { allowedWhen: "private-direct-conversation" }

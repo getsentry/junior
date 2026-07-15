@@ -50,30 +50,33 @@ export function sentryConversationUrl(
   return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
 }
 
-/**
- * Build the Junior session footer block for GitHub issues and pull requests.
- * Returns undefined when Sentry DSN/org are not configured.
- */
+/** Build the Junior session footer, preferring a host-provided dashboard link. */
 export function githubConversationFooter(
   conversationId: string,
+  dashboardUrl?: string,
 ): string | undefined {
   const id = nonEmptyString(conversationId, "conversationId");
-  const sessionUrl = sentryConversationUrl(id);
+  const normalizedDashboardUrl = dashboardUrl?.trim();
+  const sessionUrl = normalizedDashboardUrl || sentryConversationUrl(id);
   if (!sessionUrl) {
     return undefined;
   }
-  return `${GITHUB_SESSION_FOOTER_START}\n\n--\n\n[View Junior Session in Sentry](${sessionUrl})\n\n${GITHUB_SESSION_FOOTER_END}`;
+  const label = normalizedDashboardUrl
+    ? "View Junior Session"
+    : "View Junior Session in Sentry";
+  return `${GITHUB_SESSION_FOOTER_START}\n\n--\n\n[${label}](${sessionUrl})\n\n${GITHUB_SESSION_FOOTER_END}`;
 }
 
 /**
  * Append (or replace an existing) Junior session footer to a GitHub body string.
- * When Sentry is not configured, returns the body unchanged (existing footer stripped).
+ * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
  */
 export function appendGitHubFooter(
   body: string,
   conversationId: string,
+  dashboardUrl?: string,
 ): string {
-  const footer = githubConversationFooter(conversationId);
+  const footer = githubConversationFooter(conversationId, dashboardUrl);
   const normalizedBody = body.trimEnd();
   const existingFooter = new RegExp(
     `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,

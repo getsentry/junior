@@ -23,6 +23,7 @@ import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
@@ -398,12 +399,18 @@ export function getPluginTools(
           userId: slackToolContext.actor?.userId,
         })
       : undefined;
+    const dashboardConversationUrl = context.conversationId
+      ? getDashboardConversationLink(context.conversationId)
+      : undefined;
     const slackContext: SlackToolRegistrationHookContext | undefined =
       slackToolContext
         ? {
             channelCapabilities: resolveChannelCapabilities(
               slackToolContext.sourceChannelId,
             ),
+            ...(dashboardConversationUrl
+              ? { conversationLink: { url: dashboardConversationUrl } }
+              : {}),
             ...(credentialSubject ? { credentialSubject } : {}),
           }
         : undefined;
