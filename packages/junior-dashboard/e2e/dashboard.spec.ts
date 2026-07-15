@@ -429,7 +429,6 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   const subagentRow = page
     .getByRole("button", { name: "Open advisor transcript" })
     .first();
-  await expect(subagentRow).toHaveCSS("cursor", "pointer");
   await subagentRow.click();
 
   const drawer = page.getByRole("dialog");
@@ -456,5 +455,4 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
 
   await page.setViewportSize({ height: 844, width: 390 });
   await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
 });

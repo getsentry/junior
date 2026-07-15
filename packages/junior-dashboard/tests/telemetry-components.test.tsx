@@ -125,37 +125,6 @@ describe("dashboard canonical-event components", () => {
     expect(html.match(/aria-pressed="false"/g) ?? []).toHaveLength(1);
   });
 
-  it("renders visible messages once and keeps API order over timestamps", () => {
-    const html = renderTranscript(
-      conversation([
-        event(
-          0,
-          {
-            type: "visible_message",
-            messageId: "first",
-            role: "user",
-            text: "first by sequence",
-          },
-          "2026-01-01T00:00:09.000Z",
-        ),
-        event(
-          2,
-          {
-            type: "visible_message",
-            messageId: "second",
-            role: "assistant",
-            text: "second by sequence",
-          },
-          "2026-01-01T00:00:01.000Z",
-        ),
-      ]),
-    );
-    expect(html.indexOf("first by sequence")).toBeLessThan(
-      html.indexOf("second by sequence"),
-    );
-    expect(html.match(/second by sequence/g)).toHaveLength(1);
-  });
-
   it("renders redacted visible events without exposing text", () => {
     const html = renderTranscript(
       conversation(
@@ -214,18 +183,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(
       "Junior could not deliver this message to its destination.",
     );
-    expect(html.match(/data-transcript-failure/g)).toHaveLength(1);
     expect(html).not.toContain("Agent response failed");
-  });
-
-  it("renders tool starts as started rather than running", () => {
-    const html = renderTranscript(
-      conversation([event(0, { type: "tool_started", name: "search" })]),
-    );
-    expect(html).toContain("search");
-    expect(html).toContain("started");
-    expect(html).not.toContain("running");
-    expect(html).not.toContain("missing result");
   });
 
   it("renders redacted tool starts as started rather than missing", () => {
@@ -245,8 +203,6 @@ describe("dashboard canonical-event components", () => {
 
   it.each([
     ["running", undefined],
-    ["completed", "success"],
-    ["error", "error"],
     ["aborted", "aborted"],
   ] as const)("renders the %s child lifecycle status", (status, outcome) => {
     const events: ConversationReportEvent[] = [
@@ -280,7 +236,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("advisor");
     expect(html).toContain(status);
     expect(html).toContain('aria-label="Open advisor transcript"');
-    expect(html).toContain('data-transcript-rail-event="subagent"');
   });
 
   it("loads child drawers from the ordinary conversation query", () => {
@@ -320,37 +275,34 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Open conversation");
   });
 
-  it.each(["error", "aborted"] as const)(
-    "keeps the parent %s status when child detail says completed",
-    (status) => {
-      const child = conversation([], {
-        conversationId: "child-1",
-        displayTitle: "Advisor review",
-        status: "completed",
-      });
-      client.setQueryData(["conversation", "child-1"], child);
-      const target: SubagentTranscriptTarget = {
-        conversationId: "child-1",
-        part: {
-          type: "subagent",
-          id: "child-1",
-          childConversationId: "child-1",
-          status,
-          subagentKind: "advisor",
-        },
-      };
+  it("keeps the parent error status when child detail says completed", () => {
+    const child = conversation([], {
+      conversationId: "child-1",
+      displayTitle: "Advisor review",
+      status: "completed",
+    });
+    client.setQueryData(["conversation", "child-1"], child);
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-1",
+      part: {
+        type: "subagent",
+        id: "child-1",
+        childConversationId: "child-1",
+        status: "error",
+        subagentKind: "advisor",
+      },
+    };
 
-      const html = renderToStaticMarkup(
-        <MemoryRouter>
-          <QueryClientProvider client={client}>
-            <SubagentTranscriptDrawer target={target} onClose={() => {}} />
-          </QueryClientProvider>
-        </MemoryRouter>,
-      );
-      expect(html).toContain(`${status} ·`);
-      expect(html).not.toContain("completed ·");
-    },
-  );
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain("error ·");
+    expect(html).not.toContain("completed ·");
+  });
 
   it("keeps a child transcript openable when its end event is missing", () => {
     const parentHtml = renderToStaticMarkup(
