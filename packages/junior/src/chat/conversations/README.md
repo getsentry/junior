@@ -97,7 +97,8 @@ Follow `../../../../../policies/data-redaction.md` and
 ## Deployment Safety
 
 - Schema changes are expand-first and compatible with the currently deployed
-  reader and writer during rollout.
+  reader and writer during normal rollouts. Explicit hard cutovers document
+  their worker-stop gate here.
 - Data rewrites use explicit migrations or resumable import code.
 - Live workers never read Redis session logs, advisor blobs, or legacy
   thread-state to restore history. Operators must run `junior upgrade` before
@@ -105,9 +106,9 @@ Follow `../../../../../policies/data-redaction.md` and
 - The Redis decoder and backfill writer remain under `cli/upgrade` only for the
   bounded operator-migration horizon; they can be deleted independently once
   every supported deployment has completed that upgrade.
-- Drain every 0.103.x worker before applying the visible-message schema cut,
-  which drops the temporary `junior_agent_steps` compatibility view and its
-  functions.
+- Stop every pre-event-log worker before running the event-table schema cut.
+  The migration renames `junior_agent_steps` directly and intentionally
+  provides no rolling compatibility view.
 - Run the final rerunnable visible-message backfill while workers remain
   stopped. Its fail-closed zero-gap verification is the cutover gate; start new
   workers only after it passes.
