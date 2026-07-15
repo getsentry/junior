@@ -1,14 +1,12 @@
 import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
-import type { ConversationSubagentTranscriptReport } from "@sentry/junior/api/schema";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
   conversationStatsReportSchema,
-  conversationSubagentTranscriptReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   actorDirectoryReportSchema,
@@ -252,33 +250,4 @@ export function readConversationData(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
-}
-
-/** Fetch one child-agent transcript for the conversation detail drawer. */
-export function useConversationSubagentTranscriptData(
-  params:
-    | {
-        conversationId: string;
-        subagentId: string;
-      }
-    | undefined,
-) {
-  return useQuery({
-    enabled: Boolean(params),
-    queryKey: [
-      "conversation-subagent",
-      params?.conversationId,
-      params?.subagentId,
-    ],
-    queryFn: async (): Promise<ConversationSubagentTranscriptReport> => {
-      const active = params!;
-      return await read(
-        conversationSubagentTranscriptReportSchema,
-        `/api/conversations/${encodeURIComponent(
-          active.conversationId,
-        )}/subagents/${encodeURIComponent(active.subagentId)}`,
-      );
-    },
-    retry: false,
-  });
 }

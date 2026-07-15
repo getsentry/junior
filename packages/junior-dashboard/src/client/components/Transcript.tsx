@@ -31,7 +31,7 @@ export function Transcript(props: {
   const [view, setView] = useState<TranscriptViewMode>("rich");
   const [search, setSearch] = useState("");
 
-  const redacted = Boolean(props.transcript?.transcriptRedacted);
+  const redacted = props.transcript?.eventHistory.status === "redacted";
   const bottomPinning = usePinnedTranscriptBottom({
     enabled: props.live ?? false,
     version: transcriptBottomVersion(props.transcript),

@@ -128,9 +128,11 @@ export function entryMatchesSearch(
 
   if (entry.kind === "failure") {
     return textContains(
-      entry.outcome === "error"
-        ? "agent response failed error"
-        : "agent response stopped aborted",
+      entry.outcome === "delivery_failed"
+        ? "message delivery failed"
+        : entry.outcome === "error"
+          ? "agent response failed error"
+          : "agent response stopped aborted",
       normalizedQuery,
     );
   }
@@ -154,8 +156,7 @@ export function entryMatchesSearch(
       textContains(entry.part.subagentKind, normalizedQuery) ||
       textContains(entry.part.id, normalizedQuery) ||
       textContains(entry.part.status, normalizedQuery) ||
-      textContains(entry.part.outcome, normalizedQuery) ||
-      textContains(entry.part.parentToolCallId, normalizedQuery)
+      textContains(entry.part.outcome, normalizedQuery)
     );
   }
 
@@ -166,13 +167,8 @@ export function entryMatchesSearch(
   if (entry.kind === "context") {
     const event = entry.part.event;
     return event.type === "model_handoff"
-      ? textContains("model handoff", normalizedQuery) ||
-          textContains(event.fromModelId, normalizedQuery) ||
-          textContains(event.toModelId, normalizedQuery) ||
-          textContains(event.message, normalizedQuery)
-      : textContains("context compacted", normalizedQuery) ||
-          textContains(event.modelId, normalizedQuery) ||
-          textContains(event.summary, normalizedQuery);
+      ? textContains("model handoff", normalizedQuery)
+      : textContains("context compacted", normalizedQuery);
   }
 
   return false;

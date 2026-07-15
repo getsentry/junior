@@ -30,14 +30,13 @@ import {
   visualStatusForSummary,
 } from "../format";
 import { cn } from "../styles";
-import { conversationTranscriptMessages } from "../transcriptActivity";
+import { conversationTranscriptMessages } from "../eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
   TranscriptViewSubagentPart,
 } from "../types";
-import { ExecutionSignature } from "./ExecutionSignature";
 import { StatusBadge } from "./StatusBadge";
 import { ToolFrame, toolFrameClass } from "./ToolFrame";
 import {
@@ -268,14 +267,15 @@ function SegmentEvents(props: {
 
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 pt-3">
-      {props.conversation.transcriptAvailable ? (
+      {props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={messages}
           conversation={props.conversation}
           view={props.view}
         />
-      ) : props.conversation.transcriptRedacted && messages.length > 0 ? (
+      ) : props.conversation.eventHistory.status === "redacted" &&
+        messages.length > 0 ? (
         <RedactedTranscriptView
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
@@ -343,7 +343,7 @@ function VisibleTranscriptEntries(props: {
           kind="subagent"
         >
           <TranscriptSubagentView
-            onOpenTranscript={(part) =>
+            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
               props.onOpenSubagentTranscript?.({
                 part,
                 conversation: props.conversation,
@@ -448,11 +448,12 @@ function TranscriptEntryList(props: {
 }
 
 function TranscriptFailureView(props: {
-  outcome: "error" | "aborted";
+  outcome: "error" | "aborted" | "delivery_failed";
   timestamp?: number;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
-  const isError = props.outcome === "error";
+  const isError = props.outcome !== "aborted";
+  const deliveryFailed = props.outcome === "delivery_failed";
 
   return (
     <div
@@ -472,7 +473,11 @@ function TranscriptFailureView(props: {
       />
       <div className="min-w-0">
         <div className="font-display text-[0.95rem] font-semibold leading-tight">
-          {isError ? "Agent response failed" : "Agent response stopped"}
+          {deliveryFailed
+            ? "Message delivery failed"
+            : isError
+              ? "Agent response failed"
+              : "Agent response stopped"}
         </div>
         <div
           className={cn(
@@ -480,9 +485,11 @@ function TranscriptFailureView(props: {
             isError ? "text-rose-100/70" : "text-amber-100/70",
           )}
         >
-          {isError
-            ? "The model response ended before Junior could complete this turn."
-            : "The model response was stopped before Junior could complete this turn."}
+          {deliveryFailed
+            ? "Junior could not deliver this message to its destination."
+            : isError
+              ? "The model response ended before Junior could complete this turn."
+              : "The model response was stopped before Junior could complete this turn."}
         </div>
       </div>
       {timestamp ? (
@@ -593,7 +600,7 @@ function RedactedTranscriptView(props: {
           kind="subagent"
         >
           <TranscriptSubagentView
-            onOpenTranscript={(part) =>
+            onOpenTranscript={(part: TranscriptViewSubagentPart) =>
               props.onOpenSubagentTranscript?.({
                 part,
                 conversation: props.conversation,
@@ -727,7 +734,7 @@ function RedactedToolView(props: {
       ? formatMs(props.resultTimestamp - props.timestamp)
       : undefined;
   const missingResultLabel =
-    props.call?.status === "running" ? "running" : "missing result";
+    props.call?.status === "running" ? "running" : "started";
   const meta = [
     duration,
     props.result ? undefined : missingResultLabel,
@@ -777,18 +784,6 @@ function transcriptMeta(
   const toolSummary = summarizeToolCalls(conversation);
   const turnSummary = summarizeTurns(conversation);
   const items: Array<MetricListItem | undefined> = [
-    conversation.modelId || conversation.reasoningLevel
-      ? {
-          content: (
-            <ExecutionSignature
-              className="text-cyan-200"
-              modelId={conversation.modelId}
-              reasoningLevel={conversation.reasoningLevel}
-            />
-          ),
-          key: "execution",
-        }
-      : undefined,
     duration !== "none"
       ? {
           content: (

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { projectConversationReportEvents } from "@/api/conversations/events";
-import { conversationReportEventSchema } from "@/api/conversations/schema";
+import {
+  conversationDetailReportSchema,
+  conversationReportEventSchema,
+} from "@/api/conversations/schema";
 import {
   conversationEventSchema,
   type ConversationEvent,
@@ -426,5 +429,128 @@ describe("conversation report event projection", () => {
         data: { type: "visible_message", messageId: "m1", role: "user" },
       }).success,
     ).toBe(false);
+  });
+
+  it("rejects non-increasing event sequences at the detail boundary", () => {
+    const summary = {
+      displayTitle: "Report",
+      cumulativeDurationMs: 0,
+      conversationId: "conversation-1",
+      status: "completed" as const,
+      startedAt: "2026-07-15T12:00:00.000Z",
+      lastSeenAt: "2026-07-15T12:00:00.000Z",
+      lastProgressAt: "2026-07-15T12:00:00.000Z",
+      surface: "internal" as const,
+      generatedAt: "2026-07-15T12:00:00.000Z",
+      eventHistory: { status: "available" as const },
+    };
+    const reportEvent = (seq: number) => ({
+      seq,
+      contextEpoch: 0,
+      createdAt: "2026-07-15T12:00:00.000Z",
+      data: {
+        type: "turn_lifecycle" as const,
+        turnId: `turn-${seq}`,
+        state: "started" as const,
+      },
+    });
+
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        events: [reportEvent(1), reportEvent(3)],
+      }).success,
+    ).toBe(true);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        events: [reportEvent(3), reportEvent(3)],
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        events: [reportEvent(3), reportEvent(2)],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("enforces event-history privacy invariants at the detail boundary", () => {
+    const summary = {
+      displayTitle: "Report",
+      cumulativeDurationMs: 0,
+      conversationId: "conversation-privacy",
+      status: "completed" as const,
+      startedAt: "2026-07-15T12:00:00.000Z",
+      lastSeenAt: "2026-07-15T12:00:00.000Z",
+      lastProgressAt: "2026-07-15T12:00:00.000Z",
+      surface: "internal" as const,
+      generatedAt: "2026-07-15T12:00:00.000Z",
+    };
+    const visibleEvent = (
+      data:
+        | { text: string; redacted?: never }
+        | { redacted: true; text?: never },
+    ) => ({
+      seq: 1,
+      contextEpoch: 0,
+      createdAt: "2026-07-15T12:00:00.000Z",
+      data: {
+        type: "visible_message" as const,
+        messageId: "message-1",
+        role: "assistant" as const,
+        ...data,
+      },
+    });
+
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: { status: "expired", expiredAt: summary.generatedAt },
+        events: [visibleEvent({ redacted: true })],
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+        events: [visibleEvent({ text: "must not be exposed" })],
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: { status: "available" },
+        events: [visibleEvent({ redacted: true })],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: { status: "expired", expiredAt: summary.generatedAt },
+        events: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: {
+          status: "redacted",
+          reason: "non_public_conversation",
+        },
+        events: [visibleEvent({ redacted: true })],
+      }).success,
+    ).toBe(true);
+    expect(
+      conversationDetailReportSchema.safeParse({
+        ...summary,
+        eventHistory: { status: "available" },
+        events: [visibleEvent({ text: "safe public text" })],
+      }).success,
+    ).toBe(true);
   });
 });

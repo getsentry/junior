@@ -36,7 +36,7 @@ export type RenderedThinkingEntry = {
 
 export type RenderedFailureEntry = {
   kind: "failure";
-  outcome: "error" | "aborted";
+  outcome: "error" | "aborted" | "delivery_failed";
   timestamp?: number;
 };
 
@@ -300,7 +300,6 @@ export function messageRawText(message: TranscriptViewMessage): string {
           stringifyPartValue({
             id: part.id,
             outcome: part.outcome,
-            parentToolCallId: part.parentToolCallId,
             status: part.status,
           }),
         ]
@@ -310,12 +309,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
       if (part.type === "context_event") {
         const event = part.event;
         return event.type === "model_handoff"
-          ? ["model handoff", event.fromModelId, event.toModelId, event.message]
-              .filter(isString)
-              .join("\n")
-          : ["context compacted", event.modelId, event.summary]
-              .filter(isString)
-              .join("\n");
+          ? "model handoff"
+          : "context compacted";
       }
       return stringifyPartValue(part.output ?? part.input ?? part.text ?? part);
     })

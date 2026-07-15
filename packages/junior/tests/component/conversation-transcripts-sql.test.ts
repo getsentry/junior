@@ -1,4 +1,6 @@
+import { fileURLToPath } from "node:url";
 import { asc, eq } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
@@ -34,6 +36,9 @@ import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-life
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
+const coreMigrationCount = readMigrationFiles({
+  migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
+}).length;
 
 async function listMessageRows(
   fixture: LocalJuniorSqlFixture,
@@ -360,7 +365,7 @@ describe("conversation transcript SQL stores", () => {
       const [applied] = await fixture.sql.query<{ count: number }>(
         "SELECT count(*)::integer AS count FROM drizzle.__drizzle_junior_core",
       );
-      expect(applied?.count).toBe(6);
+      expect(applied?.count).toBe(coreMigrationCount);
     } finally {
       await fixture.close();
     }

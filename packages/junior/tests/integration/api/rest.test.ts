@@ -157,9 +157,11 @@ describe("Junior REST API", () => {
       "http://localhost/api/conversations",
     );
     expect(
-      ((await defaultFeedAfterArchive.json()) as {
-        conversations: Array<{ conversationId: string }>;
-      }).conversations,
+      (
+        (await defaultFeedAfterArchive.json()) as {
+          conversations: Array<{ conversationId: string }>;
+        }
+      ).conversations,
     ).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ conversationId })]),
     );
@@ -186,6 +188,11 @@ describe("Junior REST API", () => {
       actorIdentity: { email: "Person@Example.com" },
       conversationId,
     });
+
+    const removedSubagentDetail = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/subagents/legacy-subagent`,
+    );
+    expect(removedSubagentDetail.status).toBe(404);
 
     const people = await app.request("http://localhost/api/people");
     expect(people.status).toBe(200);

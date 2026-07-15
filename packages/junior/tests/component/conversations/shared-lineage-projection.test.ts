@@ -18,7 +18,7 @@ import {
 } from "@/chat/db";
 import type { PiMessage } from "@/chat/pi/messages";
 import { juniorConversations } from "@/db/schema";
-import { resolveRootVisibility } from "@/chat/conversations/sql/purge";
+import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { purgeConversation } from "@/chat/conversations/retention";
 import {
   getAgentTurnSessionRecord,
