@@ -1,4 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
@@ -51,7 +52,23 @@ export default {
       conversationParamsSchema,
       c.req.param(),
     );
-    const body = archiveBodySchema.parse(await c.req.json());
+    let input: unknown;
+    try {
+      input = await c.req.json();
+    } catch (error) {
+      throw new HTTPException(400, {
+        cause: error,
+        message: "Invalid request body.",
+      });
+    }
+    const parsed = archiveBodySchema.safeParse(input);
+    if (!parsed.success) {
+      throw new HTTPException(400, {
+        cause: parsed.error,
+        message: "Invalid request body.",
+      });
+    }
+    const body = parsed.data;
     const result = await archiveIfUnchanged({ ...body, conversationId });
     if (result === "not_found") {
       return Response.json(

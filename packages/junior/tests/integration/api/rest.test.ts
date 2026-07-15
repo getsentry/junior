@@ -129,6 +129,16 @@ describe("Junior REST API", () => {
       tokens: 120,
     });
 
+    const invalidArchive = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
+      {
+        body: JSON.stringify({ archived: "yes" }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(invalidArchive.status).toBe(400);
+
     const archive = await app.request(
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
       {
