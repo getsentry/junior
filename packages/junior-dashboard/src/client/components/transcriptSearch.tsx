@@ -135,10 +135,7 @@ export function entryMatchesSearch(
   }
 
   if (entry.kind === "tool") {
-    return (
-      textContains(entry.part.name, normalizedQuery) ||
-      textContains("started", normalizedQuery)
-    );
+    return textContains(entry.part.name, normalizedQuery);
   }
 
   if (entry.kind === "subagent") {
