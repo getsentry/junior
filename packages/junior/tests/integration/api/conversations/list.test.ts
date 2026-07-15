@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
-import { readConversationFeedFromSql } from "@/api/conversations/list.query";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { juniorIdentities } from "@/db/schema";

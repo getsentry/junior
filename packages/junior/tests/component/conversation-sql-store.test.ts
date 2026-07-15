@@ -17,7 +17,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { readConversationFeedFromSql } from "@/api/conversations/list.query";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
 import {
   CONVERSATION_ID,
   conversationQueueMessage,

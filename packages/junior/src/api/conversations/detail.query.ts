@@ -4,7 +4,7 @@ import {
   type AgentTurnSessionSummary,
 } from "@/chat/state/turn-session";
 import { buildConversationDetail } from "./detail-projection";
-import { readConversationRecordFromSql } from "./list.query";
+import { readConversationRecordFromSql } from "./list";
 import type { ConversationDetailReport } from "./schema";
 
 async function readLatestRun(

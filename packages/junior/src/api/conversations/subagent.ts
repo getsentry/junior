@@ -1,5 +1,5 @@
 import { buildConversationSubagent } from "./detail-projection";
-import { readConversationRecordFromSql } from "./list.query";
+import { readConversationRecordFromSql } from "./list";
 import { conversationSubagentTranscriptReportSchema } from "./schema";
 import type { ConversationSubagentTranscriptReport } from "./schema";
 import type { ApiRoute } from "../route";

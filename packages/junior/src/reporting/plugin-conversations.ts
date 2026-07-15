@@ -1,5 +1,5 @@
 import type { PluginConversationSummary } from "@sentry/junior-plugin-api";
-import { readConversationFeedFromSql } from "@/api/conversations/list.query";
+import { readConversationFeedFromSql } from "@/api/conversations/list";
 
 /** Supply bounded SQL conversation metadata to plugin operational reports. */
 export async function listRecentConversationSummaries(
