@@ -1,19 +1,13 @@
 import type { PluginRuntimeDependency } from "@/chat/plugins/types";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import {
+  compareRuntimeDependencies,
+  runtimeDependencyKey,
+} from "@/chat/plugins/runtime-dependencies";
 
 const SANDBOX_BASELINE_RUNTIME_DEPENDENCIES: PluginRuntimeDependency[] = [
   { type: "system", package: "docker" },
 ];
-
-function dependencyKey(dep: PluginRuntimeDependency): string {
-  if (dep.type === "npm") {
-    return `${dep.type}:${dep.package}:${dep.version}`;
-  }
-  if ("package" in dep) {
-    return `${dep.type}:package:${dep.package}`;
-  }
-  return `${dep.type}:url:${dep.url}:${dep.sha256}`;
-}
 
 /** Return core sandbox packages plus plugin-declared runtime dependencies. */
 export function getSandboxRuntimeDependencies(): PluginRuntimeDependency[] {
@@ -24,7 +18,7 @@ export function getSandboxRuntimeDependencies(): PluginRuntimeDependency[] {
     ...SANDBOX_BASELINE_RUNTIME_DEPENDENCIES,
     ...pluginCatalogRuntime.getRuntimeDependencies(),
   ]) {
-    const key = dependencyKey(dep);
+    const key = runtimeDependencyKey(dep);
     if (seen.has(key)) {
       continue;
     }
@@ -32,7 +26,5 @@ export function getSandboxRuntimeDependencies(): PluginRuntimeDependency[] {
     dependencies.push(dep);
   }
 
-  return dependencies.sort((left, right) =>
-    dependencyKey(left).localeCompare(dependencyKey(right)),
-  );
+  return dependencies.sort(compareRuntimeDependencies);
 }
