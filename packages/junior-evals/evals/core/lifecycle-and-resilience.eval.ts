@@ -5,6 +5,7 @@ import {
   rubric,
   slackEvals,
   slackSideEffects,
+  threadMessage,
   threadStart,
 } from "../../src/helpers";
 
@@ -57,6 +58,46 @@ describeEval("Lifecycle and Resilience", slackEvals, (it) => {
     });
 
     expect(visibleThreadReplies(result.session)).toHaveLength(1);
+  });
+
+  it("when an initial reply fails, retain its request for a same-thread retry", async ({
+    run,
+  }) => {
+    const thread = {
+      id: "thread-failed-reply-continuity",
+      channel_id: "CFAILEDREPLYCONTINUITY",
+      thread_ts: "17000000.7319",
+    };
+    await run({
+      overrides: { fail_reply_call: 1 },
+      initialEvents: [
+        mention(
+          "Draft a three-sentence customer update for the Atlas checkout incident. Include that checkout errors began at 09:20 UTC, mitigation is enabled, and the next update is at 10:00 UTC.",
+          { thread },
+        ),
+      ],
+      events: [
+        threadMessage(
+          "Please pick this back up and finish the customer update.",
+          {
+            thread,
+            is_mention: true,
+          },
+        ),
+      ],
+      requireSandboxReady: false,
+      criteria: rubric({
+        pass: [
+          "The follow-up completes the original Atlas checkout customer update in three sentences.",
+          "The update retains all three original facts: errors began at 09:20 UTC, mitigation is enabled, and the next update is at 10:00 UTC.",
+          "The assistant treats the follow-up as resuming a failed attempt, not as a new request with missing context.",
+        ],
+        fail: [
+          "Do not ask the user to repeat the original request or incident details.",
+          "Do not claim the failed attempt already delivered the requested update.",
+        ],
+      }),
+    });
   });
 
   it("when a short reply is interrupted by the provider, keep the partial answer in one marked post", async ({
