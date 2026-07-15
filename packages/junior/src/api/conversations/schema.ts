@@ -145,6 +145,122 @@ export const conversationActivityReportSchema = z.discriminatedUnion("type", [
   conversationSubagentActivityReportSchema,
 ]);
 
+const conversationReportVisibleMessageEventDataSchema = z
+  .object({
+    type: z.literal("visible_message"),
+    messageId: z.string().min(1),
+    role: z.enum(["assistant", "system", "user"]),
+    text: z.string().optional(),
+    redacted: z.literal(true).optional(),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if ((data.text === undefined) === (data.redacted !== true)) {
+      context.addIssue({
+        code: "custom",
+        message: "visible message content must be text or explicitly redacted",
+      });
+    }
+  });
+
+const conversationReportVisibleMessageRepliedEventDataSchema = z
+  .object({
+    type: z.literal("visible_message_replied"),
+    messageId: z.string().min(1),
+  })
+  .strict();
+
+const conversationReportModelActivityEventDataSchema = z
+  .object({
+    type: z.literal("model_activity"),
+    activities: z
+      .array(z.enum(["thinking", "tool_call", "tool_result"]))
+      .min(1),
+  })
+  .strict()
+  .superRefine((data, context) => {
+    if (new Set(data.activities).size !== data.activities.length) {
+      context.addIssue({
+        code: "custom",
+        message: "model activities must be unique",
+      });
+    }
+  });
+
+const conversationReportToolStartedEventDataSchema = z
+  .object({
+    type: z.literal("tool_started"),
+    name: z.string().min(1),
+  })
+  .strict();
+
+const conversationReportTurnLifecycleEventDataSchema = z
+  .object({
+    type: z.literal("turn_lifecycle"),
+    turnId: z.string().min(1),
+    state: z.enum(["started", "succeeded", "no_reply", "failed"]),
+  })
+  .strict();
+
+const conversationReportContextCompactedEventDataSchema = z
+  .object({ type: z.literal("context_compacted") })
+  .strict();
+
+const conversationReportModelHandoffEventDataSchema = z
+  .object({ type: z.literal("model_handoff") })
+  .strict();
+
+const conversationReportDeliveryEventDataSchema = z
+  .object({
+    type: z.literal("delivery"),
+    deliveryId: z.string().min(1),
+    state: z.enum(["intended", "accepted", "failed"]),
+  })
+  .strict();
+
+const conversationReportSubagentStartedEventDataSchema = z
+  .object({
+    type: z.literal("subagent_started"),
+    childConversationId: z.string().min(1),
+    subagentKind: z.string().min(1),
+    historyMode: z.enum(["isolated", "shared"]),
+  })
+  .strict();
+
+const conversationReportSubagentEndedEventDataSchema = z
+  .object({
+    type: z.literal("subagent_ended"),
+    childConversationId: z.string().min(1),
+    subagentKind: z.string().min(1),
+    historyMode: z.enum(["isolated", "shared"]),
+    outcome: z.enum(["success", "error", "aborted"]),
+  })
+  .strict();
+
+/** Privacy-safe event variants owned by the conversation reporting API. */
+export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
+  conversationReportVisibleMessageEventDataSchema,
+  conversationReportVisibleMessageRepliedEventDataSchema,
+  conversationReportModelActivityEventDataSchema,
+  conversationReportToolStartedEventDataSchema,
+  conversationReportTurnLifecycleEventDataSchema,
+  conversationReportContextCompactedEventDataSchema,
+  conversationReportModelHandoffEventDataSchema,
+  conversationReportDeliveryEventDataSchema,
+  conversationReportSubagentStartedEventDataSchema,
+  conversationReportSubagentEndedEventDataSchema,
+]);
+
+/** One ordered, privacy-safe canonical event projected for API consumers. */
+export const conversationReportEventSchema = z
+  .object({
+    seq: z.number().int().nonnegative(),
+    contextEpoch: z.number().int().nonnegative(),
+    createdAt: z.string().datetime(),
+    data: conversationReportEventDataSchema,
+  })
+  .strict();
+
 export const conversationContextEventSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -299,6 +415,12 @@ export type ConversationActivityReport = z.infer<
 >;
 export type ConversationModelUsage = z.infer<
   typeof conversationModelUsageSchema
+>;
+export type ConversationReportEventData = z.infer<
+  typeof conversationReportEventDataSchema
+>;
+export type ConversationReportEvent = z.infer<
+  typeof conversationReportEventSchema
 >;
 export type ConversationDetailReport = z.infer<
   typeof conversationDetailReportSchema

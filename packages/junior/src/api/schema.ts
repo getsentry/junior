@@ -3,6 +3,8 @@ export type { DailyConversationActivity } from "./activity";
 export {
   conversationDetailReportSchema,
   conversationFeedSchema,
+  conversationReportEventDataSchema,
+  conversationReportEventSchema,
   conversationStatsReportSchema,
   conversationSubagentTranscriptReportSchema,
 } from "./conversations/schema";
@@ -14,6 +16,8 @@ export type {
   ConversationCost,
   ConversationDetailReport,
   ConversationFeed,
+  ConversationReportEvent,
+  ConversationReportEventData,
   ConversationReportStatus,
   ConversationMetricDay,
   ConversationModelUsage,
