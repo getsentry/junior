@@ -132,7 +132,10 @@ describe("Junior REST API", () => {
     const archive = await app.request(
       `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/archive`,
       {
-        body: JSON.stringify({ archived: true }),
+        body: JSON.stringify({
+          archived: true,
+          lastSeenAt: "2026-06-15T11:51:00.000Z",
+        }),
         headers: { "content-type": "application/json" },
         method: "PATCH",
       },

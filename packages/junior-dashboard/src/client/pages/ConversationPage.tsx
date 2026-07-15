@@ -91,7 +91,12 @@ export function ConversationPage(props: {
             <button
               className="rounded border border-white/15 px-2.5 py-1 text-white/60 transition hover:border-white/30 hover:text-white disabled:opacity-40"
               disabled={!conversation || archive.isPending}
-              onClick={() => archive.mutate(!conversation?.archivedAt)}
+              onClick={() =>
+                archive.mutate({
+                  archived: !conversation?.archivedAt,
+                  lastSeenAt: conversation!.lastSeenAt,
+                })
+              }
               type="button"
             >
               {archive.isPending

@@ -213,14 +213,16 @@ export function useSystemData() {
 /** Archive or restore one conversation and refresh dashboard caches. */
 export function useArchiveConversation(conversationId: string) {
   return useMutation({
-    mutationFn: (archived: boolean) =>
+    mutationFn: (args: { archived: boolean; lastSeenAt: string }) =>
       mutate(
         `/api/conversations/${encodeURIComponent(conversationId)}/archive`,
-        { archived },
+        args,
       ),
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["dashboard", "conversations"] }),
+        client.invalidateQueries({ queryKey: ["dashboard", "locations"] }),
+        client.invalidateQueries({ queryKey: ["dashboard", "people"] }),
         client.invalidateQueries({
           queryKey: ["conversation", conversationId],
         }),
