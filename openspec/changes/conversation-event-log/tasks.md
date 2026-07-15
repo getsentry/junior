@@ -45,9 +45,9 @@
 
 ## 4. Child Conversations
 
-- [ ] Add parent/root conversation lineage and parent turn/event correlation.
-- [ ] Record subagent start and finish references without copying child events.
-- [ ] Represent shared context with an immutable parent sequence fork point.
+- [x] Add parent/root conversation lineage and parent turn/event correlation.
+- [x] Record subagent start and finish references without copying child events.
+- [x] Represent shared context with an immutable parent sequence fork point.
 - [ ] Verify isolated and shared child Pi projections and inherited privacy.
 
 ## 5. Cleanup And Verification

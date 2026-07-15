@@ -15,6 +15,9 @@ conversation events, compaction boundaries, search, retention, and legacy import
   second authority.
 - Context epochs identify replacement boundaries created by compaction or model
   handoff.
+- Child rows carry immutable parent/root, parent-turn, and exact parent-event
+  correlation. Shared children additionally retain that parent sequence as
+  their context fork; isolated children retain no fork.
 - Provider payloads and old state-store mirrors are migration inputs, not
   canonical product records.
 
@@ -48,6 +51,9 @@ must not become a dashboard or external API payload.
 - Restore state from durable events rather than a duplicate transcript cache.
 - Compaction replaces prior model context without rewriting visible history.
 - Imports and migrations are idempotent and preserve stable conversation IDs.
+- Establish child lineage and its parent `subagent_started` reference through
+  the SQL-backed lineage service in one transaction. Retries must match the
+  original parent, root, turn, event, and history mode exactly.
 
 ## Visibility And Retention
 
@@ -73,6 +79,8 @@ Follow `../../../../../policies/data-redaction.md` and
   stopped. Its fail-closed zero-gap verification is the cutover gate; start new
   workers only after it passes.
 - Purge and migration jobs operate in bounded batches and are safe to retry.
+- The lineage backfill fills historical roots only. Missing historical turn,
+  event, and fork correlation remains null and therefore isolated.
 
 Representative coverage lives in
 `packages/junior/tests/integration/conversation-sql.test.ts` and the
@@ -94,3 +102,9 @@ process death after destination acceptance and before the
 visible/session/terminal writes can still leave a started turn without a
 terminal event. The next delivery slice must add durable intent/receipt
 reconciliation for Slack before claiming crash-safe terminality.
+
+Subagent executions own separate child event streams. The parent records only
+idempotent start/end references, and child events are never copied into the
+parent. New child creation requires an existing parent turn and complete
+lineage; only a metadata-bare row created by an earlier child event append may
+be upgraded. Reparenting an existing conversation is rejected.

@@ -49,7 +49,6 @@ const stateOnlyConversationStore: ConversationStore = {
   get: async () => undefined,
   getDestinationVisibility: async () => undefined,
   recordActivity: async () => {},
-  ensureChildConversation: async () => {},
   recordExecution: async () => {},
   listByActivity: async () => [],
 };

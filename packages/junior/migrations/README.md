@@ -21,3 +21,7 @@ writes to canonical `message` events while the first event rewrite runs.
 before applying it because it drops the legacy view and its functions. Run the
 final visible-message backfill next and require zero-gap verification before
 starting new workers.
+
+`0007_conversation_lineage.sql` expands conversation metadata with immutable
+child lineage and fork correlation. The subsequent bounded upgrade backfill
+fills historical root IDs only; unknown historical fork points stay null.
