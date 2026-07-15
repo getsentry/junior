@@ -44,8 +44,8 @@ describe("conversation state", () => {
       },
     });
 
-    // The visible transcript lives in SQL now; a legacy transcript mirror in a
-    // persisted payload is dropped on read.
+    // The visible transcript lives in SQL events now; a legacy transcript
+    // mirror in a persisted payload is dropped on read.
     expect(conversation.messages).toEqual([]);
     expect(conversation.vision.byFileId).toEqual({
       F123: {
@@ -100,8 +100,8 @@ describe("conversation state", () => {
       },
     });
 
-    // The visible transcript lives in SQL now; a legacy transcript mirror in a
-    // persisted payload is dropped on read.
+    // The visible transcript lives in SQL events now; a legacy transcript
+    // mirror in a persisted payload is dropped on read.
     expect(conversation.messages).toEqual([]);
     expect(conversation.vision.byFileId).toEqual({
       F123: {

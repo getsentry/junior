@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq, inArray } from "drizzle-orm";
-import { juniorConversations } from "@/db/schema";
+import { asc, eq, inArray } from "drizzle-orm";
+import { juniorConversationMessages, juniorConversations } from "@/db/schema";
+import type { JuniorSqlDatabase } from "@/db/db";
 import {
   closeDb,
   getConversationEventStore,
@@ -46,6 +47,26 @@ async function processSqlStores() {
     eventStore: getConversationEventStore(),
     messageStore: getConversationMessageStore(),
   };
+}
+
+async function listMessageRows(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+) {
+  const rows = await executor
+    .db()
+    .select()
+    .from(juniorConversationMessages)
+    .where(eq(juniorConversationMessages.conversationId, conversationId))
+    .orderBy(
+      asc(juniorConversationMessages.createdAt),
+      asc(juniorConversationMessages.messageId),
+    );
+  return rows.map((row) => ({
+    messageId: row.messageId,
+    text: row.text,
+    repliedAtMs: row.repliedAt?.getTime(),
+  }));
 }
 
 function restoreEnv(name: string, value: string | undefined): void {
@@ -113,7 +134,6 @@ describe("legacy conversation import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
     const childId = `advisor:${CONVERSATION_ID}`;
 
     const entries: SessionLogEntry[] = [
@@ -159,7 +179,6 @@ describe("legacy conversation import", () => {
 
     const deps = {
       executor: fixture.sql,
-      messageStore,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore(entries),
       advisorSessionStore: staticAdvisorStore([
@@ -206,7 +225,7 @@ describe("legacy conversation import", () => {
       expect(childHistory[0]!.createdAtMs).toBe(960);
 
       // Visible messages recorded; meta.replied becomes replied_at.
-      const messages = await messageStore.list(CONVERSATION_ID);
+      const messages = await listMessageRows(fixture.sql, CONVERSATION_ID);
       expect(messages.map((message) => message.messageId)).toEqual([
         "m1",
         "m2",
@@ -259,7 +278,6 @@ describe("legacy conversation import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     const entries = staticSessionLogStore([
       {
@@ -278,7 +296,6 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
           loadVisibleMessages: async () => invalidVisible,
@@ -289,7 +306,9 @@ describe("legacy conversation import", () => {
 
       // Messages and events share one transaction, so neither side commits.
       expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(0);
-      expect(await messageStore.list(CONVERSATION_ID)).toHaveLength(0);
+      expect(await listMessageRows(fixture.sql, CONVERSATION_ID)).toHaveLength(
+        0,
+      );
 
       const visible: ThreadConversationMessage[] = [
         { id: "m1", role: "user", text: "hi there", createdAtMs: 100 },
@@ -298,7 +317,6 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: entries,
           loadVisibleMessages: async () => visible,
@@ -306,7 +324,7 @@ describe("legacy conversation import", () => {
       ).resolves.toEqual({ imported: true });
 
       expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(3);
-      const messages = await messageStore.list(CONVERSATION_ID);
+      const messages = await listMessageRows(fixture.sql, CONVERSATION_ID);
       expect(messages.map((message) => message.messageId)).toEqual([
         "m1",
         "m2",
@@ -333,7 +351,6 @@ describe("legacy conversation import", () => {
     ]);
     const deps = {
       executor: fixture.sql,
-      messageStore,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore([]),
       loadVisibleMessages,
@@ -354,12 +371,14 @@ describe("legacy conversation import", () => {
         importConversationFromLegacy(CONVERSATION_ID, deps),
       ).resolves.toEqual({ imported: false });
       expect(await eventStore.loadHistory(CONVERSATION_ID)).toHaveLength(2);
-      expect(await messageStore.list(CONVERSATION_ID)).toMatchObject([
-        {
-          messageId: "message-only",
-          repliedAtMs: 100,
-        },
-      ]);
+      expect(await listMessageRows(fixture.sql, CONVERSATION_ID)).toMatchObject(
+        [
+          {
+            messageId: "message-only",
+            repliedAtMs: 100,
+          },
+        ],
+      );
       const [conversation] = await fixture.sql
         .db()
         .select({
@@ -381,13 +400,11 @@ describe("legacy conversation import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
     const before = Date.now();
 
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        messageStore,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -525,6 +542,36 @@ describe("legacy conversation import", () => {
     ]);
   }, 20_000);
 
+  it("hydrates visible messages from events without message-table rows", async () => {
+    const { eventStore } = await processSqlStores();
+    await eventStore.append(CONVERSATION_ID, [
+      {
+        data: {
+          type: "visible_message_recorded",
+          messageId: "event-only",
+          role: "user",
+          text: "canonical event text",
+        },
+        createdAtMs: 100,
+      },
+    ]);
+
+    const conversation = coerceThreadConversationState({});
+    await hydrateConversationMessages({
+      conversation,
+      conversationId: CONVERSATION_ID,
+    });
+
+    expect(conversation.messages).toEqual([
+      {
+        id: "event-only",
+        role: "user",
+        text: "canonical event text",
+        createdAtMs: 100,
+      },
+    ]);
+  }, 20_000);
+
   it("does not resurrect purged SQL history from legacy Redis", async () => {
     const { executor, eventStore } = await processSqlStores();
 
@@ -559,11 +606,10 @@ describe("legacy conversation import", () => {
     expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
   }, 20_000);
 
-  it("rejects a legacy import when the SQL transcript was already purged", async () => {
+  it("rejects a legacy import when event history was already purged", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     await fixture.sql
       .db()
@@ -580,7 +626,6 @@ describe("legacy conversation import", () => {
     try {
       const result = await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        messageStore,
         sessionLogStore: staticSessionLogStore([
           {
             schemaVersion: 2,
@@ -601,7 +646,7 @@ describe("legacy conversation import", () => {
 
       expect(result).toEqual({ imported: false });
       expect(await eventStore.loadHistory(CONVERSATION_ID)).toEqual([]);
-      expect(await messageStore.list(CONVERSATION_ID)).toEqual([]);
+      expect(await listMessageRows(fixture.sql, CONVERSATION_ID)).toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -682,12 +727,10 @@ describe("legacy conversation import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
     const eventStore = createSqlConversationEventStore(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        messageStore,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -719,7 +762,6 @@ describe("legacy conversation import", () => {
   it("reads legacy visible messages from a real thread-state payload", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
 
     // Persisted pre-cutover shape: the visible transcript nested under
     // `conversation.messages`, which the live thread-state contract no longer
@@ -750,7 +792,6 @@ describe("legacy conversation import", () => {
     try {
       await importConversationFromLegacy(CONVERSATION_ID, {
         executor: fixture.sql,
-        messageStore,
         conversationRecord: conversationRecord(),
         sessionLogStore: staticSessionLogStore([
           {
@@ -763,7 +804,7 @@ describe("legacy conversation import", () => {
         advisorSessionStore: staticAdvisorStore([]),
       });
 
-      const imported = await messageStore.list(CONVERSATION_ID);
+      const imported = await listMessageRows(fixture.sql, CONVERSATION_ID);
       expect(
         imported.map((message) => ({
           messageId: message.messageId,
@@ -782,7 +823,6 @@ describe("legacy conversation import", () => {
   it("rejects malformed legacy visible messages", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     await migrateSchema(fixture.sql);
-    const messageStore = createSqlConversationMessageStore(fixture.sql);
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     await stateAdapter.set(`thread-state:${CONVERSATION_ID}`, {
@@ -795,20 +835,21 @@ describe("legacy conversation import", () => {
       await expect(
         importConversationFromLegacy(CONVERSATION_ID, {
           executor: fixture.sql,
-          messageStore,
           conversationRecord: conversationRecord(),
           sessionLogStore: staticSessionLogStore([]),
           advisorSessionStore: staticAdvisorStore([]),
         }),
       ).rejects.toThrow("Invalid input");
-      await expect(messageStore.list(CONVERSATION_ID)).resolves.toEqual([]);
+      await expect(
+        listMessageRows(fixture.sql, CONVERSATION_ID),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
   }, 20_000);
 
   it("preserves message author identity through import and hydration", async () => {
-    const { executor, messageStore } = await processSqlStores();
+    const { executor } = await processSqlStores();
 
     // The resume/continuation paths key off the persisted user message's
     // author userId, so the import must fold `author` into `meta.author` just
@@ -827,7 +868,6 @@ describe("legacy conversation import", () => {
 
     await importConversationFromLegacy(CONVERSATION_ID, {
       executor,
-      messageStore,
       conversationRecord: conversationRecord(),
       sessionLogStore: staticSessionLogStore([
         {

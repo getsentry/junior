@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
@@ -9,13 +9,17 @@ import { getConversationEventStore } from "@/chat/db";
 import { purgeConversation } from "@/chat/conversations/retention";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import {
-  hydrateConversationCompactions,
   persistConversationCompactions,
+  projectVisibleConversationCompactions,
 } from "@/chat/conversations/visible-compactions";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversationMessages,
+  juniorConversations,
+} from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createLocalJuniorSqlFixture,
@@ -29,6 +33,21 @@ import {
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
 const CHILD_CONVERSATION_ID = "advisor:child-1";
+
+async function listMessageRows(
+  fixture: LocalJuniorSqlFixture,
+  conversationId: string,
+) {
+  return fixture.sql
+    .db()
+    .select()
+    .from(juniorConversationMessages)
+    .where(eq(juniorConversationMessages.conversationId, conversationId))
+    .orderBy(
+      asc(juniorConversationMessages.createdAt),
+      asc(juniorConversationMessages.messageId),
+    );
+}
 
 it("accepts legacy markers and validates current profile names", () => {
   expect(
@@ -273,13 +292,11 @@ describe("conversation transcript SQL stores", () => {
       conversationId: CONVERSATION_ID,
     });
 
-    const rehydrated = coerceThreadConversationState({});
-    await hydrateConversationCompactions({
-      conversation: rehydrated,
-      conversationId: CONVERSATION_ID,
-    });
-    expect(rehydrated.compactions).toEqual(conversation.compactions);
-    expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(1);
+    const history = await events.loadHistory(CONVERSATION_ID);
+    expect(projectVisibleConversationCompactions(history)).toEqual(
+      conversation.compactions,
+    );
+    expect(history).toHaveLength(1);
   });
 
   it("applies Drizzle migrations idempotently", async () => {
@@ -601,22 +618,23 @@ INSERT INTO junior_conversation_events (
       await store.markReplied(CONVERSATION_ID, "m1", 5_000);
       await store.markReplied(CONVERSATION_ID, "m1", 9_000);
 
-      const listed = await store.list(CONVERSATION_ID);
-      expect(listed).toEqual([
+      const listed = await listMessageRows(fixture, CONVERSATION_ID);
+      expect(listed).toMatchObject([
         {
           conversationId: CONVERSATION_ID,
           messageId: "m1",
           role: "user",
           text: "first",
-          createdAtMs: 1_000,
-          repliedAtMs: 5_000,
+          createdAt: new Date(1_000),
+          repliedAt: new Date(5_000),
         },
         {
           conversationId: CONVERSATION_ID,
           messageId: "m2",
           role: "assistant",
           text: "reply",
-          createdAtMs: 2_000,
+          createdAt: new Date(2_000),
+          repliedAt: null,
         },
       ]);
       const visibleEvents = (
@@ -685,7 +703,7 @@ INSERT INTO junior_conversation_events (
         'Failed query: insert into "junior_conversation_messages"',
       );
 
-      expect(await messages.list(CONVERSATION_ID)).toEqual([]);
+      expect(await listMessageRows(fixture, CONVERSATION_ID)).toEqual([]);
       expect(
         await createSqlConversationEventStore(fixture.sql).loadHistory(
           CONVERSATION_ID,
@@ -733,11 +751,11 @@ INSERT INTO junior_conversation_events (
         ),
       ).rejects.toThrow('Failed query: update "junior_conversation_messages"');
 
-      const projected = await messages.list(CONVERSATION_ID);
+      const projected = await listMessageRows(fixture, CONVERSATION_ID);
       expect(projected).toEqual([
         expect.objectContaining({ messageId: "reply-projection-failure" }),
       ]);
-      expect(projected[0]?.repliedAtMs).toBeUndefined();
+      expect(projected[0]?.repliedAt).toBe(null);
       const visibleEvents = (
         await createSqlConversationEventStore(fixture.sql).loadHistory(
           CONVERSATION_ID,
@@ -850,7 +868,7 @@ INSERT INTO junior_conversation_events (
 
       for (const conversationId of [CONVERSATION_ID, CHILD_CONVERSATION_ID]) {
         expect(await events.loadHistory(conversationId)).toEqual([]);
-        expect(await messages.list(conversationId)).toEqual([]);
+        expect(await listMessageRows(fixture, conversationId)).toEqual([]);
       }
 
       const rows = await fixture.sql
@@ -880,7 +898,7 @@ INSERT INTO junior_conversation_events (
       ]);
 
       expect(await events.loadHistory(CONVERSATION_ID)).toHaveLength(2);
-      expect(await messages.list(CONVERSATION_ID)).toHaveLength(1);
+      expect(await listMessageRows(fixture, CONVERSATION_ID)).toHaveLength(1);
       const reopened = await fixture.sql
         .db()
         .select({

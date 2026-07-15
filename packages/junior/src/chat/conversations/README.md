@@ -8,8 +8,8 @@ conversation events, compaction boundaries, search, retention, and legacy import
 - Conversation rows identify the source, destination, participants, visibility,
   and lifecycle metadata.
 - Visible-message events are the destination-facing user and assistant history.
-  `junior_conversation_messages` is their rebuildable hydration and search read
-  model, never a second history authority.
+  `junior_conversation_messages` is their rebuildable search read model, never
+  a hydration source or second history authority.
 - Conversation events are the versioned, append-only execution history used to
   restore Pi state. Pi messages and context are projections of this log, not a
   second authority.

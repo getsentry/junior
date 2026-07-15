@@ -18,19 +18,7 @@ export interface NewConversationMessage {
   createdAtMs: number;
 }
 
-/** A visible message read back from storage. */
-export interface ConversationMessage {
-  conversationId: string;
-  messageId: string;
-  role: ConversationMessageRole;
-  text: string;
-  authorIdentityId?: string;
-  meta?: Record<string, unknown>;
-  repliedAtMs?: number;
-  createdAtMs: number;
-}
-
-/** Persist event-backed visible messages and read their SQL projection. */
+/** Persist event-backed visible messages and maintain their SQL read model. */
 export interface ConversationMessageStore {
   /** Append source facts and project them idempotently by message identity. */
   record(
@@ -43,9 +31,4 @@ export interface ConversationMessageStore {
     messageId: string,
     repliedAtMs: number,
   ): Promise<void>;
-  /** List the materialized read model in `created_at` order. */
-  list(
-    conversationId: string,
-    opts?: { limit?: number },
-  ): Promise<ConversationMessage[]>;
 }

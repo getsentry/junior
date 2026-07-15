@@ -41,6 +41,30 @@ async function confirmPublicSlackConversation(
   });
 }
 
+async function recordVisibleTranscript(
+  conversationId: string,
+  messages: Array<{
+    role: "assistant" | "system" | "user";
+    text: string;
+    timestamp: number;
+  }>,
+) {
+  const { getConversationEventStore } = await import("@/chat/db");
+  await getConversationEventStore().append(
+    conversationId,
+    messages.map((message, index) => ({
+      idempotencyKey: `test-visible:${message.timestamp}:${index}:${message.role}`,
+      data: {
+        type: "visible_message_recorded" as const,
+        messageId: `visible:${message.timestamp}:${index}:${message.role}`,
+        role: message.role,
+        text: message.text,
+      },
+      createdAtMs: message.timestamp,
+    })),
+  );
+}
+
 describe("dashboard reporting", () => {
   beforeEach(async () => {
     process.env = {
@@ -229,8 +253,8 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("uses SQL title and visible messages when conversation events are absent", async () => {
-    const { getConversationMessageStore, getConversationStore } =
+  it("uses SQL title and visible events when model history is absent", async () => {
+    const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
 
     await confirmPublicSlackConversation("slack:C1:details-only");
@@ -240,11 +264,14 @@ describe("dashboard reporting", () => {
       source: "slack",
       title: "SQL Title",
     });
-    await getConversationMessageStore().record("slack:C1:details-only", [
+    await getConversationEventStore().append("slack:C1:details-only", [
       {
-        messageId: "visible-only",
-        role: "user",
-        text: "Visible SQL message",
+        data: {
+          type: "visible_message_recorded",
+          messageId: "visible-only",
+          role: "user",
+          text: "Visible SQL message",
+        },
         createdAtMs: 1_000,
       },
     ]);
@@ -378,6 +405,12 @@ describe("dashboard reporting", () => {
       sliceId: 1,
       state: "running",
     });
+    await recordVisibleTranscript("slack:C1:222", [
+      { role: "user", text: "previous question", timestamp: 1 },
+      { role: "assistant", text: "previous answer", timestamp: 2 },
+      { role: "user", text: "current question", timestamp: 3 },
+      { role: "assistant", text: "current answer", timestamp: 6 },
+    ]);
 
     const report = await readConversationDetailFromSql("slack:C1:222");
     expect(report).toMatchObject({
@@ -416,30 +449,6 @@ describe("dashboard reporting", () => {
         role: "user",
         timestamp: 3,
         parts: [{ type: "text", text: "current question" }],
-      },
-      {
-        role: "assistant",
-        timestamp: 4,
-        parts: [
-          { type: "thinking", output: "I should use a tool" },
-          {
-            type: "tool_call",
-            name: "search",
-            input: { query: "current question" },
-          },
-        ],
-      },
-      {
-        role: "toolResult",
-        timestamp: 5,
-        parts: [
-          {
-            type: "tool_result",
-            id: "search-1",
-            name: "search",
-            output: "tool result",
-          },
-        ],
       },
       {
         role: "assistant",
@@ -878,7 +887,7 @@ describe("dashboard reporting", () => {
     ]);
   });
 
-  it("keeps the complete SQL transcript when steering adds a message", async () => {
+  it("keeps the complete visible transcript when steering adds a message", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -923,6 +932,14 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
+    await recordVisibleTranscript("slack:C1:steering-transcript", [
+      { role: "user", text: "previous question", timestamp: 1 },
+      { role: "assistant", text: "previous answer", timestamp: 2 },
+      { role: "user", text: "hello", timestamp: 3 },
+      { role: "assistant", text: "working", timestamp: 4 },
+      { role: "user", text: "steering message", timestamp: 5 },
+      { role: "assistant", text: "done", timestamp: 6 },
+    ]);
 
     const report = await readConversationDetailReport(
       "slack:C1:steering-transcript",
@@ -980,12 +997,10 @@ describe("dashboard reporting", () => {
     await getConversationEventStore().append("slack:C1:999", [
       {
         data: {
-          type: "message",
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "target question" }],
-            timestamp: 1,
-          } as PiMessage,
+          type: "visible_message_recorded",
+          messageId: "target-question",
+          role: "user",
+          text: "target question",
         },
         createdAtMs: 1,
       },
@@ -1001,6 +1016,50 @@ describe("dashboard reporting", () => {
         role: "user",
         timestamp: 1,
         parts: [{ type: "text", text: "target question" }],
+      },
+    ]);
+  });
+
+  it("extracts trace ids from authorized model history outside the visible transcript", async () => {
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "slack:C1:model-trace";
+    const traceId = "0123456789abcdef0123456789abcdef";
+    await confirmPublicSlackConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolCallId: "trace-tool",
+            toolName: "lookup",
+            isError: false,
+            content: [{ type: "text", text: `trace_id=${traceId}` }],
+            timestamp: 2,
+          } as PiMessage,
+        },
+        createdAtMs: 2,
+      },
+    ]);
+    await recordVisibleTranscript(conversationId, [
+      { role: "user", text: "look it up", timestamp: 1 },
+      { role: "assistant", text: "done", timestamp: 3 },
+    ]);
+
+    const report = await readConversationDetailReport(conversationId);
+
+    expect(report.traceId).toBe(traceId);
+    expect(JSON.stringify(report.transcript)).not.toContain(traceId);
+    expect(report.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "look it up" }],
+      },
+      {
+        role: "assistant",
+        timestamp: 3,
+        parts: [{ type: "text", text: "done" }],
       },
     ]);
   });
@@ -1125,6 +1184,68 @@ describe("dashboard reporting", () => {
     );
   });
 
+  it("merges safe terminal outcomes chronologically with visible messages", async () => {
+    const { getConversationEventStore } = await import("@/chat/db");
+    const conversationId = "slack:C1:terminal-ordered";
+    const sensitiveError = "provider=xai credential=secret";
+    await confirmPublicSlackConversation(conversationId);
+    await getConversationEventStore().append(conversationId, [
+      {
+        data: {
+          type: "message",
+          message: {
+            role: "assistant",
+            api: "openai-responses",
+            content: [],
+            model: "grok-4.5",
+            provider: "xai",
+            stopReason: "error",
+            errorMessage: sensitiveError,
+            timestamp: 2,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
+          } as PiMessage,
+        },
+        createdAtMs: 2,
+      },
+    ]);
+    await recordVisibleTranscript(conversationId, [
+      { role: "user", text: "please retry", timestamp: 1 },
+      { role: "assistant", text: "safe fallback", timestamp: 3 },
+    ]);
+
+    const report = await readConversationDetailReport(conversationId);
+
+    expect(report.transcript).toEqual([
+      {
+        role: "user",
+        timestamp: 1,
+        parts: [{ type: "text", text: "please retry" }],
+      },
+      { role: "assistant", outcome: "error", parts: [], timestamp: 2 },
+      {
+        role: "assistant",
+        timestamp: 3,
+        parts: [{ type: "text", text: "safe fallback" }],
+      },
+    ]);
+    expect(report.transcriptMessageCount).toBe(2);
+    expect(JSON.stringify(report)).not.toContain(sensitiveError);
+    expect(JSON.stringify(report)).not.toContain('"provider":"xai"');
+  });
+
   it("keeps SQL detail available when optional execution settings fail", async () => {
     const { getConversationEventStore, getConversationStore } =
       await import("@/chat/db");
@@ -1143,12 +1264,10 @@ describe("dashboard reporting", () => {
     await getConversationEventStore().append(conversationId, [
       {
         data: {
-          type: "message",
-          message: {
-            role: "user",
-            content: [{ type: "text", text: "available transcript" }],
-            timestamp: 1,
-          } as PiMessage,
+          type: "visible_message_recorded",
+          messageId: "available-transcript",
+          role: "user",
+          text: "available transcript",
         },
         createdAtMs: 1,
       },
@@ -1174,7 +1293,7 @@ describe("dashboard reporting", () => {
     expect(report).not.toHaveProperty("reasoningLevel");
   });
 
-  it("reports multiple message exchanges as one complete SQL transcript", async () => {
+  it("reports multiple exchanges as one complete visible transcript", async () => {
     const { upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -1251,6 +1370,12 @@ describe("dashboard reporting", () => {
         },
       ] as PiMessage[],
     });
+    await recordVisibleTranscript("slack:C1:333", [
+      { role: "user", text: "first question", timestamp: 1 },
+      { role: "assistant", text: "first answer", timestamp: 2 },
+      { role: "user", text: "second question", timestamp: 3 },
+      { role: "assistant", text: "second answer", timestamp: 4 },
+    ]);
 
     const report = await readConversationDetailReport("slack:C1:333");
     expect(report).toMatchObject({ conversationId: "slack:C1:333" });
@@ -1329,6 +1454,10 @@ describe("dashboard reporting", () => {
       ] as PiMessage[],
       traceId: "0123456789abcdef0123456789abcdef",
     });
+    await recordVisibleTranscript("slack:D1:222", [
+      { role: "user", text: "private question", timestamp: 1 },
+      { role: "assistant", text: "private answer", timestamp: 2 },
+    ]);
 
     const report = await readConversationDetailReport("slack:D1:222");
 
@@ -1355,12 +1484,18 @@ describe("dashboard reporting", () => {
       "sensitive generated thread title",
     );
     expect(JSON.stringify(report)).not.toContain("secret-dm-name");
-    const toolCall = report.transcriptMetadata?.[1]?.parts.find(
-      (part) => part.type === "tool_call",
-    );
-    expect(toolCall?.inputKeys).toHaveLength(20);
-    expect(toolCall?.inputKeys).toContain("privateKey0");
-    expect(toolCall?.inputKeys).not.toContain("privateKey20");
+    expect(report.transcriptMetadata).toEqual([
+      {
+        role: "user",
+        parts: [{ type: "text", bytes: 16, chars: 16, redacted: true }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        parts: [{ type: "text", bytes: 14, chars: 14, redacted: true }],
+        timestamp: 2,
+      },
+    ]);
   });
 
   it("marks expired private transcripts as privacy redacted", async () => {
@@ -1591,6 +1726,20 @@ describe("dashboard reporting", () => {
         createdAtMs: 5,
       },
     ]);
+    await recordVisibleTranscript(conversationId, [
+      {
+        role: "user",
+        text: "Context compaction summary for future Junior turns:\nThis is quoted documentation, not a generated summary.",
+        timestamp: 0,
+      },
+      { role: "user", text: "old question", timestamp: 1 },
+      { role: "user", text: "current question", timestamp: 2 },
+      {
+        role: "user",
+        text: "Context compaction summary for future Junior turns:\nPlease explain this marker to the user.",
+        timestamp: 4.5,
+      },
+    ]);
 
     const report = await readConversationDetailReport(conversationId);
     const currentRun = report;
@@ -1621,7 +1770,7 @@ describe("dashboard reporting", () => {
       currentRun.transcript.filter((message) =>
         JSON.stringify(message).includes("current question"),
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
   });
 
   it("reports the original execution and continuation around a model handoff", async () => {
@@ -1727,6 +1876,19 @@ describe("dashboard reporting", () => {
         createdAtMs: 4,
       },
     ]);
+    await recordVisibleTranscript(conversationId, [
+      {
+        role: "user",
+        text: "Model handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nThis is quoted documentation, not a generated checkpoint.",
+        timestamp: 0,
+      },
+      { role: "user", text: "Investigate the release", timestamp: 1 },
+      {
+        role: "assistant",
+        text: "I prepared the ordering fix.",
+        timestamp: 4,
+      },
+    ]);
 
     const report = await readConversationDetailReport(conversationId);
 
@@ -1749,8 +1911,7 @@ describe("dashboard reporting", () => {
       report.transcript.filter((message) =>
         JSON.stringify(message).includes("Investigate the release"),
       ),
-    ).toHaveLength(2);
-    expect(JSON.stringify(report.transcript)).toContain("handoff-call");
+    ).toHaveLength(1);
     expect(JSON.stringify(report.transcript)).toContain(
       "I prepared the ordering fix.",
     );
@@ -1789,6 +1950,11 @@ describe("dashboard reporting", () => {
         },
       ],
     });
+    await recordVisibleTranscript(conversationId, [
+      { role: "user", text: "Regenerate the answer", timestamp: 1 },
+      { role: "assistant", text: "Original answer", timestamp: 2 },
+      { role: "assistant", text: "Regenerated answer", timestamp: 3 },
+    ]);
     await eventStore.startEpoch(conversationId, {
       reason: "rollback",
       modelProfile: "standard",
@@ -1906,6 +2072,11 @@ describe("dashboard reporting", () => {
         },
         createdAtMs: 5,
       },
+    ]);
+    await recordVisibleTranscript(conversationId, [
+      { role: "user", text: "Finish the release work", timestamp: 1 },
+      { role: "assistant", text: "Compacted continuation", timestamp: 3 },
+      { role: "assistant", text: "Handoff continuation", timestamp: 5 },
     ]);
 
     const report = await readConversationDetailReport(conversationId);

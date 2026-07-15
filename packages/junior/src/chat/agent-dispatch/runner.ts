@@ -430,8 +430,8 @@ export async function runAgentDispatchSlice(
     // (`meta.slackTs`, checked by the redelivery guard above) immediately and
     // durably before the dispatch is marked terminal so the crash window
     // between post and marker stays as small as possible. The retry-and-swallow
-    // `persistRuntimePatch` below write-throughs the SQL transcript, so no
-    // separate transcript persist runs outside that guarded block.
+    // `persistRuntimePatch` below appends canonical visible-message facts, so
+    // no separate transcript persist runs outside that guarded block.
     markConversationMessage(conversation, userMessageId, {
       replied: true,
       skippedReason: undefined,

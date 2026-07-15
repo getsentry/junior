@@ -162,10 +162,9 @@ export function coerceThreadConversationState(
   const rawConversation = isRecord(root.conversation) ? root.conversation : {};
   const base = defaultConversationState();
 
-  // The visible transcript lives in the ConversationMessageStore and Pi
-  // history lives in the ConversationEventStore (both SQL). Legacy `messages` /
-  // `piMessages` mirrors left in old thread-state payloads are ignored on
-  // read; consumers hydrate from SQL instead.
+  // Visible and model history live in the SQL ConversationEventStore. Legacy
+  // `messages` / `piMessages` mirrors left in old thread-state payloads are
+  // ignored on read; consumers hydrate from canonical events instead.
   const messages: ConversationMessage[] = [];
 
   const rawCompactions = Array.isArray(rawConversation.compactions)
@@ -260,9 +259,9 @@ export function coerceThreadConversationState(
 
 /**
  * Wrap a conversation state into the storage envelope for persistence. The
- * visible transcript (`messages`) is not written to `thread-state`; it lives
- * in SQL (`ConversationMessageStore`), and Pi history lives in the SQL
- * `ConversationEventStore`. Only runtime scratch is persisted here.
+ * visible transcript (`messages`) is not written to `thread-state`; visible and
+ * model history live in the SQL `ConversationEventStore`. Only runtime scratch
+ * is persisted here.
  */
 export function buildConversationStatePatch(
   conversation: ThreadConversationState,

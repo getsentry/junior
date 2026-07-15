@@ -1,10 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { canExposeConversationPayload } from "@/chat/conversation-privacy";
 import type {
-  ConversationMessage,
-  ConversationMessageStore,
-} from "@/chat/conversations/messages";
-import type {
   ConversationEventStore,
   ConversationEvent,
   ConversationModelMessage,
@@ -13,10 +9,9 @@ import type { Conversation } from "@/chat/conversations/store";
 import { projectConversationEventHistory } from "@/chat/conversations/event-projection";
 import { loadCurrentConversationEvents } from "@/chat/conversations/history-loader";
 import { stripRuntimeTurnContextMessages } from "@/chat/conversations/model-messages";
-import {
-  getConversationEventStore,
-  getConversationMessageStore,
-} from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
+import { projectVisibleConversationMessages } from "@/chat/conversations/visible-message-projection";
+import type { ConversationMessage } from "@/chat/state/conversation";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import { extractGenAiUsageSummary } from "@/chat/logging";
 import { addAgentTurnUsage, hasAgentTurnUsage } from "@/chat/usage";
@@ -218,15 +213,53 @@ function historyContent(args: {
   return { contextEvents, messages };
 }
 
+function terminalOutcomeTranscript(
+  messages: ConversationModelMessage[],
+): TranscriptMessage[] {
+  return messages.flatMap((message) => {
+    const normalized = normalizeTranscriptMessage(message);
+    if (
+      normalized.role !== "assistant" ||
+      (normalized.outcome !== "error" && normalized.outcome !== "aborted")
+    ) {
+      return [];
+    }
+    return [
+      {
+        role: "assistant" as const,
+        outcome: normalized.outcome,
+        parts: [],
+        ...(normalized.timestamp === undefined
+          ? {}
+          : { timestamp: normalized.timestamp }),
+      },
+    ];
+  });
+}
+
+function mergeTranscriptChronologically(
+  messages: TranscriptMessage[],
+): TranscriptMessage[] {
+  return messages
+    .map((message, index) => ({ message, index }))
+    .sort(
+      (left, right) =>
+        (left.message.timestamp ?? Number.POSITIVE_INFINITY) -
+          (right.message.timestamp ?? Number.POSITIVE_INFINITY) ||
+        left.index - right.index,
+    )
+    .map(({ message }) => message);
+}
+
 async function conversationContent(args: {
   conversationId: string;
-  messageStore: ConversationMessageStore;
   eventStore: ConversationEventStore;
   canExposePayload: boolean;
 }): Promise<{
   activity: ConversationActivityReport[];
   contextEvents: ConversationContextEvent[];
   messages: ConversationModelMessage[];
+  traceId?: string;
   transcript: TranscriptMessage[];
 }> {
   const events = await args.eventStore.loadHistory(args.conversationId);
@@ -234,20 +267,39 @@ async function conversationContent(args: {
     canExposePayload: args.canExposePayload,
     events,
   });
-  const messages = history.messages;
-  const transcript =
-    messages.length > 0
-      ? messages.map((message) => normalizeTranscriptMessage(message))
-      : (await args.messageStore.list(args.conversationId)).map(
-          visibleMessageTranscript,
-        );
+  const visibleMessages = projectVisibleConversationMessages(events);
+  const visibleTranscript = visibleMessages.map(visibleMessageTranscript);
+  const modelTranscript = history.messages.map(normalizeTranscriptMessage);
+  const transcript = mergeTranscriptChronologically([
+    ...visibleTranscript,
+    ...terminalOutcomeTranscript(history.messages),
+  ]);
+  const contextEvents = history.contextEvents.map((event) => ({
+    ...event,
+    transcriptIndex: transcript.findIndex(
+      (message) =>
+        (message.timestamp ?? Number.POSITIVE_INFINITY) >
+        new Date(event.createdAt).getTime(),
+    ),
+  }));
+  for (const event of contextEvents) {
+    if (event.transcriptIndex < 0) event.transcriptIndex = transcript.length;
+  }
   return {
     activity: buildConversationActivityFromEvents({
       canExposePayload: args.canExposePayload,
       events,
     }),
-    contextEvents: history.contextEvents,
-    messages,
+    contextEvents,
+    messages: history.messages,
+    ...(args.canExposePayload
+      ? {
+          traceId: traceIdFromTranscript([
+            ...modelTranscript,
+            ...visibleTranscript,
+          ]),
+        }
+       : {}),
     transcript,
   };
 }
@@ -290,7 +342,6 @@ export async function buildConversationDetail(args: {
   const conversationId = conversation.conversationId;
   const nowMs = Date.now();
   const eventStore = getConversationEventStore();
-  const messageStore = getConversationMessageStore();
   const transcriptPurgedAtMs = conversation.transcriptPurgedAtMs;
   const transcriptExpiredAt =
     transcriptPurgedAtMs !== undefined
@@ -304,11 +355,10 @@ export async function buildConversationDetail(args: {
     conversationId,
     visibility: conversation.visibility,
   });
-  const currentContent =
+  const currentContent: Awaited<ReturnType<typeof conversationContent>> =
     transcriptPurgedAtMs === undefined
       ? await conversationContent({
           conversationId,
-          messageStore,
           eventStore,
           canExposePayload: canExposeSqlContent,
         })
@@ -316,9 +366,7 @@ export async function buildConversationDetail(args: {
 
   const modelUsage = modelUsageFromMessages(currentContent.messages);
   const currentTranscript = currentContent.transcript;
-  const traceId = canExposeSqlContent
-    ? traceIdFromTranscript(currentTranscript)
-    : undefined;
+  const traceId = canExposeSqlContent ? currentContent.traceId : undefined;
   const sentryTraceUrl = traceId ? buildSentryTraceUrl(traceId) : undefined;
   const sentryConversationUrl = buildSentryConversationUrl(conversationId);
 

@@ -21,3 +21,11 @@ export async function loadCurrentConversationEvents(
   await ensureConversationEventHistory(args);
   return getConversationEventStore().loadCurrentEpoch(args.conversationId);
 }
+
+/** Load complete event history after the bounded lazy legacy import. */
+export async function loadConversationEventHistory(
+  args: ScopedConversation,
+): Promise<ConversationEvent[]> {
+  await ensureConversationEventHistory(args);
+  return getConversationEventStore().loadHistory(args.conversationId);
+}
