@@ -299,7 +299,6 @@ export function messageRawText(message: TranscriptViewMessage): string {
           `subagent ${part.subagentKind}`,
           stringifyPartValue({
             id: part.id,
-            outcome: part.outcome,
             status: part.status,
           }),
         ]

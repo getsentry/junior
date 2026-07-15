@@ -49,7 +49,7 @@ export type TranscriptViewToolCallPart = TranscriptViewReportingPart & {
 export type TranscriptViewSubagentPart = {
   bytes?: never;
   chars?: never;
-  childConversationId?: string;
+  childConversationId: string;
   id: string;
   input?: never;
   inputKeys?: never;
@@ -57,14 +57,13 @@ export type TranscriptViewSubagentPart = {
   inputSizeChars?: never;
   inputType?: never;
   name?: never;
-  outcome?: "success" | "error" | "aborted";
   output?: never;
   outputKeys?: never;
   outputSizeBytes?: never;
   outputSizeChars?: never;
   outputType?: never;
   redacted?: boolean;
-  status: TranscriptViewStatus;
+  status: "aborted" | "completed" | "error" | "running";
   subagentKind: string;
   text?: never;
   type: "subagent";

@@ -298,8 +298,7 @@ describe("dashboard canonical event reporting", () => {
       },
       {
         type: "subagent_ended",
-        childConversationId: `${conversationId}:child`,
-        subagentKind: "review",
+        startedSeq: 7,
         outcome: "success",
       },
       { type: "context_compacted" },

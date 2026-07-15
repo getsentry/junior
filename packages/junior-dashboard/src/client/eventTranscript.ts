@@ -22,14 +22,14 @@ function eventMessage(
 function subagentOutcomes(
   events: ConversationReportEvent[],
 ): Map<
-  string,
+  number,
   Extract<
     ConversationReportEvent["data"],
     { type: "subagent_ended" }
   >["outcome"]
 > {
   const outcomes = new Map<
-    string,
+    number,
     Extract<
       ConversationReportEvent["data"],
       { type: "subagent_ended" }
@@ -37,7 +37,7 @@ function subagentOutcomes(
   >();
   for (const event of events) {
     if (event.data.type === "subagent_ended") {
-      outcomes.set(event.data.childConversationId, event.data.outcome);
+      outcomes.set(event.data.startedSeq, event.data.outcome);
     }
   }
   return outcomes;
@@ -58,7 +58,6 @@ function subagentPart(
         : outcome === "success"
           ? "completed"
           : "running",
-    ...(outcome ? { outcome } : {}),
   };
 }
 
@@ -98,7 +97,7 @@ export function conversationTranscriptMessages(
     if (data.type === "subagent_started") {
       messages.push(
         eventMessage(event, "tool", [
-          subagentPart(data, outcomes.get(data.childConversationId)),
+          subagentPart(data, outcomes.get(event.seq)),
         ]),
       );
       continue;

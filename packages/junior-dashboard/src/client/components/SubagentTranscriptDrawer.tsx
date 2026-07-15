@@ -39,7 +39,7 @@ export function SubagentTranscriptDrawer(props: {
   const detail = query.data;
   const label = detail?.displayTitle || props.target.part.subagentKind;
   const meta = [
-    detail?.status ?? statusLabel(props.target.part),
+    statusLabel(props.target.part, detail?.status),
     detail ? formatMessageTimestamp(Date.parse(detail.startedAt)) : undefined,
   ].filter(isString);
 
@@ -117,8 +117,12 @@ export function SubagentTranscriptDrawer(props: {
   );
 }
 
-function statusLabel(part: TranscriptViewSubagentPart): string {
-  return part.outcome ?? part.status;
+function statusLabel(
+  part: TranscriptViewSubagentPart,
+  detailStatus?: string,
+): string {
+  if (part.status !== "completed") return part.status;
+  return detailStatus ?? part.status;
 }
 
 function DrawerEmptyState(props: {

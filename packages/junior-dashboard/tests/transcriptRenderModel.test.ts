@@ -120,8 +120,7 @@ describe("canonical event transcript reduction", () => {
         }),
         event(3, "2026-01-01T00:00:03.000Z", {
           type: "subagent_ended",
-          childConversationId: "child-1",
-          subagentKind: "advisor",
+          startedSeq: 2,
           outcome: "success",
         }),
         event(4, "2026-01-01T00:00:04.000Z", {
@@ -142,10 +141,41 @@ describe("canonical event transcript reduction", () => {
     expect(entries[2]).toMatchObject({
       part: {
         childConversationId: "child-1",
-        outcome: "success",
         status: "completed",
       },
     });
+  });
+
+  it("correlates repeated child outcomes by start sequence", () => {
+    const messages = conversationTranscriptMessages(
+      conversation([
+        event(0, "2026-01-01T00:00:00.000Z", {
+          type: "subagent_started",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+        }),
+        event(1, "2026-01-01T00:00:01.000Z", {
+          type: "subagent_started",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+        }),
+        event(2, "2026-01-01T00:00:02.000Z", {
+          type: "subagent_ended",
+          startedSeq: 1,
+          outcome: "success",
+        }),
+        event(3, "2026-01-01T00:00:03.000Z", {
+          type: "subagent_ended",
+          startedSeq: 0,
+          outcome: "error",
+        }),
+      ]),
+    );
+
+    expect(messages.map((message) => message.parts[0])).toMatchObject([
+      { status: "error" },
+      { status: "completed" },
+    ]);
   });
 
   it("projects only failed deliveries as neutral failure history", () => {

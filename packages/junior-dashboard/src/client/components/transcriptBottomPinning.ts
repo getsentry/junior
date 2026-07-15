@@ -264,7 +264,6 @@ function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
     part.name ?? "",
     part.subagentKind ?? "",
     part.status ?? "",
-    part.outcome ?? "",
     part.chars ?? part.text?.length ?? "",
     part.bytes ?? "",
     part.inputSizeChars ?? "",

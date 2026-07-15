@@ -246,7 +246,7 @@ function appendSubagent(
 ): void {
   lines.push("", `### Subagent: ${headingText(part.subagentKind)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  addMetaLine(lines, "Status", part.outcome ?? part.status);
+  addMetaLine(lines, "Status", part.status);
 }
 
 function appendTool(
