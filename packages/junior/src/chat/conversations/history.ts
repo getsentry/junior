@@ -23,6 +23,11 @@ export const conversationModelMessageSchema = z
   .passthrough()
   .transform((value) => value as { role: string });
 
+/** Opaque model-continuity message stored by a Junior conversation event. */
+export type ConversationModelMessage = z.output<
+  typeof conversationModelMessageSchema
+>;
+
 const messageEventDataSchema = z
   .object({
     type: z.literal("message"),

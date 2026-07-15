@@ -3,7 +3,7 @@
  *
  * Materializes model-visible Pi context and derived run facts such as connected
  * providers. Storage and commit lifecycle stay in the conversations domain;
- * Pi-specific event reduction lives in `pi/conversation-events`.
+ * provider-neutral event reduction stays here while Pi validates at its adapter.
  */
 import { isDeepStrictEqual } from "node:util";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -16,7 +16,10 @@ import type {
   ConversationEvent,
 } from "@/chat/conversations/history";
 import { getConversationEventStore } from "@/chat/db";
-import { ensureLegacyConversationImport } from "@/chat/conversations/legacy-import";
+import {
+  ensureConversationEventHistory,
+  loadCurrentConversationEvents,
+} from "@/chat/conversations/history-loader";
 import {
   projectConversationEvents,
   type PiConversationEventProjection,
@@ -114,25 +117,11 @@ interface ScopedConversation {
   conversationId: string;
 }
 
-/**
- * Bridge a straggler's legacy Redis history into SQL before an execution read.
- *
- * Runtime reads run under the conversation lease the worker already holds, so
- * this is the once-only lazy-import seam. Removed with the rest of the one-time
- * import after the Redis TTL horizon.
- */
-async function importLegacyIfNeeded(args: ScopedConversation): Promise<void> {
-  await ensureLegacyConversationImport({ conversationId: args.conversationId });
-}
-
 /** Load the current-epoch Pi projection for a conversation. */
 export async function loadProjection(
   args: ScopedConversation,
 ): Promise<PiMessage[]> {
-  await importLegacyIfNeeded(args);
-  const events = await getConversationEventStore().loadCurrentEpoch(
-    args.conversationId,
-  );
+  const events = await loadCurrentConversationEvents(args);
   return projectConversationEvents(events).messages;
 }
 
@@ -140,10 +129,7 @@ export async function loadProjection(
 export async function loadConversationProjection(
   args: ScopedConversation,
 ): Promise<PiConversationProjection> {
-  await importLegacyIfNeeded(args);
-  const events = await getConversationEventStore().loadCurrentEpoch(
-    args.conversationId,
-  );
+  const events = await loadCurrentConversationEvents(args);
   const { messages, provenance, modelProfile, modelId } =
     projectConversationEvents(events);
   return { messages, provenance, modelProfile, modelId };
@@ -153,7 +139,7 @@ export async function loadConversationProjection(
 export async function openConversationProjection(
   args: ScopedConversation & { modelId: string },
 ): Promise<PiConversationProjection> {
-  await importLegacyIfNeeded(args);
+  await ensureConversationEventHistory(args);
   const eventStore = getConversationEventStore();
   const events = await eventStore.loadCurrentEpoch(args.conversationId);
   const projection = projectConversationEvents(events);
@@ -199,7 +185,7 @@ export async function loadTurnProjection(args: {
   committedSeq: number;
   includeTail: boolean;
 }): Promise<PiConversationEventProjection | undefined> {
-  await importLegacyIfNeeded(args);
+  await ensureConversationEventHistory(args);
   const eventStore = getConversationEventStore();
   // A record that committed no messages materializes the live projection, the
   // same way count-based records with a zero cursor did.
@@ -227,10 +213,7 @@ export async function loadTurnProjection(args: {
 export async function loadConnectedMcpProviders(
   args: ScopedConversation,
 ): Promise<string[]> {
-  await importLegacyIfNeeded(args);
-  const events = await getConversationEventStore().loadCurrentEpoch(
-    args.conversationId,
-  );
+  const events = await loadCurrentConversationEvents(args);
   return connectedMcpProvidersFromEvents(events);
 }
 
