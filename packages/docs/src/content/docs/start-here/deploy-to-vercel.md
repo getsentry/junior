@@ -105,6 +105,22 @@ Set the core runtime variables in Vercel:
 | `JUNIOR_BASE_URL`                           | Conditional | Canonical URL for OAuth and callback URLs when Vercel URL envs are not enough. |
 | `JUNIOR_STATE_KEY_PREFIX`                   | No          | Redis key namespace for this deployment when sharing one Redis database.       |
 | `AI_GATEWAY_API_KEY`                        | Optional    | AI Gateway auth when your setup requires it.                                   |
+| `VERCEL_SANDBOX_KEEPALIVE_MS`               | Recommended | Extends an active sandbox on each tool acquire. Set to `900000` (15 minutes).  |
+
+### Keep active sandboxes alive
+
+Set `VERCEL_SANDBOX_KEEPALIVE_MS=900000` in the Vercel project's **Production** environment. This enables Junior's activity-based keepalive and gives active sandboxes another 15 minutes whenever a sandbox tool is acquired.
+
+Without this variable, keepalive is disabled. Long agent runs that cross model or queue-continuation gaps can then outlive their sandbox session, and Junior may have to create a new sandbox without the previous workspace files.
+
+Configure this through Vercel Project Settings or `vercel env`, not the legacy top-level `env` property in `vercel.json`:
+
+```bash
+pnpm dlx vercel@latest env add VERCEL_SANDBOX_KEEPALIVE_MS production
+# Enter 900000 when prompted, then redeploy production.
+```
+
+Fifteen minutes is the recommended operational default: it covers normal model gaps and tool runtimes without trying to keep pathological long-running commands alive indefinitely. The keepalive runs when Junior acquires a sandbox for tool use; it is not a background timer and cannot revive a sandbox that has already stopped.
 
 Use one stable `JUNIOR_SECRET` per deployment:
 
