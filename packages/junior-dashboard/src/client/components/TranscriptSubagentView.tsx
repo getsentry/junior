@@ -10,7 +10,7 @@ export function TranscriptSubagentView(props: {
   timestamp?: number;
 }) {
   const label = props.part.subagentKind;
-  const status = statusLabel(props.part);
+  const status = props.part.status;
   const meta = [
     status,
     typeof props.timestamp === "number"
@@ -53,12 +53,6 @@ export function TranscriptSubagentView(props: {
       {frame}
     </button>
   );
-}
-
-function statusLabel(part: TranscriptViewSubagentPart): string | undefined {
-  return part.status === "error" || part.status === "aborted"
-    ? part.status
-    : undefined;
 }
 
 function isString(value: string | undefined): value is string {

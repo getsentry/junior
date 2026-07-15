@@ -91,14 +91,6 @@ describe("conversation report event projection", () => {
         },
       },
       {
-        seq: 11,
-        createdAt: "1970-01-01T00:00:10.000Z",
-        data: {
-          type: "model_activity",
-          activities: ["thinking", "tool_call"],
-        },
-      },
-      {
         seq: 12,
         createdAt: "1970-01-01T00:00:05.000Z",
         data: { type: "tool_started", name: "search" },
@@ -112,12 +104,7 @@ describe("conversation report event projection", () => {
         },
       },
     ]);
-    expect(projected.map(({ seq }) => seq)).toEqual([10, 11, 12, 13]);
-    expect(
-      projected.filter(
-        ({ seq, data }) => seq === 11 && data.type === "model_activity",
-      ),
-    ).toHaveLength(1);
+    expect(projected.map(({ seq }) => seq)).toEqual([10, 12, 13]);
     expect(
       JSON.stringify(projected).match(/one user-facing answer/g),
     ).toHaveLength(1);
@@ -236,8 +223,13 @@ describe("conversation report event projection", () => {
       redacted: true,
     });
     expect(projected[1]?.data).toEqual({
-      type: "model_activity",
-      activities: ["tool_result"],
+      type: "tool_started",
+      name: "safe_tool_name",
+    });
+    expect(projected[2]?.data).toEqual({
+      type: "turn_lifecycle",
+      turnId: "turn-1",
+      state: "failed",
     });
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
@@ -419,6 +411,12 @@ describe("conversation report event projection", () => {
       conversationReportEventSchema.safeParse({
         ...valid,
         data: { type: "visible_message", messageId: "m1", role: "user" },
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...valid,
+        data: { type: "model_activity", activities: ["thinking"] },
       }).success,
     ).toBe(false);
 

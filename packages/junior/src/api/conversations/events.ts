@@ -1,34 +1,9 @@
-import type {
-  ConversationEvent,
-  ConversationModelMessage,
-} from "@/chat/conversations/history";
+import type { ConversationEvent } from "@/chat/conversations/history";
 import {
   conversationReportEventSchema,
   type ConversationReportEvent,
   type ConversationReportEventData,
 } from "./schema";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function modelActivities(
-  message: ConversationModelMessage,
-): Array<"thinking" | "tool_call" | "tool_result"> {
-  const record = message as Record<string, unknown>;
-  const activities = new Set<"thinking" | "tool_call" | "tool_result">();
-  if (record.role === "toolResult") activities.add("tool_result");
-
-  const content = record.content;
-  if (!Array.isArray(content)) return [...activities];
-  for (const part of content) {
-    if (!isRecord(part)) continue;
-    if (part.type === "thinking") activities.add("thinking");
-    if (part.type === "toolCall") activities.add("tool_call");
-    if (part.type === "toolResult") activities.add("tool_result");
-  }
-  return [...activities];
-}
 
 function reportEventData(args: {
   canExposePayload: boolean;
@@ -50,12 +25,8 @@ function reportEventData(args: {
         type: "visible_message_replied",
         messageId: data.messageId,
       };
-    case "message": {
-      const activities = modelActivities(data.message);
-      return activities.length > 0
-        ? { type: "model_activity", activities }
-        : undefined;
-    }
+    case "message":
+      return undefined;
     case "tool_execution_started":
       return { type: "tool_started", name: data.toolName };
     case "turn_started":
