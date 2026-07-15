@@ -79,6 +79,10 @@ type DetailOptions = Omit<
   surface?: ConversationDetailReport["surface"];
 };
 
+type MockConversation = ConversationDetailReport & {
+  parentConversationId?: string;
+};
+
 function detail(
   nowMs: number,
   options: DetailOptions,
@@ -191,9 +195,9 @@ function advisorConversation(
   nowMs: number,
   conversationId: string,
   text: string,
-): ConversationDetailReport {
+): MockConversation {
   const startedAt = iso(nowMs, -10 * 60_000);
-  return detail(nowMs, {
+  const conversation = detail(nowMs, {
     conversationId,
     displayTitle: "Advisor review",
     startedAt,
@@ -215,6 +219,10 @@ function advisorConversation(
       }),
     ],
   });
+  return {
+    ...conversation,
+    parentConversationId: DASHBOARD_QA_CONVERSATION_ID,
+  };
 }
 
 function longConversation(nowMs: number): ConversationDetailReport {
@@ -420,7 +428,7 @@ function usage(cost: number) {
   };
 }
 
-function mockConversations(nowMs: number): ConversationDetailReport[] {
+function mockConversations(nowMs: number): MockConversation[] {
   return [
     activeConversation(nowMs),
     dashboardQaConversation(nowMs),
@@ -453,23 +461,28 @@ function mockConversations(nowMs: number): ConversationDetailReport[] {
 }
 
 function summaryFromConversation(
-  conversation: ConversationDetailReport,
+  conversation: MockConversation,
 ): ConversationSummaryReport {
   const {
     eventHistory: _eventHistory,
     events: _events,
     generatedAt: _generatedAt,
+    parentConversationId: _parentConversationId,
     sentryConversationUrl: _sentryConversationUrl,
     ...summary
   } = conversation;
-  return summary;
+  return summary.channel && PUBLIC_MOCK_CHANNEL_IDS.has(summary.channel)
+    ? { ...summary, locationId: `mock:${summary.channel}` }
+    : summary;
 }
 
 function mockConversationFeed(nowMs: number): ConversationFeed {
   return {
     source: "conversation_index",
     generatedAt: iso(nowMs),
-    conversations: mockConversations(nowMs).map(summaryFromConversation),
+    conversations: mockConversations(nowMs)
+      .filter((conversation) => !conversation.parentConversationId)
+      .map(summaryFromConversation),
   };
 }
 
@@ -549,10 +562,11 @@ export function readMockConversationDetail(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
-  return conversation.channel &&
-    PUBLIC_MOCK_CHANNEL_IDS.has(conversation.channel)
-    ? { ...conversation, locationId: `mock:${conversation.channel}` }
-    : conversation;
+  const { parentConversationId: _parentConversationId, ...detail } =
+    conversation;
+  return detail.channel && PUBLIC_MOCK_CHANNEL_IDS.has(detail.channel)
+    ? { ...detail, locationId: `mock:${detail.channel}` }
+    : detail;
 }
 
 /** Build mock dashboard stats from canonical-event mock conversations. */

@@ -11,6 +11,11 @@ import {
   DASHBOARD_QA_CONVERSATION_ID,
 } from "../src/mock-conversations";
 
+const DASHBOARD_QA_CHILD_IDS = [
+  "junior:internal:dashboard-qa:advisor-plan",
+  "junior:internal:dashboard-qa:advisor-review",
+];
+
 describe("dashboard canonical-event mock routes", () => {
   afterEach(() => vi.useRealTimers());
 
@@ -70,8 +75,10 @@ describe("dashboard canonical-event mock routes", () => {
     const body = (await conversations.json()) as {
       conversations: Array<{
         actorIdentity?: { email?: string };
+        channel?: string;
         conversationId: string;
         cumulativeDurationMs: number;
+        locationId?: string;
       }>;
       source: string;
     };
@@ -82,6 +89,14 @@ describe("dashboard canonical-event mock routes", () => {
     expect(body.conversations.map((item) => item.conversationId)).toContain(
       DASHBOARD_QA_CONVERSATION_ID,
     );
+    expect(body.conversations.map((item) => item.conversationId)).not.toEqual(
+      expect.arrayContaining(DASHBOARD_QA_CHILD_IDS),
+    );
+    expect(
+      body.conversations
+        .filter((item) => item.channel?.startsWith("C"))
+        .every((item) => item.locationId === `mock:${item.channel}`),
+    ).toBe(true);
     expect(body.conversations[0]).not.toHaveProperty("events");
 
     const personal = await app.fetch(
@@ -142,13 +157,23 @@ describe("dashboard canonical-event mock routes", () => {
       new Request("http://localhost/api/locations"),
     );
     const locationBody = (await locations.json()) as {
-      locations: Array<{ id: string; label: string }>;
+      locations: Array<{
+        conversations: number;
+        id: string;
+        label: string;
+      }>;
       privateActivity: { conversations: number };
     };
     expect(locationBody.locations.map((item) => item.label)).toContain(
       "#proj-checkout",
     );
     expect(locationBody.privateActivity.conversations).toBeGreaterThan(0);
+    expect(
+      locationBody.locations.reduce(
+        (sum, item) => sum + item.conversations,
+        locationBody.privateActivity.conversations,
+      ),
+    ).toBe(body.conversations.length);
     const locationResponse = await app.fetch(
       new Request(
         `http://localhost/api/locations/${encodeURIComponent(
@@ -159,9 +184,16 @@ describe("dashboard canonical-event mock routes", () => {
     const location = (await locationResponse.json()) as {
       activityDays: unknown[];
       actors: unknown[];
+      recentConversations: Array<{ locationId?: string }>;
     };
     expect(location.activityDays).toHaveLength(90);
     expect(location.actors.length).toBeGreaterThan(0);
+    expect(
+      location.recentConversations.every(
+        (conversation) =>
+          conversation.locationId === locationBody.locations[0]!.id,
+      ),
+    ).toBe(true);
   });
 
   it("serves direct canonical event fixtures for every dashboard state", async () => {
