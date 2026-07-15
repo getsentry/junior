@@ -454,7 +454,7 @@ describe("dashboard telemetry components", () => {
     expect(html).toContain("Activity");
     expect(html).not.toContain("Incident triage");
     expect(html).toContain("Daily Junior conversation activity");
-    expect(html).toContain("90 days");
+    expect(html).toContain("52 weeks");
     expect(html).toContain(">Jan<");
     expect(html).toContain(">Less<");
     expect(html).toContain(">More<");

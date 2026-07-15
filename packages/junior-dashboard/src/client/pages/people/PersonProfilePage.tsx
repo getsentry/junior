@@ -98,7 +98,7 @@ export function Profile(props: { profile: ActorProfileReport }) {
             <SectionHeader
               actions={
                 <div className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-white/30">
-                  90 days
+                  52 weeks
                 </div>
               }
             >
