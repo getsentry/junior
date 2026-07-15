@@ -1770,7 +1770,7 @@ describe("bot handlers (integration)", () => {
     expect(thread.posts).toEqual([]);
   });
 
-  it("posts the failure fallback after ack even when the attempt is not final", async () => {
+  it("keeps the inbox pending after Pi commits input until delivery terminalizes", async () => {
     const ack = vi.fn().mockResolvedValue(undefined);
     const { slackRuntime } = createRuntime({
       services: {
@@ -1809,12 +1809,8 @@ describe("bot handlers (integration)", () => {
       },
     );
 
-    expect(ack).toHaveBeenCalledOnce();
-    expect(thread.posts).toEqual([
-      expect.stringContaining(
-        "I ran into an internal error while processing that.",
-      ),
-    ]);
+    expect(ack).not.toHaveBeenCalled();
+    expect(thread.posts).toEqual([]);
   });
 
   it("posts the failure fallback on the final delivery attempt", async () => {

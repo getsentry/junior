@@ -19,6 +19,7 @@ import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
 const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U0BOT";
 const DM_CHANNEL_ID = "D12345";
+const DM_WITHOUT_THREAD_CHANNEL_ID = "DNOEXPLICITTHREAD";
 const DM_THREAD_TS = "1700000000.000001";
 const CHANNEL_ID = "C12345";
 const CHANNEL_ROOT_TS = "1700000200.000200";
@@ -28,12 +29,12 @@ const slackWebhookClient = createSlackWebhookTestClient({
 
 function createDirectMessageRequest(
   text: string,
-  options?: { threadTs?: string },
+  options?: { channel?: string; threadTs?: string },
 ): Request {
   return slackWebhookClient.event(
     slackEventsApiEnvelope({
       eventType: "message",
-      channel: DM_CHANNEL_ID,
+      channel: options?.channel ?? DM_CHANNEL_ID,
       ts: "1700000100.000100",
       text,
       ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
@@ -387,7 +388,9 @@ describe("Slack contract: assistant-thread delivery", () => {
     const waitUntil = slackWebhookClient.waitUntil();
 
     const response = await handleChatSdkPlatformWebhook(
-      createDirectMessageRequest("How do I debug memory leaks in Node?"),
+      createDirectMessageRequest("How do I debug memory leaks in Node?", {
+        channel: DM_WITHOUT_THREAD_CHANNEL_ID,
+      }),
       "slack",
       waitUntil.fn,
       bot,
@@ -396,6 +399,12 @@ describe("Slack contract: assistant-thread delivery", () => {
     expect(response.status).toBe(200);
     await waitUntil.flush();
 
-    expect(slackApiOutbox.calls("assistant.threads.setTitle")).toEqual([]);
+    expect(
+      slackApiOutbox
+        .calls("assistant.threads.setTitle")
+        .filter(
+          (call) => call.params.channel_id === DM_WITHOUT_THREAD_CHANNEL_ID,
+        ),
+    ).toEqual([]);
   });
 });
