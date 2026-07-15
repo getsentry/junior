@@ -1,4 +1,4 @@
-import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
+import { assistantMessages, describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import {
   agentSteps,
@@ -56,16 +56,9 @@ describeEval("Coding File Tools", slackEvals, (it) => {
       }),
     });
 
-    expect(
-      toolCalls(result.session).some(
-        (call) =>
-          call.name === "bash" &&
-          JSON.stringify(call.arguments).includes(
-            "skills/coding-workspace-fixture/project",
-          ) &&
-          JSON.stringify(call.result).includes("cobalt retry budget"),
-      ),
-    ).toBe(true);
+    const steps = JSON.stringify(agentSteps(result.session));
+    expect(steps).toContain("<project-instructions>");
+    expect(steps).toContain("cobalt retry budget");
   });
 
   it("when comparing fixture behavior, cite the relevant files and leave them unchanged", async ({

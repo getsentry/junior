@@ -708,7 +708,7 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo ok");
   });
 
-  it("runs bash in an explicit cwd and returns applicable project instructions once", async () => {
+  it("runs bash in an explicit cwd and captures its project instructions", async () => {
     const sandbox = makeSandbox("sbx_bash_cwd");
     const files = new Map<string, string | "directory">([
       ["/vercel/sandbox/repo/.git", "directory"],
@@ -745,20 +745,19 @@ describe("createSandboxExecutor", () => {
       input: { command: "pwd", cwd: "/vercel/sandbox/repo/packages" },
     };
 
-    const first = await executor.execute<StructuredSandboxResult>(input);
-    const second = await executor.execute<StructuredSandboxResult>(input);
+    const result = await executor.execute<StructuredSandboxResult>(input);
 
     expect(sandbox.runCommand.mock.calls[0]?.[0]).toMatchObject({
       cwd: "/vercel/sandbox/repo/packages",
     });
-    expect(first.result.details.project_instructions).toEqual([
+    expect(result.result.details.project_instructions).toBeUndefined();
+    await expect(executor.captureProjectInstructions()).resolves.toEqual([
       { path: "/vercel/sandbox/repo/AGENTS.md", content: "root rules" },
       {
         path: "/vercel/sandbox/repo/packages/AGENTS.md",
         content: "package rules",
       },
     ]);
-    expect(second.result.details.project_instructions).toBeUndefined();
   });
 
   it("applies a host timeout to bash commands when the model omits one", async () => {

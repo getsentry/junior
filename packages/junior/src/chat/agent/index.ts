@@ -28,6 +28,7 @@ import {
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import type { ProjectInstruction } from "@/chat/sandbox/project-instructions";
 import {
   findSkillByName,
   parseSkillInvocation,
@@ -113,6 +114,32 @@ import {
 } from "@/chat/model-profile";
 import { compactContextForHandoff } from "@/chat/services/context-compaction";
 import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+
+const PROJECT_INSTRUCTIONS_START = "<project-instructions>";
+
+function projectInstructionsText(
+  instructions: ProjectInstruction[],
+): string | undefined {
+  if (instructions.length === 0) return undefined;
+  return [
+    PROJECT_INSTRUCTIONS_START,
+    "The following AGENTS.md instructions apply to the selected working directory.",
+    ...instructions.flatMap((instruction) => [
+      `<source path="${instruction.path}">`,
+      instruction.content,
+      "</source>",
+    ]),
+    "</project-instructions>",
+  ].join("\n");
+}
+
+function projectInstructionsMessage(text: string): PiMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text }],
+    timestamp: Date.now(),
+  } as PiMessage;
+}
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -589,6 +616,9 @@ async function executeAgentRunInPrivacyContext(
     });
     mcpToolManager = wiring.mcpToolManager;
     const sandboxExecutor = wiring.sandboxExecutor;
+    let activeProjectInstructionsText = projectInstructionsText(
+      await sandboxExecutor.captureProjectInstructions(),
+    );
     const getPendingAuthPause = wiring.getPendingAuthPause;
     const toolsAfterHandoff = wiring.agentTools.filter(
       (tool) => tool.name !== HANDOFF_TOOL_NAME,
@@ -619,7 +649,12 @@ async function executeAgentRunInPrivacyContext(
       spanContext,
       toolGuidance: wiring.toolGuidance,
       toolRuntimeContext: wiring.toolRuntimeContext,
-      userContentParts,
+      userContentParts: activeProjectInstructionsText
+        ? [
+            { type: "text", text: activeProjectInstructionsText },
+            ...userContentParts,
+          ]
+        : userContentParts,
     });
     // ── Agent execution ──────────────────────────────────────────────
     let hasEmittedText = false;
@@ -762,6 +797,28 @@ async function executeAgentRunInPrivacyContext(
             },
             model,
             thinkingLevel,
+          };
+        }
+        const nextProjectInstructionsText = projectInstructionsText(
+          await sandboxExecutor.captureProjectInstructions(),
+        );
+        if (nextProjectInstructionsText !== activeProjectInstructionsText) {
+          activeProjectInstructionsText = nextProjectInstructionsText;
+          const notice = nextProjectInstructionsText
+            ? `These AGENTS.md instructions replace all previously provided AGENTS.md instructions.\n\n${nextProjectInstructionsText}`
+            : "The previously provided AGENTS.md instructions no longer apply.";
+          const messages = [
+            ...agent!.state.messages,
+            projectInstructionsMessage(notice),
+          ];
+          agent!.state.messages = messages;
+          update = {
+            ...(update ?? {}),
+            context: {
+              systemPrompt: baseInstructions,
+              messages,
+              tools: agent!.state.tools,
+            },
           };
         }
         await drainSteeringMessages();

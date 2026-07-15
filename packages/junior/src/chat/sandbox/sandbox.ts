@@ -81,7 +81,6 @@ export interface BashCustomCommandResult {
   stderr_truncated: boolean;
   auth_required?: SandboxEgressAuthRequiredSignal;
   permission_denied?: SandboxEgressPermissionDeniedSignal;
-  project_instructions?: ProjectInstruction[];
 }
 
 export interface SandboxAcquiredState {
@@ -96,6 +95,7 @@ export interface SandboxExecutor {
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
   createSandbox(): Promise<SandboxInstance>;
+  captureProjectInstructions(): Promise<ProjectInstruction[]>;
   execute<T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>>;
@@ -154,9 +154,6 @@ function bashToolResult(params: BashCustomCommandResult) {
       stderr: params.stderr,
       stdout_truncated: params.stdout_truncated,
       stderr_truncated: params.stderr_truncated,
-      ...(params.project_instructions
-        ? { project_instructions: params.project_instructions }
-        : {}),
     },
     truncated: params.stdout_truncated || params.stderr_truncated,
     ...(!params.ok
@@ -189,9 +186,6 @@ function bashToolResult(params: BashCustomCommandResult) {
     ...(params.permission_denied
       ? { permission_denied: params.permission_denied }
       : {}),
-    ...(params.project_instructions
-      ? { project_instructions: params.project_instructions }
-      : {}),
   });
 }
 
@@ -211,7 +205,7 @@ export function createSandboxExecutor(options?: {
 }): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
-  const presentedProjectInstructions = new Map<string, string>();
+  let activeProjectCwd = SANDBOX_WORKSPACE_ROOT;
   const traceContext = options?.traceContext ?? {};
   const tracePropagation = options?.tracePropagation;
   const hasTracePropagationDomains =
@@ -385,26 +379,13 @@ export function createSandboxExecutor(options?: {
     // side-channel from the network layer — not a property of shell exit status —
     // and `clearSandboxEgressSignals` runs before each execution to prevent
     // cross-command leakage.
+    if (requestedCwd) {
+      activeProjectCwd = cwd;
+    }
     const authRequired =
       await consumeSandboxEgressAuthRequiredSignal(activeEgressId);
     const permissionDenied =
       await consumeSandboxEgressPermissionDeniedSignal(activeEgressId);
-    const workspaceProjectRoots =
-      await discoverWorkspaceProjectRoots(executors.fs);
-    const applicableInstructions = (
-      await Promise.all(
-        [...new Set([cwd, ...workspaceProjectRoots])].map(
-          async (target) => await resolveProjectInstructions(executors.fs, target),
-        ),
-      )
-    ).flat();
-    const projectInstructions = applicableInstructions.filter((instruction) => {
-      if (presentedProjectInstructions.get(instruction.path) === instruction.content) {
-        return false;
-      }
-      presentedProjectInstructions.set(instruction.path, instruction.content);
-      return true;
-    });
 
     return {
       result: bashToolResult({
@@ -421,9 +402,6 @@ export function createSandboxExecutor(options?: {
         stderr_truncated: result.stderrTruncated,
         ...(authRequired ? { auth_required: authRequired } : {}),
         ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
-        ...(projectInstructions.length > 0
-          ? { project_instructions: projectInstructions }
-          : {}),
       }) as T,
     };
   };
@@ -768,6 +746,19 @@ export function createSandboxExecutor(options?: {
     },
     async createSandbox() {
       return await sessionManager.createSandbox();
+    },
+    async captureProjectInstructions() {
+      if (!sessionManager.getSandboxId()) {
+        return [];
+      }
+      const { fs } = await sessionManager.ensureToolExecutors();
+      if (activeProjectCwd === SANDBOX_WORKSPACE_ROOT) {
+        const roots = await discoverWorkspaceProjectRoots(fs);
+        if (roots.length === 1) {
+          activeProjectCwd = roots[0]!;
+        }
+      }
+      return await resolveProjectInstructions(fs, activeProjectCwd);
     },
     execute,
     async dispose() {
