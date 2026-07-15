@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Clock3, Coins, MessageSquare } from "lucide-react";
 import { useParams } from "react-router";
 import type {
@@ -7,9 +6,6 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { useActorProfileData } from "../../api";
-import { Button } from "../../components/Button";
-import { ConversationList } from "../../components/ConversationList";
-import { ConversationSearchInput } from "../../components/ConversationListControls";
 import { ContributionGrid } from "../../components/ContributionGrid";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
@@ -19,13 +15,7 @@ import { SectionTitle } from "../../components/SectionTitle";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import {
-  buildConversations,
-  filterConversationList,
-  formatCompactNumber,
-  formatMs,
-  formatTime,
-} from "../../format";
+import { formatCompactNumber, formatMs } from "../../format";
 import { cn, dashboardContainerClass } from "../../styles";
 
 function runtimeLabel(durationMs: number, conversations: number): string {
@@ -33,7 +23,7 @@ function runtimeLabel(durationMs: number, conversations: number): string {
   return formatMs(durationMs);
 }
 
-/** Render one actor's profile and recent conversation history. */
+/** Render one actor's profile and activity summary. */
 export function PersonProfilePage() {
   const params = useParams();
   const email = params.email ? decodeURIComponent(params.email) : undefined;
@@ -54,14 +44,9 @@ export function PersonProfilePage() {
   );
 }
 
-/** Present one actor's activity, dimensions, and recent conversations. */
+/** Present one actor's activity and dimensions. */
 export function Profile(props: { profile: ActorProfileReport }) {
   const profile = props.profile;
-  const [recentSearch, setRecentSearch] = useState("");
-  const conversations = buildConversations(profile.recentConversations);
-  const visibleConversations = filterConversationList(conversations, {
-    query: recentSearch,
-  });
   const displayName =
     profile.actor.fullName ??
     profile.actor.slackUserName ??
@@ -120,39 +105,6 @@ export function Profile(props: { profile: ActorProfileReport }) {
               <SectionTitle>Activity</SectionTitle>
             </SectionHeader>
             <ContributionGrid days={profile.activityDays} />
-          </Section>
-
-          <Section className="mb-0">
-            <SectionHeader>
-              <div>
-                <SectionTitle>Recent</SectionTitle>
-                <div className="mt-1 font-mono text-[0.68rem] leading-relaxed text-white/35">
-                  {formatCompactNumber(visibleConversations.length)} of{" "}
-                  {formatCompactNumber(profile.recentConversations.length)}{" "}
-                  conversations / generated {formatTime(profile.generatedAt)}
-                </div>
-              </div>
-            </SectionHeader>
-            <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(12rem,36rem)_auto]">
-              <ConversationSearchInput
-                label="Search recent conversations"
-                placeholder="Search title, email, channel, id..."
-                value={recentSearch}
-                onChange={setRecentSearch}
-              />
-              {recentSearch.trim() ? (
-                <Button
-                  className="h-9 justify-center"
-                  onClick={() => setRecentSearch("")}
-                >
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-            <ConversationList
-              conversations={visibleConversations}
-              emptyLabel="No recent conversations match this search."
-            />
           </Section>
         </div>
       </div>
