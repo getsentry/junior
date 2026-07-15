@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 import {
@@ -13,6 +14,82 @@ import {
 } from "@/chat/slack/timestamp";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
+const SLACK_DELIVERY_LOCATOR_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const MAX_SLACK_DELIVERY_PART_INDEX = 9_999;
+// Slack applies a 15-item conversations.replies limit to some commercially
+// distributed apps. One page per invocation also lets durable orchestration
+// honor the provider's rate limit between reconciliation attempts.
+const SLACK_RECONCILIATION_PAGE_SIZE = 15;
+
+/** Public Slack metadata event type used to reconcile ambiguous reply writes. */
+export const SLACK_DELIVERY_METADATA_EVENT_TYPE = "junior_delivery";
+
+declare const slackDeliveryLocatorBrand: unique symbol;
+
+/** Opaque, public-safe 128-bit locator used only to correlate Slack delivery. */
+export type SlackDeliveryLocator = string & {
+  readonly [slackDeliveryLocatorBrand]: true;
+};
+
+/** Public-safe marker attached to one part of a recoverable Slack delivery. */
+export interface SlackDeliveryMetadata {
+  locator: SlackDeliveryLocator;
+  partIndex: number;
+  version: 1;
+}
+
+/** Create an opaque random locator suitable for public Slack message metadata. */
+export function createSlackDeliveryLocator(): SlackDeliveryLocator {
+  return randomBytes(16).toString("base64url") as SlackDeliveryLocator;
+}
+
+/** Parse a persisted delivery locator without accepting arbitrary metadata text. */
+export function parseSlackDeliveryLocator(
+  value: string,
+): SlackDeliveryLocator | undefined {
+  return SLACK_DELIVERY_LOCATOR_PATTERN.test(value)
+    ? (value as SlackDeliveryLocator)
+    : undefined;
+}
+
+function requireSlackDeliveryMetadata(
+  metadata: SlackDeliveryMetadata,
+): SlackDeliveryMetadata {
+  const locator = parseSlackDeliveryLocator(metadata.locator);
+  if (!locator) {
+    throw new Error("Slack delivery metadata requires a valid locator");
+  }
+  if (metadata.version !== 1) {
+    throw new Error("Slack delivery metadata requires version 1");
+  }
+  if (
+    !Number.isInteger(metadata.partIndex) ||
+    metadata.partIndex < 0 ||
+    metadata.partIndex > MAX_SLACK_DELIVERY_PART_INDEX
+  ) {
+    throw new Error("Slack delivery metadata requires a valid part index");
+  }
+  return { locator, partIndex: metadata.partIndex, version: 1 };
+}
+
+function toSlackMessageMetadata(metadata: SlackDeliveryMetadata): {
+  event_type: typeof SLACK_DELIVERY_METADATA_EVENT_TYPE;
+  event_payload: {
+    locator: SlackDeliveryLocator;
+    part_index: number;
+    version: 1;
+  };
+} {
+  const validated = requireSlackDeliveryMetadata(metadata);
+  return {
+    event_type: SLACK_DELIVERY_METADATA_EVENT_TYPE,
+    event_payload: {
+      locator: validated.locator,
+      part_index: validated.partIndex,
+      version: validated.version,
+    },
+  };
+}
 
 function requireSlackConversationId(
   channelId: string,
@@ -142,6 +219,244 @@ export async function postSlackMessage(input: {
         }
       : {}),
   };
+}
+
+export type RecoverableSlackPostResult =
+  | { outcome: "accepted"; ts: SlackMessageTs }
+  | {
+      outcome: "definitive_failure";
+      reason: "api_rejected" | "missing_token" | "rate_limited";
+    }
+  | {
+      outcome: "uncertain";
+      reason:
+        | "invalid_response"
+        | "server_error"
+        | "transport_error"
+        | "unknown_error";
+    };
+
+function getErrorStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === "number" ? statusCode : undefined;
+}
+
+function hasExplicitSlackApiRejection(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const data = (error as { data?: unknown }).data;
+  return Boolean(
+    data &&
+    typeof data === "object" &&
+    typeof (data as { error?: unknown }).error === "string",
+  );
+}
+
+function classifyRecoverableSlackPostFailure(
+  error: unknown,
+): Exclude<RecoverableSlackPostResult, { outcome: "accepted" }> {
+  const statusCode = getErrorStatusCode(error);
+  if (statusCode !== undefined && statusCode >= 500) {
+    return { outcome: "uncertain", reason: "server_error" };
+  }
+  if (
+    statusCode === 429 ||
+    (error instanceof SlackActionError && error.code === "rate_limited")
+  ) {
+    return { outcome: "definitive_failure", reason: "rate_limited" };
+  }
+  if (error instanceof SlackActionError && error.code === "missing_token") {
+    return { outcome: "definitive_failure", reason: "missing_token" };
+  }
+  if (
+    hasExplicitSlackApiRejection(error) ||
+    (error instanceof SlackActionError && error.apiError)
+  ) {
+    return { outcome: "definitive_failure", reason: "api_rejected" };
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown } | undefined;
+  if (
+    typeof candidate?.code === "string" ||
+    (typeof candidate?.message === "string" &&
+      candidate.message.toLowerCase().includes("socket hang up"))
+  ) {
+    return { outcome: "uncertain", reason: "transport_error" };
+  }
+  return { outcome: "uncertain", reason: "unknown_error" };
+}
+
+/**
+ * Attempt one recoverable Slack write. Ambiguous writes are never retried;
+ * callers must persist the uncertain result and reconcile it separately.
+ */
+export async function postRecoverableSlackMessage(input: {
+  blocks?: SlackMessageBlock[];
+  channelId: string;
+  metadata: SlackDeliveryMetadata;
+  text: string;
+  threadTs?: string;
+}): Promise<RecoverableSlackPostResult> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Recoverable Slack message posting",
+  );
+  const text = requireSlackMessageText(
+    input.text,
+    "Recoverable Slack message posting",
+  );
+  const threadTs = input.threadTs
+    ? requireSlackThreadTimestamp(
+        input.threadTs,
+        "Recoverable Slack thread message posting",
+      )
+    : undefined;
+  const metadata = toSlackMessageMetadata(input.metadata);
+
+  try {
+    const response = await getSlackClient().chat.postMessage({
+      channel: channelId,
+      text,
+      metadata,
+      ...(input.blocks?.length
+        ? {
+            blocks: input.blocks as unknown as Array<Record<string, unknown>>,
+          }
+        : {}),
+      ...(threadTs ? { thread_ts: threadTs } : {}),
+    });
+    const ts = parseSlackMessageTs(response.ts);
+    return ts
+      ? { outcome: "accepted", ts }
+      : { outcome: "uncertain", reason: "invalid_response" };
+  } catch (error) {
+    return classifyRecoverableSlackPostFailure(error);
+  }
+}
+
+export type RecoverableSlackReconciliationResult =
+  | { outcome: "accepted"; ts: SlackMessageTs }
+  | { outcome: "confirmed_absent" }
+  | { outcome: "continue"; nextCursor: string }
+  | { outcome: "unresolved" };
+
+interface SlackReconciliationIdentity {
+  appId?: string;
+  botId?: string;
+  userId?: string;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function isMessageFromSlackIdentity(
+  message: Record<string, unknown>,
+  identity: SlackReconciliationIdentity,
+): boolean {
+  const comparisons = [
+    [readNonEmptyString(message.app_id), identity.appId],
+    [readNonEmptyString(message.bot_id), identity.botId],
+    [readNonEmptyString(message.user), identity.userId],
+  ] as const;
+  return comparisons.some(
+    ([actual, expected]) => actual !== undefined && actual === expected,
+  );
+}
+
+function hasSlackDeliveryMetadata(
+  message: Record<string, unknown>,
+  expected: ReturnType<typeof toSlackMessageMetadata>,
+): boolean {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== "object") return false;
+  const candidate = metadata as {
+    event_payload?: unknown;
+    event_type?: unknown;
+  };
+  if (candidate.event_type !== expected.event_type) return false;
+  if (!candidate.event_payload || typeof candidate.event_payload !== "object") {
+    return false;
+  }
+  const payload = candidate.event_payload as Record<string, unknown>;
+  return (
+    Object.keys(payload).length === 3 &&
+    payload.locator === expected.event_payload.locator &&
+    payload.part_index === expected.event_payload.part_index &&
+    payload.version === expected.event_payload.version
+  );
+}
+
+/**
+ * Resolve an uncertain Slack write by finding its exact public-safe marker.
+ * The caller persists continuation cursors between rate-limited page reads;
+ * provider failures remain unresolved and never authorize a duplicate repost.
+ */
+export async function reconcileRecoverableSlackMessage(input: {
+  channelId: string;
+  cursor?: string;
+  metadata: SlackDeliveryMetadata;
+  oldestTs: string;
+  threadTs: string;
+}): Promise<RecoverableSlackReconciliationResult> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Recoverable Slack message reconciliation",
+  );
+  const threadTs = requireSlackMessageTimestamp(
+    input.threadTs,
+    "Recoverable Slack message reconciliation",
+  );
+  const oldestTs = requireSlackMessageTimestamp(
+    input.oldestTs,
+    "Recoverable Slack message reconciliation",
+  );
+  const metadata = toSlackMessageMetadata(input.metadata);
+
+  try {
+    const client = getSlackClient();
+    const auth = await client.auth.test();
+    const identity: SlackReconciliationIdentity = {
+      appId: readNonEmptyString(auth.app_id),
+      botId: readNonEmptyString(auth.bot_id),
+      userId: readNonEmptyString(auth.user_id),
+    };
+    if (!identity.appId && !identity.botId && !identity.userId) {
+      return { outcome: "unresolved" };
+    }
+
+    const cursor = readNonEmptyString(input.cursor);
+    const response = await client.conversations.replies({
+      channel: channelId,
+      ts: threadTs,
+      oldest: oldestTs,
+      inclusive: true,
+      include_all_metadata: true,
+      limit: SLACK_RECONCILIATION_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const rawMessage of response.messages ?? []) {
+      const message = rawMessage as unknown as Record<string, unknown>;
+      if (
+        !hasSlackDeliveryMetadata(message, metadata) ||
+        !isMessageFromSlackIdentity(message, identity)
+      ) {
+        continue;
+      }
+      const ts = parseSlackMessageTs(message.ts);
+      return ts ? { outcome: "accepted", ts } : { outcome: "unresolved" };
+    }
+
+    const nextCursor = readNonEmptyString(
+      response.response_metadata?.next_cursor,
+    );
+    if (nextCursor) return { outcome: "continue", nextCursor };
+    return response.has_more === true
+      ? { outcome: "unresolved" }
+      : { outcome: "confirmed_absent" };
+  } catch {
+    return { outcome: "unresolved" };
+  }
 }
 
 /** Delete a previously posted Slack message through the shared outbound boundary. */

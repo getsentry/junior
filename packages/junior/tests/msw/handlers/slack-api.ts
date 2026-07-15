@@ -69,6 +69,7 @@ export interface SlackMockHttpResponse {
   status?: number;
   headers?: Record<string, string>;
   body?: Record<string, unknown> | string;
+  networkError?: boolean;
 }
 
 export interface CapturedSlackApiCall {
@@ -270,6 +271,9 @@ function dequeueResponse(key: string): SlackMockHttpResponse | undefined {
 }
 
 function toHttpResponse(response: SlackMockHttpResponse): Response {
+  if (response.networkError) {
+    return HttpResponse.error();
+  }
   const status = response.status ?? 200;
   const headers = response.headers;
 
