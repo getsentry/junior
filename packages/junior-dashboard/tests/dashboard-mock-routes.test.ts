@@ -134,7 +134,7 @@ describe("dashboard canonical-event mock routes", () => {
       locations: unknown[];
       surfaces: unknown[];
     };
-    expect(profile.activityDays).toHaveLength(90);
+    expect(profile.activityDays).toHaveLength(365);
     expect(profile.locations.length).toBeGreaterThan(0);
     expect(profile.surfaces.length).toBeGreaterThan(0);
 
