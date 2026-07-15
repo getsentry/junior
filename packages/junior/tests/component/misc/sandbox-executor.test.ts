@@ -790,6 +790,64 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("marks an aborted mutation with completed side effects as outcome unknown", async () => {
+    let remoteMutationApplied = false;
+    const sandbox = makeSandbox("sbx_bash_ambiguous_mutation");
+    sandbox.runCommand.mockImplementationOnce(
+      async (input) =>
+        await new Promise((_, reject) => {
+          input.signal?.addEventListener("abort", () => {
+            remoteMutationApplied = true;
+            reject(
+              new Error(
+                "command stream aborted after upstream accepted mutation",
+              ),
+            );
+          });
+        }),
+    );
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_bash_ambiguous_mutation",
+    });
+    executor.configureSkills([]);
+    const abortController = new AbortController();
+    const responsePromise = executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "git push origin HEAD" },
+      signal: abortController.signal,
+    });
+
+    for (
+      let attempt = 0;
+      attempt < 100 && !sandbox.runCommand.mock.calls.length;
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
+    abortController.abort();
+    const response = await responsePromise;
+
+    expect(remoteMutationApplied).toBe(true);
+    expect(response.result.details).toMatchObject({
+      ok: false,
+      exit_code: 130,
+      aborted: true,
+      error: {
+        kind: "outcome_unknown",
+        retryable: false,
+      },
+    });
+  });
+
   it("resolves sandbox command environment for each bash command", async () => {
     const sandbox = makeSandbox("sbx_dynamic_env");
     sandboxGetMock.mockResolvedValue(sandbox);

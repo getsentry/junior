@@ -68,6 +68,7 @@ export interface BashCustomCommandResult {
   exit_code: number;
   signal: null;
   timed_out: boolean;
+  aborted?: boolean;
   stdout: string;
   stderr: string;
   stdout_truncated: boolean;
@@ -141,6 +142,7 @@ function bashToolResult(params: BashCustomCommandResult) {
       exit_code: params.exit_code,
       signal: params.signal,
       timed_out: params.timed_out,
+      aborted: Boolean(params.aborted),
       stdout: params.stdout,
       stderr: params.stderr,
       stdout_truncated: params.stdout_truncated,
@@ -150,10 +152,15 @@ function bashToolResult(params: BashCustomCommandResult) {
     ...(!params.ok
       ? {
           error: {
-            kind: params.timed_out ? "timeout" : "nonzero_exit",
-            message:
-              params.stderr.trim() ||
-              `Command exited with code ${params.exit_code}`,
+            kind: params.aborted
+              ? "outcome_unknown"
+              : params.timed_out
+                ? "timeout"
+                : "nonzero_exit",
+            message: params.aborted
+              ? "Command was interrupted before its outcome was confirmed. It may have produced side effects; reconcile external state before retrying or reporting failure."
+              : params.stderr.trim() ||
+                `Command exited with code ${params.exit_code}`,
             retryable: params.timed_out,
           },
         }
@@ -163,6 +170,7 @@ function bashToolResult(params: BashCustomCommandResult) {
     exit_code: params.exit_code,
     signal: params.signal,
     timed_out: params.timed_out,
+    aborted: Boolean(params.aborted),
     stdout: params.stdout,
     stderr: params.stderr,
     stdout_truncated: params.stdout_truncated,
@@ -325,9 +333,11 @@ export function createSandboxExecutor(options?: {
               response.stderr ?? "",
               "utf8",
             ),
-            ...(response.exitCode !== 0
-              ? { "error.type": "nonzero_exit" }
-              : {}),
+            ...(response.aborted
+              ? { "error.type": "outcome_unknown" }
+              : response.exitCode !== 0
+                ? { "error.type": "nonzero_exit" }
+                : {}),
           });
           setSpanStatus(response.exitCode === 0 ? "ok" : "error");
           return response;
@@ -361,6 +371,7 @@ export function createSandboxExecutor(options?: {
         exit_code: result.exitCode,
         signal: null,
         timed_out: Boolean(result.timedOut),
+        aborted: Boolean(result.aborted),
         stdout: result.stdout,
         stderr: result.stderr,
         stdout_truncated: result.stdoutTruncated,
