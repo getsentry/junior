@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
@@ -312,6 +312,55 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("child detail answer");
     expect(html).toContain("/conversations/child-1");
     expect(html).toContain("Open conversation");
+  });
+
+  it("announces child conversation load failures with an error tone", () => {
+    const errorClient = new QueryClient({
+      defaultOptions: {
+        queries: { refetchOnMount: false, retry: false, retryOnMount: false },
+      },
+    });
+    const error = new Error("unavailable");
+    errorClient.getQueryCache().build(
+      errorClient,
+      { queryKey: ["conversation", "child-error"] },
+      {
+        data: undefined,
+        dataUpdateCount: 0,
+        dataUpdatedAt: 0,
+        error,
+        errorUpdateCount: 1,
+        errorUpdatedAt: Date.now(),
+        fetchFailureCount: 1,
+        fetchFailureReason: error,
+        fetchMeta: null,
+        fetchStatus: "idle",
+        isInvalidated: false,
+        status: "error",
+      },
+    );
+    const target: SubagentTranscriptTarget = {
+      conversationId: "child-error",
+      part: {
+        type: "subagent",
+        id: "child-error",
+        childConversationId: "child-error",
+        status: "completed",
+        outcome: "error",
+        subagentKind: "advisor",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <QueryClientProvider client={errorClient}>
+          <SubagentTranscriptDrawer target={target} onClose={() => {}} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    expect(html).toContain("Conversation failed to load.");
+    expect(html).toContain('data-tone="error"');
+    expect(html).toContain('role="alert"');
   });
 
   it("renders actor profiles with activity without recent conversations", () => {

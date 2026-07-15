@@ -902,19 +902,46 @@ function publicMockLocation(
   };
 }
 
+/** Find conversation time bounds without relying on feed order. */
+export function conversationTimeBounds(
+  summaries: readonly [
+    ConversationSummaryReport,
+    ...ConversationSummaryReport[],
+  ],
+): Pick<LocationSummaryReport, "firstSeenAt" | "lastSeenAt"> {
+  let firstSeenAt = summaries[0].startedAt;
+  let lastSeenAt = summaries[0].lastSeenAt;
+  for (const summary of summaries) {
+    if (Date.parse(summary.startedAt) < Date.parse(firstSeenAt)) {
+      firstSeenAt = summary.startedAt;
+    }
+    if (Date.parse(summary.lastSeenAt) > Date.parse(lastSeenAt)) {
+      lastSeenAt = summary.lastSeenAt;
+    }
+  }
+  return { firstSeenAt, lastSeenAt };
+}
+
 function publicLocation(
   summaries: ConversationSummaryReport[],
   channel: string,
 ): LocationSummaryReport {
-  const matching = summaries.filter((summary) => summary.channel === channel);
-  const item = statsItem(locationLabel(matching[0]!));
-  matching.forEach((summary) => addSummary(item, summary));
+  const [first, ...rest] = summaries.filter(
+    (summary) => summary.channel === channel,
+  );
+  if (!first) throw new Error(`Missing mock summaries for ${channel}`);
+  const matching: [ConversationSummaryReport, ...ConversationSummaryReport[]] =
+    [first, ...rest];
+  const item = statsItem(locationLabel(first));
+  for (const summary of matching) {
+    addSummary(item, summary);
+  }
+  const bounds = conversationTimeBounds(matching);
   return {
     ...item,
-    firstSeenAt: matching.at(-1)!.startedAt,
+    ...bounds,
     id: `mock:${channel}`,
     kind: "channel",
-    lastSeenAt: matching[0]!.lastSeenAt,
     provider: "slack",
     providerDestinationId: channel,
     visibility: "public",
