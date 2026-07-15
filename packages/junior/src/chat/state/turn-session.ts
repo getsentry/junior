@@ -375,7 +375,8 @@ export async function getAgentTurnSessionRecord(
   const turnStartMessageIndex =
     parsed.turnStartSeq === undefined
       ? undefined
-      : piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
+      : piProjection.localMessageStartIndex +
+        piProjection.seqs.filter((seq) => seq <= parsed.turnStartSeq!).length;
 
   return materializeAgentTurnSessionRecord(
     parsed,
@@ -614,15 +615,17 @@ export async function upsertAgentTurnSessionRecord(args: {
   const turnStartSeq =
     args.turnStartMessageIndex === undefined
       ? existingRecord?.turnStartSeq
-      : args.turnStartMessageIndex <= 0
+      : args.turnStartMessageIndex <= commit.localMessageStartIndex
         ? -1
-        : (commit.messageSeqs[args.turnStartMessageIndex - 1] ??
-          commit.committedSeq);
+        : (commit.messageSeqs[
+            args.turnStartMessageIndex - commit.localMessageStartIndex - 1
+          ] ?? commit.committedSeq);
   const turnStartMessageIndex =
     args.turnStartMessageIndex ??
     (turnStartSeq === undefined
       ? undefined
-      : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
+      : commit.localMessageStartIndex +
+        commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
   return await setStoredRecord({
     conversationStore: args.conversationStore,
