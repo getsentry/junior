@@ -11,101 +11,41 @@ import type {
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { DashboardConfig, DashboardIdentity } from "../api/schema";
 
-export type TranscriptViewStatus =
-  | "aborted"
-  | "completed"
-  | "error"
-  | "running"
-  | "success";
+export type TranscriptViewTextPart =
+  | { redacted?: never; text: string; type: "text" }
+  | { redacted: true; text?: never; type: "text" };
 
-type TranscriptViewReportingPart = {
-  bytes?: number;
-  chars?: number;
-  id?: string;
-  input?: unknown;
-  inputKeys?: string[];
-  inputSizeBytes?: number;
-  inputSizeChars?: number;
-  inputType?: string;
-  name?: string;
-  output?: unknown;
-  outputKeys?: string[];
-  outputSizeBytes?: number;
-  outputSizeChars?: number;
-  outputType?: string;
-  outcome?: never;
-  redacted?: boolean;
-  sourceType?: string;
-  status?: TranscriptViewStatus;
-  subagentKind?: never;
-  text?: string;
-  type: "text" | "thinking" | "tool_call" | "tool_result" | "unknown";
-};
-
-export type TranscriptViewToolCallPart = TranscriptViewReportingPart & {
+export type TranscriptViewToolCallPart = {
+  name: string;
   type: "tool_call";
 };
 
 export type TranscriptViewSubagentPart = {
-  bytes?: never;
-  chars?: never;
   childConversationId: string;
   id: string;
-  input?: never;
-  inputKeys?: never;
-  inputSizeBytes?: never;
-  inputSizeChars?: never;
-  inputType?: never;
-  name?: never;
-  output?: never;
-  outputKeys?: never;
-  outputSizeBytes?: never;
-  outputSizeChars?: never;
-  outputType?: never;
-  redacted?: boolean;
   status: "aborted" | "completed" | "error" | "running";
   subagentKind: string;
-  text?: never;
   type: "subagent";
 };
 
 export type TranscriptViewContextEventPart = {
-  bytes?: never;
-  chars?: never;
   event: {
     createdAt: string;
     type: "context_compacted" | "model_handoff";
   };
-  id?: never;
-  input?: never;
-  inputKeys?: never;
-  inputSizeBytes?: never;
-  inputSizeChars?: never;
-  inputType?: never;
-  name?: never;
-  outcome?: never;
-  output?: never;
-  outputKeys?: never;
-  outputSizeBytes?: never;
-  outputSizeChars?: never;
-  outputType?: never;
-  redacted?: never;
-  status?: never;
-  subagentKind?: never;
-  text?: never;
   type: "context_event";
 };
 
 export type TranscriptViewPart =
-  | TranscriptViewReportingPart
   | TranscriptViewContextEventPart
   | TranscriptViewSubagentPart
+  | TranscriptViewTextPart
   | TranscriptViewToolCallPart;
 
 export type TranscriptViewMessage = {
-  outcome?: "error" | "aborted" | "delivery_failed";
+  outcome?: "error" | "delivery_failed";
   parts: TranscriptViewPart[];
-  role: "assistant" | "system" | "tool" | "toolResult" | "unknown" | "user";
+  role: "assistant" | "system" | "tool" | "user";
   timestamp?: number;
 };
 

@@ -51,10 +51,6 @@ describe("dashboard canonical-event Markdown export", () => {
           role: "user",
           text: "please investigate",
         }),
-        event(1, {
-          type: "model_activity",
-          activities: ["thinking"],
-        }),
         event(2, {
           type: "visible_message",
           messageId: "assistant-1",
@@ -90,7 +86,7 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("### Tool: search");
-    expect(markdown).toContain("- Result: started");
+    expect(markdown).toContain("- Status: started");
     expect(markdown).toContain("### Subagent: advisor");
     expect(markdown).toContain("### Context compacted");
     expect(markdown).toContain("### Agent response failed");
@@ -133,7 +129,7 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("### Tool: search");
-    expect(markdown).toContain("- Result: started");
+    expect(markdown).toContain("- Status: started");
     expect(markdown).not.toContain("missing result");
   });
 

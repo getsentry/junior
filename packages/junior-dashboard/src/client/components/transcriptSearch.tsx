@@ -1,7 +1,6 @@
 import { type ReactNode, createContext, useContext } from "react";
 import type { DecorationItem } from "shiki/bundle/web";
 
-import { stringifyPartValue } from "../format";
 import {
   messageRawText,
   type RenderedTranscriptEntry,
@@ -130,37 +129,23 @@ export function entryMatchesSearch(
     return textContains(
       entry.outcome === "delivery_failed"
         ? "message delivery failed"
-        : entry.outcome === "error"
-          ? "agent response failed error"
-          : "agent response stopped aborted",
+        : "agent response failed error",
       normalizedQuery,
     );
   }
 
   if (entry.kind === "tool") {
-    const visibleCallStatus =
-      entry.call?.status === "running" && !entry.result
-        ? entry.call.status
-        : undefined;
     return (
-      textContains(entry.call?.name, normalizedQuery) ||
-      textContains(visibleCallStatus, normalizedQuery) ||
-      textContains(entry.result?.name, normalizedQuery) ||
-      textContains(stringifyPartValue(entry.call?.input), normalizedQuery) ||
-      textContains(stringifyPartValue(entry.result?.output), normalizedQuery)
+      textContains(entry.part.name, normalizedQuery) ||
+      textContains("started", normalizedQuery)
     );
   }
 
   if (entry.kind === "subagent") {
     return (
       textContains(entry.part.subagentKind, normalizedQuery) ||
-      textContains(entry.part.id, normalizedQuery) ||
       textContains(entry.part.status, normalizedQuery)
     );
-  }
-
-  if (entry.kind === "thinking") {
-    return textContains(stringifyPartValue(entry.part.output), normalizedQuery);
   }
 
   if (entry.kind === "context") {

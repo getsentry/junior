@@ -15,14 +15,13 @@ import { client } from "../src/client/api";
 import { HighlightedCode } from "../src/client/code";
 import { Button } from "../src/client/components/Button";
 import { ConversationTranscriptView } from "../src/client/components/ConversationTranscript";
+import { ContributionGrid } from "../src/client/components/ContributionGrid";
 import { PluginReports } from "../src/client/components/PluginReports";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
 } from "../src/client/components/SubagentTranscriptDrawer";
 import { TranscriptHeader } from "../src/client/components/TranscriptHeader";
-import { TranscriptToolView } from "../src/client/components/TranscriptToolView";
-import { ToolValueInspector } from "../src/client/components/ToolValueInspector";
 import { TranscriptSearchProvider } from "../src/client/components/transcriptSearch";
 import { ConversationPage } from "../src/client/pages/ConversationPage";
 import { LocationDetailPageContent } from "../src/client/pages/locations/LocationDetailPage";
@@ -139,7 +138,6 @@ describe("dashboard canonical-event components", () => {
           },
           "2026-01-01T00:00:09.000Z",
         ),
-        event(1, { type: "model_activity", activities: ["thinking"] }),
         event(
           2,
           {
@@ -245,23 +243,34 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("missing result");
   });
 
-  it("renders canonical child rows as inspectable conversation events", () => {
+  it.each([
+    ["running", undefined],
+    ["completed", "success"],
+    ["error", "error"],
+    ["aborted", "aborted"],
+  ] as const)("renders the %s child lifecycle status", (status, outcome) => {
+    const events: ConversationReportEvent[] = [
+      event(0, {
+        type: "subagent_started",
+        childConversationId: "child-1",
+        subagentKind: "advisor",
+      }),
+    ];
+    if (outcome) {
+      events.push(
+        event(1, {
+          type: "subagent_ended",
+          startedSeq: 0,
+          outcome,
+        }),
+      );
+    }
+
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <TranscriptSearchProvider query="">
           <ConversationTranscriptView
-            conversation={conversation([
-              event(0, {
-                type: "subagent_started",
-                childConversationId: "child-1",
-                subagentKind: "advisor",
-              }),
-              event(1, {
-                type: "subagent_ended",
-                startedSeq: 0,
-                outcome: "success",
-              }),
-            ])}
+            conversation={conversation(events)}
             onOpenSubagentTranscript={() => {}}
             view="rich"
           />
@@ -269,6 +278,7 @@ describe("dashboard canonical-event components", () => {
       </QueryClientProvider>,
     );
     expect(html).toContain("advisor");
+    expect(html).toContain(status);
     expect(html).toContain('aria-label="Open advisor transcript"');
     expect(html).toContain('data-transcript-rail-event="subagent"');
   });
@@ -870,80 +880,6 @@ describe("dashboard canonical-event components", () => {
     expect(controls).toContain('aria-label="Copy as Markdown"');
     expect(controls).toContain("size-9");
     expect(controls).not.toContain(">Copy as Markdown<");
-  });
-
-  it("keeps zero timestamps in tool metadata", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{ type: "tool_call", name: "search" }}
-          result={{ type: "tool_result", name: "search", output: "ok" }}
-          resultTimestamp={5}
-          timestamp={0}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html.match(/·/g) ?? []).toHaveLength(5);
-    expect(html).toContain("5ms · 2b ·");
-    expect(html).toContain("hidden text-[#777] max-md:inline");
-    expect(html).toContain(
-      'hidden min-w-0 break-words text-[#888] max-md:inline">5ms',
-    );
-    expect(html).toContain("max-md:block");
-  });
-
-  it("highlights expandable tool summaries on hover", () => {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{
-            input: { query: "checkout" },
-            name: "search",
-            type: "tool_call",
-          }}
-        />
-      </QueryClientProvider>,
-    );
-
-    expect(html).toContain("hover:text-white");
-    expect(html).toContain("hover:[&amp;_*]:text-white");
-    expect(html).toContain(
-      'hidden min-w-0 break-words text-[#888] max-md:inline">missing result',
-    );
-    expect(html).toContain("<details");
-  });
-
-  it("renders structured tool inspector values without dumping one JSON blob", () => {
-    const toolHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptToolView
-          call={{
-            input: { query: "checkout", filters: { environment: "prod" } },
-            name: "search",
-            type: "tool_call",
-          }}
-          result={{
-            name: "search",
-            output: { rows: [{ count: 12, endpoint: "/checkout" }] },
-            type: "tool_result",
-          }}
-        />
-      </QueryClientProvider>,
-    );
-    expect(toolHtml).toContain("arguments");
-    expect(toolHtml).toContain("result");
-    expect(toolHtml).toContain("<table");
-    expect(toolHtml).toContain("/checkout");
-
-    const valueHtml = renderToStaticMarkup(
-      <ToolValueInspector
-        value={{ command: "pnpm test", files: [{ path: "src/a.ts" }] }}
-      />,
-    );
-    expect(valueHtml).toContain("pnpm test");
-    expect(valueHtml).toContain("src/a.ts");
-    expect(valueHtml).not.toContain("{&quot;command&quot;");
   });
 
   it("contains highlighted code so long mobile lines cannot widen transcripts", () => {

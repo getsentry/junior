@@ -1,7 +1,6 @@
 import {
   formatCostSummary,
   formatCompactNumber,
-  formatMs,
   formatTime,
   formatTokenSummary,
   type CostUsageSummary,
@@ -134,7 +133,7 @@ export function DurationMetric(props: {
   );
 }
 
-/** Render a tool-call count with top tool names, counts, and matched duration. */
+/** Render a tool-call count with top tool names and counts. */
 export function ToolCallsMetric(props: {
   align?: "left" | "right";
   loading?: boolean;
@@ -145,14 +144,7 @@ export function ToolCallsMetric(props: {
   const tooltip = props.summary.items.map((item) => ({
     label: item.name,
     labelStyle: "code" as const,
-    value: [
-      plural("call", item.count),
-      item.totalDurationMs !== undefined
-        ? formatMs(item.totalDurationMs)
-        : undefined,
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    value: plural("call", item.count),
   }));
   return (
     <MetricValue align={props.align} tooltip={tooltip}>

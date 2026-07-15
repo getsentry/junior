@@ -257,27 +257,24 @@ export function usePinnedTranscriptBottom(input: {
 
 function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
   if (!part) return "";
-
-  return [
-    part.type,
-    part.id ?? "",
-    part.name ?? "",
-    part.subagentKind ?? "",
-    part.status ?? "",
-    part.chars ?? part.text?.length ?? "",
-    part.bytes ?? "",
-    part.inputSizeChars ?? "",
-    part.inputSizeBytes ?? "",
-    part.outputSizeChars ?? outputLength(part.output),
-    part.outputSizeBytes ?? "",
-    part.redacted ? "redacted" : "",
-  ].join(":");
-}
-
-function outputLength(output: unknown): number | string {
-  if (typeof output === "string") return output.length;
-  if (output == null) return "";
-  return "";
+  if (part.type === "text") {
+    return [
+      part.type,
+      part.text?.length ?? 0,
+      part.redacted ? "redacted" : "",
+    ].join(":");
+  }
+  if (part.type === "tool_call") return `${part.type}:${part.name}`;
+  if (part.type === "subagent") {
+    return [
+      part.type,
+      part.id,
+      part.childConversationId,
+      part.subagentKind,
+      part.status,
+    ].join(":");
+  }
+  return [part.type, part.event.type, part.event.createdAt].join(":");
 }
 
 function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {

@@ -74,23 +74,6 @@ const conversationReportVisibleMessageRepliedEventDataSchema = z
   })
   .strict();
 
-const conversationReportModelActivityEventDataSchema = z
-  .object({
-    type: z.literal("model_activity"),
-    activities: z
-      .array(z.enum(["thinking", "tool_call", "tool_result"]))
-      .min(1),
-  })
-  .strict()
-  .superRefine((data, context) => {
-    if (new Set(data.activities).size !== data.activities.length) {
-      context.addIssue({
-        code: "custom",
-        message: "model activities must be unique",
-      });
-    }
-  });
-
 const conversationReportToolStartedEventDataSchema = z
   .object({
     type: z.literal("tool_started"),
@@ -142,7 +125,6 @@ const conversationReportSubagentEndedEventDataSchema = z
 export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportVisibleMessageEventDataSchema,
   conversationReportVisibleMessageRepliedEventDataSchema,
-  conversationReportModelActivityEventDataSchema,
   conversationReportToolStartedEventDataSchema,
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportContextCompactedEventDataSchema,

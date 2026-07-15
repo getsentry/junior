@@ -15,7 +15,6 @@ import type {
   TranscriptViewPart,
   VisualStatus,
 } from "./types";
-import { sameToolInvocation } from "./toolInvocations";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./eventTranscript";
 
@@ -230,7 +229,6 @@ export function conversationMessageCount(
 export type ToolCallSummaryItem = {
   count: number;
   name: string;
-  totalDurationMs?: number;
 };
 
 export type ToolCallSummary = {
@@ -238,29 +236,7 @@ export type ToolCallSummary = {
   total: number;
 };
 
-type PendingToolCall = {
-  id?: string;
-  name: string;
-  timestamp?: number;
-};
-
-function toolCallName(part: TranscriptViewPart): string {
-  return part.name ?? part.id ?? "unknown";
-}
-
-function findPendingToolCallIndex(
-  calls: PendingToolCall[],
-  result: TranscriptViewPart,
-): number {
-  for (let index = calls.length - 1; index >= 0; index -= 1) {
-    if (sameToolInvocation(calls[index]!, result)) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-/** Summarize tool calls and matched result durations from transcript metadata. */
+/** Summarize structural tool starts by name. */
 export function summarizeToolCalls(
   conversation: ConversationTranscript,
   limit = 5,
@@ -268,50 +244,20 @@ export function summarizeToolCalls(
   const byName = new Map<string, ToolCallSummaryItem>();
   let total = 0;
 
-  const pending: PendingToolCall[] = [];
   for (const message of transcriptSource(conversation)) {
     for (const part of message.parts) {
-      if (part.type === "tool_call") {
-        const name = toolCallName(part);
-        const item = byName.get(name) ?? { count: 0, name };
-        item.count += 1;
-        byName.set(name, item);
-        pending.push({
-          ...(part.id ? { id: part.id } : {}),
-          name,
-          ...(typeof message.timestamp === "number"
-            ? { timestamp: message.timestamp }
-            : {}),
-        });
-        total += 1;
-        continue;
-      }
-
-      if (part.type !== "tool_result") continue;
-      const pendingIndex = findPendingToolCallIndex(pending, part);
-      if (pendingIndex < 0) continue;
-      const [call] = pending.splice(pendingIndex, 1);
-      if (
-        !call ||
-        typeof call.timestamp !== "number" ||
-        typeof message.timestamp !== "number" ||
-        message.timestamp < call.timestamp
-      ) {
-        continue;
-      }
-      const item = byName.get(call.name);
-      if (!item) continue;
-      item.totalDurationMs =
-        (item.totalDurationMs ?? 0) + (message.timestamp - call.timestamp);
+      if (part.type !== "tool_call") continue;
+      const item = byName.get(part.name) ?? { count: 0, name: part.name };
+      item.count += 1;
+      byName.set(part.name, item);
+      total += 1;
     }
   }
 
   const items = [...byName.values()]
     .sort(
       (left, right) =>
-        right.count - left.count ||
-        (right.totalDurationMs ?? 0) - (left.totalDurationMs ?? 0) ||
-        left.name.localeCompare(right.name),
+        right.count - left.count || left.name.localeCompare(right.name),
     )
     .slice(0, limit);
 
@@ -343,24 +289,9 @@ function transcriptMessageAuthor(
 }
 
 function transcriptPartBytes(part: TranscriptViewPart): number {
-  if (typeof part.bytes === "number" && Number.isFinite(part.bytes)) {
-    return Math.max(0, Math.floor(part.bytes));
-  }
-  if (
-    typeof part.inputSizeBytes === "number" &&
-    Number.isFinite(part.inputSizeBytes)
-  ) {
-    return Math.max(0, Math.floor(part.inputSizeBytes));
-  }
-  if (
-    typeof part.outputSizeBytes === "number" &&
-    Number.isFinite(part.outputSizeBytes)
-  ) {
-    return Math.max(0, Math.floor(part.outputSizeBytes));
-  }
-  return new TextEncoder().encode(
-    stringifyPartValue(part.text ?? part.input ?? part.output ?? part),
-  ).byteLength;
+  return part.type === "text" && part.text
+    ? new TextEncoder().encode(part.text).byteLength
+    : 0;
 }
 
 /** Summarize conversational messages by author and serialized size. */

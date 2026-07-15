@@ -77,7 +77,7 @@ export function conversationTranscriptMessages(
         eventMessage(event, data.role, [
           data.redacted
             ? { type: "text", redacted: true }
-            : { type: "text", text: data.text },
+            : { type: "text", text: data.text! },
         ]),
       );
       continue;

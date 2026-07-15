@@ -57,13 +57,15 @@ describe("canonical event transcript reduction", () => {
       ]),
     );
 
-    expect(messages.map((message) => message.parts[0]?.text)).toEqual([
-      "first by sequence",
-      "second by sequence",
-    ]);
+    expect(
+      messages.map((message) => {
+        const part = message.parts[0];
+        return part?.type === "text" ? part.text : undefined;
+      }),
+    ).toEqual(["first by sequence", "second by sequence"]);
   });
 
-  it("projects visible and redacted messages without duplicate model text", () => {
+  it("projects visible and redacted messages", () => {
     const messages = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {
@@ -71,10 +73,6 @@ describe("canonical event transcript reduction", () => {
           messageId: "visible",
           role: "assistant",
           text: "safe answer",
-        }),
-        event(1, "2026-01-01T00:00:01.000Z", {
-          type: "model_activity",
-          activities: ["thinking", "tool_result"],
         }),
         event(2, "2026-01-01T00:00:02.000Z", {
           type: "visible_message",
@@ -239,11 +237,20 @@ describe("canonical event transcript reduction", () => {
       ),
     );
 
-    for (const query of ["sentry.search", "advisor", "compacted", "failed"]) {
+    for (const query of [
+      "sentry.search",
+      "advisor",
+      "running",
+      "compacted",
+      "failed",
+    ]) {
       expect(entries.some((entry) => entryMatchesSearch(entry, query))).toBe(
         true,
       );
     }
+    expect(entries.some((entry) => entryMatchesSearch(entry, "child-1"))).toBe(
+      false,
+    );
   });
 });
 
