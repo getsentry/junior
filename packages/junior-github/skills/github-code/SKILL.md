@@ -68,7 +68,7 @@ Unless the user explicitly says not to create a PR, every completed repository e
 4. Resolve the actual default branch.
 5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true`.
 
-The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
+The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
 If PR creation is blocked, report the exact failed command/tool call and leave the committed branch intact.
 

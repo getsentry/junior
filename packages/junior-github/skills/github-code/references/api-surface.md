@@ -25,14 +25,14 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Operation                          | Command                                                                                                                  |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                                                      |
-| Fetch base branch for comparison   | `git -C DIRECTORY fetch origin BASE`                                                                                     |
-| Deepen shallow clone               | `git -C DIRECTORY fetch --deepen=N origin`                                                                               |
-| Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow`                                                                                     |
+| Fetch base branch for comparison   | `git -C DIRECTORY fetch origin BASE:refs/remotes/origin/BASE`                                                            |
+| Deepen base and head history       | `git -C DIRECTORY fetch --deepen=N origin BASE:refs/remotes/origin/BASE BRANCH`                                          |
+| Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow origin`                                                                              |
 | Check shallow state                | `git -C DIRECTORY rev-parse --is-shallow-repository`                                                                     |
 | Check branch                       | `git -C DIRECTORY branch --show-current`                                                                                 |
 | Check worktree state               | `git -C DIRECTORY status --short --branch`                                                                               |
-| View commit log against base       | `git -C DIRECTORY log BASE..HEAD --oneline`                                                                              |
-| Diff against base                  | `git -C DIRECTORY diff BASE...HEAD`                                                                                      |
+| View commit log against base       | `git -C DIRECTORY log origin/BASE..HEAD --oneline`                                                                       |
+| Diff against base                  | `git -C DIRECTORY diff origin/BASE...HEAD`                                                                               |
 | Resolve default branch             | `gh repo view owner/repo --json defaultBranchRef --jq .defaultBranchRef.name`                                            |
 | Create branch                      | `git -C DIRECTORY checkout -b BRANCH`                                                                                    |
 | Stage and commit                   | `git -C DIRECTORY add -A && git -C DIRECTORY commit -m "message"`                                                        |
@@ -68,7 +68,7 @@ jr-rpc config set github.repo owner/repo
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
 - A local `git commit` does not call GitHub. Pushing that commit uses Junior's repository-scoped installation credential and requires `github.contents.write` on the target repo.
 - If the commit changes workflow files under `.github/workflows`, the App installation needs Workflows write in addition to Contents write.
-- Before rebasing, merge-base analysis, blame/history inspection, or a base comparison, check whether the repository is shallow. Fetch the required base ref and deepen incrementally until the needed ancestry is present; use `--unshallow` only when bounded deepening is insufficient. Never force-push to work around missing ancestry.
+- Before rebasing, merge-base analysis, blame/history inspection, or a base comparison, check whether the repository is shallow. Fetch the base into `refs/remotes/origin/BASE`, deepen that ref incrementally until the needed ancestry is present, and compare against `origin/BASE`; use `--unshallow` only when bounded deepening is insufficient. Never force-push to work around missing ancestry.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
 - Merge, fork creation, workflow reruns or cancellations, REST contents/Git database writes, and repository administration are outside the current write allowlist.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
