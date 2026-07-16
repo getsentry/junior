@@ -35,7 +35,7 @@ import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -89,7 +89,7 @@ export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
   context: ToolRuntimeContext,
-  additionalTools: Record<string, AnyToolDefinition> = {},
+  additionalTools: ToolRegistry = {},
 ) {
   const state = createToolState(hooks, context);
   const slackContext = getSlackToolContext(context);
@@ -99,7 +99,7 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackSourceCapabilities?.canSendMessage,
   );
-  const tools: Record<string, AnyToolDefinition> = {
+  const tools: ToolRegistry = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
     }),

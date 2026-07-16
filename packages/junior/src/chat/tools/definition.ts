@@ -103,6 +103,9 @@ export interface AnyToolDefinition {
   prepareArguments?(args: unknown): unknown;
 }
 
+/** Name-indexed heterogeneous tool definitions accepted by the agent runtime. */
+export type ToolRegistry = Record<string, AnyToolDefinition>;
+
 /** Distinguish legacy TypeBox schemas from JSON Schema projected from Zod. */
 export function isTypeBoxInputSchema(
   schema: ToolInputSchema,

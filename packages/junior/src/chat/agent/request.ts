@@ -27,7 +27,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { ToolRegistry } from "@/chat/tools/definition";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
@@ -114,7 +114,7 @@ export interface AgentRunPolicy {
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
   /** Ephemeral tools supplied by the provider boundary for this run slice. */
-  additionalTools?: Record<string, AnyToolDefinition>;
+  additionalTools?: ToolRegistry;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;
