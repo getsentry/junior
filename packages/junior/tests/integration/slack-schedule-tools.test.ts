@@ -340,6 +340,27 @@ describe("Slack schedule tools", () => {
     ).resolves.toEqual([]);
   });
 
+  it("preserves public channel visibility for scheduled dispatch", async () => {
+    const result = await createTask(
+      createContext({
+        source: createSlackSource({
+          teamId: TEST_TEAM_ID,
+          channelId: "C123",
+          type: "pub",
+        }),
+      }),
+    );
+
+    expect(result).toMatchObject({
+      task: {
+        conversation_access: {
+          audience: "channel",
+          visibility: "public",
+        },
+      },
+    });
+  });
+
   it("accepts Slack source message context and stores canonical task destinations", async () => {
     const result = await createTask(
       createContext({

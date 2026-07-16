@@ -70,6 +70,10 @@ export function createSlackScheduleCreateTaskTool(
     outputSchema: scheduleTaskToolResultSchema,
     execute: async (input) => {
       const destination = requireActiveConversation(context);
+      const source = context.source;
+      if (!source) {
+        throw new Error("Validated Slack source is unavailable.");
+      }
       const actor = requireActor(context, destination);
 
       const nowMs = Date.now();
@@ -88,7 +92,7 @@ export function createSlackScheduleCreateTaskTool(
         nextRunAtMs,
         timezone,
       });
-      const conversationAccess = getConversationAccess(destination);
+      const conversationAccess = getConversationAccess(source);
 
       const task: ScheduledTask = {
         id: buildTaskId(),
