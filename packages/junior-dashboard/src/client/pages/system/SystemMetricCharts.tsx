@@ -1,8 +1,9 @@
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
+import { formatDuration } from "../../components/Duration";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber, formatMs } from "../../format";
+import { formatCompactNumber } from "../../format";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 
@@ -30,7 +31,8 @@ const charts: ChartConfig[] = [
     format: (value) =>
       value.toLocaleString(undefined, {
         currency: "USD",
-        maximumFractionDigits: value < 10 ? 2 : 0,
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
         style: "currency",
       }),
     metric: "costUsd",
@@ -40,7 +42,7 @@ const charts: ChartConfig[] = [
   {
     color: "#a78bfa",
     description: "Daily cumulative runtime, with outliers left visible.",
-    format: formatMs,
+    format: formatDuration,
     metric: "durationMs",
     title: "Runtime",
     type: "scatter",
