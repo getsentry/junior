@@ -290,4 +290,61 @@ describe("Slack behavior: processing reaction", () => {
     expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
     expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
   });
+
+  it("clears eyes and marks complete for reaction-only no-reply turns", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          agentRunner: {
+            run: async (request) => {
+              const context = {
+                ...flattenAgentRunRequestForTest(request),
+              };
+
+              context?.onToolInvocation?.({
+                toolName: "addReaction",
+                params: { emoji: ":heart:" },
+              });
+              return completedAgentRun({
+                text: "",
+                deliveryPlan: {
+                  mode: "thread",
+                  postThreadText: false,
+                },
+                diagnostics: successDiagnostics(["addReaction"]),
+              });
+            },
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C0PROCESSING:1700007300.000000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "1700007301.000000",
+        text: "<@U0APP> give me a heart reaction",
+        isMention: true,
+        threadId: thread.id,
+        raw: {
+          channel: "C0PROCESSING",
+          ts: "1700007301.000000",
+          thread_ts: "1700007300.000000",
+        },
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(slackApiOutbox.reactionAdds()).toEqual([
+      reactionCall("eyes", "1700007301.000000"),
+      reactionCall("white_check_mark", "1700007301.000000"),
+    ]);
+    expect(slackApiOutbox.reactionRemovals()).toEqual([
+      reactionCall("eyes", "1700007301.000000"),
+    ]);
+    expect(thread.posts).toHaveLength(0);
+  });
 });

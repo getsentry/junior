@@ -137,7 +137,13 @@ export async function startSlackProcessingReactionForMessage(args: {
 
   return {
     complete: async () => {
-      if (!(await removeProcessingReaction())) {
+      // Always attempt both sides of the completion lifecycle independently.
+      // Reaction-only turns still need `:done` even if removing the processing
+      // reaction fails, and a prior keep() must not block the completed emoji.
+      const shouldAddCompleted = shouldRemove;
+      await removeProcessingReaction();
+
+      if (!shouldAddCompleted) {
         return;
       }
 

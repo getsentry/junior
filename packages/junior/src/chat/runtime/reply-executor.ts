@@ -989,11 +989,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         // destination accepted the final posts, later errors in the same turn
         // must not mark it failed or trigger the fallback failure reply.
         let finalReplyDelivered = false;
+        let turnCompletionNotified = false;
         let latestArtifacts = preparedState.artifacts;
         let assistantTitleArtifacts: Partial<ThreadArtifactsState> = {};
         let agentContinueScheduleError: unknown;
         const hasVisibleSlackDelivery = (post: { text: string }) =>
           post.text.trim().length > 0;
+        const notifyTurnCompleted = async (): Promise<void> => {
+          if (turnCompletionNotified) {
+            return;
+          }
+          await options.onTurnCompleted?.();
+          turnCompletionNotified = true;
+        };
 
         try {
           const loadedPiMessages = await loadPiMessagesForTurn({
@@ -1558,7 +1566,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Agent turn completed",
             );
           }
-          await options.onTurnCompleted?.();
+          await notifyTurnCompleted();
           if (reply.diagnostics.outcome === "success" && conversationId) {
             try {
               await deps.services.scheduleSessionCompletedPluginTasks({
@@ -1580,6 +1588,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             // Delivered-turn guard: errors after Slack accepted the final
             // reply (redundant-ack cleanup, completion callbacks) must not
             // fail the turn or trigger the visible failure fallback.
+            // Still mark the turn completed so processing reactions run the
+            // complete lifecycle (remove thinking + add done), including for
+            // reaction-only / no-reply turns with no thread post.
             shouldPersistFailureState = false;
             logException(
               error,
@@ -1588,6 +1599,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               messageTs ? { "messaging.message.id": messageTs } : {},
               "Post-delivery turn work failed after Slack accepted the reply",
             );
+            try {
+              await notifyTurnCompleted();
+            } catch (completionError) {
+              logException(
+                completionError,
+                "slack_reply_post_delivery_completion_callback_failed",
+                turnTraceContext,
+                messageTs ? { "messaging.message.id": messageTs } : {},
+                "Post-delivery turn completion callback failed after Slack accepted the reply",
+              );
+            }
             return;
           }
           if (error instanceof CooperativeTurnYieldError) {

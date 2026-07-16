@@ -228,7 +228,7 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      initialEvents: [mention("react to this")],
+      initialEvents: [mention("give me a heart reaction")],
       criteria: rubric({
         pass: [
           "The assistant does not add visible thread-reply clutter for this reaction-only request.",
@@ -245,11 +245,33 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
         expect.objectContaining({ name: "addReaction" }),
       ]),
     );
+    const reactionMessages = assistantMessages(result.session).filter(
+      (message) => message.metadata?.event_type === "reaction_added",
+    );
+    const reactionEmojis = reactionMessages.map((message) => {
+      const content = message.content;
+      if (
+        content &&
+        typeof content === "object" &&
+        "emoji" in content &&
+        typeof content.emoji === "string"
+      ) {
+        return content.emoji;
+      }
+      return "";
+    });
+    // Final Slack reaction set after processing lifecycle: processing emoji
+    // removed, completed emoji added, plus the user-requested reaction.
+    expect(reactionEmojis).not.toContain("eyes");
+    expect(reactionEmojis).toEqual(
+      expect.arrayContaining(["white_check_mark"]),
+    );
     expect(
-      assistantMessages(result.session).filter(
-        (message) => message.metadata?.event_type === "reaction_added",
-      ).length,
-    ).toBeGreaterThan(0);
+      reactionEmojis.some(
+        (emoji) => emoji !== "white_check_mark" && emoji !== "eyes",
+      ),
+    ).toBe(true);
+    expect(reactionMessages.length).toBeGreaterThan(0);
     expect(visibleThreadReplies(result.session)).toEqual([]);
     expect(visibleText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
