@@ -244,7 +244,8 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   );
   const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("addReaction");
-  const silentCompletionSuccess = exactNoReplyMarker;
+  const silentCompletionSuccess =
+    exactNoReplyMarker || (mixedNoReplyMarker && !primaryText);
   const baseDeliveryPlan: ReplyDeliveryPlan = {
     mode: "thread",
     postThreadText: true,
