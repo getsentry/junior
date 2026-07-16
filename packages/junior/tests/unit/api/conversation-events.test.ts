@@ -175,25 +175,11 @@ describe("conversation report event projection", () => {
           eventId,
         }),
         event(5, {
-          type: "delivery_intended",
-          deliveryId: "delivery:1",
-          correlation: { kind: "turn", turnId: "private-turn-id" },
-          messageId: "visible-private",
-          deliveryKind: "assistant_reply",
-          provider: "slack",
-          partCount: 2,
+          type: "turn_failed",
+          turnId: "turn-delivery-1",
+          failureCode: "delivery_failed",
         }),
         event(6, {
-          type: "delivery_accepted",
-          deliveryId: "delivery:1",
-          providerMessageIds: ["123.456"],
-        }),
-        event(7, {
-          type: "delivery_failed",
-          deliveryId: "delivery:2",
-          failureCode: "provider_rejected",
-        }),
-        event(8, {
           type: "authorization_requested",
           kind: "mcp",
           provider: "private-provider",
@@ -201,14 +187,14 @@ describe("conversation report event projection", () => {
           authorizationId: "private-authorization-id",
           delivery: "private_link_sent",
         }),
-        event(9, {
+        event(7, {
           type: "authorization_completed",
           kind: "mcp",
           provider: "private-provider",
           actorId: "private-actor-id",
           authorizationId: "private-authorization-id",
         }),
-        event(10, {
+        event(8, {
           type: "visible_message_metadata_updated",
           messageId: "visible-private",
           meta: { privateUpdate: "private metadata update" },
@@ -230,6 +216,13 @@ describe("conversation report event projection", () => {
       type: "turn_lifecycle",
       turnId: "turn-1",
       state: "failed",
+      failureKind: "agent",
+    });
+    expect(projected[3]?.data).toEqual({
+      type: "turn_lifecycle",
+      turnId: "turn-delivery-1",
+      state: "failed",
+      failureKind: "delivery",
     });
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
@@ -246,16 +239,9 @@ describe("conversation report event projection", () => {
       "private provider error",
       "private tool argument",
       "model_execution_failed",
-      "private-turn-id",
       eventId,
-      "providerMessageIds",
-      "123.456",
-      "provider_rejected",
       "private-provider",
       "private metadata update",
-      "correlation",
-      "deliveryKind",
-      "partCount",
       "actorId",
       "authorizationId",
       "eventId",
@@ -268,7 +254,7 @@ describe("conversation report event projection", () => {
     }
   });
 
-  it("emits only safe structural lifecycle, context, delivery, and child references", () => {
+  it("emits only safe structural lifecycle, context, and child references", () => {
     const projected = projectConversationReportEvents({
       canExposePayload: true,
       events: [
@@ -285,32 +271,41 @@ describe("conversation report event projection", () => {
           modelId: "private-model-id",
         }),
         event(3, {
+          type: "tool_execution_started",
+          toolCallId: "private-handoff-tool-call-id",
+          toolName: "handoff",
+          args: { profile: "private-handoff-profile" },
+        }),
+        event(4, {
           type: "context_epoch_started",
           reason: "handoff",
           modelProfile: "fast",
           modelId: "private-handoff-model-id",
+          triggeringToolCallId: "private-handoff-tool-call-id",
         }),
-        event(4, {
+        event(5, {
+          type: "context_epoch_started",
+          reason: "handoff",
+          modelProfile: "fast",
+          modelId: "private-legacy-handoff-model-id",
+        }),
+        event(6, {
           type: "context_epoch_started",
           reason: "rollback",
           modelProfile: "standard",
           modelId: "private-rollback-model-id",
         }),
-        event(5, {
-          type: "delivery_intended",
-          deliveryId: "delivery:1",
-          correlation: { kind: "turn", turnId: "turn-1" },
-          messageId: "message-1",
-          deliveryKind: "assistant_reply",
-          provider: "slack",
-          partCount: 1,
-        }),
-        event(6, {
-          type: "delivery_accepted",
-          deliveryId: "delivery:1",
-          providerMessageIds: ["123.456"],
-        }),
         event(7, {
+          type: "turn_failed",
+          turnId: "turn-1",
+          failureCode: "delivery_failed",
+        }),
+        event(8, {
+          type: "tool_execution_started",
+          toolCallId: "private-parent-tool-id",
+          toolName: "advisor",
+        }),
+        event(9, {
           type: "subagent_started",
           subagentInvocationId: "subagent-invocation-1",
           subagentKind: "advisor",
@@ -319,19 +314,25 @@ describe("conversation report event projection", () => {
           reasoningLevel: "private-reasoning-level",
           childConversationId: "child-conversation-1",
         }),
-        event(8, {
+        event(10, {
           type: "subagent_ended",
           subagentInvocationId: "subagent-invocation-1",
           outcome: "error",
           errorCode: "private-child-error-code",
         }),
-        event(9, {
+        event(11, {
+          type: "subagent_started",
+          subagentInvocationId: "legacy-subagent-invocation",
+          subagentKind: "advisor",
+          childConversationId: "legacy-child-conversation",
+        }),
+        event(12, {
           type: "subagent_ended",
           subagentInvocationId: "orphan-private-invocation-id",
           outcome: "aborted",
           errorCode: "orphan-private-error-code",
         }),
-        event(10, {
+        event(13, {
           type: "turn_completed",
           turnId: "turn-2",
           outcome: "no_reply",
@@ -339,22 +340,37 @@ describe("conversation report event projection", () => {
       ],
     });
 
-    expect(projected.map(({ seq }) => seq)).toEqual([1, 2, 3, 5, 6, 7, 8, 10]);
+    expect(projected.map(({ seq }) => seq)).toEqual([
+      1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13,
+    ]);
     expect(projected.map(({ data }) => data)).toEqual([
       { type: "turn_lifecycle", turnId: "turn-1", state: "started" },
       { type: "context_compacted" },
+      { type: "tool_started", name: "handoff" },
+      { type: "model_handoff", toolStartedSeq: 3 },
       { type: "model_handoff" },
-      { type: "delivery", deliveryId: "delivery:1", state: "intended" },
-      { type: "delivery", deliveryId: "delivery:1", state: "accepted" },
+      {
+        type: "turn_lifecycle",
+        turnId: "turn-1",
+        state: "failed",
+        failureKind: "delivery",
+      },
+      { type: "tool_started", name: "advisor" },
       {
         type: "subagent_started",
         childConversationId: "child-conversation-1",
         subagentKind: "advisor",
+        toolStartedSeq: 8,
       },
       {
         type: "subagent_ended",
-        startedSeq: 7,
+        startedSeq: 9,
         outcome: "error",
+      },
+      {
+        type: "subagent_started",
+        childConversationId: "legacy-child-conversation",
+        subagentKind: "advisor",
       },
       { type: "turn_lifecycle", turnId: "turn-2", state: "no_reply" },
     ]);
@@ -363,13 +379,16 @@ describe("conversation report event projection", () => {
       "private-input-id",
       "private-model-id",
       "private-handoff-model-id",
+      "private-handoff-tool-call-id",
+      "private-handoff-profile",
+      "private-legacy-handoff-model-id",
       "private-rollback-model-id",
-      "123.456",
       "subagent-invocation-1",
       "private-child-model-id",
       "private-parent-tool-id",
       "private-reasoning-level",
       "private-child-error-code",
+      "legacy-subagent-invocation",
       "orphan-private-invocation-id",
       "orphan-private-error-code",
     ]) {
@@ -385,10 +404,28 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
+        failureKind: "agent",
       },
     };
 
     expect(conversationReportEventSchema.safeParse(valid).success).toBe(true);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...valid,
+        data: { type: "turn_lifecycle", turnId: "turn-1", state: "failed" },
+      }).success,
+    ).toBe(false);
+    expect(
+      conversationReportEventSchema.safeParse({
+        ...valid,
+        data: {
+          type: "turn_lifecycle",
+          turnId: "turn-1",
+          state: "succeeded",
+          failureKind: "agent",
+        },
+      }).success,
+    ).toBe(false);
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,

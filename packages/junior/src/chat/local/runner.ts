@@ -48,7 +48,6 @@ import {
   commitMessages,
   loadProjection,
 } from "@/chat/conversations/projection";
-import { sleep } from "@/chat/sleep";
 import { getConversationEventStore } from "@/chat/db";
 import {
   ConversationTurnLifecycleService,
@@ -57,7 +56,6 @@ import {
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/visible-messages";
 
-const DELIVERED_STATE_PERSIST_ATTEMPTS = 3;
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
 const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
@@ -88,6 +86,8 @@ export interface LocalAgentTurnDeps {
   /** Post-delivery Pi/session persistence boundary. */
   completeDeliveredTurn?: typeof completeDeliveredTurn;
   deliverReply: (reply: LocalAgentReply) => Promise<void>;
+  /** Pre-agent durable Pi projection boundary. */
+  loadPiMessages?: typeof loadLocalPiMessages;
   /** Injectable failure capture boundary for deterministic runtime integration tests. */
   logException?: typeof logException;
   /** Canonical lifecycle writer; defaults to the production SQL service. */
@@ -153,30 +153,6 @@ async function loadLocalPiMessages(args: {
     return undefined;
   }
   return stripRuntimeTurnContext(trimTrailingAssistantMessages(projection));
-}
-
-/** Persist the post-delivery completion state, retrying transient state writes. */
-async function persistDeliveredLocalTurnState(
-  conversationId: string,
-  patch: Parameters<typeof persistThreadStateById>[1],
-): Promise<void> {
-  let lastError: unknown;
-  for (
-    let attempt = 1;
-    attempt <= DELIVERED_STATE_PERSIST_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      await persistThreadStateById(conversationId, patch);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < DELIVERED_STATE_PERSIST_ATTEMPTS) {
-        await sleep(attempt * 100);
-      }
-    }
-  }
-  throw lastError;
 }
 
 /** Run one local CLI message through Junior's shared agent-run boundary. */
@@ -250,7 +226,7 @@ export async function runLocalAgentTurn(
 
   let reply: AgentRunResult | undefined;
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
-  let failureCode: ConversationTurnFailureCode = "agent_run_failed";
+  let failureCode: ConversationTurnFailureCode = "persistence_failed";
   let modelFailureEventId: string | undefined;
   let modelFailureCaptureAttempted = false;
   let piMessagesBeforeRun:
@@ -264,10 +240,11 @@ export async function runLocalAgentTurn(
   };
   try {
     await persistThreadStateById(input.conversationId, { conversation });
-    const piMessages = await loadLocalPiMessages({
+    const piMessages = await (deps.loadPiMessages ?? loadLocalPiMessages)({
       conversationId: input.conversationId,
     });
     piMessagesBeforeRun = piMessages;
+    failureCode = "agent_run_failed";
     const outcome = await deps.agentRunner.run({
       input: {
         messageText: text,
@@ -425,7 +402,7 @@ export async function runLocalAgentTurn(
   }
 
   try {
-    await persistDeliveredLocalTurnState(input.conversationId, {
+    await persistThreadStateById(input.conversationId, {
       artifacts: completedState.artifacts ?? artifacts,
       conversation: completedState.conversation,
       sandboxId: reply.sandboxId ?? sandboxId,

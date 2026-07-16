@@ -236,6 +236,7 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
+          failureKind: "agent",
         }),
       ]),
     );
@@ -244,18 +245,14 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Agent response failed");
   });
 
-  it("renders failed delivery history without treating accepted delivery as failure", () => {
+  it("renders a delivery terminal failure without treating it as an agent failure", () => {
     const html = renderTranscript(
       conversation([
         event(0, {
-          type: "delivery",
-          deliveryId: "delivery-1",
-          state: "accepted",
-        }),
-        event(1, {
-          type: "delivery",
-          deliveryId: "delivery-2",
+          type: "turn_lifecycle",
+          turnId: "turn-1",
           state: "failed",
+          failureKind: "delivery",
         }),
       ]),
     );

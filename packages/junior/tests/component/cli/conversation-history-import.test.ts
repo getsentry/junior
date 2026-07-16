@@ -190,10 +190,10 @@ describe("operator conversation history import", () => {
         id: "m1",
         role: "user",
         text: "hi there",
-        createdAtMs: 100,
+        createdAtMs: 30,
         meta: { replied: true },
       },
-      { id: "m2", role: "assistant", text: "reply", createdAtMs: 110 },
+      { id: "m2", role: "assistant", text: "reply", createdAtMs: 45 },
     ];
 
     const deps = {
@@ -221,12 +221,12 @@ describe("operator conversation history import", () => {
         })),
       ).toEqual([
         { seq: 0, epoch: 0, type: "message" },
-        { seq: 1, epoch: 1, type: "context_epoch_started" },
-        { seq: 2, epoch: 1, type: "message" },
-        { seq: 3, epoch: 1, type: "subagent_started" },
-        { seq: 4, epoch: 1, type: "visible_message_recorded" },
-        { seq: 5, epoch: 1, type: "visible_message_replied" },
-        { seq: 6, epoch: 1, type: "visible_message_recorded" },
+        { seq: 1, epoch: 0, type: "visible_message_recorded" },
+        { seq: 2, epoch: 0, type: "visible_message_replied" },
+        { seq: 3, epoch: 1, type: "context_epoch_started" },
+        { seq: 4, epoch: 1, type: "message" },
+        { seq: 5, epoch: 1, type: "visible_message_recorded" },
+        { seq: 6, epoch: 1, type: "subagent_started" },
       ]);
 
       // Current context is exactly the highest epoch's messages.
@@ -249,7 +249,7 @@ describe("operator conversation history import", () => {
         "m1",
         "m2",
       ]);
-      expect(messages[0]!.repliedAtMs).toBe(100);
+      expect(messages[0]!.repliedAtMs).toBe(30);
       expect(messages[1]!.repliedAtMs).toBeUndefined();
 
       const conversations = await fixture.sql
@@ -555,54 +555,60 @@ describe("operator conversation history import", () => {
     const fixture = await createLocalJuniorSqlFixture();
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
-    await requestConversationWork({
-      conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
-      nowMs: 2_000,
-      state: stateAdapter,
-    });
-    await stateAdapter.set(`junior:agent-session-log:${CONVERSATION_ID}`, [
-      {
-        schemaVersion: 2,
-        type: "pi_message",
-        sessionId: "session_0",
-        message: userMessage("bulk one", 10),
-      },
-      {
-        schemaVersion: 2,
-        type: "pi_message",
-        sessionId: "session_0",
-        message: assistantMessage("bulk two", 20),
-      },
-    ]);
+    const conversationIds = [
+      CONVERSATION_ID,
+      `${CONVERSATION_ID}:page-2`,
+      `${CONVERSATION_ID}:page-3`,
+    ];
+    for (const [index, conversationId] of conversationIds.entries()) {
+      await requestConversationWork({
+        conversationId,
+        destination: SLACK_DESTINATION,
+        nowMs: 2_000 + index,
+        state: stateAdapter,
+      });
+      await stateAdapter.set(`junior:agent-session-log:${conversationId}`, [
+        {
+          schemaVersion: 2,
+          type: "pi_message",
+          sessionId: "session_0",
+          message: userMessage(`bulk ${index}`, 10 + index),
+        },
+      ]);
+    }
 
     try {
       await migrateSchema(fixture.sql);
       const context = { io: { info: () => {} }, stateAdapter };
       await expect(
-        migrateConversationHistoryToSql(context, { executor: fixture.sql }),
+        migrateConversationHistoryToSql(context, {
+          batchSize: 2,
+          executor: fixture.sql,
+        }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 1,
+        migrated: 3,
         missing: 0,
-        scanned: 1,
+        scanned: 3,
       });
 
       const eventStore = createSqlConversationEventStore(fixture.sql);
-      const history = await eventStore.loadHistory(CONVERSATION_ID);
-      expect(history.map((event) => event.data.type)).toEqual([
-        "message",
-        "message",
-      ]);
+      for (const conversationId of conversationIds) {
+        const history = await eventStore.loadHistory(conversationId);
+        expect(history.map((event) => event.data.type)).toEqual(["message"]);
+      }
 
-      // Re-running the bounded scan imports nothing twice.
+      // Re-running every page imports nothing twice.
       await expect(
-        migrateConversationHistoryToSql(context, { executor: fixture.sql }),
+        migrateConversationHistoryToSql(context, {
+          batchSize: 2,
+          executor: fixture.sql,
+        }),
       ).resolves.toEqual({
-        existing: 1,
+        existing: 3,
         migrated: 0,
         missing: 0,
-        scanned: 1,
+        scanned: 3,
       });
     } finally {
       await fixture.close();

@@ -13,6 +13,28 @@ const migrationsFolder = path.resolve(
   "../../../migrations",
 );
 
+const historicalPreDrizzleEventDdl = [
+  `CREATE TABLE junior_conversations (
+    conversation_id TEXT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    last_activity_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    execution_status TEXT NOT NULL
+  )`,
+  `CREATE TABLE junior_agent_steps (
+    conversation_id TEXT NOT NULL REFERENCES junior_conversations (conversation_id),
+    seq INTEGER NOT NULL,
+    context_epoch INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    role TEXT,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (conversation_id, seq)
+  )`,
+  `CREATE INDEX junior_agent_steps_epoch_idx
+    ON junior_agent_steps (conversation_id, context_epoch, seq)`,
+] as const;
+
 function migrationStatements(name: string): string[] {
   return readFileSync(path.join(migrationsFolder, name), "utf8").split(
     "--> statement-breakpoint",
@@ -89,7 +111,21 @@ describe("conversation event migration", () => {
       await expect(
         importConversationFromLegacy(conversationId, {
           executor: fixture.sql,
-          sessionLogStore: { read: async () => [retainedSessionEntry] },
+          sessionLogStore: {
+            read: async () => [
+              retainedSessionEntry,
+              {
+                schemaVersion: 2,
+                type: "pi_message",
+                sessionId: "retained-session",
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: "later execution history" }],
+                  timestamp: Date.parse("2026-07-14T10:00:03.000Z"),
+                },
+              } as unknown as SessionLogEntry,
+            ],
+          },
           loadVisibleMessages: async () => [],
         }),
       ).resolves.toEqual({ imported: true });
@@ -98,6 +134,34 @@ describe("conversation event migration", () => {
         io: { info: () => {} },
         stateAdapter: getStateAdapter(),
       };
+      await context.stateAdapter.connect();
+      const turnSessionIndex = `junior:agent_turn_session:conversation:${conversationId}:index`;
+      const activeSessionKey = `junior:agent_turn_session:${conversationId}:active-turn`;
+      await context.stateAdapter.appendToList(turnSessionIndex, {
+        conversationId,
+        sessionId: "active-turn",
+        state: "running",
+      });
+      await context.stateAdapter.set(activeSessionKey, {
+        conversationId,
+        sessionId: "active-turn",
+        state: "running",
+        committedSeq: 1,
+        turnStartSeq: 0,
+      });
+      await expect(
+        migrateConversationVisibleMessageEvents(context, {
+          batchSize: 1,
+          executor: fixture.sql,
+        }),
+      ).rejects.toThrow("unfinished turn session");
+      await context.stateAdapter.set(activeSessionKey, {
+        conversationId,
+        sessionId: "active-turn",
+        state: "completed",
+        committedSeq: 1,
+        turnStartSeq: 0,
+      });
       await expect(
         migrateConversationVisibleMessageEvents(context, {
           batchSize: 1,
@@ -105,11 +169,29 @@ describe("conversation event migration", () => {
         }),
       ).resolves.toMatchObject({ migrated: 1, missing: 0 });
       await expect(
+        context.stateAdapter.get(activeSessionKey),
+      ).resolves.toBeNull();
+      const staleSessionKey = `junior:agent_turn_session:${conversationId}:stale-terminal`;
+      await context.stateAdapter.appendToList(turnSessionIndex, {
+        conversationId,
+        sessionId: "stale-terminal",
+        state: "failed",
+      });
+      await context.stateAdapter.set(staleSessionKey, {
+        conversationId,
+        sessionId: "stale-terminal",
+        state: "failed",
+        committedSeq: 3,
+      });
+      await expect(
         migrateConversationVisibleMessageEvents(context, {
           batchSize: 1,
           executor: fixture.sql,
         }),
       ).resolves.toMatchObject({ migrated: 0, missing: 0 });
+      await expect(
+        context.stateAdapter.get(staleSessionKey),
+      ).resolves.toBeNull();
       const events = await eventStore.loadHistory(conversationId);
       expect(
         events.map((event) => ({
@@ -142,6 +224,13 @@ describe("conversation event migration", () => {
           seq: 2,
           type: "visible_message_replied",
         },
+        {
+          contextEpoch: 0,
+          idempotencyKey: undefined,
+          messageId: undefined,
+          seq: 3,
+          type: "message",
+        },
       ]);
     } finally {
       await fixture.close();
@@ -150,7 +239,6 @@ describe("conversation event migration", () => {
 
   it("renames history, preserves rows, and rewrites legacy event payloads", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const initial = migrationStatements("0000_initial.sql");
     const conversationEvents = migrationStatements(
       "0004_conversation_events.sql",
     );
@@ -158,7 +246,7 @@ describe("conversation event migration", () => {
     try {
       await executeStatements(
         (statement) => fixture.sql.execute(statement),
-        initial,
+        historicalPreDrizzleEventDdl,
       );
       await fixture.sql.execute(
         `INSERT INTO junior_conversations (
@@ -181,10 +269,16 @@ describe("conversation event migration", () => {
           created_at
         ) VALUES
           ($1, 2, 3, 'authorization_completed', NULL, $2::jsonb, $4),
-          ($1, 1, 2, 'pi_message', 'assistant', $3::jsonb, $4)`,
+          ($1, 1, 2, 'pi_message', 'assistant', $3::jsonb, $4),
+          ($1, 3, 3, 'subagent_started', NULL, $5::jsonb, $4)`,
         [
           "conversation-one",
-          JSON.stringify({ requestId: "request-one" }),
+          JSON.stringify({
+            kind: "mcp",
+            provider: "github",
+            actorId: "U1",
+            authorizationId: "authorization-one",
+          }),
           JSON.stringify({
             schemaVersion: 7,
             message: {
@@ -193,6 +287,12 @@ describe("conversation event migration", () => {
             },
           }),
           new Date("2026-07-14T10:01:00.000Z"),
+          JSON.stringify({
+            subagentInvocationId: "subagent-one",
+            subagentKind: "advisor",
+            childConversationId: "advisor:conversation-one",
+            historyMode: "shared",
+          }),
         ],
       );
 
@@ -272,12 +372,45 @@ ORDER BY seq
           conversationId: "conversation-one",
           createdAt: new Date("2026-07-14T10:01:00.000Z"),
           idempotencyKey: null,
-          payload: { requestId: "request-one" },
+          payload: {
+            kind: "mcp",
+            provider: "github",
+            actorId: "U1",
+            authorizationId: "authorization-one",
+          },
           schemaVersion: 1,
           seq: 2,
           type: "authorization_completed",
         },
+        {
+          contextEpoch: 3,
+          conversationId: "conversation-one",
+          createdAt: new Date("2026-07-14T10:01:00.000Z"),
+          idempotencyKey: null,
+          payload: {
+            childConversationId: "advisor:conversation-one",
+            subagentInvocationId: "subagent-one",
+            subagentKind: "advisor",
+          },
+          schemaVersion: 1,
+          seq: 3,
+          type: "subagent_started",
+        },
       ]);
+      const decoded = await createSqlConversationEventStore(
+        fixture.sql,
+      ).loadHistory("conversation-one");
+      expect(decoded.map((event) => event.data.type)).toEqual([
+        "message",
+        "authorization_completed",
+        "subagent_started",
+      ]);
+      expect(decoded[2]?.data).toEqual({
+        type: "subagent_started",
+        subagentInvocationId: "subagent-one",
+        subagentKind: "advisor",
+        childConversationId: "advisor:conversation-one",
+      });
       await expect(
         fixture.sql.query<{ count: number }>(
           `SELECT count(*)::integer AS count

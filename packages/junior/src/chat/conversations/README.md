@@ -48,8 +48,8 @@ must not become a dashboard or external API payload.
 The reporting API owns a strict ordered event projection with only safe product
 fields. Conversation detail exposes that projection as its sole history, and
 the dashboard derives its view directly from canonical sequence order. Display
-text comes only from visible-message events; model messages become content-free
-activity, while provider receipts, delivery commands, failure codes,
+text comes only from visible-message events; provider/model-only messages are
+not exposed, while provider receipts, delivery commands, failure codes,
 authorization identifiers, arbitrary metadata, and persistence-envelope fields
 remain internal.
 
@@ -99,9 +99,15 @@ Follow `../../../../../policies/data-redaction.md` and
 - Stop every pre-event-log worker before running the event-table schema cut.
   The migration renames `junior_agent_steps` directly and intentionally
   provides no rolling compatibility view.
-- Run the final rerunnable visible-message backfill while workers remain
-  stopped. Its fail-closed zero-gap verification is the cutover gate; start new
-  workers only after it passes.
+- Drain running and awaiting-resume turns before the final visible-message
+  backfill. That backfill fails closed while an unfinished Redis turn-session
+  record retains a physical `committedSeq` or `turnStartSeq` cursor.
+- While workers remain stopped, invalidate terminal cursor-bearing records at
+  `junior:agent_turn_session:<conversationId>:<sessionId>`, chronologically
+  resequence each SQL event stream, and run the final rerunnable zero-gap seal.
+  Summary indexes remain intact because they do not store event cursors. Repeat
+  cursor invalidation on every rerun and start new workers only after the seal
+  verifies no missing visible-message facts.
 - Purge and migration jobs operate in bounded batches and are safe to retry.
 
 Representative coverage lives in

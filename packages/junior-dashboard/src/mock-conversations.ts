@@ -160,6 +160,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         type: "subagent_started",
         childConversationId: DASHBOARD_QA_PLAN_ID,
         subagentKind: "advisor",
+        toolStartedSeq: 1,
       }),
       reportEvent(3, iso(Date.parse(startedAt), 20_000), {
         type: "subagent_ended",
@@ -376,6 +377,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         type: "turn_lifecycle",
         turnId: "failed-turn",
         state: "failed",
+        failureKind: "agent",
       }),
     ],
   });

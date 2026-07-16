@@ -81,6 +81,7 @@ describe("dashboard canonical-event Markdown export", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
+          failureKind: "agent",
         }),
       ]),
     );
@@ -94,18 +95,14 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).not.toContain("Result: running");
   });
 
-  it("exports failed delivery history without mislabeling accepted delivery", () => {
+  it("exports a delivery terminal failure without mislabeling it as an agent failure", () => {
     const markdown = buildConversationMarkdown(
       conversation([
         event(0, {
-          type: "delivery",
-          deliveryId: "delivery-1",
-          state: "accepted",
-        }),
-        event(1, {
-          type: "delivery",
-          deliveryId: "delivery-2",
+          type: "turn_lifecycle",
+          turnId: "turn-1",
           state: "failed",
+          failureKind: "delivery",
         }),
       ]),
     );
@@ -114,7 +111,7 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain(
       "Junior could not deliver this message to its destination.",
     );
-    expect(markdown).not.toContain("delivery-1");
+    expect(markdown).not.toContain("turn-1");
     expect(markdown).not.toContain("Agent response failed");
   });
 

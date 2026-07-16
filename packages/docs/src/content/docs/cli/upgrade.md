@@ -32,25 +32,29 @@ The command takes no extra arguments.
 - Apply the SQL schema cutover and rewrite legacy Pi-message rows into canonical conversation events.
 - Repair legacy token and estimated-cost rollups from durable SQL conversation events in bounded batches. Conversations that are active during the repair are left unchanged and can be repaired by rerunning the command after they become idle.
 
-The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. After cutover, SQL owns durable conversation metadata and event history; retained Redis session data is only a bounded import source.
+The migrations are idempotent: rerunning them skips records that were already moved, removes stale legacy index entries that no longer have a record, and upserts SQL conversation rows. The conversation-history import paginates through every conversation in the retained activity index; orphaned or expired Redis keys outside that index are not treated as retained history. After cutover, SQL owns durable conversation metadata and event history.
 
-## Vercel deploys
+## Hard-cutover upgrade sequence
 
-Run `junior upgrade` from the Vercel build command when the deployment has access to the same `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and `DATABASE_URL` used by production.
+The canonical conversation-event cutover is not rolling-compatible. Do not run it inside a Vercel build while the previous deployment can still accept work. Use this operator sequence:
 
-Use a build command like:
+1. Block new ingress and enqueueing while leaving the previous release's workers and continuation consumers running.
+2. Let existing work drain, then verify that no turns remain running or awaiting resume.
+3. Stop every old worker, queue consumer, and heartbeat. Keep the old deployment stopped for the rest of the procedure.
+4. Run the upgrade from an operator environment with the production `REDIS_URL`, `JUNIOR_STATE_KEY_PREFIX`, and `DATABASE_URL`.
+5. Confirm the history import and visible-message seal complete with no missing rows.
+6. Run `junior check`, deploy the new release, and only then reopen ingress and start the new workers.
+
+Run the upgrade as a separate operator command:
 
 ```bash
-pnpm exec junior upgrade && pnpm build
+pnpm exec junior upgrade
+pnpm exec junior check
 ```
 
-For monorepos, keep the same prefix and replace the build command with the app-specific build:
+The visible-message seal fails closed if resumable work remains. After the drain succeeds, the upgrade invalidates stale resume state before it resequences conversation history while preserving reporting summaries.
 
-```bash
-pnpm exec junior upgrade && pnpm --filter <app> build
-```
-
-This keeps schema creation and SQL backfills out of request handlers. Runtime code trusts that the deployment ran `junior upgrade`; if schema is missing, the deployment is misconfigured and should fail clearly.
+If the command exits nonzero, leave the deployment stopped, correct the reported state, and rerun it. Do not restart workers after only part of the sequence completes.
 
 ## Example output
 
@@ -82,8 +86,9 @@ Treat that as a deploy blocker for the affected environment. Check `REDIS_URL`, 
 After running the command:
 
 1. Confirm the final log line includes `Junior upgrade complete`.
-2. Confirm the migration summary has the expected `scanned` and `migrated` counts.
-3. Run `pnpm exec junior check` before building or deploying the app.
+2. Confirm `backfill-conversation-events-sql` scanned the complete retained activity index and did not stop at one page.
+3. Confirm `backfill-conversation-visible-message-events` reports `missing=0`; this is the canonical-history seal.
+4. Run `pnpm exec junior check` before building or deploying the app.
 
 A nonzero `missing` count for `repair-conversation-usage` means retained SQL assistant messages did not contain usable, schema-safe usage values. Junior leaves those totals unchanged.
 
