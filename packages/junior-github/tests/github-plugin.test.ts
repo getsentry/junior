@@ -560,6 +560,30 @@ describe("github plugin", () => {
     );
   });
 
+  it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://uploads.github.com/user-attachments/assets?name=screenshot.png&content_type=image%2Fpng&repository_id=123",
+      }),
+    ).resolves.toMatchObject({
+      name: "user-write",
+      access: "write",
+      reason: "github.asset-upload",
+      requirements: [
+        "requesting GitHub user permission to perform this operation",
+      ],
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://uploads.github.com/unrelated",
+      }),
+    ).rejects.toThrow(
+      "GitHub write request is not an explicitly allowed Junior operation.",
+    );
+  });
+
   it("maintains the workflow dispatch permission boundary", async () => {
     expect(
       await grantForEgress({
@@ -1825,6 +1849,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer user-token" },
+          },
         ],
       },
     });
@@ -1920,6 +1948,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer delegated-token" },
+          },
         ],
       },
     });
@@ -2007,6 +2039,10 @@ Conversation: \`local:test:old-conversation\`
               Authorization: expect.stringMatching(/^Basic /),
             },
           },
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer fresh-token" },
+          },
         ],
       },
     });
@@ -2081,6 +2117,10 @@ Conversation: \`local:test:old-conversation\`
               headers: {
                 Authorization: expect.stringMatching(/^Basic /),
               },
+            },
+            {
+              domain: "uploads.github.com",
+              headers: { Authorization: "Bearer fresh-token" },
             },
           ],
         },

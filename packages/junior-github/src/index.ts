@@ -84,6 +84,7 @@ type GitHubGrantName =
   | "user-write";
 type GitHubGrantReason =
   | "github.api-read"
+  | "github.asset-upload"
   | "github.git-read"
   | "github.graphql-read"
   | "github.installation-write"
@@ -184,6 +185,11 @@ const CREATE_TOOL_ROUTING_GUIDANCE =
   "This is a Junior tool-routing denial, not a GitHub permission failure. Do not ask the user for GitHub permissions; retry with the required Junior tool.";
 const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
+];
+const GITHUB_CREDENTIAL_DOMAINS = ["api.github.com", "github.com"];
+const GITHUB_USER_CREDENTIAL_DOMAINS = [
+  ...GITHUB_CREDENTIAL_DOMAINS,
+  "uploads.github.com",
 ];
 
 class GitHubUserRefreshRejectedError extends Error {
@@ -765,7 +771,10 @@ function createCredentialLease(
       ...(input.account ? { account: input.account } : {}),
       ...(input.authorization ? { authorization: input.authorization } : {}),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
-      headerTransforms: ["api.github.com", "github.com"].map((domain) => ({
+      headerTransforms: (input.authorization
+        ? GITHUB_USER_CREDENTIAL_DOMAINS
+        : GITHUB_CREDENTIAL_DOMAINS
+      ).map((domain) => ({
         domain,
         headers: {
           Authorization: authorizationFor(domain, input.token),
@@ -1204,6 +1213,17 @@ function isGitHubApiUrl(upstreamUrl: URL): boolean {
   return upstreamUrl.hostname.toLowerCase() === "api.github.com";
 }
 
+function isGitHubAssetUploadRequest(
+  method: string,
+  upstreamUrl: URL,
+): boolean {
+  return (
+    method === "POST" &&
+    upstreamUrl.hostname.toLowerCase() === "uploads.github.com" &&
+    upstreamUrl.pathname === "/user-attachments/assets"
+  );
+}
+
 function githubUserReadReason(
   method: string,
   upstreamUrl: URL,
@@ -1557,7 +1577,7 @@ function grantForAccess(
     access,
     ...(leaseScope ? { leaseScope } : {}),
     reason,
-    ...(reason === "github.user-write"
+    ...(name === "user-write"
       ? { requirements: USER_WRITE_REQUIREMENTS }
       : {}),
   };
@@ -1586,6 +1606,10 @@ async function githubGrantForEgress(
     ...(ctx.request.operation ? { operation: ctx.request.operation } : {}),
     upstreamUrl,
   });
+  if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
+    return grantForAccess("write", "github.asset-upload", "user-write");
+  }
+
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     if (smartHttpAccess === "write") {
@@ -1677,7 +1701,7 @@ export function githubPlugin(
         "GitHub issue, pull request, and repository workflows via GitHub App",
       ...(appCapabilities ? { capabilities: appCapabilities } : {}),
       configKeys: ["org", "repo"],
-      domains: ["api.github.com", "github.com"],
+      domains: ["api.github.com", "github.com", "uploads.github.com"],
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},
@@ -1710,7 +1734,15 @@ export function githubPlugin(
       runtimeDependencies: [
         {
           type: "system",
+          package: "curl",
+        },
+        {
+          type: "system",
           package: "gh",
+        },
+        {
+          type: "system",
+          package: "jq",
         },
       ],
     },

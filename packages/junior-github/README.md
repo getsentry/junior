@@ -1,6 +1,6 @@
 # @sentry/junior-github
 
-`@sentry/junior-github` adds GitHub issue, pull request, and repository workflows to Junior using a GitHub App.
+`@sentry/junior-github` adds GitHub issue, pull request, repository, and user-attachment workflows to Junior using a GitHub App.
 
 Install it alongside `@sentry/junior`:
 
