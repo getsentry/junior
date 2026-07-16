@@ -189,9 +189,9 @@ test("hydrates the built dashboard client in a real browser", async ({
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
   await page.getByRole("link", { name: "System", exact: true }).click();
   await expect(page).toHaveURL(`${baseURL}/system`);
-  await expect(page.getByText("Runtime health")).toBeVisible();
+  await expect(page.getByText("Usage over time")).toBeVisible();
   await expect(page.getByText("Plugins", { exact: true })).toBeVisible();
-  await expect(page.getByText("estimated cost")).toBeVisible();
+  await expect(page.getByText("Model spend")).toBeVisible();
   expect(await containerBounds()).toEqual(headerBounds);
 
   await page.goto(`${baseURL}/people`);
