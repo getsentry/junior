@@ -259,6 +259,7 @@ describe("persistAuthPauseSessionRecord", () => {
     const { listBoundedAgentTurnSessionSummariesForConversation } =
       await import("@/chat/state/turn-session");
     const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
     const conversationId = "slack:C123:legacy-summary";
     const indexKey =
       `junior:agent_turn_session:conversation:${conversationId}:index`;
