@@ -54,13 +54,15 @@ The scaffolded `package.json` includes the production build script:
 }
 ```
 
-New scaffolded apps run Junior upgrades before the normal build:
+Keep the Vercel build command limited to snapshot preparation and the app build:
 
 ```bash
-pnpm exec junior upgrade && pnpm build
+pnpm build
 ```
 
-Keep that Vercel build command. Older installs should configure Junior's SQL database before enabling `junior upgrade`. `junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. `junior upgrade` applies schema and state migrations before the new deployment serves traffic.
+`junior snapshot create` prepares sandbox runtime dependencies declared by enabled plugins before request handling starts. Run `junior upgrade` separately from the build. For an incompatible state cutover, first block new ingress and enqueueing, let the previous deployment drain existing work, verify no resumable turns remain, and then stop its workers, queue consumers, and heartbeats before running the upgrade. A Vercel build can overlap the active deployment, so it cannot enforce that sequence.
+
+For an existing deployment, follow the full drain, upgrade, verification, and restart procedure in [junior upgrade](/cli/upgrade/) before promoting the new release.
 
 ## Enable Junior's Nitro deployment module
 

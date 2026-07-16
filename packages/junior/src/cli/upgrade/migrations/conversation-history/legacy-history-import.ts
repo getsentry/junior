@@ -183,10 +183,16 @@ export function convertLegacySessionLog(args: {
         }
         // The reset opens a new epoch: a marker followed by its embedded
         // messages as ordinary rows, matching the SQL compaction shape.
+        const resetCreatedAtMs =
+          entry.messages
+            .map(messageTimestampMs)
+            .find(
+              (timestamp): timestamp is number => timestamp !== undefined,
+            ) ?? fallback;
         push(
           epoch,
           { type: "context_epoch_started", reason: "compaction" },
-          fallback,
+          resetCreatedAtMs,
         );
         entry.messages.forEach((message, index) => {
           push(
@@ -346,6 +352,79 @@ export interface LegacyImportWrite {
   child?: { conversationId: string; events: ImportedEvent[] };
 }
 
+/** Merge destination-visible facts into retained execution order by timestamp. */
+function mergeImportedChronology(
+  executionEvents: ImportedEvent[],
+  messages: Array<NewConversationMessage & { repliedAtMs?: number }>,
+): ImportedEvent[] {
+  const visibleEvents = messages
+    .flatMap((message): ImportedEvent[] => {
+      const recorded: ImportedEvent = {
+        seq: 0,
+        contextEpoch: 0,
+        idempotencyKey: `visible-message:${message.messageId}:recorded`,
+        data: {
+          type: "visible_message_recorded",
+          messageId: message.messageId,
+          role: message.role,
+          text: message.text,
+          ...(message.authorIdentityId
+            ? { authorIdentityId: message.authorIdentityId }
+            : {}),
+          ...(message.meta ? { meta: message.meta } : {}),
+        },
+        createdAtMs: message.createdAtMs,
+      };
+      return message.repliedAtMs === undefined
+        ? [recorded]
+        : [
+            recorded,
+            {
+              seq: 0,
+              contextEpoch: 0,
+              idempotencyKey: `visible-message:${message.messageId}:replied`,
+              data: {
+                type: "visible_message_replied",
+                messageId: message.messageId,
+              },
+              createdAtMs: message.repliedAtMs,
+            },
+          ];
+    })
+    .map((event, sourceOrder) => ({ event, sourceOrder }))
+    .sort(
+      (left, right) =>
+        left.event.createdAtMs - right.event.createdAtMs ||
+        left.sourceOrder - right.sourceOrder,
+    );
+
+  const merged: ImportedEvent[] = [];
+  let visibleIndex = 0;
+  let currentEpoch = 0;
+  const push = (event: ImportedEvent, contextEpoch: number): void => {
+    merged.push({ ...event, seq: merged.length, contextEpoch });
+  };
+  for (const executionEvent of [...executionEvents].sort(
+    (left, right) => left.seq - right.seq,
+  )) {
+    while (
+      visibleIndex < visibleEvents.length &&
+      visibleEvents[visibleIndex]!.event.createdAtMs <=
+        executionEvent.createdAtMs
+    ) {
+      push(visibleEvents[visibleIndex]!.event, currentEpoch);
+      visibleIndex += 1;
+    }
+    push(executionEvent, executionEvent.contextEpoch);
+    currentEpoch = Math.max(currentEpoch, executionEvent.contextEpoch);
+  }
+  while (visibleIndex < visibleEvents.length) {
+    push(visibleEvents[visibleIndex]!.event, currentEpoch);
+    visibleIndex += 1;
+  }
+  return merged;
+}
+
 /**
  * Write a converted legacy history for one conversation, all-or-nothing.
  *
@@ -385,45 +464,15 @@ export async function writeLegacyImport(
       createdAt,
       new Date(args.lastActivityAtMs),
     );
-    const lastEvent = args.events.at(-1);
-    let nextSeq = (lastEvent?.seq ?? -1) + 1;
-    const contextEpoch = lastEvent?.contextEpoch ?? 0;
-    const visibleEvents: ImportedEvent[] = [];
-    for (const message of args.messages ?? []) {
-      visibleEvents.push({
-        seq: nextSeq++,
-        contextEpoch,
-        idempotencyKey: `visible-message:${message.messageId}:recorded`,
-        data: {
-          type: "visible_message_recorded",
-          messageId: message.messageId,
-          role: message.role,
-          text: message.text,
-          ...(message.authorIdentityId
-            ? { authorIdentityId: message.authorIdentityId }
-            : {}),
-          ...(message.meta ? { meta: message.meta } : {}),
-        },
-        createdAtMs: message.createdAtMs,
-      });
-      if (message.repliedAtMs !== undefined) {
-        visibleEvents.push({
-          seq: nextSeq++,
-          contextEpoch,
-          idempotencyKey: `visible-message:${message.messageId}:replied`,
-          data: {
-            type: "visible_message_replied",
-            messageId: message.messageId,
-          },
-          createdAtMs: message.repliedAtMs,
-        });
-      }
-    }
-    if (visibleEvents.length > 0) {
+    const mergedEvents = mergeImportedChronology(
+      args.events,
+      args.messages ?? [],
+    );
+    if (mergedEvents.length > 0) {
       await db
         .insert(juniorConversationEvents)
         .values(
-          visibleEvents.map((event) => insertRow(args.conversationId, event)),
+          mergedEvents.map((event) => insertRow(args.conversationId, event)),
         );
     }
     if (args.messages && args.messages.length > 0) {
@@ -454,13 +503,6 @@ export async function writeLegacyImport(
             repliedAt: sql`coalesce(${juniorConversationMessages.repliedAt}, excluded.replied_at)`,
           },
         });
-    }
-    if (args.events.length > 0) {
-      await db
-        .insert(juniorConversationEvents)
-        .values(
-          args.events.map((event) => insertRow(args.conversationId, event)),
-        );
     }
     if (args.child) {
       const childCreatedAtMs =

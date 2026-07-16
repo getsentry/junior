@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  ConversationDetailReport,
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationSummaryReport,
@@ -145,6 +144,12 @@ describe("dashboard conversation formatting", () => {
         }),
         event(1, { type: "tool_started", name: "search" }),
         event(2, {
+          type: "subagent_started",
+          childConversationId: "child-1",
+          subagentKind: "advisor",
+          toolStartedSeq: 1,
+        }),
+        event(3, {
           type: "visible_message",
           messageId: "assistant",
           role: "assistant",

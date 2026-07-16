@@ -43,6 +43,20 @@ function subagentOutcomes(
   return outcomes;
 }
 
+function specialToolStarts(events: ConversationReportEvent[]): Set<number> {
+  const starts = new Set<number>();
+  for (const event of events) {
+    const data = event.data;
+    if (
+      (data.type === "model_handoff" || data.type === "subagent_started") &&
+      data.toolStartedSeq !== undefined
+    ) {
+      starts.add(data.toolStartedSeq);
+    }
+  }
+  return starts;
+}
+
 function subagentPart(
   data: Extract<ConversationReportEvent["data"], { type: "subagent_started" }>,
   outcome: "aborted" | "error" | "success" | undefined,
@@ -66,6 +80,7 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
 ): TranscriptViewMessage[] {
   const outcomes = subagentOutcomes(conversation.events);
+  const replacedToolStarts = specialToolStarts(conversation.events);
   const messages: TranscriptViewMessage[] = [];
 
   // API sequence is the only ordering authority. Do not sort by timestamps:
@@ -84,6 +99,7 @@ export function conversationTranscriptMessages(
     }
 
     if (data.type === "tool_started") {
+      if (replacedToolStarts.has(event.seq)) continue;
       messages.push(
         eventMessage(event, "tool", [
           // Reporting intentionally has no completion state. This is a neutral
@@ -117,21 +133,12 @@ export function conversationTranscriptMessages(
 
     if (data.type === "turn_lifecycle" && data.state === "failed") {
       messages.push({
-        role: "assistant",
-        outcome: "error",
+        role: data.failureKind === "delivery" ? "system" : "assistant",
+        outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
         parts: [],
         timestamp: eventTimestamp(event),
       });
       continue;
-    }
-
-    if (data.type === "delivery" && data.state === "failed") {
-      messages.push({
-        role: "system",
-        outcome: "delivery_failed",
-        parts: [],
-        timestamp: eventTimestamp(event),
-      });
     }
   }
 

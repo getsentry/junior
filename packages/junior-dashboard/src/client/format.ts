@@ -244,14 +244,15 @@ export function summarizeToolCalls(
   const byName = new Map<string, ToolCallSummaryItem>();
   let total = 0;
 
-  for (const message of transcriptSource(conversation)) {
-    for (const part of message.parts) {
-      if (part.type !== "tool_call") continue;
-      const item = byName.get(part.name) ?? { count: 0, name: part.name };
-      item.count += 1;
-      byName.set(part.name, item);
-      total += 1;
-    }
+  for (const event of conversation.events) {
+    if (event.data.type !== "tool_started") continue;
+    const item = byName.get(event.data.name) ?? {
+      count: 0,
+      name: event.data.name,
+    };
+    item.count += 1;
+    byName.set(event.data.name, item);
+    total += 1;
   }
 
   const items = [...byName.values()]

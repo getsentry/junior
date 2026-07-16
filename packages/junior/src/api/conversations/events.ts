@@ -27,8 +27,6 @@ function reportEventData(args: {
       };
     case "message":
       return undefined;
-    case "tool_execution_started":
-      return { type: "tool_started", name: data.toolName };
     case "turn_started":
       return {
         type: "turn_lifecycle",
@@ -46,29 +44,12 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "failed",
+        failureKind:
+          data.failureCode === "delivery_failed" ? "delivery" : "agent",
       };
     case "context_epoch_started":
       if (data.reason === "compaction") return { type: "context_compacted" };
-      if (data.reason === "handoff") return { type: "model_handoff" };
       return undefined;
-    case "delivery_intended":
-      return {
-        type: "delivery",
-        deliveryId: data.deliveryId,
-        state: "intended",
-      };
-    case "delivery_accepted":
-      return {
-        type: "delivery",
-        deliveryId: data.deliveryId,
-        state: "accepted",
-      };
-    case "delivery_failed":
-      return {
-        type: "delivery",
-        deliveryId: data.deliveryId,
-        state: "failed",
-      };
     default:
       return undefined;
   }
@@ -85,16 +66,24 @@ export function projectConversationReportEvents(args: {
   events: ConversationEvent[];
 }): ConversationReportEvent[] {
   const subagentStarts = new Map<string, number>();
+  const toolStarts = new Map<string, number>();
   const projected: ConversationReportEvent[] = [];
 
   for (const event of args.events) {
     let data: ConversationReportEventData | undefined;
-    if (event.data.type === "subagent_started") {
+    if (event.data.type === "tool_execution_started") {
+      toolStarts.set(event.data.toolCallId, event.seq);
+      data = { type: "tool_started", name: event.data.toolName };
+    } else if (event.data.type === "subagent_started") {
       subagentStarts.set(event.data.subagentInvocationId, event.seq);
+      const toolStartedSeq = event.data.parentToolCallId
+        ? toolStarts.get(event.data.parentToolCallId)
+        : undefined;
       data = {
         type: "subagent_started",
         childConversationId: event.data.childConversationId,
         subagentKind: event.data.subagentKind,
+        ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),
       };
     } else if (event.data.type === "subagent_ended") {
       const startedSeq = subagentStarts.get(event.data.subagentInvocationId);
@@ -105,6 +94,17 @@ export function projectConversationReportEvents(args: {
           outcome: event.data.outcome,
         };
       }
+    } else if (
+      event.data.type === "context_epoch_started" &&
+      event.data.reason === "handoff"
+    ) {
+      const toolStartedSeq = event.data.triggeringToolCallId
+        ? toolStarts.get(event.data.triggeringToolCallId)
+        : undefined;
+      data = {
+        type: "model_handoff",
+        ...(toolStartedSeq === undefined ? {} : { toolStartedSeq }),
+      };
     } else {
       data = reportEventData({
         canExposePayload: args.canExposePayload,

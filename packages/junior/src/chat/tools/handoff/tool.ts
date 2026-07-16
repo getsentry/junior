@@ -2,6 +2,7 @@ import { z } from "zod";
 import { juniorToolResultSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export const HANDOFF_TOOL_NAME = "handoff";
 
@@ -33,7 +34,7 @@ export function createHandoffTool(
     execute: async (input, options) => {
       const profile = input.profile ?? defaultProfile;
       if (!options.toolCallId) {
-        throw new Error("Handoff requires a tool call ID");
+        throw new ToolInputError("Handoff requires an active tool call ID");
       }
       await handoff.execute(profile, {
         ...(options.signal ? { signal: options.signal } : {}),

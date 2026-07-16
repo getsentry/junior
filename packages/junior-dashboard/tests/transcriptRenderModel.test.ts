@@ -102,6 +102,64 @@ describe("canonical event transcript reduction", () => {
     expect(message?.parts[0]).not.toHaveProperty("status");
   });
 
+  it("replaces only correlated tool starts with special lifecycle rows", () => {
+    const entries = groupTranscriptMessages(
+      conversationTranscriptMessages(
+        conversation([
+          event(0, "2026-01-01T00:00:00.000Z", {
+            type: "tool_started",
+            name: "advisor",
+          }),
+          event(1, "2026-01-01T00:00:01.000Z", {
+            type: "subagent_started",
+            childConversationId: "child-correlated",
+            subagentKind: "advisor",
+            toolStartedSeq: 0,
+          }),
+          event(2, "2026-01-01T00:00:02.000Z", {
+            type: "subagent_ended",
+            startedSeq: 1,
+            outcome: "success",
+          }),
+          event(3, "2026-01-01T00:00:03.000Z", {
+            type: "tool_started",
+            name: "advisor",
+          }),
+          event(4, "2026-01-01T00:00:04.000Z", {
+            type: "tool_started",
+            name: "handoff",
+          }),
+          event(5, "2026-01-01T00:00:05.000Z", {
+            type: "model_handoff",
+            toolStartedSeq: 4,
+          }),
+          event(6, "2026-01-01T00:00:06.000Z", {
+            type: "subagent_started",
+            childConversationId: "child-legacy",
+            subagentKind: "advisor",
+          }),
+          event(7, "2026-01-01T00:00:07.000Z", {
+            type: "model_handoff",
+          }),
+        ]),
+      ),
+    );
+
+    expect(
+      entries.map((entry) => ({
+        kind: entry.kind,
+        name: entry.kind === "tool" ? entry.part.name : undefined,
+        status: entry.kind === "subagent" ? entry.part.status : undefined,
+      })),
+    ).toEqual([
+      { kind: "subagent", name: undefined, status: "completed" },
+      { kind: "tool", name: "advisor", status: undefined },
+      { kind: "context", name: undefined, status: undefined },
+      { kind: "subagent", name: undefined, status: "running" },
+      { kind: "context", name: undefined, status: undefined },
+    ]);
+  });
+
   it("projects failures, context changes, and correlated child conversations", () => {
     const messages = conversationTranscriptMessages(
       conversation([
@@ -125,6 +183,7 @@ describe("canonical event transcript reduction", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
+          failureKind: "agent",
         }),
       ]),
     );
@@ -196,6 +255,7 @@ describe("canonical event transcript reduction", () => {
             type: "turn_lifecycle",
             turnId: "turn-1",
             state: "failed",
+            failureKind: "agent",
           }),
           event(4, "2026-01-01T00:00:04.000Z", {
             type: "turn_lifecycle",

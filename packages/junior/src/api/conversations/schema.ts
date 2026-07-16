@@ -81,27 +81,35 @@ const conversationReportToolStartedEventDataSchema = z
   })
   .strict();
 
-const conversationReportTurnLifecycleEventDataSchema = z
-  .object({
-    type: z.literal("turn_lifecycle"),
-    turnId: z.string().min(1),
-    state: z.enum(["started", "succeeded", "no_reply", "failed"]),
-  })
-  .strict();
+const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
+  "state",
+  [
+    z
+      .object({
+        type: z.literal("turn_lifecycle"),
+        turnId: z.string().min(1),
+        state: z.enum(["started", "succeeded", "no_reply"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("turn_lifecycle"),
+        turnId: z.string().min(1),
+        state: z.literal("failed"),
+        failureKind: z.enum(["agent", "delivery"]),
+      })
+      .strict(),
+  ],
+);
 
 const conversationReportContextCompactedEventDataSchema = z
   .object({ type: z.literal("context_compacted") })
   .strict();
 
 const conversationReportModelHandoffEventDataSchema = z
-  .object({ type: z.literal("model_handoff") })
-  .strict();
-
-const conversationReportDeliveryEventDataSchema = z
   .object({
-    type: z.literal("delivery"),
-    deliveryId: z.string().min(1),
-    state: z.enum(["intended", "accepted", "failed"]),
+    type: z.literal("model_handoff"),
+    toolStartedSeq: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -110,6 +118,7 @@ const conversationReportSubagentStartedEventDataSchema = z
     type: z.literal("subagent_started"),
     childConversationId: z.string().min(1),
     subagentKind: z.string().min(1),
+    toolStartedSeq: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -129,7 +138,6 @@ export const conversationReportEventDataSchema = z.discriminatedUnion("type", [
   conversationReportTurnLifecycleEventDataSchema,
   conversationReportContextCompactedEventDataSchema,
   conversationReportModelHandoffEventDataSchema,
-  conversationReportDeliveryEventDataSchema,
   conversationReportSubagentStartedEventDataSchema,
   conversationReportSubagentEndedEventDataSchema,
 ]);
