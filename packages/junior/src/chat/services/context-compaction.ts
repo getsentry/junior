@@ -85,6 +85,7 @@ interface HandoffContextArgs {
   piMessages: PiMessage[];
   runtimeContext: PiMessage[];
   signal?: AbortSignal;
+  triggeringToolCallId: string;
   target: {
     modelId: string;
     modelProfile: ModelProfile;
@@ -530,6 +531,7 @@ export async function compactContextForHandoff(
     reason: "handoff",
     modelProfile: args.target.modelProfile,
     modelId: args.target.modelId,
+    triggeringToolCallId: args.triggeringToolCallId,
     messages: [
       {
         message,
