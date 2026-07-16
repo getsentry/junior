@@ -1,13 +1,13 @@
 import { assistantMessages, describeEval, toolCalls } from "vitest-evals";
 import type { HarnessRun } from "vitest-evals/harness";
 import { expect } from "vitest";
-import { readEvalOAuthRefreshTokens } from "@junior-tests/msw/handlers/eval-oauth";
 import {
   authorizationCompletions,
   rubric,
   slackEvals,
   threadMessage,
 } from "../../src/helpers";
+import { readEvalEgressFixtureState } from "../../src/setup";
 
 type EvalRun = HarnessRun;
 
@@ -33,14 +33,22 @@ function expectEvalOauthIdentityCheck(result: EvalRun): void {
           skill_name: "eval-oauth",
         }),
       }),
-      expect.objectContaining({
-        name: "bash",
-        arguments: expect.objectContaining({
-          command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
-        }),
-      }),
     ]),
   );
+  expect(evalOauthIdentityCalls(result)).not.toHaveLength(0);
+}
+
+function evalOauthIdentityCalls(result: EvalRun) {
+  return toolCalls(result.session).filter((call) => {
+    const command = call.arguments?.command;
+    return (
+      call.name === "bash" &&
+      typeof command === "string" &&
+      command.includes(
+        "curl -fsSL https://example.com/junior-eval-oauth/whoami",
+      )
+    );
+  });
 }
 
 function matchingToolCalls(
@@ -185,11 +193,7 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
       },
     ]);
     expectEvalOauthIdentityCheck(result);
-    expect(
-      matchingToolCalls(result, "bash", {
-        command: "curl -fsSL https://example.com/junior-eval-oauth/whoami",
-      }).length,
-    ).toBeGreaterThanOrEqual(3);
+    expect(evalOauthIdentityCalls(result).length).toBeGreaterThanOrEqual(3);
     expectFinalThreadReply(result, oauthResumeThread, /\bFriday\b/i);
     expectFinalThreadReply(result, oauthResumeThread, /eval-oauth-user/i);
   });
@@ -228,7 +232,11 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
 
     expectEvalOauthIdentityCheck(result);
     expect(authorizationCompletions(result)).toEqual([]);
-    expect(readEvalOAuthRefreshTokens()).toEqual(["eval-oauth-refresh-token"]);
+    expect(
+      await readEvalEgressFixtureState<{
+        evalOAuthRefreshTokens: string[];
+      }>(),
+    ).toEqual({ evalOAuthRefreshTokens: ["eval-oauth-refresh-token"] });
     expectFinalThreadReply(result, oauthRefreshThread, /eval-oauth-user/i);
   });
 

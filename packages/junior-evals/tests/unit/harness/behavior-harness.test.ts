@@ -124,9 +124,12 @@ describe("behavior harness", () => {
   it("forwards the host signal into the eval agent policy", async () => {
     const controller = new AbortController();
 
-    await runEvalScenario({ initialEvents: [] }, {
-      signal: controller.signal,
-    });
+    await runEvalScenario(
+      { initialEvents: [] },
+      {
+        signal: controller.signal,
+      },
+    );
     await runtimeState.agentRunner?.run({ policy: {} });
 
     expect(executeAgentRunMock).toHaveBeenCalledWith(
@@ -195,37 +198,7 @@ describe("behavior harness", () => {
     expect(observedRuntimeIds.destinationChannelId).toBe("CAUTH");
   });
 
-  it("rejects sandbox HTTP interception evals without a tunnel token", async () => {
-    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
-    const previousTunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
-    process.env.JUNIOR_BASE_URL = "https://junior-eval.example.dev";
-    delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
-    try {
-      await expect(
-        runEvalScenario({
-          overrides: {
-            credential_providers: ["github"],
-          },
-          initialEvents: [],
-        }),
-      ).rejects.toThrow(
-        "Eval sandbox HTTP interception requires CLOUDFLARE_TUNNEL_TOKEN",
-      );
-    } finally {
-      if (previousBaseUrl === undefined) {
-        delete process.env.JUNIOR_BASE_URL;
-      } else {
-        process.env.JUNIOR_BASE_URL = previousBaseUrl;
-      }
-      if (previousTunnelToken === undefined) {
-        delete process.env.CLOUDFLARE_TUNNEL_TOKEN;
-      } else {
-        process.env.CLOUDFLARE_TUNNEL_TOKEN = previousTunnelToken;
-      }
-    }
-  });
-
-  it("does not retain the tunnel base URL for non-egress evals", async () => {
+  it("uses the suite-level base URL for eval scenarios", async () => {
     const previousBaseUrl = process.env.JUNIOR_BASE_URL;
     process.env.JUNIOR_BASE_URL = "https://junior-eval.example.dev";
     try {
@@ -248,30 +221,7 @@ describe("behavior harness", () => {
       });
 
       expect(observedRuntimeIds.juniorBaseUrl).toBe(
-        "https://junior.example.com",
-      );
-    } finally {
-      if (previousBaseUrl === undefined) {
-        delete process.env.JUNIOR_BASE_URL;
-      } else {
-        process.env.JUNIOR_BASE_URL = previousBaseUrl;
-      }
-    }
-  });
-
-  it("rejects sandbox HTTP interception evals without a sandbox-reachable base URL", async () => {
-    const previousBaseUrl = process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_BASE_URL;
-    try {
-      await expect(
-        runEvalScenario({
-          overrides: {
-            credential_providers: ["github"],
-          },
-          initialEvents: [],
-        }),
-      ).rejects.toThrow(
-        "Eval sandbox HTTP interception requires JUNIOR_BASE_URL",
+        "https://junior-eval.example.dev",
       );
     } finally {
       if (previousBaseUrl === undefined) {

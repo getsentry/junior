@@ -1,10 +1,17 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { loadJuniorTestEnvFiles } from "../junior/tests/fixtures/env";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
+const workspaceRoot = path.resolve(__dirname, "../..");
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
 const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 const schedulerPackageRoot = path.resolve(__dirname, "../junior-scheduler");
+
+loadJuniorTestEnvFiles({
+  workspaceRoot,
+  packageRoots: [juniorPackageRoot, __dirname],
+});
 
 export default defineConfig({
   resolve: {
@@ -27,7 +34,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    globalSetup: [path.resolve(__dirname, "postgres-global-setup.ts")],
     include: ["tests/**/*.test.ts"],
-    setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
+    setupFiles: [
+      path.resolve(juniorPackageRoot, "tests/msw/setup.ts"),
+      path.resolve(juniorPackageRoot, "tests/fixtures/postgres/setup.ts"),
+    ],
   },
 });

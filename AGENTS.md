@@ -7,10 +7,13 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Task                       | Command                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------ |
 | Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
+| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
 | Eval file                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts`                |
 | Eval case                  | `pnpm --filter @sentry/junior-evals evals path/to/eval.eval.ts -t "case name"` |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                          |
 | Release package alignment  | `pnpm release:check`                                                           |
+
+For local evals, run `pnpm dev:env` once, start dependencies with `docker compose up -d postgres redis`, and ensure `cloudflared` is on `PATH`. Use the eval commands above without manually binding environment variables; the eval config loads repository env files and provisions its Postgres test databases.
 
 ## Required Workflows
 

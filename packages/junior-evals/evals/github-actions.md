@@ -2,7 +2,7 @@
 
 Use this when you want PR evals to run in GitHub Actions.
 
-Current repo state: this is not intended to be configured right now. Keep this as future setup guidance unless we explicitly decide to turn PR evals on with real GitHub secrets.
+The workflow installs a pinned `cloudflared` binary and starts a unique Quick Tunnel for each eval job. No Cloudflare account secret or fixed public hostname is required.
 
 ## Required Secrets
 
@@ -57,7 +57,7 @@ Use:
 - `orgId` as `VERCEL_TEAM_ID`
 - `projectId` as `VERCEL_PROJECT_ID`
 
-Current local link metadata lives in [.vercel/project.json](/home/dcramer/src/junior/.vercel/project.json).
+Local link metadata lives in `.vercel/project.json`.
 
 ### `AI_GATEWAY_API_KEY`
 

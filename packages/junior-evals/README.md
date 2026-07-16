@@ -107,15 +107,20 @@ Pass eval file paths and `-t` filters directly after the `evals` script. Do not 
 - Adding the `trigger-evals` label triggers a run immediately; adding unrelated labels does not.
 - Eval-related files are:
   - `packages/junior-evals/evals/**`
+  - `packages/junior-evals/package.json`
+  - `packages/junior-evals/global-setup.ts`
+  - `packages/junior-evals/postgres-global-setup.ts`
+  - `packages/junior-evals/src/**`
+  - `packages/junior-evals/tests/**`
   - `packages/junior-evals/vitest.evals.config.ts`
   - `packages/junior/src/**`
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
-- Provider HTTP and generic OAuth evals also require `JUNIOR_BASE_URL` plus `CLOUDFLARE_TUNNEL_TOKEN` so Vercel Sandbox can reach the eval egress proxy.
-- This repo is not intended to configure those GitHub Actions secrets right now. The workflow support and setup doc are future-facing.
+- Eval global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
+- Eval state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
-Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval fails immediately (no local fallback path).
+Evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path.
 
 ## Authoring Rules
 
