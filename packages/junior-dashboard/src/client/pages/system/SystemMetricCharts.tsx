@@ -101,7 +101,7 @@ function MetricChart(props: {
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
   const values = days.map((day) => metricValue(day, chart.metric));
-  const maximum = Math.max(1, ...values);
+  const maximum = Math.max(Number.EPSILON, ...values);
   const step = plotWidth / Math.max(1, days.length);
   const points = values.map((value, index) => ({
     x: left + step * index + step / 2,

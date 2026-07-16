@@ -46,7 +46,6 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const DASHBOARD_QA_ADVISOR_CONVERSATION_ID = `junior:${DASHBOARD_QA_CONVERSATION_ID}:advisor_session`;
-const RECENT_CONVERSATION_STATS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -1193,7 +1192,10 @@ function conversationStatsReportFromSummaries(
   nowMs: number,
   summaries: ConversationSummaryReport[],
 ): ConversationStatsReport {
-  const windowStartMs = nowMs - RECENT_CONVERSATION_STATS_WINDOW_MS;
+  const windowStart = new Date(nowMs);
+  windowStart.setUTCHours(0, 0, 0, 0);
+  windowStart.setUTCDate(windowStart.getUTCDate() - 89);
+  const windowStartMs = windowStart.getTime();
   const conversations = summaries.filter((conversation) => {
     const lastSeenAt = Date.parse(conversation.lastSeenAt);
     return lastSeenAt >= windowStartMs && lastSeenAt <= nowMs;
