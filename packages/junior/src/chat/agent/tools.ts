@@ -268,9 +268,6 @@ export async function wireAgentTools(
       destination: toolDestination,
       actor:
         args.currentActor?.platform === "slack" ? args.currentActor : undefined,
-      ...(args.routing.slackActionToken
-        ? { slackActionToken: args.routing.slackActionToken }
-        : {}),
       source: runSource,
     };
   } else {
@@ -341,6 +338,7 @@ export async function wireAgentTools(
       },
     },
     toolRuntimeContext,
+    args.policy.additionalTools,
   );
 
   const plannedToolExposure = planToolExposure(

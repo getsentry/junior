@@ -4,6 +4,7 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
+import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
@@ -79,14 +80,9 @@ describe("Slack tool registration", () => {
   });
 
   it("registers channel-scope tools in shared channel context", () => {
-    const tools = createTools(
-      [],
-      {},
-      {
-        ...ctx("C12345"),
-        slackActionToken: "action-123",
-      },
-    );
+    const tools = createTools([], {}, ctx("C12345"), {
+      slackPublicSearch: createSlackPublicSearchTool("action-123"),
+    });
 
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).not.toHaveProperty("attachFile");
@@ -101,7 +97,7 @@ describe("Slack tool registration", () => {
     );
   });
 
-  it("does not register public search without an active Slack action token", () => {
+  it("does not register public search without a provider-supplied tool", () => {
     const tools = createTools([], {}, ctx("C12345"));
 
     expect(tools).not.toHaveProperty("slackPublicSearch");

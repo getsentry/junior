@@ -20,7 +20,6 @@ import {
 } from "@/chat/tools/resource-events";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationSearchTool } from "@/chat/slack/tools/conversation-search";
-import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tools/context";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSendMessageTool } from "@/chat/slack/tools/send-message";
@@ -90,6 +89,7 @@ export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
   context: ToolRuntimeContext,
+  additionalTools: Record<string, AnyToolDefinition> = {},
 ) {
   const state = createToolState(hooks, context);
   const slackContext = getSlackToolContext(context);
@@ -152,11 +152,6 @@ export function createTools(
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
-    const slackActionToken =
-      "slackActionToken" in context ? context.slackActionToken : undefined;
-    if (slackActionToken) {
-      tools.slackPublicSearch = createSlackPublicSearchTool(slackActionToken);
-    }
     if (context.conversationId && slackContext.source.type === "pub") {
       tools.searchConversationHistory = createSlackConversationSearchTool(
         {
@@ -204,6 +199,13 @@ export function createTools(
         state,
       );
     }
+  }
+
+  for (const [name, additionalTool] of Object.entries(additionalTools)) {
+    if (tools[name]) {
+      throw new Error(`Additional tool "${name}" conflicts with a core tool`);
+    }
+    tools[name] = additionalTool;
   }
 
   for (const [name, pluginTool] of Object.entries(getPluginTools(context))) {

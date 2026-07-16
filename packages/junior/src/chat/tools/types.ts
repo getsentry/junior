@@ -100,8 +100,6 @@ interface BaseToolRuntimeContext {
 interface SlackToolRuntimeContext extends BaseToolRuntimeContext {
   destination: SlackDestination;
   actor?: SlackActor;
-  /** Ephemeral token from the triggering Slack event for Real-time Search. */
-  slackActionToken?: string;
   source: SlackSource;
 }
 

@@ -27,6 +27,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
+import type { AnyToolDefinition } from "@/chat/tools/definition";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
@@ -75,8 +76,6 @@ export interface AgentRunRouting {
   credentialContext?: CredentialContext;
   actor?: Actor;
   source: Source;
-  /** Ephemeral action token from the active Slack interaction. Never persist. */
-  slackActionToken?: string;
   slackConversation?: SlackConversationContext;
   destination: Destination;
   surface?: AgentTurnSurface;
@@ -114,6 +113,8 @@ export interface AgentRunPolicy {
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
+  /** Ephemeral tools supplied by the provider boundary for this run slice. */
+  additionalTools?: Record<string, AnyToolDefinition>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;

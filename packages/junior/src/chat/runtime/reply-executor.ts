@@ -11,6 +11,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
+import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
   logException,
   getActiveTraceId,
@@ -1211,7 +1212,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               actor,
               slackConversation,
               source,
-              ...(slackActionToken ? { slackActionToken } : {}),
               destination,
               surface: "slack",
               correlation: {
@@ -1231,6 +1231,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             policy: {
               configuration: preparedState.configuration,
               channelConfiguration: preparedState.channelConfiguration,
+              ...(slackActionToken
+                ? {
+                    additionalTools: {
+                      slackPublicSearch:
+                        createSlackPublicSearchTool(slackActionToken),
+                    },
+                  }
+                : {}),
               authorizationFlowMode:
                 message.author.isBot === true ? "disabled" : undefined,
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
