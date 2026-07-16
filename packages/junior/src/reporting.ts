@@ -94,19 +94,12 @@ export async function readRuntimeInfoReport(): Promise<RuntimeInfoReport> {
 
 /** Read sanitized operational summaries contributed by plugins. */
 export async function readPluginOperationalReportFeed(): Promise<PluginOperationalReportFeed> {
-  const listRecent = async (listOptions?: { limit?: number }) => {
-    const { listRecentConversationSummaries } =
-      await import("./reporting/plugin-conversations");
-    return listRecentConversationSummaries(listOptions?.limit);
-  };
   const nowMs = Date.now();
   const { getPluginOperationalReports } =
     await import("@/chat/plugins/agent-hooks");
   return pluginOperationalReportFeedSchema.parse({
     source: "plugins",
     generatedAt: new Date(nowMs).toISOString(),
-    reports: await getPluginOperationalReports(nowMs, {
-      listRecent,
-    }),
+    reports: await getPluginOperationalReports(nowMs),
   });
 }

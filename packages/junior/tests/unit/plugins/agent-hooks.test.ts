@@ -4,7 +4,6 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   pluginToolResultSchema,
-  type PluginConversations,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -56,12 +55,6 @@ const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
 const TEST_EGRESS = {
   async fetch() {
     return new Response("ok");
-  },
-};
-
-const EMPTY_CONVERSATIONS: PluginConversations = {
-  async listRecent() {
-    return [];
   },
 };
 
@@ -882,7 +875,6 @@ describe("agent plugin hooks", () => {
             await expect(ctx.state.get("dashboard-test")).resolves.toBe(
               undefined,
             );
-            await expect(ctx.conversations.listRecent()).resolves.toEqual([]);
             return {
               title: "Agent Demo",
               metrics: [{ label: "active", value: "1" }],
@@ -893,65 +885,12 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginOperationalReports(123, EMPTY_CONVERSATIONS),
+        getPluginOperationalReports(123),
       ).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
           metrics: [{ label: "active", value: "1" }],
-        },
-      ]);
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("passes conversation reader to operational reports", async () => {
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          async operationalReport(ctx) {
-            const conversations = await ctx.conversations.listRecent({
-              limit: 1,
-            });
-            return {
-              title: "Agent Demo",
-              metrics: [
-                {
-                  label: "conversation",
-                  value: conversations[0]?.displayTitle ?? "missing",
-                },
-              ],
-            };
-          },
-        },
-      }),
-    ]);
-    try {
-      await expect(
-        getPluginOperationalReports(123, {
-          async listRecent() {
-            return [
-              {
-                conversationId: "slack:C1:111",
-                displayTitle: "Incident follow-up",
-                lastActivityAt: "2026-06-01T00:00:00.000Z",
-                lastUpdatedAt: "2026-06-01T00:00:00.000Z",
-                status: "completed",
-              },
-            ];
-          },
-        }),
-      ).resolves.toEqual([
-        {
-          pluginName: "agent-demo",
-          title: "Agent Demo",
-          metrics: [{ label: "conversation", value: "Incident follow-up" }],
         },
       ]);
     } finally {
@@ -991,7 +930,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginOperationalReports(123, EMPTY_CONVERSATIONS),
+        getPluginOperationalReports(123),
       ).resolves.toEqual([
         {
           pluginName: "agent-demo",

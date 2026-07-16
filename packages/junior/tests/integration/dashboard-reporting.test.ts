@@ -122,33 +122,6 @@ describe("dashboard reporting", () => {
     });
   });
 
-  it("lists recent conversations for plugin operational reports", async () => {
-    const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
-    const conversationStore = getConversationStore();
-
-    await conversationStore.recordActivity({
-      conversationId: "slack:C1:111",
-      channelName: "incidents",
-      destination: { platform: "slack", teamId: "T1", channelId: "C1" },
-      nowMs: 1_000,
-      source: "slack",
-      title: "Incident follow-up",
-      visibility: "public",
-    });
-
-    await expect(listRecentConversationSummaries()).resolves.toEqual([
-      expect.objectContaining({
-        channelName: "incidents",
-        conversationId: "slack:C1:111",
-        displayTitle: expect.any(String),
-        source: "slack",
-        status: "completed",
-      }),
-    ]);
-  });
-
   it("mirrors local turn sessions as local conversation summaries", async () => {
     const { recordAgentTurnSessionSummary } =
       await import("@/chat/state/turn-session");
@@ -175,84 +148,6 @@ describe("dashboard reporting", () => {
     ).resolves.toMatchObject({
       conversationId,
       source: "local",
-    });
-  });
-
-  it("redacts private conversation summaries", async () => {
-    const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
-    const conversationStore = getConversationStore();
-
-    await conversationStore.recordActivity({
-      conversationId: "slack:G1:222",
-      channelName: "private-incident-room",
-      nowMs: 1_000,
-      source: "slack",
-      title: "Sensitive escalation",
-    });
-
-    const summaries = await listRecentConversationSummaries();
-
-    expect(JSON.stringify(summaries)).not.toContain("private-incident-room");
-    expect(JSON.stringify(summaries)).not.toContain("Sensitive escalation");
-    expect(summaries[0]).toMatchObject({
-      conversationId: "slack:G1:222",
-      status: "completed",
-    });
-  });
-
-  it("redacts C-prefixed conversations Slack reports as private", async () => {
-    const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
-    const conversationStore = getConversationStore();
-
-    // Modern Slack private channels use C-prefixed ids; the event said
-    // channel_type: group, so the destination is confirmed private.
-    await conversationStore.recordActivity({
-      conversationId: "slack:C9:333",
-      channelName: "stealth-project",
-      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
-      nowMs: 1_000,
-      source: "slack",
-      title: "Stealth planning",
-      visibility: "private",
-    });
-
-    const summaries = await listRecentConversationSummaries();
-
-    expect(JSON.stringify(summaries)).not.toContain("stealth-project");
-    expect(JSON.stringify(summaries)).not.toContain("Stealth planning");
-    expect(summaries[0]).toMatchObject({
-      conversationId: "slack:C9:333",
-    });
-  });
-
-  it("redacts C-prefixed conversations without public visibility", async () => {
-    const { getConversationStore } = await import("@/chat/db");
-    const { listRecentConversationSummaries } =
-      await import("@/reporting/plugin-conversations");
-    const conversationStore = getConversationStore();
-
-    // Legacy-style row: no live signal ever marked this channel public.
-    await conversationStore.recordActivity({
-      conversationId: "slack:C9:444",
-      channelName: "maybe-private-room",
-      destination: { platform: "slack", teamId: "T1", channelId: "C9" },
-      nowMs: 1_000,
-      source: "slack",
-      title: "Private by default",
-    });
-
-    const summaries = await listRecentConversationSummaries();
-
-    expect(JSON.stringify(summaries)).not.toContain("maybe-private-room");
-    expect(JSON.stringify(summaries)).not.toContain("Private by default");
-    expect(summaries[0]).toMatchObject({
-      channelName: "Private Conversation",
-      channelNameRedacted: true,
-      displayTitle: "Private Conversation",
     });
   });
 

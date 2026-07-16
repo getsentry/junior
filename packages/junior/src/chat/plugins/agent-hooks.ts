@@ -1,6 +1,5 @@
 import { promptMessageSchema } from "@sentry/junior-plugin-api";
 import type {
-  PluginConversations,
   PluginReadState,
   PluginRoute,
   PluginRouteMethod,
@@ -833,7 +832,6 @@ function failedOperationalReport(args: {
 /** Collect read-only operational summaries exposed by plugins. */
 export async function getPluginOperationalReports(
   nowMs: number,
-  conversations: PluginConversations,
 ): Promise<PluginOperationalReport[]> {
   const reports: PluginOperationalReport[] = [];
   for (const plugin of getPlugins()) {
@@ -846,7 +844,6 @@ export async function getPluginOperationalReports(
       const state = createPluginState(pluginName);
       const report = await hook({
         ...basePluginContext(plugin),
-        conversations,
         nowMs,
         state: pluginReadState(state),
       });

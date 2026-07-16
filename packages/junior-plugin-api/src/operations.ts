@@ -4,36 +4,6 @@ import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 
-export type PluginConversationStatus =
-  | "active"
-  | "completed"
-  | "failed"
-  | "hung"
-  | "superseded";
-
-export interface PluginConversationSummary {
-  channelName?: string;
-  conversationId: string;
-  displayTitle: string;
-  lastActivityAt: string;
-  lastUpdatedAt: string;
-  source?:
-    | "api"
-    | "internal"
-    | "local"
-    | "plugin"
-    | "resource_event"
-    | "scheduler"
-    | "slack";
-  status: PluginConversationStatus;
-}
-
-export interface PluginConversations {
-  listRecent(options?: {
-    limit?: number;
-  }): Promise<PluginConversationSummary[]>;
-}
-
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
@@ -97,7 +67,6 @@ export interface PluginOperationalReport extends PluginOperationalReportContent 
 }
 
 export interface OperationalReportHookContext extends PluginContext {
-  conversations: PluginConversations;
   nowMs: number;
   state: PluginReadState;
 }
