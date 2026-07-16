@@ -1222,6 +1222,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             policy: {
               configuration: preparedState.configuration,
               channelConfiguration: preparedState.channelConfiguration,
+              // TODO: Move this into the Slack provider's tool registry once
+              // provider registration can accept per-turn ephemeral credentials.
+              // All Slack tools should be assembled by that registry rather than
+              // injecting token-bound tools through the generic agent seam.
               ...(slackActionToken
                 ? {
                     additionalTools: {
