@@ -31,6 +31,7 @@ import {
 import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
+import { logWarn } from "@/chat/logging";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -213,6 +214,18 @@ function parseAgentTurnSessionRecord(
 }
 
 function parseAgentTurnSessionSummary(value: unknown): AgentTurnSessionSummary {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "requester" in value
+  ) {
+    const { requester, ...summary } = value as Record<string, unknown>;
+    return agentTurnSessionSummarySchema.parse({
+      ...summary,
+      ...(summary.actor === undefined ? { actor: requester } : {}),
+    });
+  }
   return agentTurnSessionSummarySchema.parse(value);
 }
 
@@ -773,10 +786,25 @@ async function readAgentTurnSessionSummariesFromIndex(
   const summaries = new Map<string, AgentTurnSessionSummary>();
 
   for (const value of [...values].reverse()) {
-    const summary = parseAgentTurnSessionSummary(value);
-    const key = `${summary.conversationId}:${summary.sessionId}`;
-    if (!summaries.has(key)) {
-      summaries.set(key, summary);
+    let summary: AgentTurnSessionSummary;
+    try {
+      summary = parseAgentTurnSessionSummary(value);
+    } catch (error) {
+      logWarn(
+        "agent_turn_session_summary_parse_failed",
+        {},
+        {
+          "app.state.key": key,
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+        },
+        "Skipping an invalid turn-session summary index entry",
+      );
+      continue;
+    }
+    const summaryKey = `${summary.conversationId}:${summary.sessionId}`;
+    if (!summaries.has(summaryKey)) {
+      summaries.set(summaryKey, summary);
     }
   }
 

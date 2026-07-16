@@ -254,6 +254,50 @@ describe("persistAuthPauseSessionRecord", () => {
     );
   });
 
+  it("reads legacy requester summaries and skips invalid index entries", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { listBoundedAgentTurnSessionSummariesForConversation } =
+      await import("@/chat/state/turn-session");
+    const stateAdapter = getStateAdapter();
+    const conversationId = "slack:C123:legacy-summary";
+    const indexKey =
+      `junior:agent_turn_session:conversation:${conversationId}:index`;
+    const requester = {
+      platform: "slack",
+      teamId: "T123",
+      userId: "U123",
+      userName: "alice",
+    };
+
+    await stateAdapter.appendToList(indexKey, { invalid: true }, { ttlMs: 60_000 });
+    await stateAdapter.appendToList(
+      indexKey,
+      {
+        version: 1,
+        conversationId,
+        cumulativeDurationMs: 0,
+        lastProgressAtMs: 2,
+        requester,
+        sessionId: "turn-legacy-summary",
+        sliceId: 1,
+        startedAtMs: 1,
+        state: "awaiting_resume",
+        updatedAtMs: 3,
+      },
+      { ttlMs: 60_000 },
+    );
+
+    await expect(
+      listBoundedAgentTurnSessionSummariesForConversation(conversationId),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        actor: requester,
+        conversationId,
+        sessionId: "turn-legacy-summary",
+      }),
+    ]);
+  });
+
   it("materializes auth completion events appended after the pause record", async () => {
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
