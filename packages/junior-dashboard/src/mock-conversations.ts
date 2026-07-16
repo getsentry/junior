@@ -1200,6 +1200,17 @@ function conversationStatsReportFromSummaries(
   });
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
+  const metricDays = new Map<
+    string,
+    { costUsd?: number; date: string; durationMs: number; tokens?: number }
+  >();
+  for (let offset = 89; offset >= 0; offset -= 1) {
+    const date = new Date(nowMs);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    metricDays.set(key, { date: key, durationMs: 0 });
+  }
   let durationMs = 0;
   let costUsd: number | undefined;
   let tokens: number | undefined;
@@ -1210,6 +1221,17 @@ function conversationStatsReportFromSummaries(
     const conversationCostUsd = usageCostTotal(conversation.cumulativeUsage);
     const conversationTokens = usageTokenTotal(conversation.cumulativeUsage);
     durationMs += conversation.cumulativeDurationMs;
+    const date = conversation.lastSeenAt.slice(0, 10);
+    const metricDay = metricDays.get(date);
+    if (metricDay) {
+      metricDay.durationMs += conversation.cumulativeDurationMs;
+      if (conversationCostUsd !== undefined) {
+        metricDay.costUsd = addUsd(metricDay.costUsd, conversationCostUsd);
+      }
+      if (conversationTokens !== undefined) {
+        metricDay.tokens = (metricDay.tokens ?? 0) + conversationTokens;
+      }
+    }
     costUsd =
       conversationCostUsd === undefined
         ? costUsd
@@ -1235,6 +1257,7 @@ function conversationStatsReportFromSummaries(
     durationMs,
     failed,
     generatedAt: iso(nowMs),
+    metricDays: [...metricDays.values()],
     locations: statsItems(locations),
     actors: statsItems(actors),
     source: "conversation_index",

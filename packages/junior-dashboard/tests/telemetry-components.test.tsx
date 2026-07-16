@@ -75,6 +75,14 @@ function dashboardData(
         (conversation) => conversation.status === "failed",
       ).length,
       generatedAt: "2026-01-01T00:00:00.000Z",
+      metricDays: [
+        {
+          costUsd: 4.56,
+          date: "2026-01-01",
+          durationMs: 12_000,
+          tokens: 12_345,
+        },
+      ],
       locations: [],
       source: "conversation_index",
       tokens: 12_345,
@@ -1186,7 +1194,9 @@ describe("dashboard telemetry components", () => {
     );
 
     expect(systemHtml).toContain(">System<");
-    expect(systemHtml).toContain(">conversations<");
+    expect(systemHtml).toContain("Token usage");
+    expect(systemHtml).toContain("Model spend");
+    expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain(">12k<");
     expect(systemHtml).toContain(">$4.56<");
     expect(systemHtml).toContain(">Plugins<");
@@ -1432,29 +1442,8 @@ describe("dashboard telemetry components", () => {
       </MemoryRouter>,
     );
 
-    expect(html).toContain(
-      "Conversation metrics refresh failed. Showing cached data.",
-    );
-    expect(html).toContain("90-day pulse");
-  });
-
-  it("does not report a completion rate before any conversation finishes", () => {
-    const data = dashboardData([]);
-    data.conversationStats = {
-      ...data.conversationStats!,
-      active: 2,
-      conversations: 2,
-    };
-
-    const html = renderToStaticMarkup(
-      <MemoryRouter>
-        <SystemPage data={data} />
-      </MemoryRouter>,
-    );
-
-    expect(html).toContain("No terminal outcomes");
-    expect(html).not.toContain("100% healthy completion");
-    expect(html).not.toContain("undefined%");
+    expect(html).toContain("Metrics refresh failed. Showing cached data.");
+    expect(html).toContain("Usage over time");
   });
 
   it("renders system page when plugin reports are absent", () => {

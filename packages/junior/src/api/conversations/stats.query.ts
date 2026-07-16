@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -8,7 +8,11 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationAggregateColumns } from "./aggregate";
-import type { ConversationStatsItem, ConversationStatsReport } from "./schema";
+import type {
+  ConversationMetricDay,
+  ConversationStatsItem,
+  ConversationStatsReport,
+} from "./schema";
 
 const WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -120,9 +124,49 @@ function statsWhere(start: Date, end: Date) {
   );
 }
 
+function metricDays(
+  rows: Array<{
+    costUsd: number | null;
+    date: string;
+    durationMs: number;
+    tokens: number | null;
+  }>,
+  endMs: number,
+): ConversationMetricDay[] {
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const end = new Date(endMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 89);
+  const days: ConversationMetricDay[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    const date = cursor.toISOString().slice(0, 10);
+    const row = byDate.get(date);
+    days.push({
+      date,
+      durationMs: row?.durationMs ?? 0,
+      ...(row?.costUsd !== null && row?.costUsd !== undefined
+        ? { costUsd: row.costUsd }
+        : {}),
+      ...(row?.tokens !== null && row?.tokens !== undefined
+        ? { tokens: row.tokens }
+        : {}),
+    });
+  }
+  return days;
+}
+
 async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   const where = statsWhere(start, end);
-  const [totalsRows, actorRows, locationRows] = await Promise.all([
+  const activityDate = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD'
+  )`;
+  const [totalsRows, actorRows, locationRows, metricRows] = await Promise.all([
     db
       .select(conversationAggregateColumns())
       .from(juniorConversations)
@@ -176,15 +220,25 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
         juniorDestinations.provider,
         juniorDestinations.visibility,
       ),
+    db
+      .select({
+        costUsd: conversationAggregateColumns().costUsd,
+        date: activityDate,
+        durationMs: conversationAggregateColumns().durationMs,
+        tokens: conversationAggregateColumns().tokens,
+      })
+      .from(juniorConversations)
+      .where(where)
+      .groupBy(activityDate),
   ]);
-  return { actorRows, locationRows, totals: totalsRows[0] };
+  return { actorRows, locationRows, metricRows, totals: totalsRows[0] };
 }
 
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
   const windowStartMs = nowMs - WINDOW_MS;
-  const { actorRows, locationRows, totals } = await aggregateStats(
+  const { actorRows, locationRows, metricRows, totals } = await aggregateStats(
     getDb(),
     new Date(windowStartMs),
     new Date(nowMs),
@@ -205,6 +259,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     durationMs: totals?.durationMs ?? 0,
     failed: totals?.failed ?? 0,
     generatedAt: new Date(nowMs).toISOString(),
+    metricDays: metricDays(metricRows, nowMs),
     locations: statsItems(locations),
     actors: statsItems(actors),
     source: "conversation_index",
