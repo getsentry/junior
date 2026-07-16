@@ -480,7 +480,10 @@ async function executeAgentRunInPrivacyContext(
       activeModelProfile === STANDARD_MODEL_PROFILE && sessionConversationId
         ? {
             profiles: handoffProfiles,
-            execute: async (profile: ModelProfile, signal?: AbortSignal) => {
+            execute: async (
+              profile: ModelProfile,
+              options: { signal?: AbortSignal; toolCallId: string },
+            ) => {
               const sourceMessages = [...agent!.state.messages];
               const runtimeContext = retainRuntimeTurnContext(sourceMessages);
               const standardPhaseUsage = extractGenAiUsageSummary(
@@ -518,7 +521,8 @@ async function executeAgentRunInPrivacyContext(
                   conversationId: sessionConversationId,
                   piMessages: sourceMessages,
                   runtimeContext,
-                  signal,
+                  signal: options.signal,
+                  triggeringToolCallId: options.toolCallId,
                   target,
                   metadata: {
                     threadId: routing.correlation?.threadId,

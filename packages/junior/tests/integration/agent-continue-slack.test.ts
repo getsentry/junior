@@ -1347,6 +1347,7 @@ describe("agent continuation Slack integration", () => {
       modelId: "test/model",
       reason: "handoff",
       modelProfile: "handoff",
+      triggeringToolCallId: "recovered-handoff-call",
       messages: [
         {
           message: summaryMessage,

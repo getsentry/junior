@@ -272,6 +272,7 @@ describe("context compaction projection reset", () => {
         conversationId,
         piMessages: priorMessages,
         runtimeContext,
+        triggeringToolCallId: "handoff-call-1",
         target: {
           modelId: botConfig.modelProfiles.handoff,
           modelProfile: "handoff",
@@ -315,6 +316,7 @@ describe("context compaction projection reset", () => {
       reason: "handoff",
       modelProfile: "handoff",
       modelId: botConfig.modelProfiles.handoff,
+      triggeringToolCallId: "handoff-call-1",
     });
 
     const compactor = createContextCompactor({
@@ -398,6 +400,7 @@ describe("context compaction projection reset", () => {
               "<runtime-turn-context>\nFresh runtime context\n</runtime-turn-context>",
             ),
           ],
+          triggeringToolCallId: "failed-handoff-call",
           target: {
             modelId: "test/handoff",
             modelProfile: "handoff",
@@ -439,6 +442,7 @@ describe("context compaction projection reset", () => {
             "<runtime-turn-context>\nCurrent runtime context\n</runtime-turn-context>",
           ),
         ],
+        triggeringToolCallId: "latest-context-handoff-call",
         target,
       },
       { completeText },
@@ -452,6 +456,7 @@ describe("context compaction projection reset", () => {
           conversationId: "conversation-missing-runtime-context",
           piMessages: [user("Implement the change.")],
           runtimeContext: [],
+          triggeringToolCallId: "missing-context-handoff-call",
           target,
         },
         { completeText },
@@ -484,6 +489,7 @@ describe("context compaction projection reset", () => {
             ),
           ],
           signal: controller.signal,
+          triggeringToolCallId: "aborted-handoff-call",
           target: {
             modelId: "test/handoff",
             modelProfile: "handoff",

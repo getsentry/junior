@@ -53,6 +53,18 @@ const contextEpochStartedEventDataSchema = z.union([
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
+      // TODO(v0.104.0): Remove the uncorrelated deployed marker shape after
+      // those rows pass the retention horizon.
+      triggeringToolCallId: z.undefined().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("context_epoch_started"),
+      reason: z.literal("handoff"),
+      modelProfile: handoffModelProfileSchema,
+      modelId: z.string().min(1),
+      triggeringToolCallId: z.string().min(1),
     })
     .strict(),
   z
@@ -114,6 +126,7 @@ export const contextEpochStartSchema = z.discriminatedUnion("reason", [
       reason: z.literal("handoff"),
       modelProfile: handoffModelProfileSchema,
       modelId: z.string().min(1),
+      triggeringToolCallId: z.string().min(1),
       messages: z.array(contextEpochMessageSchema),
     })
     .strict(),

@@ -246,6 +246,7 @@ describe("executeAgentRun model handoff", () => {
         reason: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
+        triggeringToolCallId: "handoff-call-1",
       },
     ]);
     const projection = await loadProjection({ conversationId });
@@ -380,6 +381,7 @@ describe("executeAgentRun model handoff", () => {
         reason: "handoff",
         modelProfile: "coding",
         modelId: "openai/gpt-5.4",
+        triggeringToolCallId: "handoff-call-1",
       },
     ]);
 
@@ -467,6 +469,7 @@ describe("executeAgentRun model handoff", () => {
         reason: "handoff",
         modelProfile: "handoff",
         modelId: "openai/gpt-5.6-sol",
+        triggeringToolCallId: "handoff-call-1",
       },
     ]);
   });

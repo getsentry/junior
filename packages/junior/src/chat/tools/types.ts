@@ -22,7 +22,10 @@ import type { ModelProfile } from "@/chat/model-profile";
 interface HandoffControl {
   /** Non-empty catalog with the default target first. */
   profiles: readonly [ModelProfile, ...ModelProfile[]];
-  execute: (profile: ModelProfile, signal?: AbortSignal) => Promise<void>;
+  execute: (
+    profile: ModelProfile,
+    options: { signal?: AbortSignal; toolCallId: string },
+  ) => Promise<void>;
 }
 
 export interface ImageGenerateToolDeps {

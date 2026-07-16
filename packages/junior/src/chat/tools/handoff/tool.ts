@@ -32,7 +32,13 @@ export function createHandoffTool(
     outputSchema: handoffResultSchema,
     execute: async (input, options) => {
       const profile = input.profile ?? defaultProfile;
-      await handoff.execute(profile, options.signal);
+      if (!options.toolCallId) {
+        throw new Error("Handoff requires a tool call ID");
+      }
+      await handoff.execute(profile, {
+        ...(options.signal ? { signal: options.signal } : {}),
+        toolCallId: options.toolCallId,
+      });
       return {
         ok: true,
         status: "success" as const,

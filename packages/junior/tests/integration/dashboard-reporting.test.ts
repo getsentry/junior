@@ -141,6 +141,7 @@ async function appendVisibleHistory(
     reason: "handoff",
     modelProfile: "fast",
     modelId: "private-handoff-model-id",
+    triggeringToolCallId: `${conversationId}:handoff-tool-call`,
     messages: [],
   });
 }

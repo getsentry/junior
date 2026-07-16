@@ -82,8 +82,18 @@ it("accepts legacy markers and validates current profile names", () => {
       type: "context_epoch_started",
       reason: "handoff",
       modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
     }).success,
-  ).toBe(false);
+  ).toBe(true);
+  expect(
+    conversationEventDataSchema.safeParse({
+      type: "context_epoch_started",
+      reason: "handoff",
+      modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
+      triggeringToolCallId: "handoff-call-1",
+    }).success,
+  ).toBe(true);
   expect(
     conversationEventDataSchema.safeParse({
       type: "context_epoch_started",
@@ -258,6 +268,7 @@ it("rejects incomplete markers through the epoch boundary", async () => {
     getConversationEventStore().startEpoch(conversationId, {
       reason: "handoff",
       modelProfile: "handoff",
+      modelId: "openai/gpt-5.6-sol",
       messages: [],
     } as never),
   ).rejects.toThrow("Invalid input");
