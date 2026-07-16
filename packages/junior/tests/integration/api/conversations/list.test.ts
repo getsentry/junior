@@ -126,7 +126,7 @@ describe("conversation list API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordActivity({
         actor: {
           email: "other@example.com",

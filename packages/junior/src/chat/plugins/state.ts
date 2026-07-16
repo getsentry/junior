@@ -9,7 +9,8 @@ function hashKeyPart(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 32);
 }
 
-function pluginStateKey(plugin: string, key: string): string {
+/** Resolve one logical plugin key to its isolated host-state key. */
+export function pluginStateKey(plugin: string, key: string): string {
   const pluginPrefix = `junior:${plugin}`;
   if (key === pluginPrefix || key.startsWith(`${pluginPrefix}:`)) {
     return key;
@@ -17,7 +18,8 @@ function pluginStateKey(plugin: string, key: string): string {
   return `junior:plugin_state:${hashKeyPart(plugin)}:${hashKeyPart(key)}`;
 }
 
-function validatePluginStateKey(key: string): void {
+/** Validate one logical plugin state key before namespacing it. */
+export function validatePluginStateKey(key: string): void {
   if (!key.trim()) {
     throw new Error("Plugin state key is required");
   }

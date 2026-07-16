@@ -398,7 +398,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const context = {
         io: { info: () => {} },
         stateAdapter,
@@ -455,7 +455,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       for (let index = 0; index < 3; index++) {
         const conversationId = `slack:C123:page-${index}`;
         await appendInboundMessage({
@@ -496,7 +496,7 @@ export const plugins = {
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const seedMs = Date.now() - 1_000;
       await sqlStore.recordExecution({
         conversationId: CONVERSATION_ID,
@@ -691,7 +691,7 @@ WHERE conversation_id = $1
     } as PiMessage;
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await sqlStore.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -869,7 +869,7 @@ WHERE conversation_id = $1
     const conversationIds = ["local:usage-batch-a", "local:usage-batch-b"];
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       for (const [index, conversationId] of conversationIds.entries()) {
         await sqlStore.recordExecution({
           conversationId,
@@ -1004,7 +1004,7 @@ WHERE conversation_id = $1
     const eventStore = createSqlConversationEventStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await sqlStore.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
@@ -1300,7 +1300,7 @@ WHERE conversation_id = $1
     const sqlStore = createSqlStore(fixture.sql);
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const context = {
         io: { info: () => {} },
         stateAdapter,

@@ -77,16 +77,16 @@ interface RunAllMigrationJournalOptions extends RunMigrationJournalBaseOptions {
   mode?: "all";
 }
 
-interface RunSqlMigrationJournalOptions extends RunMigrationJournalBaseOptions {
+interface RunSchemaBootstrapMigrationJournalOptions extends RunMigrationJournalBaseOptions {
   createContext?: never;
   loadTypeScript?: never;
-  mode: "sql";
+  mode: "schema-bootstrap";
 }
 
 /** Host capabilities and execution mode for one mixed migration journal. */
 export type RunMigrationJournalOptions =
   | RunAllMigrationJournalOptions
-  | RunSqlMigrationJournalOptions;
+  | RunSchemaBootstrapMigrationJournalOptions;
 
 function identifier(value: string): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(value)) {
@@ -345,7 +345,7 @@ export async function runMigrationJournal(
           result.existing += 1;
           continue;
         }
-        if (mode === "sql" && migration.kind === "typescript") {
+        if (mode === "schema-bootstrap" && migration.kind === "typescript") {
           result.skipped += 1;
           continue;
         }

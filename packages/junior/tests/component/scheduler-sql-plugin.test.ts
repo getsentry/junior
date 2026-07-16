@@ -17,7 +17,11 @@ import {
 import schedulerStateToSqlMigration from "../../../junior-scheduler/migrations/0002_scheduler_state_to_sql";
 import { createSchedulerStore } from "../../../junior-scheduler/src/store";
 import { defineJuniorPlugins } from "@/plugins";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { createPluginMigrationStateV1 } from "@/chat/plugins/migration-state";
+import {
+  bootstrapPluginSchemas,
+  migratePluginSchemas,
+} from "@/chat/plugins/migrations";
 import { createPluginState } from "@/chat/plugins/state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { migratePluginJournals } from "@/cli/upgrade/migrations/plugin-journal";
@@ -68,7 +72,7 @@ function memoryMigrationsDir(): string {
 async function migrateSchedulerSchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: schedulerMigrationsDir(),
       pluginName: "scheduler",
@@ -87,7 +91,7 @@ async function runSchedulerStateMigration(args: {
       load: async () => undefined,
       save: async () => {},
     },
-    state: args.stateAdapter as unknown as MigrationContextV1["state"],
+    state: createPluginMigrationStateV1("scheduler", args.stateAdapter),
   });
 }
 
@@ -129,6 +133,127 @@ describe("scheduler SQL plugin storage", () => {
   afterEach(async () => {
     NEON.sql = undefined;
     await disconnectStateAdapter();
+  });
+
+  it("scopes migration state while preserving plugin legacy keys", async () => {
+    const stateAdapter = createMemoryState();
+    await stateAdapter.connect();
+    const state = createPluginMigrationStateV1("scheduler", stateAdapter);
+
+    try {
+      await stateAdapter.set("global-key", "global-value");
+      await stateAdapter.set("junior:memory:secret", "memory-value");
+      await state.set("global-key", "scheduler-value");
+      await state.set("junior:scheduler:legacy", "legacy-value");
+
+      await expect(state.get("global-key")).resolves.toBe("scheduler-value");
+      await expect(stateAdapter.get("global-key")).resolves.toBe(
+        "global-value",
+      );
+      await expect(state.get("junior:memory:secret")).resolves.toBeUndefined();
+      await expect(state.get("junior:scheduler:legacy")).resolves.toBe(
+        "legacy-value",
+      );
+      await expect(stateAdapter.get("junior:scheduler:legacy")).resolves.toBe(
+        "legacy-value",
+      );
+
+      await stateAdapter.appendToList("global-list", "global-item");
+      await state.appendToList("global-list", "scheduler-item");
+      await expect(state.getList("global-list")).resolves.toEqual([
+        "scheduler-item",
+      ]);
+      await expect(stateAdapter.getList("global-list")).resolves.toEqual([
+        "global-item",
+      ]);
+
+      const scopedLock = await state.acquireLock("migration-lock", 1_000);
+      const globalLock = await stateAdapter.acquireLock(
+        "migration-lock",
+        1_000,
+      );
+      expect(scopedLock).not.toBeNull();
+      expect(globalLock).not.toBeNull();
+      if (scopedLock) {
+        await state.releaseLock(scopedLock);
+      }
+      if (globalLock) {
+        await stateAdapter.releaseLock(globalLock);
+      }
+    } finally {
+      await stateAdapter.disconnect();
+    }
+  });
+
+  it("passes scoped state through the plugin migration host", async () => {
+    const stateAdapter = createMemoryState();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const migrationsDir = mkdtempSync(
+      path.join(tmpdir(), "junior-plugin-state-migration-"),
+    );
+    mkdirSync(path.join(migrationsDir, "meta"));
+    writeFileSync(
+      path.join(migrationsDir, "meta", "_journal.json"),
+      JSON.stringify({
+        version: "7",
+        dialect: "postgresql",
+        entries: [
+          {
+            idx: 0,
+            version: "7",
+            when: 2_026_071_600_003,
+            tag: "0000_state_scope",
+            breakpoints: true,
+          },
+        ],
+      }),
+    );
+    writeFileSync(
+      path.join(migrationsDir, "0000_state_scope.ts"),
+      "export default { apiVersion: 1, async up() {} };\n",
+    );
+    const observed: unknown[] = [];
+
+    try {
+      await stateAdapter.set("global-key", "global-value");
+      await stateAdapter.set("junior:other:secret", "other-value");
+      await migratePluginSchemas(
+        fixture.sql,
+        [{ dir: migrationsDir, pluginName: "isolation" }],
+        {
+          mode: "all",
+          stateAdapter,
+          loadTypeScript: async () => ({
+            default: {
+              apiVersion: 1,
+              async up(context: MigrationContextV1) {
+                observed.push(
+                  await context.state.get("global-key"),
+                  await context.state.get("junior:other:secret"),
+                );
+                await context.state.set("global-key", "scoped-value");
+                return { scoped: true };
+              },
+            },
+          }),
+        },
+      );
+
+      expect(observed).toEqual([undefined, undefined]);
+      await expect(stateAdapter.get("global-key")).resolves.toBe(
+        "global-value",
+      );
+      await expect(
+        createPluginMigrationStateV1("isolation", stateAdapter).get(
+          "global-key",
+        ),
+      ).resolves.toBe("scoped-value");
+    } finally {
+      rmSync(migrationsDir, { force: true, recursive: true });
+      await stateAdapter.disconnect();
+      await fixture.close();
+    }
   });
 
   it("adopts deployed scheduler schema state into its Drizzle journal", async () => {
@@ -191,7 +316,7 @@ INSERT INTO junior_scheduler_tasks (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -229,7 +354,7 @@ ORDER BY created_at
       });
       expect(migratedTask?.record).not.toHaveProperty("credentialSubject");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: schedulerMigrationsDir(),
             pluginName: "scheduler",
@@ -272,12 +397,14 @@ ORDER BY created_at
       (migration) => migration.kind === "sql",
     ).length;
     try {
-      await expect(migratePluginSchemas(fixture.sql, roots)).resolves.toEqual({
-        existing: 0,
-        migrated: sqlMigrationCount,
-        scanned: migrationCount,
-        skipped: 1,
-      });
+      await expect(bootstrapPluginSchemas(fixture.sql, roots)).resolves.toEqual(
+        {
+          existing: 0,
+          migrated: sqlMigrationCount,
+          scanned: migrationCount,
+          skipped: 1,
+        },
+      );
       const migrationTables = await fixture.sql.query<{ tablename: string }>(`
 SELECT tablename
 FROM pg_tables
@@ -287,7 +414,7 @@ ORDER BY tablename
 `);
       expect(migrationTables).toHaveLength(2);
       await expect(
-        migratePluginSchemas(fixture.sql, [...roots].reverse()),
+        bootstrapPluginSchemas(fixture.sql, [...roots].reverse()),
       ).resolves.toEqual({
         existing: sqlMigrationCount,
         migrated: 0,
@@ -312,12 +439,12 @@ ORDER BY tablename
 
     try {
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: missingJournal, pluginName: "missing" },
         ]),
       ).rejects.toThrow("Can't find meta/_journal.json file");
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           { dir: invalidJournal, pluginName: "invalid" },
         ]),
       ).rejects.toThrow("Expected property name");

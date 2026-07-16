@@ -12,7 +12,7 @@ describe("conversation search", () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const conversations = createSqlStore(fixture.sql);
       const events = createSqlConversationEventStore(fixture.sql);
       const search = createSqlConversationSearchStore(fixture.sql);

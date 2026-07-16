@@ -8,6 +8,7 @@ and key resolution. They must not contain one-off migration decisions or data
 transforms. Logic such as mapping one retired record shape into another belongs
 only in the journal entry that performs that migration.
 
-Never change the behavior or signature of an existing version in a way that can
-break a pending migration. Add a new versioned entrypoint when the helper
-contract must change.
+The behavior and signature of an existing version are permanent compatibility
+contracts. Add a new versioned entrypoint when that contract must change.
+Migration files may be updated while still unreleased, but shipped migration
+sources are hash-verified ledger entries and must remain immutable.

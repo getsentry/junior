@@ -14,7 +14,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { migratePluginSchemas } from "@/chat/plugins/migrations";
+import { bootstrapPluginSchemas } from "@/chat/plugins/migrations";
 import { closeDb } from "@/chat/db";
 import { migratePluginJournals } from "@/cli/upgrade/migrations/plugin-journal";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -86,7 +86,7 @@ function memoryMigrationFiles(): string[] {
 async function migrateMemorySchema(
   fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
 ) {
-  await migratePluginSchemas(fixture.sql, [
+  await bootstrapPluginSchemas(fixture.sql, [
     {
       dir: memoryMigrationsDir(),
       pluginName: "memory",
@@ -128,7 +128,7 @@ CREATE TABLE junior_schema_migrations (
       }
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",
@@ -165,7 +165,7 @@ CREATE TABLE junior_schema_migrations (
       );
 
       await expect(
-        migratePluginSchemas(fixture.sql, [
+        bootstrapPluginSchemas(fixture.sql, [
           {
             dir: memoryMigrationsDir(),
             pluginName: "memory",

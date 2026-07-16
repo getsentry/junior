@@ -16,7 +16,7 @@ describe("conversation stats API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       await store.recordActivity({
         conversationId: "slack:C1:recent",
         channelName: "proj-alpha",
@@ -203,7 +203,7 @@ describe("conversation stats API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
-      await migrateSchema(fixture.sql);
+      await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
       const now = new Date("2026-06-15T11:00:00.000Z");
       await fixture.sql
         .db()

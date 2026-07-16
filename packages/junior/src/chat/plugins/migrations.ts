@@ -7,7 +7,7 @@ import {
   type TypeScriptMigrationLoader,
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
-import { createMigrationStateV1 } from "@/chat/migrations/state-v1";
+import { createPluginMigrationStateV1 } from "@/chat/plugins/migration-state";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
 interface PluginMigrationRoot {
@@ -24,7 +24,7 @@ type PluginMigrationResult = {
 };
 
 type PluginMigrationOptions =
-  | { mode?: "sql" }
+  | { mode: "schema-bootstrap" }
   | {
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
   roots: readonly PluginMigrationRoot[],
-  options: PluginMigrationOptions = { mode: "sql" },
+  options: PluginMigrationOptions,
 ): Promise<PluginMigrationResult> {
   const result: PluginMigrationResult = {
     existing: 0,
@@ -169,12 +169,15 @@ export async function migratePluginSchemas(
             database: executor,
             log: options.log ?? (() => {}),
             progress,
-            state: createMigrationStateV1(options.stateAdapter),
+            state: createPluginMigrationStateV1(
+              root.pluginName,
+              options.stateAdapter,
+            ),
           }),
           loadTypeScript: options.loadTypeScript,
           mode: "all",
         })
-      : await runMigrationJournal({ ...baseOptions, mode: "sql" });
+      : await runMigrationJournal({ ...baseOptions, mode: "schema-bootstrap" });
     result.scanned += pluginResult.scanned;
     result.existing += pluginResult.existing;
     result.migrated += pluginResult.migrated;
@@ -183,4 +186,14 @@ export async function migratePluginSchemas(
     }
   }
   return result;
+}
+
+/** Construct enabled plugins' latest SQL schemas without running data entries. */
+export async function bootstrapPluginSchemas(
+  executor: JuniorSqlMigrationExecutor,
+  roots: readonly PluginMigrationRoot[],
+): Promise<PluginMigrationResult> {
+  return await migratePluginSchemas(executor, roots, {
+    mode: "schema-bootstrap",
+  });
 }

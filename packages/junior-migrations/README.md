@@ -36,9 +36,18 @@ provide the host database adapter, state adapter, and TypeScript loader. The
 same database adapter drives the journal ledger and is exposed as
 `context.database`, so migration files never own connection or driver setup.
 
+Normal upgrades run with `mode: "all"` and execute every SQL and TypeScript
+entry in journal order. `mode: "schema-bootstrap"` is reserved for constructing
+an empty database at the latest schema in tests or bootstrap tooling. It skips
+TypeScript data migrations while executing SQL entries across the full journal,
+so it must not be used to upgrade an existing installation.
+
 The runner rejects runtime imports of application source, relative modules,
 and unversioned `@sentry/junior` modules. Migrations may import the append-only
 `@sentry/junior/migration-helpers/v1` surface for parsing primitives, adapters,
 stores, and key resolution. One-off migration decisions and data transforms
 must still remain in the journal entry. Add a new helper or capability version
 rather than changing an existing contract.
+
+This source validation is an authoring guard for trusted packaged migration
+code, not a security sandbox for untrusted scripts.

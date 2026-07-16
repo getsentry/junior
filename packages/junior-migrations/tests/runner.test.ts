@@ -197,7 +197,7 @@ describe("runMigrationJournal", () => {
     ).resolves.toEqual({ existing: 3, migrated: 0, scanned: 3, skipped: 0 });
   });
 
-  it("allows schema-only execution to leave a TypeScript gap pending", async () => {
+  it("bootstraps the latest schema while leaving TypeScript entries pending", async () => {
     const folder = await mixedFolder();
     const executor = new FakeExecutor();
 
@@ -206,10 +206,39 @@ describe("runMigrationJournal", () => {
         executor,
         migrationsFolder: folder,
         migrationsTable: "__drizzle_test",
-        mode: "sql",
+        mode: "schema-bootstrap",
       }),
     ).resolves.toEqual({ existing: 0, migrated: 2, scanned: 3, skipped: 1 });
     expect([...executor.rows.keys()].sort()).toEqual([2_000, 2_002]);
+    expect(executor.statements).toEqual([
+      "SELECT 'schema-zero';",
+      "SELECT 'schema-two';",
+    ]);
+
+    const migration: MigrationV1 = {
+      apiVersion: 1,
+      async up() {
+        return { backfilled: true };
+      },
+    };
+    await expect(
+      runMigrationJournal({
+        executor,
+        migrationsFolder: folder,
+        migrationsTable: "__drizzle_test",
+        loadTypeScript: async () => ({ default: migration }),
+        createContext: ({ progress }) => ({
+          database: executor,
+          log: () => {},
+          progress,
+          state: fakeMigrationState(),
+        }),
+      }),
+    ).resolves.toEqual({ existing: 2, migrated: 1, scanned: 3, skipped: 0 });
+    expect(executor.statements).toEqual([
+      "SELECT 'schema-zero';",
+      "SELECT 'schema-two';",
+    ]);
   });
 
   it("resumes a failed TypeScript migration from saved progress", async () => {

@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS drizzle.__drizzle_junior_core (
 }
 
 export type MigrateSchemaOptions =
-  | { mode?: "sql" }
+  | { mode: "schema-bootstrap" }
   | {
       loadTypeScript: TypeScriptMigrationLoader;
       log?: MigrationContextV1["log"];
@@ -196,10 +196,10 @@ export type MigrateSchemaOptions =
 
 export { schema };
 
-/** Apply the packaged mixed migration journal, or SQL entries alone in tests. */
+/** Apply all migrations, or bootstrap an empty test database to the latest schema. */
 export async function migrateSchema(
   executor: JuniorSqlMigrationExecutor,
-  options: MigrateSchemaOptions = { mode: "sql" },
+  options: MigrateSchemaOptions,
 ): Promise<MigrationRunResult> {
   const migrationsFolder = migrationFolder();
   const runAll = options.mode === "all";
@@ -212,7 +212,10 @@ export async function migrateSchema(
     migrationsTable: MIGRATIONS_TABLE,
   };
   if (!runAll) {
-    return await runMigrationJournal({ ...baseOptions, mode: "sql" });
+    return await runMigrationJournal({
+      ...baseOptions,
+      mode: "schema-bootstrap",
+    });
   }
   return await runMigrationJournal({
     ...baseOptions,

@@ -132,7 +132,7 @@ describe("retention purge job", () => {
 
   beforeEach(async () => {
     fixture = await createLocalJuniorSqlFixture();
-    await migrateSchema(fixture.sql);
+    await migrateSchema(fixture.sql, { mode: "schema-bootstrap" });
   });
 
   afterEach(async () => {
