@@ -12,7 +12,6 @@ import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import { readSlackActionToken } from "@/chat/slack/action-token";
-import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
   logException,
   getActiveTraceId,
@@ -1218,22 +1217,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 actorId: slackActorId,
               },
               toolChannelId,
+              slackActionToken,
             },
             policy: {
               configuration: preparedState.configuration,
               channelConfiguration: preparedState.channelConfiguration,
-              // TODO: Move this into the Slack provider's tool registry once
-              // provider registration can accept per-turn ephemeral credentials.
-              // All Slack tools should be assembled by that registry rather than
-              // injecting token-bound tools through the generic agent seam.
-              ...(slackActionToken
-                ? {
-                    additionalTools: {
-                      slackPublicSearch:
-                        createSlackPublicSearchTool(slackActionToken),
-                    },
-                  }
-                : {}),
               authorizationFlowMode:
                 message.author.isBot === true ? "disabled" : undefined,
               turnDeadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,

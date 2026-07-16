@@ -27,7 +27,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PiMessageProvenance } from "@/chat/state/session-log";
 import type { AgentTurnSurface } from "@/chat/state/turn-session";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import type { SlackActionToken } from "@/chat/slack/action-token";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 import type {
   ImageGenerateToolDeps,
@@ -77,6 +77,11 @@ export interface AgentRunRouting {
   actor?: Actor;
   source: Source;
   slackConversation?: SlackConversationContext;
+  /**
+   * TODO: Move ephemeral Slack credentials into provider-owned turn context so
+   * the Slack tool registry can consume them without extending core routing.
+   */
+  slackActionToken?: SlackActionToken;
   destination: Destination;
   surface?: AgentTurnSurface;
   dispatch?: {
@@ -113,8 +118,6 @@ export interface AgentRunPolicy {
   skillDirs?: string[];
   /** Per-slice override for app-owned sandbox egress trace propagation. */
   sandboxTracePropagation?: SandboxEgressTracePropagationConfig;
-  /** Ephemeral tools supplied by the provider boundary for this run slice. */
-  additionalTools?: ToolRegistry;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
     webFetch?: WebFetchToolDeps;
