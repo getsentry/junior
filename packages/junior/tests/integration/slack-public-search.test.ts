@@ -84,6 +84,23 @@ describe("Slack public search", () => {
     });
   });
 
+  it("omits empty timestamp bounds instead of coercing them to epoch", async () => {
+    queueSlackApiResponse("assistant.search.context", {
+      body: { ok: true, results: { messages: [] } },
+    });
+
+    await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "company announcement",
+      after: "",
+      before: "   ",
+    });
+
+    const params = getCapturedSlackApiCalls("assistant.search.context")[0]
+      ?.params;
+    expect(params).not.toHaveProperty("after");
+    expect(params).not.toHaveProperty("before");
+  });
+
   it("reports a missing public-search scope explicitly", async () => {
     queueSlackApiError("assistant.search.context", {
       error: "missing_scope",

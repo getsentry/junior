@@ -10,6 +10,17 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 
 const DEFAULT_LIMIT = 10;
 
+const optionalTimestampSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .describe("Optional Unix timestamp bound.")
+    .optional(),
+);
+
 const searchMessageSchema = z.object({
   author_name: z.string().optional(),
   author_user_id: z.string().optional(),
@@ -70,18 +81,12 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
         .describe(
           "A focused Slack search query, including Slack search filters when useful.",
         ),
-      after: z.coerce
-        .number()
-        .int()
-        .nonnegative()
-        .describe("Optional Unix timestamp lower bound.")
-        .optional(),
-      before: z.coerce
-        .number()
-        .int()
-        .nonnegative()
-        .describe("Optional Unix timestamp upper bound.")
-        .optional(),
+      after: optionalTimestampSchema.describe(
+        "Optional Unix timestamp lower bound.",
+      ),
+      before: optionalTimestampSchema.describe(
+        "Optional Unix timestamp upper bound.",
+      ),
       cursor: z
         .string()
         .min(1)
