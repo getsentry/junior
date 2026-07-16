@@ -1685,6 +1685,31 @@ describe("dashboard telemetry components", () => {
     expect(html).not.toContain("{&quot;command&quot;");
   });
 
+  it("renders serialized JSON tool results as structured values", () => {
+    const html = renderToStaticMarkup(
+      <ToolValueInspector
+        value={JSON.stringify({
+          data: { count: 2, status: "success" },
+          ok: true,
+        })}
+      />,
+    );
+
+    expect(html).toContain("data");
+    expect(html).toContain("count");
+    expect(html).toContain("success");
+    expect(html).toContain("ok");
+    expect(html).not.toContain("{&quot;data&quot;");
+  });
+
+  it("leaves JSON-looking prose as a string", () => {
+    const html = renderToStaticMarkup(
+      <ToolValueInspector value={'{"status": nope}'} />,
+    );
+
+    expect(html).toContain("{&quot;status&quot;: nope}");
+  });
+
   it("does not highlight static tool summaries as expandable", () => {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
