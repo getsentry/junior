@@ -112,7 +112,6 @@ export const pluginApiRouteRequestContextSchema = z
           .object({
             email: z.string().nullable().optional(),
             emailVerified: z.boolean().optional(),
-            hostedDomain: z.string().nullable().optional(),
             name: z.string().nullable().optional(),
           })
           .strict(),

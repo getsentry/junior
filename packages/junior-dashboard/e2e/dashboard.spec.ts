@@ -53,7 +53,6 @@ test.beforeAll(async () => {
           user: {
             email: "morgan@sentry.io",
             emailVerified: true,
-            hostedDomain: "sentry.io",
             name: "Dashboard User",
           },
         };

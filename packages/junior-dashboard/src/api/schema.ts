@@ -6,7 +6,6 @@ export const dashboardIdentitySchema = z
       .object({
         email: z.string().trim().email(),
         emailVerified: z.boolean().optional(),
-        hostedDomain: z.string().nullable().optional(),
         name: z.string().nullable().optional(),
       })
       .strict(),

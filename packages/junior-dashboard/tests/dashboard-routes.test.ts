@@ -254,7 +254,6 @@ describe("dashboard routes", () => {
           user: {
             email: "person@sentry.io",
             emailVerified: true,
-            hostedDomain: "sentry.io",
           },
         },
         () => {
@@ -291,7 +290,6 @@ describe("dashboard routes", () => {
       user: {
         email: "local-dashboard@localhost.test",
         emailVerified: true,
-        hostedDomain: "localhost.test",
       },
     });
   });
@@ -333,7 +331,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -381,7 +378,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -403,7 +399,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -430,7 +425,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -445,7 +439,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -466,7 +459,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -501,7 +493,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
         name: "Dashboard User",
       },
     } as DashboardSession);
@@ -512,7 +503,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
         name: "Dashboard User",
       },
     });
@@ -525,7 +515,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@sentry.io",
         emailVerified: true,
-        hostedDomain: "sentry.io",
       },
     });
 
@@ -550,7 +539,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@example.com",
         emailVerified: true,
-        hostedDomain: "example.com",
       },
     });
 
@@ -567,7 +555,6 @@ describe("dashboard routes", () => {
       user: {
         email: "person@example.com",
         emailVerified: true,
-        hostedDomain: "example.com",
       },
     });
 
@@ -585,7 +572,6 @@ describe("dashboard routes", () => {
       user: {
         email: "admin@example.com",
         emailVerified: true,
-        hostedDomain: "example.com",
       },
     });
 
@@ -601,7 +587,6 @@ describe("dashboard routes", () => {
       user: {
         email: "admin@example.com",
         emailVerified: false,
-        hostedDomain: "example.com",
       },
     });
 
@@ -718,7 +703,6 @@ describe("dashboard routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
-          hostedDomain: "sentry.io",
         },
       }),
       pluginRoutes: [{ app: pluginApp, pluginName: "memory" }],
@@ -743,7 +727,6 @@ describe("dashboard routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
-          hostedDomain: "sentry.io",
           name: "Person",
         },
       }),
@@ -770,7 +753,6 @@ describe("dashboard routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
-          hostedDomain: "sentry.io",
           name: "Person",
         },
       },
@@ -791,7 +773,6 @@ describe("dashboard routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
-          hostedDomain: "sentry.io",
         },
       }),
     });
