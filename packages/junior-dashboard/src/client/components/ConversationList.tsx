@@ -31,7 +31,7 @@ export function ConversationList(props: {
   return (
     <div className="min-w-0" role="table">
       <div
-        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/30 max-md:hidden"
+        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/50 max-md:hidden"
         role="row"
       >
         <div>Conversation</div>

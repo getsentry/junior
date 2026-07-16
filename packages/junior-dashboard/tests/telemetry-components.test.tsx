@@ -19,6 +19,7 @@ import { ToolCallsMetric } from "../src/client/components/TelemetryMetrics";
 import { Button } from "../src/client/components/Button";
 import { PluginReports } from "../src/client/components/PluginReports";
 import { StatusBadge } from "../src/client/components/StatusBadge";
+import { CardHeader } from "../src/client/components/layout/CardHeader";
 import {
   SubagentTranscriptDrawer,
   type SubagentTranscriptTarget,
@@ -159,6 +160,21 @@ function toolRunTurn(
 }
 
 describe("dashboard telemetry components", () => {
+  it("keeps card supporting text on the shared readable contrast tier", () => {
+    const html = renderToStaticMarkup(
+      <CardHeader
+        description="Supporting copy"
+        title="Activity"
+        trailing="90 days"
+      />,
+    );
+
+    expect(html).toContain("text-white/50");
+    expect(html).toContain("text-white/55");
+    expect(html).not.toContain("text-white/30");
+    expect(html).not.toContain("text-white/35");
+  });
+
   it("keeps shared command buttons out of form-submit mode", () => {
     const html = renderToStaticMarkup(<Button>Copy as Markdown</Button>);
     const iconHtml = renderToStaticMarkup(

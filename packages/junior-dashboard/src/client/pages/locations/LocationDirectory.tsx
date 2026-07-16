@@ -8,6 +8,7 @@ import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Card } from "../../components/layout/Card";
+import { CardHeader } from "../../components/layout/CardHeader";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import {
   formatCompactNumber,
@@ -29,14 +30,10 @@ export function LocationDirectory(props: {
 }) {
   return (
     <Card>
-      <div className="border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-          Public directory
-        </h3>
-        <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/30">
-          {props.locations.length} of {props.totalLocations} public locations
-        </p>
-      </div>
+      <CardHeader
+        description={`${props.locations.length} of ${props.totalLocations} public locations`}
+        title="Public directory"
+      />
       <div className="grid min-w-0 gap-2 border-b border-white/[0.06] bg-black/15 p-3 md:grid-cols-[minmax(14rem,1fr)_minmax(11rem,15rem)]">
         <ConversationSearchInput
           label="Search locations"
@@ -60,7 +57,7 @@ export function LocationDirectory(props: {
         <DirectoryRowsSkeleton />
       ) : props.locations.length ? (
         <div className="min-w-0" role="table">
-          <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/30 max-md:hidden">
+          <div className="grid grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/50 max-md:hidden">
             <div>Location</div>
             <div className="justify-self-end">Conversations</div>
             <div className="justify-self-end">Tokens</div>
@@ -80,7 +77,7 @@ export function LocationDirectory(props: {
                   <div className="truncate font-display text-[1rem] font-medium leading-tight text-white/90">
                     {location.label}
                   </div>
-                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/35">
+                  <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/55">
                     Last active {formatRelativeTime(location.lastSeenAt)}
                   </div>
                 </div>

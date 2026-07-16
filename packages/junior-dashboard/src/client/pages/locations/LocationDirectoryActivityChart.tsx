@@ -1,6 +1,7 @@
 import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
@@ -44,24 +45,20 @@ export function LocationDirectoryActivityChart(props: {
 
   return (
     <Card>
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <div>
-          <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-            Conversations per day
-          </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/30">
-            Daily public volume compared with private activity in aggregate.
-          </p>
-        </div>
-        <div className="flex items-center gap-4 font-mono text-[0.64rem] text-white/35">
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-sm bg-cyan-400" /> public
+      <CardHeader
+        description="Daily public volume compared with private activity in aggregate."
+        title="Conversations per day"
+        trailing={
+          <span className="flex items-center gap-4">
+            <span className="flex items-center gap-2">
+              <span className="size-2 rounded-sm bg-cyan-400" /> public
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="size-2 rounded-sm bg-amber-400" /> private
+            </span>
           </span>
-          <span className="flex items-center gap-2">
-            <span className="size-2 rounded-sm bg-amber-400" /> private
-          </span>
-        </div>
-      </div>
+        }
+      />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <svg
           aria-label="Public and private conversations per day"
@@ -82,7 +79,7 @@ export function LocationDirectoryActivityChart(props: {
                   y2={y}
                 />
                 <text
-                  fill="rgba(255,255,255,0.3)"
+                  fill="rgba(255,255,255,0.5)"
                   fontFamily="ui-monospace, monospace"
                   fontSize="10"
                   textAnchor="end"
@@ -117,11 +114,11 @@ export function LocationDirectoryActivityChart(props: {
                 <Tooltip
                   content={
                     <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                      <span className="text-white/40">public</span>
+                      <span className="text-white/60">public</span>
                       <span className="text-right text-white/80">
                         {day.publicConversations}
                       </span>
-                      <span className="text-white/40">private</span>
+                      <span className="text-white/60">private</span>
                       <span className="text-right text-white/80">
                         {day.privateConversations}
                       </span>
@@ -150,7 +147,7 @@ export function LocationDirectoryActivityChart(props: {
             if (!day) return null;
             return (
               <text
-                fill="rgba(255,255,255,0.3)"
+                fill="rgba(255,255,255,0.5)"
                 fontFamily="ui-monospace, monospace"
                 fontSize="10"
                 key={day.date}

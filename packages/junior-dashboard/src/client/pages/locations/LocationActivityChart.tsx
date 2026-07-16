@@ -1,6 +1,7 @@
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
+import { CardHeader } from "../../components/layout/CardHeader";
 import { Tooltip } from "../../components/Tooltip";
 
 function shortDate(date: string): string {
@@ -36,20 +37,16 @@ export function LocationActivityChart(props: {
 
   return (
     <Card>
-      <div className="flex items-start justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <div>
-          <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-            Conversation activity
-          </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/30">
-            Daily persisted conversations for this location.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 font-mono text-[0.64rem] text-white/35">
-          <span className="size-2 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.5)]" />
-          90 days
-        </div>
-      </div>
+      <CardHeader
+        description="Daily persisted conversations for this location."
+        title="Conversation activity"
+        trailing={
+          <span className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.5)]" />
+            90 days
+          </span>
+        }
+      />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <svg
           aria-label="Daily conversations for this location"
@@ -77,7 +74,7 @@ export function LocationActivityChart(props: {
                   y2={y}
                 />
                 <text
-                  fill="rgba(255,255,255,0.3)"
+                  fill="rgba(255,255,255,0.5)"
                   fontFamily="ui-monospace, monospace"
                   fontSize="10"
                   textAnchor="end"
@@ -97,15 +94,15 @@ export function LocationActivityChart(props: {
               <Tooltip
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                    <span className="text-white/40">conversations</span>
+                    <span className="text-white/60">conversations</span>
                     <span className="text-right text-white/80">
                       {day.conversations}
                     </span>
-                    <span className="text-white/40">active</span>
+                    <span className="text-white/60">active</span>
                     <span className="text-right text-white/80">
                       {day.active}
                     </span>
-                    <span className="text-white/40">failed</span>
+                    <span className="text-white/60">failed</span>
                     <span className="text-right text-white/80">
                       {day.failed}
                     </span>
@@ -134,7 +131,7 @@ export function LocationActivityChart(props: {
             const x = left + index * step + step / 2;
             return (
               <text
-                fill="rgba(255,255,255,0.3)"
+                fill="rgba(255,255,255,0.5)"
                 fontFamily="ui-monospace, monospace"
                 fontSize="10"
                 key={day.date}

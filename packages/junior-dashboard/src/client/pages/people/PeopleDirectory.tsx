@@ -8,6 +8,7 @@ import { DirectoryRowsSkeleton } from "../../components/DirectoryRowsSkeleton";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
 import { Card } from "../../components/layout/Card";
+import { CardHeader } from "../../components/layout/CardHeader";
 import { DirectoryMetric } from "../../components/metrics/DirectoryMetric";
 import { formatCompactNumber, peoplePath } from "../../format";
 
@@ -77,16 +78,10 @@ export function PeopleDirectory(props: {
 }) {
   return (
     <Card>
-      <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-5">
-        <div>
-          <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
-            People directory
-          </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] text-white/50">
-            {props.people.length} of {props.totalPeople} verified actors
-          </p>
-        </div>
-      </div>
+      <CardHeader
+        description={`${props.people.length} of ${props.totalPeople} verified actors`}
+        title="People directory"
+      />
       <div className="grid gap-2 border-b border-white/[0.06] bg-black/15 px-3 py-3 md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
         <ConversationSearchInput
           label="Search people"
