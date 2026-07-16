@@ -346,6 +346,36 @@ describe("dashboard routes", () => {
     expect(body.providers).toEqual(expect.any(Array));
   });
 
+  it("allows verified users when Better Auth omits the Google hosted domain", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@SENTRY.IO",
+        emailVerified: true,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/runtime"),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("requires a verified email for the allowed email-domain fallback", async () => {
+    const app = dashboard({
+      user: {
+        email: "person@sentry.io",
+        emailVerified: false,
+      },
+    });
+
+    const response = await app.fetch(
+      new Request("http://localhost/api/runtime"),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
   it("renders the authenticated ops deck shell", async () => {
     const app = dashboard({
       user: {

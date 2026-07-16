@@ -272,14 +272,20 @@ function isAuthorized(
   allowedEmails: string[],
 ): boolean {
   const email = session.user.email.toLowerCase();
-  const domain = session.user.hostedDomain?.toLowerCase();
+  const hostedDomain = session.user.hostedDomain?.toLowerCase();
+  const emailSeparator = email.lastIndexOf("@");
+  const emailDomain =
+    emailSeparator > 0 ? email.slice(emailSeparator + 1) : undefined;
 
   if (session.user.emailVerified && email && allowedEmails.includes(email)) {
     return true;
   }
 
   return Boolean(
-    session.user.emailVerified && domain && allowedDomains.includes(domain),
+    session.user.emailVerified &&
+      allowedDomains.some(
+        (domain) => domain === hostedDomain || domain === emailDomain,
+      ),
   );
 }
 
