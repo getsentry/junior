@@ -1,6 +1,6 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPluginAppFixture } from "@junior-tests/fixtures/plugin-app";
 import {
   readEvalOAuthRefreshTokens,
   resetEvalOAuthMockState,
@@ -12,6 +12,7 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
+import { parsePluginManifest } from "@/chat/plugins/manifest";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalEgressContext } from "./src/eval-context";
@@ -30,7 +31,6 @@ export default async function setup(
   project: EvalGlobalProject,
 ): Promise<() => Promise<void>> {
   const teardownPostgres = await setupPostgres(project);
-  let pluginApp: Awaited<ReturnType<typeof createPluginAppFixture>> | undefined;
   let previousCatalogConfig: ReturnType<typeof pluginCatalogRuntime.setConfig>;
   let egress: Awaited<ReturnType<typeof startEvalEgress>> | undefined;
   let mswListening = false;
@@ -47,7 +47,6 @@ export default async function setup(
       async () => {
         pluginCatalogRuntime.setConfig(previousCatalogConfig);
       },
-      async () => await pluginApp?.cleanup(),
       teardownPostgres,
     ]) {
       try {
@@ -62,11 +61,17 @@ export default async function setup(
   };
 
   try {
-    pluginApp = await createPluginAppFixture(
-      [path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins")],
-      { linkNodeModules: true },
+    const evalOauthPluginDir = path.resolve(
+      workspaceRoot,
+      "packages/junior-evals/fixtures/plugins/eval-oauth",
+    );
+    const evalOauthManifest = parsePluginManifest(
+      readFileSync(path.join(evalOauthPluginDir, "plugin.yaml"), "utf8"),
+      evalOauthPluginDir,
+      undefined,
     );
     previousCatalogConfig = pluginCatalogRuntime.setConfig({
+      inlineManifests: [{ manifest: evalOauthManifest }],
       packages: ["@sentry/junior-sentry"],
     });
     process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
