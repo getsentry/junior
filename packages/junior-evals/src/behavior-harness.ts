@@ -12,10 +12,6 @@ import {
 import type { Destination } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue, NormalizedMessage } from "vitest-evals/harness";
-import {
-  createPluginAppFixture,
-  type PluginAppFixture,
-} from "@junior-tests/fixtures/plugin-app";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
@@ -107,6 +103,7 @@ import { processConversationQueueMessage } from "@/chat/task-execution/vercel-ca
 import { normalizeGitHubResourceEvents } from "@/handlers/github-webhook";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
+import { loadEvalPluginFixtures } from "./eval-plugin-fixtures";
 
 const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
 
@@ -1471,10 +1468,8 @@ interface HarnessEnvironment {
   autoCompleteOauthProviders: Set<string>;
   credentialProviders: Set<"github" | "sentry">;
   expiredOauthProviders: Set<string>;
-  configuredPluginDirs: string[];
   configuredSkillDirs: string[];
   envSnapshot: EnvSnapshot;
-  pluginApp?: PluginAppFixture;
   stateAdapter: HarnessStateAdapter;
 }
 
@@ -1482,13 +1477,17 @@ async function setupHarnessEnvironment(
   scenario: EvalScenario,
 ): Promise<HarnessEnvironment> {
   const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
-  let pluginApp: PluginAppFixture | undefined;
 
   try {
-    const configuredSkillDirs =
+    const explicitSkillDirs =
       scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
     const configuredPluginDirs =
       scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
+    const pluginFixtures = loadEvalPluginFixtures(configuredPluginDirs);
+    const configuredSkillDirs = [
+      ...explicitSkillDirs,
+      ...pluginFixtures.skillDirs,
+    ];
     const autoCompleteMcpOauthProviders = new Set(
       scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
     );
@@ -1519,15 +1518,8 @@ async function setupHarnessEnvironment(
     configureCredentialProviderEnv(credentialProviders);
     ensureHarnessBaseUrl();
     process.env.JUNIOR_SECRET = "junior-test-secret";
-    pluginApp =
-      configuredPluginDirs.length > 0
-        ? await createPluginAppFixture(configuredPluginDirs, {
-            linkNodeModules: Boolean(
-              scenario.overrides?.plugin_packages?.length,
-            ),
-          })
-        : undefined;
     pluginCatalogRuntime.setConfig({
+      inlineManifests: pluginFixtures.inlineManifests,
       packages: scenario.overrides?.plugin_packages ?? [],
     });
 
@@ -1554,17 +1546,14 @@ async function setupHarnessEnvironment(
       autoCompleteOauthProviders,
       credentialProviders,
       expiredOauthProviders,
-      configuredPluginDirs,
       configuredSkillDirs,
       envSnapshot,
-      ...(pluginApp ? { pluginApp } : {}),
       stateAdapter,
     };
   } catch (error) {
     resetSkillDiscoveryCache();
     pluginCatalogRuntime.setConfig(undefined);
     envSnapshot.restore();
-    await pluginApp?.cleanup();
     throw error;
   }
 }
@@ -1584,7 +1573,6 @@ async function teardownHarnessEnvironment(
   await cleanupOAuthTokens(env.authActorUsers, env.credentialProviders);
   await cleanupOAuthTokens(env.authActorUsers, env.expiredOauthProviders);
   env.envSnapshot.restore();
-  await env.pluginApp?.cleanup();
 }
 
 // ---------------------------------------------------------------------------

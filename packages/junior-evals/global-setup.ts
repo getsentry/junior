@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -12,10 +11,10 @@ import {
 } from "@sentry/junior-testing/http";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { parsePluginManifest } from "@/chat/plugins/manifest";
 import setupPostgres from "./postgres-global-setup";
 import { startEvalEgress } from "./src/eval-egress";
 import type { EvalEgressContext } from "./src/eval-context";
+import { loadEvalPluginFixtures } from "./src/eval-plugin-fixtures";
 
 type EvalGlobalProject = Parameters<typeof setupPostgres>[0] & {
   provide(key: "juniorEvalEgress", value: EvalEgressContext): void;
@@ -61,17 +60,11 @@ export default async function setup(
   };
 
   try {
-    const evalOauthPluginDir = path.resolve(
-      workspaceRoot,
-      "packages/junior-evals/fixtures/plugins/eval-oauth",
-    );
-    const evalOauthManifest = parsePluginManifest(
-      readFileSync(path.join(evalOauthPluginDir, "plugin.yaml"), "utf8"),
-      evalOauthPluginDir,
-      undefined,
-    );
+    const pluginFixtures = loadEvalPluginFixtures([
+      path.resolve(workspaceRoot, "packages/junior-evals/fixtures/plugins"),
+    ]);
     previousCatalogConfig = pluginCatalogRuntime.setConfig({
-      inlineManifests: [{ manifest: evalOauthManifest }],
+      inlineManifests: pluginFixtures.inlineManifests,
       packages: ["@sentry/junior-sentry"],
     });
     process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
