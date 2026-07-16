@@ -54,15 +54,7 @@ function validateTypeScriptSource(tag: string, source: string): void {
   const allowedRuntimeImports = new Set([
     "@sentry/junior/migration-helpers/v1",
   ]);
-  const imports = source.matchAll(
-    /^\s*import\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
-  );
-  for (const match of imports) {
-    const clause = match[1]?.trim();
-    const specifier = match[2];
-    if (clause?.startsWith("type ")) {
-      continue;
-    }
+  const validateRuntimeSpecifier = (specifier: string | undefined): void => {
     if (
       !specifier ||
       specifier.startsWith(".") ||
@@ -76,10 +68,30 @@ function validateTypeScriptSource(tag: string, source: string): void {
         `TypeScript migration ${tag} cannot import application runtime code`,
       );
     }
+  };
+  const imports = source.matchAll(
+    /^\s*import\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
+  );
+  for (const match of imports) {
+    const clause = match[1]?.trim();
+    const specifier = match[2];
+    if (clause?.startsWith("type ")) {
+      continue;
+    }
+    validateRuntimeSpecifier(specifier);
+  }
+  const exports = source.matchAll(
+    /^\s*export\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
+  );
+  for (const match of exports) {
+    const clause = match[1]?.trim();
+    if (clause?.startsWith("type ")) {
+      continue;
+    }
+    validateRuntimeSpecifier(match[2]);
   }
   if (
     /^\s*import\s*["']/m.test(source) ||
-    /^\s*export\s+.+\s+from\s+["'][./]/m.test(source) ||
     /\b(?:import\s*\(|require\s*\()/.test(source)
   ) {
     throw new Error(`TypeScript migration ${tag} cannot load runtime modules`);

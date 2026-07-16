@@ -10,8 +10,13 @@ import {
   toOptionalString as runtimeToOptionalString,
 } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
+import { agentStepEntrySchema } from "@/chat/conversations/history";
+import { createLegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
+import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
+import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { createStateConversationStore } from "@/chat/conversations/state";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { toStoredConversationMessage } from "@/chat/conversations/visible-messages";
 import {
   parseDestination as runtimeParseDestination,
   sameDestination as runtimeSameDestination,
@@ -19,13 +24,33 @@ import {
 import { coerceThreadConversationState as runtimeCoerceThreadConversationState } from "@/chat/state/conversation";
 import { listAgentTurnSessionSummariesForConversations } from "@/chat/state/turn-session";
 import {
+  contextProvenance,
+  decodeSessionLogEntry,
+  legacyActorProvenance,
+  piMessageProvenanceSchema,
+} from "@/chat/state/session-log";
+import {
   getConversation,
   requestConversationWork,
 } from "@/chat/task-execution/state";
 import { addAgentTurnUsage as runtimeAddAgentTurnUsage } from "@/chat/usage";
+import { unescapeXml } from "@/chat/xml";
 import type { JuniorSqlDatabase } from "@/db/db";
+import {
+  juniorAgentSteps,
+  juniorConversationMessages,
+  juniorConversations,
+} from "@/db/schema";
 
 export const JUNIOR_THREAD_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+export const migrationAgentStepEntrySchema: unknown = agentStepEntrySchema;
+export const migrationContextProvenance: unknown = contextProvenance;
+export const migrationJuniorAgentSteps: unknown = juniorAgentSteps;
+export const migrationJuniorConversationMessages: unknown =
+  juniorConversationMessages;
+export const migrationJuniorConversations: unknown = juniorConversations;
+export const migrationPiMessageProvenanceSchema: unknown =
+  piMessageProvenanceSchema;
 
 export type MigrationSourceV1 =
   | "api"
@@ -194,6 +219,47 @@ export function createMigrationSqlStore(
   return createSqlStore(
     database as unknown as JuniorSqlDatabase,
   ) as unknown as MigrationSqlConversationStoreV1;
+}
+
+/** Create the SQL agent-step store used by legacy history migrations. */
+export function createMigrationSqlAgentStepStore(
+  database: MigrationDatabaseAdapter,
+): unknown {
+  return createSqlAgentStepStore(database as unknown as JuniorSqlDatabase);
+}
+
+/** Create the SQL message store used by legacy history migrations. */
+export function createMigrationSqlConversationMessageStore(
+  database: MigrationDatabaseAdapter,
+): unknown {
+  return createSqlConversationMessageStore(
+    database as unknown as JuniorSqlDatabase,
+  );
+}
+
+/** Create the legacy advisor reader used by history migrations. */
+export function createMigrationLegacyAdvisorSessionReader(): unknown {
+  return createLegacyAdvisorSessionReader();
+}
+
+/** Decode one retained session-log value. */
+export function decodeMigrationSessionLogEntry(value: unknown): unknown {
+  return decodeSessionLogEntry(value);
+}
+
+/** Recover provenance from one legacy actor value. */
+export function migrationLegacyActorProvenance(value: unknown): unknown {
+  return legacyActorProvenance(value as never);
+}
+
+/** Convert one legacy visible message into its SQL projection. */
+export function toMigrationStoredConversationMessage(value: unknown): unknown {
+  return toStoredConversationMessage(value as never);
+}
+
+/** Unescape one legacy XML text fragment. */
+export function migrationUnescapeXml(value: string): string {
+  return unescapeXml(value);
 }
 
 /** Read one retained conversation through the v1 migration state adapter. */

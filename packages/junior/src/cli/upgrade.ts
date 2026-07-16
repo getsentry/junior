@@ -6,7 +6,6 @@ import { createJiti } from "jiti";
 import { loadAppPluginSet } from "@/plugin-module";
 import { migrateCoreJournal } from "./upgrade/migrations/core-journal";
 import { migratePluginJournals } from "./upgrade/migrations/plugin-journal";
-import { conversationUsageRepairMigration } from "./upgrade/migrations/conversation-usage";
 import { resolveUpgradePlugins } from "./upgrade/migrations/upgrade-plugins";
 import type {
   MigrationContext,
@@ -85,7 +84,6 @@ export async function runUpgradeMigrations(
     results.push(result);
   };
   await run("core-migrations", migrateCoreJournal);
-  await run("repair-conversation-usage", conversationUsageRepairMigration.run);
   await run("plugin-migrations", migratePluginJournals);
   return results;
 }

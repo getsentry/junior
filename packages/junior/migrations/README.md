@@ -3,9 +3,10 @@
 `src/db/schema.ts` is the Drizzle schema entrypoint. This directory is the
 append-only history used to bring an existing database to that schema. It
 extends Drizzle Kit's journal with self-contained
-TypeScript data migrations. Drizzle Kit owns numbering, snapshots, and journal
-entries; `junior upgrade` executes each entry as either `<tag>.sql` or
-`<tag>.ts` through `@sentry/junior-migrations`.
+TypeScript data migrations. Drizzle Kit owns numbering, schema snapshots, and
+journal entries; `junior upgrade` executes each entry as either `<tag>.sql` or
+`<tag>.ts` through `@sentry/junior-migrations`. Data entries do not retain an
+unchanged snapshot.
 
 `junior upgrade` runs the ordered migration list in `src/cli/upgrade.ts`. Core
 SQL runs under a migration lock and is recorded in

@@ -74,6 +74,18 @@ describe("resolveMigrations", () => {
     ]);
   });
 
+  it("rejects runtime re-exports of Junior internals", async () => {
+    const folder = await migrationFolder(["0000_reexport"]);
+    await writeFile(
+      join(folder, "0000_reexport.ts"),
+      'export { getChatConfig } from "@sentry/junior/internal";\nexport default { apiVersion: 1, async up() {} };\n',
+    );
+
+    await expect(resolveMigrations(folder)).rejects.toThrow(
+      "cannot import application runtime code",
+    );
+  });
+
   it("rejects ambiguous migration files", async () => {
     const folder = await migrationFolder(["0000_ambiguous"]);
     await writeFile(join(folder, "0000_ambiguous.sql"), "SELECT 1;");

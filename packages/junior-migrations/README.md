@@ -22,8 +22,10 @@ junior-migrations generate \
   --name backfill_actor
 ```
 
-The wrapper asks Drizzle Kit to create a custom journal entry and snapshot,
-then replaces the empty SQL file with a `MigrationV1` TypeScript scaffold.
+The wrapper asks Drizzle Kit to create a custom journal entry, replaces the
+empty SQL file with a `MigrationV1` TypeScript scaffold, and removes the
+unchanged custom snapshot. Schema generation continues from the latest real
+schema snapshot while preserving the mixed journal order.
 
 ## Compatibility
 

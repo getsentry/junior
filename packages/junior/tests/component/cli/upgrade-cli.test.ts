@@ -20,10 +20,10 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { recordAgentTurnSessionSummary } from "@/chat/state/turn-session";
 import { resolveUpgradePluginSet } from "@/cli/upgrade";
-import { repairConversationUsage } from "@/cli/upgrade/migrations/conversation-usage";
 import { migrateAgentTurnSessionActor } from "../../../migrations/0005_agent_turn_session_actor";
 import { migrateRedisConversationState } from "../../../migrations/0006_redis_conversation_state";
 import { migrateConversationsToSql } from "../../../migrations/0007_conversations_to_sql";
+import { repairConversationUsage } from "../../../migrations/0009_conversation_usage";
 import {
   CONVERSATION_ID,
   SLACK_DESTINATION,
@@ -334,8 +334,8 @@ export const plugins = {
         }),
       ).resolves.toEqual({
         existing: 0,
-        migrated: 8,
-        scanned: 8,
+        migrated: 10,
+        scanned: 10,
         skipped: 0,
       });
       await expect(
@@ -368,9 +368,9 @@ export const plugins = {
           stateAdapter,
         }),
       ).resolves.toEqual({
-        existing: 8,
+        existing: 10,
         migrated: 0,
-        scanned: 8,
+        scanned: 10,
         skipped: 0,
       });
     } finally {

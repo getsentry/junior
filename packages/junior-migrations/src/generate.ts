@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { readMigrationJournal } from "./journal";
 
@@ -62,7 +62,13 @@ export async function generateTypeScriptMigration(
     throw new Error(`Refusing to replace non-custom migration ${entry.tag}`);
   }
   const typescriptPath = resolve(folder, `${entry.tag}.ts`);
+  const snapshotPath = resolve(
+    folder,
+    "meta",
+    `${String(entry.index).padStart(4, "0")}_snapshot.json`,
+  );
   await rename(sqlPath, typescriptPath);
+  await rm(snapshotPath, { force: true });
   await writeFile(typescriptPath, scaffold(), "utf8");
   return typescriptPath;
 }

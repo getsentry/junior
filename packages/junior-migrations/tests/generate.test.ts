@@ -70,6 +70,9 @@ it("keeps Drizzle schema generation working across a TypeScript entry", async ()
   await expect(
     access(join(root, "migrations", "0001_backfill.sql")),
   ).rejects.toThrow("ENOENT");
+  await expect(
+    access(join(root, "migrations", "meta", "0001_snapshot.json")),
+  ).rejects.toThrow("ENOENT");
 
   await writeFile(
     join(root, "schema.ts"),
