@@ -6,11 +6,11 @@ import {
   runMigrationJournal,
   type MigrationContextV1,
   type MigrationRunResult,
-  type MigrationStateV1,
   type TypeScriptMigrationLoader,
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import { createMigrationStateV1 } from "@/chat/migrations/state-v1";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
@@ -184,33 +184,6 @@ CREATE TABLE IF NOT EXISTS drizzle.__drizzle_junior_core (
   });
 }
 
-function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
-  return {
-    acquireLock: async (threadId, ttlMs) =>
-      await stateAdapter.acquireLock(threadId, ttlMs),
-    appendToList: async (key, value, options) => {
-      await stateAdapter.appendToList(key, value, options);
-    },
-    connect: async () => {
-      await stateAdapter.connect();
-    },
-    delete: async (key) => {
-      await stateAdapter.delete(key);
-    },
-    get: async <T>(key: string) =>
-      (await stateAdapter.get<T>(key)) ?? undefined,
-    getList: async <T>(key: string) => await stateAdapter.getList<T>(key),
-    releaseLock: async (lock) => {
-      await stateAdapter.releaseLock(lock);
-    },
-    set: async (key, value, ttlMs) => {
-      await stateAdapter.set(key, value, ttlMs);
-    },
-    setIfNotExists: async (key, value, ttlMs) =>
-      await stateAdapter.setIfNotExists(key, value, ttlMs),
-  };
-}
-
 export type MigrateSchemaOptions =
   | { mode?: "sql" }
   | {
@@ -257,7 +230,7 @@ export async function migrateSchema(
             },
           }
         : {}),
-      state: migrationState(options.stateAdapter),
+      state: createMigrationStateV1(options.stateAdapter),
     }),
     loadTypeScript: options.loadTypeScript,
     mode: "all",

@@ -564,6 +564,30 @@ ORDER BY tablename
         scanned: 2,
       });
 
+      const { credentialMode: _credentialMode, ...legacySqlTask } = task;
+      await fixture.sql.execute(
+        "UPDATE junior_scheduler_tasks SET record = $2::jsonb WHERE id = $1",
+        [
+          task.id,
+          JSON.stringify({
+            ...legacySqlTask,
+            credentialSubject: {
+              allowedWhen: "private-direct-conversation",
+              type: "user",
+              userId: "U123",
+            },
+          }),
+        ],
+      );
+      await expect(
+        runSchedulerStateMigration({ fixture, stateAdapter }),
+      ).resolves.toEqual({
+        existing: 1,
+        migrated: 1,
+        missing: 0,
+        scanned: 2,
+      });
+
       const sqlStore = createSchedulerSqlStore(db);
       await expect(sqlStore.getTask(task.id)).resolves.toMatchObject({
         id: task.id,
@@ -592,7 +616,7 @@ ORDER BY tablename
       const badRunId = `${task.id}:${TEST_RUN_AT_MS}`;
       await state.set(
         "junior:scheduler:tasks",
-        ["sched_state_sql_bad", task.id],
+        ["sched_state_sql_bad", "sched_state_sql_missing_required", task.id],
         5 * 60 * 1000,
       );
       await state.set(
@@ -616,6 +640,12 @@ ORDER BY tablename
         },
         5 * 60 * 1000,
       );
+      const { schedule: _schedule, ...missingSchedule } = task;
+      await state.set(
+        "junior:scheduler:task:sched_state_sql_missing_required",
+        { ...missingSchedule, id: "sched_state_sql_missing_required" },
+        5 * 60 * 1000,
+      );
       await state.set(
         `junior:scheduler:active:${task.id}`,
         {
@@ -627,7 +657,12 @@ ORDER BY tablename
       );
       await state.set(
         `junior:scheduler:run:${badRunId}`,
-        { id: badRunId },
+        {
+          id: badRunId,
+          scheduledForMs: TEST_RUN_AT_MS,
+          status: "pending",
+          taskId: task.id,
+        },
         5 * 60 * 1000,
       );
 
@@ -636,8 +671,8 @@ ORDER BY tablename
       ).resolves.toEqual({
         existing: 0,
         migrated: 1,
-        missing: 1,
-        scanned: 2,
+        missing: 2,
+        scanned: 3,
       });
 
       const sqlStore = createSchedulerSqlStore(db);
@@ -648,6 +683,9 @@ ORDER BY tablename
       await expect(sqlStore.getTask("sched_state_sql_bad")).resolves.toBe(
         undefined,
       );
+      await expect(
+        sqlStore.getTask("sched_state_sql_missing_required"),
+      ).resolves.toBe(undefined);
       await expect(sqlStore.getRun(badRunId)).resolves.toBe(undefined);
     } finally {
       await stateAdapter.disconnect();

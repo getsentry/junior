@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-migrations",
-  "version": "0.101.0",
+  "version": "0.104.2",
   "private": false,
   "publishConfig": {
     "access": "public"

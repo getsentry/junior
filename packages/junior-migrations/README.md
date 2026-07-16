@@ -6,9 +6,9 @@ migrations. Every journal entry resolves to exactly one `<tag>.sql` or
 the Junior migration runner owns execution and exact per-entry tracking.
 
 TypeScript migrations target a versioned capability API and must not import
-Junior runtime internals. Every parser, transform, and migration-specific
-helper belongs permanently in the migration file so application refactors or
-deletions cannot break pending upgrades.
+Junior runtime internals. Migration-specific parsers and transforms belong
+permanently in the migration file so application refactors or deletions cannot
+break pending upgrades.
 
 ## Authoring
 

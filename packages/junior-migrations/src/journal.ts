@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 import type { MigrationJournalEntry, ResolvedMigration } from "./types";
 
 interface DrizzleJournalEntry {
@@ -26,7 +26,7 @@ function parseJournalEntry(
     typeof value.when !== "number" ||
     !Number.isFinite(value.when) ||
     typeof value.tag !== "string" ||
-    !value.tag ||
+    !/^[a-z0-9][a-z0-9_-]*$/.test(value.tag) ||
     typeof value.breakpoints !== "boolean"
   ) {
     throw new Error(`Invalid Drizzle journal entry at index ${position}`);
@@ -39,8 +39,24 @@ function parseJournalEntry(
   };
 }
 
-async function optionalFile(path: string): Promise<string | undefined> {
+async function optionalFile(
+  path: string,
+  migrationsRoot: string,
+): Promise<string | undefined> {
   try {
+    const stat = await lstat(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) {
+      throw new Error(`Migration source must be a regular file: ${path}`);
+    }
+    const canonical = await realpath(path);
+    const fromRoot = relative(migrationsRoot, canonical);
+    if (
+      fromRoot === ".." ||
+      fromRoot.startsWith(`..${sep}`) ||
+      isAbsolute(fromRoot)
+    ) {
+      throw new Error(`Migration source escapes its journal root: ${path}`);
+    }
     return await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -133,14 +149,15 @@ export async function readMigrationJournal(
 export async function resolveMigrations(
   migrationsFolder: string,
 ): Promise<ResolvedMigration[]> {
+  const migrationsRoot = await realpath(migrationsFolder);
   const entries = await readMigrationJournal(migrationsFolder);
   return await Promise.all(
     entries.map(async (entry) => {
       const sqlPath = join(migrationsFolder, `${entry.tag}.sql`);
       const typescriptPath = join(migrationsFolder, `${entry.tag}.ts`);
       const [sqlSource, typescriptSource] = await Promise.all([
-        optionalFile(sqlPath),
-        optionalFile(typescriptPath),
+        optionalFile(sqlPath, migrationsRoot),
+        optionalFile(typescriptPath, migrationsRoot),
       ]);
       if ((sqlSource === undefined) === (typescriptSource === undefined)) {
         throw new Error(

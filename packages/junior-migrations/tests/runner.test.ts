@@ -268,4 +268,31 @@ describe("runMigrationJournal", () => {
       "SELECT 'schema-two';",
     ]);
   });
+
+  it("rejects non-JSON migration results before completing the ledger row", async () => {
+    const folder = await mixedFolder();
+    const executor = new FakeExecutor();
+    const migration = {
+      apiVersion: 1,
+      async up() {
+        return Number.NaN as never;
+      },
+    } satisfies MigrationV1;
+
+    await expect(
+      runMigrationJournal({
+        executor,
+        migrationsFolder: folder,
+        migrationsTable: "__drizzle_test",
+        loadTypeScript: async () => ({ default: migration }),
+        createContext: ({ progress }) => ({
+          database: executor,
+          log: () => {},
+          progress,
+          state: fakeMigrationState(),
+        }),
+      }),
+    ).rejects.toThrow("Migration result must contain only finite JSON numbers");
+    expect(executor.rows.get(2_001)?.status).toBe("failed");
+  });
 });

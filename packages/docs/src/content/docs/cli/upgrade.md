@@ -34,7 +34,7 @@ SQL schema migrations or TypeScript data migrations targeting a versioned
 host capability API. Current
 upgrade work includes:
 
-- Apply core and enabled-plugin SQL schema migrations.
+- Apply core and enabled-plugin schema and data journal entries.
 - Rewrite retained turn-session records from legacy storage shapes before the
   new runtime reads them.
 - Move legacy `junior:conversation-work:*` Redis state into the newer conversation record and index state used by the durable worker and dashboard feed.

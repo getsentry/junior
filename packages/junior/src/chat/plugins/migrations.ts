@@ -3,11 +3,11 @@ import {
   resolveMigrations,
   runMigrationJournal,
   type MigrationContextV1,
-  type MigrationStateV1,
   type ResolvedMigration,
   type TypeScriptMigrationLoader,
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
+import { createMigrationStateV1 } from "@/chat/migrations/state-v1";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 
 interface PluginMigrationRoot {
@@ -131,33 +131,6 @@ CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
   });
 }
 
-function migrationState(stateAdapter: StateAdapter): MigrationStateV1 {
-  return {
-    acquireLock: async (threadId, ttlMs) =>
-      await stateAdapter.acquireLock(threadId, ttlMs),
-    appendToList: async (key, value, options) => {
-      await stateAdapter.appendToList(key, value, options);
-    },
-    connect: async () => {
-      await stateAdapter.connect();
-    },
-    delete: async (key) => {
-      await stateAdapter.delete(key);
-    },
-    get: async <T>(key: string) =>
-      (await stateAdapter.get<T>(key)) ?? undefined,
-    getList: async <T>(key: string) => await stateAdapter.getList<T>(key),
-    releaseLock: async (lock) => {
-      await stateAdapter.releaseLock(lock);
-    },
-    set: async (key, value, ttlMs) => {
-      await stateAdapter.set(key, value, ttlMs);
-    },
-    setIfNotExists: async (key, value, ttlMs) =>
-      await stateAdapter.setIfNotExists(key, value, ttlMs),
-  };
-}
-
 /** Apply enabled plugins' mixed migrations in plugin-name and journal order. */
 export async function migratePluginSchemas(
   executor: JuniorSqlMigrationExecutor,
@@ -196,7 +169,7 @@ export async function migratePluginSchemas(
             database: executor,
             log: options.log ?? (() => {}),
             progress,
-            state: migrationState(options.stateAdapter),
+            state: createMigrationStateV1(options.stateAdapter),
           }),
           loadTypeScript: options.loadTypeScript,
           mode: "all",

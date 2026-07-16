@@ -8,6 +8,7 @@ export type {
   MigrationDatabaseAdapter,
   MigrationJsonValue,
   MigrationJournalEntry,
+  MigrationJournalExecutor,
   MigrationLockV1,
   MigrationProgressV1,
   MigrationRedisV1,

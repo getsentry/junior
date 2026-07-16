@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type {
   MigrationContextV1,
   MigrationDatabaseAdapter,
+  MigrationJournalExecutor,
+  MigrationJsonValue,
   MigrationRunResult,
   MigrationV1,
   ResolvedMigration,
@@ -15,9 +19,51 @@ interface MigrationRow {
   status: string | null;
 }
 
+function migrationJsonValue(
+  value: unknown,
+  label: string,
+  seen = new WeakSet<object>(),
+): MigrationJsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) return value;
+    throw new Error(`${label} must contain only finite JSON numbers`);
+  }
+  if (typeof value !== "object") {
+    throw new Error(`${label} must be JSON-compatible`);
+  }
+  if (seen.has(value)) {
+    throw new Error(`${label} must not contain circular references`);
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const result = value.map((item) => migrationJsonValue(item, label, seen));
+    seen.delete(value);
+    return result;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${label} must contain only plain JSON objects`);
+  }
+  const result = Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      migrationJsonValue(item, label, seen),
+    ]),
+  );
+  seen.delete(value);
+  return result;
+}
+
 interface RunMigrationJournalBaseOptions {
   beforeRun?: () => Promise<void>;
-  executor: MigrationDatabaseAdapter;
+  executor: MigrationJournalExecutor;
   migrationsFolder: string;
   migrationsTable: string;
 }
@@ -54,7 +100,7 @@ function qualifiedTable(table: string): string {
 }
 
 async function ensureMigrationTable(
-  executor: MigrationDatabaseAdapter,
+  executor: MigrationJournalExecutor,
   table: string,
 ): Promise<void> {
   const qualified = qualifiedTable(table);
@@ -90,7 +136,7 @@ CREATE TABLE IF NOT EXISTS ${qualified} (
 }
 
 async function migrationRows(
-  executor: MigrationDatabaseAdapter,
+  executor: MigrationJournalExecutor,
   table: string,
 ): Promise<Map<number, MigrationRow>> {
   const rows = await executor.query<MigrationRow>(`
@@ -107,7 +153,7 @@ ORDER BY created_at ASC, id ASC
 }
 
 async function adoptLegacySqlPrefix(args: {
-  executor: MigrationDatabaseAdapter;
+  executor: MigrationJournalExecutor;
   migrations: readonly ResolvedMigration[];
   rows: Map<number, MigrationRow>;
   table: string;
@@ -160,7 +206,7 @@ function migrationV1(value: unknown, tag: string): MigrationV1 {
 }
 
 async function runSqlMigration(args: {
-  executor: MigrationDatabaseAdapter;
+  executor: MigrationJournalExecutor;
   migration: ResolvedMigration;
   table: string;
 }): Promise<void> {
@@ -211,33 +257,54 @@ async function runTypeScriptMigration(args: {
       }>(`SELECT progress FROM ${qualified} WHERE created_at = $1 LIMIT 1`, [
         args.migration.when,
       ]);
-      return current?.progress ?? undefined;
+      return current?.progress == null
+        ? undefined
+        : migrationJsonValue(current.progress, "Migration progress");
     },
     async save(value) {
+      const progressValue = migrationJsonValue(value, "Migration progress");
       await args.executor.execute(
         `UPDATE ${qualified} SET progress = $1, status = 'running' WHERE created_at = $2`,
-        [value, args.migration.when],
+        [progressValue, args.migration.when],
       );
     },
   };
   try {
     const context = args.createContext({ migration: args.migration, progress });
+    const currentSource = await readFile(args.migration.path, "utf8");
+    const currentHash = createHash("sha256")
+      .update(currentSource)
+      .digest("hex");
+    if (currentHash !== args.migration.hash) {
+      throw new Error(`Migration ${args.migration.tag} changed before loading`);
+    }
     const migration = migrationV1(
       await args.loadTypeScript(args.migration.path),
       args.migration.tag,
     );
     const result = await migration.up(context);
+    const resultValue =
+      result === undefined
+        ? null
+        : migrationJsonValue(result, "Migration result");
     await args.executor.execute(
       `UPDATE ${qualified}
        SET status = 'completed', result = $1, completed_at = NOW()
        WHERE created_at = $2`,
-      [result ?? null, args.migration.when],
+      [resultValue, args.migration.when],
     );
   } catch (error) {
-    await args.executor.execute(
-      `UPDATE ${qualified} SET status = 'failed' WHERE created_at = $1`,
-      [args.migration.when],
-    );
+    try {
+      await args.executor.execute(
+        `UPDATE ${qualified} SET status = 'failed' WHERE created_at = $1`,
+        [args.migration.when],
+      );
+    } catch (statusError) {
+      throw new AggregateError(
+        [error, statusError],
+        `Migration ${args.migration.tag} failed and its failure status could not be persisted`,
+      );
+    }
     throw error;
   }
 }

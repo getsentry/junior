@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -96,6 +96,28 @@ describe("resolveMigrations", () => {
 
     await expect(resolveMigrations(folder)).rejects.toThrow(
       "exactly one .sql or .ts file",
+    );
+  });
+
+  it("rejects journal tags that escape the migration directory", async () => {
+    const folder = await migrationFolder(["../outside"]);
+
+    await expect(resolveMigrations(folder)).rejects.toThrow(
+      "Invalid Drizzle journal entry",
+    );
+  });
+
+  it("rejects symlinked migration sources", async () => {
+    const folder = await migrationFolder(["0000_symlink"]);
+    const outside = join(folder, "..", "outside-migration.ts");
+    await writeFile(
+      outside,
+      "export default { apiVersion: 1, async up() {} };\n",
+    );
+    await symlink(outside, join(folder, "0000_symlink.ts"));
+
+    await expect(resolveMigrations(folder)).rejects.toThrow(
+      "Migration source must be a regular file",
     );
   });
 });

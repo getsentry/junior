@@ -1,4 +1,4 @@
-/** Database adapter used by the mixed migration runner and TypeScript entries. */
+/** Database capabilities exposed to v1 TypeScript migrations. */
 export interface MigrationDatabaseAdapter {
   db(): unknown;
   execute(statement: string, parameters?: readonly unknown[]): Promise<void>;
@@ -8,6 +8,10 @@ export interface MigrationDatabaseAdapter {
   ): Promise<T[]>;
   transaction<T>(callback: () => Promise<T>): Promise<T>;
   withLock<T>(lockName: string, callback: () => Promise<T>): Promise<T>;
+}
+
+/** Host executor used to serialize and persist one migration journal. */
+export interface MigrationJournalExecutor extends MigrationDatabaseAdapter {
   withMigrationLock<T>(
     migrationTable: string,
     callback: () => Promise<T>,

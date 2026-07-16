@@ -29,13 +29,26 @@ function scaffold(): string {
   return `import type { MigrationV1 } from "@sentry/junior-migrations";\n\nconst migration = {\n  apiVersion: 1,\n  async up(context) {\n    void context;\n  },\n} satisfies MigrationV1;\n\nexport default migration;\n`;
 }
 
+function isMissingJournal(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+  );
+}
+
 /** Create a journaled TypeScript migration through Drizzle Kit's custom generator. */
 export async function generateTypeScriptMigration(
   options: GenerateTypeScriptMigrationOptions,
 ): Promise<string> {
   const cwd = resolve(options.cwd ?? process.cwd());
   const folder = resolve(cwd, options.migrationsFolder);
-  const before = await readMigrationJournal(folder).catch(() => []);
+  let before;
+  try {
+    before = await readMigrationJournal(folder);
+  } catch (error) {
+    if (!isMissingJournal(error)) throw error;
+    before = [];
+  }
   await run(
     "drizzle-kit",
     [

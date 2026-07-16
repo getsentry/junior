@@ -100,3 +100,23 @@ it("keeps Drizzle schema generation working across a TypeScript entry", async ()
     readFile(join(root, "migrations", "0002_add_name.sql"), "utf8"),
   ).resolves.toContain('ADD COLUMN "name" text');
 });
+
+it("does not invoke Drizzle when an existing journal is invalid", async () => {
+  const relativeRoot = `.tmp-invalid-migrations-${Date.now()}`;
+  const root = join(process.cwd(), relativeRoot);
+  temporaryDirectories.push(root);
+  await mkdir(join(root, "migrations", "meta"), { recursive: true });
+  await writeFile(
+    join(root, "migrations", "meta", "_journal.json"),
+    JSON.stringify({ dialect: "sqlite", entries: [] }),
+  );
+
+  await expect(
+    generateTypeScriptMigration({
+      configPath: `${relativeRoot}/drizzle.config.ts`,
+      cwd: process.cwd(),
+      migrationsFolder: `${relativeRoot}/migrations`,
+      name: "backfill",
+    }),
+  ).rejects.toThrow("Unsupported Drizzle journal");
+});

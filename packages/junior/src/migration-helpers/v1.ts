@@ -10,9 +10,7 @@ import {
   toOptionalString as runtimeToOptionalString,
 } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
-import { agentStepEntrySchema } from "@/chat/conversations/history";
 import { createLegacyAdvisorSessionReader } from "@/chat/conversations/legacy-advisor-session";
-import { createSqlAgentStepStore } from "@/chat/conversations/sql/history";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
 import { createStateConversationStore } from "@/chat/conversations/state";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -43,7 +41,6 @@ import {
 } from "@/db/schema";
 
 export const JUNIOR_THREAD_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
-export const migrationAgentStepEntrySchema: unknown = agentStepEntrySchema;
 export const migrationContextProvenance: unknown = contextProvenance;
 export const migrationJuniorAgentSteps: unknown = juniorAgentSteps;
 export const migrationJuniorConversationMessages: unknown =
@@ -68,6 +65,7 @@ export type MigrationExecutionStatusV1 =
   | "pending"
   | "running";
 
+/** Frozen retained inbound-message shape used by v1 data migrations. */
 export interface MigrationInboundMessageV1 {
   attemptCount?: number;
   conversationId: string;
@@ -85,6 +83,7 @@ export interface MigrationInboundMessageV1 {
   source: MigrationSourceV1;
 }
 
+/** Frozen retained execution-lease shape used by v1 data migrations. */
 export interface MigrationLeaseV1 {
   acquiredAtMs: number;
   expiresAtMs: number;
@@ -92,6 +91,7 @@ export interface MigrationLeaseV1 {
   token: string;
 }
 
+/** Frozen conversation projection shared by v1 state and SQL helpers. */
 export interface MigrationConversationV1 {
   actor?: unknown;
   channelName?: string;
@@ -116,6 +116,7 @@ export interface MigrationConversationV1 {
   updatedAtMs: number;
 }
 
+/** State-backed conversation projection with retained mailbox fields. */
 export interface MigrationRetainedConversationV1 extends MigrationConversationV1 {
   execution: MigrationConversationV1["execution"] & {
     inboundMessageIds: string[];
@@ -124,20 +125,24 @@ export interface MigrationRetainedConversationV1 extends MigrationConversationV1
   };
 }
 
+/** Legacy thread-state projection required by the v1 continuation migration. */
 export interface MigrationThreadConversationStateV1 {
   processing: { activeTurnId?: string };
 }
 
+/** Frozen turn-summary projection used by the conversation SQL backfill. */
 export interface MigrationTurnSessionSummaryV1 {
   cumulativeDurationMs: number;
   cumulativeUsage?: Record<string, unknown>;
   sessionId: string;
 }
 
+/** Narrow state conversation store exposed to v1 migrations. */
 export interface MigrationStateConversationStoreV1 {
   listByActivity(args: { limit: number }): Promise<MigrationConversationV1[]>;
 }
 
+/** Narrow SQL conversation store exposed to v1 migrations. */
 export interface MigrationSqlConversationStoreV1 {
   backfillConversation(
     conversation: MigrationConversationV1,
@@ -219,13 +224,6 @@ export function createMigrationSqlStore(
   return createSqlStore(
     database as unknown as JuniorSqlDatabase,
   ) as unknown as MigrationSqlConversationStoreV1;
-}
-
-/** Create the SQL agent-step store used by legacy history migrations. */
-export function createMigrationSqlAgentStepStore(
-  database: MigrationDatabaseAdapter,
-): unknown {
-  return createSqlAgentStepStore(database as unknown as JuniorSqlDatabase);
 }
 
 /** Create the SQL message store used by legacy history migrations. */
