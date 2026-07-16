@@ -62,6 +62,18 @@ describe("resolveMigrations", () => {
     );
   });
 
+  it("rejects multiline imports of Junior runtime modules", async () => {
+    const folder = await migrationFolder(["0000_multiline"]);
+    await writeFile(
+      join(folder, "0000_multiline.ts"),
+      'import {\n  getChatConfig,\n  getDb,\n} from "@sentry/junior/internal";\nexport default { apiVersion: 1, async up() {} };\n',
+    );
+
+    await expect(resolveMigrations(folder)).rejects.toThrow(
+      "cannot import application runtime code",
+    );
+  });
+
   it("allows versioned Junior migration helpers", async () => {
     const folder = await migrationFolder(["0000_helpers"]);
     await writeFile(

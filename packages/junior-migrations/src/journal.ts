@@ -86,7 +86,7 @@ function validateTypeScriptSource(tag: string, source: string): void {
     }
   };
   const imports = source.matchAll(
-    /^\s*import\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
+    /^\s*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm,
   );
   for (const match of imports) {
     const clause = match[1]?.trim();
@@ -97,7 +97,7 @@ function validateTypeScriptSource(tag: string, source: string): void {
     validateRuntimeSpecifier(specifier);
   }
   const exports = source.matchAll(
-    /^\s*export\s+([^;]+?)\s+from\s+["']([^"']+)["'];?/gm,
+    /^\s*export\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm,
   );
   for (const match of exports) {
     const clause = match[1]?.trim();

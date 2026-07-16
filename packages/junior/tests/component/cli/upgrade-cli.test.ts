@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import type { MigrationContextV1 } from "@sentry/junior-migrations";
 import { createJiti } from "jiti";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getChatConfig } from "@/chat/config";
@@ -377,6 +378,35 @@ export const plugins = {
       await fixture.close();
     }
   }, 15_000);
+
+  it("passes the host state adapter through without wrapping its identity", async () => {
+    const stateAdapter = getStateAdapter();
+    await stateAdapter.connect();
+    const fixture = await createLocalJuniorSqlFixture();
+    const observedStates: unknown[] = [];
+
+    try {
+      await migrateSchema(fixture.sql, {
+        loadTypeScript: async () => ({
+          default: {
+            apiVersion: 1,
+            async up(context: MigrationContextV1) {
+              observedStates.push(context.state);
+            },
+          },
+        }),
+        mode: "all",
+        stateAdapter,
+      });
+
+      expect(observedStates).toHaveLength(5);
+      expect(observedStates.every((state) => state === stateAdapter)).toBe(
+        true,
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("migrates legacy conversation work before SQL conversation backfill", async () => {
     const stateAdapter = getStateAdapter();

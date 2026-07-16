@@ -10,7 +10,6 @@ import {
 } from "@sentry/junior-migrations";
 import type { StateAdapter } from "chat";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
-import { createMigrationStateV1 } from "@/chat/migrations/state-v1";
 import type { JuniorSqlMigrationExecutor } from "@/db/db";
 import { juniorSqlSchema as schema } from "@/db/schema";
 
@@ -233,7 +232,7 @@ export async function migrateSchema(
             },
           }
         : {}),
-      state: createMigrationStateV1(options.stateAdapter),
+      state: options.stateAdapter,
     }),
     loadTypeScript: options.loadTypeScript,
     mode: "all",
