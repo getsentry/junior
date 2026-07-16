@@ -1,8 +1,7 @@
-import { Boxes, Radio, Sparkles } from "lucide-react";
+import { Boxes, Radio } from "lucide-react";
 import type {
   PluginOperationalReport,
   PluginReport,
-  SkillReport,
 } from "@sentry/junior/api/schema";
 
 import { Card } from "../../components/layout/Card";
@@ -13,7 +12,6 @@ type PluginRow = {
   loaded: boolean;
   name: string;
   report?: PluginOperationalReport;
-  skills: SkillReport[];
 };
 
 /** Present loaded plugins as an operational capability roster. */
@@ -21,7 +19,6 @@ export function PluginInventory(props: {
   loadingReports: boolean;
   plugins: PluginReport[];
   reports: PluginOperationalReport[];
-  skills: SkillReport[];
 }) {
   const rows = buildPluginRows(props);
   return (
@@ -45,7 +42,7 @@ export function PluginInventory(props: {
             label="reporting"
             value={props.loadingReports ? "…" : props.reports.length}
           />
-          <InventoryMetric label="skills" value={props.skills.length} />
+          <InventoryMetric label="known" value={rows.length} />
         </div>
       </div>
 
@@ -66,7 +63,7 @@ function PluginRosterRow(props: { row: PluginRow }) {
   const metricCount = props.row.report?.metrics?.length ?? 0;
   const recordSetCount = props.row.report?.recordSets?.length ?? 0;
   return (
-    <article className="grid min-w-0 gap-4 rounded-lg border border-white/[0.065] bg-white/[0.025] p-4 transition-colors hover:border-white/[0.11] hover:bg-white/[0.035] md:grid-cols-[minmax(12rem,0.85fr)_minmax(14rem,1.4fr)_auto] md:items-center">
+    <article className="grid min-w-0 gap-4 rounded-lg border border-white/[0.065] bg-white/[0.025] p-4 transition-colors hover:border-white/[0.11] hover:bg-white/[0.035] md:grid-cols-[minmax(12rem,1fr)_auto] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
           <Boxes aria-hidden="true" size={18} strokeWidth={1.8} />
@@ -86,29 +83,6 @@ function PluginRosterRow(props: { row: PluginRow }) {
             />
           </div>
         </div>
-      </div>
-
-      <div className="min-w-0">
-        <div className="mb-2 flex items-center gap-1.5 font-mono text-[0.58rem] uppercase tracking-[0.12em] text-white/30">
-          <Sparkles aria-hidden="true" size={11} />
-          Skills
-        </div>
-        {props.row.skills.length ? (
-          <div className="flex min-w-0 flex-wrap gap-1.5">
-            {props.row.skills.map((skill) => (
-              <span
-                className="max-w-full truncate rounded border border-white/[0.07] bg-black/20 px-2 py-1 font-mono text-[0.65rem] text-white/55"
-                key={skill.name}
-              >
-                {skill.name}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div className="font-mono text-[0.66rem] text-white/25">
-            No registered skills
-          </div>
-        )}
       </div>
 
       <div className="flex min-w-[10rem] items-center justify-between gap-5 rounded-lg border border-white/[0.055] bg-black/15 px-3 py-2.5 md:justify-end">
@@ -172,13 +146,10 @@ function OperationalCount(props: { label: string; value: number }) {
 function buildPluginRows(input: {
   plugins: PluginReport[];
   reports: PluginOperationalReport[];
-  skills: SkillReport[];
 }): PluginRow[] {
   const names = new Set<string>();
   for (const plugin of input.plugins) names.add(plugin.name);
   for (const report of input.reports) names.add(report.pluginName);
-  for (const skill of input.skills)
-    if (skill.pluginProvider) names.add(skill.pluginProvider);
   const loadedNames = new Set(input.plugins.map((plugin) => plugin.name));
   return [...names]
     .sort((left, right) => left.localeCompare(right))
@@ -186,6 +157,5 @@ function buildPluginRows(input: {
       loaded: loadedNames.has(name),
       name,
       report: input.reports.find((report) => report.pluginName === name),
-      skills: input.skills.filter((skill) => skill.pluginProvider === name),
     }));
 }

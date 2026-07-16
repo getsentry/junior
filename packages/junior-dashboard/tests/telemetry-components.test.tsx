@@ -42,6 +42,7 @@ import {
   LocationDetailPageContent,
 } from "../src/client/pages/locations/LocationDetailPage";
 import { LocationsPageContent } from "../src/client/pages/locations/LocationsPage";
+import { SkillInventory } from "../src/client/pages/system/SkillInventory";
 import { SystemPage } from "../src/client/pages/system/SystemPage";
 import type { ConversationTranscript, SystemData } from "../src/client/types";
 
@@ -1215,12 +1216,22 @@ describe("dashboard telemetry components", () => {
     expect(systemHtml).toContain("Runtime");
     expect(systemHtml).toContain(">12k<");
     expect(systemHtml).toContain(">$4.56<");
+    expect(systemHtml).toContain('role="tablist"');
+    expect(systemHtml).toContain('aria-selected="true"');
     expect(systemHtml).toContain(">Plugins<");
+    expect(systemHtml).toContain(">Skills<");
     expect(systemHtml).toContain(">Scheduler<");
     expect(systemHtml).toContain("github");
-    expect(systemHtml).toContain("triage");
+    expect(systemHtml).not.toContain(">triage<");
     expect(systemHtml).toContain("scheduler");
     expect(systemHtml).toContain("sched_1");
+
+    const skillsHtml = renderToStaticMarkup(
+      <SkillInventory skills={data.skills} />,
+    );
+    expect(skillsHtml).toContain(">Skills<");
+    expect(skillsHtml).toContain(">github<");
+    expect(skillsHtml).toContain(">triage<");
   });
 
   it("renders public locations as primary rows and collapses private activity", () => {
