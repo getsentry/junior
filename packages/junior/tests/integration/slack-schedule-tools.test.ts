@@ -71,7 +71,7 @@ function createContext(
       teamId,
       channelId,
 
-      type: "priv",
+      type: channelId.startsWith("C") ? "pub" : "priv",
     }),
     actor: {
       platform: "slack",
@@ -202,7 +202,7 @@ describe("Slack schedule tools", () => {
       task: {
         conversation_access: {
           audience: "channel",
-          visibility: "unknown",
+          visibility: "public",
         },
         credential_mode: "system",
         status: "active",
