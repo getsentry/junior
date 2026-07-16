@@ -857,7 +857,7 @@ describe("plugin heartbeat", () => {
         teamId: "T123",
         channelId: "C123",
 
-        type: "pub",
+        type: "priv",
       }),
     );
     expect(dispatchRecord?.metadata).toMatchObject({

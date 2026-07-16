@@ -77,13 +77,11 @@ function buildScheduledTaskDispatchMetadata(args: {
 }
 
 function scheduledTaskDispatchSource(task: ScheduledTask): Source {
-  const isPublicChannel =
-    task.conversationAccess?.audience === "channel" &&
-    task.conversationAccess.visibility === "public";
   return createSlackSource({
     teamId: task.destination.teamId,
     channelId: task.destination.channelId,
-    type: isPublicChannel ? "pub" : "priv",
+
+    type: "priv",
   });
 }
 

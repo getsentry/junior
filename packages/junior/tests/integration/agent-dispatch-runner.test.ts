@@ -11,6 +11,7 @@ import {
   withDispatchLock,
 } from "@/chat/agent-dispatch/store";
 import { runAgentDispatchSlice } from "@/chat/agent-dispatch/runner";
+import { getConversationStore } from "@/chat/db";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -186,6 +187,11 @@ describe("agent dispatch runner", () => {
         ts: "1700000000.000001",
       }),
     });
+    await getConversationStore().recordActivity({
+      conversationId: "slack:C123:1700000000.000000",
+      destination: slackAddress(),
+      visibility: "public",
+    });
     const created = await createOrGetDispatch({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
@@ -204,6 +210,10 @@ describe("agent dispatch runner", () => {
       expect(context.authorizationFlowMode).toBe("disabled");
       expect(context.surface).toBe("api");
       expect(context.source).toEqual(slackSource());
+      expect(context.slackConversation).toMatchObject({
+        type: "public_channel",
+        visibility: "public",
+      });
       expect(context.dispatch).toEqual({
         actor: { platform: "system", name: "scheduler" },
         metadata: { runId: "run-1" },
@@ -290,6 +300,12 @@ describe("agent dispatch runner", () => {
       sliceId: 1,
       state: "completed",
       surface: "api",
+    });
+    await expect(
+      getConversationStore().get({ conversationId: dispatchConversationId }),
+    ).resolves.toMatchObject({
+      destination: slackAddress(),
+      visibility: "public",
     });
     await expect(getPersistedThreadState("slack:T123:C123")).resolves.toEqual(
       {},

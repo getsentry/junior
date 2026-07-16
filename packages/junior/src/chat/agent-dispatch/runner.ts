@@ -37,6 +37,8 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { getConversationStore } from "@/chat/db";
+import { resolveSlackConversationContext } from "@/chat/slack/conversation-context";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
@@ -306,6 +308,17 @@ export async function runAgentDispatchSlice(
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
+    const destinationVisibility = await getConversationStore().getDestinationVisibility({
+      provider: "slack",
+      providerTenantId: dispatch.destination.teamId,
+      providerDestinationId: dispatch.destination.channelId,
+    });
+    const slackConversation = resolveSlackConversationContext({
+      channelId: dispatch.destination.channelId,
+    });
+    if (slackConversation && destinationVisibility) {
+      slackConversation.visibility = destinationVisibility;
+    }
 
     const outcome = await deps.agentRunner.run({
       input: {
@@ -324,6 +337,7 @@ export async function runAgentDispatchSlice(
         },
         destination: dispatch.destination,
         source: dispatch.source,
+        ...(slackConversation ? { slackConversation } : {}),
         dispatch: {
           actor: dispatch.actor,
           metadata: dispatch.metadata,
@@ -487,6 +501,7 @@ export async function runAgentDispatchSlice(
         usage: reply.diagnostics.usage,
         reasoningLevel: reply.diagnostics.reasoningLevel,
         destination: dispatch.destination,
+        destinationVisibility,
         source: dispatch.source,
         actor: dispatch.actor,
         surface: "api",
