@@ -44,9 +44,9 @@ export function SystemCapabilities(props: {
           label="Plugins"
           tab="plugins"
           onSelect={setActiveTab}
-          onSwitch={() => {
-            setActiveTab("skills");
-            skillTabRef.current?.focus();
+          onNavigate={(tab) => {
+            setActiveTab(tab);
+            (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
           }}
         />
         <CapabilityTabButton
@@ -55,54 +55,58 @@ export function SystemCapabilities(props: {
           label="Skills"
           tab="skills"
           onSelect={setActiveTab}
-          onSwitch={() => {
-            setActiveTab("plugins");
-            pluginTabRef.current?.focus();
+          onNavigate={(tab) => {
+            setActiveTab(tab);
+            (tab === "plugins" ? pluginTabRef : skillTabRef).current?.focus();
           }}
         />
       </div>
       <div
-        aria-labelledby={`${activeTab}-tab`}
-        id={`${activeTab}-panel`}
+        aria-labelledby="plugins-tab"
+        hidden={activeTab !== "plugins"}
+        id="plugins-panel"
         role="tabpanel"
       >
-        {activeTab === "plugins" ? (
-          <div className="grid gap-4 sm:gap-6">
-            <PluginInventory
-              loadingReports={props.loadingReports}
-              plugins={props.plugins}
-              reports={props.reports}
-            />
-            {props.pluginReportsError ? (
-              <Card
-                className="border-amber-300/10 bg-amber-300/[0.025]"
-                padding="sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
-                    <TriangleAlert aria-hidden="true" size={15} />
+        <div className="grid gap-4 sm:gap-6">
+          <PluginInventory
+            loadingReports={props.loadingReports}
+            plugins={props.plugins}
+            reports={props.reports}
+          />
+          {props.pluginReportsError ? (
+            <Card
+              className="border-amber-300/10 bg-amber-300/[0.025]"
+              padding="sm"
+            >
+              <div className="flex items-center gap-3">
+                <div className="grid size-9 shrink-0 place-items-center rounded border border-amber-300/15 bg-amber-300/[0.055] text-amber-200/70">
+                  <TriangleAlert aria-hidden="true" size={15} />
+                </div>
+                <div>
+                  <div className="font-display text-sm font-medium text-white/75">
+                    Plugin stats failed to load.
                   </div>
-                  <div>
-                    <div className="font-display text-sm font-medium text-white/75">
-                      Plugin stats failed to load.
-                    </div>
-                    <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
-                      {props.reports.length
-                        ? "Showing the last operational reports Junior received."
-                        : "Loaded capabilities are still available above."}
-                    </div>
+                  <div className="mt-1 font-mono text-[0.64rem] leading-relaxed text-white/30">
+                    {props.reports.length
+                      ? "Showing the last operational reports Junior received."
+                      : "Loaded capabilities are still available above."}
                   </div>
                 </div>
-              </Card>
-            ) : null}
-            <PluginReports
-              emptyText={reportEmptyText}
-              reports={props.reports}
-            />
-          </div>
-        ) : (
+              </div>
+            </Card>
+          ) : null}
+          <PluginReports emptyText={reportEmptyText} reports={props.reports} />
+        </div>
+      </div>
+      <div
+        aria-labelledby="skills-tab"
+        hidden={activeTab !== "skills"}
+        id="skills-panel"
+        role="tabpanel"
+      >
+        {activeTab === "skills" ? (
           <SkillInventory skills={props.skills} />
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -112,8 +116,8 @@ function CapabilityTabButton(props: {
   activeTab: CapabilityTab;
   buttonRef: RefObject<HTMLButtonElement | null>;
   label: string;
+  onNavigate: (tab: CapabilityTab) => void;
   onSelect: (tab: CapabilityTab) => void;
-  onSwitch: () => void;
   tab: CapabilityTab;
 }) {
   const active = props.activeTab === props.tab;
@@ -129,7 +133,9 @@ function CapabilityTabButton(props: {
       )}
       id={`${props.tab}-tab`}
       onClick={() => props.onSelect(props.tab)}
-      onKeyDown={(event) => handleTabKeyDown(event, props.onSwitch)}
+      onKeyDown={(event) =>
+        handleTabKeyDown(event, props.tab, props.onNavigate)
+      }
       ref={props.buttonRef}
       role="tab"
       tabIndex={active ? 0 : -1}
@@ -142,7 +148,8 @@ function CapabilityTabButton(props: {
 
 function handleTabKeyDown(
   event: KeyboardEvent<HTMLButtonElement>,
-  onSwitch: () => void,
+  currentTab: CapabilityTab,
+  onNavigate: (tab: CapabilityTab) => void,
 ) {
   if (
     event.key !== "ArrowLeft" &&
@@ -153,5 +160,11 @@ function handleTabKeyDown(
     return;
   }
   event.preventDefault();
-  onSwitch();
+  if (event.key === "Home") {
+    onNavigate("plugins");
+  } else if (event.key === "End") {
+    onNavigate("skills");
+  } else {
+    onNavigate(currentTab === "plugins" ? "skills" : "plugins");
+  }
 }
