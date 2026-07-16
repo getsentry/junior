@@ -1,7 +1,7 @@
 /** Preserve directory table geometry while a new client-side order renders. */
 export function DirectoryRowsSkeleton(props: { wideRuntime?: boolean }) {
   const gridColumns = props.wideRuntime
-    ? "grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] max-md:grid-cols-[repeat(2,minmax(0,1fr))_minmax(8rem,auto)]"
+    ? "grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] max-md:grid-cols-3"
     : "grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] max-md:grid-cols-3";
 
   return (

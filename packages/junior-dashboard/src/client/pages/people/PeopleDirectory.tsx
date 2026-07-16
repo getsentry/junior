@@ -120,7 +120,7 @@ export function PeopleDirectory(props: {
           </div>
           {props.people.map((person) => (
             <Link
-              className="group grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-white/[0.035] max-md:grid-cols-[repeat(2,minmax(0,1fr))_minmax(8rem,auto)] max-md:gap-x-3 max-md:gap-y-4"
+              className="group grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 text-inherit no-underline transition-colors last:border-b-0 hover:bg-white/[0.035] max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4"
               key={person.actor.email}
               to={peoplePath(person.actor.email)}
             >
