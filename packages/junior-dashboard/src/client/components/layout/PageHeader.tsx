@@ -18,7 +18,7 @@ export function PageHeader(props: {
         <h2 className="m-0 font-display text-3xl font-light leading-none tracking-[-0.03em] text-white sm:text-4xl">
           {props.title}
         </h2>
-        <div className="mt-2 max-w-2xl font-mono text-xs leading-relaxed text-white/50 sm:text-[0.8rem]">
+        <div className="mt-2 max-w-2xl font-mono text-xs leading-relaxed text-white/70 sm:text-[0.8rem]">
           {props.description}
         </div>
       </div>

@@ -82,7 +82,7 @@ export function PeopleDirectory(props: {
           <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
             People directory
           </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] text-white/30">
+          <p className="mt-1 mb-0 font-mono text-[0.68rem] text-white/50">
             {props.people.length} of {props.totalPeople} verified actors
           </p>
         </div>
@@ -115,7 +115,7 @@ export function PeopleDirectory(props: {
       ) : (
         <div className="min-w-0" role="table">
           <div
-            className="grid grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/30 max-md:hidden"
+            className="grid grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] items-center gap-4 border-b border-white/[0.06] bg-black/20 px-4 py-2.5 font-mono text-[0.62rem] uppercase tracking-[0.1em] text-white/50 max-md:hidden"
             role="row"
           >
             <div>Person</div>
@@ -138,7 +138,7 @@ export function PeopleDirectory(props: {
                     {actorName(person)}
                   </div>
                   {personMeta(person) ? (
-                    <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/35">
+                    <div className="mt-1 truncate font-mono text-[0.68rem] leading-tight text-white/55">
                       {personMeta(person)}
                     </div>
                   ) : null}

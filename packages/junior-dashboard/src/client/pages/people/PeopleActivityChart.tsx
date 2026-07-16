@@ -61,11 +61,11 @@ export function PeopleActivityChart(props: {
           <h3 className="m-0 font-mono text-[0.68rem] font-medium uppercase tracking-[0.14em] text-white/60">
             Active people per day
           </h3>
-          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/30">
+          <p className="mt-1 mb-0 font-mono text-[0.68rem] leading-relaxed text-white/50">
             Distinct verified actors grouped by recorded conversation activity.
           </p>
         </div>
-        <div className="flex items-center gap-2 font-mono text-[0.64rem] text-white/35">
+        <div className="flex items-center gap-2 font-mono text-[0.64rem] text-white/55">
           <span className="size-2 rounded-full bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.55)]" />
           people
         </div>
@@ -102,7 +102,7 @@ export function PeopleActivityChart(props: {
                   y2={y}
                 />
                 <text
-                  fill="rgba(255,255,255,0.3)"
+                  fill="rgba(255,255,255,0.5)"
                   fontFamily="ui-monospace, monospace"
                   fontSize="10"
                   textAnchor="end"
@@ -131,11 +131,11 @@ export function PeopleActivityChart(props: {
               <Tooltip
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5">
-                    <span className="text-white/40">active people</span>
+                    <span className="text-white/60">active people</span>
                     <span className="text-right text-white/80">
                       {day.activePeople}
                     </span>
-                    <span className="text-white/40">conversations</span>
+                    <span className="text-white/60">conversations</span>
                     <span className="text-right text-white/80">
                       {day.conversations}
                     </span>
@@ -162,7 +162,7 @@ export function PeopleActivityChart(props: {
             if (!day || !point) return null;
             return (
               <text
-                fill="rgba(255,255,255,0.3)"
+                fill="rgba(255,255,255,0.5)"
                 fontFamily="ui-monospace, monospace"
                 fontSize="10"
                 key={day.date}

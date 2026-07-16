@@ -60,7 +60,7 @@ export function DashboardShell() {
       "relative whitespace-nowrap px-1 py-2 font-mono text-[0.68rem] font-medium uppercase tracking-[0.12em] no-underline transition-colors after:absolute after:inset-x-0 after:-bottom-[1.05rem] after:h-px after:transition-colors",
       isActive
         ? "text-white after:bg-cyan-400"
-        : "text-white/35 after:bg-transparent hover:text-white/70 hover:after:bg-white/20",
+        : "text-white/55 after:bg-transparent hover:text-white/70 hover:after:bg-white/20",
     );
 
   return (
