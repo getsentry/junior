@@ -187,17 +187,13 @@ describe("agent dispatch runner", () => {
         ts: "1700000000.000001",
       }),
     });
-    await getConversationStore().recordActivity({
-      conversationId: "slack:C123:1700000000.000000",
-      destination: slackAddress(),
-      visibility: "public",
-    });
     const created = await createOrGetDispatch({
       plugin: "scheduler",
       nowMs: Date.parse("2026-05-26T12:00:00.000Z"),
       options: {
         idempotencyKey: "run-1",
         destination: slackAddress(),
+        destinationVisibility: "public",
         input: "Run the scheduled task.",
         metadata: { runId: "run-1" },
         source: slackSource(),
@@ -335,6 +331,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-isolated-context",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         metadata: { runId: "run-isolated-context" },
         source: slackSource(),
@@ -392,6 +389,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-side-effect-only",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "React to the scheduled thread.",
         source: slackSource(),
       },
@@ -453,6 +451,7 @@ describe("agent dispatch runner", () => {
         idempotencyKey: "run-timeout",
         credentialSubject: createScheduledTaskCredentialSubject(),
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },
@@ -530,6 +529,7 @@ describe("agent dispatch runner", () => {
         idempotencyKey: "run-delegated",
         credentialSubject: createCredentialSubject(),
         destination: slackAddress("D123"),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource("D123"),
       },
@@ -583,6 +583,7 @@ describe("agent dispatch runner", () => {
         idempotencyKey: "run-scheduled-task-delegated",
         credentialSubject: createScheduledTaskCredentialSubject(),
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },
@@ -635,6 +636,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-persist-fail",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },
@@ -699,6 +701,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-fallback-completed",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },
@@ -757,6 +760,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-crash-window",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },
@@ -820,6 +824,7 @@ describe("agent dispatch runner", () => {
       options: {
         idempotencyKey: "run-busy",
         destination: slackAddress(),
+        destinationVisibility: "private",
         input: "Run the scheduled task.",
         source: slackSource(),
       },

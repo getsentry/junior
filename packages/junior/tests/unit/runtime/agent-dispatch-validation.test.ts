@@ -18,6 +18,7 @@ const validOptions = {
     teamId: "T123",
     channelId: "C123",
   },
+  destinationVisibility: "private" as const,
   input: "Run the scheduled task.",
   source: createSlackSource({
     teamId: "T123",

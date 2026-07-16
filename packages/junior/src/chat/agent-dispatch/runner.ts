@@ -37,7 +37,6 @@ import {
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { getConversationStore } from "@/chat/db";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
@@ -307,11 +306,6 @@ export async function runAgentDispatchSlice(
     const conversationContext = buildConversationContext(conversation, {
       excludeMessageId: userMessageId,
     });
-    const destinationVisibility = await getConversationStore().getDestinationVisibility({
-      provider: "slack",
-      providerTenantId: dispatch.destination.teamId,
-      providerDestinationId: dispatch.destination.channelId,
-    });
     const outcome = await deps.agentRunner.run({
       input: {
         messageText: dispatch.input,
@@ -328,7 +322,7 @@ export async function runAgentDispatchSlice(
             : {}),
         },
         destination: dispatch.destination,
-        destinationVisibility,
+        destinationVisibility: dispatch.destinationVisibility,
         source: dispatch.source,
         dispatch: {
           actor: dispatch.actor,
@@ -493,7 +487,7 @@ export async function runAgentDispatchSlice(
         usage: reply.diagnostics.usage,
         reasoningLevel: reply.diagnostics.reasoningLevel,
         destination: dispatch.destination,
-        destinationVisibility,
+        destinationVisibility: dispatch.destinationVisibility,
         source: dispatch.source,
         actor: dispatch.actor,
         surface: "api",

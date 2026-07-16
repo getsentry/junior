@@ -153,9 +153,10 @@ function isDmChannel(channelId: string): boolean {
   return channelId.startsWith("D");
 }
 
-/** Preserve destination visibility so scheduled work can replay with matching access. */
+/** Preserve the active destination's ingress-confirmed access classification. */
 export function getConversationAccess(
   destination: SlackDestination,
+  source: SlackSource | undefined,
 ): ScheduledTaskConversationAccess {
   if (isDmChannel(destination.channelId)) {
     return { audience: "direct", visibility: "private" };
@@ -163,10 +164,10 @@ export function getConversationAccess(
   if (destination.channelId.startsWith("G")) {
     return { audience: "group", visibility: "private" };
   }
-  if (destination.channelId.startsWith("C")) {
-    return { audience: "channel", visibility: "unknown" };
-  }
-  return { audience: "channel", visibility: "unknown" };
+  return {
+    audience: "channel",
+    visibility: source?.type === "pub" ? "public" : "private",
+  };
 }
 
 /** Keep scheduler management operations bound to the task's original Slack destination. */

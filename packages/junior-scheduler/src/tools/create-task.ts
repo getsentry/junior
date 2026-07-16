@@ -88,7 +88,10 @@ export function createSlackScheduleCreateTaskTool(
         nextRunAtMs,
         timezone,
       });
-      const conversationAccess = getConversationAccess(destination);
+      const conversationAccess = getConversationAccess(
+        destination,
+        context.source,
+      );
 
       const task: ScheduledTask = {
         id: buildTaskId(),

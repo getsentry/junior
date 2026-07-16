@@ -1,5 +1,6 @@
 import type {
   DispatchOptions,
+  DestinationVisibility,
   Source,
   SlackDestination,
 } from "@sentry/junior-plugin-api";
@@ -33,6 +34,7 @@ export interface DispatchRecord {
   createdAtMs: number;
   credentialSubject?: CredentialSubject;
   destination: SlackDestination;
+  destinationVisibility: DestinationVisibility;
   errorMessage?: string;
   id: string;
   idempotencyKey: string;

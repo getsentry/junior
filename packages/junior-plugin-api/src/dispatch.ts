@@ -1,6 +1,12 @@
 import { z } from "zod";
-import { dispatchOptionsSchema } from "./schemas";
+import {
+  destinationVisibilitySchema,
+  dispatchOptionsSchema,
+} from "./schemas";
 
+export type DestinationVisibility = z.output<
+  typeof destinationVisibilitySchema
+>;
 export type DispatchOptions = z.output<typeof dispatchOptionsSchema>;
 
 export interface DispatchResult {
