@@ -1,5 +1,9 @@
 /** Preserve directory table geometry while a new client-side order renders. */
-export function DirectoryRowsSkeleton() {
+export function DirectoryRowsSkeleton(props: { wideRuntime?: boolean }) {
+  const gridColumns = props.wideRuntime
+    ? "grid-cols-[minmax(14rem,1fr)_repeat(2,minmax(5rem,auto))_minmax(8rem,auto)] max-md:grid-cols-[repeat(2,minmax(0,1fr))_minmax(8rem,auto)]"
+    : "grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] max-md:grid-cols-3";
+
   return (
     <div
       aria-label="Loading sorted results"
@@ -9,7 +13,7 @@ export function DirectoryRowsSkeleton() {
       {Array.from({ length: 5 }, (_, index) => (
         <div
           aria-hidden="true"
-          className="grid min-w-0 grid-cols-[minmax(14rem,1fr)_repeat(3,minmax(5rem,auto))] items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 last:border-b-0 max-md:grid-cols-3 max-md:gap-x-3 max-md:gap-y-4"
+          className={`grid min-w-0 ${gridColumns} items-center gap-4 border-b border-white/[0.055] px-4 py-3.5 last:border-b-0 max-md:gap-x-3 max-md:gap-y-4`}
           key={index}
         >
           <div className="flex min-w-0 items-center gap-3 max-md:col-span-3">

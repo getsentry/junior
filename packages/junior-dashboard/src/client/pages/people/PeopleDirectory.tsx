@@ -102,7 +102,7 @@ export function PeopleDirectory(props: {
         />
       </div>
       {props.loading ? (
-        <DirectoryRowsSkeleton />
+        <DirectoryRowsSkeleton wideRuntime />
       ) : props.people.length === 0 ? (
         <div className="p-4">
           <EmptyTelemetry>No people match this search.</EmptyTelemetry>
