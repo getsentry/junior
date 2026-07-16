@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { readSlackActionToken } from "@/chat/slack/action-token";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+
+const actionToken = readSlackActionToken({
+  raw: { action_token: "action-123" },
+});
+if (!actionToken) {
+  throw new Error("test action token did not parse");
+}
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -37,16 +45,13 @@ describe("Slack public search", () => {
       },
     });
 
-    const result = await executeTool(
-      createSlackPublicSearchTool("action-123"),
-      {
-        query: "project gizmo",
-        after: 1783900000,
-        limit: 5,
-        sort: "timestamp",
-        sort_dir: "desc",
-      },
-    );
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "project gizmo",
+      after: 1783900000,
+      limit: 5,
+      sort: "timestamp",
+      sort_dir: "desc",
+    });
 
     expect(result).toMatchObject({
       ok: true,
@@ -85,12 +90,9 @@ describe("Slack public search", () => {
       needed: "search:read.public",
     });
 
-    const result = await executeTool(
-      createSlackPublicSearchTool("action-123"),
-      {
-        query: "company announcement",
-      },
-    );
+    const result = await executeTool(createSlackPublicSearchTool(actionToken), {
+      query: "company announcement",
+    });
 
     expect(result).toEqual({
       ok: false,

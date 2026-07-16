@@ -11,6 +11,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
+import { readSlackActionToken } from "@/chat/slack/action-token";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
   logException,
@@ -277,16 +278,6 @@ function isResourceEventMessage(message: Message): boolean {
   return raw?.event_type === "resource_event";
 }
 
-function getSlackActionToken(message: Message): string | undefined {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return typeof raw?.action_token === "string" && raw.action_token.trim()
-    ? raw.action_token
-    : undefined;
-}
-
 function resourceEventCredentialContext(
   message: Message,
 ): CredentialContext | undefined {
@@ -478,7 +469,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       threadTs,
       type: destinationVisibility === "public" ? "pub" : "priv",
     });
-    const slackActionToken = getSlackActionToken(message);
+    const slackActionToken = readSlackActionToken(message);
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 

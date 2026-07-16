@@ -4,11 +4,18 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 import { createTools } from "@/chat/tools";
+import { readSlackActionToken } from "@/chat/slack/action-token";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { schedulerPlugin } from "@sentry/junior-scheduler";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 const noopSandbox = {} as any;
+const actionToken = readSlackActionToken({
+  raw: { action_token: "action-123" },
+});
+if (!actionToken) {
+  throw new Error("test action token did not parse");
+}
 const noopEgress = {
   async fetch() {
     return new Response("ok");
@@ -81,7 +88,7 @@ describe("Slack tool registration", () => {
 
   it("registers channel-scope tools in shared channel context", () => {
     const tools = createTools([], {}, ctx("C12345"), {
-      slackPublicSearch: createSlackPublicSearchTool("action-123"),
+      slackPublicSearch: createSlackPublicSearchTool(actionToken),
     });
 
     expect(tools).toHaveProperty("sendMessage");

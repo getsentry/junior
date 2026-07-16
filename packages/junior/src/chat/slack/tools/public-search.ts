@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { SlackActionToken } from "@/chat/slack/action-token";
 import {
   getSlackClient,
   SlackActionError,
@@ -55,7 +56,7 @@ function explicitSearchError(error: SlackActionError): string | undefined {
 }
 
 /** Create an interactive, public-channel-only Slack search tool. */
-export function createSlackPublicSearchTool(actionToken: string) {
+export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
   return zodTool({
     description:
       "Search public Slack channel messages across the current workspace. Use when the user asks about company activity, announcements, public mentions, or context outside the active channel. Search only when requested or clearly needed, prefer focused keywords and time bounds, and cite returned permalinks. This never searches private channels or DMs.",
