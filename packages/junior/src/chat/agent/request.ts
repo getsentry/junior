@@ -13,6 +13,7 @@ import type {
   SystemActor,
 } from "@sentry/junior-plugin-api";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createActor, isUserActor, type Actor } from "@/chat/actor";
@@ -77,6 +78,8 @@ export interface AgentRunRouting {
   source: Source;
   slackConversation?: SlackConversationContext;
   destination: Destination;
+  /** Confirmed visibility of the destination where this run is delivered. */
+  destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: {
     actor?: SystemActor;

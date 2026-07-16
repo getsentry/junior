@@ -160,9 +160,11 @@ export async function executeAgentRun(
       request.routing.correlation?.conversationId ??
       request.routing.correlation?.threadId ??
       request.routing.correlation?.runId,
-    // Source-confirmed visibility from the live event's channel_type; without
-    // it the turn fails closed to private telemetry capture.
-    visibility: request.routing.slackConversation?.visibility,
+    // Destination visibility is provider-neutral. Slack event context remains
+    // a compatibility fallback for callers that have not projected it yet.
+    visibility:
+      request.routing.destinationVisibility ??
+      request.routing.slackConversation?.visibility,
   });
   return runWithConversationPrivacy(conversationPrivacy ?? "private", () =>
     executeAgentRunInPrivacyContext(request, conversationPrivacy),

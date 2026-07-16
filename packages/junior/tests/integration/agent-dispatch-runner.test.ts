@@ -210,10 +210,8 @@ describe("agent dispatch runner", () => {
       expect(context.authorizationFlowMode).toBe("disabled");
       expect(context.surface).toBe("api");
       expect(context.source).toEqual(slackSource());
-      expect(context.slackConversation).toMatchObject({
-        type: "public_channel",
-        visibility: "public",
-      });
+      expect(context.destinationVisibility).toBe("public");
+      expect(context.slackConversation).toBeUndefined();
       expect(context.dispatch).toEqual({
         actor: { platform: "system", name: "scheduler" },
         metadata: { runId: "run-1" },
