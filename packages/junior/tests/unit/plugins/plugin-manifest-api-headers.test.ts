@@ -147,7 +147,11 @@ describe("plugin manifest API headers", () => {
     const { githubPlugin } = await import("@sentry/junior-github");
     const manifest = githubPlugin().manifest!;
 
-    expect(manifest.domains).toEqual(["api.github.com", "github.com"]);
+    expect(manifest.domains).toEqual([
+      "api.github.com",
+      "github.com",
+      "uploads.github.com",
+    ]);
     expect(manifest.credentials).toBeUndefined();
     expect(manifest.envVars).toMatchObject({
       GITHUB_APP_CLIENT_ID: {},
