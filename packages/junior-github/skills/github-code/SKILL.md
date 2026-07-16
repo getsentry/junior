@@ -32,7 +32,7 @@ Identify the repo, checkout, default/current branches, worktree state, repo inst
 
 A shallow clone is for fast inspection, not history rewriting. Before rebasing, merge-base analysis, blame/history work, or comparing against a base absent locally, fetch the needed refs and deepen incrementally. Use `--unshallow` only when bounded deepening is insufficient. Never use a force push to compensate for incomplete history.
 
-For edits, choose the smallest credible validation path before changing files. Capture a baseline when a failure may be pre-existing.
+For edits, choose the smallest credible validation path before changing files. Ensure locked repository dependencies are available before capturing a baseline or running any check; install them with the detected package manager's frozen/immutable mode when absent. Capture a baseline when a failure may be pre-existing.
 
 ### 2. Investigate
 
@@ -44,11 +44,7 @@ For non-trivial architecture, API, security, concurrency, migration, or broad cr
 
 Make the smallest coherent change. Follow local patterns and avoid speculative cleanup. After a failed attempt, re-check the root cause before patching again.
 
-Before running repo checks, ensure project dependencies are available:
-
-1. Detect the package manager and lockfile from repo evidence.
-2. If dependencies are missing or the check reports missing packages, run the repo-native frozen/immutable install (`pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`, `bun install --frozen-lockfile`, or the documented equivalent).
-3. Do not regenerate or modify a lockfile merely to make verification run. If the locked install fails, report the exact failure unless dependency changes are part of the task.
+For dependency setup, detect the package manager and lockfile from repo evidence. Use the repo-native locked install (`pnpm install --frozen-lockfile`, `npm ci`, `yarn install --immutable`, `bun install --frozen-lockfile`, or the documented equivalent). Do not change a lockfile merely to make verification run; report an exact locked-install failure unless dependency changes are part of the task.
 
 Do not install or repair the GitHub plugin runtime itself; that is manifest-owned setup.
 
@@ -74,7 +70,7 @@ If PR creation is blocked, report the exact failed command/tool call and leave t
 
 ### 6. Follow and report
 
-When PR creation returns a subscribable resource hint, subscribe to suggested review/CI events. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
+When PR creation returns a subscribable resource hint, immediately call `subscribeToResourceEvents` with its suggested review/CI events. Its `intent` must name the repo, PR number, branch, and one goal: address review concerns and keep the build green. Report only actionable feedback addressed, build failures fixed, fully green/ready state, or merge.
 
 Return: repo, branch, PR URL/number, checks and results, pre-existing failures, and anything not run with the reason.
 
