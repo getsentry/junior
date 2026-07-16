@@ -10,7 +10,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Preserve unrelated work and reject destructive Git operations.
 - Treat shallow clones as inspection checkouts; fetch/deepen before history-dependent operations and never force-push around missing ancestry.
 - Install repository dependencies with the detected package manager's locked/frozen mode before verification when dependencies are absent.
-- For every completed repository edit, create or update a pushed draft PR unless the user explicitly opts out.
+- For every completed repository edit, create or update a pushed PR unless the user explicitly opts out; default new PRs to draft while honoring explicit ready-for-review instructions.
 - Report exact validation and permission failures without claiming partial work is complete.
 
 ## Runtime architecture

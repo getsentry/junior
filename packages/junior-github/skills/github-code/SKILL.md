@@ -60,13 +60,13 @@ For non-trivial work, review the final diff and initial results with the availab
 
 ### 5. Package every completed edit
 
-Unless the user explicitly says not to create a PR, every completed repository edit must end in a pushed branch and draft PR. Do not stop at local changes or a commit.
+Unless the user explicitly says not to create a PR, every completed repository edit must end in a pushed branch and PR. Default to draft; honor an explicit user or repo instruction to open it ready for review. Do not stop at local changes or a commit.
 
 1. Reuse the current non-default branch or create a focused branch.
 2. Commit using repo conventions; otherwise use `<type>(<scope>): <Subject>` in imperative present tense, with no agent branding.
 3. Push explicitly with `git push -u origin BRANCH`.
 4. Resolve the actual default branch.
-5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true`.
+5. Reuse and update an existing PR for the branch; otherwise call `github_createPullRequest` with explicit repo, head, base, title, body, and `draft: true` unless the user or repo explicitly requires ready-for-review.
 
 The PR body should explain what changed and why, checks run, and remaining risks or unverified areas. Never include customer data, PII, secrets, or sensitive thread context, especially in public repositories. Re-evaluate its title/body after material follow-up commits. Resolve requested assignee/reviewer handles from evidence; skip unconfirmed identities.
 
