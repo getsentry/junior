@@ -3,7 +3,7 @@ import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 import { formatDuration } from "../../components/Duration";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
-import { formatCompactNumber } from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 
 type Metric = "costUsd" | "durationMs" | "tokens";
 
@@ -18,6 +18,7 @@ type ChartConfig = {
 };
 
 function compactCurrency(value: number): string {
+  if (value < 1) return `$${value.toFixed(2)}`;
   return `$${formatCompactNumber(value)}`;
 }
 
@@ -42,13 +43,7 @@ const charts: ChartConfig[] = [
     axisFormat: compactCurrency,
     color: "#fbbf24",
     description: "Daily estimated model cost in US dollars.",
-    format: (value) =>
-      value.toLocaleString(undefined, {
-        currency: "USD",
-        maximumFractionDigits: 2,
-        minimumFractionDigits: 2,
-        style: "currency",
-      }),
+    format: (value) => formatCostSummary({ total: value }),
     metric: "costUsd",
     title: "Model spend",
     type: "area",
@@ -144,7 +139,7 @@ function MetricChart(props: {
       <div className="px-2 py-3">
         <svg
           aria-label={`${chart.title} per day`}
-          className="block h-auto min-h-52 w-full overflow-visible"
+          className="block h-auto min-h-52 w-full overflow-hidden"
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >
