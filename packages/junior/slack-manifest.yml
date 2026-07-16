@@ -37,6 +37,7 @@ oauth_config:
       - mpim:read
       - reactions:read
       - reactions:write
+      - search:read.public
       - users:read
       - users:read.email
 settings:

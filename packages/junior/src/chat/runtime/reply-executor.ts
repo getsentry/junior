@@ -276,6 +276,16 @@ function isResourceEventMessage(message: Message): boolean {
   return raw?.event_type === "resource_event";
 }
 
+function getSlackActionToken(message: Message): string | undefined {
+  const raw =
+    message.raw && typeof message.raw === "object"
+      ? (message.raw as Record<string, unknown>)
+      : undefined;
+  return typeof raw?.action_token === "string" && raw.action_token.trim()
+    ? raw.action_token
+    : undefined;
+}
+
 function resourceEventCredentialContext(
   message: Message,
 ): CredentialContext | undefined {
@@ -467,6 +477,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
       threadTs,
       type: destinationVisibility === "public" ? "pub" : "priv",
     });
+    const slackActionToken = getSlackActionToken(message);
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 
@@ -1200,6 +1211,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               actor,
               slackConversation,
               source,
+              ...(slackActionToken ? { slackActionToken } : {}),
               destination,
               surface: "slack",
               correlation: {

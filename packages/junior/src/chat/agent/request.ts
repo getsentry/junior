@@ -75,6 +75,8 @@ export interface AgentRunRouting {
   credentialContext?: CredentialContext;
   actor?: Actor;
   source: Source;
+  /** Ephemeral action token from the active Slack interaction. Never persist. */
+  slackActionToken?: string;
   slackConversation?: SlackConversationContext;
   destination: Destination;
   surface?: AgentTurnSurface;

@@ -79,11 +79,19 @@ describe("Slack tool registration", () => {
   });
 
   it("registers channel-scope tools in shared channel context", () => {
-    const tools = createTools([], {}, ctx("C12345"));
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        slackActionToken: "action-123",
+      },
+    );
 
     expect(tools).toHaveProperty("sendMessage");
     expect(tools).not.toHaveProperty("attachFile");
     expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackPublicSearch");
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationHistory");
@@ -91,6 +99,12 @@ describe("Slack tool registration", () => {
     expect(tools.searchConversationHistory?.source?.id).toBe(
       "conversation-history",
     );
+  });
+
+  it("does not register public search without an active Slack action token", () => {
+    const tools = createTools([], {}, ctx("C12345"));
+
+    expect(tools).not.toHaveProperty("slackPublicSearch");
   });
 
   it("does not register conversation search for a source-confirmed private C channel", () => {
