@@ -8,6 +8,7 @@ import { formatCompactNumber } from "../../format";
 type Metric = "costUsd" | "durationMs" | "tokens";
 
 type ChartConfig = {
+  axisFormat(value: number): string;
   color: string;
   description: string;
   format(value: number): string;
@@ -16,8 +17,20 @@ type ChartConfig = {
   type: "area" | "bar" | "scatter";
 };
 
+function compactCurrency(value: number): string {
+  return `$${formatCompactNumber(value)}`;
+}
+
+function compactDuration(value: number): string {
+  const hours = value / (60 * 60 * 1_000);
+  if (hours >= 24) return `${formatCompactNumber(hours / 24)}d`;
+  if (hours >= 1) return `${formatCompactNumber(hours)}h`;
+  return formatDuration(value);
+}
+
 const charts: ChartConfig[] = [
   {
+    axisFormat: formatCompactNumber,
     color: "#22d3ee",
     description: "Daily model tokens consumed across completed work.",
     format: formatCompactNumber,
@@ -26,6 +39,7 @@ const charts: ChartConfig[] = [
     type: "bar",
   },
   {
+    axisFormat: compactCurrency,
     color: "#fbbf24",
     description: "Daily estimated model cost in US dollars.",
     format: (value) =>
@@ -40,6 +54,7 @@ const charts: ChartConfig[] = [
     type: "area",
   },
   {
+    axisFormat: compactDuration,
     color: "#a78bfa",
     description: "Daily cumulative runtime, with outliers left visible.",
     format: formatDuration,
@@ -79,7 +94,7 @@ function MetricChart(props: {
   const { chart, days } = props;
   const width = 400;
   const height = 250;
-  const left = 42;
+  const left = 48;
   const right = 14;
   const top = 22;
   const bottom = 34;
@@ -165,7 +180,7 @@ function MetricChart(props: {
                   x={left - 7}
                   y={y + 3}
                 >
-                  {chart.format(maximum * (1 - ratio))}
+                  {chart.axisFormat(maximum * (1 - ratio))}
                 </text>
               </g>
             );

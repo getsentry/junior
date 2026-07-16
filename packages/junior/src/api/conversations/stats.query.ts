@@ -14,7 +14,7 @@ import type {
   ConversationStatsReport,
 } from "./schema";
 
-const WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const WINDOW_DAYS = 90;
 
 function emptyStatsItem(label: string): ConversationStatsItem {
   return {
@@ -124,6 +124,14 @@ function statsWhere(start: Date, end: Date) {
   );
 }
 
+function statsWindow(nowMs: number) {
+  const end = new Date(nowMs);
+  const start = new Date(nowMs);
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - (WINDOW_DAYS - 1));
+  return { end, start };
+}
+
 function metricDays(
   rows: Array<{
     costUsd: number | null;
@@ -137,7 +145,7 @@ function metricDays(
   const end = new Date(endMs);
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 89);
+  start.setUTCDate(start.getUTCDate() - (WINDOW_DAYS - 1));
   const days: ConversationMetricDay[] = [];
   for (
     const cursor = new Date(start);
@@ -237,11 +245,11 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
 export async function readConversationStatsFromSql(): Promise<ConversationStatsReport> {
   const nowMs = Date.now();
-  const windowStartMs = nowMs - WINDOW_MS;
+  const { end, start } = statsWindow(nowMs);
   const { actorRows, locationRows, metricRows, totals } = await aggregateStats(
     getDb(),
-    new Date(windowStartMs),
-    new Date(nowMs),
+    start,
+    end,
   );
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
@@ -269,7 +277,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     ...(totals?.tokens !== null && totals?.tokens !== undefined
       ? { tokens: totals.tokens }
       : {}),
-    windowEnd: new Date(nowMs).toISOString(),
-    windowStart: new Date(windowStartMs).toISOString(),
+    windowEnd: end.toISOString(),
+    windowStart: start.toISOString(),
   };
 }
