@@ -449,6 +449,13 @@ describe("github plugin", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
+  it("uses the sandbox-provided curl implementation", () => {
+    expect(githubPlugin().manifest?.runtimeDependencies).toEqual([
+      { type: "system", package: "gh" },
+      { type: "system", package: "jq" },
+    ]);
+  });
+
   it("defaults GitHub App permissions and user OAuth scopes to all available app access", () => {
     const plugin = githubPlugin();
 

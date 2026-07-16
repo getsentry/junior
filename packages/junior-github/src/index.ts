@@ -1734,10 +1734,6 @@ export function githubPlugin(
       runtimeDependencies: [
         {
           type: "system",
-          package: "curl",
-        },
-        {
-          type: "system",
           package: "gh",
         },
         {
