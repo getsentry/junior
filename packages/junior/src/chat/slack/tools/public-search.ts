@@ -116,6 +116,8 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
       sort_dir,
     }) => {
       try {
+        const normalizedAfter = optionalTimestampSchema.parse(after);
+        const normalizedBefore = optionalTimestampSchema.parse(before);
         const response = (await withSlackRetries(
           () =>
             getSlackClient().apiCall("assistant.search.context", {
@@ -125,8 +127,12 @@ export function createSlackPublicSearchTool(actionToken: SlackActionToken) {
               content_types: ["messages"],
               include_bots: true,
               limit: limit ?? DEFAULT_LIMIT,
-              ...(after !== undefined ? { after } : {}),
-              ...(before !== undefined ? { before } : {}),
+              ...(normalizedAfter !== undefined
+                ? { after: normalizedAfter }
+                : {}),
+              ...(normalizedBefore !== undefined
+                ? { before: normalizedBefore }
+                : {}),
               ...(cursor ? { cursor } : {}),
               ...(sort ? { sort } : {}),
               ...(sort_dir ? { sort_dir } : {}),
