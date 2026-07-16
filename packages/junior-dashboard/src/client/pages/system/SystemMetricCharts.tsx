@@ -199,6 +199,7 @@ function MetricChart(props: {
             const value = values[index]!;
             const point = points[index]!;
             const barHeight = (value / maximum) * plotHeight;
+            const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
             return (
               <Tooltip
                 content={chart.format(value)}
@@ -209,13 +210,13 @@ function MetricChart(props: {
                   <rect
                     aria-label={`${shortDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
-                    height={Math.max(value ? 2 : 0, barHeight)}
+                    height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
                     rx="1.5"
                     tabIndex={0}
                     width={barWidth}
                     x={point.x - barWidth / 2}
-                    y={top + plotHeight - barHeight}
+                    y={top + plotHeight - renderedBarHeight}
                   />
                 ) : (
                   <circle
