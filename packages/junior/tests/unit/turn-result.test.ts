@@ -334,41 +334,13 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("keeps visible text when it appears with the no-reply marker", () => {
+  it("treats a no-reply marker mixed with text as silent completion", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "assistant",
           content: [
             { type: "text", text: `Done. ${NO_REPLY_MARKER}` },
-          ],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "Do whatever makes sense here",
-      artifactStatePatch: {},
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      spanContext: {},
-      modelId: "test-model",
-      reasoningSelection,
-    });
-
-    expect(reply.text).toBe("Done.");
-    expect(reply.deliveryPlan).toMatchObject({
-      postThreadText: true,
-    });
-    expect(reply.diagnostics.outcome).toBe("success");
-  });
-
-  it("treats repeated no-reply markers as intentional silent completion", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [
-            { type: "text", text: `${NO_REPLY_MARKER}\n${NO_REPLY_MARKER}` },
           ],
           stopReason: "stop",
         },
