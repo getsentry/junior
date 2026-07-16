@@ -121,6 +121,7 @@ interface CredentialLeaseInput {
     scope?: string;
     type: "oauth";
   };
+  domains?: string[];
   expiresAtMs: number;
   token: string;
 }
@@ -137,6 +138,7 @@ interface UserCredentialOptions {
 
 interface InstallationCredentialBaseOptions {
   appIdEnv: string;
+  domains?: string[];
   installationIdEnv: string;
   privateKeyEnv: string;
 }
@@ -147,16 +149,25 @@ type InstallationCredentialOptions = InstallationCredentialBaseOptions &
         loadPermissions?: never;
         permissions?: never;
         repositories: string[];
+        repositoryIds?: never;
+      }
+    | {
+        loadPermissions?: never;
+        permissions?: never;
+        repositories?: never;
+        repositoryIds: number[];
       }
     | {
         loadPermissions?: never;
         permissions: GitHubAppPermissions;
         repositories?: never;
+        repositoryIds?: never;
       }
     | {
         loadPermissions: LoadInstallationReadPermissions;
         permissions?: never;
         repositories?: never;
+        repositoryIds?: never;
       }
   );
 
@@ -187,7 +198,7 @@ const USER_WRITE_REQUIREMENTS = [
   "requesting GitHub user permission to perform this operation",
 ];
 const GITHUB_CREDENTIAL_DOMAINS = ["api.github.com", "github.com"];
-const GITHUB_USER_CREDENTIAL_DOMAINS = [
+const GITHUB_ASSET_UPLOAD_CREDENTIAL_DOMAINS = [
   ...GITHUB_CREDENTIAL_DOMAINS,
   "uploads.github.com",
 ];
@@ -771,9 +782,11 @@ function createCredentialLease(
       ...(input.account ? { account: input.account } : {}),
       ...(input.authorization ? { authorization: input.authorization } : {}),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
-      headerTransforms: (input.authorization
-        ? GITHUB_USER_CREDENTIAL_DOMAINS
-        : GITHUB_CREDENTIAL_DOMAINS
+      headerTransforms: (
+        input.domains ??
+        (input.authorization
+          ? GITHUB_ASSET_UPLOAD_CREDENTIAL_DOMAINS
+          : GITHUB_CREDENTIAL_DOMAINS)
       ).map((domain) => ({
         domain,
         headers: {
@@ -889,6 +902,33 @@ function githubRepositoryFromLeaseScope(
     );
   }
   return { owner: match[1], name: match[2] };
+}
+
+function githubRepositoryIdFromUploadUrl(upstreamUrl: URL): number {
+  const repositoryId = Number(upstreamUrl.searchParams.get("repository_id"));
+  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
+    throw new EgressPolicyDenied(
+      "GitHub asset upload request is missing a valid repository_id.",
+    );
+  }
+  return repositoryId;
+}
+
+function githubRepositoryIdLeaseScope(repositoryId: number): string {
+  return `repository-id:${repositoryId}`;
+}
+
+function githubRepositoryIdFromLeaseScope(
+  leaseScope: string | undefined,
+): number {
+  const match = /^repository-id:(\d+)$/.exec(leaseScope ?? "");
+  const repositoryId = Number(match?.[1]);
+  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
+    throw new GitHubPluginSetupError(
+      "GitHub asset upload grant is missing a repository id lease scope.",
+    );
+  }
+  return repositoryId;
 }
 
 async function resolveUserAccount(
@@ -1120,12 +1160,14 @@ async function issueInstallationCredential(
   const body =
     "repositories" in options
       ? { repositories: options.repositories }
-      : {
-          permissions:
-            "permissions" in options
-              ? options.permissions
-              : await options.loadPermissions({ appJwt, installationId }),
-        };
+      : "repositoryIds" in options
+        ? { repository_ids: options.repositoryIds }
+        : {
+            permissions:
+              "permissions" in options
+                ? options.permissions
+                : await options.loadPermissions({ appJwt, installationId }),
+          };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",
     `/app/installations/${installationId}/access_tokens`,
@@ -1141,6 +1183,7 @@ async function issueInstallationCredential(
     Date.now() + MAX_LEASE_MS,
   );
   return createCredentialLease({
+    ...(options.domains ? { domains: options.domains } : {}),
     token: parsedToken.token,
     expiresAtMs,
   });
@@ -1213,10 +1256,7 @@ function isGitHubApiUrl(upstreamUrl: URL): boolean {
   return upstreamUrl.hostname.toLowerCase() === "api.github.com";
 }
 
-function isGitHubAssetUploadRequest(
-  method: string,
-  upstreamUrl: URL,
-): boolean {
+function isGitHubAssetUploadRequest(method: string, upstreamUrl: URL): boolean {
   return (
     method === "POST" &&
     upstreamUrl.hostname.toLowerCase() === "uploads.github.com" &&
@@ -1577,9 +1617,7 @@ function grantForAccess(
     access,
     ...(leaseScope ? { leaseScope } : {}),
     reason,
-    ...(name === "user-write"
-      ? { requirements: USER_WRITE_REQUIREMENTS }
-      : {}),
+    ...(name === "user-write" ? { requirements: USER_WRITE_REQUIREMENTS } : {}),
   };
 }
 
@@ -1607,7 +1645,13 @@ async function githubGrantForEgress(
     upstreamUrl,
   });
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
-    return grantForAccess("write", "github.asset-upload", "user-write");
+    const repositoryId = githubRepositoryIdFromUploadUrl(upstreamUrl);
+    return grantForAccess(
+      "write",
+      "github.asset-upload",
+      "installation-write",
+      githubRepositoryIdLeaseScope(repositoryId),
+    );
   }
 
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
@@ -1816,6 +1860,18 @@ export function githubPlugin(
             });
           }
           if (ctx.grant.name === "installation-write") {
+            if (ctx.grant.reason === "github.asset-upload") {
+              const repositoryId = githubRepositoryIdFromLeaseScope(
+                ctx.grant.leaseScope,
+              );
+              return await issueInstallationCredential({
+                appIdEnv,
+                domains: GITHUB_ASSET_UPLOAD_CREDENTIAL_DOMAINS,
+                privateKeyEnv,
+                installationIdEnv,
+                repositoryIds: [repositoryId],
+              });
+            }
             const repository = githubRepositoryFromLeaseScope(
               ctx.grant.leaseScope,
             );

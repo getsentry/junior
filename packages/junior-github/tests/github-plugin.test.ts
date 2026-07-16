@@ -567,20 +567,26 @@ describe("github plugin", () => {
     );
   });
 
-  it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
+  it("uses repository-scoped installation credentials for GitHub user-attachment uploads", async () => {
     await expect(
       grantForEgress({
         method: "POST",
         url: "https://uploads.github.com/user-attachments/assets?name=screenshot.png&content_type=image%2Fpng&repository_id=123",
       }),
     ).resolves.toMatchObject({
-      name: "user-write",
+      name: "installation-write",
       access: "write",
+      leaseScope: "repository-id:123",
       reason: "github.asset-upload",
-      requirements: [
-        "requesting GitHub user permission to perform this operation",
-      ],
     });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://uploads.github.com/user-attachments/assets?name=screenshot.png",
+      }),
+    ).rejects.toThrow(
+      "GitHub asset upload request is missing a valid repository_id.",
+    );
     await expect(
       grantForEgress({
         method: "POST",
@@ -1663,6 +1669,49 @@ Conversation: \`local:test:old-conversation\`
         repositories: ["junior"],
       },
       headers: expect.any(Object),
+    });
+  });
+
+  it("issues repository-scoped installation credentials for asset uploads", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_ID = "123";
+    process.env.GITHUB_INSTALLATION_ID = "456";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    const requests = mockGitHubInstallationApi();
+    const plugin = githubPlugin();
+
+    const result = await plugin.hooks?.issueCredential?.({
+      actor: { platform: "system", name: "resource-event" },
+      grant: {
+        name: "installation-write",
+        access: "write",
+        leaseScope: "repository-id:789",
+        reason: "github.asset-upload",
+      },
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      tokens: {},
+    });
+
+    expect(result).toMatchObject({
+      type: "lease",
+      lease: {
+        headerTransforms: expect.arrayContaining([
+          {
+            domain: "uploads.github.com",
+            headers: { Authorization: "Bearer installation-token" },
+          },
+        ]),
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      url: "https://api.github.com/app/installations/456/access_tokens",
+      method: "POST",
+      body: { repository_ids: [789] },
     });
   });
 
