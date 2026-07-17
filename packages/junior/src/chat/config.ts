@@ -14,7 +14,7 @@ import {
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
-const DEFAULT_MAX_STEPS_PER_TURN = 100;
+const MAX_STEPS_PER_TURN = 100;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -276,11 +276,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       DEFAULT_EMBEDDING_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
-    maxStepsPerTurn:
-      parseOptionalPositiveInteger(
-        "AGENT_MAX_STEPS_PER_TURN",
-        env.AGENT_MAX_STEPS_PER_TURN,
-      ) ?? DEFAULT_MAX_STEPS_PER_TURN,
+    maxStepsPerTurn: MAX_STEPS_PER_TURN,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
