@@ -85,15 +85,11 @@ export function DashboardShell() {
           )}
         >
           <Link
-            className="flex min-w-0 max-w-full items-center gap-3 justify-self-start text-inherit no-underline"
+            aria-label="Junior home"
+            className="flex min-w-0 max-w-full items-center justify-self-start text-inherit no-underline"
             to="/"
           >
             <JuniorLogo />
-            <div className="min-w-0 border-l border-white/10 pl-3">
-              <h1 className="m-0 font-display text-xl font-medium leading-none tracking-[-0.03em]">
-                Junior
-              </h1>
-            </div>
           </Link>
           <nav className="col-span-2 row-start-2 flex min-w-0 items-center gap-6 overflow-x-auto md:col-span-1 md:col-start-2 md:row-start-1 md:justify-self-start md:overflow-visible">
             <NavLink className={navLinkClass} to="/locations">

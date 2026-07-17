@@ -33,7 +33,7 @@ const charts: ChartConfig[] = [
   {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description: "Daily model tokens consumed across completed work.",
+    description: "Daily model tokens",
     format: formatCompactNumber,
     metric: "tokens",
     title: "Token usage",
@@ -42,7 +42,7 @@ const charts: ChartConfig[] = [
   {
     axisFormat: compactCurrency,
     color: "#fbbf24",
-    description: "Daily estimated model cost in US dollars.",
+    description: "Daily estimated cost",
     format: (value) => formatCostSummary({ total: value }),
     metric: "costUsd",
     title: "Model spend",
@@ -51,7 +51,7 @@ const charts: ChartConfig[] = [
   {
     axisFormat: compactDuration,
     color: "#a78bfa",
-    description: "Daily cumulative runtime, with outliers left visible.",
+    description: "Daily cumulative runtime",
     format: formatDuration,
     metric: "durationMs",
     title: "Runtime",

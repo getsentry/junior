@@ -63,9 +63,9 @@ function PluginRosterRow(props: { row: PluginRow }) {
   const metricCount = props.row.report?.metrics?.length ?? 0;
   const recordSetCount = props.row.report?.recordSets?.length ?? 0;
   return (
-    <article className="grid min-w-0 gap-4 rounded-lg border border-white/[0.065] bg-white/[0.025] p-4 transition-colors hover:border-white/[0.11] hover:bg-white/[0.035] md:grid-cols-[minmax(12rem,1fr)_auto] md:items-center">
+    <article className="grid min-w-0 gap-3 rounded-lg border border-white/[0.065] bg-white/[0.025] px-4 py-2.5 transition-colors hover:border-white/[0.11] hover:bg-white/[0.035] md:grid-cols-[minmax(12rem,1fr)_auto] md:items-center">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
+        <div className="grid size-9 shrink-0 place-items-center rounded border border-cyan-300/15 bg-cyan-300/[0.075] text-cyan-200">
           <Boxes aria-hidden="true" size={18} strokeWidth={1.8} />
         </div>
         <div className="min-w-0">
@@ -85,7 +85,7 @@ function PluginRosterRow(props: { row: PluginRow }) {
         </div>
       </div>
 
-      <div className="flex min-w-[10rem] items-center justify-between gap-5 rounded-lg border border-white/[0.055] bg-black/15 px-3 py-2.5 md:justify-end">
+      <div className="flex min-w-[10rem] items-center justify-between gap-5 rounded-lg border border-white/[0.055] bg-black/15 px-3 py-1.5 md:justify-end">
         <OperationalCount label="metrics" value={metricCount} />
         <OperationalCount label="datasets" value={recordSetCount} />
       </div>
