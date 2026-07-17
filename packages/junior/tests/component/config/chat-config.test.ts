@@ -298,9 +298,9 @@ describe("chat config", () => {
     );
   });
 
-  it("sets max steps per turn from core config", async () => {
+  it("sets max slices per turn from core config", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxStepsPerTurn).toBe(100);
+    expect(botConfig.maxSlicesPerTurn).toBe(100);
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

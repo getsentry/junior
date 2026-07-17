@@ -359,7 +359,7 @@ describe("executeAgentRun agent continuation", () => {
     ]);
   });
 
-  it("throws terminal timeout failures instead of returning an error reply after the step limit", async () => {
+  it("throws terminal timeout failures instead of returning an error reply after the execution limit", async () => {
     promptMode.value = "continueSettlesAfterAbort";
     const piMessages: PiMessage[] = [
       {
@@ -372,7 +372,7 @@ describe("executeAgentRun agent continuation", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: botConfig.maxStepsPerTurn,
+      sliceId: botConfig.maxSlicesPerTurn,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -396,11 +396,11 @@ describe("executeAgentRun agent continuation", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     const error = await replyPromise;
 
-    const { TurnStepLimitExceededError } =
-      await import("@/chat/services/turn-step-limit");
-    expect(error).toBeInstanceOf(TurnStepLimitExceededError);
+    const { TurnSliceLimitExceededError } =
+      await import("@/chat/services/turn-limit");
+    expect(error).toBeInstanceOf(TurnSliceLimitExceededError);
     expect(error).not.toHaveProperty("text");
-    expect(error.message).toContain("step limit");
+    expect(error.message).toContain("execution limit");
 
     const sessionRecord = await getAgentTurnSessionRecord(
       "conversation-timeout-cap",
@@ -409,8 +409,8 @@ describe("executeAgentRun agent continuation", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: botConfig.maxStepsPerTurn,
-      errorMessage: expect.stringContaining("step limit"),
+      sliceId: botConfig.maxSlicesPerTurn,
+      errorMessage: expect.stringContaining("execution limit"),
     });
   });
 

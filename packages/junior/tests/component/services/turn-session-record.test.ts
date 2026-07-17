@@ -700,7 +700,7 @@ describe("persistAuthPauseSessionRecord", () => {
     });
   });
 
-  it("fails timeout sessions instead of scheduling beyond the step limit", async () => {
+  it("fails timeout sessions instead of scheduling beyond the execution limit", async () => {
     const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");
     const { botConfig } = await import("@/chat/config");
@@ -719,7 +719,7 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: botConfig.maxStepsPerTurn,
+      sliceId: botConfig.maxSlicesPerTurn,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -731,7 +731,7 @@ describe("persistAuthPauseSessionRecord", () => {
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
-        currentSliceId: botConfig.maxStepsPerTurn,
+        currentSliceId: botConfig.maxSlicesPerTurn,
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
@@ -739,9 +739,9 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: botConfig.maxStepsPerTurn,
+      sliceId: botConfig.maxSlicesPerTurn,
       cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("step limit"),
+      errorMessage: expect.stringContaining("execution limit"),
       piMessages,
     });
 
@@ -749,9 +749,9 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: botConfig.maxStepsPerTurn,
+      sliceId: botConfig.maxSlicesPerTurn,
       cumulativeDurationMs: 15_000,
-      errorMessage: expect.stringContaining("step limit"),
+      errorMessage: expect.stringContaining("execution limit"),
       piMessages,
     });
   });
