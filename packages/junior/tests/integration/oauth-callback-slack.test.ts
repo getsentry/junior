@@ -579,17 +579,15 @@ describe("oauth callback slack integration", () => {
         sessionId,
       );
     if (!sessionRecord) throw new Error("Expected an auth-paused session");
-    await turnSessionStoreModule.prepareAuthorizationCompletedAgentTurnCandidate(
-      {
-        authorizationCompletionId: "prepared-before-exchange",
-        authorizationKind: "plugin",
-        conversationId,
-        expectedVersion: sessionRecord.version,
-        provider: "eval-oauth",
-        sessionId,
-        userId: "U123",
-      },
-    );
+    await turnSessionStoreModule.prepareAgentTurnAuthorizationRecovery({
+      authorizationCompletionId: "prepared-before-exchange",
+      authorizationKind: "plugin",
+      conversationId,
+      expectedVersion: sessionRecord.version,
+      provider: "eval-oauth",
+      sessionId,
+      userId: "U123",
+    });
     const { recoverAuthorizationCompletedAgentTurns } =
       await import("@/chat/services/agent-continue");
     await expect(
@@ -597,14 +595,15 @@ describe("oauth callback slack integration", () => {
     ).resolves.toBe(0);
     expect(queue.sentRecords()).toHaveLength(0);
     const originalSet = adapter.set.bind(adapter);
-    let candidateWrites = 0;
+    let recoveryWrites = 0;
     const setSpy = vi
       .spyOn(adapter, "set")
       .mockImplementation(
         async (key: string, value: unknown, ttlMs?: number) => {
           if (
-            key === "junior:agent_turn_session:authorization-completed:index" &&
-            ++candidateWrites === 2
+            key ===
+              `junior:agent_turn_session:${conversationId}:${sessionId}` &&
+            ++recoveryWrites === 1
           ) {
             throw new Error("candidate activation unavailable");
           }
@@ -632,8 +631,13 @@ describe("oauth callback slack integration", () => {
         .get("U123", "eval-oauth"),
     ).resolves.toMatchObject({ accessToken: "eval-oauth-access-token" });
     await expect(
-      turnSessionStoreModule.listAuthorizationCompletedAgentTurnCandidates(),
-    ).resolves.toEqual([expect.objectContaining({ active: false })]);
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      authorizationRecovery: { active: false },
+    });
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(
         conversationId,
@@ -667,8 +671,13 @@ describe("oauth callback slack integration", () => {
       }),
     ).resolves.toBe(0);
     await expect(
-      turnSessionStoreModule.listAuthorizationCompletedAgentTurnCandidates(),
-    ).resolves.toEqual([expect.objectContaining({ active: true })]);
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({
+      authorizationRecovery: { active: true },
+    });
     await expect(
       recoverAuthorizationCompletedAgentTurns({
         queue,

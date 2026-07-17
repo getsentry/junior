@@ -52,11 +52,11 @@ import { lookupSlackActor } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  activateAuthorizationCompletedAgentTurnCandidate,
+  activateAgentTurnAuthorizationRecovery,
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
-  prepareAuthorizationCompletedAgentTurnCandidate,
+  prepareAgentTurnAuthorizationRecovery,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -750,7 +750,7 @@ export async function GET(
         )
       : undefined;
   const prepared = sessionRecord
-    ? await prepareAuthorizationCompletedAgentTurnCandidate({
+    ? await prepareAgentTurnAuthorizationRecovery({
         authorizationCompletionId: crypto.randomUUID(),
         authorizationKind: "plugin",
         conversationId: stored.resumeConversationId!,
@@ -760,12 +760,13 @@ export async function GET(
         userId: stored.userId,
       })
     : undefined;
-  const receiptCommitted = prepared
-    ? prepared.active ||
+  const recovery = prepared?.authorizationRecovery;
+  const receiptCommitted = recovery
+    ? recovery.active ||
       (await userTokenStore.hasAuthorizationCompletion(
-        prepared.userId,
-        prepared.provider,
-        prepared.authorizationCompletionId,
+        recovery.userId,
+        recovery.provider,
+        recovery.authorizationCompletionId,
       ))
     : false;
 
@@ -843,23 +844,23 @@ export async function GET(
       ...parsedTokenResponse,
       ...(account ? { account } : {}),
     };
-    if (prepared) {
+    if (recovery) {
       await userTokenStore.setForAuthorizationCompletion(
         stored.userId,
         provider,
         tokens,
-        prepared.authorizationCompletionId,
+        recovery.authorizationCompletionId,
       );
     } else {
       await userTokenStore.set(stored.userId, provider, tokens);
     }
   }
 
-  if (prepared) {
-    await activateAuthorizationCompletedAgentTurnCandidate({
-      authorizationCompletionId: prepared.authorizationCompletionId,
+  if (prepared && recovery) {
+    await activateAgentTurnAuthorizationRecovery({
+      authorizationCompletionId: recovery.authorizationCompletionId,
       conversationId: prepared.conversationId,
-      expectedVersion: prepared.expectedVersion,
+      expectedVersion: prepared.version,
       sessionId: prepared.sessionId,
     });
   }

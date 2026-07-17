@@ -25,7 +25,7 @@ import {
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
-  hasAuthorizationCompletedAgentTurnCandidate,
+  isAgentTurnAuthorizationRecoveryActive,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
@@ -345,7 +345,7 @@ export async function continueSlackAgentRun(
         );
         const authorizationCompleted =
           sessionRecord?.resumeReason === "auth" &&
-          (await hasAuthorizationCompletedAgentTurnCandidate({
+          (await isAgentTurnAuthorizationRecoveryActive({
             conversationId: payload.conversationId,
             expectedVersion: payload.expectedVersion,
             sessionId: payload.sessionId,

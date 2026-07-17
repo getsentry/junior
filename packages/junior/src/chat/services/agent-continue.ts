@@ -8,11 +8,10 @@ import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { logException, logWarn } from "@/chat/logging";
 import {
-  activateAuthorizationCompletedAgentTurnCandidate,
+  activateAgentTurnAuthorizationRecovery,
   getAgentTurnSessionRecord,
-  hasAuthorizationCompletedAgentTurnCandidate,
-  listAuthorizationCompletedAgentTurnCandidates,
-  removeAuthorizationCompletedAgentTurnCandidate,
+  isAgentTurnAuthorizationRecoveryActive,
+  listAgentTurnSessionSummaries,
 } from "@/chat/state/turn-session";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
@@ -22,8 +21,6 @@ import {
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
-
-const AUTHORIZATION_RECOVERY_INTENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface AgentContinueRequest {
   conversationId: string;
@@ -61,7 +58,7 @@ export async function wakeAuthorizationCompletedAgentTurn(
       );
       return;
     }
-    const completed = await hasAuthorizationCompletedAgentTurnCandidate({
+    const completed = await isAgentTurnAuthorizationRecoveryActive({
       conversationId: args.conversationId,
       expectedVersion: sessionRecord.version,
       sessionId: args.sessionId,
@@ -95,18 +92,15 @@ export async function wakeAuthorizationCompletedAgentTurn(
 export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
-  const candidates = await listAuthorizationCompletedAgentTurnCandidates();
-  const nowMs = options.nowMs ?? Date.now();
+  const candidates = (await listAgentTurnSessionSummaries(5_000)).filter(
+    (summary) =>
+      summary.state === "awaiting_resume" &&
+      summary.resumeReason === "auth" &&
+      summary.authorizationRecovery,
+  );
   let recovered = 0;
   for (const candidate of candidates) {
     try {
-      if (
-        candidate.createdAtMs + AUTHORIZATION_RECOVERY_INTENT_MAX_AGE_MS <=
-        nowMs
-      ) {
-        await removeAuthorizationCompletedAgentTurnCandidate(candidate);
-        continue;
-      }
       const session = await getAgentTurnSessionRecord(
         candidate.conversationId,
         candidate.sessionId,
@@ -115,41 +109,47 @@ export async function recoverAuthorizationCompletedAgentTurns(
         !session ||
         session.state !== "awaiting_resume" ||
         session.resumeReason !== "auth" ||
-        session.version !== candidate.expectedVersion ||
         !session.destination
       ) {
-        await removeAuthorizationCompletedAgentTurnCandidate(candidate);
         continue;
       }
-      if (!candidate.active) {
+      const recovery = session.authorizationRecovery;
+      if (!recovery) continue;
+      let resumable = session;
+      if (!recovery.active) {
         const committed =
-          candidate.authorizationKind === "plugin"
+          recovery.authorizationKind === "plugin"
             ? await createUserTokenStore().hasAuthorizationCompletion(
-                candidate.userId,
-                candidate.provider,
-                candidate.authorizationCompletionId,
+                recovery.userId,
+                recovery.provider,
+                recovery.authorizationCompletionId,
               )
             : (
                 await getMcpStoredOAuthCredentials(
-                  candidate.userId,
-                  candidate.provider,
+                  recovery.userId,
+                  recovery.provider,
                 )
               )?.authorizationCompletionId ===
-              candidate.authorizationCompletionId;
+              recovery.authorizationCompletionId;
         if (!committed) continue;
-        await activateAuthorizationCompletedAgentTurnCandidate({
-          authorizationCompletionId: candidate.authorizationCompletionId,
+        const activated = await activateAgentTurnAuthorizationRecovery({
+          authorizationCompletionId: recovery.authorizationCompletionId,
           conversationId: candidate.conversationId,
-          expectedVersion: candidate.expectedVersion,
+          expectedVersion: session.version,
           sessionId: candidate.sessionId,
         });
+        if (!activated) continue;
+        resumable = activated;
       }
-      const request = await getAwaitingAgentContinueRequest({
-        conversationId: candidate.conversationId,
-        sessionId: candidate.sessionId,
-      });
-      if (!request) continue;
-      await scheduleAgentContinue(request, options);
+      await scheduleAgentContinue(
+        {
+          conversationId: resumable.conversationId,
+          destination: resumable.destination!,
+          expectedVersion: resumable.version,
+          sessionId: resumable.sessionId,
+        },
+        options,
+      );
       recovered += 1;
     } catch (error) {
       logException(
@@ -199,7 +199,7 @@ export async function getAwaitingAgentContinueRequest(args: {
   }
   const authorizationCompleted =
     sessionRecord.resumeReason === "auth" &&
-    (await hasAuthorizationCompletedAgentTurnCandidate({
+    (await isAgentTurnAuthorizationRecoveryActive({
       conversationId: args.conversationId,
       expectedVersion: sessionRecord.version,
       sessionId: args.sessionId,

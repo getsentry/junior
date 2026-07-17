@@ -610,14 +610,14 @@ describe("mcp oauth callback slack integration", () => {
     const adapter = stateAdapterModule.getStateAdapter();
     const queue = createConversationWorkQueueTestAdapter();
     const originalSet = adapter.set.bind(adapter);
-    let candidateWrites = 0;
+    let recoveryWrites = 0;
     const setSpy = vi
       .spyOn(adapter, "set")
       .mockImplementation(
         async (key: string, value: unknown, ttlMs?: number) => {
           if (
-            key === "junior:agent_turn_session:authorization-completed:index" &&
-            ++candidateWrites === 2
+            key === `junior:agent_turn_session:${threadId}:${sessionId}` &&
+            ++recoveryWrites === 2
           ) {
             throw new Error("candidate activation unavailable");
           }
@@ -649,8 +649,10 @@ describe("mcp oauth callback slack integration", () => {
       tokens: expect.any(Object),
     });
     await expect(
-      turnSessionStoreModule.listAuthorizationCompletedAgentTurnCandidates(),
-    ).resolves.toEqual([expect.objectContaining({ active: false })]);
+      turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
+    ).resolves.toMatchObject({
+      authorizationRecovery: { active: false },
+    });
     await expect(
       turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
     ).resolves.toMatchObject({ resumeReason: "auth" });

@@ -54,11 +54,11 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
-  activateAuthorizationCompletedAgentTurnCandidate,
+  activateAgentTurnAuthorizationRecovery,
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
-  prepareAuthorizationCompletedAgentTurnCandidate,
+  prepareAgentTurnAuthorizationRecovery,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -669,7 +669,7 @@ export async function GET(
       pendingSession.sessionId,
     );
     const prepared = sessionRecord
-      ? await prepareAuthorizationCompletedAgentTurnCandidate({
+      ? await prepareAgentTurnAuthorizationRecovery({
           authorizationCompletionId: crypto.randomUUID(),
           authorizationKind: "mcp",
           conversationId: pendingSession.conversationId,
@@ -679,10 +679,11 @@ export async function GET(
           userId: pendingSession.userId,
         })
       : undefined;
-    const receiptCommitted = prepared
-      ? prepared.active ||
-        (await getMcpStoredOAuthCredentials(prepared.userId, prepared.provider))
-          ?.authorizationCompletionId === prepared.authorizationCompletionId
+    const recovery = prepared?.authorizationRecovery;
+    const receiptCommitted = recovery
+      ? recovery.active ||
+        (await getMcpStoredOAuthCredentials(recovery.userId, recovery.provider))
+          ?.authorizationCompletionId === recovery.authorizationCompletionId
       : false;
     const authSession = receiptCommitted
       ? pendingSession
@@ -696,13 +697,13 @@ export async function GET(
               provider,
               mutation,
             ),
-          prepared?.authorizationCompletionId,
+          recovery?.authorizationCompletionId,
         );
-    if (prepared) {
-      await activateAuthorizationCompletedAgentTurnCandidate({
-        authorizationCompletionId: prepared.authorizationCompletionId,
+    if (prepared && recovery) {
+      await activateAgentTurnAuthorizationRecovery({
+        authorizationCompletionId: recovery.authorizationCompletionId,
         conversationId: prepared.conversationId,
-        expectedVersion: prepared.expectedVersion,
+        expectedVersion: prepared.version,
         sessionId: prepared.sessionId,
       });
     }
