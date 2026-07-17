@@ -31,10 +31,14 @@ export async function hydrateConversationMessages(args: {
     args.conversation.messages = [];
     return;
   }
-  const events = await getConversationEventStore().loadHistory(
+  const eventStore = getConversationEventStore();
+  const events = await eventStore.loadVisibleHistory(args.conversationId);
+  const latestCompaction = await eventStore.loadLatestVisibleCompaction(
     args.conversationId,
   );
-  args.conversation.compactions = projectVisibleConversationCompactions(events);
+  args.conversation.compactions = latestCompaction
+    ? projectVisibleConversationCompactions([latestCompaction])
+    : [];
   const coveredIds = new Set(
     args.conversation.compactions.flatMap(
       (compaction) => compaction.coveredMessageIds,

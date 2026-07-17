@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
@@ -24,6 +24,12 @@ type PersistedConversationEvent = {
   idempotencyKey?: string;
   createdAtMs: number;
 };
+
+const visibleHistoryEventTypes = [
+  "visible_message_recorded",
+  "visible_message_metadata_updated",
+  "visible_message_replied",
+] as const;
 
 /** Split validated event data into column-lifted and JSON payload fields. */
 function insertFromEvent(
@@ -205,6 +211,72 @@ class SqlConversationEventStore implements ConversationEventStore {
       )
       .orderBy(asc(juniorConversationEvents.seq));
     return rows.map(eventFromRow);
+  }
+
+  async loadEpochContaining(
+    conversationId: string,
+    seq: number,
+  ): Promise<ConversationEvent[] | undefined> {
+    const [boundary] = await this.executor
+      .db()
+      .select({ contextEpoch: juniorConversationEvents.contextEpoch })
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.seq, seq),
+        ),
+      )
+      .limit(1);
+    if (!boundary) return undefined;
+
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.contextEpoch, boundary.contextEpoch),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadVisibleHistory(
+    conversationId: string,
+  ): Promise<ConversationEvent[]> {
+    const rows = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          inArray(juniorConversationEvents.type, visibleHistoryEventTypes),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadLatestVisibleCompaction(
+    conversationId: string,
+  ): Promise<ConversationEvent | undefined> {
+    const [row] = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "visible_context_compacted"),
+        ),
+      )
+      .orderBy(desc(juniorConversationEvents.seq))
+      .limit(1);
+    return row ? eventFromRow(row) : undefined;
   }
 
   async loadHistory(conversationId: string): Promise<ConversationEvent[]> {

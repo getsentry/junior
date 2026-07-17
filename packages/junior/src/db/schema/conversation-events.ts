@@ -43,6 +43,11 @@ export const juniorConversationEvents = pgTable(
       table.contextEpoch,
       table.seq,
     ),
+    index("junior_conversation_events_type_idx").on(
+      table.conversationId,
+      table.type,
+      table.seq,
+    ),
     uniqueIndex("junior_conversation_events_idempotency_idx").on(
       table.conversationId,
       table.idempotencyKey,
