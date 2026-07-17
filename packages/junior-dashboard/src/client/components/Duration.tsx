@@ -4,7 +4,6 @@ const SECOND_MS = 1_000;
 const MINUTE_MS = 60 * SECOND_MS;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
 const MONTH_MS = 30 * DAY_MS;
 
 /** Format milliseconds as compact human-readable duration units. */
@@ -21,7 +20,6 @@ export function formatDuration(value: number | undefined): string {
   const parts: string[] = [];
   const units: Array<[string, number]> = [
     ["mo", MONTH_MS],
-    ["w", WEEK_MS],
     ["d", DAY_MS],
     ["h", HOUR_MS],
     ["m", MINUTE_MS],

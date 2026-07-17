@@ -95,7 +95,8 @@ describe("dashboard token formatting", () => {
     expect(formatDuration(999)).toBe("999ms");
     expect(formatDuration(3_500)).toBe("3.5s");
     expect(formatDuration(2_700_000)).toBe("45m");
-    expect(formatDuration(11_117_520_000)).toBe("4mo 1w 1d 16h 12m");
+    expect(formatDuration(839_497_000)).toBe("9d 17h 11m 37s");
+    expect(formatDuration(11_117_520_000)).toBe("4mo 8d 16h 12m");
   });
 
   it("formats cumulative conversation runtime", () => {
