@@ -159,7 +159,7 @@ test("hydrates the built dashboard client in a real browser", async ({
 
   await page.goto(baseURL);
 
-  await expect(page.getByRole("heading", { name: "Junior" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
