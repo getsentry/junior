@@ -1,4 +1,5 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { ScheduleAgentContinueOptions } from "@/chat/services/agent-continue";
 import { getConversationEventStore } from "@/chat/db";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
@@ -6,14 +7,14 @@ import {
   testWaitUntil,
 } from "./oauth-callback-after-harness";
 import { realAgentRunner } from "./agent-runner";
-import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 export async function runMcpOauthCallbackRoute(args: {
   provider: string;
   state: string;
   code: string;
   agentRunner?: AgentRunner;
-  recoverableSlackDelivery?: RecoverableSlackDelivery;
+  beforeWaitUntilFlush?: () => Promise<void>;
+  agentContinueOptions?: ScheduleAgentContinueOptions;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/mcp-oauth-callback");
@@ -26,12 +27,15 @@ export async function runMcpOauthCallbackRoute(args: {
     testWaitUntil,
     {
       agentRunner: args.agentRunner ?? realAgentRunner,
-      recoverableSlackDelivery: args.recoverableSlackDelivery,
+      ...(args.agentContinueOptions
+        ? { agentContinueOptions: args.agentContinueOptions }
+        : {}),
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
       ),
     },
   );
+  await args.beforeWaitUntilFlush?.();
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
   for (const callback of callbacks) {
     await callback();

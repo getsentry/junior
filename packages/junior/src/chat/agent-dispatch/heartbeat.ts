@@ -8,8 +8,10 @@ import { recoverDueSlackDeliveries } from "@/chat/runtime/slack-delivery-recover
 import { createHeartbeatContext } from "./context";
 import { scheduleDispatchCallback } from "./signing";
 import {
+  getDispatchConversationId,
   getDispatchStorageKey,
   getDispatchRecord,
+  getDispatchTurnId,
   isTerminalDispatchStatus,
   listIncompleteDispatchIds,
   parseDispatchRecord,
@@ -17,6 +19,7 @@ import {
   withDispatchLock,
 } from "./store";
 import type { DispatchRecord } from "./types";
+import { recoverAuthorizationCompletedAgentTurns } from "@/chat/services/agent-continue";
 
 const DEFAULT_RECOVERY_LIMIT = 25;
 const DEFAULT_PLUGIN_LIMIT = 25;
@@ -107,6 +110,7 @@ async function runWithTimeout<T>(
 export async function recoverStaleDispatches(args: {
   limit?: number;
   nowMs: number;
+  recoverableSlackDelivery?: RecoverableSlackDelivery;
 }): Promise<number> {
   const ids = await listIncompleteDispatchIds();
   let recovered = 0;
@@ -119,6 +123,7 @@ export async function recoverStaleDispatches(args: {
       continue;
     }
     try {
+      let recoveryRecord = record;
       if (!isStaleDispatch({ record, nowMs: args.nowMs })) {
         continue;
       }
@@ -133,16 +138,46 @@ export async function recoverStaleDispatches(args: {
         record.nextCallbackKind !== "delivery" &&
         record.attempt >= record.maxAttempts
       ) {
-        await failDispatch({
-          record,
-          errorMessage: "Dispatch exceeded retry attempts.",
-        });
-        continue;
+        const canonicalTerminal =
+          await args.recoverableSlackDelivery?.loadTerminalOutcome({
+            conversationId: getDispatchConversationId(record),
+            turnId: getDispatchTurnId(record.id),
+            acceptanceEvidence: "known_outbox_intent",
+          });
+        if (!canonicalTerminal) {
+          await failDispatch({
+            record,
+            errorMessage: "Dispatch exceeded retry attempts.",
+          });
+          continue;
+        }
+        const terminalRecovery = await withDispatchLock(
+          record.id,
+          async (state) => {
+            const current = parseDispatchRecord(
+              await state.get(getDispatchStorageKey(record.id)),
+            );
+            if (!current || current.version !== record.version) {
+              return undefined;
+            }
+            return await updateDispatchRecord(state, {
+              ...current,
+              leaseExpiresAtMs: undefined,
+              nextCallbackAtMs: args.nowMs,
+              nextCallbackKind: "delivery",
+              status: "awaiting_resume",
+            });
+          },
+        );
+        if (!terminalRecovery) {
+          continue;
+        }
+        recoveryRecord = terminalRecovery;
       }
       await scheduleDispatchCallback({
-        id: record.id,
-        expectedVersion: record.version,
-        ...(record.nextCallbackKind === "delivery"
+        id: recoveryRecord.id,
+        expectedVersion: recoveryRecord.version,
+        ...(recoveryRecord.nextCallbackKind === "delivery"
           ? { kind: "delivery" as const }
           : {}),
       });
@@ -220,9 +255,15 @@ export async function runHeartbeat(args: {
   nowMs: number;
   recoverableSlackDelivery?: RecoverableSlackDelivery;
 }): Promise<void> {
+  const conversationWorkQueue =
+    args.conversationWorkQueue ?? getVercelConversationWorkQueue();
+  await recoverAuthorizationCompletedAgentTurns({
+    nowMs: args.nowMs,
+    queue: conversationWorkQueue,
+  });
   await recoverConversationWork({
     nowMs: args.nowMs,
-    queue: args.conversationWorkQueue ?? getVercelConversationWorkQueue(),
+    queue: conversationWorkQueue,
   });
   if (args.recoverableSlackDelivery) {
     await recoverDueSlackDeliveries({
@@ -230,6 +271,9 @@ export async function runHeartbeat(args: {
       nowMs: args.nowMs,
     });
   }
-  await recoverStaleDispatches({ nowMs: args.nowMs });
+  await recoverStaleDispatches({
+    nowMs: args.nowMs,
+    recoverableSlackDelivery: args.recoverableSlackDelivery,
+  });
   await runPluginHeartbeats({ nowMs: args.nowMs });
 }

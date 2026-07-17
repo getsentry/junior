@@ -6,7 +6,13 @@
  */
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
-import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { logException, logWarn } from "@/chat/logging";
+import {
+  getAgentTurnSessionRecord,
+  hasAuthorizationCompletedAgentTurnCandidate,
+  listAuthorizationCompletedAgentTurnCandidates,
+  recordAuthorizationCompletedAgentTurnCandidate,
+} from "@/chat/state/turn-session";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -27,6 +33,109 @@ export interface ScheduleAgentContinueOptions {
   state?: StateAdapter;
 }
 
+/** Mark an exact auth callback complete, then durably wake its paused session. */
+export async function wakeAuthorizationCompletedAgentTurn(
+  args: {
+    conversationId: string;
+    provider: string;
+    sessionId: string;
+  },
+  options: ScheduleAgentContinueOptions = {},
+): Promise<void> {
+  try {
+    const sessionRecord = await getAgentTurnSessionRecord(
+      args.conversationId,
+      args.sessionId,
+    );
+    if (!sessionRecord?.destination) {
+      logWarn(
+        "authorization_completed_resume_not_schedulable",
+        { conversationId: args.conversationId },
+        { "app.ai.session_id": args.sessionId },
+        "Authorization callback found no durable session destination to wake",
+      );
+      return;
+    }
+    const resumable = await recordAuthorizationCompletedAgentTurnCandidate({
+      conversationId: args.conversationId,
+      expectedVersion: sessionRecord.version,
+      sessionId: args.sessionId,
+    });
+    if (resumable?.destination) {
+      await scheduleAgentContinue(
+        {
+          conversationId: resumable.conversationId,
+          destination: resumable.destination,
+          expectedVersion: resumable.version,
+          sessionId: resumable.sessionId,
+        },
+        options,
+      );
+    }
+  } catch (error) {
+    logException(
+      error,
+      "authorization_completed_resume_schedule_failed",
+      { conversationId: args.conversationId },
+      {
+        "app.ai.session_id": args.sessionId,
+        "app.credential.provider": args.provider,
+      },
+      "Failed to schedule an authorized turn after its callback found the conversation busy",
+    );
+  }
+}
+
+/** Re-drive completed auth callbacks from their exact durable candidates. */
+export async function recoverAuthorizationCompletedAgentTurns(
+  options: ScheduleAgentContinueOptions = {},
+): Promise<number> {
+  const candidates = await listAuthorizationCompletedAgentTurnCandidates();
+  let recovered = 0;
+  for (const candidate of candidates) {
+    if (recovered >= 25) break;
+    try {
+      const request = await getAwaitingAgentContinueRequest({
+        conversationId: candidate.conversationId,
+        sessionId: candidate.sessionId,
+      });
+      if (!request) continue;
+      await scheduleAgentContinue(request, options);
+      recovered += 1;
+    } catch (error) {
+      logException(
+        error,
+        "authorization_completed_resume_recovery_failed",
+        { conversationId: candidate.conversationId },
+        { "app.ai.session_id": candidate.sessionId },
+        "Failed to recover an authorized turn awaiting a durable wake",
+      );
+    }
+  }
+  return recovered;
+}
+
+async function ensureAgentContinueWake(args: {
+  nowMs: number;
+  options: ScheduleAgentContinueOptions;
+  request: AgentContinueRequest;
+}): Promise<void> {
+  const queue = args.options.queue ?? getVercelConversationWorkQueue();
+  await ensureConversationWake({
+    conversationId: args.request.conversationId,
+    idempotencyKey: [
+      "agent-continue",
+      args.request.conversationId,
+      args.request.sessionId,
+      args.request.expectedVersion,
+      args.nowMs,
+    ].join(":"),
+    nowMs: args.nowMs,
+    queue,
+    state: args.options.state,
+  });
+}
+
 /** Build the queue request for an awaiting automatic agent continuation. */
 export async function getAwaitingAgentContinueRequest(args: {
   conversationId: string;
@@ -36,11 +145,20 @@ export async function getAwaitingAgentContinueRequest(args: {
     args.conversationId,
     args.sessionId,
   );
+  if (!sessionRecord || sessionRecord.state !== "awaiting_resume") {
+    return undefined;
+  }
+  const authorizationCompleted =
+    sessionRecord.resumeReason === "auth" &&
+    (await hasAuthorizationCompletedAgentTurnCandidate({
+      conversationId: args.conversationId,
+      expectedVersion: sessionRecord.version,
+      sessionId: args.sessionId,
+    }));
   if (
-    !sessionRecord ||
-    sessionRecord.state !== "awaiting_resume" ||
     (sessionRecord.resumeReason !== "timeout" &&
-      sessionRecord.resumeReason !== "yield") ||
+      sessionRecord.resumeReason !== "yield" &&
+      !authorizationCompleted) ||
     (sessionRecord.resumeReason === "timeout" && sessionRecord.sliceId < 2)
   ) {
     return undefined;
@@ -69,18 +187,9 @@ export async function scheduleAgentContinue(
     nowMs,
     state: options.state,
   });
-  const queue = options.queue ?? getVercelConversationWorkQueue();
-  await ensureConversationWake({
-    conversationId: request.conversationId,
-    idempotencyKey: [
-      "agent-continue",
-      request.conversationId,
-      request.sessionId,
-      request.expectedVersion,
-      nowMs,
-    ].join(":"),
+  await ensureAgentContinueWake({
     nowMs,
-    queue,
-    state: options.state,
+    options,
+    request,
   });
 }

@@ -17,6 +17,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   hydrateConversationMessages,
@@ -26,7 +27,6 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
-import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 /** Mirror a just-seeded thread-state transcript into SQL (durable authority). */
 async function seedVisibleTranscriptFromThreadState(
@@ -561,6 +561,116 @@ describe("mcp oauth callback slack integration", () => {
     );
   });
 
+  it("autonomously continues MCP auth when the callback resume lock is busy", async () => {
+    const threadId = "slack:C123:1700000000.014";
+    const sessionId = "turn_user-14";
+    const source = slackSource("1700000000.014");
+    await stateAdapterModule.getStateAdapter().set(`thread-state:${threadId}`, {
+      conversation: {
+        messages: [
+          {
+            id: "user-14",
+            role: "user",
+            text: "what did i say about the budget?",
+            createdAtMs: 1,
+            author: { userId: "U123", userName: "dcramer" },
+            meta: { slackTs: "1700000000.0141" },
+          },
+        ],
+        processing: {
+          pendingAuth: {
+            kind: "mcp",
+            provider: EVAL_MCP_AUTH_PROVIDER,
+            actorId: "U123",
+            sessionId,
+            linkSentAtMs: 1,
+          },
+        },
+      },
+    });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      threadId,
+    );
+    await createAwaitingMcpTurnRecord({
+      conversationId: threadId,
+      sessionId,
+      source,
+      text: "what did i say about the budget?",
+      threadTs: "1700000000.014",
+    });
+    const authProvider = await createPendingAuthSession({
+      conversationId: threadId,
+      sessionId,
+      userMessage: "what did i say about the budget?",
+      channelId: "C123",
+      threadTs: "1700000000.014",
+    });
+
+    const adapter = stateAdapterModule.getStateAdapter();
+    const queue = createConversationWorkQueueTestAdapter();
+    const { acquireActiveLock } = await import("@/chat/state/locks");
+    let lock: Awaited<ReturnType<typeof acquireActiveLock>>;
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+        agentRunner: testAgentRunner,
+        beforeWaitUntilFlush: async () => {
+          lock = await acquireActiveLock(adapter, threadId);
+          expect(lock).toBeDefined();
+        },
+        agentContinueOptions: { queue, state: adapter },
+      });
+
+    expect(response.status).toBe(200);
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
+    await expect(
+      mcpAuthStoreModule.getMcpAuthSession(authProvider.authSessionId),
+    ).resolves.toBeUndefined();
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(threadId, sessionId),
+    ).resolves.toMatchObject({ resumeReason: "auth" });
+    expect(queue.sentRecords()).toHaveLength(1);
+
+    await adapter.releaseLock(lock!);
+    const { resumeAwaitingSlackContinuation } =
+      await import("@/chat/runtime/agent-continue-runner");
+    const { processConversationQueueMessage } =
+      await import("@/chat/task-execution/vercel-callback");
+    const { ConversationTurnLifecycleService } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const turnLifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        state: adapter,
+        run: async ({ conversationId }) => {
+          await resumeAwaitingSlackContinuation(conversationId, {
+            agentRunner: testAgentRunner,
+            turnLifecycle,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.014",
+          text: "The budget deadline you mentioned earlier was Friday.",
+        }),
+      }),
+    ]);
+  });
+
   it("fails MCP OAuth resume when stored actor team mismatches destination", async () => {
     const threadId = "slack:C123:1700000000.006";
     const sessionId = "turn_user-6";
@@ -959,7 +1069,7 @@ describe("mcp oauth callback slack integration", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
   });
 
-  it("repairs a completed session at the MCP handler gate without rerunning Pi", async () => {
+  it("cleans completed session state at the MCP handler gate", async () => {
     const conversationId = "conversation-mcp-completed";
     const threadId = "slack:C123:1700000000.008";
     const sessionId = "turn_user-8";
@@ -1016,34 +1126,16 @@ describe("mcp oauth callback slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.008",
     });
-    const delivery = {
-      createIntent: vi.fn(),
-      loadByConversation: vi.fn(async () => undefined),
-      loadByTurn: vi.fn(async () => undefined),
-      listDue: vi.fn(async () => []),
-      loadTerminalOutcome: vi.fn(async () => ({
-        deliveryOutcome: "accepted" as const,
-        modelSucceeded: true,
-      })),
-      advance: vi.fn(),
-    } satisfies RecoverableSlackDelivery;
-
     const response =
       await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
         provider: EVAL_MCP_AUTH_PROVIDER,
         state: authProvider.authSessionId,
         code: EVAL_MCP_AUTH_CODE,
         agentRunner: testAgentRunner,
-        recoverableSlackDelivery: delivery,
       });
 
     expect(response.status).toBe(200);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
-    expect(delivery.loadTerminalOutcome).toHaveBeenCalledWith({
-      conversationId,
-      turnId: sessionId,
-      acceptanceEvidence: "visible_assistant",
-    });
     const repaired = await stateAdapterModule.getStateAdapter().get<{
       conversation?: { processing?: { activeTurnId?: string } };
     }>(`thread-state:${threadId}`);

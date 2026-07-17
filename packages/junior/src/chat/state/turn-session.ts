@@ -39,6 +39,9 @@ import type {
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
+const AUTHORIZATION_COMPLETED_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:authorization-completed:index`;
+const AUTHORIZATION_COMPLETED_INDEX_MAX_LENGTH = 500;
+const AUTHORIZATION_COMPLETED_INDEX_READ_LIMIT = 100;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
 const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
@@ -53,6 +56,20 @@ export type AgentTurnSessionStatus =
 export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
+
+export interface AuthorizationCompletedAgentTurnCandidate {
+  conversationId: string;
+  expectedVersion: number;
+  sessionId: string;
+}
+
+const authorizationCompletedAgentTurnCandidateSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    expectedVersion: z.number().int().nonnegative(),
+    sessionId: z.string().min(1),
+  })
+  .strict() satisfies z.ZodType<AuthorizationCompletedAgentTurnCandidate>;
 
 interface ConversationMessageProjection {
   messages: PiMessage[];
@@ -958,4 +975,79 @@ export async function failAgentTurnSessionRecord(args: {
     state: "failed",
     errorMessage: args.errorMessage ?? existing.errorMessage,
   });
+}
+
+/** Persist one exact auth-paused version as safe for autonomous continuation. */
+export async function recordAuthorizationCompletedAgentTurnCandidate(args: {
+  conversationId: string;
+  expectedVersion: number;
+  sessionId: string;
+}): Promise<AgentTurnSessionRecord | undefined> {
+  const existing = await getAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !existing ||
+    existing.state !== "awaiting_resume" ||
+    existing.resumeReason !== "auth" ||
+    existing.version !== args.expectedVersion
+  ) {
+    return undefined;
+  }
+
+  const state = getStateAdapter();
+  await state.connect();
+  await state.appendToList(
+    AUTHORIZATION_COMPLETED_INDEX_KEY,
+    {
+      conversationId: args.conversationId,
+      expectedVersion: args.expectedVersion,
+      sessionId: args.sessionId,
+    } satisfies AuthorizationCompletedAgentTurnCandidate,
+    {
+      maxLength: AUTHORIZATION_COMPLETED_INDEX_MAX_LENGTH,
+      ttlMs: AGENT_TURN_SESSION_TTL_MS,
+    },
+  );
+
+  return existing;
+}
+
+/** Read exact auth-completion candidates for bounded heartbeat recovery. */
+export async function listAuthorizationCompletedAgentTurnCandidates(): Promise<
+  AuthorizationCompletedAgentTurnCandidate[]
+> {
+  const state = getStateAdapter();
+  await state.connect();
+  const values = await state.getList(AUTHORIZATION_COMPLETED_INDEX_KEY);
+  const candidates = new Map<
+    string,
+    AuthorizationCompletedAgentTurnCandidate
+  >();
+  for (const value of [...values].reverse()) {
+    const parsed =
+      authorizationCompletedAgentTurnCandidateSchema.safeParse(value);
+    if (!parsed.success) continue;
+    const key = `${parsed.data.conversationId}:${parsed.data.sessionId}`;
+    if (!candidates.has(key)) candidates.set(key, parsed.data);
+  }
+  return [...candidates.values()].slice(
+    0,
+    AUTHORIZATION_COMPLETED_INDEX_READ_LIMIT,
+  );
+}
+
+/** Check whether an exact auth-paused session version has a completed callback. */
+export async function hasAuthorizationCompletedAgentTurnCandidate(args: {
+  conversationId: string;
+  expectedVersion: number;
+  sessionId: string;
+}): Promise<boolean> {
+  return (await listAuthorizationCompletedAgentTurnCandidates()).some(
+    (candidate) =>
+      candidate.conversationId === args.conversationId &&
+      candidate.sessionId === args.sessionId &&
+      candidate.expectedVersion === args.expectedVersion,
+  );
 }

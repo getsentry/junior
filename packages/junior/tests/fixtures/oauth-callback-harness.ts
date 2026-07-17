@@ -1,4 +1,5 @@
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import type { ScheduleAgentContinueOptions } from "@/chat/services/agent-continue";
 import { getConversationEventStore } from "@/chat/db";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import {
@@ -6,14 +7,13 @@ import {
   testWaitUntil,
 } from "./oauth-callback-after-harness";
 import { realAgentRunner } from "./agent-runner";
-import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 
 export async function runOauthCallbackRoute(args: {
   provider: string;
   state: string;
   code: string;
   agentRunner?: AgentRunner;
-  recoverableSlackDelivery?: RecoverableSlackDelivery;
+  agentContinueOptions?: ScheduleAgentContinueOptions;
 }) {
   waitUntilCallbacks.length = 0;
   const { GET } = await import("@/handlers/oauth-callback");
@@ -26,7 +26,9 @@ export async function runOauthCallbackRoute(args: {
     testWaitUntil,
     {
       agentRunner: args.agentRunner ?? realAgentRunner,
-      recoverableSlackDelivery: args.recoverableSlackDelivery,
+      ...(args.agentContinueOptions
+        ? { agentContinueOptions: args.agentContinueOptions }
+        : {}),
       turnLifecycle: new ConversationTurnLifecycleService(
         getConversationEventStore(),
       ),

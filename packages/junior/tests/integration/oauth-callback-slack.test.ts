@@ -9,6 +9,7 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import {
   hydrateConversationMessages,
@@ -18,7 +19,6 @@ import {
   coerceThreadConversationState,
   type ConversationMessage,
 } from "@/chat/state/conversation";
-import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 /**
  * Mirror a just-seeded thread-state transcript into SQL, the durable transcript
  * authority the resume handlers now read from. Takes the connected adapter so it
@@ -506,6 +506,169 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
+  it("autonomously continues an authorized turn when the callback lock is busy", async () => {
+    const conversationId = "slack:C123:1700000000.014";
+    const sessionId = "turn_msg_14";
+    const source = slackSource("1700000000.014");
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      source,
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+      actor: {
+        platform: "slack",
+        teamId: "T123",
+        userId: "U123",
+        userName: "dcramer",
+      },
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-busy-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        destination: SLACK_DESTINATION,
+        source,
+        threadTs: "1700000000.014",
+        pendingMessage: "list my sentry issues",
+        resumeConversationId: conversationId,
+        resumeSessionId: sessionId,
+      });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set(`thread-state:${conversationId}`, {
+        conversation: {
+          messages: [
+            {
+              id: "msg.14",
+              role: "user",
+              text: "list my sentry issues",
+              createdAtMs: 1,
+              author: { userId: "U123", userName: "dcramer" },
+              meta: { slackTs: "1700000000.0141" },
+            },
+          ],
+          processing: {
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              actorId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+    await seedVisibleTranscriptFromThreadState(
+      stateAdapterModule.getStateAdapter(),
+      conversationId,
+    );
+
+    const { acquireActiveLock } = await import("@/chat/state/locks");
+    const adapter = stateAdapterModule.getStateAdapter();
+    const lock = await acquireActiveLock(adapter, conversationId);
+    expect(lock).toBeDefined();
+    const queue = createConversationWorkQueueTestAdapter();
+    let workRequestFailed = false;
+    const failingWorkState = new Proxy(adapter, {
+      get(target, property, receiver) {
+        if (property === "set") {
+          return async (key: string, value: unknown, ttlMs?: number) => {
+            if (
+              !workRequestFailed &&
+              key === `junior:conversation:${conversationId}`
+            ) {
+              workRequestFailed = true;
+              throw new Error("conversation work store unavailable");
+            }
+            return await target.set(key, value, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-busy-state",
+      code: "eval-oauth-code",
+      agentRunner: testAgentRunner,
+      agentContinueOptions: { queue, state: failingWorkState },
+    });
+
+    expect(response.status).toBe(200);
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
+    await expect(
+      adapter.get("oauth-state:eval-oauth-busy-state"),
+    ).resolves.toBeNull();
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({ resumeReason: "auth" });
+    expect(workRequestFailed).toBe(true);
+    expect(queue.sentRecords()).toHaveLength(0);
+    const { recoverAuthorizationCompletedAgentTurns } =
+      await import("@/chat/services/agent-continue");
+    await expect(
+      recoverAuthorizationCompletedAgentTurns({
+        queue,
+        state: adapter,
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({ resumeReason: "auth" });
+    expect(queue.sentRecords()).toHaveLength(1);
+
+    await adapter.releaseLock(lock!);
+    const { resumeAwaitingSlackContinuation } =
+      await import("@/chat/runtime/agent-continue-runner");
+    const { processConversationQueueMessage } =
+      await import("@/chat/task-execution/vercel-callback");
+    const { ConversationTurnLifecycleService } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { getConversationEventStore } = await import("@/chat/db");
+    const turnLifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        queue,
+        state: adapter,
+        run: async ({ conversationId: queuedConversationId }) => {
+          await resumeAwaitingSlackContinuation(queuedConversationId, {
+            agentRunner: testAgentRunner,
+            turnLifecycle,
+          });
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.014",
+          text: "Here are your Sentry issues.",
+        }),
+      }),
+    ]);
+  });
+
   it("fails a session-recorded OAuth resume with mismatched actor team", async () => {
     const conversationId = "slack:C123:1700000000.012";
     const sessionId = "turn_msg_12";
@@ -951,7 +1114,7 @@ describe("oauth callback slack integration", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
   });
 
-  it("repairs a completed session at the OAuth handler gate without rerunning Pi", async () => {
+  it("cleans completed session state at the OAuth handler gate", async () => {
     const conversationId = "slack:C123:1700000000.013";
     const sessionId = "turn_msg_13";
     await turnSessionStoreModule.upsertAgentTurnSessionRecord({
@@ -1006,33 +1169,15 @@ describe("oauth callback slack integration", () => {
       stateAdapterModule.getStateAdapter(),
       conversationId,
     );
-    const delivery = {
-      createIntent: vi.fn(),
-      loadByConversation: vi.fn(async () => undefined),
-      loadByTurn: vi.fn(async () => undefined),
-      listDue: vi.fn(async () => []),
-      loadTerminalOutcome: vi.fn(async () => ({
-        deliveryOutcome: "accepted" as const,
-        modelSucceeded: true,
-      })),
-      advance: vi.fn(),
-    } satisfies RecoverableSlackDelivery;
-
     const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-completed-state",
       code: "eval-oauth-code",
       agentRunner: testAgentRunner,
-      recoverableSlackDelivery: delivery,
     });
 
     expect(response.status).toBe(200);
     expect(executeAgentRunMock).not.toHaveBeenCalled();
-    expect(delivery.loadTerminalOutcome).toHaveBeenCalledWith({
-      conversationId,
-      turnId: sessionId,
-      acceptanceEvidence: "visible_assistant",
-    });
     const repaired = await stateAdapterModule.getStateAdapter().get<{
       conversation?: { processing?: { activeTurnId?: string } };
     }>(`thread-state:${conversationId}`);

@@ -20,10 +20,12 @@ import { hydrateConversationMessages } from "@/chat/conversations/visible-messag
 import {
   loadProjection,
   loadConversationProjection,
+  recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import {
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
+  hasAuthorizationCompletedAgentTurnCandidate,
   listAgentTurnSessionSummariesForConversation,
   type AgentTurnSessionRecord,
   type AgentTurnSessionSummary,
@@ -341,11 +343,19 @@ export async function continueSlackAgentRun(
           payload.conversationId,
           payload.sessionId,
         );
+        const authorizationCompleted =
+          sessionRecord?.resumeReason === "auth" &&
+          (await hasAuthorizationCompletedAgentTurnCandidate({
+            conversationId: payload.conversationId,
+            expectedVersion: payload.expectedVersion,
+            sessionId: payload.sessionId,
+          }));
         if (
           !sessionRecord ||
           sessionRecord.state !== "awaiting_resume" ||
           (sessionRecord.resumeReason !== "timeout" &&
-            sessionRecord.resumeReason !== "yield") ||
+            sessionRecord.resumeReason !== "yield" &&
+            !authorizationCompleted) ||
           sessionRecord.version !== payload.expectedVersion
         ) {
           return false;
@@ -367,8 +377,25 @@ export async function continueSlackAgentRun(
             `Unable to locate the persisted user message for agent continuation session "${payload.sessionId}"`,
           );
         }
-        if (conversation.processing.activeTurnId !== payload.sessionId) {
+        const completedAuth = authorizationCompleted
+          ? conversation.processing.pendingAuth
+          : undefined;
+        if (
+          completedAuth
+            ? completedAuth.sessionId !== payload.sessionId
+            : conversation.processing.activeTurnId !== payload.sessionId
+        ) {
           return false;
+        }
+
+        if (completedAuth) {
+          await recordAuthorizationCompleted({
+            conversationId: payload.conversationId,
+            kind: completedAuth.kind,
+            provider: completedAuth.provider,
+            actorId: completedAuth.actorId,
+            authorizationId: `${payload.sessionId}:${completedAuth.kind}:${completedAuth.provider}`,
+          });
         }
 
         const channelConfiguration = getChannelConfigurationServiceById(
@@ -705,7 +732,9 @@ export async function resumeAwaitingSlackContinuation(
   }
 
   for (const summary of summaries) {
-    if (!isContinuationResume(summary)) {
+    const authorizationCandidate =
+      summary.state === "awaiting_resume" && summary.resumeReason === "auth";
+    if (!isContinuationResume(summary) && !authorizationCandidate) {
       continue;
     }
 
@@ -714,6 +743,7 @@ export async function resumeAwaitingSlackContinuation(
       sessionId: summary.sessionId,
     });
     if (!request) {
+      if (authorizationCandidate) continue;
       await failUnresumableContinuation({
         conversationId,
         summary,

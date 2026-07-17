@@ -13,11 +13,15 @@ import {
   getConversationMessageStore,
   getSqlExecutor,
 } from "@/chat/db";
-import { RecoverableSlackDeliveryService } from "@/chat/slack/recoverable-delivery";
+import {
+  RecoverableSlackDeliveryService,
+  type RecoverableSlackDeliveryPort,
+} from "@/chat/slack/recoverable-delivery";
 import { postRecoverableSlackMessage } from "@/chat/slack/outbound";
 import { GET as heartbeat } from "@/handlers/heartbeat";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getAgentTurnSessionRecord } from "@/chat/state/turn-session";
+import { upsertAgentTurnSessionRecord } from "@/chat/state/turn-session";
 
 function makeDiagnostics(
   outcome: "success" | "execution_failure" | "provider_error" = "success",
@@ -57,6 +61,77 @@ function expectBlocksIncludeConversationId(
 ): void {
   expect(params.blocks).toBeDefined();
   expect(JSON.stringify(params.blocks)).toContain(conversationId);
+}
+
+async function runRecoverableSchedulingCase(args: {
+  deliveryOutcome: "accepted" | "failed";
+  modelOutcome: "success" | "execution_failure";
+  suffix: string;
+}) {
+  const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+  const conversationId = `conversation-schedule-${args.suffix}`;
+  const turnId = `turn-schedule-${args.suffix}`;
+  const messageId = `message-schedule-${args.suffix}`;
+  const threadTs = `1700000000.${args.suffix}`;
+  await upsertAgentTurnSessionRecord({
+    modelId: "test/model",
+    conversationId,
+    sessionId: turnId,
+    sliceId: 2,
+    state: "awaiting_resume",
+    piMessages: [],
+    resumeReason: "auth",
+    source: testSlackSource(threadTs),
+  });
+  await getConversationMessageStore().record(conversationId, [
+    {
+      messageId,
+      role: "user",
+      text: "continue this turn",
+      createdAtMs: Date.now(),
+    },
+  ]);
+  const post: RecoverableSlackDeliveryPort["post"] =
+    args.deliveryOutcome === "accepted"
+      ? postRecoverableSlackMessage
+      : async () => ({
+          outcome: "definitive_failure",
+          reason: "api_rejected",
+        });
+  const schedule = vi.fn(async () => undefined);
+  const run = vi.fn(async () =>
+    completedAgentRun({
+      text: "done",
+      diagnostics: makeDiagnostics(args.modelOutcome),
+    }),
+  );
+  await resumeSlackTurn({
+    messageText: "continue this turn",
+    channelId: "C123",
+    threadTs,
+    inputMessageIds: [messageId],
+    recoverableSlackDelivery: new RecoverableSlackDeliveryService(
+      getSqlExecutor(),
+      { post, reconcile: vi.fn() },
+    ),
+    turnLifecycle: new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    ),
+    replyContext: {
+      routing: {
+        credentialContext: {
+          actor: { type: "user", userId: "U123" },
+        },
+        destination: TEST_SLACK_DESTINATION,
+        source: testSlackSource(threadTs),
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        correlation: { conversationId, turnId },
+      },
+    },
+    agentRunner: { run },
+    scheduleSessionCompletedPluginTasks: schedule,
+  });
+  return { conversationId, run, schedule, turnId };
 }
 
 describe("oauth resume slack integration", () => {
@@ -295,6 +370,35 @@ describe("oauth resume slack integration", () => {
     await expect(
       getAgentTurnSessionRecord("conversation-1", "turn-1"),
     ).resolves.toMatchObject({ state: "completed" });
+  });
+
+  it("schedules completed plugins once only for successful recoverable resumes", async () => {
+    const success = await runRecoverableSchedulingCase({
+      deliveryOutcome: "accepted",
+      modelOutcome: "success",
+      suffix: "021",
+    });
+    const modelFailure = await runRecoverableSchedulingCase({
+      deliveryOutcome: "accepted",
+      modelOutcome: "execution_failure",
+      suffix: "022",
+    });
+    const deliveryFailure = await runRecoverableSchedulingCase({
+      deliveryOutcome: "failed",
+      modelOutcome: "success",
+      suffix: "023",
+    });
+
+    expect(success.run).toHaveBeenCalledOnce();
+    expect(success.schedule).toHaveBeenCalledOnce();
+    expect(success.schedule).toHaveBeenCalledWith({
+      conversationId: success.conversationId,
+      sessionId: success.turnId,
+    });
+    expect(modelFailure.run).toHaveBeenCalledOnce();
+    expect(modelFailure.schedule).not.toHaveBeenCalled();
+    expect(deliveryFailure.run).toHaveBeenCalledOnce();
+    expect(deliveryFailure.schedule).not.toHaveBeenCalled();
   });
 
   it("records one terminal failure when a correlated resume fails", async () => {

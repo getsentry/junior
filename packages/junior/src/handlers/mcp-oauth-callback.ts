@@ -42,7 +42,10 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { resumeAuthorizedRequest } from "@/chat/runtime/slack-resume";
+import {
+  ResumeTurnBusyError,
+  resumeAuthorizedRequest,
+} from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
@@ -59,7 +62,11 @@ import {
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { markTurnFailed } from "@/chat/runtime/turn";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import {
+  scheduleAgentContinue,
+  wakeAuthorizationCompletedAgentTurn,
+  type ScheduleAgentContinueOptions,
+} from "@/chat/services/agent-continue";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, isUserActor, type Actor } from "@/chat/actor";
@@ -105,6 +112,7 @@ const CALLBACK_PAGES = {
 
 interface McpOAuthCallbackOptions {
   agentRunner: AgentRunner;
+  agentContinueOptions?: ScheduleAgentContinueOptions;
   recoverableSlackDelivery?: RecoverableSlackDelivery;
   turnLifecycle?: ConversationTurnLifecycle;
 }
@@ -261,6 +269,22 @@ async function resumeAuthorizedMcpTurn(args: {
         authSession.sessionId,
       );
     }
+    return;
+  }
+  const sessionRecord = await getAgentTurnSessionRecord(
+    authSession.conversationId,
+    authSession.sessionId,
+  );
+  if (sessionRecord?.state === "completed") {
+    const userMessage = getTurnUserMessage(conversation, authSession.sessionId);
+    await persistThreadStateById(
+      threadId,
+      buildRecoveredDeliveredTurnStatePatch({
+        conversation,
+        sessionId: authSession.sessionId,
+        inputMessageIds: userMessage ? [userMessage.id] : [],
+      }),
+    );
     return;
   }
   const pendingAuth = getConversationPendingAuth({
@@ -632,15 +656,39 @@ export async function GET(
       );
     }
 
-    waitUntil(() =>
-      resumeAuthorizedMcpTurn({
-        authSession,
-        agentRunner: options.agentRunner,
-        provider,
-        recoverableSlackDelivery: options.recoverableSlackDelivery,
-        turnLifecycle: options.turnLifecycle,
-      }),
-    );
+    waitUntil(async () => {
+      try {
+        await resumeAuthorizedMcpTurn({
+          authSession,
+          agentRunner: options.agentRunner,
+          provider,
+          recoverableSlackDelivery: options.recoverableSlackDelivery,
+          turnLifecycle: options.turnLifecycle,
+        });
+      } catch (resumeError) {
+        if (resumeError instanceof ResumeTurnBusyError) {
+          await wakeAuthorizationCompletedAgentTurn(
+            {
+              conversationId: authSession.conversationId,
+              provider,
+              sessionId: authSession.sessionId,
+            },
+            options.agentContinueOptions,
+          );
+          return;
+        }
+        logException(
+          resumeError,
+          "mcp_oauth_callback_resume_failed",
+          { conversationId: authSession.conversationId },
+          {
+            "app.ai.session_id": authSession.sessionId,
+            "app.credential.provider": provider,
+          },
+          "Failed to resume MCP OAuth-authorized Slack turn",
+        );
+      }
+    });
 
     return htmlResponse("success");
   } catch (callbackError) {

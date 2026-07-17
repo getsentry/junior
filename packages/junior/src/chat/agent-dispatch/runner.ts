@@ -79,6 +79,12 @@ export interface AgentDispatchRunnerDeps {
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
 }
 
+interface CanonicalDispatchTerminalProjection {
+  errorMessage?: string;
+  resultMessageTs?: string;
+  status: "completed" | "failed";
+}
+
 function getUserMessageId(dispatch: DispatchRecord): string {
   return `dispatch:${dispatch.id}:user`;
 }
@@ -273,6 +279,9 @@ export async function processAgentDispatchCallback(
   const stateAdapter = getStateAdapter();
   let lifecycleStart: StartConversationTurnInput | undefined;
   let lifecycleTerminalized = false;
+  let canonicalTerminalProjection:
+    | CanonicalDispatchTerminalProjection
+    | undefined;
   let failureCode:
     | "agent_run_failed"
     | "delivery_failed"
@@ -326,7 +335,9 @@ export async function processAgentDispatchCallback(
       await deps.recoverableSlackDelivery.loadTerminalOutcome({
         conversationId,
         turnId,
-        acceptanceEvidence: "visible_assistant",
+        acceptanceEvidence: isDeliveryCallback
+          ? "known_outbox_intent"
+          : "visible_assistant",
       });
     const deliveredMessage = conversation.messages.find(
       (message) =>
@@ -336,6 +347,12 @@ export async function processAgentDispatchCallback(
         typeof message.meta.slackTs === "string",
     );
     if (priorTerminal) {
+      canonicalTerminalProjection = {
+        status: priorTerminal.modelSucceeded ? "completed" : "failed",
+        ...(typeof deliveredMessage?.meta?.slackTs === "string"
+          ? { resultMessageTs: deliveredMessage.meta.slackTs }
+          : {}),
+      };
       lifecycleStart = {
         conversationId,
         turnId,
@@ -352,10 +369,7 @@ export async function processAgentDispatchCallback(
       });
       await markDispatch({
         dispatch,
-        status: priorTerminal.modelSucceeded ? "completed" : "failed",
-        ...(typeof deliveredMessage?.meta?.slackTs === "string"
-          ? { resultMessageTs: deliveredMessage.meta.slackTs }
-          : {}),
+        ...canonicalTerminalProjection,
       });
       return;
     }
@@ -375,6 +389,10 @@ export async function processAgentDispatchCallback(
         failureCode: "persistence_failed",
       });
       lifecycleTerminalized = true;
+      canonicalTerminalProjection = {
+        status: "completed",
+        resultMessageTs: deliveredMessage.meta!.slackTs!,
+      };
       await persistRuntimePatch({
         threadId: conversationId,
         conversation,
@@ -382,8 +400,7 @@ export async function processAgentDispatchCallback(
       });
       await markDispatch({
         dispatch,
-        status: "completed",
-        resultMessageTs: deliveredMessage.meta!.slackTs!,
+        ...canonicalTerminalProjection,
       });
       return;
     }
@@ -645,6 +662,19 @@ export async function processAgentDispatchCallback(
       }
       lifecycleTerminalized = true;
       deliveryTerminalized = true;
+      canonicalTerminalProjection =
+        delivery.outcome === "failed"
+          ? {
+              status: "failed",
+              errorMessage: "Slack rejected the dispatched reply.",
+            }
+          : {
+              status: failure ? "failed" : "completed",
+              ...(failure ? { errorMessage: failure } : {}),
+              ...(delivery.messageTs
+                ? { resultMessageTs: delivery.messageTs }
+                : {}),
+            };
       await hydrateConversationMessages({ conversation, conversationId });
       if (delivery.outcome === "failed") {
         await persistRuntimePatch({
@@ -656,8 +686,7 @@ export async function processAgentDispatchCallback(
         });
         await markDispatch({
           dispatch,
-          status: "failed",
-          errorMessage: "Slack rejected the dispatched reply.",
+          ...canonicalTerminalProjection,
         });
         return;
       }
@@ -752,11 +781,14 @@ export async function processAgentDispatchCallback(
       });
     }
     lifecycleTerminalized = true;
-    dispatch = await markDispatch({
-      dispatch,
+    canonicalTerminalProjection = {
       status: failure ? "failed" : "completed",
       ...(failure ? { errorMessage: failure } : {}),
       ...(resultMessageTs ? { resultMessageTs } : {}),
+    };
+    dispatch = await markDispatch({
+      dispatch,
+      ...canonicalTerminalProjection,
     });
     if (!failure && !postDeliveryPersistenceFailed) {
       try {
@@ -795,6 +827,16 @@ export async function processAgentDispatchCallback(
         ),
         schedule: scheduleCallback,
       });
+      return;
+    }
+    if (canonicalTerminalProjection) {
+      logException(
+        error,
+        "agent_dispatch_terminal_projection_failed",
+        logContext,
+        {},
+        "Failed to repair or project a canonically terminal dispatch",
+      );
       return;
     }
     if (error instanceof AuthorizationFlowDisabledError) {

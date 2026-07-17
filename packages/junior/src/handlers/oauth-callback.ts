@@ -67,7 +67,11 @@ import {
 } from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
-import { scheduleAgentContinue } from "@/chat/services/agent-continue";
+import {
+  scheduleAgentContinue,
+  wakeAuthorizationCompletedAgentTurn,
+  type ScheduleAgentContinueOptions,
+} from "@/chat/services/agent-continue";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { requireSlackDestination } from "@/chat/destination";
@@ -76,6 +80,7 @@ import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery
 
 interface OAuthCallbackOptions {
   agentRunner: AgentRunner;
+  agentContinueOptions?: ScheduleAgentContinueOptions;
   recoverableSlackDelivery?: RecoverableSlackDelivery;
   turnLifecycle?: ConversationTurnLifecycle;
 }
@@ -270,13 +275,20 @@ async function resumeOAuthSessionRecordTurn(
     }
     return true;
   }
+  if (sessionRecord.state === "completed") {
+    await persistThreadStateById(
+      stored.resumeConversationId,
+      buildRecoveredDeliveredTurnStatePatch({
+        conversation,
+        sessionId: resolvedSessionId,
+        inputMessageIds: userMessage ? [userMessage.id] : [],
+      }),
+    );
+    return true;
+  }
   // Terminal session record states are already handled; do not fall through to
   // the pending-message resume which would re-post the original request.
-  if (
-    sessionRecord.state === "completed" ||
-    sessionRecord.state === "failed" ||
-    sessionRecord.state === "abandoned"
-  ) {
+  if (sessionRecord.state === "failed" || sessionRecord.state === "abandoned") {
     return true;
   }
   if (
@@ -786,8 +798,14 @@ export async function GET(
   waitUntil(async () => {
     try {
       await publishAppHomeView(getSlackClient(), stored.userId, userTokenStore);
-    } catch {
-      // best effort
+    } catch (error) {
+      logException(
+        error,
+        "oauth_callback_app_home_publish_failed",
+        {},
+        { "app.credential.provider": stored.provider },
+        "Failed to refresh Slack app home after OAuth callback",
+      );
     }
   });
 
@@ -800,37 +818,70 @@ export async function GET(
         }
       } catch (error) {
         if (error instanceof ResumeTurnBusyError) {
-          logWarn(
-            "oauth_callback_resume_busy",
-            {
-              ...(stored.resumeConversationId && {
+          if (stored.resumeConversationId && stored.resumeSessionId) {
+            await wakeAuthorizationCompletedAgentTurn(
+              {
                 conversationId: stored.resumeConversationId,
-              }),
-              ...(stored.userId && { actorId: stored.userId }),
-              ...(stored.channelId && { channelId: stored.channelId }),
-            },
-            {
-              "app.credential.provider": stored.provider,
-              ...(stored.resumeSessionId && {
-                "app.ai.session_id": stored.resumeSessionId,
-              }),
-            },
-            "OAuth callback resume was busy; user must send another message to continue",
-          );
+                provider: stored.provider,
+                sessionId: stored.resumeSessionId,
+              },
+              options.agentContinueOptions,
+            );
+          } else {
+            logWarn(
+              "oauth_callback_resume_busy_without_session",
+              {},
+              {
+                "app.credential.provider": stored.provider,
+                ...(stored.channelId
+                  ? { "messaging.destination.name": stored.channelId }
+                  : {}),
+              },
+              "OAuth callback resume was busy without a durable session to wake",
+            );
+          }
           return;
         }
-        throw error;
+        logException(
+          error,
+          "oauth_callback_resume_failed",
+          {
+            ...(stored.resumeConversationId && {
+              conversationId: stored.resumeConversationId,
+            }),
+          },
+          {
+            "app.credential.provider": stored.provider,
+            ...(stored.resumeSessionId && {
+              "app.ai.session_id": stored.resumeSessionId,
+            }),
+          },
+          "Failed to resume OAuth-authorized Slack turn",
+        );
       }
     });
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
-    waitUntil(() =>
-      postSlackMessage({
-        channelId,
-        threadTs,
-        text: `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
-      }),
-    );
+    waitUntil(async () => {
+      try {
+        await postSlackMessage({
+          channelId,
+          threadTs,
+          text: `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
+        });
+      } catch (error) {
+        logException(
+          error,
+          "oauth_callback_connected_message_failed",
+          {},
+          {
+            "app.credential.provider": stored.provider,
+            "app.messaging.channel.id": channelId,
+          },
+          "Failed to post OAuth connection confirmation to Slack",
+        );
+      }
+    });
   }
 
   const statusMessage = stored.pendingMessage
