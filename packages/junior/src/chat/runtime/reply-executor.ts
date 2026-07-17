@@ -107,6 +107,7 @@ import {
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -1028,10 +1029,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // A user follow-up supersedes the auth-parked run: answer it
               // now as a fresh turn instead of consuming it into a pause that
               // may never resume. The parked prompt stays model-visible via
-              // the event-log projection, pendingAuth state keeps the
-              // authorization link reusable, and the abandoned record turns a
-              // late OAuth callback into a stale no-op instead of a competing
-              // run.
+              // the event-log projection. The abandoned record turns a late
+              // OAuth callback into a stale no-op, and its exact pending-auth
+              // marker must be cleared because that session cannot resume.
               await abandonAgentTurnSessionRecord({
                 conversationId,
                 sessionId: activeTurnId,
@@ -1044,6 +1044,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 sessionId: activeTurnId,
                 updateConversationStats,
               });
+              clearPendingAuth(preparedState.conversation, activeTurnId);
               activeTurnId = undefined;
             } else {
               await failAgentTurnSessionRecord({

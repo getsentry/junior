@@ -20,7 +20,9 @@ import {
   type ConversationMessage,
 } from "@/chat/state/conversation";
 import {
+  activateAgentTurnAuthorizationRecovery,
   getAgentTurnSessionRecord,
+  prepareAgentTurnAuthorizationRecovery,
   upsertAgentTurnSessionRecord,
 } from "@/chat/state/turn-session";
 import {
@@ -1254,7 +1256,7 @@ describe("bot handlers (integration)", () => {
         },
       }),
     );
-    await upsertAgentTurnSessionRecord({
+    const parkedSession = await upsertAgentTurnSessionRecord({
       modelId: "test/model",
       conversationId,
       sessionId: activeSessionId,
@@ -1262,6 +1264,22 @@ describe("bot handlers (integration)", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
       piMessages: turnPiMessages("please use notion"),
+    });
+    const prepared = await prepareAgentTurnAuthorizationRecovery({
+      authorizationCompletionId: "lost-callback-receipt",
+      authorizationKind: "plugin",
+      conversationId,
+      expectedVersion: parkedSession.version,
+      provider: "notion",
+      sessionId: activeSessionId,
+      userId: "U-test",
+    });
+    if (!prepared) throw new Error("Expected prepared auth recovery");
+    await activateAgentTurnAuthorizationRecovery({
+      authorizationCompletionId: "lost-callback-receipt",
+      conversationId,
+      expectedVersion: prepared.version,
+      sessionId: activeSessionId,
     });
     const { slackRuntime } = createRuntime({
       services: {
@@ -1271,9 +1289,27 @@ describe("bot handlers (integration)", () => {
       },
     });
 
+    const threadState = createAwaitingContinuationState({ activeSessionId });
+    const processing = threadState.conversation
+      .processing as typeof threadState.conversation.processing & {
+      pendingAuth?: {
+        actorId: string;
+        kind: "plugin";
+        linkSentAtMs: number;
+        provider: string;
+        sessionId: string;
+      };
+    };
+    processing.pendingAuth = {
+      actorId: "U-test",
+      kind: "plugin",
+      linkSentAtMs: 1,
+      provider: "notion",
+      sessionId: activeSessionId,
+    };
     const thread = createTestThread({
       id: conversationId,
-      state: createAwaitingContinuationState({ activeSessionId }),
+      state: threadState,
     });
 
     await slackRuntime.handleNewMention(
@@ -1305,10 +1341,13 @@ describe("bot handlers (integration)", () => {
     const state = thread.getState();
     const conversation = (
       state as {
-        conversation?: { processing?: { activeTurnId?: string } };
+        conversation?: {
+          processing?: { activeTurnId?: string; pendingAuth?: unknown };
+        };
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
+    expect(conversation?.processing?.pendingAuth).toBeUndefined();
   });
 
   it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
