@@ -298,6 +298,28 @@ describe("chat config", () => {
     );
   });
 
+  it("defaults max steps per turn to 100", async () => {
+    delete process.env.AGENT_MAX_STEPS_PER_TURN;
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxStepsPerTurn).toBe(100);
+  });
+
+  it("uses AGENT_MAX_STEPS_PER_TURN when configured", async () => {
+    process.env.AGENT_MAX_STEPS_PER_TURN = "250";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.maxStepsPerTurn).toBe(250);
+  });
+
+  it.each(["0", "-1", "1.5", "nope"])(
+    "rejects invalid AGENT_MAX_STEPS_PER_TURN=%s",
+    async (value) => {
+      process.env.AGENT_MAX_STEPS_PER_TURN = value;
+      await expect(loadConfig()).rejects.toThrow(
+        "AGENT_MAX_STEPS_PER_TURN must be a positive integer",
+      );
+    },
+  );
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();

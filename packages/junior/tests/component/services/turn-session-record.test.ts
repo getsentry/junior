@@ -701,8 +701,9 @@ describe("persistAuthPauseSessionRecord", () => {
   });
 
   it("fails timeout sessions instead of scheduling beyond the step limit", async () => {
-    const { MAX_STEPS_PER_TURN, persistTimeoutSessionRecord } =
+    const { persistTimeoutSessionRecord } =
       await import("@/chat/services/turn-session-record");
+    const { botConfig } = await import("@/chat/config");
     const { getAgentTurnSessionRecord, upsertAgentTurnSessionRecord } =
       await import("@/chat/state/turn-session");
 
@@ -718,7 +719,7 @@ describe("persistAuthPauseSessionRecord", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: MAX_STEPS_PER_TURN,
+      sliceId: botConfig.maxStepsPerTurn,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -730,7 +731,7 @@ describe("persistAuthPauseSessionRecord", () => {
         modelId: "test-model",
         conversationId: "conversation-timeout-cap",
         sessionId: "turn-timeout-cap",
-        currentSliceId: MAX_STEPS_PER_TURN,
+        currentSliceId: botConfig.maxStepsPerTurn,
         currentDurationMs: 3_000,
         messages: piMessages,
         errorMessage: "timed out again",
@@ -738,7 +739,7 @@ describe("persistAuthPauseSessionRecord", () => {
       }),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: MAX_STEPS_PER_TURN,
+      sliceId: botConfig.maxStepsPerTurn,
       cumulativeDurationMs: 15_000,
       errorMessage: expect.stringContaining("step limit"),
       piMessages,
@@ -748,7 +749,7 @@ describe("persistAuthPauseSessionRecord", () => {
       getAgentTurnSessionRecord("conversation-timeout-cap", "turn-timeout-cap"),
     ).resolves.toMatchObject({
       state: "failed",
-      sliceId: MAX_STEPS_PER_TURN,
+      sliceId: botConfig.maxStepsPerTurn,
       cumulativeDurationMs: 15_000,
       errorMessage: expect.stringContaining("step limit"),
       piMessages,

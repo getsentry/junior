@@ -261,7 +261,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
-import { MAX_STEPS_PER_TURN } from "@/chat/services/turn-session-record";
+import { botConfig } from "@/chat/config";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getAgentTurnSessionRecord,
@@ -372,7 +372,7 @@ describe("executeAgentRun agent continuation", () => {
       modelId: "test/model",
       conversationId: "conversation-timeout-cap",
       sessionId: "turn-timeout-cap",
-      sliceId: MAX_STEPS_PER_TURN,
+      sliceId: botConfig.maxStepsPerTurn,
       state: "awaiting_resume",
       piMessages,
       resumeReason: "timeout",
@@ -409,7 +409,7 @@ describe("executeAgentRun agent continuation", () => {
     expect(sessionRecord).toMatchObject({
       state: "failed",
       resumeReason: "timeout",
-      sliceId: MAX_STEPS_PER_TURN,
+      sliceId: botConfig.maxStepsPerTurn,
       errorMessage: expect.stringContaining("step limit"),
     });
   });
