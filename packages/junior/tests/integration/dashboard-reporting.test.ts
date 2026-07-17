@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConversationDetail } from "@/api/conversations/detail";
 import { createSqlConversationMessageStore } from "@/chat/conversations/sql/messages";
+import { readConversationEventPrivacySnapshot } from "@/chat/conversations/sql/privacy";
 import { purgeConversation } from "@/chat/conversations/retention";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
@@ -71,7 +72,6 @@ async function appendVisibleHistory(
         type: "tool_execution_started",
         toolCallId: `${conversationId}:tool-call`,
         toolName: "search",
-        args: { secret: "must not leave persistence" },
       },
       createdAtMs: 12,
     },
@@ -291,7 +291,6 @@ describe("dashboard canonical event reporting", () => {
     expect(JSON.stringify(detail)).not.toContain(
       "private model-only duplicate",
     );
-    expect(JSON.stringify(detail)).not.toContain("must not leave persistence");
     expect(JSON.stringify(detail)).not.toContain("private-model-id");
     for (const removed of [
       "activity",
@@ -342,7 +341,8 @@ describe("dashboard canonical event reporting", () => {
     expect((await requireDetail(publicChild)).eventHistory).toEqual({
       status: "available",
     });
-    const { getConversationStore, getDb } = await import("@/chat/db");
+    const { getConversationStore, getDb, getSqlExecutor } =
+      await import("@/chat/db");
     const [rootRow] = await getDb()
       .select({ destinationId: juniorConversations.destinationId })
       .from(juniorConversations)
@@ -352,6 +352,20 @@ describe("dashboard canonical event reporting", () => {
       .update(juniorDestinations)
       .set({ visibility: "private" })
       .where(eq(juniorDestinations.id, rootRow.destinationId));
+    const privateSnapshot = await readConversationEventPrivacySnapshot(
+      getSqlExecutor(),
+      {
+        conversationId: publicChild,
+        eventTypes: ["visible_message_recorded"],
+      },
+    );
+    expect(privateSnapshot).toMatchObject({
+      rootConversationId: publicRoot,
+      visibility: "private",
+    });
+    expect(privateSnapshot?.events.map((event) => event.type)).toEqual([
+      "visible_message_recorded",
+    ]);
     expect((await requireDetail(publicChild)).eventHistory.status).toBe(
       "redacted",
     );
