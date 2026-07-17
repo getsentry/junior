@@ -35,6 +35,28 @@ function findInErrorChain(
   return false;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isInvalidSandboxSessionError(error: unknown): boolean {
+  if (!isRecord(error)) {
+    return false;
+  }
+
+  if (isRecord(error.json) && error.json.invalidToken === true) {
+    return true;
+  }
+
+  const response = error.response;
+  return (
+    isRecord(response) &&
+    response.status === 403 &&
+    typeof response.url === "string" &&
+    response.url.includes("/sandboxes/sessions")
+  );
+}
+
 function getFirstErrorMessage(error: unknown): string | undefined {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -69,6 +91,10 @@ export function isAlreadyExistsError(error: unknown): boolean {
 /** Detect when a cached sandbox can no longer be reused and must be recreated. */
 export function isSandboxUnavailableError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {
+    if (isInvalidSandboxSessionError(candidate)) {
+      return true;
+    }
+
     const details = getSandboxErrorDetails(candidate);
     const searchable =
       `${details.searchableText} ${details.summary}`.toLowerCase();
@@ -76,11 +102,7 @@ export function isSandboxUnavailableError(error: unknown): boolean {
       searchable.includes("sandbox_stopped") ||
       searchable.includes("status=410") ||
       searchable.includes("status code 410") ||
-      searchable.includes("no longer available") ||
-      // Expired/invalid sandbox session tokens return 403 {invalidToken:true}
-      searchable.includes("invalidtoken") ||
-      (searchable.includes("status=403") &&
-        searchable.includes("sandboxes/sessions"))
+      searchable.includes("no longer available")
     );
   });
 }
