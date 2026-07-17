@@ -11,7 +11,7 @@ import {
 } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
-import type { JsonValue, NormalizedMessage } from "vitest-evals/harness";
+import type { JsonValue } from "vitest-evals/harness";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
@@ -104,6 +104,12 @@ import { normalizeGitHubResourceEvents } from "@/handlers/github-webhook";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
 import { loadEvalPluginFixtures } from "./eval-plugin-fixtures";
+
+interface NormalizedMessage {
+  role: "system" | "user" | "assistant";
+  content?: JsonValue;
+  metadata?: Record<string, JsonValue>;
+}
 
 const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
 

@@ -15,9 +15,8 @@ import {
   type Harness,
   type HarnessRun,
   type JsonValue,
-  type NormalizedMessage,
   type NormalizedSession,
-  type ToolCallRecord,
+  type TranscriptEvent,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { getAgentStepStore, getConversationMessageStore } from "@/chat/db";
@@ -42,6 +41,19 @@ import {
   type SteerEvent,
   runEvalScenario,
 } from "./behavior-harness";
+
+interface NormalizedMessage {
+  role: "system" | "user" | "assistant";
+  content?: JsonValue;
+  metadata?: Record<string, JsonValue>;
+}
+
+interface ToolCallRecord {
+  name: string;
+  arguments?: Record<string, JsonValue>;
+  result?: JsonValue;
+  error?: { message: string };
+}
 
 type HarnessEvalResult = EvalResult & {
   sessionMessages: NormalizedMessage[];
@@ -153,19 +165,20 @@ function toLogMetadata(record: EmittedLogRecord): Record<string, JsonValue> {
 
 function serializeVisibleTranscript(session: NormalizedSession): string {
   return JSON.stringify(
-    session.messages.flatMap((message) => {
+    session.events.flatMap((event) => {
       if (
-        (message.role !== "user" && message.role !== "assistant") ||
-        typeof message.content !== "string" ||
-        message.content.trim().length === 0 ||
-        message.metadata?.rubric_visible === false
+        event.type !== "message" ||
+        (event.role !== "user" && event.role !== "assistant") ||
+        typeof event.content !== "string" ||
+        event.content.trim().length === 0 ||
+        event.metadata?.rubric_visible === false
       ) {
         return [];
       }
       return [
         {
-          role: message.role,
-          content: message.content,
+          role: event.role,
+          content: event.content,
         },
       ];
     }),
@@ -198,10 +211,7 @@ function buildPostKey(post: {
   return `${post.channel ?? ""}\u0000${post.thread_ts ?? ""}\u0000${post.text}`;
 }
 
-function toSessionMessages(
-  result: HarnessEvalResult,
-  toolCalls: ToolCallRecord[],
-): NormalizedMessage[] {
+function toSessionMessages(result: HarnessEvalResult): NormalizedMessage[] {
   const observedPostKeys = new Set(
     result.sessionMessages.flatMap((message) => {
       if (message.role !== "assistant" || typeof message.content !== "string") {
@@ -265,14 +275,6 @@ function toSessionMessages(
         },
       }),
     ),
-    ...(toolCalls.length > 0
-      ? [
-          {
-            role: "assistant" as const,
-            toolCalls,
-          },
-        ]
-      : []),
   ];
 }
 
@@ -330,9 +332,52 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   };
 }
 
+function toTranscriptEvents(
+  messages: NormalizedMessage[],
+  toolCallRecords: ToolCallRecord[],
+): TranscriptEvent[] {
+  const messageEvents: TranscriptEvent[] = messages.map((message) => ({
+    type: "message",
+    ...message,
+  }));
+  const toolEvents: TranscriptEvent[] = toolCallRecords.flatMap(
+    (call, index) => {
+      const id = `eval-tool-${index}`;
+      return [
+        {
+          type: "tool_call" as const,
+          id,
+          name: call.name,
+          ...(call.arguments ? { arguments: call.arguments } : {}),
+        },
+        ...(call.error
+          ? [
+              {
+                type: "tool_result" as const,
+                toolCallId: id,
+                name: call.name,
+                error: call.error,
+              },
+            ]
+          : call.result !== undefined
+            ? [
+                {
+                  type: "tool_result" as const,
+                  toolCallId: id,
+                  name: call.name,
+                  content: call.result,
+                },
+              ]
+            : []),
+      ];
+    },
+  );
+  return [...messageEvents, ...toolEvents];
+}
+
 function toHarnessRun(result: HarnessEvalResult, totalMs: number): HarnessRun {
-  const toolCalls = result.toolInvocations.map(toToolCallRecord);
-  const messages = toSessionMessages(result, toolCalls);
+  const toolCallRecords = result.toolInvocations.map(toToolCallRecord);
+  const messages = toSessionMessages(result);
 
   return {
     artifacts: {
@@ -340,7 +385,7 @@ function toHarnessRun(result: HarnessEvalResult, totalMs: number): HarnessRun {
       slack_side_effects: slackSideEffectArtifacts(result),
     },
     session: {
-      messages,
+      events: toTranscriptEvents(messages, toolCallRecords),
       metadata: toJsonRecord({
         slack_metadata: slackMetadata(result),
         log_records: result.logRecords.map(toLogMetadata),

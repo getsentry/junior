@@ -159,5 +159,14 @@ jobs:
           chmod +x "$RUNNER_TEMP/cloudflared"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/cloudflared" version
-      - run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
-      - run: pnpm --filter @sentry/junior-evals evals
+      - name: Verify eval egress lifecycle
+        run: pnpm --filter @sentry/junior-evals test tests/integration/eval-egress.test.ts
+      - name: Run evals
+        env:
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals
+      - name: Publish eval report
+        if: always()
+        uses: getsentry/vitest-evals@v0
+        with:
+          results: packages/junior-evals/vitest-results.json

@@ -44,6 +44,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     const verifyCall = toolCalls(result.session).find(
       (call) =>
         call.name === "bash" &&
+        call.status === "ok" &&
         JSON.stringify(call.result)?.includes(
           "verified remote branch contains the pushed fix",
         ) === true,
