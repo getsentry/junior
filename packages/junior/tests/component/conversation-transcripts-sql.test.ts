@@ -439,6 +439,78 @@ describe("conversation transcript SQL stores", () => {
     }
   });
 
+  it("does not refresh or unarchive a conversation for duplicate appends", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const store = createSqlConversationEventStore(fixture.sql);
+      const firstEvent = {
+        data: { type: "message" as const, message: userMessage("first") },
+        idempotencyKey: "event:first",
+        createdAtMs: 1_000,
+      };
+
+      await store.append(CONVERSATION_ID, [firstEvent]);
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          archivedAt: new Date(2_000),
+          transcriptPurgedAt: new Date(2_500),
+        })
+        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+
+      const readConversationTimestamps = async () => {
+        const [row] = await fixture.sql
+          .db()
+          .select({
+            archivedAt: juniorConversations.archivedAt,
+            lastActivityAt: juniorConversations.lastActivityAt,
+            transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+            updatedAt: juniorConversations.updatedAt,
+          })
+          .from(juniorConversations)
+          .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+        return row;
+      };
+      const archived = await readConversationTimestamps();
+
+      await store.append(CONVERSATION_ID, [
+        { ...firstEvent, createdAtMs: 9_000 },
+      ]);
+
+      expect(await readConversationTimestamps()).toEqual(archived);
+
+      await store.append(CONVERSATION_ID, [
+        { ...firstEvent, createdAtMs: 10_000 },
+        {
+          data: { type: "message", message: userMessage("second") },
+          idempotencyKey: "event:second",
+          createdAtMs: 8_000,
+        },
+      ]);
+
+      expect(await readConversationTimestamps()).toEqual({
+        archivedAt: null,
+        lastActivityAt: new Date(8_000),
+        transcriptPurgedAt: null,
+        updatedAt: new Date(8_000),
+      });
+      expect(
+        (await store.loadHistory(CONVERSATION_ID)).map((event) => ({
+          idempotencyKey: event.idempotencyKey,
+          seq: event.seq,
+        })),
+      ).toEqual([
+        { idempotencyKey: "event:first", seq: 0 },
+        { idempotencyKey: "event:second", seq: 1 },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists only the first conflicting terminal turn event", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

@@ -97,25 +97,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     if (parsed.length === 0) {
       return;
     }
-    const newestCreatedAtMs = Math.max(
-      ...parsed.map((event) => event.createdAtMs),
-    );
     await withConversationEventLock(this.executor, conversationId, async () => {
-      await ensureConversationRow(
-        this.executor,
-        conversationId,
-        newestCreatedAtMs,
-      );
-      await this.executor
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: null })
-        .where(
-          and(
-            eq(juniorConversations.conversationId, conversationId),
-            isNotNull(juniorConversations.archivedAt),
-          ),
-        );
       const existingKeys = parsed
         .map((event) => event.idempotencyKey)
         .filter((key): key is string => key !== undefined);
@@ -150,6 +132,24 @@ class SqlConversationEventStore implements ConversationEventStore {
       if (pending.length === 0) {
         return;
       }
+      const newestCreatedAtMs = Math.max(
+        ...pending.map((event) => event.createdAtMs),
+      );
+      await ensureConversationRow(
+        this.executor,
+        conversationId,
+        newestCreatedAtMs,
+      );
+      await this.executor
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: null })
+        .where(
+          and(
+            eq(juniorConversations.conversationId, conversationId),
+            isNotNull(juniorConversations.archivedAt),
+          ),
+        );
       const cursor = await this.readCursor(conversationId);
       const contextEpoch = cursor.maxEpoch ?? 0;
       let seq = cursor.nextSeq;
