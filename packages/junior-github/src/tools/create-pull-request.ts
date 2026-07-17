@@ -12,6 +12,10 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
+import {
+  gitHubPullRequestSubscribable,
+  subscribableResourceSchema,
+} from "./pull-request-resource.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -116,17 +120,6 @@ interface GitHubPullRequestStructuredResult
   target: "createPullRequest";
   data: GitHubPullRequestToolResult;
 }
-
-const subscribableResourceSchema = z
-  .object({
-    provider: z.string(),
-    type: z.string(),
-    resourceRef: z.string(),
-    label: z.string(),
-    supportedEvents: z.array(z.string()),
-    suggestedEvents: z.array(z.string()).optional(),
-  })
-  .strict();
 
 const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
@@ -329,52 +322,16 @@ async function createGitHubPullRequest(
   };
 }
 
-function gitHubPullRequestSubscribable(
-  input: CreateGitHubPullRequestInput,
-  result: GitHubPullRequestResult,
-): SubscribableResource {
-  const repo = parseRepo(input.repo);
-  const repoRef = `${repo.owner}/${repo.name}`;
-  const supportedEvents = [
-    "checks.failed",
-    "checks.recovered",
-    "comment.created",
-    "review.approved",
-    "review.changes_requested",
-    "review.commented",
-    "review_comment.created",
-    "state.merged",
-    "state.closed_unmerged",
-  ];
-  return {
-    label: `GitHub PR ${repoRef}#${result.number}`,
-    provider: "github",
-    resourceRef: `github:pull_request:${repoRef}#${result.number}`,
-    suggestedEvents: [
-      "checks.failed",
-      "comment.created",
-      "review.changes_requested",
-      "review.commented",
-      "review_comment.created",
-      "state.merged",
-      "state.closed_unmerged",
-    ],
-    supportedEvents,
-    type: "pull_request",
-  };
-}
-
 function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
 ): GitHubPullRequestToolResult {
-  if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) {
-    return result;
-  }
-  return {
-    ...result,
-    subscribable: gitHubPullRequestSubscribable(input, result),
-  };
+  const repo = parseRepo(input.repo);
+  const subscribable = gitHubPullRequestSubscribable({
+    number: result.number,
+    repo: `${repo.owner}/${repo.name}`,
+  });
+  return { ...result, ...(subscribable ? { subscribable } : {}) };
 }
 
 function gitHubPullRequestStructuredResult(

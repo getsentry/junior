@@ -113,7 +113,7 @@ That only helps when those repositories are covered by the same GitHub App insta
 
 ## Watch pull request events
 
-When `GITHUB_WEBHOOK_SECRET` is configured, `github_createPullRequest` returns a subscribable pull request resource. Junior can then subscribe the current Slack conversation to high-signal PR events when watching that PR serves the user's request.
+When `GITHUB_WEBHOOK_SECRET` is configured, `github_createPullRequest` and `github_getPullRequest` return a subscribable pull request resource. Junior can then subscribe the current Slack conversation to high-signal PR events for either a newly created or existing PR when watching it serves the user's request.
 
 Subscribed events run headlessly as Junior's `resource-event` system actor.
 They can use repository-scoped installation credentials to commit and push a
