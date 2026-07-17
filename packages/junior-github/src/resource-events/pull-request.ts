@@ -1,7 +1,4 @@
-import {
-  subscribableResourceSchema,
-  type SubscribableResource,
-} from "@sentry/junior-plugin-api";
+import type { SubscribableResource } from "@sentry/junior-plugin-api";
 
 const SUPPORTED_EVENTS = [
   "checks.failed",
@@ -39,5 +36,3 @@ export function gitHubPullRequestSubscribable(input: {
     type: "pull_request",
   };
 }
-
-export { subscribableResourceSchema };

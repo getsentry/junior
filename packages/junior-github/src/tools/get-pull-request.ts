@@ -7,10 +7,8 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import {
-  gitHubPullRequestSubscribable,
-  subscribableResourceSchema,
-} from "./pull-request-resource.js";
+import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
+import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
 
 const inputSchema = z
   .object({

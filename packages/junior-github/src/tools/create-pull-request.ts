@@ -12,10 +12,8 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import {
-  gitHubPullRequestSubscribable,
-  subscribableResourceSchema,
-} from "./pull-request-resource.js";
+import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
+import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
