@@ -59,6 +59,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     private readonly runCredentialMutation?: <T>(
       mutation: () => Promise<T>,
     ) => Promise<T>,
+    private readonly authorizationCompletionId?: string,
   ) {
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
@@ -124,6 +125,9 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
       await putMcpStoredOAuthCredentials(session.userId, session.provider, {
         ...credentials,
         tokens,
+        ...(this.authorizationCompletionId
+          ? { authorizationCompletionId: this.authorizationCompletionId }
+          : {}),
       });
     });
   }
@@ -193,6 +197,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
         )) ?? {};
 
       await putMcpStoredOAuthCredentials(session.userId, session.provider, {
+        ...(scope === "tokens" || scope === "all"
+          ? {}
+          : credentials.authorizationCompletionId
+            ? {
+                authorizationCompletionId:
+                  credentials.authorizationCompletionId,
+              }
+            : {}),
         ...(scope === "tokens" || scope === "all"
           ? {}
           : credentials.tokens

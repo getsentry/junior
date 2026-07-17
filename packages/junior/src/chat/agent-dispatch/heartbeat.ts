@@ -127,30 +127,13 @@ export async function recoverStaleDispatches(args: {
       if (!isStaleDispatch({ record, nowMs: args.nowMs })) {
         continue;
       }
-      if (record.createdAtMs + DISPATCH_MAX_AGE_MS <= args.nowMs) {
-        await failDispatch({
-          record,
-          errorMessage: "Dispatch expired before completion.",
+      const canonicalTerminal =
+        await args.recoverableSlackDelivery?.loadTerminalOutcome({
+          conversationId: getDispatchConversationId(record),
+          turnId: getDispatchTurnId(record.id),
+          acceptanceEvidence: "known_outbox_intent",
         });
-        continue;
-      }
-      if (
-        record.nextCallbackKind !== "delivery" &&
-        record.attempt >= record.maxAttempts
-      ) {
-        const canonicalTerminal =
-          await args.recoverableSlackDelivery?.loadTerminalOutcome({
-            conversationId: getDispatchConversationId(record),
-            turnId: getDispatchTurnId(record.id),
-            acceptanceEvidence: "known_outbox_intent",
-          });
-        if (!canonicalTerminal) {
-          await failDispatch({
-            record,
-            errorMessage: "Dispatch exceeded retry attempts.",
-          });
-          continue;
-        }
+      if (canonicalTerminal) {
         const terminalRecovery = await withDispatchLock(
           record.id,
           async (state) => {
@@ -169,10 +152,26 @@ export async function recoverStaleDispatches(args: {
             });
           },
         );
-        if (!terminalRecovery) {
+        if (!terminalRecovery) continue;
+        recoveryRecord = terminalRecovery;
+      } else {
+        if (record.createdAtMs + DISPATCH_MAX_AGE_MS <= args.nowMs) {
+          await failDispatch({
+            record,
+            errorMessage: "Dispatch expired before completion.",
+          });
           continue;
         }
-        recoveryRecord = terminalRecovery;
+        if (
+          record.nextCallbackKind !== "delivery" &&
+          record.attempt >= record.maxAttempts
+        ) {
+          await failDispatch({
+            record,
+            errorMessage: "Dispatch exceeded retry attempts.",
+          });
+          continue;
+        }
       }
       await scheduleDispatchCallback({
         id: recoveryRecord.id,

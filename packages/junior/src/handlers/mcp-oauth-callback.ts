@@ -13,6 +13,7 @@ import { hydrateConversationMessages } from "@/chat/conversations/visible-messag
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -53,9 +54,11 @@ import {
   isPendingAuthLatestRequest,
 } from "@/chat/services/pending-auth";
 import {
+  activateAuthorizationCompletedAgentTurnCandidate,
   failAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
+  prepareAuthorizationCompletedAgentTurnCandidate,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -287,6 +290,17 @@ async function resumeAuthorizedMcpTurn(args: {
     );
     return;
   }
+  if (
+    sessionRecord?.state === "failed" ||
+    sessionRecord?.state === "abandoned"
+  ) {
+    clearPendingAuth(conversation, authSession.sessionId);
+    if (conversation.processing.activeTurnId === authSession.sessionId) {
+      conversation.processing.activeTurnId = undefined;
+    }
+    await persistThreadStateById(threadId, { conversation });
+    return;
+  }
   const pendingAuth = getConversationPendingAuth({
     conversation,
     kind: "mcp",
@@ -350,6 +364,9 @@ async function resumeAuthorizedMcpTurn(args: {
       }
       if (!isPendingAuthLatestRequest(lockedConversation, lockedPendingAuth)) {
         clearPendingAuth(lockedConversation, lockedPendingAuth.sessionId);
+        if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+          lockedConversation.processing.activeTurnId = undefined;
+        }
         await persistThreadStateById(threadId, {
           conversation: lockedConversation,
         });
@@ -406,6 +423,13 @@ async function resumeAuthorizedMcpTurn(args: {
           sessionId: lockedSessionId,
           errorMessage: "Stored Slack actor identity did not match OAuth actor",
         });
+        clearPendingAuth(lockedConversation, lockedSessionId);
+        if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+          lockedConversation.processing.activeTurnId = undefined;
+        }
+        await persistThreadStateById(threadId, {
+          conversation: lockedConversation,
+        });
         return false;
       }
       if (!lockedSessionRecord.source) {
@@ -414,6 +438,13 @@ async function resumeAuthorizedMcpTurn(args: {
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
           errorMessage: "Stored Slack source missing for MCP OAuth resume",
+        });
+        clearPendingAuth(lockedConversation, lockedSessionId);
+        if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+          lockedConversation.processing.activeTurnId = undefined;
+        }
+        await persistThreadStateById(threadId, {
+          conversation: lockedConversation,
         });
         return false;
       }
@@ -633,17 +664,48 @@ export async function GET(
       return htmlResponse("expired");
     }
 
-    const authSession = await finalizeMcpAuthorization(
-      provider,
-      state,
-      code,
-      async (mutation) =>
-        await runCurrentMcpCredentialMutation(
-          pendingSession,
-          provider,
-          mutation,
-        ),
+    const sessionRecord = await getAgentTurnSessionRecord(
+      pendingSession.conversationId,
+      pendingSession.sessionId,
     );
+    const prepared = sessionRecord
+      ? await prepareAuthorizationCompletedAgentTurnCandidate({
+          authorizationCompletionId: crypto.randomUUID(),
+          authorizationKind: "mcp",
+          conversationId: pendingSession.conversationId,
+          expectedVersion: sessionRecord.version,
+          provider,
+          sessionId: pendingSession.sessionId,
+          userId: pendingSession.userId,
+        })
+      : undefined;
+    const receiptCommitted = prepared
+      ? prepared.active ||
+        (await getMcpStoredOAuthCredentials(prepared.userId, prepared.provider))
+          ?.authorizationCompletionId === prepared.authorizationCompletionId
+      : false;
+    const authSession = receiptCommitted
+      ? pendingSession
+      : await finalizeMcpAuthorization(
+          provider,
+          state,
+          code,
+          async (mutation) =>
+            await runCurrentMcpCredentialMutation(
+              pendingSession,
+              provider,
+              mutation,
+            ),
+          prepared?.authorizationCompletionId,
+        );
+    if (prepared) {
+      await activateAuthorizationCompletedAgentTurnCandidate({
+        authorizationCompletionId: prepared.authorizationCompletionId,
+        conversationId: prepared.conversationId,
+        expectedVersion: prepared.expectedVersion,
+        sessionId: prepared.sessionId,
+      });
+    }
     try {
       await deleteMcpAuthSession(authSession.authSessionId);
     } catch (cleanupError) {

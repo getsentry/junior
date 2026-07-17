@@ -506,7 +506,7 @@ describe("oauth callback slack integration", () => {
     ]);
   });
 
-  it("autonomously continues an authorized turn when the callback lock is busy", async () => {
+  it("recovers a committed OAuth credential when candidate activation crashes", async () => {
     const conversationId = "slack:C123:1700000000.014";
     const sessionId = "turn_msg_14";
     const source = slackSource("1700000000.014");
@@ -571,11 +571,76 @@ describe("oauth callback slack integration", () => {
       conversationId,
     );
 
-    const { acquireActiveLock } = await import("@/chat/state/locks");
     const adapter = stateAdapterModule.getStateAdapter();
-    const lock = await acquireActiveLock(adapter, conversationId);
-    expect(lock).toBeDefined();
     const queue = createConversationWorkQueueTestAdapter();
+    const sessionRecord =
+      await turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      );
+    if (!sessionRecord) throw new Error("Expected an auth-paused session");
+    await turnSessionStoreModule.prepareAuthorizationCompletedAgentTurnCandidate(
+      {
+        authorizationCompletionId: "prepared-before-exchange",
+        authorizationKind: "plugin",
+        conversationId,
+        expectedVersion: sessionRecord.version,
+        provider: "eval-oauth",
+        sessionId,
+        userId: "U123",
+      },
+    );
+    const { recoverAuthorizationCompletedAgentTurns } =
+      await import("@/chat/services/agent-continue");
+    await expect(
+      recoverAuthorizationCompletedAgentTurns({ queue, state: adapter }),
+    ).resolves.toBe(0);
+    expect(queue.sentRecords()).toHaveLength(0);
+    const originalSet = adapter.set.bind(adapter);
+    let candidateWrites = 0;
+    const setSpy = vi
+      .spyOn(adapter, "set")
+      .mockImplementation(
+        async (key: string, value: unknown, ttlMs?: number) => {
+          if (
+            key === "junior:agent_turn_session:authorization-completed:index" &&
+            ++candidateWrites === 2
+          ) {
+            throw new Error("candidate activation unavailable");
+          }
+          await originalSet(key, value, ttlMs);
+        },
+      );
+    await expect(
+      oauthCallbackHarnessModule.runOauthCallbackRoute({
+        provider: "eval-oauth",
+        state: "eval-oauth-busy-state",
+        code: "eval-oauth-code",
+        agentRunner: testAgentRunner,
+        agentContinueOptions: { queue, state: adapter },
+      }),
+    ).rejects.toThrow("candidate activation unavailable");
+    setSpy.mockRestore();
+
+    expect(executeAgentRunMock).not.toHaveBeenCalled();
+    await expect(
+      adapter.get("oauth-state:eval-oauth-busy-state"),
+    ).resolves.not.toBeNull();
+    await expect(
+      capabilitiesFactoryModule
+        .createUserTokenStore()
+        .get("U123", "eval-oauth"),
+    ).resolves.toMatchObject({ accessToken: "eval-oauth-access-token" });
+    await expect(
+      turnSessionStoreModule.listAuthorizationCompletedAgentTurnCandidates(),
+    ).resolves.toEqual([expect.objectContaining({ active: false })]);
+    await expect(
+      turnSessionStoreModule.getAgentTurnSessionRecord(
+        conversationId,
+        sessionId,
+      ),
+    ).resolves.toMatchObject({ resumeReason: "auth" });
+    expect(queue.sentRecords()).toHaveLength(0);
     let workRequestFailed = false;
     const failingWorkState = new Proxy(adapter, {
       get(target, property, receiver) {
@@ -595,29 +660,15 @@ describe("oauth callback slack integration", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
-      provider: "eval-oauth",
-      state: "eval-oauth-busy-state",
-      code: "eval-oauth-code",
-      agentRunner: testAgentRunner,
-      agentContinueOptions: { queue, state: failingWorkState },
-    });
-
-    expect(response.status).toBe(200);
-    expect(executeAgentRunMock).not.toHaveBeenCalled();
     await expect(
-      adapter.get("oauth-state:eval-oauth-busy-state"),
-    ).resolves.toBeNull();
+      recoverAuthorizationCompletedAgentTurns({
+        queue,
+        state: failingWorkState,
+      }),
+    ).resolves.toBe(0);
     await expect(
-      turnSessionStoreModule.getAgentTurnSessionRecord(
-        conversationId,
-        sessionId,
-      ),
-    ).resolves.toMatchObject({ resumeReason: "auth" });
-    expect(workRequestFailed).toBe(true);
-    expect(queue.sentRecords()).toHaveLength(0);
-    const { recoverAuthorizationCompletedAgentTurns } =
-      await import("@/chat/services/agent-continue");
+      turnSessionStoreModule.listAuthorizationCompletedAgentTurnCandidates(),
+    ).resolves.toEqual([expect.objectContaining({ active: true })]);
     await expect(
       recoverAuthorizationCompletedAgentTurns({
         queue,
@@ -632,7 +683,6 @@ describe("oauth callback slack integration", () => {
     ).resolves.toMatchObject({ resumeReason: "auth" });
     expect(queue.sentRecords()).toHaveLength(1);
 
-    await adapter.releaseLock(lock!);
     const { resumeAwaitingSlackContinuation } =
       await import("@/chat/runtime/agent-continue-runner");
     const { processConversationQueueMessage } =

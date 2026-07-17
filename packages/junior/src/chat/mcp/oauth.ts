@@ -72,6 +72,7 @@ export async function finalizeMcpAuthorization(
   authSessionId: string,
   authorizationCode: string,
   runCredentialMutation?: <T>(mutation: () => Promise<T>) => Promise<T>,
+  authorizationCompletionId?: string,
 ): Promise<McpAuthSessionState> {
   const plugin = requirePluginWithMcp(provider);
   const mcp = plugin.manifest.mcp;
@@ -101,6 +102,7 @@ export async function finalizeMcpAuthorization(
     callbackUrl,
     undefined,
     runCredentialMutation,
+    authorizationCompletionId,
   );
   const requestInit: RequestInit = {};
   if (mcp.headers && Object.keys(mcp.headers).length > 0) {

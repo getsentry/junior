@@ -13,12 +13,39 @@ const LONG_LIVED_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const REFRESH_LOCK_WAIT_MS = 30_000;
 const REFRESH_LOCK_RETRY_MS = 100;
 
+interface AuthorizationCompletedTokenRecord {
+  authorizationCompletionId: string;
+  tokens: StoredTokens;
+}
+
 function tokenKey(userId: string, provider: string): string {
   return `${KEY_PREFIX}:${userId}:${provider}`;
 }
 
 function refreshLockKey(userId: string, provider: string): string {
   return `${tokenKey(userId, provider)}:refresh`;
+}
+
+function parseStoredTokenRecord(value: unknown): {
+  authorizationCompletionId?: string;
+  tokens: StoredTokens;
+} {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "tokens" in value &&
+    "authorizationCompletionId" in value
+  ) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.authorizationCompletionId !== "string") {
+      throw new Error("Invalid OAuth authorization completion receipt");
+    }
+    return {
+      authorizationCompletionId: record.authorizationCompletionId,
+      tokens: storedTokensSchema.parse(record.tokens),
+    };
+  }
+  return { tokens: storedTokensSchema.parse(value) };
 }
 
 export class StateAdapterTokenStore implements UserTokenStore {
@@ -35,7 +62,7 @@ export class StateAdapterTokenStore implements UserTokenStore {
     const stored = await this.state.get<unknown>(tokenKey(userId, provider));
     return stored === null || stored === undefined
       ? undefined
-      : storedTokensSchema.parse(stored);
+      : parseStoredTokenRecord(stored).tokens;
   }
 
   async set(
@@ -49,6 +76,42 @@ export class StateAdapterTokenStore implements UserTokenStore {
       ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
       : LONG_LIVED_TTL_MS;
     await this.state.set(tokenKey(userId, provider), parsed, ttlMs);
+  }
+
+  /** Commit tokens and the opaque receipt proving one callback exchanged its code. */
+  async setForAuthorizationCompletion(
+    userId: string,
+    provider: string,
+    tokens: StoredTokens,
+    authorizationCompletionId: string,
+  ): Promise<void> {
+    const parsed = storedTokensSchema.parse(tokens);
+    const expiresAt = parsed.refreshTokenExpiresAt ?? parsed.expiresAt;
+    const ttlMs = expiresAt
+      ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
+      : LONG_LIVED_TTL_MS;
+    await this.state.set(
+      tokenKey(userId, provider),
+      {
+        authorizationCompletionId,
+        tokens: parsed,
+      } satisfies AuthorizationCompletedTokenRecord,
+      ttlMs,
+    );
+  }
+
+  /** Check whether the credential slot carries one exact callback receipt. */
+  async hasAuthorizationCompletion(
+    userId: string,
+    provider: string,
+    authorizationCompletionId: string,
+  ): Promise<boolean> {
+    const stored = await this.state.get<unknown>(tokenKey(userId, provider));
+    if (stored === null || stored === undefined) return false;
+    return (
+      parseStoredTokenRecord(stored).authorizationCompletionId ===
+      authorizationCompletionId
+    );
   }
 
   async delete(userId: string, provider: string): Promise<void> {

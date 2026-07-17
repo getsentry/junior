@@ -31,6 +31,7 @@ import { agentTurnUsageSchema, type AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "./adapter";
 import { getConversationStore } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { sleep } from "@/chat/sleep";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -41,7 +42,10 @@ const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const AGENT_TURN_SESSION_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:index`;
 const AUTHORIZATION_COMPLETED_INDEX_KEY = `${AGENT_TURN_SESSION_PREFIX}:authorization-completed:index`;
 const AUTHORIZATION_COMPLETED_INDEX_MAX_LENGTH = 500;
-const AUTHORIZATION_COMPLETED_INDEX_READ_LIMIT = 100;
+const AUTHORIZATION_COMPLETED_INDEX_LOCK_KEY = `${AUTHORIZATION_COMPLETED_INDEX_KEY}:lock`;
+const AUTHORIZATION_COMPLETED_INDEX_LOCK_TTL_MS = 5_000;
+const AUTHORIZATION_COMPLETED_INDEX_LOCK_RETRY_MS = 25;
+const AUTHORIZATION_COMPLETED_INDEX_LOCK_WAIT_MS = 2_000;
 const AGENT_TURN_SESSION_INDEX_MAX_LENGTH = 5_000;
 const AGENT_TURN_SESSION_INDEX_READ_CONCURRENCY = 25;
 const AGENT_TURN_SESSION_TTL_MS = THREAD_STATE_TTL_MS;
@@ -58,18 +62,34 @@ export type AgentTurnSurface = "slack" | "api" | "scheduler" | "internal";
 export type AgentTurnResumeReason = "timeout" | "auth" | "yield";
 
 export interface AuthorizationCompletedAgentTurnCandidate {
+  active: boolean;
+  authorizationCompletionId: string;
+  authorizationKind: "mcp" | "plugin";
   conversationId: string;
+  createdAtMs: number;
   expectedVersion: number;
+  provider: string;
   sessionId: string;
+  userId: string;
 }
 
 const authorizationCompletedAgentTurnCandidateSchema = z
   .object({
+    active: z.boolean(),
+    authorizationCompletionId: z.string().min(1),
+    authorizationKind: z.enum(["mcp", "plugin"]),
     conversationId: z.string().min(1),
+    createdAtMs: z.number().finite().nonnegative(),
     expectedVersion: z.number().int().nonnegative(),
+    provider: z.string().min(1),
     sessionId: z.string().min(1),
+    userId: z.string().min(1),
   })
   .strict() satisfies z.ZodType<AuthorizationCompletedAgentTurnCandidate>;
+
+const authorizationCompletedAgentTurnCandidatesSchema = z.array(
+  authorizationCompletedAgentTurnCandidateSchema,
+);
 
 interface ConversationMessageProjection {
   messages: PiMessage[];
@@ -977,8 +997,75 @@ export async function failAgentTurnSessionRecord(args: {
   });
 }
 
-/** Persist one exact auth-paused version as safe for autonomous continuation. */
-export async function recordAuthorizationCompletedAgentTurnCandidate(args: {
+/** Prepare an inert recovery intent before exchanging a one-time auth code. */
+export async function prepareAuthorizationCompletedAgentTurnCandidate(args: {
+  authorizationCompletionId: string;
+  authorizationKind: "mcp" | "plugin";
+  conversationId: string;
+  expectedVersion: number;
+  provider: string;
+  sessionId: string;
+  userId: string;
+}): Promise<AuthorizationCompletedAgentTurnCandidate | undefined> {
+  const existing = await getAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !existing ||
+    existing.state !== "awaiting_resume" ||
+    existing.resumeReason !== "auth" ||
+    existing.version !== args.expectedVersion
+  ) {
+    return undefined;
+  }
+
+  let prepared: AuthorizationCompletedAgentTurnCandidate | undefined;
+  await updateAuthorizationCompletedCandidateIndex((candidates) => {
+    const current = candidates.find(
+      (candidate) =>
+        candidate.conversationId === args.conversationId &&
+        candidate.sessionId === args.sessionId &&
+        candidate.expectedVersion === args.expectedVersion,
+    );
+    if (current) {
+      if (
+        current.authorizationKind !== args.authorizationKind ||
+        current.provider !== args.provider ||
+        current.userId !== args.userId
+      ) {
+        throw new Error(
+          "Authorization recovery intent does not match callback",
+        );
+      }
+      prepared = current;
+      return candidates;
+    }
+
+    const candidate = {
+      active: false,
+      authorizationCompletionId: args.authorizationCompletionId,
+      authorizationKind: args.authorizationKind,
+      conversationId: args.conversationId,
+      createdAtMs: Date.now(),
+      expectedVersion: args.expectedVersion,
+      provider: args.provider,
+      sessionId: args.sessionId,
+      userId: args.userId,
+    } satisfies AuthorizationCompletedAgentTurnCandidate;
+    if (candidates.length >= AUTHORIZATION_COMPLETED_INDEX_MAX_LENGTH) {
+      throw new Error("Authorization completion recovery index is full");
+    }
+    prepared = candidate;
+    return [...candidates, candidate];
+  });
+
+  return prepared;
+}
+
+/** Activate a prepared intent only after its credential receipt is committed. */
+export async function activateAuthorizationCompletedAgentTurnCandidate(args: {
+  authorizationCompletionId: string;
   conversationId: string;
   expectedVersion: number;
   sessionId: string;
@@ -996,45 +1083,83 @@ export async function recordAuthorizationCompletedAgentTurnCandidate(args: {
     return undefined;
   }
 
-  const state = getStateAdapter();
-  await state.connect();
-  await state.appendToList(
-    AUTHORIZATION_COMPLETED_INDEX_KEY,
-    {
-      conversationId: args.conversationId,
-      expectedVersion: args.expectedVersion,
-      sessionId: args.sessionId,
-    } satisfies AuthorizationCompletedAgentTurnCandidate,
-    {
-      maxLength: AUTHORIZATION_COMPLETED_INDEX_MAX_LENGTH,
-      ttlMs: AGENT_TURN_SESSION_TTL_MS,
-    },
+  let activated = false;
+  await updateAuthorizationCompletedCandidateIndex((candidates) =>
+    candidates.map((candidate) => {
+      if (
+        candidate.conversationId !== args.conversationId ||
+        candidate.sessionId !== args.sessionId ||
+        candidate.expectedVersion !== args.expectedVersion ||
+        candidate.authorizationCompletionId !== args.authorizationCompletionId
+      ) {
+        return candidate;
+      }
+      activated = true;
+      return { ...candidate, active: true };
+    }),
   );
-
+  if (!activated) {
+    throw new Error("Authorization recovery intent is missing");
+  }
   return existing;
 }
 
-/** Read exact auth-completion candidates for bounded heartbeat recovery. */
+async function updateAuthorizationCompletedCandidateIndex(
+  update: (
+    candidates: AuthorizationCompletedAgentTurnCandidate[],
+  ) => AuthorizationCompletedAgentTurnCandidate[],
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  const deadline = Date.now() + AUTHORIZATION_COMPLETED_INDEX_LOCK_WAIT_MS;
+  let lock = await state.acquireLock(
+    AUTHORIZATION_COMPLETED_INDEX_LOCK_KEY,
+    AUTHORIZATION_COMPLETED_INDEX_LOCK_TTL_MS,
+  );
+  while (!lock && Date.now() < deadline) {
+    await sleep(AUTHORIZATION_COMPLETED_INDEX_LOCK_RETRY_MS);
+    lock = await state.acquireLock(
+      AUTHORIZATION_COMPLETED_INDEX_LOCK_KEY,
+      AUTHORIZATION_COMPLETED_INDEX_LOCK_TTL_MS,
+    );
+  }
+  if (!lock) throw new Error("Authorization completion recovery index is busy");
+  try {
+    const candidates = authorizationCompletedAgentTurnCandidatesSchema.parse(
+      (await state.get(AUTHORIZATION_COMPLETED_INDEX_KEY)) ?? [],
+    );
+    await state.set(
+      AUTHORIZATION_COMPLETED_INDEX_KEY,
+      update(candidates),
+      AGENT_TURN_SESSION_TTL_MS,
+    );
+  } finally {
+    await state.releaseLock(lock);
+  }
+}
+
+/** Read active auth-completion candidates for bounded heartbeat recovery. */
 export async function listAuthorizationCompletedAgentTurnCandidates(): Promise<
   AuthorizationCompletedAgentTurnCandidate[]
 > {
   const state = getStateAdapter();
   await state.connect();
-  const values = await state.getList(AUTHORIZATION_COMPLETED_INDEX_KEY);
-  const candidates = new Map<
-    string,
-    AuthorizationCompletedAgentTurnCandidate
-  >();
-  for (const value of [...values].reverse()) {
-    const parsed =
-      authorizationCompletedAgentTurnCandidateSchema.safeParse(value);
-    if (!parsed.success) continue;
-    const key = `${parsed.data.conversationId}:${parsed.data.sessionId}`;
-    if (!candidates.has(key)) candidates.set(key, parsed.data);
-  }
-  return [...candidates.values()].slice(
-    0,
-    AUTHORIZATION_COMPLETED_INDEX_READ_LIMIT,
+  return authorizationCompletedAgentTurnCandidatesSchema.parse(
+    (await state.get(AUTHORIZATION_COMPLETED_INDEX_KEY)) ?? [],
+  );
+}
+
+/** Remove a terminal or stale auth-completion recovery candidate. */
+export async function removeAuthorizationCompletedAgentTurnCandidate(
+  candidate: AuthorizationCompletedAgentTurnCandidate,
+): Promise<void> {
+  await updateAuthorizationCompletedCandidateIndex((candidates) =>
+    candidates.filter(
+      (current) =>
+        current.conversationId !== candidate.conversationId ||
+        current.sessionId !== candidate.sessionId ||
+        current.expectedVersion !== candidate.expectedVersion,
+    ),
   );
 }
 
@@ -1048,6 +1173,7 @@ export async function hasAuthorizationCompletedAgentTurnCandidate(args: {
     (candidate) =>
       candidate.conversationId === args.conversationId &&
       candidate.sessionId === args.sessionId &&
-      candidate.expectedVersion === args.expectedVersion,
+      candidate.expectedVersion === args.expectedVersion &&
+      candidate.active,
   );
 }

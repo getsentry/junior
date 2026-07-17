@@ -17,7 +17,7 @@ const sandboxEgressRouters = new WeakMap<
 >();
 
 /** Create the user token store used by OAuth-backed credential brokers. */
-export function createUserTokenStore(): UserTokenStore {
+export function createUserTokenStore(): StateAdapterTokenStore {
   return new StateAdapterTokenStore(getStateAdapter());
 }
 

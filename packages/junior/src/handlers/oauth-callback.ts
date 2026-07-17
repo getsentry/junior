@@ -52,9 +52,11 @@ import { lookupSlackActor } from "@/chat/slack/user";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
+  activateAuthorizationCompletedAgentTurnCandidate,
   failAgentTurnSessionRecord,
   getAgentTurnSessionRecord,
   abandonAgentTurnSessionRecord,
+  prepareAuthorizationCompletedAgentTurnCandidate,
 } from "@/chat/state/turn-session";
 import {
   loadProjection,
@@ -289,6 +291,11 @@ async function resumeOAuthSessionRecordTurn(
   // Terminal session record states are already handled; do not fall through to
   // the pending-message resume which would re-post the original request.
   if (sessionRecord.state === "failed" || sessionRecord.state === "abandoned") {
+    clearPendingAuth(conversation, resolvedSessionId);
+    if (conversation.processing.activeTurnId === resolvedSessionId) {
+      conversation.processing.activeTurnId = undefined;
+    }
+    await persistThreadStateById(stored.resumeConversationId, { conversation });
     return true;
   }
   if (
@@ -361,6 +368,9 @@ async function resumeOAuthSessionRecordTurn(
           !isPendingAuthLatestRequest(lockedConversation, lockedPendingAuth)
         ) {
           clearPendingAuth(lockedConversation, lockedPendingAuth.sessionId);
+          if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+            lockedConversation.processing.activeTurnId = undefined;
+          }
           await persistThreadStateById(stored.resumeConversationId!, {
             conversation: lockedConversation,
           });
@@ -411,6 +421,13 @@ async function resumeOAuthSessionRecordTurn(
           sessionId: lockedSessionId,
           errorMessage: "Stored Slack actor identity did not match OAuth actor",
         });
+        clearPendingAuth(lockedConversation, lockedSessionId);
+        if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+          lockedConversation.processing.activeTurnId = undefined;
+        }
+        await persistThreadStateById(stored.resumeConversationId!, {
+          conversation: lockedConversation,
+        });
         return false;
       }
       if (!lockedSessionRecord.source) {
@@ -419,6 +436,13 @@ async function resumeOAuthSessionRecordTurn(
           expectedVersion: lockedSessionRecord.version,
           sessionId: lockedSessionId,
           errorMessage: "Stored Slack source missing for OAuth resume",
+        });
+        clearPendingAuth(lockedConversation, lockedSessionId);
+        if (lockedConversation.processing.activeTurnId === lockedSessionId) {
+          lockedConversation.processing.activeTurnId = undefined;
+        }
+        await persistThreadStateById(stored.resumeConversationId!, {
+          conversation: lockedConversation,
         });
         return false;
       }
@@ -696,8 +720,6 @@ export async function GET(
     );
   }
 
-  await stateAdapter.delete(stateKey);
-
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
   const clientSecret = process.env[providerConfig.clientSecretEnv]?.trim();
   if (!clientId || !clientSecret) {
@@ -719,81 +741,129 @@ export async function GET(
 
   const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
   const requestedScope = stored.scope ?? providerConfig.scope;
-
-  let tokenResponse: Response;
-  try {
-    const tokenRequest = buildOAuthTokenRequest({
-      clientId,
-      clientSecret,
-      payload: {
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-      },
-      tokenAuthMethod: providerConfig.tokenAuthMethod,
-      tokenExtraHeaders: providerConfig.tokenExtraHeaders,
-    });
-    tokenResponse = await fetch(providerConfig.tokenEndpoint, {
-      method: "POST",
-      headers: tokenRequest.headers,
-      body: tokenRequest.body,
-    });
-  } catch {
-    return htmlErrorResponse(
-      "Connection failed",
-      "Failed to exchange the authorization code. Please try again.",
-      500,
-    );
-  }
-
-  if (!tokenResponse.ok) {
-    return htmlErrorResponse(
-      "Connection failed",
-      "The token exchange with the provider failed. Please try again.",
-      500,
-    );
-  }
-
-  let parsedTokenResponse;
-  try {
-    const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
-    parsedTokenResponse = parseOAuthTokenResponse(tokenData, requestedScope, {
-      treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported,
-    });
-  } catch {
-    return htmlErrorResponse(
-      "Connection failed",
-      "The provider returned an incomplete token response. Please try again.",
-      500,
-    );
-  }
-
-  if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
-    return htmlErrorResponse(
-      "Connection failed",
-      `The ${providerLabel} authorization did not grant the access Junior requires. Return to Slack and ask Junior to connect your ${providerLabel} account again.`,
-      400,
-    );
-  }
-
   const userTokenStore = createUserTokenStore();
-  let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
-  try {
-    account = await resolvePluginOAuthAccount({
-      provider,
-      tokens: parsedTokenResponse,
-    });
-  } catch {
-    return htmlErrorResponse(
-      "Connection failed",
-      `Junior could not verify the connected ${providerLabel} account. Please try again.`,
-      500,
-    );
+  const sessionRecord =
+    stored.resumeConversationId && stored.resumeSessionId
+      ? await getAgentTurnSessionRecord(
+          stored.resumeConversationId,
+          stored.resumeSessionId,
+        )
+      : undefined;
+  const prepared = sessionRecord
+    ? await prepareAuthorizationCompletedAgentTurnCandidate({
+        authorizationCompletionId: crypto.randomUUID(),
+        authorizationKind: "plugin",
+        conversationId: stored.resumeConversationId!,
+        expectedVersion: sessionRecord.version,
+        provider,
+        sessionId: stored.resumeSessionId!,
+        userId: stored.userId,
+      })
+    : undefined;
+  const receiptCommitted = prepared
+    ? prepared.active ||
+      (await userTokenStore.hasAuthorizationCompletion(
+        prepared.userId,
+        prepared.provider,
+        prepared.authorizationCompletionId,
+      ))
+    : false;
+
+  if (!receiptCommitted) {
+    let tokenResponse: Response;
+    try {
+      const tokenRequest = buildOAuthTokenRequest({
+        clientId,
+        clientSecret,
+        payload: {
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        },
+        tokenAuthMethod: providerConfig.tokenAuthMethod,
+        tokenExtraHeaders: providerConfig.tokenExtraHeaders,
+      });
+      tokenResponse = await fetch(providerConfig.tokenEndpoint, {
+        method: "POST",
+        headers: tokenRequest.headers,
+        body: tokenRequest.body,
+      });
+    } catch {
+      return htmlErrorResponse(
+        "Connection failed",
+        "Failed to exchange the authorization code. Please try again.",
+        500,
+      );
+    }
+
+    if (!tokenResponse.ok) {
+      return htmlErrorResponse(
+        "Connection failed",
+        "The token exchange with the provider failed. Please try again.",
+        500,
+      );
+    }
+
+    let parsedTokenResponse;
+    try {
+      const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
+      parsedTokenResponse = parseOAuthTokenResponse(tokenData, requestedScope, {
+        treatEmptyScopeAsUnreported: providerConfig.treatEmptyScopeAsUnreported,
+      });
+    } catch {
+      return htmlErrorResponse(
+        "Connection failed",
+        "The provider returned an incomplete token response. Please try again.",
+        500,
+      );
+    }
+
+    if (!hasRequiredOAuthScope(parsedTokenResponse.scope, requestedScope)) {
+      return htmlErrorResponse(
+        "Connection failed",
+        `The ${providerLabel} authorization did not grant the access Junior requires. Return to Slack and ask Junior to connect your ${providerLabel} account again.`,
+        400,
+      );
+    }
+
+    let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
+    try {
+      account = await resolvePluginOAuthAccount({
+        provider,
+        tokens: parsedTokenResponse,
+      });
+    } catch {
+      return htmlErrorResponse(
+        "Connection failed",
+        `Junior could not verify the connected ${providerLabel} account. Please try again.`,
+        500,
+      );
+    }
+    const tokens = {
+      ...parsedTokenResponse,
+      ...(account ? { account } : {}),
+    };
+    if (prepared) {
+      await userTokenStore.setForAuthorizationCompletion(
+        stored.userId,
+        provider,
+        tokens,
+        prepared.authorizationCompletionId,
+      );
+    } else {
+      await userTokenStore.set(stored.userId, provider, tokens);
+    }
   }
-  await userTokenStore.set(stored.userId, provider, {
-    ...parsedTokenResponse,
-    ...(account ? { account } : {}),
-  });
+
+  if (prepared) {
+    await activateAuthorizationCompletedAgentTurnCandidate({
+      authorizationCompletionId: prepared.authorizationCompletionId,
+      conversationId: prepared.conversationId,
+      expectedVersion: prepared.expectedVersion,
+      sessionId: prepared.sessionId,
+    });
+  }
+  await stateAdapter.delete(stateKey);
 
   waitUntil(async () => {
     try {

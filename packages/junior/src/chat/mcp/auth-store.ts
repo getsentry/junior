@@ -43,6 +43,7 @@ export interface McpAuthSessionState {
 }
 
 export interface McpStoredOAuthCredentials {
+  authorizationCompletionId?: string;
   clientInformation?: OAuthClientInformationMixed;
   discoveryState?: OAuthDiscoveryState;
   tokens?: OAuthTokens;
@@ -204,6 +205,9 @@ function parseStoredCredentials(
     }
 
     return {
+      ...(typeof parsed.authorizationCompletionId === "string"
+        ? { authorizationCompletionId: parsed.authorizationCompletionId }
+        : {}),
       ...(isRecord(parsed.clientInformation)
         ? {
             clientInformation:

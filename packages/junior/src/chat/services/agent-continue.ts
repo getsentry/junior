@@ -8,17 +8,22 @@ import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { logException, logWarn } from "@/chat/logging";
 import {
+  activateAuthorizationCompletedAgentTurnCandidate,
   getAgentTurnSessionRecord,
   hasAuthorizationCompletedAgentTurnCandidate,
   listAuthorizationCompletedAgentTurnCandidates,
-  recordAuthorizationCompletedAgentTurnCandidate,
+  removeAuthorizationCompletedAgentTurnCandidate,
 } from "@/chat/state/turn-session";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
   requestConversationWork,
 } from "@/chat/task-execution/store";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+
+const AUTHORIZATION_RECOVERY_INTENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface AgentContinueRequest {
   conversationId: string;
@@ -56,18 +61,18 @@ export async function wakeAuthorizationCompletedAgentTurn(
       );
       return;
     }
-    const resumable = await recordAuthorizationCompletedAgentTurnCandidate({
+    const completed = await hasAuthorizationCompletedAgentTurnCandidate({
       conversationId: args.conversationId,
       expectedVersion: sessionRecord.version,
       sessionId: args.sessionId,
     });
-    if (resumable?.destination) {
+    if (completed) {
       await scheduleAgentContinue(
         {
-          conversationId: resumable.conversationId,
-          destination: resumable.destination,
-          expectedVersion: resumable.version,
-          sessionId: resumable.sessionId,
+          conversationId: sessionRecord.conversationId,
+          destination: sessionRecord.destination,
+          expectedVersion: sessionRecord.version,
+          sessionId: sessionRecord.sessionId,
         },
         options,
       );
@@ -91,10 +96,54 @@ export async function recoverAuthorizationCompletedAgentTurns(
   options: ScheduleAgentContinueOptions = {},
 ): Promise<number> {
   const candidates = await listAuthorizationCompletedAgentTurnCandidates();
+  const nowMs = options.nowMs ?? Date.now();
   let recovered = 0;
   for (const candidate of candidates) {
-    if (recovered >= 25) break;
     try {
+      if (
+        candidate.createdAtMs + AUTHORIZATION_RECOVERY_INTENT_MAX_AGE_MS <=
+        nowMs
+      ) {
+        await removeAuthorizationCompletedAgentTurnCandidate(candidate);
+        continue;
+      }
+      const session = await getAgentTurnSessionRecord(
+        candidate.conversationId,
+        candidate.sessionId,
+      );
+      if (
+        !session ||
+        session.state !== "awaiting_resume" ||
+        session.resumeReason !== "auth" ||
+        session.version !== candidate.expectedVersion ||
+        !session.destination
+      ) {
+        await removeAuthorizationCompletedAgentTurnCandidate(candidate);
+        continue;
+      }
+      if (!candidate.active) {
+        const committed =
+          candidate.authorizationKind === "plugin"
+            ? await createUserTokenStore().hasAuthorizationCompletion(
+                candidate.userId,
+                candidate.provider,
+                candidate.authorizationCompletionId,
+              )
+            : (
+                await getMcpStoredOAuthCredentials(
+                  candidate.userId,
+                  candidate.provider,
+                )
+              )?.authorizationCompletionId ===
+              candidate.authorizationCompletionId;
+        if (!committed) continue;
+        await activateAuthorizationCompletedAgentTurnCandidate({
+          authorizationCompletionId: candidate.authorizationCompletionId,
+          conversationId: candidate.conversationId,
+          expectedVersion: candidate.expectedVersion,
+          sessionId: candidate.sessionId,
+        });
+      }
       const request = await getAwaitingAgentContinueRequest({
         conversationId: candidate.conversationId,
         sessionId: candidate.sessionId,
