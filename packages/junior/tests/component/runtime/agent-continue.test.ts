@@ -12,6 +12,7 @@ import {
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 const ORIGINAL_ENV = vi.hoisted(() => {
   const original = {
@@ -30,6 +31,11 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 const agentRunnerShouldNotRun = neverRunAgentRunner();
+const turnLifecycle: ConversationTurnLifecycle = {
+  start: async () => undefined,
+  complete: async () => undefined,
+  fail: async () => undefined,
+};
 
 describe("agent continuation scheduling", () => {
   beforeEach(async () => {
@@ -128,7 +134,11 @@ describe("agent continuation scheduling", () => {
         sessionId: "turn_msg_2",
         expectedVersion: 1,
       },
-      { agentRunner: agentRunnerShouldNotRun, scheduleAgentContinue },
+      {
+        agentRunner: agentRunnerShouldNotRun,
+        scheduleAgentContinue,
+        turnLifecycle,
+      },
     );
 
     await vi.advanceTimersByTimeAsync(4_000);
@@ -163,6 +173,7 @@ describe("agent continuation scheduling", () => {
     await expect(
       resumeAwaitingSlackContinuation(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        turnLifecycle,
       }),
     ).resolves.toBe(false);
     await expect(
@@ -196,6 +207,7 @@ describe("agent continuation scheduling", () => {
       resumeAwaitingSlackContinuation(conversationId, {
         agentRunner: { run: generateReply },
         resumeTurn,
+        turnLifecycle,
       }),
     ).resolves.toBe(true);
 
@@ -263,6 +275,7 @@ describe("agent continuation scheduling", () => {
     await expect(
       resumeAwaitingSlackContinuation(conversationId, {
         agentRunner: agentRunnerShouldNotRun,
+        turnLifecycle,
       }),
     ).resolves.toBe(false);
     await expect(

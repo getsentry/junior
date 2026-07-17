@@ -1415,6 +1415,9 @@ describe("oauth callback slack integration", () => {
 
     const { continueSlackAgentRun } =
       await import("@/chat/runtime/agent-continue-runner");
+    const { ConversationTurnLifecycleService } =
+      await import("@/chat/conversations/turn-lifecycle");
+    const { getConversationEventStore } = await import("@/chat/db");
     await expect(
       continueSlackAgentRun(
         {
@@ -1423,7 +1426,12 @@ describe("oauth callback slack integration", () => {
           expectedVersion: session.version,
           sessionId,
         },
-        { agentRunner: testAgentRunner },
+        {
+          agentRunner: testAgentRunner,
+          turnLifecycle: new ConversationTurnLifecycleService(
+            getConversationEventStore(),
+          ),
+        },
       ),
     ).resolves.toBe(false);
 

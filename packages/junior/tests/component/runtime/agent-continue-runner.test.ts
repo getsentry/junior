@@ -8,6 +8,7 @@ import {
 } from "@/chat/state/turn-session";
 import { neverRunAgentRunner } from "../../fixtures/agent-runner";
 import { SLACK_DESTINATION } from "../../fixtures/conversation-work";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 
 const SLACK_SOURCE = createSlackSource({
   teamId: SLACK_DESTINATION.teamId,
@@ -33,6 +34,11 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 const agentRunnerShouldNotRun = neverRunAgentRunner();
+const turnLifecycle: ConversationTurnLifecycle = {
+  start: async () => undefined,
+  complete: async () => undefined,
+  fail: async () => undefined,
+};
 
 describe("agent continuation runner callbacks", () => {
   beforeEach(async () => {
@@ -121,6 +127,7 @@ describe("agent continuation runner callbacks", () => {
         },
         {
           agentRunner: agentRunnerShouldNotRun,
+          turnLifecycle,
           resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
             if (!prepared) {
@@ -224,6 +231,7 @@ describe("agent continuation runner callbacks", () => {
         },
         {
           agentRunner: agentRunnerShouldNotRun,
+          turnLifecycle,
           resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
             if (prepared !== false) {
@@ -314,6 +322,7 @@ describe("agent continuation runner callbacks", () => {
         },
         {
           agentRunner: agentRunnerShouldNotRun,
+          turnLifecycle,
           resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
             if (prepared !== false) {

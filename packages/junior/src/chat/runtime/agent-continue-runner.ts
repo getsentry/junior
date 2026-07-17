@@ -87,6 +87,7 @@ import {
 } from "@/chat/pi/transcript";
 import { latestReportedProgress } from "@/chat/runtime/report-progress";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import type { RecoverableSlackDelivery } from "@/chat/slack/recoverable-delivery";
 import { recoverSlackDeliveryForTurn } from "@/chat/runtime/slack-delivery-recovery";
 
@@ -96,7 +97,7 @@ const AGENT_CONTINUE_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
 export interface AgentContinueRunnerOptions {
   agentRunner: AgentRunner;
   recoverableSlackDelivery?: RecoverableSlackDelivery;
-  turnLifecycle?: ConversationTurnLifecycle;
+  turnLifecycle: ConversationTurnLifecycle;
   resumeTurn?: typeof resumeSlackTurn;
   scheduleAgentContinue?: (request: AgentContinueRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
@@ -280,18 +281,42 @@ function isContinuationResume(summary: AgentTurnSessionSummary): boolean {
   );
 }
 
-async function failUnresumableContinuation(args: {
+async function terminallyFailContinuation(args: {
   conversationId: string;
   errorMessage: string;
-  expectedVersion?: number;
-  summary: AgentTurnSessionSummary;
-}): Promise<void> {
-  await failAgentTurnSessionRecord({
+  expectedVersion: number;
+  failureCode: ConversationTurnFailureCode;
+  sessionId: string;
+  turnLifecycle: ConversationTurnLifecycle;
+}): Promise<boolean> {
+  // Every caller owns the conversation lease or resume lock across this
+  // exact-version check and the lifecycle-first terminal transition.
+  const current = await getAgentTurnSessionRecord(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !current ||
+    current.version !== args.expectedVersion ||
+    current.state === "completed" ||
+    current.state === "failed" ||
+    current.state === "abandoned"
+  ) {
+    return false;
+  }
+  await args.turnLifecycle.fail({
     conversationId: args.conversationId,
-    expectedVersion: args.expectedVersion ?? args.summary.version,
-    sessionId: args.summary.sessionId,
+    turnId: args.sessionId,
+    createdAtMs: Date.now(),
+    failureCode: args.failureCode,
+  });
+  const failed = await failAgentTurnSessionRecord({
+    conversationId: args.conversationId,
+    expectedVersion: args.expectedVersion,
+    sessionId: args.sessionId,
     errorMessage: args.errorMessage,
   });
+  return failed !== undefined;
 }
 
 /**
@@ -450,6 +475,7 @@ export async function continueSlackAgentRun(
               conversationId: payload.conversationId,
               errorMessage: "Stored Slack actor missing for continuation",
               sessionRecord: activeSessionRecord,
+              turnLifecycle: options.turnLifecycle,
             });
             return false;
           }
@@ -461,11 +487,13 @@ export async function continueSlackAgentRun(
           };
         }
         if (!activeSessionRecord.source) {
-          await failAgentTurnSessionRecord({
+          await terminallyFailContinuation({
             conversationId: payload.conversationId,
             expectedVersion: activeSessionRecord.version,
+            failureCode: "persistence_failed",
             sessionId: payload.sessionId,
             errorMessage: "Stored Slack source missing for continuation",
+            turnLifecycle: options.turnLifecycle,
           });
           return false;
         }
@@ -588,13 +616,17 @@ async function failStrandedSessionWithFallback(args: {
   conversationId: string;
   errorMessage: string;
   sessionRecord: AgentTurnSessionRecord;
+  turnLifecycle: ConversationTurnLifecycle;
 }): Promise<void> {
-  await failAgentTurnSessionRecord({
+  const failed = await terminallyFailContinuation({
     conversationId: args.conversationId,
     expectedVersion: args.sessionRecord.version,
+    failureCode: "agent_run_failed",
     sessionId: args.sessionRecord.sessionId,
     errorMessage: args.errorMessage,
+    turnLifecycle: args.turnLifecycle,
   });
+  if (!failed) return;
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({
@@ -702,6 +734,7 @@ async function recoverStrandedRunningSession(args: {
       errorMessage:
         "Stranded running session had no resumable boundary after worker death",
       sessionRecord,
+      turnLifecycle: args.options.turnLifecycle,
     });
     return false;
   }
@@ -716,6 +749,7 @@ async function recoverStrandedRunningSession(args: {
       errorMessage:
         "Stranded running session could not materialize continuation metadata",
       sessionRecord: parked,
+      turnLifecycle: args.options.turnLifecycle,
     });
     return false;
   }
@@ -723,11 +757,13 @@ async function recoverStrandedRunningSession(args: {
   if (await continueSlackAgentRunWithLockRetry(request, args.options)) {
     return true;
   }
-  await failUnresumableContinuation({
+  await terminallyFailContinuation({
     conversationId: args.conversationId,
     expectedVersion: request.expectedVersion,
-    summary: args.summary,
+    sessionId: args.summary.sessionId,
+    failureCode: "agent_run_failed",
     errorMessage: "Awaiting agent continuation was stale before it could run",
+    turnLifecycle: args.options.turnLifecycle,
   });
   return false;
 }
@@ -765,11 +801,14 @@ export async function resumeAwaitingSlackContinuation(
     });
     if (!request) {
       if (authorizationCandidate) continue;
-      await failUnresumableContinuation({
+      await terminallyFailContinuation({
         conversationId,
-        summary,
+        expectedVersion: summary.version,
+        sessionId: summary.sessionId,
+        failureCode: "persistence_failed",
         errorMessage:
           "Awaiting agent continuation metadata could not be materialized",
+        turnLifecycle: options.turnLifecycle,
       });
       continue;
     }
@@ -778,11 +817,13 @@ export async function resumeAwaitingSlackContinuation(
       return true;
     }
 
-    await failUnresumableContinuation({
+    await terminallyFailContinuation({
       conversationId,
       expectedVersion: request.expectedVersion,
-      summary,
+      sessionId: summary.sessionId,
+      failureCode: "agent_run_failed",
       errorMessage: "Awaiting agent continuation was stale before it could run",
+      turnLifecycle: options.turnLifecycle,
     });
   }
 

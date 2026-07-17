@@ -118,6 +118,17 @@ let queue: ConversationWorkQueueTestAdapter;
 let turnLifecycle: ConversationTurnLifecycle;
 let conversationEventStore: ConversationEventStore;
 
+async function loadTurnLifecycle(conversationId: string, turnId: string) {
+  return (await conversationEventStore.loadHistory(conversationId))
+    .filter(
+      (event) =>
+        event.data.type.startsWith("turn_") &&
+        "turnId" in event.data &&
+        event.data.turnId === turnId,
+    )
+    .map((event) => event.data);
+}
+
 function continueAgentRun(args: {
   conversationId: string;
   sessionId: string;
@@ -837,6 +848,117 @@ describe("agent continuation Slack integration", () => {
     ]);
   });
 
+  it("fails an unmaterializable continuation once in canonical history", async () => {
+    const conversationId = "slack:C123:1712345.00071";
+    const sessionId = "turn_msg_71";
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 1,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      resumeReason: "timeout",
+      piMessages: [],
+    });
+    await turnLifecycle.start({
+      conversationId,
+      turnId: sessionId,
+      inputMessageIds: ["msg.71"],
+      createdAtMs: 1,
+      surface: "slack",
+    });
+
+    const resume = () =>
+      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
+        conversationId,
+        {
+          agentRunner: { run: executeAgentRunMock },
+          turnLifecycle,
+        },
+      );
+    await expect(resume()).resolves.toBe(false);
+    await expect(resume()).resolves.toBe(false);
+
+    expect(await loadTurnLifecycle(conversationId, sessionId)).toEqual([
+      expect.objectContaining({ type: "turn_started" }),
+      expect.objectContaining({
+        type: "turn_failed",
+        failureCode: "persistence_failed",
+      }),
+    ]);
+  });
+
+  it("does not fail a continuation whose session completed concurrently", async () => {
+    const conversationId = "slack:C123:1712345.00072";
+    const sessionId = "turn_msg_72";
+    await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+      modelId: "test/model",
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      destination: SLACK_DESTINATION,
+      source: slackSource("1712345.00072"),
+      resumeReason: "timeout",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+    });
+    await turnLifecycle.start({
+      conversationId,
+      turnId: sessionId,
+      inputMessageIds: ["msg.72"],
+      createdAtMs: 1,
+      surface: "slack",
+    });
+
+    await expect(
+      agentContinueRunnerModule.resumeAwaitingSlackContinuation(
+        conversationId,
+        {
+          agentRunner: { run: executeAgentRunMock },
+          turnLifecycle,
+          resumeTurn: async () => {
+            await turnSessionStoreModule.upsertAgentTurnSessionRecord({
+              modelId: "test/model",
+              conversationId,
+              sessionId,
+              sliceId: 2,
+              state: "completed",
+              destination: SLACK_DESTINATION,
+              source: slackSource("1712345.00072"),
+              piMessages: [
+                {
+                  role: "user",
+                  content: [{ type: "text", text: "hello" }],
+                  timestamp: 1,
+                },
+              ],
+            });
+            return false;
+          },
+        },
+      ),
+    ).resolves.toBe(false);
+    await turnLifecycle.complete({
+      conversationId,
+      turnId: sessionId,
+      createdAtMs: 2,
+      outcome: "success",
+    });
+
+    expect(
+      (await loadTurnLifecycle(conversationId, sessionId)).map(
+        (event) => event.type,
+      ),
+    ).toEqual(["turn_started", "turn_completed"]);
+  });
+
   it("resumes resource-event turns with the stored system actor", async () => {
     const conversationId = "slack:C123:1712345.0012";
     const sessionId = "turn_resource-event-msg_12";
@@ -898,7 +1020,6 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
-
     const continued = await continueAgentRun({
       conversationId,
       sessionId,
@@ -986,6 +1107,14 @@ describe("agent continuation Slack integration", () => {
       },
     });
 
+    await turnLifecycle.start({
+      conversationId,
+      turnId: sessionId,
+      inputMessageIds: ["msg.10"],
+      createdAtMs: 1,
+      surface: "slack",
+    });
+
     const continued = await continueAgentRun({
       conversationId,
       sessionId,
@@ -1012,6 +1141,13 @@ describe("agent continuation Slack integration", () => {
             "I ran into an internal error while processing that.",
           ),
         }),
+      }),
+    ]);
+    expect(await loadTurnLifecycle(conversationId, sessionId)).toEqual([
+      expect.objectContaining({ type: "turn_started" }),
+      expect.objectContaining({
+        type: "turn_failed",
+        failureCode: "agent_run_failed",
       }),
     ]);
   });
@@ -1088,7 +1224,6 @@ describe("agent continuation Slack integration", () => {
         },
       },
     });
-
     const continued = await continueAgentRun({
       conversationId,
       sessionId,

@@ -37,6 +37,7 @@ import {
 } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import { flattenAgentRunRequestForTest } from "../../fixtures/agent-runner";
+import { getConversationEventStore } from "@/chat/db";
 
 const emptyThreadReplies = async () => [];
 
@@ -204,6 +205,34 @@ function turnPiMessages(text: string) {
       timestamp: 1,
     },
   ];
+}
+
+async function seedStartedTurn(args: {
+  conversationId: string;
+  messageId: string;
+  turnId: string;
+}): Promise<void> {
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      idempotencyKey: `turn:${args.turnId}:started`,
+      createdAtMs: 1,
+      data: {
+        type: "turn_started",
+        turnId: args.turnId,
+        inputMessageIds: [args.messageId],
+        surface: "slack",
+      },
+    },
+  ]);
+}
+
+async function loadTurnLifecycle(conversationId: string, turnId: string) {
+  return (await getConversationEventStore().loadHistory(conversationId)).filter(
+    (event) =>
+      event.data.type.startsWith("turn_") &&
+      "turnId" in event.data &&
+      event.data.turnId === turnId,
+  );
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -1265,6 +1294,11 @@ describe("bot handlers (integration)", () => {
       resumeReason: "auth",
       piMessages: turnPiMessages("please use notion"),
     });
+    await seedStartedTurn({
+      conversationId,
+      messageId: "msg-original",
+      turnId: activeSessionId,
+    });
     const prepared = await prepareAgentTurnAuthorizationRecovery({
       authorizationCompletionId: "lost-callback-receipt",
       authorizationKind: "plugin",
@@ -1348,6 +1382,19 @@ describe("bot handlers (integration)", () => {
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
     expect(conversation?.processing?.pendingAuth).toBeUndefined();
+    await expect(
+      loadTurnLifecycle(conversationId, activeSessionId),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ type: "turn_started" }),
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "turn_failed",
+          failureCode: "agent_run_failed",
+        }),
+      }),
+    ]);
   });
 
   it("appends a parked-conversation follow-up to the event log before consuming it", async () => {
@@ -1916,6 +1963,11 @@ describe("bot handlers (integration)", () => {
       resumeReason: "timeout",
       piMessages: turnPiMessages("please keep working"),
     });
+    await seedStartedTurn({
+      conversationId,
+      messageId: "msg-original",
+      turnId: activeSessionId,
+    });
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -1957,6 +2009,19 @@ describe("bot handlers (integration)", () => {
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
+    await expect(
+      loadTurnLifecycle(conversationId, activeSessionId),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({ type: "turn_started" }),
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "turn_failed",
+          failureCode: "persistence_failed",
+        }),
+      }),
+    ]);
   });
 
   it("reschedules an awaiting continuation for repeated delivery of the active message", async () => {

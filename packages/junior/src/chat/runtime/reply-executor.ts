@@ -1032,6 +1032,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               // the event-log projection. The abandoned record turns a late
               // OAuth callback into a stale no-op, and its exact pending-auth
               // marker must be cleared because that session cannot resume.
+              await deps.services.turnLifecycle.fail({
+                conversationId,
+                turnId: activeTurnId,
+                createdAtMs: Date.now(),
+                failureCode: "agent_run_failed",
+              });
               await abandonAgentTurnSessionRecord({
                 conversationId,
                 sessionId: activeTurnId,
@@ -1047,6 +1053,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               clearPendingAuth(preparedState.conversation, activeTurnId);
               activeTurnId = undefined;
             } else {
+              await deps.services.turnLifecycle.fail({
+                conversationId,
+                turnId: activeTurnId,
+                createdAtMs: Date.now(),
+                failureCode: "persistence_failed",
+              });
               await failAgentTurnSessionRecord({
                 conversationId,
                 expectedVersion: sessionRecord.version,
