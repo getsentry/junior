@@ -1,76 +1,27 @@
-# SQL migrations for `@sentry/junior`
+# SQL migrations
 
-This directory is the ordered Drizzle migration history for Junior's core SQL
-schema. The TypeScript schema under `src/db/schema/` is the current contract;
-the SQL files and `meta/` records describe how an existing database reaches
-that contract.
+`src/db/schema.ts` is the Drizzle schema entrypoint. This directory is the
+append-only history used to bring an existing database to that schema.
 
-## Generate a migration
+`junior upgrade` runs the ordered migration list in `src/cli/upgrade.ts`. Core
+SQL runs under a migration lock and is recorded in
+`drizzle.__drizzle_junior_core`, so reruns do not reapply it. Register backfills
+after the schema migration they require.
 
-1. Change the owning schema under `src/db/schema/`.
-2. Run
-   `pnpm --filter @sentry/junior db:generate --name <migration_name>` from the
-   repository root.
-3. Review the generated SQL for locking, table rewrites, defaults, constraints,
-   indexes, and compatibility with the currently deployed workers.
-4. Commit the SQL file, `meta/_journal.json`, and generated snapshot together.
+## Add a migration
 
-Drizzle compares the latest snapshot with the TypeScript schema. Snapshots are
-generation inputs, not a substitute for the executable SQL history. Do not
-rename, reorder, delete, or rewrite an applied migration, its snapshot, or its
-journal entry; correct an already-shipped schema with a new migration.
-Migration timestamps and journal order must remain append-only.
+1. Change the owning table definition under `src/db/schema/`.
+2. Run `pnpm --filter @sentry/junior db:generate --name <migration_name>`.
+3. Review the generated SQL and commit it with `meta/_journal.json` and its
+   snapshot.
 
-## Apply migrations
+- Prefer SQL for schema changes and deterministic transformations of rows in
+  the same database.
+- Use an application data migration only for external data or work that must be
+  decoded in application code; keep it bounded and rerunnable.
+- Never edit, rename, reorder, or delete an applied SQL migration or its
+  metadata. Add a new migration to correct it.
 
-`junior upgrade` applies core schema migrations before running application data
-backfills. `src/chat/conversations/sql/migrations.ts` resolves this packaged
-directory in both source and built CLI layouts, serializes migration with the
-core migration lock, and lets Drizzle record applied entries in
-`drizzle.__drizzle_junior_core`. Re-running upgrade is expected and must not
-reapply journaled SQL.
-
-Choose the migration boundary from the data source and transaction contract:
-
-- SQL files establish tables, columns, constraints, and indexes. They may also
-  perform deterministic, transactional transformations of rows already in the
-  same database when that transformation is part of reaching the new schema.
-- Upgrade migrations under `src/cli/upgrade/migrations/` adopt external state
-  or perform application-decoded, bounded, rerunnable backfills after the
-  required schema exists.
-
-Keep destructive or non-rolling cutovers explicit. If old and new workers
-cannot safely share the intermediate schema, drain the incompatible workers,
-apply the schema migration, run and verify the required backfill, and only then
-start the new workers. The owning module README must document any active
-cutover gate; migration filenames are not durable operational documentation.
-
-## Legacy adoption
-
-The initial Drizzle baseline represents schema that predated the Drizzle
-journal. Upgrade may adopt that baseline only when the legacy migration records
-and physical schema match the exact state recognized by
-`migrations.ts`. Adoption validates historical checksums and requires complete,
-internally consistent schema markers. Ambiguous, partial, or post-cutover state
-fails closed for operator repair instead of inferring success from mutable
-table shape.
-
-This adoption path is the only exception to normal journal application. New
-installations execute the baseline normally, and every later migration is
-proved solely by the Drizzle journal.
-
-## Verification invariants
-
-- A migration must work on both a new database and every supported upgrade
-  state.
-- Running schema migration twice must be safe because the journal prevents a
-  second application.
-- Concurrent upgrade attempts must serialize on the migration lock.
-- Generated SQL and metadata must stay synchronized with the schema change.
-- Backfills must be bounded, rerunnable, and verify their completion criteria
-  before an incompatible cutover proceeds.
-
-The migration integration coverage in
-`tests/integration/conversation-sql.test.ts` owns fresh-install, legacy-adoption,
-ordering, locking, and failure-contract checks. Feature tests own the behavior
-that becomes possible after a schema change.
+Migration loading, locking, and legacy baseline adoption live in
+`src/chat/conversations/sql/migrations.ts`. Their integration coverage lives in
+`tests/integration/conversation-sql.test.ts`.
